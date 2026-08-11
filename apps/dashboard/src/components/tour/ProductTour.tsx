@@ -1,15 +1,25 @@
 "use client";
 
-import React, { Component, useEffect } from "react";
-import { useTranslations } from "next-intl";
+import React, { Component, useEffect, useRef } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { useOnborda } from "onborda";
 import type { CardComponentProps } from "onborda";
 import { X, ArrowRight, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
+import { resolveNavigationDisplayLabel } from "@/lib/navigation-contract";
+import {
+    PRODUCT_TOUR_PENDING_KEY,
+    PRODUCT_TOUR_PREPARE_EVENT,
+    PRODUCT_TOUR_RESTART_EVENT,
+    PRODUCT_TOUR_TARGETS,
+    canRunProductTourAtWidth,
+    getProductTourSelector,
+} from "@/lib/product-tour-contract";
 import { resolveVerticalDashboard } from "@/lib/vertical-dashboard-resolver";
 
 /** Flag que el setup-wizard deja al terminar para disparar el tour en /admin. */
-export const TOUR_PENDING_KEY = "parallly:tour:pending";
+export const TOUR_PENDING_KEY = PRODUCT_TOUR_PENDING_KEY;
 
 /**
  * Pasos del tour guiado. Bloque A (impactan al agente de chat) primero, Bloque B
@@ -19,31 +29,38 @@ export const TOUR_PENDING_KEY = "parallly:tour:pending";
 export function useProductTourSteps() {
     const t = useTranslations("productTour");
     const tNav = useTranslations("nav");
+    const locale = useLocale();
     const { verticalConfig } = useAuth();
     const common = { side: "right" as const, showControls: true, pointerPadding: 8, pointerRadius: 12 };
 
     const steps: any[] = [
         // Bloque A — impactan al agente
-        { icon: "🤖", title: t("agent.title"), content: t("agent.content"), selector: "#tour-automation", ...common },
-        { icon: "🔌", title: t("channels.title"), content: t("channels.content"), selector: "#tour-channels", ...common },
+        { icon: "🤖", title: t("agent.title"), content: t("agent.content"), selector: getProductTourSelector(PRODUCT_TOUR_TARGETS.agent), ...common },
+        { icon: "🔌", title: t("channels.title"), content: t("channels.content"), selector: getProductTourSelector(PRODUCT_TOUR_TARGETS.channels), ...common },
     ];
 
     // Paso vertical: usa la misma proyección capability/subtype-aware del sidebar.
     const toolKey = resolveVerticalDashboard(verticalConfig).primaryTourItem;
     if (toolKey) {
+        const toolLabel = resolveNavigationDisplayLabel(
+            toolKey,
+            tNav(`items.${toolKey}`),
+            locale,
+            verticalConfig?.sidebar?.labelOverrides,
+        );
         steps.push({
             icon: "🧰",
             title: t("verticalTool.title"),
-            content: t("verticalTool.content", { tool: tNav(`items.${toolKey}`) }),
-            selector: `#tour-${toolKey}`,
+            content: t("verticalTool.content", { tool: toolLabel }),
+            selector: getProductTourSelector(toolKey),
             ...common,
         });
     }
 
     // Bloque B — valor adicional
     steps.push(
-        { icon: "💬", title: t("inbox.title"), content: t("inbox.content"), selector: "#tour-conversations", ...common },
-        { icon: "📊", title: t("analytics.title"), content: t("analytics.content"), selector: "#tour-analytics", ...common },
+        { icon: "💬", title: t("inbox.title"), content: t("inbox.content"), selector: getProductTourSelector(PRODUCT_TOUR_TARGETS.inbox), ...common },
+        { icon: "📊", title: tNav("items.analytics"), content: t("analytics.content"), selector: getProductTourSelector(PRODUCT_TOUR_TARGETS.analytics), ...common },
     );
 
     return [{ tour: "main", steps }];
@@ -54,6 +71,66 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
     const t = useTranslations("productTour");
     const { closeOnborda } = useOnborda();
     const isLast = currentStep + 1 >= totalSteps;
+    const cardRef = useRef<HTMLDivElement>(null);
+    const titleRef = useRef<HTMLHeadingElement>(null);
+    const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+    // Onborda supplies the visual spotlight, while the custom card owns the
+    // dialog semantics. Keep keyboard focus inside the tour and restore it to a
+    // stable shell target when the tour closes.
+    useEffect(() => {
+        const activeElement = document.activeElement;
+        restoreFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null;
+        const frame = requestAnimationFrame(() => titleRef.current?.focus());
+
+        return () => {
+            cancelAnimationFrame(frame);
+            const previous = restoreFocusRef.current;
+            const previousIsUsable = previous
+                && previous !== document.body
+                && previous !== document.documentElement
+                && previous.isConnected
+                && previous.getClientRects().length > 0;
+            const fallback = document.querySelector<HTMLElement>("#main-content");
+            requestAnimationFrame(() => {
+                if (previousIsUsable) previous.focus();
+                else fallback?.focus();
+            });
+        };
+    }, []);
+
+    const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            closeOnborda();
+            return;
+        }
+
+        if (event.key !== "Tab") return;
+        const root = cardRef.current;
+        if (!root) return;
+        const focusable = Array.from(root.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )).filter((element) => element.getClientRects().length > 0);
+
+        if (focusable.length === 0) {
+            event.preventDefault();
+            root.focus();
+            return;
+        }
+
+        const active = document.activeElement;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && (active === titleRef.current || active === root || active === first || !root.contains(active))) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    };
 
     // Fix de posición: Onborda calcula la posición de la tarjeta ANTES de que termine su
     // scroll suave (y no escucha el evento 'scroll'), dejándola fuera de pantalla cuando el
@@ -70,20 +147,36 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
     }, [currentStep, selector]);
 
     return (
-        <div className="w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-2xl p-5">
+        <div
+            ref={cardRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-tour-title"
+            aria-describedby="product-tour-content"
+            tabIndex={-1}
+            onKeyDown={handleDialogKeyDown}
+            className="w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-2xl p-5 outline-none"
+        >
             {/* Header */}
             <div className="flex items-start gap-3 mb-2.5">
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center text-xl shrink-0">
                     {step.icon}
                 </div>
-                <h3 className="flex-1 text-[15px] font-semibold text-foreground leading-tight pt-1.5">{step.title}</h3>
+                <h3
+                    ref={titleRef}
+                    id="product-tour-title"
+                    tabIndex={-1}
+                    className="flex-1 text-[15px] font-semibold text-foreground leading-tight pt-1.5 outline-none"
+                >
+                    {step.title}
+                </h3>
                 <button onClick={() => closeOnborda()} className="shrink-0 -mt-1 -mr-1 p-1 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={t("close")}>
                     <X size={16} />
                 </button>
             </div>
 
             {/* Content */}
-            <p className="text-sm text-muted-foreground leading-relaxed mb-4">{step.content}</p>
+            <p id="product-tour-content" className="text-sm text-muted-foreground leading-relaxed mb-4">{step.content}</p>
 
             {/* Progress dots */}
             <div className="flex items-center gap-1.5 mb-4" aria-hidden>
@@ -122,29 +215,63 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
 }
 
 /** Evento global para reiniciar el tour desde cualquier parte (ej: HelpAssistant). */
-export const TOUR_RESTART_EVENT = "parallly:start-tour";
+export const TOUR_RESTART_EVENT = PRODUCT_TOUR_RESTART_EVENT;
 
 /** Dispara el tour cuando el usuario llega a /admin tras completar el setup-wizard. */
 export function TourLauncher() {
     const { startOnborda } = useOnborda();
+    const { canEditAgent, canManageChannels } = useRole();
+    const canLaunchTour = canEditAgent && canManageChannels;
+
     useEffect(() => {
-        try {
-            if (localStorage.getItem(TOUR_PENDING_KEY) === "true") {
+        if (!canLaunchTour) return;
+        const desktop = window.matchMedia("(min-width: 768px)");
+        let timer: number | null = null;
+
+        const startPendingTour = () => {
+            if (!canRunProductTourAtWidth(window.innerWidth)) return;
+            try {
+                if (localStorage.getItem(TOUR_PENDING_KEY) !== "true") return;
                 localStorage.removeItem(TOUR_PENDING_KEY);
-                // Pequeño delay para asegurar que el sidebar (targets) esté montado.
-                const tm = setTimeout(() => { try { startOnborda("main"); } catch { /* noop */ } }, 800);
-                return () => clearTimeout(tm);
+                window.dispatchEvent(new Event(PRODUCT_TOUR_PREPARE_EVENT));
+                // React first reveals collapsed sections; Onborda then measures real targets.
+                timer = window.setTimeout(() => {
+                    try { startOnborda("main"); } catch { /* optional enhancement */ }
+                }, 350);
+            } catch {
+                // The tour stays optional when storage is unavailable.
             }
-        } catch { /* localStorage no disponible */ }
-    }, [startOnborda]);
+        };
+
+        startPendingTour();
+        const onViewportChange = (event: MediaQueryListEvent) => {
+            if (event.matches) startPendingTour();
+        };
+        desktop.addEventListener("change", onViewportChange);
+        return () => {
+            desktop.removeEventListener("change", onViewportChange);
+            if (timer !== null) window.clearTimeout(timer);
+        };
+    }, [canLaunchTour, startOnborda]);
 
     // Permite reiniciar el tour bajo demanda (HelpAssistant dispara este evento).
     // Vive dentro de <Onborda>, así que useOnborda es seguro aquí.
     useEffect(() => {
-        const handler = () => { try { startOnborda("main"); } catch { /* noop */ } };
+        let timer: number | null = null;
+        const handler = () => {
+            if (!canLaunchTour || !canRunProductTourAtWidth(window.innerWidth)) return;
+            window.dispatchEvent(new Event(PRODUCT_TOUR_PREPARE_EVENT));
+            if (timer !== null) window.clearTimeout(timer);
+            timer = window.setTimeout(() => {
+                try { startOnborda("main"); } catch { /* optional enhancement */ }
+            }, 350);
+        };
         window.addEventListener(TOUR_RESTART_EVENT, handler);
-        return () => window.removeEventListener(TOUR_RESTART_EVENT, handler);
-    }, [startOnborda]);
+        return () => {
+            window.removeEventListener(TOUR_RESTART_EVENT, handler);
+            if (timer !== null) window.clearTimeout(timer);
+        };
+    }, [canLaunchTour, startOnborda]);
 
     return null;
 }
@@ -162,7 +289,6 @@ export class TourBoundary extends Component<{ fallback: React.ReactNode; childre
         return { failed: true };
     }
     componentDidCatch(err: unknown) {
-        // eslint-disable-next-line no-console
         console.error("[ProductTour] disabled — render error in Onborda:", err);
     }
     render() {

@@ -16,7 +16,7 @@ export class DripSequenceController {
     constructor(private readonly dripService: DripSequenceService) {}
 
     @Get(':tenantId')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'List all drip sequences for a tenant' })
     async listSequences(@Param('tenantId') tenantId: string) {
         const data = await this.dripService.listSequences(tenantId);
@@ -24,7 +24,7 @@ export class DripSequenceController {
     }
 
     @Get(':tenantId/:sequenceId')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Get a specific drip sequence' })
     async getSequence(
         @Param('tenantId') tenantId: string,
@@ -35,7 +35,7 @@ export class DripSequenceController {
     }
 
     @Post(':tenantId')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new drip sequence' })
     async createSequence(
         @Param('tenantId') tenantId: string,
@@ -46,7 +46,7 @@ export class DripSequenceController {
     }
 
     @Put(':tenantId/:sequenceId')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a drip sequence' })
     async updateSequence(
         @Param('tenantId') tenantId: string,
@@ -58,7 +58,7 @@ export class DripSequenceController {
     }
 
     @Delete(':tenantId/:sequenceId')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Delete a drip sequence' })
     async deleteSequence(
         @Param('tenantId') tenantId: string,
@@ -69,7 +69,7 @@ export class DripSequenceController {
     }
 
     @Post(':tenantId/:sequenceId/toggle')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Toggle drip sequence active state' })
     async toggleSequence(
         @Param('tenantId') tenantId: string,
@@ -81,7 +81,7 @@ export class DripSequenceController {
     }
 
     @Post(':tenantId/:sequenceId/enroll')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Enroll a contact in a drip sequence' })
     async enrollContact(
         @Param('tenantId') tenantId: string,
@@ -95,7 +95,7 @@ export class DripSequenceController {
     }
 
     @Post(':tenantId/:sequenceId/enroll-segment')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Bulk-enroll a CRM segment into a prospecting sequence' })
     async enrollSegment(
         @Param('tenantId') tenantId: string,
@@ -109,7 +109,7 @@ export class DripSequenceController {
     }
 
     @Post(':tenantId/:sequenceId/unenroll')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Unenroll a contact from a drip sequence' })
     async unenrollContact(
         @Param('tenantId') tenantId: string,
@@ -121,7 +121,7 @@ export class DripSequenceController {
     }
 
     @Get(':tenantId/:sequenceId/enrollments')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Get enrollments for a drip sequence' })
     async getEnrollments(
         @Param('tenantId') tenantId: string,

@@ -144,6 +144,13 @@
     "platformConsole": "Console plateforme",
     "superAdminMode": "Super Admin",
     "sections": {
+      "essentials": "Essentiels",
+      "aiGrowth": "IA et croissance",
+      "insights": "Insights",
+      "administration": "Administration",
+      "platformOperations": "Opérations de la plateforme",
+      "revenueBilling": "Revenus et facturation",
+      "governance": "Gouvernance et conformité",
       "main": "Principal",
       "operations": "Opérations",
       "analytics": "Analyses",
@@ -155,6 +162,7 @@
       "platformConfig": "Config globale"
     },
     "items": {
+      "home": "Accueil",
       "conversations": "Conversations",
       "dashboard": "Tableau de bord",
       "inbox": "Boîte de réception",
@@ -178,6 +186,7 @@
       "users": "Utilisateurs",
       "billing": "Facturation",
       "featureRequests": "Améliorations",
+      "help": "Aide",
       "settings": "Paramètres",
       "tenants": "Tenants",
       "financials": "Finances",
@@ -233,6 +242,62 @@
     "expandSidebar": "Agrandir",
     "collapseSidebar": "Réduire",
     "novedades": "Nouveautés"
+  },
+  "navigation": {
+    "skipToContent": "Aller au contenu principal",
+    "accessDeniedTitle": "Vous n'avez pas accès à cette section",
+    "accessDeniedDescription": "Nous vous avons redirigé vers la section disponible la plus proche pour votre rôle.",
+    "dismiss": "Fermer l'avis",
+    "breadcrumbLabel": "Fil d'Ariane",
+    "badge": {
+      "unread": "{count} éléments non lus dans {label}"
+    },
+    "routes": {
+      "agentDetail": "Détails de l'agent",
+      "channelEmail": "E-mail",
+      "channelInstagram": "Instagram",
+      "channelInstagramCallback": "Connexion Instagram",
+      "channelMessenger": "Messenger",
+      "channelSms": "SMS",
+      "channelTelegram": "Telegram",
+      "channelWhatsapp": "WhatsApp",
+      "channelWhatsappProfile": "Profil WhatsApp",
+      "channelWhatsappTemplates": "Modèles WhatsApp",
+      "contactDetail": "Détails du contact",
+      "dripSequenceDetail": "Détails de la séquence",
+      "knowledgeFaqs": "Questions fréquentes",
+      "listingDetail": "Détails du bien",
+      "pipelineDealDetail": "Détails de l'opportunité",
+      "platformTenantDetail": "Détails de l'entreprise",
+      "propertyDetail": "Détails de la propriété",
+      "settingsIntegrations": "Intégrations",
+      "settingsWebChatTriggers": "Déclencheurs du chat web",
+      "setupWizard": "Assistant de configuration",
+        "tourDetail": "Détails du tour ou du forfait",
+        "acquisitionCampaigns": "Campagnes d’acquisition"
+    },
+    "command": {
+      "title": "Rechercher et naviguer",
+      "open": "Ouvrir la recherche globale",
+      "description": "Trouvez des sections ou lancez des actions rapides dans la plateforme.",
+      "placeholder": "Rechercher des sections et actions…",
+      "close": "Fermer la recherche",
+      "noResults": "Aucune section ou action ne correspond à cette recherche.",
+      "results": "Résultats",
+      "quickActions": "Créer",
+      "favorites": "Favoris",
+      "recent": "Récents",
+      "allDestinations": "Toutes les sections",
+      "favorite": "Ajouter {label} aux favoris",
+      "unfavorite": "Retirer {label} des favoris",
+      "keyboardHelp": "Utilisez ↑ ↓ pour naviguer et Entrée pour ouvrir",
+      "primaryShortcuts": "Alt+1–3 : accès principaux"
+    },
+    "quickCreate": {
+      "contact": "Créer un contact",
+      "appointment": "Créer un rendez-vous",
+      "campaign": "Créer une campagne"
+    }
   },
   "topbar": {
     "menu": "Menu",
@@ -446,7 +511,7 @@
     "generatePassword": "Générer un mot de passe"
   },
   "dashboard": {
-    "title": "Tableau de bord",
+    "title": "Accueil",
     "welcome": "Bienvenue, {name} · Vue d'ensemble de la plateforme",
     "overview": "Vue d'ensemble",
     "recentActivity": "Activite recente",
@@ -898,7 +963,7 @@
     "errorAssign": "Echec de l'attribution de la conversation. Veuillez reessayer.",
     "viewerSingle": "{name} consulte cette conversation",
     "viewerMultiple": "{count} agents consultent cette conversation",
-    "heading": "Inbox",
+    "heading": "Conversations",
     "liveBadge": "LIVE",
     "connectionLost": "Connexion perdue — reconnexion...",
     "humanAttention": {
@@ -1004,6 +1069,9 @@
     "subtitle": "Gerez votre compte, entreprise, canaux et outils",
     "sidebarSubtitle": "Réglages généraux",
     "backToDashboard": "Retour au tableau de bord",
+    "backToPrevious": "Retour à la section précédente",
+    "navigationLabel": "Navigation des paramètres",
+    "closeNavigation": "Fermer la navigation",
     "searchSettings": "Rechercher paramètres…",
     "noResults": "Aucun résultat",
     "sections": {
@@ -1014,6 +1082,30 @@
       "company": {
         "title": "Entreprise",
         "description": "Identité et configuration de l'entreprise"
+      },
+      "crmOperations": {
+        "title": "CRM et opérations",
+        "description": "Pipeline, scoring, attributs et planification"
+      },
+      "conversations": {
+        "title": "Conversations",
+        "description": "Modèles, macros, médias et suivi"
+      },
+      "channelsIntegrations": {
+        "title": "Canaux et intégrations",
+        "description": "Connexions, webhooks et outils externes"
+      },
+      "developer": {
+        "title": "Développeurs",
+        "description": "API, webhooks et connecteurs techniques"
+      },
+      "governance": {
+        "title": "Gouvernance et alertes",
+        "description": "Politiques, sécurité et contrôles opérationnels"
+      },
+      "planBilling": {
+        "title": "Offre et facturation",
+        "description": "Abonnement, paiements et limites de l'offre"
       },
       "operations": {
         "title": "Opérations",
@@ -1076,6 +1168,10 @@
       "businessHours": {
         "label": "Horaires d'ouverture",
         "description": "Jours, heures et message hors horaires"
+      },
+      "billing": {
+        "label": "Offre et facturation",
+        "description": "Abonnement, usage, paiements et changements d'offre"
       },
       "pipelineStages": {
         "label": "Étapes du pipeline",
@@ -3852,6 +3948,10 @@
     "itemCount": "{count, plural, one {# article} other {# articles}}",
     "moreItems": "de plus",
     "viewReceipt": "Voir le reçu",
+    "changeStatus": "Modifier le statut de la commande {order}",
+    "changeStatusShort": "Modifier le statut…",
+    "terminalStatus": "Statut final",
+    "statusUpdateError": "Impossible de mettre à jour le statut. Rechargez la page et réessayez.",
     "kpi": {
       "totalRevenue": "Revenu total (Payé)",
       "accountsReceivable": "Comptes à recevoir",
@@ -4896,7 +4996,7 @@
       "recommendedWhatsapp": "Recommandé · WhatsApp",
       "whatsappBrandTitle": "WhatsApp Business",
       "officialMeta": "Connexion officielle via Meta",
-      "otherChannelsHint": "Connectez-les sans quitter l'assistant. L'e-mail ouvre sa page de configuration.",
+      "otherChannelsHint": "Connectez-les sans quitter l’assistant. La configuration e-mail s’ouvre dans un nouvel onglet.",
       "otherChannels": "Ou connectez un autre canal",
       "recommended": "Recommandé",
       "back": "Retour",
@@ -4944,6 +5044,8 @@
       "copilotCardTitle": "Votre copilote est là pour vous aider",
       "copilotCardDesc": "Une question sur la configuration ? Demandez-lui : canaux, CRM, rendez-vous, automatisations et plus.",
       "openCopilot": "Ouvrir le copilote",
+      "copilotQueued": "S’ouvrira à la fin",
+      "opensInNewTab": "s’ouvre dans un nouvel onglet",
       "tools": {
         "knowledge": {
           "name": "Base de connaissances",

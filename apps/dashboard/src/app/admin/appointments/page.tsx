@@ -5,6 +5,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { useTranslations, useLocale } from "next-intl";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -105,12 +106,14 @@ export default function AppointmentsPage() {
   const locale = useLocale();
   const dateLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-MX";
   const { activeTenantId } = useTenant();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   // roles.ts:162 le da esta página a los cuatro roles porque el agente agenda
   // por el cliente desde el calendario. Pero el catálogo de servicios y la
   // configuración (disponibilidad, bloqueos, recordatorios) son ajustes del
   // negocio: el backend ahora los exige admin/supervisor, así que las pestañas
   // que los editan no pueden seguir a la vista de todos.
-  const { canManageSettings } = useRole();
+  const { canManageSettings, canSeeGlobalAnalytics } = useRole();
 
   // ---- Data state ----
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -523,7 +526,7 @@ export default function AppointmentsPage() {
   /*  Modal open/close                                                 */
   /* ================================================================ */
 
-  const openCreateModal = (date?: Date, hour?: number) => {
+  const openCreateModal = useCallback((date?: Date, hour?: number) => {
     setEditingAppointment(null);
     setModalForm({
       serviceName: "",
@@ -536,7 +539,13 @@ export default function AppointmentsPage() {
       contactId: "",
     });
     setShowModal(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (searchParams.get("create") !== "appointment") return;
+    openCreateModal();
+    router.replace("/admin/appointments", { scroll: false });
+  }, [searchParams, router, openCreateModal]);
 
   const openEditModal = (appt: Appointment) => {
     setEditingAppointment(appt);
@@ -926,7 +935,9 @@ export default function AppointmentsPage() {
       { id: "services" as const, label: t("servicesSection.title"), icon: Tag },
       { id: "config" as const, label: t("configSection.title"), icon: Settings },
     ] : []),
-    { id: "analytics" as const, label: t("analyticsTab"), icon: BarChart3 },
+    ...(canSeeGlobalAnalytics ? [
+      { id: "analytics" as const, label: t("analyticsTab"), icon: BarChart3 },
+    ] : []),
   ];
 
   return (
@@ -1003,7 +1014,7 @@ export default function AppointmentsPage() {
           </div>
         )}
 
-        {calendarIntegrations.length === 0 && (
+        {canManageSettings && calendarIntegrations.length === 0 && (
           <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700">
             <Link2 size={14} className="text-neutral-400" />
             <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-1">{t('syncCalendarDesc')}</span>

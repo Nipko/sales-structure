@@ -144,6 +144,13 @@
     "platformConsole": "Consola de plataforma",
     "superAdminMode": "Super Admin",
     "sections": {
+      "essentials": "Esenciales",
+      "aiGrowth": "IA y crecimiento",
+      "insights": "Insights",
+      "administration": "Administración",
+      "platformOperations": "Operación de plataforma",
+      "revenueBilling": "Ingresos y facturación",
+      "governance": "Gobierno y cumplimiento",
       "main": "Principal",
       "operations": "Operación",
       "analytics": "Análisis",
@@ -155,6 +162,7 @@
       "platformConfig": "Configuración global"
     },
     "items": {
+      "home": "Inicio",
       "conversations": "Conversaciones",
       "dashboard": "Dashboard",
       "inbox": "Inbox",
@@ -178,6 +186,7 @@
       "users": "Usuarios",
       "billing": "Facturación",
       "featureRequests": "Mejoras",
+      "help": "Ayuda",
       "settings": "Configuración",
       "tenants": "Empresas",
       "financials": "Finanzas",
@@ -233,6 +242,62 @@
     "expandSidebar": "Expandir",
     "collapseSidebar": "Contraer",
     "novedades": "Novedades"
+  },
+  "navigation": {
+    "skipToContent": "Saltar al contenido principal",
+    "accessDeniedTitle": "No tienes acceso a esa sección",
+    "accessDeniedDescription": "Te llevamos a la sección disponible más cercana para tu rol.",
+    "dismiss": "Cerrar aviso",
+    "breadcrumbLabel": "Ruta de navegación",
+    "badge": {
+      "unread": "{count} pendientes sin leer en {label}"
+    },
+    "routes": {
+      "agentDetail": "Detalle del agente",
+      "channelEmail": "Correo electrónico",
+      "channelInstagram": "Instagram",
+      "channelInstagramCallback": "Conexión de Instagram",
+      "channelMessenger": "Messenger",
+      "channelSms": "SMS",
+      "channelTelegram": "Telegram",
+      "channelWhatsapp": "WhatsApp",
+      "channelWhatsappProfile": "Perfil de WhatsApp",
+      "channelWhatsappTemplates": "Plantillas de WhatsApp",
+      "contactDetail": "Detalle del contacto",
+      "dripSequenceDetail": "Detalle de la secuencia",
+      "knowledgeFaqs": "Preguntas frecuentes",
+      "listingDetail": "Detalle del inmueble",
+      "pipelineDealDetail": "Detalle de la oportunidad",
+      "platformTenantDetail": "Detalle de la empresa",
+      "propertyDetail": "Detalle de la propiedad",
+      "settingsIntegrations": "Integraciones",
+      "settingsWebChatTriggers": "Disparadores del chat web",
+      "setupWizard": "Asistente de configuración",
+        "tourDetail": "Detalle del tour o paquete",
+        "acquisitionCampaigns": "Campañas de captación"
+    },
+    "command": {
+      "title": "Buscar y navegar",
+      "open": "Abrir búsqueda global",
+      "description": "Busca secciones o ejecuta acciones rápidas de la plataforma.",
+      "placeholder": "Buscar secciones y acciones…",
+      "close": "Cerrar búsqueda",
+      "noResults": "No encontramos una sección o acción con ese nombre.",
+      "results": "Resultados",
+      "quickActions": "Crear",
+      "favorites": "Favoritos",
+      "recent": "Recientes",
+      "allDestinations": "Todas las secciones",
+      "favorite": "Agregar {label} a favoritos",
+      "unfavorite": "Quitar {label} de favoritos",
+      "keyboardHelp": "Usa ↑ ↓ para moverte y Enter para abrir",
+      "primaryShortcuts": "Alt+1–3: accesos principales"
+    },
+    "quickCreate": {
+      "contact": "Crear contacto",
+      "appointment": "Crear cita",
+      "campaign": "Crear campaña"
+    }
   },
   "topbar": {
     "menu": "Menú",
@@ -446,7 +511,7 @@
     "generatePassword": "Generar contraseña"
   },
   "dashboard": {
-    "title": "Dashboard",
+    "title": "Inicio",
     "welcome": "Bienvenido, {name} · Vista general de la plataforma",
     "overview": "Vista general",
     "recentActivity": "Actividad reciente",
@@ -898,7 +963,7 @@
     "errorAssign": "No se pudo asignar la conversacion. Intenta de nuevo.",
     "viewerSingle": "{name} está viendo esta conversación",
     "viewerMultiple": "{count} agentes están viendo esta conversación",
-    "heading": "Inbox",
+    "heading": "Conversaciones",
     "liveBadge": "LIVE",
     "connectionLost": "Conexión perdida — reconectando...",
     "humanAttention": {
@@ -1004,6 +1069,9 @@
     "subtitle": "Gestiona tu cuenta, empresa, canales y herramientas",
     "sidebarSubtitle": "Ajustes generales",
     "backToDashboard": "Volver al panel",
+    "backToPrevious": "Volver a la sección anterior",
+    "navigationLabel": "Navegación de configuración",
+    "closeNavigation": "Cerrar navegación",
     "searchSettings": "Buscar configuración…",
     "noResults": "Sin resultados",
     "sections": {
@@ -1014,6 +1082,30 @@
       "company": {
         "title": "Empresa",
         "description": "Identidad y configuración del negocio"
+      },
+      "crmOperations": {
+        "title": "CRM y operación",
+        "description": "Embudo, scoring, atributos y agenda"
+      },
+      "conversations": {
+        "title": "Conversaciones",
+        "description": "Plantillas, macros, medios y seguimiento"
+      },
+      "channelsIntegrations": {
+        "title": "Canales e integraciones",
+        "description": "Conexiones, webhooks y herramientas externas"
+      },
+      "developer": {
+        "title": "Desarrolladores",
+        "description": "API, webhooks y conectores técnicos"
+      },
+      "governance": {
+        "title": "Gobierno y alertas",
+        "description": "Políticas, seguridad y controles operativos"
+      },
+      "planBilling": {
+        "title": "Plan y facturación",
+        "description": "Suscripción, pagos y límites del plan"
       },
       "operations": {
         "title": "Operación",
@@ -1077,9 +1169,13 @@
         "label": "Horarios de atención",
         "description": "Días, horas y mensaje fuera de horario"
       },
+      "billing": {
+        "label": "Plan y facturación",
+        "description": "Suscripción, uso, pagos y cambios de plan"
+      },
       "pipelineStages": {
         "label": "Etapas del pipeline",
-        "description": "Configurá las etapas y su flujo"
+        "description": "Configura las etapas y su flujo"
       },
       "scoringConfig": {
         "label": "Lead scoring",
@@ -1119,7 +1215,7 @@
       },
       "crmIntegrations": {
         "label": "CRM externo",
-        "description": "Conectá HubSpot, Salesforce o Pipedrive"
+        "description": "Conecta HubSpot, Salesforce o Pipedrive"
       },
       "outboundWebhooks": {
         "label": "Webhooks salientes",
@@ -3852,6 +3948,10 @@
     "itemCount": "{count, plural, one {# artículo} other {# artículos}}",
     "moreItems": "más",
     "viewReceipt": "Ver recibo",
+    "changeStatus": "Cambiar estado del pedido {order}",
+    "changeStatusShort": "Cambiar estado…",
+    "terminalStatus": "Estado final",
+    "statusUpdateError": "No se pudo actualizar el estado. Recarga la página e inténtalo de nuevo.",
     "kpi": {
       "totalRevenue": "Ingresos totales (Pagados)",
       "accountsReceivable": "Cuentas por cobrar",
@@ -4896,7 +4996,7 @@
       "recommendedWhatsapp": "Recomendado · WhatsApp",
       "whatsappBrandTitle": "WhatsApp Business",
       "officialMeta": "Conexión oficial vía Meta",
-      "otherChannelsHint": "Conectalos sin salir del asistente. Email abre su página de configuración.",
+      "otherChannelsHint": "Conéctalos sin salir del asistente. Email abre su configuración en otra pestaña.",
       "otherChannels": "O conecta otro canal",
       "recommended": "Recomendado",
       "back": "Volver",
@@ -4944,6 +5044,8 @@
       "copilotCardTitle": "Tu copiloto está aquí para ayudarte",
       "copilotCardDesc": "¿Dudas de cómo configurar algo? Pregúntale: canales, CRM, citas, automatizaciones y más.",
       "openCopilot": "Abrir copiloto",
+      "copilotQueued": "Se abrirá al finalizar",
+      "opensInNewTab": "abre en una pestaña nueva",
       "tools": {
         "knowledge": {
           "name": "Base de conocimiento",

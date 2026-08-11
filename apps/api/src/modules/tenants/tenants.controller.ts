@@ -344,8 +344,18 @@ export class TenantsController {
     @Get(':id')
     @Roles('super_admin', 'tenant_admin')
     @ApiOperation({ summary: 'Get tenant by ID' })
-    async findById(@Param('id') id: string) {
-        const tenant = await this.tenantsService.findById(id);
+    async findById(@Param('id') id: string, @CurrentUser() currentUser: any) {
+        // Defense in depth: RolesGuard limits the endpoint roles, while this
+        // resource-level check prevents tenant_admin from choosing another ID.
+        if (currentUser?.role !== 'super_admin'
+            && (currentUser?.role !== 'tenant_admin' || currentUser?.tenantId !== id)) {
+            throw new ForbiddenException('Cannot access another tenant');
+        }
+
+        const tenant = await this.tenantsService.findById(id, {
+            role: currentUser.role,
+            tenantId: currentUser.tenantId,
+        });
         return { success: true, data: tenant };
     }
 

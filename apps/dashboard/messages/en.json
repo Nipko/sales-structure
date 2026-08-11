@@ -144,6 +144,13 @@
     "platformConsole": "Platform console",
     "superAdminMode": "Super Admin",
     "sections": {
+      "essentials": "Essentials",
+      "aiGrowth": "AI & growth",
+      "insights": "Insights",
+      "administration": "Administration",
+      "platformOperations": "Platform operations",
+      "revenueBilling": "Revenue & billing",
+      "governance": "Governance & compliance",
       "main": "Main",
       "operations": "Operations",
       "analytics": "Analytics",
@@ -155,6 +162,7 @@
       "platformConfig": "Global config"
     },
     "items": {
+      "home": "Home",
       "conversations": "Conversations",
       "dashboard": "Dashboard",
       "inbox": "Inbox",
@@ -178,6 +186,7 @@
       "users": "Users",
       "billing": "Billing",
       "featureRequests": "Improvements",
+      "help": "Help",
       "settings": "Settings",
       "tenants": "Tenants",
       "financials": "Financials",
@@ -233,6 +242,62 @@
     "expandSidebar": "Expand",
     "collapseSidebar": "Collapse",
     "novedades": "What's new"
+  },
+  "navigation": {
+    "skipToContent": "Skip to main content",
+    "accessDeniedTitle": "You do not have access to that section",
+    "accessDeniedDescription": "We took you to the nearest available section for your role.",
+    "dismiss": "Dismiss notice",
+    "breadcrumbLabel": "Breadcrumb",
+    "badge": {
+      "unread": "{count} unread items in {label}"
+    },
+    "routes": {
+      "agentDetail": "Agent details",
+      "channelEmail": "Email",
+      "channelInstagram": "Instagram",
+      "channelInstagramCallback": "Instagram connection",
+      "channelMessenger": "Messenger",
+      "channelSms": "SMS",
+      "channelTelegram": "Telegram",
+      "channelWhatsapp": "WhatsApp",
+      "channelWhatsappProfile": "WhatsApp profile",
+      "channelWhatsappTemplates": "WhatsApp templates",
+      "contactDetail": "Contact details",
+      "dripSequenceDetail": "Sequence details",
+      "knowledgeFaqs": "Frequently asked questions",
+      "listingDetail": "Listing details",
+      "pipelineDealDetail": "Opportunity details",
+      "platformTenantDetail": "Company details",
+      "propertyDetail": "Property details",
+      "settingsIntegrations": "Integrations",
+      "settingsWebChatTriggers": "Web chat triggers",
+      "setupWizard": "Setup wizard",
+        "tourDetail": "Tour or package details",
+        "acquisitionCampaigns": "Acquisition campaigns"
+    },
+    "command": {
+      "title": "Search and navigate",
+      "open": "Open global search",
+      "description": "Find sections or run quick actions across the platform.",
+      "placeholder": "Search sections and actions…",
+      "close": "Close search",
+      "noResults": "No section or action matches that search.",
+      "results": "Results",
+      "quickActions": "Create",
+      "favorites": "Favorites",
+      "recent": "Recent",
+      "allDestinations": "All sections",
+      "favorite": "Add {label} to favorites",
+      "unfavorite": "Remove {label} from favorites",
+      "keyboardHelp": "Use ↑ ↓ to move and Enter to open",
+      "primaryShortcuts": "Alt+1–3: primary destinations"
+    },
+    "quickCreate": {
+      "contact": "Create contact",
+      "appointment": "Create appointment",
+      "campaign": "Create campaign"
+    }
   },
   "topbar": {
     "menu": "Menu",
@@ -446,7 +511,7 @@
     "generatePassword": "Generate password"
   },
   "dashboard": {
-    "title": "Dashboard",
+    "title": "Home",
     "welcome": "Welcome, {name} · Platform overview",
     "overview": "Overview",
     "recentActivity": "Recent activity",
@@ -898,7 +963,7 @@
     "errorAssign": "Failed to assign conversation. Please try again.",
     "viewerSingle": "{name} is viewing this conversation",
     "viewerMultiple": "{count} agents are viewing this conversation",
-    "heading": "Inbox",
+    "heading": "Conversations",
     "liveBadge": "LIVE",
     "connectionLost": "Connection lost — reconnecting...",
     "humanAttention": {
@@ -1004,6 +1069,9 @@
     "subtitle": "Manage your account, company, channels and tools",
     "sidebarSubtitle": "General settings",
     "backToDashboard": "Back to dashboard",
+    "backToPrevious": "Back to previous section",
+    "navigationLabel": "Settings navigation",
+    "closeNavigation": "Close navigation",
     "searchSettings": "Search settings…",
     "noResults": "No results",
     "sections": {
@@ -1014,6 +1082,30 @@
       "company": {
         "title": "Company",
         "description": "Business identity and configuration"
+      },
+      "crmOperations": {
+        "title": "CRM & operations",
+        "description": "Pipeline, scoring, attributes, and scheduling"
+      },
+      "conversations": {
+        "title": "Conversations",
+        "description": "Templates, macros, media, and follow-up"
+      },
+      "channelsIntegrations": {
+        "title": "Channels & integrations",
+        "description": "Connections, webhooks, and external tools"
+      },
+      "developer": {
+        "title": "Developer",
+        "description": "API, webhooks, and technical connectors"
+      },
+      "governance": {
+        "title": "Governance & alerts",
+        "description": "Policies, security, and operational controls"
+      },
+      "planBilling": {
+        "title": "Plan & billing",
+        "description": "Subscription, payments, and plan limits"
       },
       "operations": {
         "title": "Operations",
@@ -1076,6 +1168,10 @@
       "businessHours": {
         "label": "Business hours",
         "description": "Days, hours, and out-of-hours message"
+      },
+      "billing": {
+        "label": "Plan & billing",
+        "description": "Subscription, usage, payments, and plan changes"
       },
       "pipelineStages": {
         "label": "Pipeline stages",
@@ -3852,6 +3948,10 @@
     "itemCount": "{count, plural, one {# item} other {# items}}",
     "moreItems": "more",
     "viewReceipt": "View receipt",
+    "changeStatus": "Change status for order {order}",
+    "changeStatusShort": "Change status…",
+    "terminalStatus": "Final status",
+    "statusUpdateError": "The status could not be updated. Reload the page and try again.",
     "kpi": {
       "totalRevenue": "Total Revenue (Paid)",
       "accountsReceivable": "Accounts Receivable",
@@ -4896,7 +4996,7 @@
       "recommendedWhatsapp": "Recommended · WhatsApp",
       "whatsappBrandTitle": "WhatsApp Business",
       "officialMeta": "Official connection via Meta",
-      "otherChannelsHint": "Connect them without leaving the wizard. Email opens its settings page.",
+      "otherChannelsHint": "Connect them without leaving the wizard. Email setup opens in a new tab.",
       "otherChannels": "Or connect another channel",
       "recommended": "Recommended",
       "back": "Back",
@@ -4944,6 +5044,8 @@
       "copilotCardTitle": "Your copilot is here to help",
       "copilotCardDesc": "Not sure how to set something up? Ask it: channels, CRM, appointments, automations and more.",
       "openCopilot": "Open copilot",
+      "copilotQueued": "Opens after setup",
+      "opensInNewTab": "opens in a new tab",
       "tools": {
         "knowledge": {
           "name": "Knowledge base",

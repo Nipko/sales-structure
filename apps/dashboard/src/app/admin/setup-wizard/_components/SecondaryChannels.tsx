@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Instagram, Facebook, Send, Mail, Globe, ArrowRight, ChevronDown, Loader2 } from "lucide-react";
 
@@ -22,13 +21,12 @@ interface Props {
  *  - Messenger: FB.login() vía SDK (popup propio de Meta, el wizard sigue montado).
  *  - Instagram: popup OAuth + BroadcastChannel("ig_oauth") de retorno.
  *  - Webchat: 1 click crea el widget.
- *  - Email: navega a su página (form SMTP/SendGrid completo) en la MISMA pestaña.
+ *  - Email: abre su formulario completo en otra pestaña y conserva el wizard.
  * Todos los inline llaman onConnected() al conectar → el wizard avanza a "Descúbrelo".
  */
 export default function SecondaryChannels({ tenantId, onConnected }: Props) {
     const t = useTranslations("setupWizard.connect");
     const tc = useTranslations("common");
-    const router = useRouter();
 
     const [busy, setBusy] = useState<string | null>(null);       // canal conectándose
     const [tgOpen, setTgOpen] = useState(false);
@@ -154,7 +152,10 @@ export default function SecondaryChannels({ tenantId, onConnected }: Props) {
                 <ChannelButton id="messenger" icon={Facebook} color="#0084FF" onClick={connectMessenger} />
                 <ChannelButton id="telegram" icon={Send} color="#0088CC" onClick={() => setTgOpen((v) => !v)} expandable />
                 <ChannelButton id="webchat" icon={Globe} color="#00b894" onClick={connectWebchat} />
-                <ChannelButton id="email" icon={Mail} color="#6c5ce7" onClick={() => router.push("/admin/channels/email")} />
+                <ChannelButton id="email" icon={Mail} color="#6c5ce7" onClick={() => {
+                    const tab = window.open("/admin/channels/email", "_blank", "noopener,noreferrer");
+                    if (tab) tab.opener = null;
+                }} />
             </div>
 
             {/* Errores inline por canal */}

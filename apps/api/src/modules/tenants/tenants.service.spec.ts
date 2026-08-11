@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { TenantsService, TENANT_PLAN_SLUGS } from './tenants.service';
 
 describe('TenantsService administrative provisioning', () => {
@@ -491,5 +491,183 @@ describe('TenantsService administrative provisioning', () => {
         }));
         expect((updated.settings as any).verticalConfig).toEqual(expect.objectContaining({ industry: 'salud' }));
         expect((updated.settings as any).provisioning.status).toBe('complete');
+    });
+});
+
+describe('TenantsService secure tenant detail', () => {
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+    const otherTenantId = '22222222-2222-4222-8222-222222222222';
+    const now = new Date('2026-08-11T12:00:00.000Z');
+
+    const databaseRecord = {
+        id: tenantId,
+        name: 'Clínica Norte',
+        slug: 'clinica-norte',
+        industry: 'salud',
+        language: 'es-CO',
+        isActive: true,
+        plan: 'pro',
+        settings: { timezone: 'America/Bogota' },
+        operatingCurrency: 'COP',
+        operatingCurrencyLockedAt: now,
+        subscriptionStatus: 'active',
+        trialEndsAt: null,
+        currentPeriodEnd: now,
+        onboardingCompletedAt: now,
+        firstChannelConnectedAt: now,
+        firstMessageAt: now,
+        createdAt: now,
+        updatedAt: now,
+        schemaName: 'tenant_private_schema',
+        paymentProviderCustomerId: 'provider-secret-customer-id',
+        channelAccounts: [{
+            id: 'channel-1',
+            tenantId,
+            channelType: 'whatsapp',
+            accountId: '+573001112233',
+            displayName: 'Soporte',
+            accessToken: 'encrypted-access-token',
+            refreshToken: 'encrypted-refresh-token',
+            webhookSecret: 'webhook-secret',
+            metadata: { botToken: 'metadata-secret' },
+            isActive: true,
+            createdAt: now,
+            updatedAt: now,
+        }],
+        _count: { users: 3 },
+    };
+
+    function setup(options?: { cached?: any; record?: any }) {
+        const prisma: any = {
+            tenant: {
+                findUnique: jest.fn(async () => options?.record === undefined
+                    ? databaseRecord
+                    : options.record),
+            },
+        };
+        const redis: any = {
+            getJson: jest.fn(async () => options?.cached ?? null),
+            setJson: jest.fn(async () => undefined),
+            del: jest.fn(async () => undefined),
+        };
+        const queue = {} as any;
+        const service = new TenantsService(
+            prisma,
+            redis,
+            {} as any,
+            {} as any,
+            {} as any,
+            {} as any,
+            {} as any,
+            queue,
+            queue,
+            queue,
+            queue,
+            queue,
+        );
+        return { service, prisma, redis };
+    }
+
+    it('rejects cross-tenant reads before touching Redis or Prisma', async () => {
+        const { service, prisma, redis } = setup();
+
+        await expect(service.findById(otherTenantId, {
+            role: 'tenant_admin',
+            tenantId,
+        })).rejects.toBeInstanceOf(ForbiddenException);
+
+        expect(redis.getJson).not.toHaveBeenCalled();
+        expect(prisma.tenant.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('allows own-tenant and super-admin reads while returning only the allow-listed DTO', async () => {
+        const own = setup();
+
+        const result = await own.service.findById(tenantId, {
+            role: 'tenant_admin',
+            tenantId,
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            id: tenantId,
+            name: 'Clínica Norte',
+            settings: { timezone: 'America/Bogota' },
+            _count: { users: 3 },
+        }));
+        expect(result).not.toHaveProperty('schemaName');
+        expect(result).not.toHaveProperty('paymentProviderCustomerId');
+        expect(result.channelAccounts).toEqual([{
+            id: 'channel-1',
+            channelType: 'whatsapp',
+            displayName: 'Soporte',
+            isActive: true,
+            createdAt: now,
+            updatedAt: now,
+        }]);
+        expect(result.channelAccounts[0]).not.toHaveProperty('accountId');
+        expect(result.channelAccounts[0]).not.toHaveProperty('accessToken');
+        expect(result.channelAccounts[0]).not.toHaveProperty('refreshToken');
+        expect(result.channelAccounts[0]).not.toHaveProperty('webhookSecret');
+        expect(result.channelAccounts[0]).not.toHaveProperty('metadata');
+
+        expect(own.prisma.tenant.findUnique).toHaveBeenCalledWith({
+            where: { id: tenantId },
+            select: expect.objectContaining({
+                channelAccounts: {
+                    select: {
+                        id: true,
+                        channelType: true,
+                        displayName: true,
+                        isActive: true,
+                        createdAt: true,
+                        updatedAt: true,
+                    },
+                },
+            }),
+        });
+        expect(own.redis.getJson).toHaveBeenCalledWith(`tenant:${tenantId}:detail-safe:v1`);
+        expect(own.redis.setJson).toHaveBeenCalledWith(
+            `tenant:${tenantId}:detail-safe:v1`,
+            { version: 1, data: result },
+            300,
+        );
+
+        const administrative = setup();
+        await expect(administrative.service.findById(tenantId, {
+            role: 'super_admin',
+            tenantId: null,
+        })).resolves.toEqual(result);
+    });
+
+    it('never reads the legacy full-model cache and re-sanitizes the versioned cache', async () => {
+        const legacy = setup();
+        legacy.redis.getJson.mockImplementation(async (key: string) => (
+            key === `tenant:${tenantId}:config`
+                ? databaseRecord
+                : null
+        ));
+
+        await legacy.service.findById(tenantId, { role: 'super_admin' });
+
+        expect(legacy.redis.getJson).toHaveBeenCalledTimes(1);
+        expect(legacy.redis.getJson).toHaveBeenCalledWith(`tenant:${tenantId}:detail-safe:v1`);
+        expect(legacy.prisma.tenant.findUnique).toHaveBeenCalledTimes(1);
+
+        const cached = setup({
+            cached: { version: 1, data: databaseRecord },
+        });
+        const cachedResult = await cached.service.findById(tenantId, { role: 'super_admin' });
+
+        expect(cached.prisma.tenant.findUnique).not.toHaveBeenCalled();
+        expect(cachedResult.channelAccounts[0]).toEqual({
+            id: 'channel-1',
+            channelType: 'whatsapp',
+            displayName: 'Soporte',
+            isActive: true,
+            createdAt: now,
+            updatedAt: now,
+        });
+        expect(cachedResult.channelAccounts[0]).not.toHaveProperty('accessToken');
+        expect(cachedResult.channelAccounts[0]).not.toHaveProperty('metadata');
     });
 });

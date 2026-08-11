@@ -2,6 +2,11 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import {
+    AUTH_SESSION_CHANNEL,
+    getAuthTabId,
+    isAuthSessionSwapMessage,
+} from "@/lib/auth-session-sync";
 import { useIdleTimer } from "@/hooks/useIdleTimer";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import SessionConflictModal from "@/components/SessionConflictModal";
@@ -57,6 +62,7 @@ interface AuthContextType {
     isLoading: boolean;
     isAuthenticated: boolean;
     verticalConfig: any | null;
+    isVerticalConfigLoading: boolean;
     login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
     googleLogin: (idToken: string, rememberMe?: boolean) => Promise<GoogleLoginResult>;
     complete2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup' | 'sms', rememberMe?: boolean, trustDevice?: boolean, deviceInfo?: any) => Promise<LoginResult & { deviceTrustToken?: string }>;
@@ -91,31 +97,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [showWarning, setShowWarning] = useState(false);
     const [showSessionConflict, setShowSessionConflict] = useState(false);
     const [verticalConfig, setVerticalConfig] = useState<any | null>(null);
+    const [isVerticalConfigLoading, setIsVerticalConfigLoading] = useState(false);
     const router = useRouter();
     const pathname = usePathname();
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const activityPingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const bcRef = useRef<BroadcastChannel | null>(null);
     const pendingLoginRef = useRef<{ type: 'email'; email: string; password: string; rememberMe: boolean } | { type: 'google'; idToken: string; rememberMe: boolean } | null>(null);
+    const verticalRequestTenantRef = useRef<string | null>(null);
+    const verticalConfigTenantRef = useRef<string | null>(null);
 
     const isPublicPage = PUBLIC_PATHS.some((p) => pathname?.startsWith(p));
     const isOnboardingPage = ONBOARDING_PATHS.some((p) => pathname?.startsWith(p));
     const isAuthenticated = !!user;
 
-    // ── BroadcastChannel for logout sync ──
+    // ── BroadcastChannel for logout and impersonation/session sync ──
     useEffect(() => {
         try {
-            const bc = new BroadcastChannel("parallly-session");
+            const currentTabId = getAuthTabId();
+            const bc = new BroadcastChannel(AUTH_SESSION_CHANNEL);
             bc.onmessage = (evt) => {
                 if (evt.data?.type === "logout") {
                     setUser(null);
                     setVerticalConfig(null);
+                    setIsVerticalConfigLoading(false);
+                    verticalRequestTenantRef.current = null;
+                    verticalConfigTenantRef.current = null;
                     localStorage.removeItem("accessToken");
                     localStorage.removeItem("refreshToken");
                     localStorage.removeItem("user");
                     localStorage.removeItem("verticalConfig");
                     localStorage.removeItem("impersonation");
                     router.push("/login?expired=1");
+                    return;
+                }
+                if (isAuthSessionSwapMessage(evt.data) && evt.data.sourceTabId !== currentTabId) {
+                    setUser(null);
+                    setVerticalConfig(null);
+                    setIsVerticalConfigLoading(true);
+                    verticalRequestTenantRef.current = null;
+                    verticalConfigTenantRef.current = null;
+                    window.location.replace(evt.data.destination);
                 }
             };
             bcRef.current = bc;
@@ -135,14 +157,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const parsed = JSON.parse(savedUser);
                 setUser(parsed);
 
-                // Restore cached vertical config
-                const cachedVertical = localStorage.getItem("verticalConfig");
-                if (cachedVertical) {
-                    try { setVerticalConfig(JSON.parse(cachedVertical)); } catch { /* noop */ }
-                }
-
                 // Refresh vertical config from API
                 if (parsed.tenantId) {
+                    const cachedVertical = localStorage.getItem("verticalConfig");
+                    if (cachedVertical) {
+                        try {
+                            const cached = JSON.parse(cachedVertical);
+                            if (cached?.tenantId === parsed.tenantId && cached?.config) {
+                                verticalConfigTenantRef.current = parsed.tenantId;
+                                setVerticalConfig(cached.config);
+                            } else {
+                                localStorage.removeItem("verticalConfig");
+                            }
+                        } catch {
+                            localStorage.removeItem("verticalConfig");
+                        }
+                    }
                     fetchVerticalConfig(parsed.tenantId);
                 }
             } catch {
@@ -273,6 +303,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // ── Fetch vertical config ──
     const fetchVerticalConfig = useCallback(async (tenantId: string) => {
+        verticalRequestTenantRef.current = tenantId;
+        setIsVerticalConfigLoading(true);
+        if (verticalConfigTenantRef.current !== tenantId) {
+            verticalConfigTenantRef.current = null;
+            setVerticalConfig(null);
+        }
         try {
             const token = localStorage.getItem("accessToken");
             if (!token) return;
@@ -281,13 +317,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
             if (res.ok) {
                 const data = await res.json();
-                if (data.success && data.data) {
+                if (data.success && data.data && verticalRequestTenantRef.current === tenantId) {
+                    verticalConfigTenantRef.current = tenantId;
                     setVerticalConfig(data.data);
-                    localStorage.setItem("verticalConfig", JSON.stringify(data.data));
+                    localStorage.setItem("verticalConfig", JSON.stringify({
+                        tenantId,
+                        config: data.data,
+                    }));
                 }
             }
         } catch {
             // Silently fail — vertical config is non-critical
+        } finally {
+            if (verticalRequestTenantRef.current === tenantId) {
+                setIsVerticalConfigLoading(false);
+            }
         }
     }, []);
 
@@ -473,6 +517,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("impersonation");
         setUser(null);
         setVerticalConfig(null);
+        setIsVerticalConfigLoading(false);
+        verticalRequestTenantRef.current = null;
+        verticalConfigTenantRef.current = null;
         if (kicked) {
             router.push("/login?kicked=1");
         } else if (expired) {
@@ -518,6 +565,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isLoading,
                 isAuthenticated,
                 verticalConfig,
+                isVerticalConfigLoading,
                 login,
                 googleLogin,
                 complete2FALogin,

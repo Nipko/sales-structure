@@ -9,13 +9,20 @@ import { CurrentUser } from '../../common/decorators/tenant.decorator';
 
 @Controller('orders')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
 @ApiBearerAuth()
 export class OrdersController {
     constructor(private ordersService: OrdersService) { }
 
     @Get('overview/:tenantId')
-    async getOverview(@Param('tenantId') tenantId: string) {
-        const data = await this.ordersService.getOverview(tenantId);
+    async getOverview(
+        @Param('tenantId') tenantId: string,
+        @CurrentUser() user: any,
+    ) {
+        const data = await this.ordersService.getOverview(
+            tenantId,
+            user?.role !== 'tenant_agent',
+        );
         return { success: true, data };
     }
 

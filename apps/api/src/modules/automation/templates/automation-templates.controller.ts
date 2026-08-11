@@ -37,7 +37,7 @@ export class AutomationTemplatesController {
     @Post(':tenantId/install')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiBearerAuth()
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @ApiOperation({ summary: 'Install an automation template as a new rule' })
     async installTemplate(
         @Param('tenantId') tenantId: string,

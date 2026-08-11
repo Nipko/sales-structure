@@ -93,6 +93,45 @@ const ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, VerticalDashboardI
   "/admin/orders": "orders",
 };
 
+const NAVIGATION_ROUTE_ITEMS: Readonly<Record<string, VerticalDashboardItem | null>> = {
+  ...ROUTE_ITEMS,
+  // This legacy catalog hub is the education catalog (courses, acquisition
+  // campaigns and their offers), not the cross-vertical inventory surface.
+  "/admin/catalog": "courses",
+  "/admin/catalog/courses": "courses",
+  "/admin/catalog/campaigns": "courses",
+  // Offers are intentionally cross-vertical even though their historical URL
+  // lives below the education catalog hub.
+  "/admin/catalog/offers": null,
+  "/admin/landings": "courses",
+};
+
+/**
+ * Resolve the vertical product surface owned by a dashboard path. Keeping this
+ * mapping beside the capability projection lets every navigation entry point
+ * (sidebar, command palette, recents and quick actions) apply the same rules.
+ */
+export function getVerticalDashboardItemForPath(
+  pathname: string,
+): VerticalDashboardItem | null {
+  const normalized = pathname.split(/[?#]/, 1)[0].replace(/\/+$/, "") || "/";
+  const candidates = Object.entries(NAVIGATION_ROUTE_ITEMS)
+    .sort(([left], [right]) => right.length - left.length);
+  const match = candidates.find(([route]) => (
+    normalized === route || normalized.startsWith(`${route}/`)
+  ));
+  return match?.[1] || null;
+}
+
+/** Paths outside the vertical operation surfaces remain globally navigable. */
+export function isVerticalDashboardPathVisible(
+  resolution: VerticalDashboardResolution,
+  pathname: string,
+): boolean {
+  const item = getVerticalDashboardItemForPath(pathname);
+  return !item || resolution.visibleItems.includes(item);
+}
+
 /** Domain-first ordering shared by setup discovery and the product tour. */
 const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "properties",

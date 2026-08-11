@@ -1,6 +1,7 @@
 import {
     BadRequestException,
     ConflictException,
+    ForbiddenException,
     forwardRef,
     Inject,
     Injectable,
@@ -32,6 +33,7 @@ import {
     tenantLifecycleLockKey,
     tenantPurgingFenceKey,
 } from '../../common/utils/tenant-lifecycle.util';
+import { TenantDetailResponseDto } from './dto/tenant-detail-response.dto';
 
 export const TENANT_PLAN_SLUGS = ['emprendedor', 'starter', 'pro', 'enterprise', 'custom'] as const;
 export type TenantPlanSlug = typeof TENANT_PLAN_SLUGS[number];
@@ -51,6 +53,20 @@ interface TenantProvisioningState {
     updatedAt: string;
     completedAt?: string;
 }
+
+export interface TenantReadPrincipal {
+    role: string;
+    tenantId?: string | null;
+}
+
+interface TenantDetailCacheEntry {
+    version: 1;
+    data: TenantDetailResponseDto;
+}
+
+const TENANT_DETAIL_CACHE_VERSION = 1 as const;
+const tenantDetailCacheKey = (tenantId: string) => `tenant:${tenantId}:detail-safe:v${TENANT_DETAIL_CACHE_VERSION}`;
+const legacyTenantConfigCacheKey = (tenantId: string) => `tenant:${tenantId}:config`;
 
 @Injectable()
 export class TenantsService {
@@ -666,17 +682,51 @@ export class TenantsService {
     }
 
     /**
-     * Get tenant by ID with caching
+     * Get an allow-listed tenant detail view. Authorization happens before any
+     * cache lookup so a tenant-scoped principal can never probe another
+     * tenant's cached record.
      */
-    async findById(id: string) {
-        // Check cache first
-        const cached = await this.redis.getJson<any>(`tenant:${id}:config`);
-        if (cached) return cached;
+    async findById(id: string, principal: TenantReadPrincipal): Promise<TenantDetailResponseDto> {
+        this.assertCanReadTenant(id, principal);
+
+        // The old `tenant:${id}:config` entries contain full ChannelAccount
+        // records. Never read them: use a versioned key and envelope instead.
+        const cached = await this.redis.getJson<TenantDetailCacheEntry>(tenantDetailCacheKey(id));
+        if (cached?.version === TENANT_DETAIL_CACHE_VERSION && cached.data?.id === id) {
+            return this.toTenantDetailResponse(cached.data);
+        }
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id },
-            include: {
-                channelAccounts: true,
+            select: {
+                id: true,
+                name: true,
+                slug: true,
+                industry: true,
+                language: true,
+                isActive: true,
+                plan: true,
+                settings: true,
+                operatingCurrency: true,
+                operatingCurrencyLockedAt: true,
+                subscriptionStatus: true,
+                trialEndsAt: true,
+                currentPeriodEnd: true,
+                onboardingCompletedAt: true,
+                firstChannelConnectedAt: true,
+                firstMessageAt: true,
+                createdAt: true,
+                updatedAt: true,
+                channelAccounts: {
+                    select: {
+                        id: true,
+                        channelType: true,
+                        displayName: true,
+                        isActive: true,
+                        createdAt: true,
+                        updatedAt: true,
+                    },
+                },
                 _count: {
                     select: { users: true },
                 },
@@ -687,10 +737,56 @@ export class TenantsService {
             throw new NotFoundException(`Tenant ${id} not found`);
         }
 
-        // Cache for 5 minutes
-        await this.redis.setJson(`tenant:${id}:config`, tenant, 300);
+        const response = this.toTenantDetailResponse(tenant);
 
-        return tenant;
+        // Cache only the sanitized DTO, never the Prisma model.
+        await this.redis.setJson<TenantDetailCacheEntry>(tenantDetailCacheKey(id), {
+            version: TENANT_DETAIL_CACHE_VERSION,
+            data: response,
+        }, 300);
+
+        return response;
+    }
+
+    private assertCanReadTenant(id: string, principal: TenantReadPrincipal): void {
+        if (principal?.role === 'super_admin') return;
+        if (principal?.role === 'tenant_admin' && principal.tenantId === id) return;
+
+        throw new ForbiddenException('Cannot access another tenant');
+    }
+
+    private toTenantDetailResponse(source: any): TenantDetailResponseDto {
+        return {
+            id: source.id,
+            name: source.name,
+            slug: source.slug,
+            industry: source.industry,
+            language: source.language,
+            isActive: source.isActive,
+            plan: source.plan,
+            settings: source.settings,
+            operatingCurrency: source.operatingCurrency ?? null,
+            operatingCurrencyLockedAt: source.operatingCurrencyLockedAt ?? null,
+            subscriptionStatus: source.subscriptionStatus ?? null,
+            trialEndsAt: source.trialEndsAt ?? null,
+            currentPeriodEnd: source.currentPeriodEnd ?? null,
+            onboardingCompletedAt: source.onboardingCompletedAt ?? null,
+            firstChannelConnectedAt: source.firstChannelConnectedAt ?? null,
+            firstMessageAt: source.firstMessageAt ?? null,
+            createdAt: source.createdAt,
+            updatedAt: source.updatedAt,
+            channelAccounts: Array.isArray(source.channelAccounts)
+                ? source.channelAccounts.map((channel: any) => ({
+                    id: channel.id,
+                    channelType: channel.channelType,
+                    displayName: channel.displayName,
+                    isActive: channel.isActive,
+                    createdAt: channel.createdAt,
+                    updatedAt: channel.updatedAt,
+                }))
+                : [],
+            _count: { users: Number(source._count?.users || 0) },
+        };
     }
 
     /**
@@ -835,8 +931,10 @@ export class TenantsService {
             : await this.prisma.tenant.findUnique({ where: { id } });
         if (!tenant) throw new NotFoundException(`Tenant ${id} not found`);
 
-        // Invalidate cache
-        await this.redis.del(`tenant:${id}:config`);
+        // Invalidate both the current safe detail view and any legacy payload
+        // left behind during a rolling deployment.
+        await this.redis.del(tenantDetailCacheKey(id));
+        await this.redis.del(legacyTenantConfigCacheKey(id));
         await this.redis.del(`tenant:${id}:schema`);
 
         return tenant;
@@ -889,8 +987,9 @@ export class TenantsService {
             },
         });
 
-        // Invalidate cache
-        await this.redis.del(`tenant:${id}:config`);
+        // Invalidate both current and legacy detail cache shapes.
+        await this.redis.del(tenantDetailCacheKey(id));
+        await this.redis.del(legacyTenantConfigCacheKey(id));
 
         return tenant;
     }

@@ -65,12 +65,18 @@ export default function KnowledgePage() {
     // mientras atiende. Editarla es de admin/supervisor. Hasta ahora la página
     // mostraba subir/editar/borrar/crawlear a todo el mundo, así que el agente
     // veía botones que ahora el backend rechaza con 403.
-    const { canEditKnowledge } = useRole();
+    const { canEditKnowledge, canSeeGlobalAnalytics } = useRole();
     const { activeTenantId } = useTenant();
     const { canCreate, getLimit } = usePlanLimits();
 
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const [tab, setTab] = useState<Tab>("library");
+
+    useEffect(() => {
+        if (!canSeeGlobalAnalytics && (tab === "analytics" || tab === "quality" || tab === "gaps")) {
+            setTab("library");
+        }
+    }, [canSeeGlobalAnalytics, tab]);
 
     // Documents
     const [documents, setDocuments] = useState<KBDocument[]>([]);
@@ -171,7 +177,7 @@ export default function KnowledgePage() {
 
     // Load analytics when tab changes
     useEffect(() => {
-        if (tab !== "analytics" || !activeTenantId) return;
+        if (!canSeeGlobalAnalytics || tab !== "analytics" || !activeTenantId) return;
         setAnalyticsLoading(true);
         setAnalyticsError(null);
         api.fetch(`/knowledge/analytics/${activeTenantId}`)
@@ -186,7 +192,7 @@ export default function KnowledgePage() {
             })
             .catch(() => setAnalyticsError(t("analytics.loadError")))
             .finally(() => setAnalyticsLoading(false));
-    }, [tab, activeTenantId, t]);
+    }, [tab, activeTenantId, canSeeGlobalAnalytics, t]);
 
     // Crawl URL
     const handleCrawl = async () => {
@@ -419,7 +425,7 @@ export default function KnowledgePage() {
 
     // Load quality scores
     useEffect(() => {
-        if (tab !== "quality") return;
+        if (!canSeeGlobalAnalytics || tab !== "quality") return;
         setQualityLoading(true);
         api.fetch("/knowledge/documents/quality")
             .then(res => {
@@ -427,24 +433,26 @@ export default function KnowledgePage() {
             })
             .catch(() => {})
             .finally(() => setQualityLoading(false));
-    }, [tab]);
+    }, [tab, canSeeGlobalAnalytics]);
 
     // Load gap report
     useEffect(() => {
-        if (tab !== "gaps" || !activeTenantId) return;
+        if (!canSeeGlobalAnalytics || tab !== "gaps" || !activeTenantId) return;
         setGapLoading(true);
         api.fetch(`/knowledge/${activeTenantId}/gap-report`)
             .then((res: any) => setGapReport(res.data || res))
             .catch(() => {})
             .finally(() => setGapLoading(false));
         // KB health contradictions
-        api.getKbHealth(activeTenantId)
-            .then((res: any) => { if (res?.success) setKbIssues(res.data || []); })
-            .catch(() => {});
-    }, [tab, activeTenantId]);
+        if (canEditKnowledge) {
+            api.getKbHealth(activeTenantId)
+                .then((res: any) => { if (res?.success) setKbIssues(res.data || []); })
+                .catch(() => {});
+        }
+    }, [tab, activeTenantId, canEditKnowledge, canSeeGlobalAnalytics]);
 
     const scanKbHealth = async () => {
-        if (!activeTenantId || kbScanning) return;
+        if (!activeTenantId || kbScanning || !canEditKnowledge) return;
         setKbScanning(true);
         try {
             await api.scanKbHealth(activeTenantId);
@@ -455,7 +463,7 @@ export default function KnowledgePage() {
     };
 
     const resolveKbIssue = async (id: string, status: string) => {
-        if (!activeTenantId) return;
+        if (!activeTenantId || !canEditKnowledge) return;
         setKbIssues(prev => prev.filter((i: any) => i.id !== id)); // optimistic
         try { await api.updateKbHealthIssue(activeTenantId, id, status); } catch { /* noop */ }
     };
@@ -588,15 +596,17 @@ export default function KnowledgePage() {
                 <button onClick={() => setTab("search")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "search" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <Search size={16} /> {t("tabs.search")}
                 </button>
-                <button onClick={() => setTab("quality")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "quality" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
-                    <Award size={16} /> {t("quality.tab")}
-                </button>
-                <button onClick={() => setTab("analytics")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "analytics" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
-                    <BarChart3 size={16} /> {t("analytics.tab")}
-                </button>
-                <button onClick={() => setTab("gaps")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "gaps" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
-                    <Target size={16} /> {t("gaps.tab")}
-                </button>
+                {canSeeGlobalAnalytics && (<>
+                    <button onClick={() => setTab("quality")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "quality" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                        <Award size={16} /> {t("quality.tab")}
+                    </button>
+                    <button onClick={() => setTab("analytics")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "analytics" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                        <BarChart3 size={16} /> {t("analytics.tab")}
+                    </button>
+                    <button onClick={() => setTab("gaps")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "gaps" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                        <Target size={16} /> {t("gaps.tab")}
+                    </button>
+                </>)}
             </div>
 
             {/* Library Tab */}
@@ -992,7 +1002,7 @@ export default function KnowledgePage() {
                             </div>
 
                             {/* AI Article Suggestions */}
-                            <div className="p-5 rounded-[14px] border border-border bg-card">
+                            {canEditKnowledge && (<div className="p-5 rounded-[14px] border border-border bg-card">
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="text-sm font-semibold m-0 flex items-center gap-2">
                                         <Sparkles size={16} className="text-amber-500" /> {t("suggestions.title")}
@@ -1050,7 +1060,7 @@ export default function KnowledgePage() {
                                         {t("suggestions.hint")}
                                     </div>
                                 )}
-                            </div>
+                            </div>)}
                         </div>
                     )}
                 </div>

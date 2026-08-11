@@ -54,6 +54,7 @@ export interface Order {
 export interface OrdersOverview {
     totalRevenue: number;
     pendingRevenue: number;
+    financialsVisible: boolean;
     orderCount: number;
     pendingCount: number;
     orders: Order[];
@@ -90,9 +91,9 @@ export class OrdersService {
     /**
      * Get orders overview
      */
-    async getOverview(tenantId: string): Promise<OrdersOverview> {
+    async getOverview(tenantId: string, includeFinancials = true): Promise<OrdersOverview> {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return this.buildEmptyOverview();
+        if (!schema) return this.buildEmptyOverview(includeFinancials);
 
         try {
             await this.ensureOrdersTables(schema);
@@ -106,7 +107,14 @@ export class OrdersService {
             );
 
             if (!ordersQuery || ordersQuery.length === 0) {
-                return { totalRevenue: 0, pendingRevenue: 0, orderCount: 0, pendingCount: 0, orders: [] };
+                return {
+                    totalRevenue: 0,
+                    pendingRevenue: 0,
+                    financialsVisible: includeFinancials,
+                    orderCount: 0,
+                    pendingCount: 0,
+                    orders: [],
+                };
             }
 
             const itemsQuery = await this.prisma.executeInTenantSchema<any[]>(
@@ -125,20 +133,25 @@ export class OrdersService {
 
             const orders: Order[] = ordersQuery.map(o => this.mapOrder(o, itemsByOrder[o.id] || []));
 
-            const totalRevenue = orders.filter(o => o.status === 'paid').reduce((sum, o) => sum + o.totalAmount, 0);
-            const pendingRevenue = orders.filter(o => o.status === 'pending' || o.status === 'confirmed').reduce((sum, o) => sum + o.totalAmount, 0);
+            const totalRevenue = includeFinancials
+                ? orders.filter(o => o.status === 'paid').reduce((sum, o) => sum + o.totalAmount, 0)
+                : 0;
+            const pendingRevenue = includeFinancials
+                ? orders.filter(o => o.status === 'pending' || o.status === 'confirmed').reduce((sum, o) => sum + o.totalAmount, 0)
+                : 0;
             const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'confirmed').length;
 
             return {
                 totalRevenue,
                 pendingRevenue,
+                financialsVisible: includeFinancials,
                 orderCount: orders.length,
                 pendingCount,
                 orders,
             };
         } catch (error) {
             this.logger.error(`Error getting orders overview: ${error}`);
-            return this.buildEmptyOverview();
+            return this.buildEmptyOverview(includeFinancials);
         }
     }
 
@@ -535,10 +548,11 @@ export class OrdersService {
         return null;
     }
 
-    private buildEmptyOverview(): OrdersOverview {
+    private buildEmptyOverview(financialsVisible = true): OrdersOverview {
         return {
             totalRevenue: 0,
             pendingRevenue: 0,
+            financialsVisible,
             orderCount: 0,
             pendingCount: 0,
             orders: [],

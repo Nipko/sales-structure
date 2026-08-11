@@ -788,7 +788,12 @@ export default function OnboardingPage() {
                 if (d.accessToken) localStorage.setItem("accessToken", d.accessToken);
                 if (d.refreshToken) localStorage.setItem("refreshToken", d.refreshToken);
                 if (d.user) localStorage.setItem("user", JSON.stringify(d.user));
-                if (d.verticalConfig) localStorage.setItem("verticalConfig", JSON.stringify(d.verticalConfig));
+                if (d.verticalConfig && d.user?.tenantId) {
+                    localStorage.setItem("verticalConfig", JSON.stringify({
+                        tenantId: d.user.tenantId,
+                        config: d.verticalConfig,
+                    }));
+                }
                 // El backend nunca falla el alta por un cupón: informa el resultado
                 // acá para que el usuario sepa si su código entró o no.
                 if (d.coupon) setCouponNotice({ ok: !!d.coupon.applied, months: d.coupon.freeMonths });

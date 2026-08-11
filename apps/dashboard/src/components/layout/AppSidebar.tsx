@@ -1,19 +1,33 @@
 "use client";
 
-import { useState, useCallback, Fragment, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
+import { useNavigationPreferences } from "@/hooks/useNavigationPreferences";
+import { useCurrentNavigationLocation } from "@/hooks/useCurrentNavigationLocation";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
+import { defaultLandingForRole } from "@/lib/roles";
+import {
+  getNavigationRoute,
+  isSegmentAwareNavigationMatch,
+  normalizeNavigationPath,
+  resolveNavigationDisplayLabel,
+  sanitizeInternalReturnTo,
+  selectActiveNavigationTarget,
+} from "@/lib/navigation-contract";
 import {
   hasVerticalDashboardItem,
   resolveVerticalDashboard,
   type VerticalDashboardItem,
 } from "@/lib/vertical-dashboard-resolver";
 import { motion, AnimatePresence } from "framer-motion";
+import { Dialog } from "radix-ui";
 import {
   Sheet,
   SheetContent,
@@ -29,6 +43,7 @@ import {
   Inbox,
   Contact,
   CalendarDays,
+  LayoutDashboard,
   Home,
   Megaphone,
   Zap,
@@ -76,6 +91,7 @@ import {
   Lightbulb,
   Sparkles,
   Receipt,
+  LifeBuoy,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -85,7 +101,6 @@ interface NavItemDef {
   labelKey: string;
   href?: string;
   icon: LucideIcon;
-  shortcut?: string;
   children?: { labelKey: string; href: string; capability?: keyof ReturnType<typeof useRole> }[];
   /** Capability flag from useRole that gates visibility. Omit = always visible. */
   capability?: keyof ReturnType<typeof useRole>;
@@ -97,7 +112,81 @@ interface NavItemDef {
 
 interface NavSectionDef {
   titleKey: string;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
   items: NavItemDef[];
+}
+
+interface ResolvedNavChild {
+  labelKey: string;
+  href: string;
+  label: string;
+  active: boolean;
+}
+
+interface ResolvedNavItem extends Omit<NavItemDef, "children"> {
+  label: string;
+  active: boolean;
+  linkActive: boolean;
+  children?: ResolvedNavChild[];
+}
+
+interface ResolvedNavSection extends Omit<NavSectionDef, "items"> {
+  items: ResolvedNavItem[];
+}
+
+/**
+ * Match complete route segments instead of raw prefixes. For example,
+ * `/admin/agent-analytics` must not activate `/admin/agent`.
+ */
+export function isSegmentAwareNavMatch(pathname: string, href: string): boolean {
+  return isSegmentAwareNavigationMatch(pathname, href, href === "/admin");
+}
+
+/** Pick one canonical active destination: the most specific matching route. */
+export function resolveActiveNavHref(pathname: string, hrefs: string[]): string | undefined {
+  return selectActiveNavigationTarget(
+    pathname,
+    Array.from(new Set(hrefs), (href) => ({ href })),
+  )?.href;
+}
+
+/** Keep Settings return destinations internal and avoid self-referential loops. */
+export function buildSettingsNavigationHref(pathname: string): string {
+  const safeLocation = sanitizeInternalReturnTo(pathname);
+  const normalized = safeLocation ? normalizeNavigationPath(safeLocation) : null;
+  if (!safeLocation || !normalized || !(normalized === "/admin" || normalized.startsWith("/admin/"))) {
+    return "/admin/settings";
+  }
+  if (isSegmentAwareNavigationMatch(normalized, "/admin/settings")) {
+    return "/admin/settings";
+  }
+  return `/admin/settings?returnTo=${encodeURIComponent(safeLocation)}`;
+}
+
+export interface VisibleFavoriteRoute {
+  routeId: string;
+  href: string;
+}
+
+/** Resolve preferences through the canonical registry, then intersect with the gated tree. */
+export function resolveVisibleFavoriteRoutes(
+  favoriteRouteIds: readonly string[],
+  visibleHrefs: readonly string[],
+): VisibleFavoriteRoute[] {
+  const visible = new Set(visibleHrefs);
+  const usedHrefs = new Set<string>();
+  const resolved: VisibleFavoriteRoute[] = [];
+
+  for (const routeId of favoriteRouteIds) {
+    const route = getNavigationRoute(routeId);
+    if (!route || route.pattern.includes(":") || !visible.has(route.pattern) || usedHrefs.has(route.pattern)) {
+      continue;
+    }
+    usedHrefs.add(route.pattern);
+    resolved.push({ routeId: route.id, href: route.pattern });
+  }
+  return resolved;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -108,21 +197,58 @@ interface NavSectionDef {
 // ────────────────────────────────────────────────────────────────
 const tenantSections: NavSectionDef[] = [
   {
-    titleKey: "operation",
+    titleKey: "essentials",
     items: [
-      { labelKey: "conversations", href: "/admin/inbox", icon: Inbox, shortcut: "⌘ 1", capability: "canHandleConversations", accent: "text-emerald-500 dark:text-emerald-400" },
+      { labelKey: "home", href: "/admin", icon: LayoutDashboard, capability: "canSeeGlobalAnalytics" },
+      { labelKey: "conversations", href: "/admin/inbox", icon: Inbox, capability: "canHandleConversations", accent: "text-emerald-500 dark:text-emerald-400" },
       {
         labelKey: "crm",
+        href: "/admin/contacts",
         icon: Contact,
-        shortcut: "⌘ 2",
         capability: "canViewContacts",
         accent: "text-blue-500 dark:text-blue-400",
         children: [
-          { labelKey: "crm", href: "/admin/contacts" },
           { labelKey: "pipeline", href: "/admin/pipeline" },
           { labelKey: "organizations", href: "/admin/contacts/organizations", capability: "canEditPipeline" }
         ]
       },
+    ],
+  },
+  {
+    titleKey: "aiGrowth",
+    collapsible: true,
+    defaultExpanded: true,
+    items: [
+      {
+        labelKey: "aiAgent",
+        href: "/admin/agent",
+        icon: Brain,
+        capability: "canEditAgent",
+        accent: "text-violet-500 dark:text-violet-400",
+        children: [
+          { labelKey: "agentSimulation", href: "/admin/agent/simulation", capability: "canEditAgent" },
+        ],
+      },
+      { labelKey: "procedures", href: "/admin/procedures", icon: ClipboardList, capability: "canEditAutomation" },
+      { labelKey: "knowledgeBase", href: "/admin/knowledge", icon: BookOpen, capability: "canViewKnowledge", accent: "text-indigo-500 dark:text-indigo-400" },
+      {
+        labelKey: "automation",
+        href: "/admin/automation",
+        icon: Zap,
+        capability: "canEditAutomation",
+        children: [
+          { labelKey: "dripSequences", href: "/admin/automation/drip-sequences", capability: "canEditAutomation" },
+          { labelKey: "automationTemplates", href: "/admin/automation/templates", capability: "canEditAutomation" },
+        ],
+      },
+      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone, capability: "canSendBroadcast", accent: "text-orange-500 dark:text-orange-400" },
+    ],
+  },
+  {
+    titleKey: "operation",
+    collapsible: true,
+    defaultExpanded: true,
+    items: [
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, verticalItem: "appointments", capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },
       // Catalog management — supervisor+ (agents don't manage catalogs, they only operate)
       { labelKey: "properties", href: "/admin/properties", icon: Home, verticalItem: "properties", capability: "canEditPipeline" },
@@ -143,52 +269,34 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticalItem: "photoSessions", capability: "canEditPipeline" },
       { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticalItem: "inventory", capability: "canEditPipeline" },
       { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticalItem: "orders", capability: "canHandleConversations" },
-      // Ofertas no tenía NINGUNA entrada en el sidebar: la página existe y
-      // funciona, y la IA puede listar ofertas (tools.offers), pero el dueño no
-      // tenía por dónde llegar a cargarlas. Sin vertical: cualquier negocio hace
-      // promociones.
       { labelKey: "offers", href: "/admin/catalog/offers", icon: Tag, capability: "canEditPipeline" },
     ],
   },
   {
-    titleKey: "growth",
-    items: [
-      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone, capability: "canSendBroadcast", accent: "text-orange-500 dark:text-orange-400" },
-      {
-        labelKey: "automation",
-        icon: Zap,
-        capability: "canEditAutomation",
-        accent: "text-violet-500 dark:text-violet-400",
-        children: [
-          { labelKey: "automation", href: "/admin/automation", capability: "canEditAutomation" },
-          { labelKey: "dripSequences", href: "/admin/automation/drip-sequences", capability: "canEditAutomation" },
-          { labelKey: "automationTemplates", href: "/admin/automation/templates", capability: "canEditAutomation" },
-          { labelKey: "aiAgent", href: "/admin/agent", capability: "canEditAgent" },
-          { labelKey: "agentSimulation", href: "/admin/agent/simulation", capability: "canEditAgent" },
-          { labelKey: "procedures", href: "/admin/procedures", capability: "canEditAgent" },
-          { labelKey: "knowledgeBase", href: "/admin/knowledge", capability: "canViewKnowledge" },
-        ]
-      },
-    ],
-  },
-  {
-    titleKey: "management",
+    titleKey: "insights",
+    collapsible: true,
     items: [
       {
         labelKey: "analytics",
+        href: "/admin/analytics-v2",
         icon: BarChart3,
         capability: "canSeeGlobalAnalytics",
         children: [
-          { labelKey: "analyticsOverview", href: "/admin/analytics-v2" },
           { labelKey: "crmAnalytics", href: "/admin/crm-analytics" },
-          { labelKey: "agentAnalytics", href: "/admin/agent-analytics" },
           { labelKey: "attribution", href: "/admin/attribution" },
           { labelKey: "reportBuilder", href: "/admin/report-builder" },
         ]
       },
+      { labelKey: "agentAnalytics", href: "/admin/agent-analytics", icon: Gauge, capability: "canSeeGlobalAnalytics" },
+    ],
+  },
+  {
+    titleKey: "administration",
+    collapsible: true,
+    items: [
       { labelKey: "channels", href: "/admin/channels", icon: Radio, capability: "canManageChannels", accent: "text-sky-500 dark:text-sky-400" },
-      { labelKey: "compliance", href: "/admin/compliance", icon: Shield, capability: "canManageBilling" },
       { labelKey: "users", href: "/admin/users", icon: Users, capability: "canManageUsers" },
+      { labelKey: "compliance", href: "/admin/compliance", icon: Shield, capability: "canManageBilling" },
       { labelKey: "billing", href: "/admin/settings/billing", icon: CreditCard, capability: "canManageBilling" },
       { labelKey: "featureRequests", href: "/admin/feature-requests", icon: Lightbulb },
     ],
@@ -207,27 +315,53 @@ const tenantSections: NavSectionDef[] = [
 // ────────────────────────────────────────────────────────────────
 const platformSections: NavSectionDef[] = [
   {
-    titleKey: "platform",
+    titleKey: "essentials",
+    items: [
+      { labelKey: "home", href: "/admin", icon: LayoutDashboard },
+      { labelKey: "tenants", href: "/admin/tenants", icon: Building2, accent: "text-blue-500 dark:text-blue-400" },
+      { labelKey: "incidents", href: "/admin/incidents", icon: Siren, accent: "text-rose-500 dark:text-rose-400" },
+    ],
+  },
+  {
+    titleKey: "platformOperations",
+    collapsible: true,
+    defaultExpanded: true,
     items: [
       { labelKey: "ops", href: "/admin/ops", icon: Gauge, accent: "text-indigo-500 dark:text-indigo-400" },
-      { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1", accent: "text-blue-500 dark:text-blue-400" },
-      { labelKey: "incidents", href: "/admin/incidents", icon: Siren, accent: "text-rose-500 dark:text-rose-400" },
-      { labelKey: "financials", href: "/admin/financials", icon: DollarSign, accent: "text-emerald-500 dark:text-emerald-400" },
-      { labelKey: "fiscalAdmin", href: "/admin/fiscal", icon: Receipt, accent: "text-teal-500 dark:text-teal-400" },
       { labelKey: "managed", href: "/admin/managed", icon: ShieldCheck, accent: "text-indigo-500 dark:text-indigo-400" },
-      { labelKey: "platformUsage", href: "/admin/usage", icon: TrendingUp },
-      { labelKey: "storage", href: "/admin/storage", icon: HardDrive, accent: "text-cyan-500 dark:text-cyan-400" },
       { labelKey: "platformHealth", href: "/admin/health", icon: Activity, accent: "text-rose-500 dark:text-rose-400" },
-      { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
-      { labelKey: "llmStats", href: "/admin/llm-stats", icon: Brain, accent: "text-violet-500 dark:text-violet-400" },
+      { labelKey: "storage", href: "/admin/storage", icon: HardDrive, accent: "text-cyan-500 dark:text-cyan-400" },
       { labelKey: "webhookTap", href: "/admin/webhooks", icon: Radio },
-      { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
+    ],
+  },
+  {
+    titleKey: "insights",
+    collapsible: true,
+    items: [
+      { labelKey: "platformUsage", href: "/admin/usage", icon: TrendingUp },
+      { labelKey: "llmStats", href: "/admin/llm-stats", icon: Brain, accent: "text-violet-500 dark:text-violet-400" },
       { labelKey: "funnel", href: "/admin/funnel", icon: FunnelIcon },
       { labelKey: "verticalAnalytics", href: "/admin/vertical-analytics", icon: PieChart },
-      { labelKey: "coupons", href: "/admin/coupons", icon: Tag },
-      { labelKey: "plans", href: "/admin/plans", icon: Layers },
+    ],
+  },
+  {
+    titleKey: "revenueBilling",
+    collapsible: true,
+    items: [
+      { labelKey: "financials", href: "/admin/financials", icon: DollarSign, accent: "text-emerald-500 dark:text-emerald-400" },
+      { labelKey: "fiscalAdmin", href: "/admin/fiscal", icon: Receipt, accent: "text-teal-500 dark:text-teal-400" },
       { labelKey: "billingOps", href: "/admin/billing-ops", icon: CreditCard, accent: "text-emerald-500 dark:text-emerald-400" },
+      { labelKey: "plans", href: "/admin/plans", icon: Layers },
+      { labelKey: "coupons", href: "/admin/coupons", icon: Tag },
       { labelKey: "smsPackages", href: "/admin/sms-packages", icon: MessageSquare, accent: "text-indigo-500 dark:text-indigo-400" },
+    ],
+  },
+  {
+    titleKey: "governance",
+    collapsible: true,
+    items: [
+      { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
+      { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
     ],
   },
   {
@@ -255,6 +389,45 @@ const ctaLabels: Record<string, string> = {
 };
 const getCtaLabel = (lang: string) => ctaLabels[lang] || ctaLabels['es'];
 
+// Temporary fallbacks until these section keys are added to the four message files.
+// Keeping the semantic section ids independent from their display copy prevents the
+// information architecture from falling back to old technical group names.
+const sectionLabelFallbacks: Record<string, Record<string, string>> = {
+  essentials: { es: "Esenciales", en: "Essentials", pt: "Essenciais", fr: "Essentiels" },
+  aiGrowth: { es: "IA y crecimiento", en: "AI & growth", pt: "IA e crescimento", fr: "IA et croissance" },
+  insights: { es: "Insights", en: "Insights", pt: "Insights", fr: "Insights" },
+  administration: { es: "Administración", en: "Administration", pt: "Administração", fr: "Administration" },
+  platformOperations: { es: "Operación de plataforma", en: "Platform operations", pt: "Operação da plataforma", fr: "Opérations de la plateforme" },
+  revenueBilling: { es: "Ingresos y facturación", en: "Revenue & billing", pt: "Receita e faturamento", fr: "Revenus et facturation" },
+  governance: { es: "Gobierno y cumplimiento", en: "Governance & compliance", pt: "Governança e conformidade", fr: "Gouvernance et conformité" },
+};
+
+const itemLabelFallbacks: Record<string, Record<string, string>> = {
+  home: { es: "Inicio", en: "Home", pt: "Início", fr: "Accueil" },
+};
+
+const defaultAccordionState: Record<string, boolean> = {
+  crm: false,
+  aiAgent: false,
+  automation: false,
+  analytics: false,
+};
+
+function getDefaultSectionState(definitions: NavSectionDef[]): Record<string, boolean> {
+  return Object.fromEntries(
+    definitions
+      .filter((section) => section.collapsible)
+      .map((section) => [section.titleKey, Boolean(section.defaultExpanded)]),
+  );
+}
+
+function asBooleanRecord(value: unknown): Record<string, boolean> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
+  );
+}
+
 interface AppSidebarProps {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -264,18 +437,23 @@ interface AppSidebarProps {
 export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [expandedAccordions, setExpandedAccordions] = useState<Record<string, boolean>>({
-    crm: true,
-    automation: true,
-    analytics: true,
-  });
+  const [expandedAccordions, setExpandedAccordions] = useState<Record<string, boolean>>(defaultAccordionState);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
+    getDefaultSectionState(tenantSections),
+  );
+  const [loadedPreferenceKey, setLoadedPreferenceKey] = useState<string | null>(null);
+  const [routeBadgeCounts, setRouteBadgeCounts] = useState<Record<string, number>>({});
 
   const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);
 
   const pathname = usePathname();
+  const currentNavigationLocation = useCurrentNavigationLocation();
   const { user, verticalConfig } = useAuth();
   const roleCtx = useRole();
+  const { favorites } = useNavigationPreferences();
   const tNav = useTranslations('nav');
+  const tCommand = useTranslations('navigation.command');
+  const tNavigation = useTranslations('navigation');
   const tRoles = useTranslations('roles');
   const tTopbar = useTranslations('topbar');
   const locale = useLocale();
@@ -284,11 +462,97 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   // impersonation gets the platform tree; everyone else (including
   // super_admin while impersonating) gets the tenant tree.
   const useTenantTree = !roleCtx.isSuperAdmin || roleCtx.impersonating;
+  const roleHomeHref = defaultLandingForRole(roleCtx.role, roleCtx.impersonating);
   const sectionDefs = useTenantTree ? tenantSections : platformSections;
+  const preferenceKey = user?.id
+    ? `parallly:sidebar:v2:${user.id}:${useTenantTree ? `tenant:${user.tenantId || "unknown"}` : "platform"}`
+    : null;
+
+  useEffect(() => {
+    const updateBadges = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (!detail || typeof detail !== "object") return;
+      const next: Record<string, number> = {};
+      for (const [href, rawCount] of Object.entries(detail)) {
+        const count = Math.max(0, Number(rawCount) || 0);
+        if (count > 0) next[href] = count;
+      }
+      setRouteBadgeCounts(next);
+    };
+    window.addEventListener("navigation:badge-counts", updateBadges);
+    return () => window.removeEventListener("navigation:badge-counts", updateBadges);
+  }, []);
+
+  useEffect(() => {
+    const defaultSections = getDefaultSectionState(sectionDefs);
+    setLoadedPreferenceKey(null);
+    setHovered(false);
+
+    if (!preferenceKey) {
+      setCollapsed(false);
+      setExpandedSections(defaultSections);
+      setExpandedAccordions(defaultAccordionState);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(preferenceKey);
+      const saved = raw ? JSON.parse(raw) as Record<string, unknown> : null;
+      const savedSections = asBooleanRecord(saved?.expandedSections);
+      const savedAccordions = asBooleanRecord(saved?.expandedAccordions);
+
+      setCollapsed(typeof saved?.collapsed === "boolean" ? saved.collapsed : false);
+      setExpandedSections({ ...defaultSections, ...(savedSections || {}) });
+      setExpandedAccordions({ ...defaultAccordionState, ...(savedAccordions || {}) });
+    } catch {
+      setCollapsed(false);
+      setExpandedSections(defaultSections);
+      setExpandedAccordions(defaultAccordionState);
+    } finally {
+      setLoadedPreferenceKey(preferenceKey);
+    }
+  }, [preferenceKey, sectionDefs]);
+
+  useEffect(() => {
+    if (!preferenceKey || loadedPreferenceKey !== preferenceKey) return;
+    try {
+      localStorage.setItem(preferenceKey, JSON.stringify({
+        collapsed,
+        expandedSections,
+        expandedAccordions,
+      }));
+    } catch {
+      // Storage may be unavailable in privacy mode; navigation still works in memory.
+    }
+  }, [collapsed, expandedAccordions, expandedSections, loadedPreferenceKey, preferenceKey]);
+
+  useEffect(() => {
+    if (!useTenantTree) return;
+    const revealTourTargets = () => {
+      setExpandedSections((previous) => ({
+        ...previous,
+        aiGrowth: true,
+        operation: true,
+        insights: true,
+        administration: true,
+      }));
+    };
+
+    try {
+      if (localStorage.getItem("parallly:tour:pending") === "true") revealTourTargets();
+    } catch {
+      // The tour remains optional when storage is unavailable.
+    }
+
+    window.addEventListener("parallly:prepare-tour", revealTourTargets);
+    return () => window.removeEventListener("parallly:prepare-tour", revealTourTargets);
+  }, [useTenantTree]);
 
   // --- Novedades (Dynamic System Updates) ---
   const [changelogItems, setChangelogItems] = useState<any[]>([]);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const changelogScrollRef = useRef<HTMLDivElement>(null);
+  const changelogRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [hasUnreadChangelog, setHasUnreadChangelog] = useState(false);
 
   // --- Active critical incidents badge (super_admin platform mode) ---
@@ -332,14 +596,16 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
             setHasUnreadChangelog(true);
           }
         }
-      } catch (err) {
+      } catch {
         // Silent catch on network failure
       }
     }
     loadChangelog();
   }, [useTenantTree]);
 
-  const openChangelogModal = () => {
+  const openChangelogModal = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    changelogRestoreFocusRef.current = event.currentTarget;
+    if (onMobileClose) onMobileClose();
     setChangelogOpen(true);
     if (changelogItems.length > 0) {
       const latestUpdate = changelogItems[0];
@@ -400,18 +666,13 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     return () => window.removeEventListener("logo-changed", onLogoChanged);
   }, [resolveLogoUrl]);
 
-  const isActive = useCallback((href?: string) => {
-    if (!href) return false;
-    if (href === "/admin") return pathname === "/admin";
-    return pathname.startsWith(href);
-  }, [pathname]);
-
-  const toggleAccordion = (key: string) => {
-    if (!showExpanded) {
-      setCollapsed(false);
-      setHovered(false);
-    }
+  const toggleAccordion = (key: string, mode: "desktop" | "mobile") => {
+    if (mode === "desktop" && collapsed) setHovered(true);
     setExpandedAccordions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleSection = (key: string) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const checkCapability = (cap?: keyof ReturnType<typeof useRole>): boolean => {
@@ -424,42 +685,46 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     return hasVerticalDashboardItem(verticalDashboard, item);
   };
 
-  const sections = sectionDefs.map(s => {
-    const filteredItems = s.items
-      .map(item => {
-        // Filter children
-        const children = item.children
-          ?.filter(child => !hiddenItems?.includes(child.labelKey))
-          ?.filter(child => checkCapability(child.capability));
+  const canNavigatePath = (href: string): boolean => Boolean(roleCtx.role) && (
+    canAccessDashboardNavigationPath(
+      href,
+      roleCtx.role!,
+      roleCtx.impersonating,
+      verticalConfig,
+    )
+  );
 
-        if (children && children.length === 0) {
-          return null; // hide parent if all children hidden
-        }
+  const getItemLabel = (key: string) => {
+    const translationKey = `items.${key}`;
+    if (tNav.has(translationKey)) {
+      return resolveNavigationDisplayLabel(key, tNav(translationKey), locale, labelOverrides);
+    }
+    const language = locale.split("-")[0];
+    return resolveNavigationDisplayLabel(
+      key,
+      itemLabelFallbacks[key]?.[language] || itemLabelFallbacks[key]?.es || key,
+      locale,
+      labelOverrides,
+    );
+  };
 
-        // Parent visibility checks
-        if (!children) {
-          if (hiddenItems?.includes(item.labelKey)) return null;
-          if (!checkVertical(item.verticalItem)) return null;
-          if (!checkCapability(item.capability)) return null;
-        } else {
-          // Items with children also need their own capability check
-          if (!checkCapability(item.capability)) return null;
-        }
+  const filteredSections = sectionDefs.map(s => {
+    const filteredItems = s.items.reduce<NavItemDef[]>((visibleItems, item) => {
+      if (hiddenItems?.includes(item.labelKey)) return visibleItems;
+      if (!checkVertical(item.verticalItem)) return visibleItems;
+      if (!checkCapability(item.capability)) return visibleItems;
+      if (item.href && !canNavigatePath(item.href)) return visibleItems;
 
-        const isItemOrChildActive = isActive(item.href) || children?.some(c => isActive(c.href));
+      const children = item.children
+        ?.filter(child => !hiddenItems?.includes(child.labelKey))
+        ?.filter(child => checkCapability(child.capability))
+        ?.filter(child => canNavigatePath(child.href));
 
-        return {
-          ...item,
-          label: labelOverrides?.[item.labelKey]?.[locale] ?? tNav(`items.${item.labelKey}`),
-          children: children?.map(c => ({
-            ...c,
-            label: labelOverrides?.[c.labelKey]?.[locale] ?? tNav(`items.${c.labelKey}`),
-            active: isActive(c.href)
-          })),
-          active: isItemOrChildActive,
-        };
-      })
-      .filter(Boolean) as any[];
+      // A destination remains useful even when all of its optional children are gated.
+      if (item.children && !item.href && children?.length === 0) return visibleItems;
+      visibleItems.push({ ...item, children });
+      return visibleItems;
+    }, []);
 
     if (itemOrder && itemOrder.length > 0) {
       filteredItems.sort((a, b) => {
@@ -473,378 +738,567 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     }
 
     return {
-      titleKey: s.titleKey,
+      ...s,
       items: filteredItems,
     };
-  });
+  }).filter((section) => section.items.length > 0);
 
-  const showExpanded = !collapsed || hovered;
+  const availableHrefs = filteredSections.flatMap((section) =>
+    section.items.flatMap((item) => [
+      ...(item.href ? [item.href] : []),
+      ...(item.children?.map((child) => child.href) || []),
+    ]),
+  );
+  const activeHref = resolveActiveNavHref(pathname, availableHrefs);
+
+  const sections: ResolvedNavSection[] = filteredSections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => {
+      const children = item.children?.map((child) => ({
+        ...child,
+        label: getItemLabel(child.labelKey),
+        active: child.href === activeHref,
+      }));
+      const linkActive = item.href === activeHref;
+      return {
+        ...item,
+        label: getItemLabel(item.labelKey),
+        children,
+        linkActive,
+        active: linkActive || Boolean(children?.some((child) => child.active)),
+      };
+    }),
+  }));
+
+  const visibleItemsByHref = new Map<string, ResolvedNavItem>();
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (item.href && !visibleItemsByHref.has(item.href)) {
+        visibleItemsByHref.set(item.href, item);
+      }
+      for (const child of item.children || []) {
+        if (!visibleItemsByHref.has(child.href)) {
+          visibleItemsByHref.set(child.href, {
+            labelKey: child.labelKey,
+            href: child.href,
+            icon: item.icon,
+            accent: item.accent,
+            label: child.label,
+            active: false,
+            linkActive: false,
+          });
+        }
+      }
+    }
+  }
+
+  const favoriteItems = resolveVisibleFavoriteRoutes(favorites, availableHrefs)
+    .reduce<ResolvedNavItem[]>((items, { routeId, href }) => {
+      const source = visibleItemsByHref.get(href);
+      if (!source) return items;
+      items.push({
+        ...source,
+        labelKey: `favorite-${routeId}`,
+        children: undefined,
+        active: false,
+        linkActive: false,
+      });
+      return items;
+    }, []);
+
+  const settingsNavigationHref = buildSettingsNavigationHref(currentNavigationLocation);
+
+  const desktopExpanded = !collapsed || hovered;
 
   const handleNavClick = useCallback(() => {
     if (onMobileClose) onMobileClose();
   }, [onMobileClose]);
 
-  useEffect(() => {
-    sections.forEach(sec => {
-      sec.items.forEach((item: any) => {
-        if (item.children && item.active && expandedAccordions[item.labelKey] === undefined) {
-          setExpandedAccordions(p => ({ ...p, [item.labelKey]: true }));
-        }
-      });
-    });
-  }, [pathname, sections, expandedAccordions]);
+  const openHelp = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("parallly:open-copilot"));
+    if (onMobileClose) onMobileClose();
+  }, [onMobileClose]);
 
-  const sidebarContent = (
-    <div className="flex flex-col h-full">
-      {/* Logo header */}
-      <div
-        className={cn(
-          "flex items-center h-14 border-b border-border/50 px-4 shrink-0 transition-all duration-200",
-          showExpanded ? "justify-between" : "justify-center"
+  const activeSectionKey = sections.find((section) =>
+    section.items.some((item) => item.active),
+  )?.titleKey;
+  const activeAccordionKeys = sections.flatMap((section) =>
+    section.items
+      .filter((item) => item.children?.some((child) => child.active))
+      .map((item) => item.labelKey),
+  );
+  const activeAccordionKeySignature = activeAccordionKeys.join("|");
+
+  useEffect(() => {
+    if (activeSectionKey && sectionDefs.some((section) => section.titleKey === activeSectionKey && section.collapsible)) {
+      setExpandedSections((previous) => previous[activeSectionKey]
+        ? previous
+        : { ...previous, [activeSectionKey]: true });
+    }
+    const accordionKeys = activeAccordionKeySignature
+      ? activeAccordionKeySignature.split("|")
+      : [];
+    if (accordionKeys.length > 0) {
+      setExpandedAccordions((previous) => {
+        const missing = accordionKeys.filter((key) => !previous[key]);
+        return missing.length === 0
+          ? previous
+          : { ...previous, ...Object.fromEntries(missing.map((key) => [key, true])) };
+      });
+    }
+  }, [pathname, activeAccordionKeySignature, activeSectionKey, sectionDefs]);
+
+  const getSectionLabel = (key: string) => {
+    const translationKey = `sections.${key}`;
+    if (tNav.has(translationKey)) return tNav(translationKey);
+    const language = locale.split("-")[0];
+    return sectionLabelFallbacks[key]?.[language]
+      || sectionLabelFallbacks[key]?.es
+      || key.replace(/([a-z])([A-Z])/g, "$1 $2");
+  };
+
+  const renderNavItem = (
+    item: ResolvedNavItem,
+    mode: "desktop" | "mobile",
+    expanded: boolean,
+  ) => {
+    const Icon = item.icon;
+    const accordionExpanded = Boolean(expandedAccordions[item.labelKey]);
+    const submenuId = `sidebar-${mode}-submenu-${item.labelKey}`;
+    const tourId = mode === "desktop" ? `tour-${item.labelKey}` : `tour-mobile-${item.labelKey}`;
+    const accordionLabel = `${accordionExpanded ? tNav("collapseSidebar") : tNav("expandSidebar")}: ${item.label}`;
+    const badgeCount = item.labelKey.startsWith("favorite-") || !item.href
+      ? 0
+      : routeBadgeCounts[item.href] || 0;
+    const primaryClassName = cn(
+      "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1",
+      mode === "mobile" && "min-h-11",
+      !expanded && "justify-center px-0",
+      expanded && item.children && item.href && "pr-10",
+      item.linkActive
+        ? "bg-indigo-50 font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+        : item.active
+          ? "bg-indigo-50/40 text-indigo-700 dark:bg-indigo-500/5 dark:text-indigo-300"
+          : "text-neutral-600 hover:bg-neutral-100 hover:text-foreground dark:text-neutral-400 dark:hover:bg-neutral-800/80",
+    );
+    const primaryContents = (
+      <>
+        <span className="relative shrink-0">
+          <Icon
+            size={17}
+            className={cn(
+              item.active
+                ? "text-indigo-600 dark:text-indigo-400"
+                : item.accent || "text-neutral-400 dark:text-neutral-500",
+            )}
+          />
+          {!expanded && item.labelKey === "incidents" && criticalCount > 0 && (
+            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
+          )}
+          {!expanded && badgeCount > 0 && (
+            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-background" />
+          )}
+        </span>
+        {expanded && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
+        {expanded && item.labelKey === "incidents" && criticalCount > 0 && (
+          <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+            {criticalCount}
+          </span>
         )}
+        {expanded && badgeCount > 0 && (
+          <span
+            aria-label={tNavigation("badge.unread", { count: badgeCount, label: item.label })}
+            className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+          >
+            {badgeCount > 99 ? "99+" : badgeCount}
+          </span>
+        )}
+      </>
+    );
+
+    const primary = item.href ? (
+      <Link
+        href={item.href}
+        onClick={handleNavClick}
+        className={primaryClassName}
+        aria-current={item.linkActive ? "page" : undefined}
+        aria-label={!expanded ? item.label : undefined}
       >
-        {showExpanded && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-            <img src="/parallly-logo-black.svg" alt="Parallly" className="h-7 dark:hidden" />
-            <img src="/parallly-logo-white.svg" alt="Parallly" className="h-7 hidden dark:block" />
+        {primaryContents}
+      </Link>
+    ) : (
+      <button
+        type="button"
+        className={primaryClassName}
+        onClick={() => toggleAccordion(item.labelKey, mode)}
+        aria-expanded={accordionExpanded}
+        aria-controls={submenuId}
+        aria-label={!expanded ? accordionLabel : undefined}
+      >
+        {primaryContents}
+        {expanded && (accordionExpanded
+          ? <ChevronDown size={14} aria-hidden="true" />
+          : <ChevronRight size={14} aria-hidden="true" />)}
+      </button>
+    );
+
+    return (
+      <li key={item.labelKey} id={tourId} className="relative">
+        {expanded ? (
+          <div className="relative">
+            {primary}
+            {item.href && item.children && (
+              <button
+                type="button"
+                onClick={() => toggleAccordion(item.labelKey, mode)}
+                className="absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-200/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:hover:bg-neutral-700/70"
+                aria-label={accordionLabel}
+                aria-expanded={accordionExpanded}
+                aria-controls={submenuId}
+              >
+                {accordionExpanded
+                  ? <ChevronDown size={14} aria-hidden="true" />
+                  : <ChevronRight size={14} aria-hidden="true" />}
+              </button>
+            )}
+          </div>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>{primary}</TooltipTrigger>
+            <TooltipContent side="right">
+              <span className="font-semibold">{item.label}</span>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {item.children && (
+          <div id={submenuId}>
+            <AnimatePresence initial={false}>
+              {accordionExpanded && expanded && (
+                <motion.ul
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.18, ease: "easeInOut" }}
+                  className="mt-0.5 space-y-0.5 overflow-hidden"
+                >
+                  {item.children.map((child) => (
+                    <li key={child.href}>
+                      <Link
+                        href={child.href}
+                        onClick={handleNavClick}
+                        aria-current={child.active ? "page" : undefined}
+                        className={cn(
+                          "flex min-h-9 items-center rounded-md py-1.5 pl-9 pr-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1",
+                          mode === "mobile" && "min-h-11",
+                          child.active
+                            ? "bg-indigo-50/70 font-semibold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300"
+                            : "text-neutral-500 hover:bg-neutral-50 hover:text-foreground dark:text-neutral-400 dark:hover:bg-neutral-800/50",
+                        )}
+                      >
+                        <span className="truncate">{child.label}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </motion.ul>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const renderSidebarContent = (mode: "desktop" | "mobile") => {
+    // A mobile drawer is always a full navigation surface. It never inherits the
+    // desktop icon-rail preference.
+    const expanded = mode === "mobile" ? true : desktopExpanded;
+    const configItem = sections.find((section) => section.titleKey === "config")?.items[0];
+    const mainSections = sections.filter((section) => section.titleKey !== "config");
+
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">
+        <div className={cn(
+          "flex h-14 shrink-0 items-center border-b border-border/50 px-4 transition-all duration-200",
+          expanded ? "justify-between" : "justify-center",
+        )}>
+          {expanded && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+              <Link
+                href={roleHomeHref}
+                onClick={handleNavClick}
+                aria-label="Parallly"
+                className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              >
+                <Image src="/parallly-logo-black.svg" alt="Parallly" width={112} height={28} className="h-7 w-auto dark:hidden" priority />
+                <Image src="/parallly-logo-white.svg" alt="Parallly" width={112} height={28} className="hidden h-7 w-auto dark:block" priority />
+              </Link>
+            </motion.div>
+          )}
+          {mode === "desktop" && (
+            <button
+              type="button"
+              onClick={() => {
+                setCollapsed((current) => !current);
+                setHovered(false);
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              title={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
+              aria-label={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? <PanelLeft size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+            </button>
+          )}
+        </div>
+
+        {expanded && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="shrink-0 border-b border-border/30 px-3 py-3">
+            <Link
+              href={roleHomeHref}
+              onClick={handleNavClick}
+              className="flex items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+            >
+              <span className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border",
+                useTenantTree && companyLogoUrl
+                  ? "border-neutral-200 bg-white dark:border-neutral-600 dark:bg-neutral-800"
+                  : useTenantTree
+                    ? "border-indigo-100 bg-indigo-50 dark:border-indigo-500/20 dark:bg-indigo-500/10"
+                    : "border-amber-100 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10",
+              )}>
+                {useTenantTree && companyLogoUrl ? (
+                  <Image src={companyLogoUrl} alt="" width={36} height={36} unoptimized className="h-full w-full object-contain p-0.5" />
+                ) : (
+                  <Building2 size={16} className={useTenantTree
+                    ? "text-indigo-600 dark:text-indigo-400"
+                    : "text-amber-600 dark:text-amber-400"} />
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-bold text-foreground">
+                  {useTenantTree
+                    ? (user?.tenantName || user?.firstName || "Parallly")
+                    : tNav("platformConsole")}
+                </span>
+                <span className="block truncate text-[10px] font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                  {useTenantTree
+                    ? ((user as { plan?: string } | null)?.plan || "starter")
+                    : tNav("superAdminMode")}
+                </span>
+              </span>
+            </Link>
           </motion.div>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors hidden md:inline-flex"
-          title={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
-        >
-          {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
-        </button>
-      </div>
 
-      {/* Workspace / platform header — adapts to mode */}
-      {showExpanded && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-3 py-3 border-b border-border/30 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className={cn(
-              "w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 overflow-hidden",
-              useTenantTree && companyLogoUrl
-                ? "bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-600"
-                : useTenantTree
-                  ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20"
-                  : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
-            )}>
-              {useTenantTree && companyLogoUrl ? (
-                <img src={companyLogoUrl} alt="" className="w-full h-full object-contain p-0.5" />
-              ) : (
-                <Building2 size={16} className={useTenantTree
-                  ? "text-indigo-600 dark:text-indigo-400"
-                  : "text-amber-600 dark:text-amber-400"} />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-bold text-foreground truncate">
-                {useTenantTree
-                  ? (user?.tenantName || user?.firstName || 'Parallly')
-                  : tNav('platformConsole')}
-              </p>
-              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium uppercase tracking-wider">
-                {useTenantTree
-                  ? ((user as any)?.plan || 'starter')
-                  : tNav('superAdminMode')}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
         <TooltipProvider delayDuration={200}>
-          {sections.map((section) => (
-            <Fragment key={section.titleKey}>
-              {section.titleKey === "config" ? (
-                <>
-                  {/* Novedades (Changelog) Button */}
-                  {useTenantTree && (
-                    <div className="mt-auto mb-2 mx-1">
-                      {showExpanded ? (
-                        <div
-                          onClick={() => openChangelogModal()}
-                          className={cn(
-                            "flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-150 cursor-pointer select-none",
-                            changelogOpen
-                              ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300"
-                              : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className={cn(
-                              "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
-                              changelogOpen
-                                ? "bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
-                                : "bg-neutral-200/60 dark:bg-neutral-700/40 text-neutral-500 dark:text-neutral-400"
-                            )}>
-                              <Sparkles size={14} className="animate-pulse" />
-                            </div>
-                            <span className="text-[13px] font-semibold truncate">{tNav("novedades")}</span>
-                          </div>
-                          {hasUnreadChangelog && (
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div
-                              onClick={() => openChangelogModal()}
-                              className={cn(
-                                "relative flex items-center justify-center py-2 rounded-lg border transition-all duration-150 cursor-pointer select-none",
-                                changelogOpen
-                                  ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60"
-                                  : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                              )}
-                            >
-                              <Sparkles size={16} className={cn(changelogOpen ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-500 dark:text-neutral-400")} />
-                              {hasUnreadChangelog && (
-                                <span className="absolute top-1 right-1 flex h-1.5 w-1.5">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
-                                </span>
-                              )}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="right">
-                            <span className="font-semibold">{tNav("novedades")}</span>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Settings Box */}
-                  <div className="mt-3 mb-2 mx-1">
-
-                  {showExpanded ? (
-                    <Link href="/admin/settings" onClick={handleNavClick}>
-                      <div className={cn(
-                        "flex items-center gap-2.5 px-3 py-2.5 rounded-lg border transition-all duration-150 cursor-pointer",
-                        section.items[0]?.active
-                          ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300"
-                          : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
-                      )}>
-                        <div className={cn(
-                          "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
-                          section.items[0]?.active
-                            ? "bg-indigo-500/15 dark:bg-indigo-500/20"
-                            : "bg-neutral-200/60 dark:bg-neutral-700/40"
-                        )}>
-                          <Settings size={14} className={section.items[0]?.active ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-500 dark:text-neutral-400"} />
-                        </div>
-                        <span className="text-[13px] font-semibold truncate">{tNav('items.settings')}</span>
-                      </div>
-                    </Link>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Link href="/admin/settings" onClick={handleNavClick}>
-                          <div className={cn(
-                            "flex items-center justify-center py-2 rounded-lg border transition-all duration-150",
-                            section.items[0]?.active
-                              ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60"
-                              : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                          )}>
-                            <Settings size={16} className={section.items[0]?.active ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-500 dark:text-neutral-400"} />
-                          </div>
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <span className="font-semibold">{tNav('items.settings')}</span>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </>
-            ) : (
-
-                <>
-                {showExpanded && section.items.length > 0 && (
-                  <p className="px-2 mb-1.5 mt-4 first:mt-0 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 select-none">
-                    {tNav(`sections.${section.titleKey}`)}
-                  </p>
-                )}
-
-              <ul className="space-y-0.5">
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  const isExpanded = expandedAccordions[item.labelKey];
-
-                  const NavItemContent = (
-                    <div
-                      className={cn(
-                        "flex items-center justify-between w-full px-2.5 py-1.5 text-[13px] rounded-md transition-all duration-150 cursor-pointer",
-                        !showExpanded && "justify-center",
-                        item.active && !item.children
-                          ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 font-semibold"
-                          : "text-neutral-600 dark:text-neutral-400 hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800/80 font-medium",
-                        item.active && item.children && "text-indigo-700 dark:text-indigo-300"
-                      )}
-                      onClick={() => {
-                        if (item.children) {
-                          toggleAccordion(item.labelKey);
-                        } else if (item.href) {
-                          handleNavClick();
-                        }
-                      }}
+          <nav aria-label={tTopbar("menu")} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 overflow-y-auto px-2 py-3 custom-scrollbar">
+              {favoriteItems.length > 0 && (
+                <section
+                  aria-labelledby={expanded ? `sidebar-${mode}-favorites-label` : undefined}
+                  className="mb-3"
+                >
+                  {expanded && (
+                    <p
+                      id={`sidebar-${mode}-favorites-label`}
+                      className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="relative shrink-0">
-                          <Icon size={16} className={cn(
-                            item.active ? "text-indigo-600 dark:text-indigo-400" : item.accent || "text-neutral-400 dark:text-neutral-500"
-                          )} />
-                          {!showExpanded && item.labelKey === "incidents" && criticalCount > 0 && (
-                            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
-                          )}
-                        </div>
-                        {showExpanded && (
-                          <span className="truncate">{item.label}</span>
-                        )}
-                      </div>
-
-                      {showExpanded && (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {item.labelKey === "incidents" && criticalCount > 0 && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none">
-                              {criticalCount}
-                            </span>
-                          )}
-                          {item.shortcut && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-border/50 text-neutral-400 font-mono tracking-tighter bg-background/50">
-                              {item.shortcut}
-                            </span>
-                          )}
-                          {item.children && (
-                            isExpanded ? <ChevronDown size={14} className="text-neutral-400" /> : <ChevronRight size={14} className="text-neutral-400" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-
-                  const wrapWithLink = (node: React.ReactNode) =>
-                    item.href ? <Link href={item.href}>{node}</Link> : node;
-
-                  const content = wrapWithLink(NavItemContent);
-
-                  return (
-                    <li key={item.labelKey} id={`tour-${item.labelKey}`} className="relative">
-                      {!showExpanded ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div>{content}</div>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="flex items-center gap-3">
-                            <span className="font-semibold">{item.label}</span>
-                            {item.shortcut && <span className="text-neutral-400 font-mono">{item.shortcut}</span>}
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        content
-                      )}
-
-                      {/* Submenu */}
-                      {item.children && (
-                        <AnimatePresence initial={false}>
-                          {(isExpanded && showExpanded) && (
-                            <motion.ul
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.2, ease: "easeInOut" }}
-                              className="overflow-hidden mt-0.5 space-y-0.5"
-                            >
-                              {item.children.map((child: any) => (
-                                <li key={child.href}>
-                                  <Link
-                                    href={child.href}
-                                    onClick={handleNavClick}
-                                    className={cn(
-                                      "flex items-center pl-9 pr-2.5 py-1.5 text-[13px] rounded-md transition-colors",
-                                      child.active
-                                        ? "bg-indigo-50/50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300 font-semibold"
-                                        : "text-neutral-500 dark:text-neutral-400 hover:text-foreground hover:bg-neutral-50 dark:hover:bg-neutral-800/50 font-medium"
-                                    )}
-                                  >
-                                    <span className="truncate">{child.label}</span>
-                                  </Link>
-                                </li>
-                              ))}
-                            </motion.ul>
-                          )}
-                        </AnimatePresence>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-              </>
+                      {tCommand("favorites")}
+                    </p>
+                  )}
+                  <ul className="space-y-0.5">
+                    {favoriteItems.map((item) => renderNavItem(item, mode, expanded))}
+                  </ul>
+                </section>
               )}
-            </Fragment>
-          ))}
-        </TooltipProvider>
-      </nav>
 
-      {/* User footer */}
-      {showExpanded ? (
-        <div className="px-3 py-3 border-t border-border/30 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-neutral-100 border border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 flex items-center justify-center shrink-0">
-              <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 uppercase">
-                {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '')}
-              </span>
+              {mainSections.map((section) => {
+                const sectionExpanded = !section.collapsible || Boolean(expandedSections[section.titleKey]);
+                const sectionContentId = `sidebar-${mode}-section-${section.titleKey}`;
+                const sectionLabel = getSectionLabel(section.titleKey);
+
+                return (
+                  <section key={section.titleKey} aria-labelledby={expanded ? `${sectionContentId}-label` : undefined} className="mt-3 first:mt-0">
+                    {expanded && (section.collapsible ? (
+                      <button
+                        id={`${sectionContentId}-label`}
+                        type="button"
+                        onClick={() => toggleSection(section.titleKey)}
+                        aria-expanded={sectionExpanded}
+                        aria-controls={sectionContentId}
+                        className="mb-1 flex min-h-7 w-full items-center justify-between rounded-md px-2 text-left text-[10px] font-bold uppercase tracking-wider text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-500 dark:hover:bg-neutral-900 dark:hover:text-neutral-300"
+                      >
+                        <span className="truncate">{sectionLabel}</span>
+                        {sectionExpanded
+                          ? <ChevronDown size={13} aria-hidden="true" />
+                          : <ChevronRight size={13} aria-hidden="true" />}
+                      </button>
+                    ) : (
+                      <p id={`${sectionContentId}-label`} className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                        {sectionLabel}
+                      </p>
+                    ))}
+                    <div id={sectionContentId}>
+                      <AnimatePresence initial={false}>
+                        {sectionExpanded && (
+                          <motion.ul
+                            initial={section.collapsible ? { height: 0, opacity: 0 } : false}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.18, ease: "easeInOut" }}
+                            className="space-y-0.5 overflow-hidden"
+                          >
+                            {section.items.map((item) => renderNavItem(item, mode, expanded))}
+                          </motion.ul>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </section>
+                );
+              })}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold text-foreground truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
-              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium truncate">{roleLabel}</p>
+
+            <div className="shrink-0 space-y-1 border-t border-border/40 p-2">
+              {expanded ? (
+                <button
+                  type="button"
+                  onClick={openHelp}
+                  className={cn(
+                    "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium text-neutral-600 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-800/80",
+                    mode === "mobile" && "min-h-11",
+                  )}
+                >
+                  <LifeBuoy size={17} aria-hidden="true" />
+                  <span className="truncate">{tNav("items.help")}</span>
+                </button>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={openHelp}
+                      aria-label={tNav("items.help")}
+                      className="flex min-h-10 w-full items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                    >
+                      <LifeBuoy size={17} aria-hidden="true" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{tNav("items.help")}</TooltipContent>
+                </Tooltip>
+              )}
+
+              {useTenantTree && changelogItems.length > 0 && (expanded ? (
+                <button
+                  type="button"
+                  onClick={openChangelogModal}
+                  aria-haspopup="dialog"
+                  aria-expanded={changelogOpen}
+                  aria-controls="parallly-changelog-dialog"
+                  className={cn(
+                    "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
+                    mode === "mobile" && "min-h-11",
+                    changelogOpen
+                      ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+                      : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800/80",
+                  )}
+                >
+                  <span className="relative shrink-0">
+                    <Sparkles size={17} aria-hidden="true" />
+                    {hasUnreadChangelog && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-background" />}
+                  </span>
+                  <span className="truncate">{tNav("novedades")}</span>
+                </button>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={openChangelogModal}
+                      aria-haspopup="dialog"
+                      aria-expanded={changelogOpen}
+                      aria-controls="parallly-changelog-dialog"
+                      aria-label={tNav("novedades")}
+                      className="relative flex min-h-10 w-full items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                    >
+                      <Sparkles size={17} aria-hidden="true" />
+                      {hasUnreadChangelog && <span className="absolute right-2 top-1.5 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-background" />}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{tNav("novedades")}</TooltipContent>
+                </Tooltip>
+              ))}
+
+              {configItem && (
+                <ul className="space-y-0.5">
+                  {renderNavItem(
+                    { ...configItem, href: settingsNavigationHref },
+                    mode,
+                    expanded,
+                  )}
+                </ul>
+              )}
+            </div>
+          </nav>
+        </TooltipProvider>
+
+        {expanded ? (
+          <div className="shrink-0 border-t border-border/30 px-3 py-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800">
+                <span className="text-[11px] font-semibold uppercase text-neutral-600 dark:text-neutral-300">
+                  {(user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] font-semibold text-foreground">{user?.firstName} {user?.lastName}</p>
+                <p className="truncate text-[10px] font-medium text-neutral-500 dark:text-neutral-400">{roleLabel}</p>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <div className="flex justify-center py-3 border-t border-border/30 shrink-0">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="w-8 h-8 rounded-full bg-neutral-100 border border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 flex items-center justify-center cursor-pointer">
-                  <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 uppercase">
-                    {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '')}
-                  </span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="font-semibold">{user?.firstName} {user?.lastName}</p>
-                <p className="text-[10px] text-neutral-400">{roleLabel}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      )}
-    </div>
-  );
+        ) : (
+          <div className="flex shrink-0 justify-center border-t border-border/30 py-3">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800">
+                    <span className="text-[11px] font-semibold uppercase text-neutral-600 dark:text-neutral-300">
+                      {(user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")}
+                    </span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="font-semibold">{user?.firstName} {user?.lastName}</p>
+                  <p className="text-[10px] text-neutral-400">{roleLabel}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
       {/* Desktop sidebar */}
       <aside
-        onMouseEnter={() => { if (collapsed) setHovered(true); }}
-        onMouseLeave={() => setHovered(false)}
         className={cn(
-          "hidden md:flex flex-col h-screen border-r border-neutral-200 dark:border-neutral-800",
-          "bg-white dark:bg-neutral-950 transition-all duration-300 ease-in-out shrink-0 overflow-hidden",
-          showExpanded ? "w-[240px]" : "w-14"
+          "relative hidden h-screen shrink-0 transition-[width] duration-300 ease-in-out md:block",
+          collapsed ? "w-16" : "w-64",
         )}
       >
-        {sidebarContent}
+        <div
+          onMouseEnter={() => { if (collapsed) setHovered(true); }}
+          onMouseLeave={() => setHovered(false)}
+          className={cn(
+            "absolute inset-y-0 left-0 z-40 overflow-hidden border-r border-neutral-200 bg-white transition-[width,box-shadow] duration-300 ease-in-out dark:border-neutral-800 dark:bg-neutral-950",
+            desktopExpanded ? "w-64" : "w-16",
+            collapsed && hovered && "shadow-2xl shadow-black/15 dark:shadow-black/40",
+          )}
+        >
+          {renderSidebarContent("desktop")}
+        </div>
       </aside>
 
       {/* Mobile drawer */}
@@ -852,42 +1306,66 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         <SheetContent
           side="left"
           showCloseButton={true}
-          className="w-[240px] p-0 bg-white dark:bg-neutral-950 flex flex-col"
+          onCloseAutoFocus={(event) => {
+            const trigger = document.getElementById("dashboard-mobile-menu-trigger");
+            const mainHeading = document.querySelector<HTMLElement>("#main-content h1");
+            const mainContent = document.getElementById("main-content");
+            const target = trigger instanceof HTMLElement && trigger.getClientRects().length > 0
+              ? trigger
+              : mainHeading ?? mainContent;
+            if (!target) return;
+            event.preventDefault();
+            if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+            target.focus();
+          }}
+          className="flex w-[min(88vw,280px)] flex-col bg-white p-0 dark:bg-neutral-950 sm:w-[280px]"
         >
           <SheetTitle className="sr-only">{tTopbar("menu")}</SheetTitle>
-          {sidebarContent}
+          {renderSidebarContent("mobile")}
         </SheetContent>
       </Sheet>
 
-      {/* Dynamic Novedades Changelog Modal Overlay */}
-      <AnimatePresence>
-        {changelogOpen && changelogItems.length > 0 && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 select-none">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setChangelogOpen(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
-
-            {/* Modal Card */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              transition={{ type: "spring", duration: 0.5 }}
-              className="relative w-full max-w-2xl max-h-[80vh] bg-white dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col z-10"
-            >
+      {/* Dynamic Novedades dialog: Radix owns focus, Escape, scroll lock and restoration. */}
+      {changelogItems.length > 0 && (
+      <Dialog.Root open={changelogOpen} onOpenChange={setChangelogOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
+          <Dialog.Content
+            id="parallly-changelog-dialog"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              changelogScrollRef.current?.focus();
+            }}
+            onCloseAutoFocus={(event) => {
+              const remembered = changelogRestoreFocusRef.current;
+              const fallback = document.getElementById("dashboard-mobile-menu-trigger");
+              const mainContent = document.getElementById("main-content");
+              const isVisible = (candidate: HTMLElement | null | undefined): candidate is HTMLElement => (
+                Boolean(candidate?.isConnected && candidate.getClientRects().length > 0)
+              );
+              const target = isVisible(remembered)
+                ? remembered
+                : isVisible(fallback)
+                  ? fallback
+                  : mainContent;
+              changelogRestoreFocusRef.current = null;
+              if (!target) return;
+              event.preventDefault();
+              target.focus();
+            }}
+            className="fixed left-1/2 top-1/2 z-[9999] flex max-h-[80vh] w-[calc(100vw-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 select-none flex-col overflow-hidden rounded-2xl border border-neutral-200/50 bg-white shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 dark:border-neutral-800/50 dark:bg-neutral-900"
+          >
               {/* Header Gradient */}
               <div className="relative bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-500 p-6 text-white shrink-0">
-                <button
-                  onClick={() => setChangelogOpen(false)}
-                  className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-all duration-150"
-                >
-                  <X size={16} />
-                </button>
+                <Dialog.Close asChild>
+                  <button
+                    type="button"
+                    aria-label={getCtaLabel(locale.split('-')[0])}
+                    className="absolute right-4 top-4 rounded-full bg-white/10 p-1.5 text-white/80 transition-all duration-150 hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                </Dialog.Close>
                 <div className="flex items-center gap-2 mb-2">
                   <div className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wider uppercase">
                     {changelogItems[0].version}
@@ -896,17 +1374,23 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                     • {new Date(changelogItems[0].date).toLocaleDateString(locale === "es" ? "es-ES" : locale, { day: 'numeric', month: 'long', year: 'numeric' })}
                   </span>
                 </div>
-                <h2 className="text-xl md:text-2xl font-extrabold tracking-tight flex items-center gap-2">
-                  <Sparkles size={20} className="text-amber-300 animate-pulse animate-duration-1000 shrink-0" />
+                <Dialog.Title className="flex items-center gap-2 text-xl font-extrabold tracking-tight md:text-2xl">
+                  <Sparkles size={20} className="shrink-0 animate-pulse animate-duration-1000 text-amber-300" aria-hidden="true" />
                   <span className="truncate">{changelogItems[0].title[locale] || changelogItems[0].title['es'] || ''}</span>
-                </h2>
-                <p className="text-sm text-white/90 mt-2 font-medium leading-relaxed">
+                </Dialog.Title>
+                <Dialog.Description className="mt-2 text-sm font-medium leading-relaxed text-white/90">
                   {changelogItems[0].description[locale] || changelogItems[0].description['es'] || ''}
-                </p>
+                </Dialog.Description>
               </div>
 
               {/* Scrollable Features List */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-neutral-50/50 dark:bg-neutral-900/30">
+              <div
+                ref={changelogScrollRef}
+                role="region"
+                tabIndex={0}
+                aria-label={tNav("novedades")}
+                className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-neutral-50/50 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 dark:bg-neutral-900/30"
+              >
                 {changelogItems[0].features && Array.isArray(changelogItems[0].features) && (
                   changelogItems[0].features.map((feature: any, idx: number) => {
                     const featTitle = feature.title?.[locale] || feature.title?.[locale.split('-')[0]] || feature.title?.['es'] || '';
@@ -934,9 +1418,12 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                           </p>
                           {feature.image && (
                             <div className="relative mt-3 rounded-lg overflow-hidden border border-neutral-200/40 dark:border-neutral-800/50 shadow-sm max-w-md group select-none">
-                              <img
+                              <Image
                                 src={feature.image.startsWith('/') ? `${process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, '') || 'https://api.parallly-chat.cloud'}${feature.image}` : feature.image}
                                 alt={featTitle}
+                                width={640}
+                                height={360}
+                                unoptimized
                                 className="w-full h-auto object-cover max-h-56 transform group-hover:scale-[1.02] transition-transform duration-300"
                               />
                             </div>
@@ -950,17 +1437,19 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
 
               {/* Bottom Close Button */}
               <div className="p-4 border-t border-neutral-100 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 flex justify-end shrink-0">
-                <button
-                  onClick={() => setChangelogOpen(false)}
-                  className="bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-semibold text-sm px-6 py-2 rounded-lg transition-all duration-150 shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20"
-                >
-                  {getCtaLabel(locale.split('-')[0])}
-                </button>
+                <Dialog.Close asChild>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/10 transition-all duration-150 hover:bg-indigo-500 hover:shadow-indigo-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 active:scale-[0.98]"
+                  >
+                    {getCtaLabel(locale.split('-')[0])}
+                  </button>
+                </Dialog.Close>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+      )}
     </>
   );
 }

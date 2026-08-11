@@ -172,7 +172,7 @@ export default function TenantDetailPage() {
             d.channelAccounts.map((ch: any) => ({
               id: ch.id,
               channelType: ch.channelType || ch.channel_type || "unknown",
-              accountName: ch.accountName || ch.account_name || ch.name || "",
+              accountName: ch.displayName || ch.accountName || ch.account_name || ch.name || "",
               isActive: ch.isActive ?? true,
               createdAt: ch.createdAt || "",
             }))

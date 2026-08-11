@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import {
@@ -16,6 +17,10 @@ import WhatsAppConnectPanel from "../channels/whatsapp/WhatsAppConnectPanel";
 import SecondaryChannels from "./_components/SecondaryChannels";
 import AgentTestChat from "./_components/AgentTestChat";
 import ToolsTour from "./_components/ToolsTour";
+import {
+    PRODUCT_TOUR_PENDING_KEY,
+    SETUP_COPILOT_PENDING_KEY,
+} from "@/lib/product-tour-contract";
 
 const ICON_MAP: Record<string, any> = {
     target: Target, headphones: Headphones, calendar: Calendar,
@@ -244,8 +249,14 @@ export default function SetupWizardPage() {
         }
         // Progreso del wizard ya consumido → limpiar el estado persistido.
         try { localStorage.removeItem(`parallly:setupwizard:${tenantId}`); } catch { /* noop */ }
-        // Disparar el tour guiado al aterrizar en /admin (solo al COMPLETAR, no al saltar).
-        try { localStorage.setItem("parallly:tour:pending", "true"); } catch { /* noop */ }
+        // An explicit Copilot request wins over the guided overlay so the two
+        // assistants never open on top of each other after the redirect.
+        try {
+            const openCopilot = localStorage.getItem(SETUP_COPILOT_PENDING_KEY) === "1";
+            localStorage.removeItem(SETUP_COPILOT_PENDING_KEY);
+            if (openCopilot) localStorage.setItem("parallly:openCopilot", "1");
+            else localStorage.setItem(PRODUCT_TOUR_PENDING_KEY, "true");
+        } catch { /* optional enhancements must not block completion */ }
         window.location.href = "/admin";
     };
 
@@ -325,8 +336,16 @@ export default function SetupWizardPage() {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-4xl max-h-[90vh] mx-4 bg-white dark:bg-[#12122a] rounded-xl shadow-2xl dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
+        <Dialog.Root open>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm" />
+            <Dialog.Content
+              onEscapeKeyDown={(event) => event.preventDefault()}
+              onPointerDownOutside={(event) => event.preventDefault()}
+              className="fixed left-1/2 top-1/2 z-[101] flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-white shadow-2xl outline-none dark:bg-[#12122a] dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+            >
+            <Dialog.Title className="sr-only">{t("title")}</Dialog.Title>
+            <Dialog.Description className="sr-only">{t("subtitle")}</Dialog.Description>
             {/* Header */}
             <div className="border-b border-neutral-200 dark:border-white/[0.08] bg-neutral-50 dark:bg-white/[0.02] shrink-0">
                 <div className="px-6 py-4 flex items-center justify-between">
@@ -634,7 +653,8 @@ export default function SetupWizardPage() {
                     )}
                 </div>
             </div>
-            </div>
-        </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
     );
 }

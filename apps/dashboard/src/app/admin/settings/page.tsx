@@ -1,16 +1,21 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useRole } from "@/hooks/useRole";
 import { cn } from "@/lib/utils";
 import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { motion } from "motion/react";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { getVisibleSections } from "./_settings-config";
+import {
+    getVisibleSections,
+    resolveSettingsReturnTo,
+    withSettingsReturnTo,
+} from "./_settings-config";
 
 export default function SettingsHub() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const role = useRole();
     const t = useTranslations("settings");
     const tHelp = useTranslations("help");
@@ -21,6 +26,11 @@ export default function SettingsHub() {
         canManagePlatform: role.canManagePlatform,
         isSuperAdminPlatformMode: role.isSuperAdmin && !role.impersonating,
     });
+    const returnTo = resolveSettingsReturnTo(
+        searchParams.get("returnTo"),
+        role.canAccess,
+        "/admin/settings",
+    );
 
     return (
         <div className="space-y-8 max-w-4xl">
@@ -54,7 +64,7 @@ export default function SettingsHub() {
                             return (
                                 <motion.button
                                     key={card.key}
-                                    onClick={() => router.push(card.href)}
+                                    onClick={() => router.push(withSettingsReturnTo(card.href, returnTo))}
                                     initial={{ opacity: 0, y: 8 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.3, delay: 0.04 * i }}

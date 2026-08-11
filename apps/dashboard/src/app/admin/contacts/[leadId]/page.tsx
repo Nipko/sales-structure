@@ -306,6 +306,7 @@ export default function Lead360Page() {
         <div>
             <PageHeader
                 title="Lead 360°"
+                navigationTitle={lead?.name || capitalize(vt.customerNoun)}
                 breadcrumbs={
                     <Breadcrumbs items={[
                         { label: capitalize(vt.customerNounPlural), href: "/admin/contacts" },

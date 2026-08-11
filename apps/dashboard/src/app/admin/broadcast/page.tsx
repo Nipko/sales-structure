@@ -3,6 +3,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -52,6 +53,8 @@ export default function BroadcastPage() {
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
     const { canCreate, getLimit, features } = usePlanLimits();
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -80,6 +83,12 @@ export default function BroadcastPage() {
         : BASE_CHANNEL_OPTIONS;
 
     const [showNewCampaign, setShowNewCampaign] = useState(false);
+
+    useEffect(() => {
+        if (searchParams.get("create") !== "campaign") return;
+        setShowNewCampaign(true);
+        router.replace("/admin/broadcast", { scroll: false });
+    }, [searchParams, router]);
     const [selectedChannels, setSelectedChannels] = useState<string[]>(["whatsapp"]);
     const [newCampaign, setNewCampaign] = useState({
         name: "",

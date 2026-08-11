@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import {
   Sparkles,
@@ -68,6 +69,8 @@ export function HelpAssistant() {
   const pathname = usePathname();
   const vt = useVerticalTerms();
   const { user } = useAuth();
+  const { canEditAgent, canManageChannels } = useRole();
+  const canRestartProductTour = canEditAgent && canManageChannels;
 
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -1248,16 +1251,16 @@ configurar fórmulas ni umbrales.`,
 
         {/* Footer Area with Branding and Quick links */}
         <div className="p-4 border-t border-neutral-200/50 dark:border-neutral-800/50 bg-neutral-50 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
-          <button
+          {canRestartProductTour && <button
             type="button"
             onClick={() => {
               try { window.dispatchEvent(new Event("parallly:start-tour")); } catch { /* noop */ }
               setOpen(false);
             }}
-            className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+            className="hidden text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline md:flex items-center gap-1 cursor-pointer"
           >
             <Compass className="size-2.5" /> {t("footer.restartTour")}
-          </button>
+          </button>}
           <a
             href="https://parallly-chat.cloud/support"
             target="_blank"

@@ -144,6 +144,13 @@
     "platformConsole": "Console da plataforma",
     "superAdminMode": "Super Admin",
     "sections": {
+      "essentials": "Essenciais",
+      "aiGrowth": "IA e crescimento",
+      "insights": "Insights",
+      "administration": "Administração",
+      "platformOperations": "Operação da plataforma",
+      "revenueBilling": "Receita e faturamento",
+      "governance": "Governança e conformidade",
       "main": "Principal",
       "operations": "Operações",
       "analytics": "Análises",
@@ -155,6 +162,7 @@
       "platformConfig": "Config global"
     },
     "items": {
+      "home": "Início",
       "conversations": "Conversas",
       "dashboard": "Dashboard",
       "inbox": "Caixa de entrada",
@@ -178,6 +186,7 @@
       "users": "Usuários",
       "billing": "Faturamento",
       "featureRequests": "Melhorias",
+      "help": "Ajuda",
       "settings": "Configurações",
       "tenants": "Tenants",
       "financials": "Financeiro",
@@ -233,6 +242,62 @@
     "expandSidebar": "Expandir",
     "collapseSidebar": "Recolher",
     "novedades": "Novidades"
+  },
+  "navigation": {
+    "skipToContent": "Ir para o conteúdo principal",
+    "accessDeniedTitle": "Você não tem acesso a essa seção",
+    "accessDeniedDescription": "Levamos você à seção disponível mais próxima para sua função.",
+    "dismiss": "Fechar aviso",
+    "breadcrumbLabel": "Caminho de navegação",
+    "badge": {
+      "unread": "{count} itens não lidos em {label}"
+    },
+    "routes": {
+      "agentDetail": "Detalhes do agente",
+      "channelEmail": "E-mail",
+      "channelInstagram": "Instagram",
+      "channelInstagramCallback": "Conexão do Instagram",
+      "channelMessenger": "Messenger",
+      "channelSms": "SMS",
+      "channelTelegram": "Telegram",
+      "channelWhatsapp": "WhatsApp",
+      "channelWhatsappProfile": "Perfil do WhatsApp",
+      "channelWhatsappTemplates": "Modelos do WhatsApp",
+      "contactDetail": "Detalhes do contato",
+      "dripSequenceDetail": "Detalhes da sequência",
+      "knowledgeFaqs": "Perguntas frequentes",
+      "listingDetail": "Detalhes do imóvel",
+      "pipelineDealDetail": "Detalhes da oportunidade",
+      "platformTenantDetail": "Detalhes da empresa",
+      "propertyDetail": "Detalhes da propriedade",
+      "settingsIntegrations": "Integrações",
+      "settingsWebChatTriggers": "Gatilhos do chat web",
+      "setupWizard": "Assistente de configuração",
+        "tourDetail": "Detalhes do tour ou pacote",
+        "acquisitionCampaigns": "Campanhas de aquisição"
+    },
+    "command": {
+      "title": "Buscar e navegar",
+      "open": "Abrir busca global",
+      "description": "Encontre seções ou execute ações rápidas na plataforma.",
+      "placeholder": "Buscar seções e ações…",
+      "close": "Fechar busca",
+      "noResults": "Nenhuma seção ou ação corresponde à busca.",
+      "results": "Resultados",
+      "quickActions": "Criar",
+      "favorites": "Favoritos",
+      "recent": "Recentes",
+      "allDestinations": "Todas as seções",
+      "favorite": "Adicionar {label} aos favoritos",
+      "unfavorite": "Remover {label} dos favoritos",
+      "keyboardHelp": "Use ↑ ↓ para navegar e Enter para abrir",
+      "primaryShortcuts": "Alt+1–3: acessos principais"
+    },
+    "quickCreate": {
+      "contact": "Criar contato",
+      "appointment": "Criar agendamento",
+      "campaign": "Criar campanha"
+    }
   },
   "topbar": {
     "menu": "Menu",
@@ -446,7 +511,7 @@
     "generatePassword": "Gerar senha"
   },
   "dashboard": {
-    "title": "Dashboard",
+    "title": "Início",
     "welcome": "Bem-vindo, {name} · Visao geral da plataforma",
     "overview": "Visão geral",
     "recentActivity": "Atividade recente",
@@ -898,7 +963,7 @@
     "errorAssign": "Falha ao atribuir conversa. Tente novamente.",
     "viewerSingle": "{name} está visualizando esta conversa",
     "viewerMultiple": "{count} agentes estão visualizando esta conversa",
-    "heading": "Inbox",
+    "heading": "Conversas",
     "liveBadge": "LIVE",
     "connectionLost": "Conexão perdida — reconectando...",
     "humanAttention": {
@@ -1004,6 +1069,9 @@
     "subtitle": "Gerencie sua conta, empresa, canais e ferramentas",
     "sidebarSubtitle": "Ajustes gerais",
     "backToDashboard": "Voltar ao painel",
+    "backToPrevious": "Voltar à seção anterior",
+    "navigationLabel": "Navegação das configurações",
+    "closeNavigation": "Fechar navegação",
     "searchSettings": "Buscar configurações…",
     "noResults": "Sem resultados",
     "sections": {
@@ -1014,6 +1082,30 @@
       "company": {
         "title": "Empresa",
         "description": "Identidade e configuração do negócio"
+      },
+      "crmOperations": {
+        "title": "CRM e operação",
+        "description": "Funil, scoring, atributos e agenda"
+      },
+      "conversations": {
+        "title": "Conversas",
+        "description": "Modelos, macros, mídias e acompanhamento"
+      },
+      "channelsIntegrations": {
+        "title": "Canais e integrações",
+        "description": "Conexões, webhooks e ferramentas externas"
+      },
+      "developer": {
+        "title": "Desenvolvedores",
+        "description": "API, webhooks e conectores técnicos"
+      },
+      "governance": {
+        "title": "Governança e alertas",
+        "description": "Políticas, segurança e controles operacionais"
+      },
+      "planBilling": {
+        "title": "Plano e faturamento",
+        "description": "Assinatura, pagamentos e limites do plano"
       },
       "operations": {
         "title": "Operação",
@@ -1076,6 +1168,10 @@
       "businessHours": {
         "label": "Horário de atendimento",
         "description": "Dias, horas e mensagem fora de horário"
+      },
+      "billing": {
+        "label": "Plano e faturamento",
+        "description": "Assinatura, uso, pagamentos e mudanças de plano"
       },
       "pipelineStages": {
         "label": "Etapas do pipeline",
@@ -3852,6 +3948,10 @@
     "itemCount": "{count, plural, one {# item} other {# itens}}",
     "moreItems": "mais",
     "viewReceipt": "Ver recibo",
+    "changeStatus": "Alterar o status do pedido {order}",
+    "changeStatusShort": "Alterar status…",
+    "terminalStatus": "Status final",
+    "statusUpdateError": "Não foi possível atualizar o status. Recarregue a página e tente novamente.",
     "kpi": {
       "totalRevenue": "Receita total (Pagas)",
       "accountsReceivable": "Contas a receber",
@@ -4896,7 +4996,7 @@
       "recommendedWhatsapp": "Recomendado · WhatsApp",
       "whatsappBrandTitle": "WhatsApp Business",
       "officialMeta": "Conexão oficial via Meta",
-      "otherChannelsHint": "Conecte-os sem sair do assistente. O e-mail abre sua página de configuração.",
+      "otherChannelsHint": "Conecte-os sem sair do assistente. O e-mail abre a configuração em outra aba.",
       "otherChannels": "Ou conecte outro canal",
       "recommended": "Recomendado",
       "back": "Voltar",
@@ -4944,6 +5044,8 @@
       "copilotCardTitle": "Seu copiloto está aqui para ajudar",
       "copilotCardDesc": "Dúvidas de como configurar algo? Pergunte a ele: canais, CRM, agendamentos, automações e mais.",
       "openCopilot": "Abrir copiloto",
+      "copilotQueued": "Abrirá ao finalizar",
+      "opensInNewTab": "abre em uma nova aba",
       "tools": {
         "knowledge": {
           "name": "Base de conhecimento",

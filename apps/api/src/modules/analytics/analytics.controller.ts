@@ -10,6 +10,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('analytics')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@Roles('tenant_admin', 'tenant_supervisor')
 export class AnalyticsController {
 
     constructor(

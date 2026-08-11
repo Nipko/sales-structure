@@ -297,42 +297,60 @@ Banner con pasos pendientes para activar tu cuenta:
 
 # 5. Navegación
 
-## 5.1 Menú principal — 3 secciones, items dinámicos
+## 5.1 Menú principal — trabajo primero, administración después
 
-El sidebar se organiza en 3 secciones nombradas:
+El sidebar se organiza por la tarea que la persona quiere completar. Los grupos
+secundarios pueden plegarse; el grupo de la página actual se abre siempre. El
+orden no cambia entre páginas ni sesiones:
+
+### ESENCIALES
+- **Inicio** — resumen del negocio (admin/supervisor)
+- **Conversaciones** — inbox y atención diaria
+- **CRM** — contactos; contiene Embudo y Organizaciones cuando el rol lo permite
+
+### IA Y CRECIMIENTO
+- **Agente IA** — personalidad, capacidades y simulación (admin)
+- **Procedimientos** y **Base de conocimiento**
+- **Automatización** — reglas, secuencias y plantillas (admin/supervisor)
+- **Campañas** — broadcasts (admin/supervisor)
 
 ### OPERACIÓN
-- **Bandeja de entrada** — conversaciones activas
-- **Contactos** — CRM
-- **Pipeline** — kanban de deals
-- **Agenda** — citas y disponibilidad
-- *(verticales)* Propiedades, Tours, Inmuebles, Menú, Pedidos, Membresías, Clases, Cursos, Seguros, Solicitudes, Mascotas, Sesiones fotográficas, Planes de tratamiento
+- Destinos propios del rubro: Agenda, Propiedades, Tours, Inmuebles, Vehículos,
+  Alquileres, Menú, Pedidos, Membresías, Clases, Cursos, Seguros, Solicitudes,
+  Mascotas, Sesiones fotográficas, Inventario y Órdenes
+- Solo aparecen los módulos respaldados por la vertical y el rol actual
 
-### CRECIMIENTO
-- **Campañas** — broadcasts (admin/supervisor)
-- **Automatización** — reglas (admin/supervisor)
-- **Base de conocimiento** — RAG (admin/supervisor)
-- **Analíticas** — métricas (admin/supervisor)
+### INSIGHTS
+- **Análisis**, analítica CRM, atribución e informes (admin/supervisor)
+- **Rendimiento del equipo** (admin/supervisor)
 
-### GESTIÓN
-- **Agente IA** — configuración (admin)
-- **Canales** — conexiones (admin)
-- **Usuarios** — equipo (admin)
+### ADMINISTRACIÓN
+- Canales, usuarios, cumplimiento, facturación y solicitudes de funciones según rol
 
-### Configuración (al fondo)
-Sección con 5 áreas (ver siguiente sección).
+### Configuración (zona estable al fondo)
+- Abre el hub local de Configuración y conserva la página de origen para poder volver
 
-> **Adaptación vertical:** los items específicos de una industria solo aparecen si tu negocio es de esa vertical. Por ejemplo, "Propiedades" solo lo ven los tenants de Turismo.
+> **Ayudas de navegación:** `Ctrl/Cmd+K` abre la búsqueda global; `Alt+1`,
+> `Alt+2` y `Alt+3` abren destinos frecuentes permitidos. Favoritos y recientes
+> nunca muestran rutas incompatibles con el rol o la vertical.
 
-## 5.2 Configuración — 5 secciones
+## 5.2 Configuración — áreas por responsabilidad
+
+El hub filtra sus áreas por rol. Un administrador del tenant puede ver hasta ocho:
 
 | Sección | Contiene |
 |---------|----------|
-| **Cuenta** | Mi perfil, cambiar contraseña, sesiones |
-| **Empresa** | Datos del negocio, horarios, localización, custom attributes |
-| **Herramientas** | Pipeline, scoring, macros, plantillas email, pre-chat, recall |
-| **IA** | Configuración del modelo, comportamiento avanzado |
-| **Avanzado** | Compliance, exportación de datos, webhooks (admin) |
+| **Cuenta** | Perfil, seguridad, notificaciones y apariencia |
+| **Empresa** | Datos del negocio, localización, fiscal y horarios |
+| **CRM y operación** | Pipeline, scoring, atributos, reserva pública y nurturing |
+| **Conversaciones** | Pre-chat, plantillas, macros, multimedia y recall |
+| **Canales e integraciones** | CRM, web chat, Slack, SMS, verticales, reseñas, pagos y e-commerce |
+| **Desarrolladores** | Webhooks, MCP y API keys |
+| **Gobierno y alertas** | Políticas, alertas y reportes |
+| **Plan y facturación** | Suscripción, periodo y pagos |
+
+Desde cualquier página, **Configuración** recibe un retorno interno seguro. El
+botón “Volver a la sección anterior” restaura también filtros, query y hash.
 
 ## 5.3 Analítica — pestañas
 

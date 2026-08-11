@@ -1,31 +1,33 @@
 # Build de la app móvil con EAS (distribución)
 
-> Estado al 10-ago-2026: el AAB de producción v6 fue generado por EAS desde el commit
-> `41d58962`, validado con bundletool y jarsigner, convertido a APK universal e
-> instalado por cable en un SM-S918B conservando la sesión. La prueba visible de
-> desconexión/reconexión pasó y Play Console publicó la prueba interna que contiene
-> únicamente v6. La versión está disponible para el verificador interno configurado;
-> producción todavía no se ha iniciado.
+> Estado al 10-ago-2026: el AAB de producción v7 fue generado por EAS desde el commit
+> `8bea2bec`, terminó en estado `FINISHED` y fue validado con bundletool, firma y
+> manifiesto. La versión se instaló/actualizó en un SM-S918B desde Google Play
+> (`com.android.vending`); login, desconexión, reconexión y relanzamiento pasaron. La
+> prueba interna v7 está activa. El rollout completo de Producción fue enviado para
+> 176 países/regiones más `Resto del mundo`; sus 11 cambios fueron enviados y Play
+> confirma **Tus cambios están en proceso de revisión**. La publicación administrada
+> está desactivada, por lo que una aprobación publicará automáticamente.
 
 ## Artefacto vigente
 
 | Dato | Valor comprobado |
 |---|---|
-| EAS build ID | `e8a0b188-d8a9-41c5-a9e0-c30ebb270279` |
-| Commit | `41d589629d4c9ab52d9e3bb18896bffbcb8e359b` |
+| EAS build ID | `d42cf4d5-db7c-4f6c-95c9-32e174901d16` |
+| Commit | `8bea2bec1b3b502285633bc7bbf34a79c6ee7d69` |
 | Plataforma / perfil | Android / `production` |
 | Distribución | `STORE` |
 | package | `cloud.parallly.mobile` |
-| versionName / versionCode | `1.0.0` / `6` |
+| versionName / versionCode | `1.0.0` / `7` |
 | minSdk / targetSdk / compileSdk | `24` / `36` / `36` |
-| Tamaño del AAB | `53.293.577` bytes |
-| SHA-256 del AAB | `D9C0DDD82EC0E27F464A7E885087067731E7F8679746C603F68CA64F57B7555F` |
+| Tamaño del AAB | `53.294.348` bytes |
+| SHA-256 del AAB | `194859407468ECD77F59D666B8AD8FE8E3BD207AFC04853044774599FD78747B` |
 | Certificado upload SHA-256 | `42:DE:BB:77:51:83:D1:D9:63:7D:43:60:79:C0:CF:71:D6:79:E4:F6:36:C8:C2:5A:F6:0C:61:44:AE:B5:A1:34` |
-| Ruta local | `C:\Users\USER\Desktop\parallly-v6-play\parallly-1.0.0-v6.aab` |
-| Artefacto EAS | `https://expo.dev/artifacts/eas/X_9vGw0u4tz7Gl-VbvFa38oJZSm3fLgQqllHkfny_9E.aab` |
+| Ruta local | `C:\Users\USER\Desktop\parallly-v7-play\parallly-1.0.0-v7.aab` |
+| Artefacto EAS | `https://expo.dev/artifacts/eas/XWBP5QWO_EE61q4DVG5aPWfsmQfFdpGX_BzEVShWPPI.aab` |
 
-Este es el único AAB del release actual. Play Console lo reconoce como `1.0.0 (6)` y la
-prueba interna activa contiene únicamente v6; los v2–v5 quedaron reemplazados.
+Este es el AAB del release vigente. Play Console lo reconoce como `1.0.0 (7)` y la
+prueba interna v7 está activa; los v2–v6 quedaron reemplazados como candidatos.
 
 ## Por qué EAS y no solo un APK local
 
@@ -77,33 +79,34 @@ npx eas-cli build --platform android --profile production --non-interactive
 Consultar el resultado:
 
 ```bash
-npx eas-cli build:view e8a0b188-d8a9-41c5-a9e0-c30ebb270279
+npx eas-cli build:view d42cf4d5-db7c-4f6c-95c9-32e174901d16
 npx eas-cli build:list --platform android --limit 5 --non-interactive --json
 ```
 
 Antes de aceptar un build futuro, comprobar que su commit coincide con `HEAD` y que
-EAS incrementó versionCode. No reutilizar versionCode `6` para otro AAB.
+EAS incrementó versionCode. No reutilizar versionCode `7` para otro AAB.
 
 ## Validar el AAB
 
 Usar el jar ejecutable completo de bundletool. El jar modular que queda en la caché de
 Gradle no contiene `Main-Class` y no funciona con `java -jar`.
 
-Herramienta usada para v6:
+Herramienta usada para v7 (el mismo jar reutilizable conservado junto a v6):
 `C:\Users\USER\Desktop\parallly-v6-play\bundletool-all-1.18.1.jar`.
 
-```bash
-cd C:\Users\USER\Desktop\parallly-v6-play
-java -jar bundletool-all-1.18.1.jar validate --bundle=parallly-1.0.0-v6.aab
-java -jar bundletool-all-1.18.1.jar dump manifest --bundle=parallly-1.0.0-v6.aab
-jarsigner -verify parallly-1.0.0-v6.aab
+```powershell
+$paralllyBundletoolJar = 'C:\Users\USER\Desktop\parallly-v6-play\bundletool-all-1.18.1.jar'
+cd C:\Users\USER\Desktop\parallly-v7-play
+java -jar $paralllyBundletoolJar validate --bundle=parallly-1.0.0-v7.aab
+java -jar $paralllyBundletoolJar dump manifest --bundle=parallly-1.0.0-v7.aab
+jarsigner -verify parallly-1.0.0-v7.aab
 ```
 
-Resultado v6:
+Resultado v7:
 
 - `bundletool validate`: **PASS**;
 - package `cloud.parallly.mobile`;
-- versionCode `6`, versionName `1.0.0`;
+- versionCode `7`, versionName `1.0.0`;
 - minSdk `24`, targetSdk/compileSdk `36`;
 - `jarsigner`: firma verificada;
 - certificado de upload SHA-256:
@@ -115,49 +118,39 @@ Resultado v6:
 Calcular el hash antes de mover o subir el archivo:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath .\parallly-1.0.0-v6.aab
+Get-FileHash -Algorithm SHA256 -LiteralPath .\parallly-1.0.0-v7.aab
 ```
 
 El valor debe ser:
-`D9C0DDD82EC0E27F464A7E885087067731E7F8679746C603F68CA64F57B7555F`.
+`194859407468ECD77F59D666B8AD8FE8E3BD207AFC04853044774599FD78747B`.
 
-## Generar e instalar el APK universal de prueba
+## Instalar y comprobar la entrega de Google Play
 
-```bash
-java -jar bundletool-all-1.18.1.jar build-apks --bundle=parallly-1.0.0-v6.aab --output=parallly-1.0.0-v6-universal.apks --mode=universal
-```
-
-El archivo generado y el APK extraído quedaron en:
-
-- `C:\Users\USER\Desktop\parallly-v6-play\parallly-1.0.0-v6-universal.apks`
-- `C:\Users\USER\Desktop\parallly-v6-play\universal-v6-41d58962\universal.apk`
-
-SHA-256 de `universal.apk`:
-`F1C14E5F12D82415AD0BB2733CC560A401F9E0A3E84BC8038D30F57AFEA0C4FB`.
-
-Instalación y comprobación:
+Para validar el artefacto que realmente reciben los usuarios, la prueba vigente no usa
+un APK universal cargado con ADB. La v7 se instaló/actualizó desde la prueba interna de
+Google Play y luego se verificó la fuente del paquete:
 
 ```powershell
 adb devices -l
-adb install -r C:\Users\USER\Desktop\parallly-v6-play\universal-v6-41d58962\universal.apk
-adb shell dumpsys package cloud.parallly.mobile | Select-String 'versionCode|versionName'
+adb shell pm list packages -i cloud.parallly.mobile
+adb shell dumpsys package cloud.parallly.mobile | Select-String 'versionCode|versionName|installerPackageName'
 adb shell monkey -p cloud.parallly.mobile -c android.intent.category.LAUNCHER 1
 ```
 
 Resultado confirmado en `SM-S918B`:
 
-- instalación por cable exitosa;
-- versionName `1.0.0`, versionCode `6`;
-- la sesión anterior se conservó;
-- la app abrió correctamente;
+- versionName `1.0.0`, versionCode `7`;
+- instalador `com.android.vending`;
+- el arreglo del conflicto de sesión permitió completar el login correctamente;
+- desconexión, reconexión y relanzamiento pasaron;
 - logcat no mostró fatal ni `JSON Parse error: Unexpected end of input`.
 
-bundletool firma el APK universal con una clave de prueba para instalarlo localmente.
-Esto no altera la firma del AAB que Google Play procesa con Play App Signing.
+La fuente `com.android.vending` distingue esta validación de una instalación local por
+ADB y confirma que el smoke corresponde a la entrega procesada por Play App Signing.
 
 ## Smoke test de desconexión
 
-La prueba técnica y visible fue completada con v6 instalado:
+La prueba técnica y visible fue completada con v7 entregada por Google Play:
 
 - durante la desconexión Android informó `Active default network: none`;
 - el proceso de la app permaneció vivo con PID activo;
@@ -168,12 +161,13 @@ La prueba técnica y visible fue completada con v6 instalado:
 - al restaurar Wi-Fi y datos, `Reintentar` cargó los leads de CRM inmediatamente sin
   cerrar la sesión.
 
-Resultado: **PASS** para la desconexión/reconexión visible en el SM-S918B.
+Después de restaurar la red se relanzó la app y el login/sesión siguió operativo.
+Resultado: **PASS** para login, desconexión/reconexión y relanzamiento en el SM-S918B.
 
 ## Estado en Google Play
 
-- AAB v6 validado por Play y publicado en una prueba interna activa que contiene
-  únicamente versionCode `6`;
+- AAB v7 validado por Play y publicado en una prueba interna activa con versionCode
+  `7`;
 - App access guardado;
 - Target audience guardado únicamente como `18 años o más`;
 - Data safety guardado y App content muestra que no hay acciones pendientes;
@@ -181,11 +175,13 @@ Resultado: **PASS** para la desconexión/reconexión visible en el SM-S918B.
   `play-icon-512.png` y `play-feature-graphic-1024x500.png` se etiquetaron; las cuatro
   capturas reales de la app no se etiquetaron;
 - las cuatro capturas aprobadas fueron cargadas y la ficha de tienda quedó guardada con
-  estado **Lista para enviar a revisión**;
-- la lista `Parallly Android v6 testers` quedó guardada, seleccionada y contiene un
-  verificador;
-- el release `1.0.0 (6) — prueba interna` está activo y disponible desde
+  sus cambios incluidos en la revisión de Producción;
+- la lista de verificadores quedó guardada, seleccionada y contiene un verificador;
+- el release `1.0.0 (7)` está activo y disponible desde
   `https://play.google.com/apps/internaltest/4701526887696492046`;
+- la instalación/actualización desde Google Play quedó verificada mediante
+  `com.android.vending`, y el smoke de login, desconexión/reconexión y relanzamiento
+  pasó;
 - el panel tiene Producción habilitada y no muestra un requisito de 12 testers durante
   14 días. Esto es una observación de la consola, no una exención general de la política.
 
@@ -193,12 +189,12 @@ La cuenta de revisión `architerin@gmail.com` quedó verificada con 2FA desactiv
 tenant `Test Business` tiene una compensación Pro activa hasta el 7-ago-2036, registrada
 como `plan_comp_granted` con motivo de revisión y QA de Google Play.
 
-Pendientes antes de preparar Producción:
+Estado de Producción:
 
-- instalar la versión desde el enlace de participación y repetir el smoke test entregado
-  por Google Play;
-- completar las 5 tareas de Producción, actualmente `0/5`, incluida la selección de
-  países/regiones que sigue pendiente.
+- rollout completo de v7 enviado para 176 países/regiones más `Resto del mundo`;
+- 11 cambios en revisión; Play confirma `Tus cambios están en proceso de revisión`;
+- app todavía no publicada en Producción;
+- publicación administrada desactivada: Play publicará automáticamente si aprueba.
 
 ## Build `preview`
 

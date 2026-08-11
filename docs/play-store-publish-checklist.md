@@ -1,14 +1,15 @@
 # Play Store — Estado y checklist de publicación (Parallly Mobile)
 
-> **Estado al 10-ago-2026.** La aplicación ya existe en Google Play Console y la prueba
-> interna está activa; aún no fue enviada a revisión ni publicada en Producción. El
-> candidato vigente es el AAB
-> `1.0.0 (6)`, generado desde `main` en el commit `41d58962`, validado con bundletool e
-> instalado en el dispositivo de pruebas. Play lo tiene en un release interno que contiene
-> únicamente v6; App access, Target audience, Data safety y la ficha con cuatro capturas
-> están guardados, App content figura al día, la declaración de IA/opinión está
-> completada y la ficha aparece **Lista para enviar a revisión**. Todos los elementos
-> marcados como pendientes requieren todavía confirmación explícita.
+> **Estado al 10-ago-2026.** La aplicación ya existe en Google Play Console, la prueba
+> interna está activa y Producción fue enviada a revisión; todavía no está publicada. El
+> candidato vigente es el AAB `1.0.0 (7)`, generado desde el commit `8bea2bec`, validado
+> con bundletool, firma y manifiesto, e instalado desde Google Play en el dispositivo de
+> pruebas. Play lo tiene en un release interno activo con v7; App access, Target audience,
+> Data safety y la ficha con cuatro capturas
+> están guardados, App content figura al día y la declaración de IA/opinión está
+> completada. Play confirma **Tus cambios están en proceso de revisión**. La publicación
+> administrada está desactivada, por lo que una aprobación publicará la app
+> automáticamente.
 
 ## Identidad en Google Play
 
@@ -28,21 +29,21 @@
 
 | # | Requisito | Estado real |
 |---|---|---|
-| 1 | AAB final de Android | ✅ v6 construido, validado, firmado, instalado y cargado (§1) |
-| 2 | Prueba física del artefacto | ✅ Desconexión/reconexión técnica y visible aprobada (§1) |
+| 1 | AAB final de Android | ✅ v7 construido, validado, firmado, instalado desde Play y cargado (§1) |
+| 2 | Prueba física del artefacto | ✅ Login, desconexión/reconexión y relanzamiento aprobados (§1) |
 | 3 | Cuenta de revisión | ✅ Activa, 2FA desactivado y Pro compensado hasta 7-ago-2036 (§2) |
 | 4 | Capturas de teléfono | ✅ 4 archivos compatibles, autorizados y cargados (§3) |
 | 5 | App access | ✅ Detalle agregado y página guardada |
 | 6 | Target audience | ✅ Guardado únicamente como `18 años o más` |
 | 7 | Data safety | ✅ Revisado y guardado; App content al día (§4) |
-| 8 | Ficha de tienda | ✅ Textos, ícono, gráfico y 4 capturas guardados |
-| 9 | Prueba interna | ✅ v6 activa, un verificador y enlace de participación disponibles |
+| 8 | Ficha de tienda | ✅ Textos, ícono, gráfico y 4 capturas incluidos en la revisión |
+| 9 | Prueba interna | ✅ v7 activa, un verificador y enlace de participación disponibles |
 | 10 | Declaración IA/opinión | ✅ 2 recursos promocionales etiquetados; 4 capturas reales sin etiqueta |
-| 11 | Producción | ◐ Habilitada; preparación `0/5` y países/regiones pendientes |
+| 11 | Producción | ◐ Rollout completo de v7 para 176 países/regiones + Resto del mundo; 11 cambios en revisión |
 
-El camino crítico restante es instalar v6 desde Play y repetir el smoke interno, y
-completar las 5 tareas de Producción, incluida la selección de países/regiones. La
-prueba interna activa no equivale a una publicación en Producción.
+El camino crítico restante es la revisión de Google Play. Los 11 cambios ya fueron
+enviados; no hay un envío manual pendiente. Como la publicación administrada está
+desactivada, la aprobación producirá la publicación automática del rollout completo.
 
 ## Completado y verificado
 
@@ -64,30 +65,30 @@ prueba interna activa no equivale a una publicación en Producción.
 | Data safety / App content | Formulario revisado y guardado; App content muestra `Ya estás al día` |
 | Capturas | Cuatro capturas de teléfono cargadas y ficha guardada |
 | Declaración IA/opinión | Completada; solo ícono y gráfico destacado etiquetados |
-| Estado de ficha | `Lista para enviar a revisión` |
-| Prueba interna | Borrador guardado con únicamente `1.0.0 (6)` |
+| Estado de publicación | `Tus cambios están en proceso de revisión` |
+| Prueba interna | Release activo con `1.0.0 (7)` |
 
-## 1. AAB v6 y prueba física
+## 1. AAB v7 y prueba física
 
 ### Artefacto cargado
 
 | Dato | Valor comprobado |
 |---|---|
-| EAS build ID | `e8a0b188-d8a9-41c5-a9e0-c30ebb270279` |
-| Commit exacto | `41d589629d4c9ab52d9e3bb18896bffbcb8e359b` |
+| EAS build ID | `d42cf4d5-db7c-4f6c-95c9-32e174901d16` |
+| Commit exacto | `8bea2bec1b3b502285633bc7bbf34a79c6ee7d69` |
 | Perfil / distribución | Android `production` · `STORE` |
 | package | `cloud.parallly.mobile` |
-| versionName / versionCode | `1.0.0` / `6` |
+| versionName / versionCode | `1.0.0` / `7` |
 | minSdk / targetSdk / compileSdk | `24` / `36` / `36` |
-| Tamaño del AAB | `53.293.577` bytes |
-| SHA-256 del AAB | `D9C0DDD82EC0E27F464A7E885087067731E7F8679746C603F68CA64F57B7555F` |
-| Archivo local | `C:\Users\USER\Desktop\parallly-v6-play\parallly-1.0.0-v6.aab` |
+| Tamaño del AAB | `53.294.348` bytes |
+| SHA-256 del AAB | `194859407468ECD77F59D666B8AD8FE8E3BD207AFC04853044774599FD78747B` |
+| Archivo local | `C:\Users\USER\Desktop\parallly-v7-play\parallly-1.0.0-v7.aab` |
 
 Validaciones realizadas sobre el artefacto exacto:
 
 - EAS terminó el build con estado `FINISHED`.
 - `bundletool validate`: **PASS**.
-- El manifest declara package `cloud.parallly.mobile`, versionCode `6`, versionName
+- El manifest declara package `cloud.parallly.mobile`, versionCode `7`, versionName
   `1.0.0`, minSdk `24` y targetSdk/compileSdk `36`.
 - `jarsigner -verify`: firma del AAB verificada.
 - Certificado de upload SHA-256:
@@ -95,19 +96,17 @@ Validaciones realizadas sobre el artefacto exacto:
 - El manifest no incluye `SYSTEM_ALERT_WINDOW` ni `WRITE_EXTERNAL_STORAGE`;
   `READ_EXTERNAL_STORAGE` está limitado a `maxSdkVersion=32` y `RECORD_AUDIO` está
   presente para las notas de voz.
-- Se generó `parallly-1.0.0-v6-universal.apks` y de allí `universal.apk`.
-- SHA-256 de `universal.apk`:
-  `F1C14E5F12D82415AD0BB2733CC560A401F9E0A3E84BC8038D30F57AFEA0C4FB`.
+- La firma del AAB y el manifiesto fueron comprobados correctamente.
 
-El APK universal derivado del AAB se instaló por cable con `adb install -r` en un
-**Samsung SM-S918B**. La actualización conservó la sesión. La app arrancó y los logs
-no mostraron fatal ni `JSON Parse error: Unexpected end of input`.
+La v7 se instaló/actualizó en el **Samsung SM-S918B** desde Google Play. Android reporta
+`com.android.vending` como instalador, por lo que la prueba corresponde al artefacto
+entregado por Play y no a un APK cargado por ADB. El arreglo del conflicto de sesión al
+iniciar sesión fue verificado en el dispositivo; el ciclo login, uso, desconexión,
+reconexión y relanzamiento terminó sin cierres fatales ni `JSON Parse error: Unexpected
+end of input`.
 
-El APK universal está firmado por bundletool para pruebas locales; sirve para probar el
-contenido del bundle, pero el archivo que va a Play es exclusivamente el AAB.
-
-Play Console aceptó el AAB y la prueba interna activa muestra únicamente `6 (1.0.0)`,
-API 24+ y target SDK 36. El release está disponible para verificadores internos desde
+Play Console aceptó el AAB y la prueba interna activa muestra `7 (1.0.0)`, API 24+ y
+target SDK 36. El release está disponible para verificadores internos desde
 `https://play.google.com/apps/internaltest/4701526887696492046`.
 
 ### Prueba de desconexión
@@ -122,7 +121,7 @@ La prueba técnica y visible pasó:
 - la red se restauró y Android volvió a reportarla como activa;
 - al pulsar `Reintentar`, CRM cargó los leads inmediatamente sin cerrar la sesión.
 
-Resultado de desconexión/reconexión visible: **PASS**.
+Resultado de login, desconexión/reconexión y relanzamiento: **PASS**.
 
 ### Historial de artefactos
 
@@ -132,9 +131,10 @@ Resultado de desconexión/reconexión visible: **PASS**.
 | v3 | `652c38f9` | Descartado; anterior a correcciones funcionales |
 | v4 | `e268912b` | Descartado; anterior al arreglo de CRM |
 | v5 | `d9d81927` | Validado e instalado, pero sustituido por v6 |
-| **v6** | **`41d58962`** | **Único artefacto de la prueba interna activa** |
+| v6 | `41d58962` | Publicado internamente, sustituido por v7 |
+| **v7** | **`8bea2bec`** | **Artefacto vigente de prueba interna y versión de Producción en revisión** |
 
-La prueba interna publicada muestra únicamente versionCode `6`.
+La prueba interna publicada muestra versionCode `7` como versión activa.
 
 ## 2. App access y cuenta demo verificados
 
@@ -190,9 +190,6 @@ Las cuatro capturas finales están tanto en el repo como en la carpeta de entreg
 | 2 | `apps/mobile/store-assets/play/2-conversacion.png` |
 | 3 | `apps/mobile/store-assets/play/3-crm.png` |
 | 4 | `apps/mobile/store-assets/play/4-agenda.png` |
-
-Copia para carga manual:
-`C:\Users\USER\Desktop\parallly-v6-play\`.
 
 Todas son PNG RGB de 24 bits, sin alfa, con resolución `1080×2096` y relación `1.941`,
 dentro del máximo 2:1 de Play. Su contenido fue autorizado explícitamente como
@@ -258,15 +255,23 @@ Privacidad y eliminación de cuenta/datos están disponibles en **Más → Cuent
 - Nombre, descripción, ícono, gráfico destacado y cuatro capturas guardados.
 - Declaración IA/opinión completada con los dos recursos promocionales etiquetados y
   las cuatro capturas reales sin etiquetar.
-- Ficha en estado `Lista para enviar a revisión`.
-- AAB v6 publicado como único artefacto de la prueba interna.
-- Lista `Parallly Android v6 testers` guardada y seleccionada con un verificador.
-- Release `1.0.0 (6) — prueba interna` activo y disponible para verificadores.
+- Ficha y demás cambios incluidos en el envío a revisión.
+- AAB v7 publicado en la prueba interna activa.
+- Lista de verificadores guardada y seleccionada con un verificador.
+- Release `1.0.0 (7)` activo y disponible para verificadores.
+- Instalación/actualización desde Google Play comprobada con instalador
+  `com.android.vending`.
+- Rollout completo de Producción enviado con v7 para 176 países/regiones y `Resto del
+  mundo`.
+- Los 11 cambios fueron enviados y Play confirma `Tus cambios están en proceso de
+  revisión`.
+- Publicación administrada desactivada; Play publicará automáticamente si aprueba.
 
 ### Pendiente
 
-- instalar desde el enlace de participación y repetir el smoke test de la entrega de Play;
-- completar las 5 tareas de Producción, incluida la selección de países/regiones.
+- esperar la decisión de Google Play;
+- atender cualquier observación o rechazo si Play solicita cambios;
+- confirmar la publicación automática después de una aprobación.
 
 Textos vigentes de la ficha:
 
@@ -295,8 +300,8 @@ Textos vigentes de la ficha:
 ## 7. Correcciones incluidas en el artefacto final
 
 v5 incorporó las correcciones de coherencia entre el nombre de la operación vertical y
-su pantalla, además del flujo de creación de leads en CRM. v6 lo sustituye porque el
-commit `41d58962` completa el endurecimiento móvil integral:
+su pantalla, además del flujo de creación de leads en CRM. v6 completó el
+endurecimiento móvil integral:
 
 - parseo seguro de respuestas vacías o no JSON;
 - autenticación y 2FA sin exponer `Unexpected end of input`;
@@ -305,16 +310,17 @@ commit `41d58962` completa el endurecimiento móvil integral:
 - toasts visibles y accesibles dentro de modales nativos;
 - manejo uniforme de fallos en Inbox, CRM, agenda y operaciones verticales.
 
-La validación local fue TypeScript limpio y 22 suites / 302 pruebas Jest aprobadas. Los
-workflows de Release y Vertical Quality Evidence del commit `41d58962` finalizaron con
-éxito.
+La v7, construida desde `8bea2bec`, agrega el arreglo del conflicto de sesión que podía
+impedir el login cuando ya existía una sesión activa. El comportamiento quedó verificado
+en la instalación entregada por Google Play, junto con desconexión, reconexión y
+relanzamiento.
 
 ## 8. Orden para continuar
 
-1. Abrir el enlace de participación con la cuenta verificadora, instalar v6 desde Play y
-   repetir el smoke interno.
-2. Completar las 5 tareas de Producción, incluidos países/regiones, y solo entonces
-   preparar el envío a revisión.
+1. Esperar la decisión de Google Play sobre los 11 cambios enviados.
+2. Si Play solicita correcciones, resolverlas antes de reenviar.
+3. Si Play aprueba, confirmar la publicación automática de v7 y ejecutar el smoke de
+   Producción.
 
 ## 9. Acceso a Producción
 
@@ -322,15 +328,17 @@ El panel de esta app muestra Producción habilitada y no presenta un requisito v
 de 12 testers durante 14 días. Esta es una observación de la consola para esta app, no
 una afirmación de que ese requisito nunca pueda aplicar en otras cuentas o momentos.
 
-La preparación de Producción está en `0/5`. Países/regiones continúa pendiente y no hay
-un release de Producción enviado a revisión.
+El rollout completo de Producción con v7 fue enviado para 176 países/regiones más
+`Resto del mundo`. Play muestra 11 cambios y confirma **Tus cambios están en proceso de
+revisión**. La app todavía no está publicada en Producción. La publicación administrada
+está desactivada: si Google aprueba, Play publicará automáticamente.
 
 ## 10. Notas de despliegue
 
 - Las páginas legales están desplegadas y responden HTTP 200.
-- `41d58962` está en `origin/main`; es un cambio exclusivamente móvil y no requiere un
-  despliegue adicional de API para construir o subir el AAB.
+- El AAB v7 fue construido desde el commit móvil `8bea2bec` y EAS lo reportó como
+  `FINISHED`.
 - El v2 de Play es un borrador recuperable; no llegó a usuarios ni testers.
 - Mantener separados los estados **prueba interna activa**, **enviado a revisión** y
-  **publicado en Producción**. Actualmente v6 está activa solo para verificadores y no
-  se ha enviado a revisión de Producción.
+  **publicado en Producción**. Actualmente v7 está activa para verificadores y los 11
+  cambios del rollout completo están en revisión, pero la app aún no está publicada.

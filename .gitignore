@@ -45,6 +45,10 @@ npm-debug.log*
 
 # Testing
 coverage/
+apps/e2e/playwright-report/
+apps/e2e/test-results/
+apps/e2e/blob-report/
+apps/e2e/playwright/.auth/
 
 # Prisma
 prisma/generated/

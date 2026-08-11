@@ -30,7 +30,7 @@
 |---|---|---|
 | 1 | AAB final de Android | ✅ v6 construido, validado, firmado, instalado y cargado (§1) |
 | 2 | Prueba física del artefacto | ✅ Desconexión/reconexión técnica y visible aprobada (§1) |
-| 3 | Cuenta de revisión | ◐ Existe y tiene tenant; faltan confirmar 2FA y plan no expirante (§2) |
+| 3 | Cuenta de revisión | ✅ Activa, 2FA desactivado y Pro compensado hasta 7-ago-2036 (§2) |
 | 4 | Capturas de teléfono | ✅ 4 archivos compatibles, autorizados y cargados (§3) |
 | 5 | App access | ✅ Detalle agregado y página guardada |
 | 6 | Target audience | ✅ Guardado únicamente como `18 años o más` |
@@ -40,10 +40,9 @@
 | 10 | Declaración IA/opinión | ✅ 2 recursos promocionales etiquetados; 4 capturas reales sin etiqueta |
 | 11 | Producción | ◐ Habilitada; preparación `0/5` y países/regiones pendientes |
 
-El camino crítico restante es: instalar v6 desde Play y repetir el smoke interno,
-confirmar 2FA y el plan permanente de la cuenta demo, y completar las 5 tareas de
-Producción, incluida la selección de países/regiones. La prueba interna activa no
-equivale a una publicación en Producción.
+El camino crítico restante es instalar v6 desde Play y repetir el smoke interno, y
+completar las 5 tareas de Producción, incluida la selección de países/regiones. La
+prueba interna activa no equivale a una publicación en Producción.
 
 ## Completado y verificado
 
@@ -137,7 +136,7 @@ Resultado de desconexión/reconexión visible: **PASS**.
 
 La prueba interna publicada muestra únicamente versionCode `6`.
 
-## 2. App access guardado; cuenta demo por verificar
+## 2. App access y cuenta demo verificados
 
 La aplicación exige login. Google necesita credenciales reutilizables, sin código
 temporal, pago ni configuración adicional.
@@ -156,8 +155,8 @@ temporal, pago ni configuración adicional.
 | Cuenta con tenant funcional | ✅ |
 | Contenido autorizado como ficticio | ✅ |
 | Sin configuración o pago adicional | ✅ |
-| 2FA desactivado | ⏳ Pendiente de confirmar |
-| Plan/tenant que no expire | ⏳ Pendiente de confirmar |
+| 2FA desactivado | ✅ Verificado en Seguridad mediante impersonación auditada |
+| Plan/tenant que no expire | ✅ Pro compensado, `active`, hasta 7-ago-2036 |
 | Detalle de acceso agregado y página guardada | ✅ |
 
 Play Console tiene guardado el detalle con estos datos no secretos:
@@ -175,12 +174,11 @@ an agent console for an existing business account; sign-up and billing happen on
 web dashboard, not inside the app.
 ```
 
-El detalle ya fue agregado y la página quedó guardada. La frase sobre 2FA debe
-comprobarse ahora contra el estado real de la cuenta antes de publicar.
-
-La cuenta de revisión debe quedar en un plan interno o compensado que no expire. Google
-puede volver a comprobarla en futuras actualizaciones; un trial temporal no es una
-credencial estable de revisión.
+El detalle ya fue agregado y la página quedó guardada. El 10-ago-2026 se verificó que la
+pantalla de Seguridad ofrece `Activar autenticación de dos factores`, confirmando que
+2FA está desactivado. Billing Ops muestra `Test Business` como Pro, `active`, con fin de
+periodo el 7-ago-2036; el cambio quedó auditado como `plan_comp_granted` con motivo
+`Cuenta demo Google Play — revisión y QA`.
 
 ## 3. Capturas de pantalla
 
@@ -267,7 +265,6 @@ Privacidad y eliminación de cuenta/datos están disponibles en **Más → Cuent
 
 ### Pendiente
 
-- confirmar 2FA desactivado y plan no expirante para la cuenta demo;
 - instalar desde el enlace de participación y repetir el smoke test de la entrega de Play;
 - completar las 5 tareas de Producción, incluida la selección de países/regiones.
 
@@ -316,8 +313,7 @@ workflows de Release y Vertical Quality Evidence del commit `41d58962` finalizar
 
 1. Abrir el enlace de participación con la cuenta verificadora, instalar v6 desde Play y
    repetir el smoke interno.
-2. Confirmar 2FA desactivado y convertir el tenant demo a un plan que no expire.
-3. Completar las 5 tareas de Producción, incluidos países/regiones, y solo entonces
+2. Completar las 5 tareas de Producción, incluidos países/regiones, y solo entonces
    preparar el envío a revisión.
 
 ## 9. Acceso a Producción

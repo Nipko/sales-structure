@@ -5,7 +5,8 @@
 > Data safety y la ficha con cuatro capturas quedaron guardados; App content figura al
 > día, la declaración de IA/opinión está completada y la ficha figura **Lista para
 > enviar a revisión**. La lista de verificadores está guardada y seleccionada. Faltan
-> validar la instalación desde Play, confirmar la cuenta demo y preparar Producción.
+> validar la instalación desde Play y preparar Producción. La cuenta demo ya tiene 2FA
+> desactivado y una compensación Pro activa hasta el 7-ago-2036.
 
 ## Archivos preparados
 
@@ -56,8 +57,8 @@ web dashboard, not inside the app.
 ```
 
 El guardado de Play está completo. La afirmación incluida en las instrucciones sobre
-2FA todavía debe verificarse contra el estado real de la cuenta antes del envío a
-revisión de Producción.
+2FA fue verificada mediante la pantalla de seguridad de la cuenta demo: 2FA está
+desactivado y la acción disponible es `Activar autenticación de dos factores`.
 
 ## 2. Target audience — guardado
 
@@ -153,10 +154,12 @@ La preparación de Producción está en `0/5` tareas. La selección de países/r
 pendiente. No iniciar un envío a revisión de Producción hasta completar esas tareas y
 validar primero la prueba interna.
 
-## Validaciones pendientes antes de Producción
+## Cuenta demo verificada para Producción
 
-- confirmar 2FA desactivado en `architerin@gmail.com`;
-- dejar `Test Business` en un plan interno o compensado que no expire.
+- `architerin@gmail.com`: activa y con 2FA desactivado;
+- `Test Business`: plan Pro compensado, estado `active`, vigente hasta el 7-ago-2036;
+- motivo auditado: `Cuenta demo Google Play — revisión y QA`;
+- la impersonación utilizada para comprobar seguridad fue cerrada inmediatamente.
 
 La prueba física visible ya pasó: Inbox mostró `SIN CONEXIÓN`, CRM mostró error y
 `Reintentar`, y al restaurar Wi-Fi/datos la acción recargó los leads sin cerrar sesión,
@@ -171,7 +174,7 @@ La preparación queda completa solo cuando todos estos puntos estén confirmados
 
 - [x] comportamiento visible de desconexión/reconexión aprobado;
 - [x] App access agregado y guardado;
-- [ ] 2FA desactivado y plan permanente confirmados;
+- [x] 2FA desactivado y plan permanente confirmados;
 - [x] Target audience guardado como 18+;
 - [x] Data safety guardado y App content al día;
 - [x] AAB v6 cargado y reconocido como versionCode 6, único artefacto del release;

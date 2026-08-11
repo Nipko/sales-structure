@@ -189,10 +189,12 @@ Resultado: **PASS** para la desconexión/reconexión visible en el SM-S918B.
 - el panel tiene Producción habilitada y no muestra un requisito de 12 testers durante
   14 días. Esto es una observación de la consola, no una exención general de la política.
 
+La cuenta de revisión `architerin@gmail.com` quedó verificada con 2FA desactivado. El
+tenant `Test Business` tiene una compensación Pro activa hasta el 7-ago-2036, registrada
+como `plan_comp_granted` con motivo de revisión y QA de Google Play.
+
 Pendientes antes de preparar Producción:
 
-- verificar que 2FA esté desactivado en la cuenta demo;
-- verificar que el tenant demo tenga un plan interno o compensado que no expire;
 - instalar la versión desde el enlace de participación y repetir el smoke test entregado
   por Google Play;
 - completar las 5 tareas de Producción, actualmente `0/5`, incluida la selección de

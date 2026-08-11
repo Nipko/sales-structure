@@ -10,7 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Animated, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../lib/api';
+import { api, requireApiSuccess } from '../lib/api';
 import { API_URL } from '../lib/config';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../theme';
@@ -45,13 +45,17 @@ export function BrandHeader({ hidden = false, actionIcon, actionLabel, onAction 
 
     useEffect(() => {
         if (!tenantId || (cachedLogo && cachedLogo.tenantId === tenantId)) return;
-        api.getBusinessInfo(tenantId).then((r: any) => {
+        api.getBusinessInfo(tenantId).then((response: any) => {
+            const r: any = requireApiSuccess(response);
             const companies = Array.isArray(r?.data) ? r.data : (r?.data ? [r.data] : []);
             const primary = companies.find((c: any) => c.is_primary) || companies[0];
             const url = mediaUrl(primary?.logo_url);
             cachedLogo = { tenantId, url };
             setLogo(url);
-        }).catch(() => { cachedLogo = { tenantId, url: null }; });
+        }).catch(() => {
+            // A transport failure is not evidence that the tenant has no logo;
+            // leave the cache empty so a later mount can retry.
+        });
     }, [tenantId]);
 
     const tenantName = (user as any)?.tenantName || '';

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
-    Modal,
     Platform,
     ScrollView,
     StyleSheet,
@@ -22,6 +21,7 @@ import {
 } from '../lib/operationContactIntegrity';
 import { useI18n } from '../i18n';
 import { useToast } from '../components/Toast';
+import { Modal } from '../components/AppModal';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 

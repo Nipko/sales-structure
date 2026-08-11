@@ -4,7 +4,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, requireApiSuccess } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
@@ -38,19 +38,22 @@ export function LeadDetailScreen() {
     const leadQKey = ['lead', tenantId, leadId];
 
     // React Query: lead detail + notes + tasks in parallel (3min stale).
-    const { data: leadResult, isLoading: loading } = useQuery({
+    const { data: leadResult, isLoading: loading, isError, refetch } = useQuery({
         queryKey: leadQKey,
         queryFn: async () => {
             if (!tenantId) return { lead: null, notes: [], tasks: [] };
-            const [res, rNotes, rTasks]: any[] = await Promise.all([
+            const [rawLead, rawNotes, rawTasks]: any[] = await Promise.all([
                 api.getLead(tenantId, leadId),
                 api.getLeadNotes(tenantId, leadId),
                 api.getTasks(tenantId, `leadId=${leadId}`),
             ]);
+            const res: any = requireApiSuccess(rawLead);
+            const rNotes: any = requireApiSuccess(rawNotes);
+            const rTasks: any = requireApiSuccess(rawTasks);
             return {
-                lead: res?.success ? res.data : null,
-                notes: rNotes?.success ? (Array.isArray(rNotes.data) ? rNotes.data : (rNotes.data?.notes || [])) : [],
-                tasks: rTasks?.success ? (Array.isArray(rTasks.data) ? rTasks.data : (rTasks.data?.tasks || [])) : [],
+                lead: res.data,
+                notes: Array.isArray(rNotes.data) ? rNotes.data : (rNotes.data?.notes || []),
+                tasks: Array.isArray(rTasks.data) ? rTasks.data : (rTasks.data?.tasks || []),
             };
         },
         staleTime: 3 * 60 * 1000,
@@ -157,6 +160,21 @@ export function LeadDetailScreen() {
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
+    if (isError && !leadResult) return (
+        <View style={styles.center}>
+            <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />
+            <Text style={[styles.muted, { marginTop: 10 }]} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t('common.loadError')}</Text>
+            <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={() => void refetch()}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry')}
+            >
+                <Ionicons name="refresh" size={16} color="#fff" />
+                <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </TouchableOpacity>
+        </View>
+    );
     if (!data?.lead) return <View style={styles.center}><Text style={styles.muted}>{t('crm.notFound')}</Text></View>;
 
     const l = data.lead;
@@ -194,6 +212,18 @@ export function LeadDetailScreen() {
 
     return (
         <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 + kbSpace }} keyboardShouldPersistTaps="handled">
+            {isError && (
+                <TouchableOpacity
+                    style={styles.errorBanner}
+                    onPress={() => void refetch()}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('common.loadError')} ${t('common.retry')}`}
+                >
+                    <Ionicons name="cloud-offline-outline" size={15} color={theme.warning} />
+                    <Text style={styles.errorBannerText}>{t('common.loadError')}</Text>
+                    <Text style={styles.errorBannerAction}>{t('common.retry')}</Text>
+                </TouchableOpacity>
+            )}
             <View style={styles.header}>
                 <View style={styles.avatar}><Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text></View>
                 <Text style={styles.name}>{name}</Text>
@@ -343,6 +373,11 @@ function Row({ label, value }: { label: string; value?: string }) {
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg },
     muted: { color: theme.textSecondary },
+    retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginTop: 14 },
+    retryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12, borderRadius: 10, backgroundColor: theme.warning + '18', paddingHorizontal: 12, paddingVertical: 9 },
+    errorBannerText: { color: theme.warning, fontSize: 12, flex: 1 },
+    errorBannerAction: { color: theme.warning, fontSize: 12, fontWeight: '700' },
     header: { alignItems: 'center', marginBottom: 20 },
     avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: theme.accent + '33', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
     avatarText: { color: theme.accent, fontWeight: '700', fontSize: 26 },

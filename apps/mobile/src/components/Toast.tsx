@@ -16,6 +16,12 @@ interface ToastApi {
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
+const ToastStateContext = createContext<{
+    toast: ToastState | null;
+    hide: () => void;
+    opacity: Animated.Value;
+    translateY: Animated.Value;
+} | null>(null);
 
 const META: Record<ToastType, { color: string; icon: keyof typeof Ionicons.glyphMap }> = {
     success: { color: theme.success, icon: 'checkmark-circle' },
@@ -73,25 +79,55 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <ToastContext.Provider value={api}>
-            {children}
-            {toast && (
-                <Animated.View pointerEvents="box-none" accessibilityLiveRegion="polite" accessible
-                    style={[styles.wrap, { opacity, transform: [{ translateY }] }]}>
-                    <View style={[styles.toast, { borderLeftColor: META[toast.type].color }]}>
-                        <Ionicons name={META[toast.type].icon} size={20} color={META[toast.type].color} />
-                        <Text style={styles.text} numberOfLines={3}>{toast.message}</Text>
-                        {toast.action && (
-                            <Pressable
-                                onPress={() => { const a = toast.action; hide(); a?.onPress(); }}
-                                hitSlop={8} accessibilityRole="button" accessibilityLabel={toast.action.label}
-                                style={({ pressed }) => [styles.action, pressed && { opacity: 0.6 }]}>
-                                <Text style={styles.actionText}>{toast.action.label}</Text>
-                            </Pressable>
-                        )}
-                    </View>
-                </Animated.View>
-            )}
+            <ToastStateContext.Provider value={{ toast, hide, opacity, translateY }}>
+                {children}
+                <ToastViewport />
+            </ToastStateContext.Provider>
         </ToastContext.Provider>
+    );
+}
+
+/**
+ * Render target for the current app-wide toast. AppModal mounts another target
+ * inside its native window: React Native Modal lives above the application root,
+ * so a root-only toast is otherwise invisible exactly when a modal action fails.
+ */
+export function ToastViewport() {
+    const state = useContext(ToastStateContext);
+    const toast = state?.toast;
+    if (!state || !toast) return null;
+
+    return (
+        <Animated.View
+            pointerEvents="box-none"
+            testID="toast-viewport"
+            style={[styles.wrap, { opacity: state.opacity, transform: [{ translateY: state.translateY }] }]}
+        >
+            <View pointerEvents="box-none" style={[styles.toast, { borderLeftColor: META[toast.type].color }]}>
+                <Ionicons accessible={false} name={META[toast.type].icon} size={20} color={META[toast.type].color} />
+                <Text
+                    accessible
+                    accessibilityRole="alert"
+                    accessibilityLiveRegion="assertive"
+                    accessibilityLabel={toast.message}
+                    style={styles.text}
+                    numberOfLines={3}
+                >
+                    {toast.message}
+                </Text>
+                {toast.action && (
+                    <Pressable
+                        onPress={() => { const action = toast.action; state.hide(); action?.onPress(); }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={toast.action.label}
+                        style={({ pressed }) => [styles.action, pressed && { opacity: 0.6 }]}
+                    >
+                        <Text style={styles.actionText}>{toast.action.label}</Text>
+                    </Pressable>
+                )}
+            </View>
+        </Animated.View>
     );
 }
 
@@ -103,7 +139,7 @@ export function useToast(): ToastApi {
 }
 
 const styles = StyleSheet.create({
-    wrap: { position: 'absolute', left: 16, right: 16, bottom: 90, alignItems: 'center' },
+    wrap: { position: 'absolute', left: 16, right: 16, bottom: 90, alignItems: 'center', zIndex: 9999, elevation: 999 },
     toast: {
         flexDirection: 'row', alignItems: 'center', gap: 10,
         backgroundColor: theme.bgElevated, borderLeftWidth: 3,

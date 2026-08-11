@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, requireApiSuccess } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from '../i18n';
@@ -32,7 +32,7 @@ export function MoreScreen() {
     const [localTasks, setLocalTasks] = useState<any[]>([]);
 
     // React Query: datos del agente (cache 2 min, refetch automático al volver).
-    const { data: moreData, isLoading: loading } = useQuery({
+    const { data: moreData, isLoading: loading, isError, refetch } = useQuery({
         queryKey: ['more-stats', tenantId, user?.id],
         queryFn: async () => {
             if (!tenantId) return null;
@@ -44,17 +44,21 @@ export function MoreScreen() {
                 api.getAgentsStatus(tenantId),
                 api.getTasks(tenantId, user?.id ? `assignedTo=${user.id}&status=pending` : 'status=pending'),
             ]);
-            if (s?.success && Array.isArray(s.data) && user?.id) {
-                const me = s.data.find((a: any) => (a.userId || a.user_id || a.id || a.agentId) === user.id);
+            // Availability and tasks are the operational core of this screen:
+            // if either fails, React Query must expose an error instead of
+            // showing a fake "online" state or "no tasks".
+            const statusResult: any = requireApiSuccess(s);
+            const tasksResult: any = requireApiSuccess(tk);
+            if (Array.isArray(statusResult.data) && user?.id) {
+                const me = statusResult.data.find((a: any) => (a.userId || a.user_id || a.id || a.agentId) === user.id);
                 if (me?.status) setAvailability(me.status);
             }
             return {
                 stats: r?.success ? (r.data?.summary || r.data) : null,
                 kpis: k?.success ? k.data : null,
-                tasks: tk?.success
-                    ? (Array.isArray(tk.data) ? tk.data : (tk.data?.tasks || []))
-                        .filter((x: any) => !['completed', 'done', 'closed'].includes(String(x.status || '').toLowerCase()))
-                    : [],
+                analyticsError: !r?.success || !k?.success,
+                tasks: (Array.isArray(tasksResult.data) ? tasksResult.data : (tasksResult.data?.tasks || []))
+                    .filter((x: any) => !['completed', 'done', 'closed'].includes(String(x.status || '').toLowerCase())),
             };
         },
         staleTime: 2 * 60 * 1000,
@@ -90,7 +94,7 @@ export function MoreScreen() {
         const prev = availability;
         setAvailability(s); // optimista
         try {
-            await api.setAvailability(user.id, s);
+            requireApiSuccess(await api.setAvailability(user.id, s));
         } catch {
             setAvailability(prev); // rollback si falla
             toast.error(t('more.availabilityError'));
@@ -113,53 +117,95 @@ export function MoreScreen() {
     const resolution = stats?.aiResolutionRate ?? stats?.resolutionRate ?? stats?.rate;
     const verified = stats?.verifiedResolutionRate ?? stats?.verifiedRate;
     const totalConvs = kpis?.totalConversations ?? kpis?.conversations ?? stats?.total;
+    const coreLoadError = isError && !moreData;
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
             <ScrollView contentContainerStyle={{ padding: 16 }}>
                 <Text style={styles.h1}>{t('more.title')}</Text>
 
-                {/* Availability */}
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>{t('more.availability')}</Text>
-                    <View style={styles.statusRow}>
-                        {STATUSES.map((s) => (
-                            <TouchableOpacity key={s.key} onPress={() => setStatus(s.key)}
-                                accessibilityRole="button" accessibilityState={{ selected: availability === s.key }}
-                                accessibilityLabel={t(`more.status.${s.key}`)}
-                                style={[styles.statusBtn, availability === s.key && { borderColor: s.color, backgroundColor: s.color + '1a' }]}>
-                                <View style={[styles.statusDot, { backgroundColor: s.color }]} />
-                                <Text style={[styles.statusText, availability === s.key && { color: theme.text }]}>{t(`more.status.${s.key}`)}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-
-                {/* My tasks */}
-                <View style={[styles.card, { marginTop: 20 }]}>
-                    <Text style={styles.cardTitle}>{t('more.tasks')}{localTasks.length > 0 ? ` (${localTasks.length})` : ''}</Text>
-                    {localTasks.length === 0 ? (
-                        <Text style={styles.muted}>{t('more.noTasks')}</Text>
-                    ) : localTasks.slice(0, 8).map((tk: any, i: number) => (
-                        <TouchableOpacity key={tk.id || i} style={styles.taskRow} onPress={() => completeTask(tk)}
-                            accessibilityRole="checkbox" accessibilityState={{ checked: false }} accessibilityLabel={tk.title}>
-                            <Ionicons name="ellipse-outline" size={20} color={theme.textSecondary} />
-                            <Text style={styles.taskText} numberOfLines={1}>{tk.title}</Text>
+                {loading && !moreData ? (
+                    <ActivityIndicator color={theme.accent} style={{ marginVertical: 28 }} />
+                ) : coreLoadError ? (
+                    <View style={styles.loadErrorCard}>
+                        <Ionicons name="cloud-offline-outline" size={28} color={theme.warning} />
+                        <Text style={styles.loadErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t('common.loadError')}</Text>
+                        <TouchableOpacity
+                            style={styles.retryBtn}
+                            onPress={() => void refetch()}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.retry')}
+                        >
+                            <Ionicons name="refresh" size={16} color="#fff" />
+                            <Text style={styles.retryText}>{t('common.retry')}</Text>
                         </TouchableOpacity>
-                    ))}
-                </View>
-
-                {/* Analytics */}
-                <Text style={styles.section}>{t('more.performance')}</Text>
-                {loading ? (
-                    <ActivityIndicator color={theme.accent} style={{ marginTop: 20 }} />
-                ) : (
-                    <View style={styles.kpiGrid}>
-                        <Kpi icon="sparkles-outline" color={theme.accent} label={t('more.kpi.aiResolution')} value={pct(resolution)} />
-                        <Kpi icon="shield-checkmark-outline" color={theme.success} label={t('more.kpi.verified')} value={pct(verified)} />
-                        <Kpi icon="chatbubbles-outline" color="#3498db" label={t('more.kpi.conversations')} value={totalConvs != null ? String(totalConvs) : '—'} />
-                        <Kpi icon="time-outline" color={theme.warning} label={t('more.kpi.avgMsgs')} value={stats?.avgMessagesToResolution != null ? String(stats.avgMessagesToResolution) : '—'} />
                     </View>
+                ) : (
+                    <>
+                        {isError && (
+                            <TouchableOpacity
+                                style={styles.errorBanner}
+                                onPress={() => void refetch()}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${t('common.loadError')} ${t('common.retry')}`}
+                            >
+                                <Ionicons name="cloud-offline-outline" size={15} color={theme.warning} />
+                                <Text style={styles.errorBannerText}>{t('common.loadError')}</Text>
+                                <Text style={styles.errorBannerAction}>{t('common.retry')}</Text>
+                            </TouchableOpacity>
+                        )}
+                        {/* Availability */}
+                        <View style={styles.card}>
+                            <Text style={styles.cardTitle}>{t('more.availability')}</Text>
+                            <View style={styles.statusRow}>
+                                {STATUSES.map((s) => (
+                                    <TouchableOpacity key={s.key} onPress={() => setStatus(s.key)}
+                                        accessibilityRole="button" accessibilityState={{ selected: availability === s.key }}
+                                        accessibilityLabel={t(`more.status.${s.key}`)}
+                                        style={[styles.statusBtn, availability === s.key && { borderColor: s.color, backgroundColor: s.color + '1a' }]}>
+                                        <View style={[styles.statusDot, { backgroundColor: s.color }]} />
+                                        <Text style={[styles.statusText, availability === s.key && { color: theme.text }]}>{t(`more.status.${s.key}`)}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+
+                        {/* My tasks */}
+                        <View style={[styles.card, { marginTop: 20 }]}>
+                            <Text style={styles.cardTitle}>{t('more.tasks')}{localTasks.length > 0 ? ` (${localTasks.length})` : ''}</Text>
+                            {localTasks.length === 0 ? (
+                                <Text style={styles.muted}>{t('more.noTasks')}</Text>
+                            ) : localTasks.slice(0, 8).map((tk: any, i: number) => (
+                                <TouchableOpacity key={tk.id || i} style={styles.taskRow} onPress={() => completeTask(tk)}
+                                    accessibilityRole="checkbox" accessibilityState={{ checked: false }} accessibilityLabel={tk.title}>
+                                    <Ionicons name="ellipse-outline" size={20} color={theme.textSecondary} />
+                                    <Text style={styles.taskText} numberOfLines={1}>{tk.title}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </>
+                )}
+
+                {!loading && !coreLoadError && (
+                    <>
+                        {/* Analytics */}
+                        <Text style={styles.section}>{t('more.performance')}</Text>
+                        {moreData?.analyticsError ? (
+                            <View style={styles.analyticsErrorCard}>
+                                <Text style={styles.loadErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t('common.loadError')}</Text>
+                                <TouchableOpacity onPress={() => void refetch()} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
+                                    <Text style={styles.inlineRetryText}>{t('common.retry')}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <View style={styles.kpiGrid}>
+                                <Kpi icon="sparkles-outline" color={theme.accent} label={t('more.kpi.aiResolution')} value={pct(resolution)} />
+                                <Kpi icon="shield-checkmark-outline" color={theme.success} label={t('more.kpi.verified')} value={pct(verified)} />
+                                <Kpi icon="chatbubbles-outline" color="#3498db" label={t('more.kpi.conversations')} value={totalConvs != null ? String(totalConvs) : '—'} />
+                                <Kpi icon="time-outline" color={theme.warning} label={t('more.kpi.avgMsgs')} value={stats?.avgMessagesToResolution != null ? String(stats.avgMessagesToResolution) : '—'} />
+                            </View>
+                        )}
+                    </>
                 )}
 
                 {/* Language selector */}
@@ -247,6 +293,15 @@ const styles = StyleSheet.create({
     h1: { color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 16 },
     section: { color: theme.textSecondary, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 20, marginBottom: 10 },
     card: { backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, borderRadius: 12, padding: 14 },
+    loadErrorCard: { alignItems: 'center', gap: 10, backgroundColor: theme.bgCard, borderColor: theme.warning + '66', borderWidth: 1, borderRadius: 12, padding: 20 },
+    loadErrorText: { color: theme.textSecondary, fontSize: 13, textAlign: 'center' },
+    retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
+    retryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12, borderRadius: 10, backgroundColor: theme.warning + '18', paddingHorizontal: 12, paddingVertical: 9 },
+    errorBannerText: { color: theme.warning, fontSize: 12, flex: 1 },
+    errorBannerAction: { color: theme.warning, fontSize: 12, fontWeight: '700' },
+    analyticsErrorCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, backgroundColor: theme.bgCard, borderColor: theme.warning + '66', borderWidth: 1, borderRadius: 12, padding: 14 },
+    inlineRetryText: { color: theme.accent, fontSize: 13, fontWeight: '700' },
     cardTitle: { color: theme.text, fontWeight: '700', fontSize: 14, marginBottom: 12 },
     muted: { color: theme.textSecondary, fontSize: 13 },
     taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },

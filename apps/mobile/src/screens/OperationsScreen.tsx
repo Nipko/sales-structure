@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    Modal,
     RefreshControl,
     SectionList,
     StyleSheet,
@@ -18,6 +17,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../i18n';
 import { useToast } from '../components/Toast';
+import { Modal } from '../components/AppModal';
 import { haptic } from '../lib/haptics';
 import {
     resolveVerticalWorkspace,
@@ -227,11 +227,13 @@ async function loadOperationSections(
             api.getRestaurantOrders(tenantId),
             wantsReservations ? api.getAppointments(tenantId, appointmentParams) : Promise.resolve({ success: true, data: [] }),
         ]);
-        if (!ordersRes?.success && !appointmentsRes?.success) throw new Error(ordersRes?.error || appointmentsRes?.error || 'load_failed');
-        const orders = ordersRes?.success ? list(ordersRes.data) : [];
-        const appointmentsRaw = appointmentsRes?.success
-            ? (Array.isArray(appointmentsRes.data) ? appointmentsRes.data : list(appointmentsRes.data?.appointments))
-            : [];
+        // A partial failure is not an empty order/reservation list. Hiding one
+        // side would make restaurant staff believe there is no work waiting.
+        const orders = list(responseData(ordersRes));
+        const appointmentsData = responseData(appointmentsRes);
+        const appointmentsRaw = Array.isArray(appointmentsData)
+            ? appointmentsData
+            : list(appointmentsData?.appointments);
         return [
             {
                 key: 'ops.section.activeOrders',

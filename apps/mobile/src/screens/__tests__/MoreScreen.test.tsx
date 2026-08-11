@@ -5,7 +5,9 @@ import { MoreScreen } from '../MoreScreen';
 
 const mockToastError = jest.fn();
 const mockLogout = jest.fn();
-const mockQueryResult = { data: { tasks: [] }, isLoading: false };
+const mockSetAvailability = jest.fn();
+const mockRefetch = jest.fn();
+let mockQueryResult: any;
 
 jest.mock('@react-navigation/native', () => ({
     useNavigation: () => ({ navigate: jest.fn() }),
@@ -27,7 +29,13 @@ jest.mock('../../components/Toast', () => ({
     useToast: () => ({ success: jest.fn(), error: mockToastError }),
 }));
 
-jest.mock('../../lib/api', () => ({ api: {} }));
+jest.mock('../../lib/api', () => ({
+    api: { setAvailability: mockSetAvailability },
+    requireApiSuccess: (result: any) => {
+        if (!result?.success) throw new Error(result?.error || 'request_failed');
+        return result;
+    },
+}));
 jest.mock('../../lib/haptics', () => ({ haptic: { tap: jest.fn() } }));
 
 jest.mock('../../i18n', () => {
@@ -50,6 +58,7 @@ jest.mock('../../i18n', () => {
 describe('MoreScreen legal links', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockQueryResult = { data: { tasks: [], analyticsError: false }, isLoading: false, isError: false, refetch: mockRefetch };
         jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as never);
     });
 
@@ -77,5 +86,30 @@ describe('MoreScreen legal links', () => {
         fireEvent.press(screen.getByRole('link', { name: 'Política de privacidad' }));
 
         await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('No se pudo abrir el enlace.'));
+    });
+
+    it('revierte la disponibilidad y no acepta un success:false como éxito', async () => {
+        mockSetAvailability.mockResolvedValueOnce({ success: false, error: 'server_rejected' });
+        render(<MoreScreen />);
+
+        fireEvent.press(screen.getByRole('button', { name: 'more.status.away' }));
+
+        await waitFor(() => {
+            expect(mockToastError).toHaveBeenCalledWith('more.availabilityError');
+            expect(screen.getByRole('button', { name: 'more.status.online' }).props.accessibilityState.selected).toBe(true);
+            expect(screen.getByRole('button', { name: 'more.status.away' }).props.accessibilityState.selected).toBe(false);
+        });
+    });
+
+    it('no presenta un fallo del loader como estado online o lista de tareas vacía', () => {
+        mockQueryResult = { data: undefined, isLoading: false, isError: true, refetch: mockRefetch };
+        render(<MoreScreen />);
+
+        expect(screen.getByText('common.loadError')).toBeTruthy();
+        expect(screen.queryByText('more.noTasks')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'more.status.online' })).toBeNull();
+
+        fireEvent.press(screen.getByRole('button', { name: 'common.retry' }));
+        expect(mockRefetch).toHaveBeenCalledTimes(1);
     });
 });

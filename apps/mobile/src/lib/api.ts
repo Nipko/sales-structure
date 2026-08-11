@@ -11,6 +11,47 @@ const USER_KEY = 'parallly_user';
 const DEVICE_TRUST_KEY = 'parallly_device_trust';
 export const AUTH_LOGOUT_TIMEOUT_MS = 2_000;
 
+export interface ApiResult<T = any> {
+    success: boolean;
+    data?: T;
+    error?: string;
+    [key: string]: any;
+}
+
+function responseError(body: any, status: number): string {
+    return Array.isArray(body?.message) ? body.message.join(', ')
+        : typeof body?.message === 'string' ? body.message
+        : typeof body?.error === 'string' ? body.error
+        : `http_${status}`;
+}
+
+/**
+ * Parse an HTTP response without ever leaking a JSON SyntaxError to the UI.
+ * Cloudflare/proxy failures and 204/empty bodies are valid transport outcomes,
+ * but they are not successful API envelopes.
+ */
+export async function parseApiResponse<T = any>(res: Response): Promise<ApiResult<T>> {
+    let body: any = null;
+    try { body = await res.json(); } catch { body = null; }
+
+    if (!res.ok) {
+        return { success: false, error: responseError(body, res.status) };
+    }
+    if (body === null || body === undefined) {
+        return { success: false, error: 'empty_response' };
+    }
+    return body as ApiResult<T>;
+}
+
+/** Convert a resolved error envelope into a rejection for try/catch mutations. */
+export function requireApiSuccess<T extends ApiResult<any>>(
+    result: T | null | undefined,
+    fallback = 'request_failed',
+): T {
+    if (!result?.success) throw new Error(result?.error || fallback);
+    return result;
+}
+
 // Shared contract (packages/shared) + the display name returned by /auth/login.
 export type AuthUser = SharedAuthUser & { name?: string };
 
@@ -145,22 +186,25 @@ async function authFetchForm(path: string, form: FormData): Promise<Response> {
     return res;
 }
 
-async function json<T = any>(path: string, options?: RequestInit): Promise<{ success: boolean; data?: T; error?: string }> {
+async function publicJson<T = any>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
+    try {
+        const res = await fetch(`${API_URL}${path}`, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(options?.headers as Record<string, string> || {}),
+            },
+        });
+        return await parseApiResponse<T>(res);
+    } catch (e: any) {
+        return { success: false, error: e?.message || 'network_error' };
+    }
+}
+
+async function json<T = any>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
     try {
         const res = await authFetch(path, options);
-        let body: any = null;
-        try { body = await res.json(); } catch { body = null; }
-        if (!res.ok) {
-            // Nest error envelope is {statusCode, message, error} — no `success` field.
-            // Normalize so every caller can rely on {success:false, error} instead of
-            // reading a 400 body as if it were a successful payload (false-success bug).
-            const msg = Array.isArray(body?.message) ? body.message.join(', ')
-                : typeof body?.message === 'string' ? body.message
-                : typeof body?.error === 'string' ? body.error
-                : `http_${res.status}`;
-            return { success: false, error: msg };
-        }
-        return body ?? { success: false, error: 'empty_response' };
+        return await parseApiResponse<T>(res);
     } catch (e: any) {
         return { success: false, error: e?.message || 'network_error' };
     }
@@ -174,21 +218,17 @@ export const api = {
     // (TTL 14d, coexiste con la del dashboard): entrar a la web ya no mata la
     // sesión de la app ni al revés.
     async login(email: string, password: string, deviceTrustToken?: string, force = false) {
-        const res = await fetch(`${API_URL}/auth/login`, {
+        return publicJson('/auth/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, rememberMe: true, deviceTrustToken, force, clientType: 'mobile' }),
         });
-        return res.json();
     },
 
     async googleLogin(idToken: string, deviceTrustToken?: string, force = false) {
-        const res = await fetch(`${API_URL}/auth/google`, {
+        return publicJson('/auth/google', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ idToken, rememberMe: true, deviceTrustToken, force, clientType: 'mobile' }),
         });
-        return res.json();
     },
 
     // Kill the server-side session so a later login doesn't hit "session already open".
@@ -213,21 +253,17 @@ export const api = {
     // 2FA challenge during login (public — uses the twoFAToken from login/google).
     // trustDevice=true → backend registers this device and returns a deviceTrustToken.
     async verify2FA(twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = true, trustDevice = false) {
-        const res = await fetch(`${API_URL}/auth/2fa/verify`, {
+        return publicJson('/auth/2fa/verify', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ twoFAToken, code, method, rememberMe, trustDevice, clientType: 'mobile' }),
         });
-        return res.json();
     },
 
     async send2FAEmail(twoFAToken: string) {
-        const res = await fetch(`${API_URL}/auth/2fa/send-email`, {
+        return publicJson('/auth/2fa/send-email', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ twoFAToken }),
         });
-        return res.json();
     },
 
     // Agent console (inbox)

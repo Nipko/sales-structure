@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { api } from '../lib/api';
+import { api, requireApiSuccess } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
@@ -127,6 +127,8 @@ export function OutboundScreen() {
     // Step 2: template
     const [templates, setTemplates] = useState<Template[]>([]);
     const [loadingTemplates, setLoadingTemplates] = useState(false);
+    const [templatesError, setTemplatesError] = useState(false);
+    const [templatesRetryKey, setTemplatesRetryKey] = useState(0);
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
 
     // Multi-number: the tenant's WhatsApp connections + which number sends.
@@ -139,7 +141,8 @@ export function OutboundScreen() {
 
     // ── WhatsApp accounts (multi-number) ────────────────────────────────────
     useEffect(() => {
-        api.getChannelsOverview().then((res: any) => {
+        api.getChannelsOverview().then((response: any) => {
+            const res: any = requireApiSuccess(response);
             const list = Array.isArray(res?.data) ? res.data : [];
             const wa: WaAccount[] = list
                 .filter((a: any) => a.channelType === 'whatsapp' && a.isActive)
@@ -160,7 +163,7 @@ export function OutboundScreen() {
         const t0 = setTimeout(async () => {
             setLoadingContacts(true);
             try {
-                const res: any = await api.searchContacts(tenantId, contactQuery);
+                const res: any = requireApiSuccess(await api.searchContacts(tenantId, contactQuery));
                 const leads = res?.data?.leads || res?.data || [];
                 setContacts(Array.isArray(leads) ? leads.slice(0, 8) : []);
             } catch { /* noop */ } finally {
@@ -183,9 +186,11 @@ export function OutboundScreen() {
     useEffect(() => {
         if (step !== 2) return;
         setLoadingTemplates(true);
-        api.getWhatsappTemplates().then((res: any) => {
+        setTemplatesError(false);
+        api.getWhatsappTemplates().then((response: any) => {
             // The endpoint returns a RAW array of DB rows (snake_case columns:
             // approval_status, components_json). Normalize + map to the Template shape.
+            const res: any = Array.isArray(response) ? response : requireApiSuccess(response);
             const raw: any[] = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
             const mapped: Template[] = raw.map((r) => ({
                 id: r.id || r.meta_template_id || r.name,
@@ -198,8 +203,12 @@ export function OutboundScreen() {
             }));
             // Only APPROVED templates can actually be sent (Meta rejects the rest).
             setTemplates(mapped.filter((t) => String(t.status).toLowerCase() === 'approved'));
-        }).catch(() => {}).finally(() => setLoadingTemplates(false));
-    }, [step]);
+        }).catch(() => {
+            // Keep any previously loaded templates, but distinguish an API
+            // failure from the legitimate "no approved templates" state.
+            setTemplatesError(true);
+        }).finally(() => setLoadingTemplates(false));
+    }, [step, templatesRetryKey]);
 
     // ── Navigation between steps ─────────────────────────────────────────────
     const goStep2 = () => {
@@ -222,7 +231,7 @@ export function OutboundScreen() {
     // ── Send ─────────────────────────────────────────────────────────────────
     const send = useCallback(async () => {
         if (!selectedTemplate || !phone.trim()) return;
-        haptic.success();
+        haptic.tap();
         setSending(true);
         try {
             // Build runtime `components` from the captured variable values.
@@ -334,11 +343,26 @@ export function OutboundScreen() {
                         </ScrollView>
                     </View>
                 )}
-                {loadingTemplates
+                {templatesError && (
+                    <View style={styles.templatesError}>
+                        <Ionicons name="cloud-offline-outline" size={24} color={theme.warning} />
+                        <Text style={styles.templatesErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t('common.loadError')}</Text>
+                        <TouchableOpacity
+                            style={styles.templatesRetry}
+                            onPress={() => setTemplatesRetryKey((value) => value + 1)}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('common.retry')}
+                        >
+                            <Ionicons name="refresh" size={15} color="#fff" />
+                            <Text style={styles.templatesRetryText}>{t('common.retry')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+                {loadingTemplates && templates.length === 0
                     ? <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
-                    : templates.length === 0
+                    : !templatesError && templates.length === 0
                         ? <Text style={styles.empty}>{t('outbound.noTemplates')}</Text>
-                        : (
+                        : templates.length > 0 ? (
                             <FlatList
                                 data={templates}
                                 keyExtractor={(t) => t.id || t.name}
@@ -367,7 +391,7 @@ export function OutboundScreen() {
                                     </TouchableOpacity>
                                 )}
                             />
-                        )
+                        ) : null
                 }
             </View>
         );
@@ -487,6 +511,10 @@ const styles = StyleSheet.create({
     },
     btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
     empty: { color: theme.textSecondary, textAlign: 'center', marginTop: 40, fontSize: 14 },
+    templatesError: { alignItems: 'center', gap: 9, margin: 16, padding: 18, borderRadius: 12, backgroundColor: theme.bgCard, borderColor: theme.warning + '66', borderWidth: 1 },
+    templatesErrorText: { color: theme.textSecondary, fontSize: 13, textAlign: 'center' },
+    templatesRetry: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.accent, borderRadius: 9, paddingHorizontal: 14, paddingVertical: 9 },
+    templatesRetryText: { color: '#fff', fontSize: 13, fontWeight: '700' },
     templateCard: {
         backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1,
         borderRadius: 12, padding: 14,

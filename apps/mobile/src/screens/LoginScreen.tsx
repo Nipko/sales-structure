@@ -72,8 +72,16 @@ export function LoginScreen() {
     const submit = async () => {
         if (!email.trim() || !password) return;
         setLoading(true); setError(null);
-        handleResult(await login(email.trim(), password), t('login.signInError'));
-        setLoading(false);
+        try {
+            handleResult(await login(email.trim(), password), t('login.signInError'));
+        } catch {
+            // Auth normally resolves a normalized failure envelope. This final
+            // boundary also covers native/network exceptions so the button can
+            // never remain spinning after a malformed or empty response.
+            setError(t('login.signInError'));
+        } finally {
+            setLoading(false);
+        }
     };
 
     const google = async () => {
@@ -90,10 +98,11 @@ export function LoginScreen() {
             handleResult(await loginWithGoogle(idToken), t('login.googleError'));
         } catch (e: any) {
             if (e?.code !== statusCodes.SIGN_IN_CANCELLED) {
-                setError(e?.message || t('login.googleGeneric'));
+                setError(t('login.googleGeneric'));
             }
+        } finally {
+            setGoogleLoading(false);
         }
-        setGoogleLoading(false);
     };
 
     // ── 2FA step ──────────────────────────────────────────────
@@ -102,23 +111,30 @@ export function LoginScreen() {
     const verify = async () => {
         if (!twoFA || !code.trim()) return;
         setVerifying(true); setError(null);
-        const res = await verifyTwoFactor(twoFA.token, code.trim(), effectiveMethod, trustDevice);
-        // Genérico (no propagar texto del backend).
-        if (!res.ok) setError(t('login.codeWrong'));
-        // On success the AuthProvider sets `user` and this screen unmounts.
-        setVerifying(false);
+        try {
+            const res = await verifyTwoFactor(twoFA.token, code.trim(), effectiveMethod, trustDevice);
+            // Genérico (no propagar texto del backend).
+            if (!res.ok) setError(t('login.codeWrong'));
+            // On success the AuthProvider sets `user` and this screen unmounts.
+        } catch {
+            setError(t('login.codeWrong'));
+        } finally {
+            setVerifying(false);
+        }
     };
 
     const sendEmailCode = async () => {
         if (!twoFA) return;
         setEmailSending(true); setError(null);
-        const ok = await sendTwoFactorEmail(twoFA.token);
-        setEmailSending(false);
-        if (ok) {
+        try {
+            const ok = await sendTwoFactorEmail(twoFA.token);
+            if (!ok) throw new Error('send_failed');
             setTwoFA({ ...twoFA, method: 'email' });
             setUseBackup(false); setCode(''); setEmailSent(true);
-        } else {
+        } catch {
             setError(t('login.emailSendError'));
+        } finally {
+            setEmailSending(false);
         }
     };
 

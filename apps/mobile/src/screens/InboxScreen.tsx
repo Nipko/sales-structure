@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, requireApiSuccess } from '../lib/api';
 import { getInboxSocket, getAgentSocket, onInboxStatus, getInboxStatus, type SocketStatus } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -181,11 +181,10 @@ export function InboxScreen() {
             if (!tenantId) return { items: [], hasMore: false };
             // agentId scopes the 'mine' filter server-side — without it that filter
             // has nothing to match and always comes back empty.
-            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: 0, agentId: user?.id });
+            const res: any = requireApiSuccess(await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: 0, agentId: user?.id }));
             // Lanzar en fallo: devolver [] hacía que CUALQUIER error (sesión
             // caída, sin red, 500) se viera como "No hay conversaciones" — el
             // agente creía tener la bandeja limpia con la API caída.
-            if (res?.success === false) throw new Error(res?.error || 'load_failed');
             const list: Conv[] = Array.isArray(res?.data) ? res.data : (res?.data?.conversations || []);
             return { items: list, hasMore: !!res?.hasMore };
         },
@@ -227,7 +226,7 @@ export function InboxScreen() {
         setLoadingMore(true);
         try {
             const nextPage = page + 1;
-            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE, agentId: user?.id });
+            const res: any = requireApiSuccess(await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE, agentId: user?.id }));
             const more: Conv[] = Array.isArray(res?.data) ? res.data : [];
             setAllItems((prev) => {
                 const ids = new Set(prev.map((c) => c.id));
@@ -272,7 +271,7 @@ export function InboxScreen() {
         if (!tenantId) return;
         if (action === 'assign') {
             if (!user?.id) return;
-            try { await api.assignConversation(tenantId, item.id, user.id); toast.success(t('inbox.qa.assigned')); queryClient.invalidateQueries({ queryKey }); }
+            try { requireApiSuccess(await api.assignConversation(tenantId, item.id, user.id)); toast.success(t('inbox.qa.assigned')); queryClient.invalidateQueries({ queryKey }); }
             catch { toast.error(t('conv.assignError')); }
             return;
         }
@@ -281,15 +280,21 @@ export function InboxScreen() {
         setAllItems((prev) => prev.filter((c) => c.id !== item.id)); // optimistic
         if (action === 'resolve') {
             try {
-                await api.resolveConversation(tenantId, item.id, user?.id);
+                requireApiSuccess(await api.resolveConversation(tenantId, item.id, user?.id));
                 toast.success(t('conv.resolved'), { label: t('common.undo'), onPress: () =>
-                    api.reopenConversation(tenantId, item.id).then(() => queryClient.invalidateQueries({ queryKey })).catch(() => toast.error(t('common.undoError'))) });
+                    api.reopenConversation(tenantId, item.id).then((result) => {
+                        requireApiSuccess(result);
+                        return queryClient.invalidateQueries({ queryKey });
+                    }).catch(() => toast.error(t('common.undoError'))) });
             } catch { animateListChange(); setAllItems(snapshot); toast.error(t('conv.resolveError')); }
         } else {
             try {
-                await api.snoozeConversation(tenantId, item.id, snoozeUntil('tomorrow').toISOString());
+                requireApiSuccess(await api.snoozeConversation(tenantId, item.id, snoozeUntil('tomorrow').toISOString()));
                 toast.success(t('conv.snoozed'), { label: t('common.undo'), onPress: () =>
-                    api.unsnoozeConversation(tenantId, item.id).then(() => queryClient.invalidateQueries({ queryKey })).catch(() => toast.error(t('common.undoError'))) });
+                    api.unsnoozeConversation(tenantId, item.id).then((result) => {
+                        requireApiSuccess(result);
+                        return queryClient.invalidateQueries({ queryKey });
+                    }).catch(() => toast.error(t('common.undoError'))) });
             } catch { animateListChange(); setAllItems(snapshot); toast.error(t('conv.snoozeError')); }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps

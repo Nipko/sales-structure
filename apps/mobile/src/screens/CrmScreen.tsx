@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, KeyboardAvoidingView, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { api } from '../lib/api';
+import { api, requireApiSuccess } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
+import { Modal } from '../components/AppModal';
 import { useI18n } from '../i18n';
 import { ListSkeleton } from '../components/Skeleton';
 import { haptic } from '../lib/haptics';
@@ -45,6 +46,7 @@ export function CrmScreen() {
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState(false);
     const [search, setSearch] = useState(route.params?.search || '');
 
     // Create-lead form
@@ -64,10 +66,13 @@ export function CrmScreen() {
     const load = useCallback(async () => {
         if (!tenantId) return;
         try {
-            const res: any = await api.getLeads(tenantId, search ? `search=${encodeURIComponent(search)}&limit=50` : 'limit=50');
-            if (res?.success) setLeads(Array.isArray(res.data) ? res.data : []);
+            const res: any = requireApiSuccess(await api.getLeads(tenantId, search ? `search=${encodeURIComponent(search)}&limit=50` : 'limit=50'));
+            setLeads(Array.isArray(res.data) ? res.data : []);
+            setLoadError(false);
         } catch {
-            toast.error(t('common.loadError'));
+            // Keep prior rows during a failed refresh/search, but never present
+            // an API failure as a legitimately empty CRM.
+            setLoadError(true);
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -140,6 +145,21 @@ export function CrmScreen() {
     };
 
     if (loading) return <View style={{ flex: 1, backgroundColor: theme.bg }}><ListSkeleton /></View>;
+    if (loadError && leads.length === 0) return (
+        <View style={styles.center}>
+            <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />
+            <Text style={[styles.empty, { marginTop: 10 }]} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t('common.loadError')}</Text>
+            <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={() => { setLoading(true); void load(); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry')}
+            >
+                <Ionicons name="refresh" size={16} color="#fff" />
+                <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </TouchableOpacity>
+        </View>
+    );
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -148,6 +168,18 @@ export function CrmScreen() {
                 <TextInput style={styles.search} placeholder={t('crm.searchLead')} placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
                 {!!search && <TouchableOpacity onPress={() => setSearch('')} accessibilityRole="button" accessibilityLabel={t('common.clearSearch')} hitSlop={8}><Ionicons name="close-circle" size={16} color={theme.textSecondary} /></TouchableOpacity>}
             </View>
+            {loadError && (
+                <TouchableOpacity
+                    style={styles.errorBanner}
+                    onPress={() => { setRefreshing(true); void load(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('common.loadError')} ${t('common.retry')}`}
+                >
+                    <Ionicons name="cloud-offline-outline" size={15} color={theme.warning} />
+                    <Text style={styles.errorBannerText}>{t('common.loadError')}</Text>
+                    <Text style={styles.errorBannerAction}>{t('common.retry')}</Text>
+                </TouchableOpacity>
+            )}
             <FlatList
                 data={leads}
                 keyExtractor={(l) => l.id}
@@ -224,6 +256,11 @@ export function CrmScreen() {
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60, backgroundColor: theme.bg },
     empty: { color: theme.textSecondary },
+    retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginTop: 14 },
+    retryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 7, marginHorizontal: 12, marginBottom: 8, borderRadius: 10, backgroundColor: theme.warning + '18', paddingHorizontal: 12, paddingVertical: 9 },
+    errorBannerText: { color: theme.warning, fontSize: 12, flex: 1 },
+    errorBannerAction: { color: theme.warning, fontSize: 12, fontWeight: '700' },
     searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 12, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },
     search: { flex: 1, color: theme.text, fontSize: 15 },
     row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },

@@ -10,7 +10,13 @@ jest.mock('expo-secure-store', () => ({
 }));
 jest.mock('../config', () => ({ API_URL: 'https://api.test/api/v1' }));
 
-import { api, AUTH_LOGOUT_TIMEOUT_MS, refreshAccessToken } from '../api';
+import {
+    api,
+    AUTH_LOGOUT_TIMEOUT_MS,
+    parseApiResponse,
+    refreshAccessToken,
+    requireApiSuccess,
+} from '../api';
 
 afterEach(() => jest.clearAllMocks());
 
@@ -51,5 +57,38 @@ describe('api.logout timeout', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+});
+
+describe('safe API response parsing', () => {
+    it.each([
+        ['login', () => api.login('agent@example.com', 'secret')],
+        ['google login', () => api.googleLogin('google-token')],
+        ['2FA verify', () => api.verify2FA('challenge-token', '123456', 'totp')],
+        ['2FA email', () => api.send2FAEmail('challenge-token')],
+    ])('normalizes an empty/truncated %s response without leaking SyntaxError', async (_name, request) => {
+        (global as any).fetch = jest.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => { throw new SyntaxError('Unexpected end of JSON input'); },
+        }));
+
+        await expect(request()).resolves.toEqual({ success: false, error: 'empty_response' });
+    });
+
+    it('normalizes Nest HTTP errors and never treats them as successful payloads', async () => {
+        const result = await parseApiResponse({
+            ok: false,
+            status: 502,
+            json: async () => ({ message: 'Bad gateway' }),
+        } as Response);
+
+        expect(result).toEqual({ success: false, error: 'Bad gateway' });
+        expect(() => requireApiSuccess(result)).toThrow('Bad gateway');
+    });
+
+    it('returns successful envelopes unchanged', () => {
+        const result = { success: true, data: { id: 'ok' } };
+        expect(requireApiSuccess(result)).toBe(result);
     });
 });

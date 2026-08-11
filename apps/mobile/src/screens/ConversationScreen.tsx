@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
-    KeyboardAvoidingView, Modal, Alert, Image, Linking,
+    KeyboardAvoidingView, Alert, Image, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { api } from '../lib/api';
+import { api, requireApiSuccess } from '../lib/api';
 import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
+import { Modal } from '../components/AppModal';
 import { useI18n } from '../i18n';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
 import { enqueue, pendingFor, subscribeOutbox, retry as retryOutbox } from '../lib/outbox';
@@ -69,8 +70,10 @@ export function ConversationScreen() {
     const [notes, setNotes] = useState<Note[]>([]);
     const [conv, setConv] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [loadMoreError, setLoadMoreError] = useState(false);
     // Reply / quote
     const [replyTo, setReplyTo] = useState<Msg | null>(null);
     // Inline translations: msgId → translated text
@@ -100,31 +103,44 @@ export function ConversationScreen() {
 
     const load = useCallback(async () => {
         if (!tenantId) return;
-        const res: any = await api.getConversation(tenantId, conversationId, { limit: 50 });
-        if (res?.success && res.data) {
+        try {
+            const res: any = requireApiSuccess(await api.getConversation(tenantId, conversationId, { limit: 50 }));
+            if (!res.data) throw new Error('missing_conversation');
             setConv(res.data);
             setMessages(Array.isArray(res.data.messages) ? res.data.messages : []);
             setNotes(Array.isArray(res.data.notes) ? res.data.notes : []);
             setHasMore(!!res.data.hasMore);
+            setLoadMoreError(false);
+            setLoadError(false);
+        } catch {
+            // Preserve a previously loaded conversation during a failed socket/
+            // background refresh. On the first load, render an honest retry state.
+            setLoadError(true);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }, [tenantId, conversationId]);
 
     // Load older messages (cursor = timestamp of oldest message already loaded).
     const loadMore = useCallback(async () => {
         if (!tenantId || loadingMore || !hasMore || messages.length === 0) return;
         setLoadingMore(true);
+        setLoadMoreError(false);
         const oldest = messages[0]?.timestamp;
-        const res: any = await api.getConversation(tenantId, conversationId, { limit: 50, before: oldest });
-        if (res?.success && res.data?.messages) {
+        try {
+            const res: any = requireApiSuccess(await api.getConversation(tenantId, conversationId, { limit: 50, before: oldest }));
+            if (!Array.isArray(res.data?.messages)) throw new Error('missing_messages');
             setMessages((prev) => {
                 const existingIds = new Set(prev.map((m) => m.id));
                 const fresh = (res.data.messages as Msg[]).filter((m) => !existingIds.has(m.id));
                 return [...fresh, ...prev];
             });
             setHasMore(!!res.data.hasMore);
+        } catch {
+            setLoadMoreError(true);
+        } finally {
+            setLoadingMore(false);
         }
-        setLoadingMore(false);
     }, [tenantId, conversationId, loadingMore, hasMore, messages]);
 
     useEffect(() => { load(); }, [load]);
@@ -212,7 +228,7 @@ export function ConversationScreen() {
         patchConv({ assignedAgentId: user.id, status: 'with_human' }); // optimista
         setActing(true);
         try {
-            await api.assignConversation(tenantId, conversationId, user.id);
+            requireApiSuccess(await api.assignConversation(tenantId, conversationId, user.id));
             toast.success(t('conv.assigned'));
             load();
         } catch {
@@ -228,7 +244,7 @@ export function ConversationScreen() {
                 const prev = conv;
                 patchConv({ assignedAgentId: null, status: 'active', isAiHandled: true }); // optimista
                 setActing(true);
-                try { await api.returnToAI(tenantId, conversationId); toast.success(t('conv.returned')); load(); }
+                try { requireApiSuccess(await api.returnToAI(tenantId, conversationId)); toast.success(t('conv.returned')); load(); }
                 catch { setConv(prev); toast.error(t('conv.returnError')); }
                 finally { setActing(false); }
             } },
@@ -241,10 +257,13 @@ export function ConversationScreen() {
                 if (!tenantId) return;
                 setActing(true);
                 try {
-                    await api.resolveConversation(tenantId, conversationId, user?.id);
+                    requireApiSuccess(await api.resolveConversation(tenantId, conversationId, user?.id));
                     // Undo → reopen. Toast is app-global so it survives goBack().
                     toast.success(t('conv.resolved'), undo(t('common.undo'), () =>
-                        api.reopenConversation(tenantId, conversationId).then(() => toast.info(t('conv.reopened')))));
+                        api.reopenConversation(tenantId, conversationId).then((result) => {
+                            requireApiSuccess(result);
+                            toast.info(t('conv.reopened'));
+                        })));
                     nav.goBack();
                 }
                 catch { toast.error(t('conv.resolveError')); }
@@ -258,7 +277,7 @@ export function ConversationScreen() {
         patchConv({ status: 'active' }); // optimista
         setActing(true);
         try {
-            await api.reopenConversation(tenantId, conversationId);
+            requireApiSuccess(await api.reopenConversation(tenantId, conversationId));
             toast.success(t('conv.reopened'));
             load();
         } catch {
@@ -271,9 +290,12 @@ export function ConversationScreen() {
         if (!tenantId) return;
         setActing(true);
         try {
-            await api.snoozeConversation(tenantId, conversationId, snoozeUntil(preset).toISOString());
+            requireApiSuccess(await api.snoozeConversation(tenantId, conversationId, snoozeUntil(preset).toISOString()));
             toast.success(t('conv.snoozed'), undo(t('common.undo'), () =>
-                api.unsnoozeConversation(tenantId, conversationId).then(() => toast.info(t('conv.unsnoozed')))));
+                api.unsnoozeConversation(tenantId, conversationId).then((result) => {
+                    requireApiSuccess(result);
+                    toast.info(t('conv.unsnoozed'));
+                })));
             nav.goBack();
         } catch {
             toast.error(t('conv.snoozeError'));
@@ -293,28 +315,28 @@ export function ConversationScreen() {
         const prev = conv;
         patchConv({ assignedAgentId: agentId, status: 'with_human' }); // optimista
         setActing(true);
-        try { await api.assignConversation(tenantId, conversationId, agentId); toast.success(t('conv.reassigned')); load(); }
+        try { requireApiSuccess(await api.assignConversation(tenantId, conversationId, agentId)); toast.success(t('conv.reassigned')); load(); }
         catch { setConv(prev); toast.error(t('conv.reassignError')); }
         finally { setActing(false); }
     };
     const runMacro = async (macroId: string) => {
         if (!tenantId || !user?.id) return;
         setMacrosOpen(false); setActing(true);
-        try { await api.executeMacro(tenantId, macroId, conversationId, user.id); toast.success(t('conv.macroDone')); load(); }
+        try { requireApiSuccess(await api.executeMacro(tenantId, macroId, conversationId, user.id)); toast.success(t('conv.macroDone')); load(); }
         catch { toast.error(t('conv.macroError')); }
         finally { setActing(false); }
     };
     const saveNote = async () => {
         if (!tenantId || !noteText.trim()) return;
         setActing(true);
-        try { await api.addNote(tenantId, conversationId, noteText.trim(), user?.id); setNoteText(''); setNoteOpen(false); toast.success(t('conv.noteSaved')); load(); }
+        try { requireApiSuccess(await api.addNote(tenantId, conversationId, noteText.trim(), user?.id)); setNoteText(''); setNoteOpen(false); toast.success(t('conv.noteSaved')); load(); }
         catch { toast.error(t('conv.noteSaveError')); }
         finally { setActing(false); }
     };
     const doSummary = async () => {
         setSummary('...'); setAiBusy(true);
         try {
-            const res: any = await api.copilotSummary(conversationId);
+            const res: any = requireApiSuccess(await api.copilotSummary(conversationId));
             const d = res?.data;
             setSummary(typeof d === 'string' ? d : (d?.summary || d?.text || t('conv.summaryUnavailable')));
         } catch {
@@ -327,7 +349,7 @@ export function ConversationScreen() {
         haptic.tap();
         setNextAction('...'); setAiBusy(true);
         try {
-            const res: any = await api.nextBestAction(tenantId, conversationId);
+            const res: any = requireApiSuccess(await api.nextBestAction(tenantId, conversationId));
             const d = res?.data;
             const a = (d?.action || (typeof d === 'string' ? d : '') || '').trim();
             setNextAction(a || t('conv.nbaUnavailable'));
@@ -517,7 +539,7 @@ export function ConversationScreen() {
         if (!tenantId) return;
         setAiBusy(true);
         try {
-            const res: any = await api.getAiSuggestion(tenantId, conversationId);
+            const res: any = requireApiSuccess(await api.getAiSuggestion(tenantId, conversationId));
             const s = res?.data?.suggestion || res?.data?.suggestions?.[0] || res?.data;
             if (typeof s === 'string' && s.trim()) setText(s);
             else toast.info(t('conv.noSuggestion'));
@@ -530,7 +552,7 @@ export function ConversationScreen() {
         if (!text.trim()) return;
         setAiBusy(true);
         try {
-            const res: any = await api.copilotRewrite(conversationId, text.trim(), tone);
+            const res: any = requireApiSuccess(await api.copilotRewrite(conversationId, text.trim(), tone));
             const d = res?.data;
             const txt = typeof d === 'string' ? d : (d?.rewritten || d?.text || d?.reply || '');
             if (txt) setText(txt);
@@ -541,9 +563,36 @@ export function ConversationScreen() {
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
+    if (loadError && !conv) return (
+        <View style={styles.center}>
+            <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />
+            <Text style={styles.loadErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t('common.loadError')}</Text>
+            <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => { setLoading(true); void load(); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry')}
+            >
+                <Ionicons name="refresh" size={16} color="#fff" />
+                <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+            </TouchableOpacity>
+        </View>
+    );
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg, paddingBottom: kbSpace }}>
+            {loadError && (
+                <TouchableOpacity
+                    style={styles.staleBanner}
+                    onPress={() => void load()}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('common.loadError')} ${t('common.retry')}`}
+                >
+                    <Ionicons name="cloud-offline-outline" size={15} color={theme.warning} />
+                    <Text style={styles.staleBannerText}>{t('common.loadError')}</Text>
+                    <Text style={styles.staleBannerAction}>{t('common.retry')}</Text>
+                </TouchableOpacity>
+            )}
             {/* Who's responding + which channel — always visible so control is never ambiguous */}
             {conv && (
                 <View style={styles.statusBanner}>
@@ -613,7 +662,11 @@ export function ConversationScreen() {
                 ListFooterComponent={
                     loadingMore
                         ? <ActivityIndicator color={theme.accent} style={{ marginVertical: 10 }} />
-                        : hasMore
+                        : loadMoreError
+                            ? <TouchableOpacity onPress={loadMore} style={{ alignItems: 'center', paddingVertical: 10 }} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
+                                <Text style={{ color: theme.danger, fontSize: 13 }}>{t('common.loadError')} · {t('common.retry')}</Text>
+                              </TouchableOpacity>
+                            : hasMore
                             ? <TouchableOpacity onPress={loadMore} style={{ alignItems: 'center', paddingVertical: 10 }} accessibilityRole="button">
                                 <Text style={{ color: theme.accent, fontSize: 13 }}>{t('conv.loadMore')}</Text>
                               </TouchableOpacity>
@@ -930,6 +983,12 @@ function Sheet({ visible, title, onClose, children }: { visible: boolean; title:
 
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg },
+    loadErrorText: { color: theme.textSecondary, fontSize: 14, marginTop: 10, textAlign: 'center' },
+    retryButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginTop: 14 },
+    retryButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    staleBanner: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: theme.warning + '18', paddingHorizontal: 14, paddingVertical: 8 },
+    staleBannerText: { color: theme.warning, fontSize: 12, flex: 1 },
+    staleBannerAction: { color: theme.warning, fontSize: 12, fontWeight: '700' },
     statusBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 7, backgroundColor: theme.bgCard, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     authorChip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     authorText: { fontSize: 12, fontWeight: '700' },

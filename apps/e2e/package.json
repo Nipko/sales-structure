@@ -1,0 +1,21 @@
+{
+  "name": "@parallext/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated Playwright end-to-end tests for Parallext web applications",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:landing": "playwright test --project=landing-chromium",
+    "test:e2e:dashboard": "playwright test --project=dashboard-chromium",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "packageManager": "npm@10.0.0"
+}

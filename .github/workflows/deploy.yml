@@ -9,6 +9,7 @@ on:
     # (a push that also changes web/api/infra still deploys normally).
     paths-ignore:
       - 'apps/mobile/**'
+      - 'apps/e2e/**'
       - 'docs/**'
   workflow_dispatch:
 
@@ -249,10 +250,18 @@ jobs:
         run: node apps/api/dist/boot-check.js
 
   # ──────────────────────────────────────────────────────────────
-  # JOB 1: Build & push Docker images to GHCR
+  # JOB 1: Browser smoke — deterministic public/auth journeys. This workflow
+  # mocks external APIs and never contacts production services.
+  # ──────────────────────────────────────────────────────────────
+  e2e-smoke:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/playwright.yml
+
+  # ──────────────────────────────────────────────────────────────
+  # JOB 2: Build & push Docker images to GHCR
   # ──────────────────────────────────────────────────────────────
   build-and-push:
-    needs: validate
+    needs: [validate, e2e-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -432,7 +441,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=billing-v2
 
   # ──────────────────────────────────────────────────────────────
-  # JOB 2: SSH into VPS and deploy
+  # JOB 3: SSH into VPS and deploy
   # Uses: SERVER_HOST, SERVER_USER, SERVER_PASSWORD, SERVER_PORT
   # Project lives at /opt/parallext-engine/
   # ──────────────────────────────────────────────────────────────

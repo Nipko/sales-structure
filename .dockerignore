@@ -1,4 +1,5 @@
 node_modules
+apps/e2e/
 .git
 .env
 .env.*

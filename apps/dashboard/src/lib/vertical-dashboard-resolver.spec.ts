@@ -6,6 +6,8 @@ import {
 } from "@parallext/shared";
 import type { VerticalRoutePath } from "@parallext/shared";
 import {
+  getVerticalDashboardItemForPath,
+  isVerticalDashboardPathVisible,
   resolveVerticalDashboard,
   type VerticalDashboardItem,
 } from "./vertical-dashboard-resolver";
@@ -157,5 +159,21 @@ describe("resolveVerticalDashboard", () => {
       subType: "hotel",
       manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
     }).visibleItems).toEqual([]);
+  });
+
+  it("applies the same vertical visibility to every navigation entry point", () => {
+    const hotel = resolveCanonical("turismo", "hotel");
+    expect(getVerticalDashboardItemForPath("/admin/tours/abc?tab=inventory")).toBe("tours");
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/properties")).toBe(true);
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/tours")).toBe(false);
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/menu")).toBe(false);
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/catalog")).toBe(false);
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/catalog/courses")).toBe(false);
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/landings")).toBe(false);
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/catalog/offers")).toBe(true);
+    expect(isVerticalDashboardPathVisible(hotel, "/admin/contacts")).toBe(true);
+
+    const education = resolveCanonical("education", "capacitacion");
+    expect(isVerticalDashboardPathVisible(education, "/admin/catalog")).toBe(true);
   });
 });

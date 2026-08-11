@@ -23,6 +23,38 @@ describe('OrdersService transactional catalog contract', () => {
         };
     }
 
+    it('omits tenant-wide revenue aggregates from the operational agent view', async () => {
+        const executeInTenantSchema = jest.fn(async (_schema: string, sql: string) => {
+            if (sql.includes('FROM orders o')) {
+                return [{
+                    id: orderId,
+                    contact_id: contactId,
+                    contact_name: 'Cliente',
+                    status: 'paid',
+                    total_amount: '25000',
+                    currency: 'COP',
+                    metadata: {},
+                    created_at: new Date('2026-08-11T00:00:00Z'),
+                    updated_at: new Date('2026-08-11T00:00:00Z'),
+                }];
+            }
+            if (sql.includes('FROM order_items')) return [];
+            return [];
+        });
+        const service = new OrdersService({ executeInTenantSchema } as any, {
+            get: jest.fn(async (key: string) => key === `tenant:${tenantId}:schema` ? 'tenant_demo' : 'ready'),
+            set: jest.fn(),
+        } as any);
+
+        await expect(service.getOverview(tenantId, false)).resolves.toMatchObject({
+            totalRevenue: 0,
+            pendingRevenue: 0,
+            financialsVisible: false,
+            orderCount: 1,
+            orders: [expect.objectContaining({ id: orderId, totalAmount: 25000 })],
+        });
+    });
+
     it('uses the locked catalog snapshot and commits header, line and stock together', async () => {
         const query: jest.Mock = jest.fn(async (sql: string, _params?: any[]) => {
             if (sql.includes('SELECT id FROM contacts')) return [{ id: contactId }];

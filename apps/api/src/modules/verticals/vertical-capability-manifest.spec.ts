@@ -11,6 +11,32 @@ import {
 import { VERTICAL_REGISTRY } from './vertical-definitions';
 
 describe('VerticalCapabilityManifest v1 contract', () => {
+    it('uses only sidebar label keys consumed by the canonical navigation', () => {
+        const supportedLabelOverrides = new Set([
+            'appointments',
+            'catalog',
+            'crm',
+            'pipeline',
+        ]);
+
+        for (const [industry, definition] of Object.entries(VERTICAL_REGISTRY)) {
+            for (const key of Object.keys(definition.sidebar.labelOverrides)) {
+                expect({ industry, key, supported: supportedLabelOverrides.has(key) }).toEqual({
+                    industry,
+                    key,
+                    supported: true,
+                });
+            }
+        }
+
+        expect(VERTICAL_REGISTRY.technology.sidebar.labelOverrides.crm).toEqual({
+            es: 'Cuentas',
+            en: 'Accounts',
+            pt: 'Contas',
+            fr: 'Comptes',
+        });
+    });
+
     it('publishes the cumulative A0-A4 authority matrix without gaps', () => {
         expect(ASSURANCE_LEVELS).toEqual(['A0', 'A1', 'A2', 'A3', 'A4']);
         expect(Object.keys(ASSURANCE_LEVEL_MATRIX)).toEqual(ASSURANCE_LEVELS);

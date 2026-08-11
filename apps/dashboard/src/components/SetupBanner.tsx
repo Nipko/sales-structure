@@ -21,7 +21,7 @@ export function SetupBanner({ show, onAction }: SetupBannerProps) {
         "bg-amber-50 dark:bg-amber-500/10 p-4 mb-6"
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
         <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
           <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400" />
         </div>
@@ -40,7 +40,7 @@ export function SetupBanner({ show, onAction }: SetupBannerProps) {
             "shrink-0 px-4 py-2 rounded-lg text-sm font-semibold",
             "bg-amber-600 hover:bg-amber-700 text-white",
             "dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900",
-            "transition-colors cursor-pointer flex items-center gap-1.5"
+            "flex w-full cursor-pointer items-center justify-center gap-1.5 transition-colors sm:w-auto"
           )}
         >
           {t("configureNow")} <ArrowRight size={14} />

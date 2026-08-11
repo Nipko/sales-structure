@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { SETUP_COPILOT_PENDING_KEY } from "@/lib/product-tour-contract";
 import {
     resolveVerticalDashboard,
     type VerticalDashboardItem,
@@ -11,7 +12,7 @@ import {
     BookOpen, HelpCircle, Building2, Clock, Bot, ListChecks,
     Calendar, UtensilsCrossed, Home, Car, KeyRound,
     Users, BarChart3, Megaphone, Workflow, Inbox, UserPlus,
-    Sparkles, ArrowRight, MessageCircle,
+    Sparkles, ExternalLink, MessageCircle, Check,
     Stethoscope, Dumbbell, CreditCard, PawPrint, Plane,
     ShoppingBag, GraduationCap, Shield, Wrench, Camera, Package,
 } from "lucide-react";
@@ -59,8 +60,8 @@ const B_TRANSVERSAL: Tool[] = [
 
 export default function ToolsTour() {
     const t = useTranslations("setupWizard.discover");
-    const router = useRouter();
     const { verticalConfig } = useAuth();
+    const [copilotQueued, setCopilotQueued] = useState(false);
     const verticalDashboard = resolveVerticalDashboard(verticalConfig);
     const verticalTools = verticalDashboard.discoveryItems
         .map((item) => A_BY_ITEM[item])
@@ -71,9 +72,12 @@ export default function ToolsTour() {
     const renderTool = (tool: Tool, primary: boolean) => {
         const Icon = tool.icon;
         return (
-            <button
+            <a
                 key={tool.key}
-                onClick={() => router.push(tool.href)}
+                href={tool.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${t(`tools.${tool.key}.name`)} (${t("opensInNewTab")})`}
                 className={`flex items-start gap-3 ${primary ? "p-3.5" : "p-3"} rounded-xl border text-left transition-all cursor-pointer ${
                     primary
                         ? "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/40"
@@ -87,8 +91,8 @@ export default function ToolsTour() {
                     <p className={`font-medium text-foreground ${primary ? "text-sm" : "text-[13px]"}`}>{t(`tools.${tool.key}.name`)}</p>
                     {primary && <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{t(`tools.${tool.key}.desc`)}</p>}
                 </div>
-                <ArrowRight size={14} className="text-muted-foreground shrink-0 mt-1" />
-            </button>
+                <ExternalLink size={14} className="text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
+            </a>
         );
     };
 
@@ -125,12 +129,14 @@ export default function ToolsTour() {
                 </div>
                 <button
                     onClick={() => {
-                        try { localStorage.setItem("parallly:openCopilot", "1"); } catch { /* ignore */ }
-                        window.dispatchEvent(new Event("parallly:open-copilot"));
+                        try { localStorage.setItem(SETUP_COPILOT_PENDING_KEY, "1"); } catch { /* optional */ }
+                        setCopilotQueued(true);
                     }}
-                    className="shrink-0 px-3.5 py-2 rounded-lg text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors cursor-pointer"
+                    disabled={copilotQueued}
+                    className="shrink-0 px-3.5 py-2 rounded-lg text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-emerald-600 text-white transition-colors cursor-pointer disabled:cursor-default inline-flex items-center gap-1.5"
                 >
-                    {t("openCopilot")}
+                    {copilotQueued && <Check size={14} aria-hidden="true" />}
+                    {copilotQueued ? t("copilotQueued") : t("openCopilot")}
                 </button>
             </div>
         </div>

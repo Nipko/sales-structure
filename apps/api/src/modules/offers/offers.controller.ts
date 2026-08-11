@@ -11,7 +11,7 @@ export class OffersController {
     constructor(private readonly service: OffersService) {}
 
     @Get(':tenantId')
-    @Roles('super_admin', 'tenant_admin', 'tenant_agent')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async list(
         @Param('tenantId') tenantId: string,
         @Query('activeOnly') activeOnly?: string,
@@ -23,21 +23,21 @@ export class OffersController {
     }
 
     @Get(':tenantId/:id')
-    @Roles('super_admin', 'tenant_admin', 'tenant_agent')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async get(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const offer = await this.service.get(tenantId, id);
         return { success: true, data: offer };
     }
 
     @Post(':tenantId')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async create(@Param('tenantId') tenantId: string, @Body() body: UpsertOfferInput) {
         const offer = await this.service.create(tenantId, body);
         return { success: true, data: offer };
     }
 
     @Put(':tenantId/:id')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async update(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -48,7 +48,7 @@ export class OffersController {
     }
 
     @Delete(':tenantId/:id')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async delete(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         await this.service.delete(tenantId, id);
         return { success: true };

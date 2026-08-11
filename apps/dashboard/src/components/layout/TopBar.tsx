@@ -1,21 +1,32 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { useRole } from "@/hooks/useRole";
+import { useCurrentNavigationLocation } from "@/hooks/useCurrentNavigationLocation";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import {
-  Sun, Moon, Monitor, ChevronDown, ChevronRight, LogOut, Menu, User, Settings,
-  Bell, MessageSquare, Calendar, Mail, Shield, UserX, AlertTriangle,
-  Users, Zap, Package, Clock,
+  buildNavigationBreadcrumbs,
+  getNavigationRoute,
+  navigationItemKeyFromTitleKey,
+  resolveNavigationDisplayLabel,
+} from "@/lib/navigation-contract";
+import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
+import {
+  Sun, Moon, Monitor, ChevronDown, ChevronLeft, ChevronRight, LogOut, Menu, User, Settings,
+  Bell, MessageSquare, Calendar, Shield, AlertTriangle,
+  Users, Zap, Package, Clock, Search,
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { api } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
-import { locales, localeNames, type Locale } from "@/i18n/config";
+import { locales, localeNames } from "@/i18n/config";
+import { useCurrentNavigationPageTitle } from "@/contexts/NavigationPageContext";
 
 type NotifType = "chat" | "handoff" | "compliance" | "appointment" | "automation" | "order" | "system";
 
@@ -34,8 +45,10 @@ interface TopBarProps {
 
 export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const currentNavigationLocation = useCurrentNavigationLocation();
+  const { user, logout, verticalConfig } = useAuth();
   const { activeTenantId } = useTenant();
+  const role = useRole();
   const { theme, setTheme } = useTheme();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -43,11 +56,26 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const [notifTab, setNotifTab] = useState<"all" | NotifType>("all");
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const userMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const socketRef = useRef<Socket | null>(null);
 
   const currentLocale = useLocale();
   const tRoles = useTranslations("roles");
   const t = useTranslations("topbar");
+  const tRoot = useTranslations();
+  const pageTitle = useCurrentNavigationPageTitle();
+  const labelOverrides = verticalConfig?.sidebar?.labelOverrides as
+    | Record<string, Record<string, string>>
+    | undefined;
+  const canNavigateTo = useCallback((href: string) => (
+    Boolean(role.role) && canAccessDashboardNavigationPath(
+      href,
+      role.role!,
+      role.impersonating,
+      verticalConfig,
+    )
+  ), [role, verticalConfig]);
 
   // NOTIF_CATEGORIES — must be inside component to use t()
   const NOTIF_CATEGORIES = useMemo(() => ({
@@ -60,68 +88,6 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     system:     { label: t("categories.system"),      icon: AlertTriangle, color: "text-amber-500",   bg: "bg-amber-100 dark:bg-amber-500/15",    href: "/admin" },
   } as const), [t]);
 
-  // pathLabels — must be inside component to use t()
-  const pathLabels: Record<string, string> = useMemo(() => ({
-    admin: "",
-    inbox: t("breadcrumbs.inbox"),
-    contacts: t("breadcrumbs.contacts"),
-    pipeline: t("breadcrumbs.pipeline"),
-    automation: t("breadcrumbs.automation"),
-    agent: t("breadcrumbs.agent"),
-    settings: t("breadcrumbs.settings"),
-    channels: t("breadcrumbs.channels"),
-    analytics: t("breadcrumbs.analytics"),
-    "analytics-v2": t("breadcrumbs.analytics"),
-    "agent-analytics": t("breadcrumbs.reports"),
-    identity: t("breadcrumbs.identity"),
-    knowledge: t("breadcrumbs.knowledge"),
-    users: t("breadcrumbs.users"),
-    broadcast: t("breadcrumbs.campaigns"),
-    compliance: t("breadcrumbs.compliance"),
-    inventory: t("breadcrumbs.inventory"),
-    orders: t("breadcrumbs.orders"),
-    tenants: t("breadcrumbs.tenants"),
-    appointments: t("breadcrumbs.appointments"),
-    "email-templates": t("breadcrumbs.emailTemplates"),
-    media: t("breadcrumbs.media"),
-    "change-password": t("breadcrumbs.changePassword"),
-    "custom-attributes": t("breadcrumbs.customAttributes"),
-    macros: t("breadcrumbs.macros"),
-    prechat: t("breadcrumbs.prechat"),
-    appearance: t("breadcrumbs.appearance"),
-    segments: t("breadcrumbs.segments"),
-    // Brand names — not translated
-    whatsapp: "WhatsApp",
-    instagram: "Instagram",
-    messenger: "Messenger",
-    telegram: "Telegram",
-    sms: "SMS",
-    // Additional pages
-    catalog: t("breadcrumbs.catalog"),
-    "crm-analytics": t("breadcrumbs.crmAnalytics"),
-    "feature-requests": t("breadcrumbs.featureRequests"),
-    financials: t("breadcrumbs.financials"),
-    properties: t("breadcrumbs.properties"),
-    landings: t("breadcrumbs.landings"),
-    // Settings subpages
-    profile: t("breadcrumbs.profile"),
-    security: t("breadcrumbs.security"),
-    notifications: t("breadcrumbs.notifications"),
-    billing: t("breadcrumbs.billing"),
-    "business-hours": t("breadcrumbs.businessHours"),
-    "business-info": t("breadcrumbs.businessInfo"),
-    company: t("breadcrumbs.company"),
-    localization: t("breadcrumbs.localization"),
-    platform: t("breadcrumbs.platform"),
-    policies: t("breadcrumbs.policies"),
-    "scoring-config": t("breadcrumbs.scoringConfig"),
-    "ai-config": t("breadcrumbs.aiConfig"),
-    "ai-providers": t("breadcrumbs.aiProviders"),
-    alerts: t("breadcrumbs.alerts"),
-  }), [t]);
-
-  const isSuperAdmin = user?.role === "super_admin";
-
   // Friendly role label. The raw DB role is tenant_admin / tenant_agent /
   // super_admin / tenant_viewer — we hide the tenant_ prefix since it's
   // internal and show what the person actually IS.
@@ -129,6 +95,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     switch (user?.role) {
       case "super_admin": return tRoles("superAdmin");
       case "tenant_admin": return tRoles("admin");
+      case "tenant_supervisor": return tRoles("supervisor");
       case "tenant_agent": return tRoles("agent");
       case "tenant_viewer": return tRoles("viewer");
       default: return user?.role?.replace(/_/g, " ") ?? "";
@@ -141,21 +108,74 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   // Count unread per category
   const unreadByType: Partial<Record<NotifType, number>> = {};
   notifications.filter(n => !n.read).forEach(n => { unreadByType[n.type] = (unreadByType[n.type] || 0) + 1; });
+  const unreadChat = unreadByType.chat || 0;
+  const unreadHandoff = unreadByType.handoff || 0;
+  const unreadCompliance = unreadByType.compliance || 0;
+  const unreadAppointment = unreadByType.appointment || 0;
+  const unreadAutomation = unreadByType.automation || 0;
+  const unreadOrder = unreadByType.order || 0;
 
-  const now = () => new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("navigation:badge-counts", {
+      detail: {
+        "/admin/inbox": unreadChat + unreadHandoff,
+        "/admin/compliance": unreadCompliance,
+        "/admin/appointments": unreadAppointment,
+        "/admin/automation": unreadAutomation,
+        "/admin/orders": unreadOrder,
+        "/admin/food-orders": unreadOrder,
+      },
+    }));
+  }, [
+    unreadAppointment,
+    unreadAutomation,
+    unreadChat,
+    unreadCompliance,
+    unreadHandoff,
+    unreadOrder,
+  ]);
 
-  function addNotif(type: NotifType, title: string, body: string) {
-    setNotifications(prev => [{ id: `${type}-${Date.now()}-${Math.random()}`, type, title, body, time: now(), read: false }, ...prev].slice(0, 100));
-  }
+  const addNotif = useCallback((type: NotifType, title: string, body: string) => {
+    const time = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    setNotifications(prev => [{ id: `${type}-${Date.now()}-${Math.random()}`, type, title, body, time, read: false }, ...prev].slice(0, 100));
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false);
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
     };
+    const escapeHandler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const restoreTarget = showNotifications
+        ? notificationButtonRef.current
+        : showUserMenu
+          ? userMenuButtonRef.current
+          : null;
+      setShowUserMenu(false);
+      setShowNotifications(false);
+      restoreTarget?.focus();
+    };
+    const commandHandler = (event: Event) => {
+      const detail = (event as CustomEvent<{ restoreFocus?: HTMLElement | null }>).detail;
+      if (showNotifications) {
+        if (detail) detail.restoreFocus = notificationButtonRef.current;
+        setShowNotifications(false);
+      }
+      if (showUserMenu) {
+        if (detail) detail.restoreFocus = userMenuButtonRef.current;
+        setShowUserMenu(false);
+      }
+    };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+    document.addEventListener("keydown", escapeHandler);
+    window.addEventListener("navigation:command-open", commandHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escapeHandler);
+      window.removeEventListener("navigation:command-open", commandHandler);
+    };
+  }, [showNotifications, showUserMenu]);
 
   // WebSocket: listen to all real-time events
   // Request browser notification permission
@@ -286,7 +306,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
 
     socketRef.current = socket;
     return () => { socket.disconnect(); };
-  }, [activeTenantId]);
+  }, [activeTenantId, addNotif, t]);
 
   function markAllRead() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -300,34 +320,42 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     }
   }
 
-  // Build breadcrumb segments from pathname
+  // Breadcrumbs come exclusively from the canonical route contract. Unknown
+  // paths intentionally fall back to Inicio instead of exposing URL slugs,
+  // database IDs or UUIDs in the interface.
   const breadcrumbSegments = useMemo(() => {
-    const parts = pathname.split("/").filter(Boolean);
-    const segments: { label: string; href: string; isLast: boolean }[] = [];
-
-    // Always start with Dashboard
-    segments.push({
-      label: t("breadcrumbs.dashboard"),
-      href: "/admin",
-      isLast: parts.length <= 1,
-    });
-
-    // Build remaining segments (skip "admin" at index 0)
-    for (let i = 1; i < parts.length; i++) {
-      const seg = parts[i];
-      const label = pathLabels[seg] || seg;
-      // Skip empty labels
-      if (!label) continue;
-      const href = "/" + parts.slice(0, i + 1).join("/");
-      segments.push({
-        label,
-        href,
-        isLast: i === parts.length - 1,
-      });
+    const canonicalSegments = buildNavigationBreadcrumbs(pathname);
+    if (canonicalSegments.length === 0) {
+      return [{
+        routeId: "tenantHome",
+        label: t("breadcrumbs.dashboard"),
+        href: "/admin",
+        isCurrent: pathname === "/admin",
+      }];
     }
 
-    return segments;
-  }, [pathname, pathLabels, t]);
+    return canonicalSegments.map((segment) => {
+      const definition = getNavigationRoute(segment.routeId);
+      const translatedLabel = segment.label ?? tRoot(segment.titleKey);
+      return {
+        routeId: segment.routeId,
+        label: segment.isCurrent && pageTitle
+          ? pageTitle
+          : resolveNavigationDisplayLabel(
+              definition ? navigationItemKeyFromTitleKey(definition.titleKey) : null,
+              translatedLabel,
+              currentLocale,
+              labelOverrides,
+            ),
+        href: segment.href,
+        isCurrent: segment.isCurrent,
+      };
+    });
+  }, [currentLocale, labelOverrides, pageTitle, pathname, t, tRoot]);
+
+  const mobileBreadcrumbParent = breadcrumbSegments.length > 1
+    ? breadcrumbSegments[breadcrumbSegments.length - 2]
+    : null;
 
   const themeOptions = useMemo(() => [
     { key: "light", icon: Sun,     label: t("theme.light") },
@@ -336,60 +364,109 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   ] as const, [t]);
 
   return (
-    <header className="h-14 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-4 md:px-6 flex items-center gap-4 shrink-0">
+    <header className="h-14 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-2 sm:px-4 md:px-6 flex items-center gap-1.5 sm:gap-2 md:gap-4 shrink-0 min-w-0">
       {/* Mobile hamburger */}
       <button
+        id="dashboard-mobile-menu-trigger"
         onClick={onMobileMenuToggle}
-        className="md:hidden p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        type="button"
+        aria-label={t("menu")}
+        className="md:hidden p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         title={t("menu")}
       >
-        <Menu size={20} />
+        <Menu size={20} aria-hidden="true" />
       </button>
 
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm min-w-0">
+      <nav
+        aria-label={tRoot("navigation.breadcrumbLabel")}
+        className="flex items-center gap-1 text-sm min-w-0 flex-1 overflow-hidden"
+      >
+        {mobileBreadcrumbParent && (
+          <Link
+            href={mobileBreadcrumbParent.href}
+            aria-label={`${tRoot("common.back")}: ${mobileBreadcrumbParent.label}`}
+            title={`${tRoot("common.back")}: ${mobileBreadcrumbParent.label}`}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 sm:hidden"
+          >
+            <ChevronLeft size={17} aria-hidden="true" />
+          </Link>
+        )}
+        <ol className="flex items-center gap-1 min-w-0 overflow-hidden">
         {breadcrumbSegments.map((seg, idx) => (
-          <span key={seg.href} className="flex items-center gap-1 min-w-0">
-            {idx > 0 && (
-              <ChevronRight size={14} className="text-neutral-300 dark:text-neutral-600 shrink-0" />
+          <li
+            key={seg.routeId}
+            className={cn(
+              "items-center gap-1 min-w-0",
+              seg.isCurrent ? "flex" : "hidden sm:flex",
             )}
-            {seg.isLast ? (
-              <span className="text-neutral-900 dark:text-neutral-100 font-medium truncate">
+          >
+            {idx > 0 && (
+              <ChevronRight
+                size={14}
+                aria-hidden="true"
+                className="hidden sm:block text-neutral-300 dark:text-neutral-600 shrink-0"
+              />
+            )}
+            {seg.isCurrent ? (
+              <span
+                aria-current="page"
+                className="text-neutral-900 dark:text-neutral-100 font-medium truncate max-w-[52vw] sm:max-w-56 lg:max-w-80"
+                title={seg.label}
+              >
                 {seg.label}
               </span>
             ) : (
               <Link
                 href={seg.href}
-                className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors truncate"
+                className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-sm"
               >
                 {seg.label}
               </Link>
             )}
-          </span>
+          </li>
         ))}
+        </ol>
       </nav>
 
-      {/* Spacer */}
-      <div className="flex-1" />
+      {/* Global command palette integration */}
+      <button
+        type="button"
+        onClick={(event) => window.dispatchEvent(new CustomEvent("navigation:command-open", {
+          detail: { restoreFocus: event.currentTarget },
+        }))}
+        aria-label={tRoot("navigation.command.open")}
+        title={tRoot("navigation.command.open")}
+        className="hidden lg:flex h-8 items-center gap-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 px-2.5 text-xs text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 shrink-0"
+      >
+        <Search size={14} aria-hidden="true" />
+        <span>{tRoot("navigation.command.open")}</span>
+        <kbd className="hidden 2xl:inline rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+          Ctrl K
+        </kbd>
+      </button>
 
       {/* Theme toggle */}
-      <div className="flex items-center rounded-lg border border-neutral-200 dark:border-neutral-700 p-0.5">
+      <div className="hidden xl:flex items-center rounded-lg border border-neutral-200 dark:border-neutral-700 p-0.5 shrink-0">
         {themeOptions.map((opt) => {
           const Icon = opt.icon;
           const isActive = theme === opt.key;
           return (
             <button
               key={opt.key}
+              type="button"
               onClick={() => setTheme(opt.key)}
+              aria-label={opt.label}
+              aria-pressed={isActive}
               title={opt.label}
               className={cn(
-                "p-1.5 rounded-md transition-colors",
+                "p-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
                 isActive
                   ? "bg-neutral-100 dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400"
                   : "text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
               )}
             >
-              <Icon size={15} />
+              <Icon size={15} aria-hidden="true" />
             </button>
           );
         })}
@@ -402,7 +479,8 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           document.cookie = `locale=${e.target.value};path=/;max-age=31536000`;
           window.location.reload();
         }}
-        className="h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        aria-label={t("language")}
+        className="hidden 2xl:block h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0"
         title={t("language")}
       >
         {locales.map((l) => (
@@ -416,33 +494,52 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       {/* Notification bell */}
       <div ref={notifRef} className="relative">
         <button
-          onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) markAllRead(); }}
-          className="relative p-2 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          ref={notificationButtonRef}
+          type="button"
+          onClick={() => {
+            setShowUserMenu(false);
+            setShowNotifications(!showNotifications);
+          }}
+          aria-label={unreadCount > 0
+            ? `${t("notifications.title")}: ${unreadCount}`
+            : t("notifications.title")}
+          aria-haspopup="dialog"
+          aria-expanded={showNotifications}
+          aria-controls="topbar-notifications"
+          className="relative p-2 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           title={t("notifications.title")}
         >
-          <Bell size={18} />
+          <Bell size={18} aria-hidden="true" />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-semibold px-1 animate-pulse">
+            <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-semibold px-1 animate-pulse">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
         </button>
+        <span className="sr-only" aria-live="polite" aria-atomic="true">
+          {unreadCount > 0 ? `${t("notifications.title")}: ${unreadCount}` : ""}
+        </span>
 
         {showNotifications && (
-          <div className="absolute right-0 top-full mt-2 w-96 max-h-[500px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-xl z-50 overflow-hidden">
+          <div
+            id="topbar-notifications"
+            role="dialog"
+            aria-label={t("notifications.title")}
+            className="fixed inset-x-2 top-16 w-auto max-h-[calc(100vh-5rem)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 sm:max-h-[500px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-xl z-50 overflow-hidden"
+          >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
               <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("notifications.title")}</span>
               <div className="flex items-center gap-2">
                 {filteredNotifs.length > 0 && (
-                  <button onClick={clearNotifications}
-                    className="text-[11px] text-red-500 hover:text-red-400 cursor-pointer bg-transparent border-none font-medium">
+                  <button type="button" onClick={clearNotifications}
+                    className="text-[11px] text-red-500 hover:text-red-400 cursor-pointer bg-transparent border-none font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-sm">
                     {t("notifications.clear")}{notifTab !== "all" ? ` ${NOTIF_CATEGORIES[notifTab]?.label}` : ""}
                   </button>
                 )}
                 {unreadCount > 0 && (
-                  <button onClick={markAllRead}
-                    className="text-[11px] text-indigo-500 hover:text-indigo-400 cursor-pointer bg-transparent border-none font-medium">
+                  <button type="button" onClick={markAllRead}
+                    className="text-[11px] text-indigo-500 hover:text-indigo-400 cursor-pointer bg-transparent border-none font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-sm">
                     {t("notifications.markRead")}
                   </button>
                 )}
@@ -450,9 +547,9 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
             </div>
 
             {/* Category tabs */}
-            <div className="flex gap-0.5 px-2 py-2 border-b border-neutral-100 dark:border-neutral-800 overflow-x-auto">
-              <button onClick={() => setNotifTab("all")}
-                className={cn("px-2.5 py-1 rounded-md text-[11px] font-medium border-none cursor-pointer whitespace-nowrap transition-colors",
+            <div role="tablist" aria-label={t("notifications.title")} className="flex gap-0.5 px-2 py-2 border-b border-neutral-100 dark:border-neutral-800 overflow-x-auto">
+              <button type="button" role="tab" aria-selected={notifTab === "all"} aria-controls="notification-tabpanel" onClick={() => setNotifTab("all")}
+                className={cn("px-2.5 py-1 rounded-md text-[11px] font-medium border-none cursor-pointer whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
                   notifTab === "all" ? "bg-indigo-500 text-white" : "bg-transparent text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800")}>
                 {t("categories.all")} {unreadCount > 0 && <span className="ml-1 text-[10px]">({unreadCount})</span>}
               </button>
@@ -460,10 +557,10 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 const count = unreadByType[key] || 0;
                 const CatIcon = cat.icon;
                 return (
-                  <button key={key} onClick={() => setNotifTab(key)}
-                    className={cn("px-2 py-1 rounded-md text-[11px] font-medium border-none cursor-pointer whitespace-nowrap flex items-center gap-1 transition-colors",
+                  <button key={key} type="button" role="tab" aria-selected={notifTab === key} aria-controls="notification-tabpanel" onClick={() => setNotifTab(key)}
+                    className={cn("px-2 py-1 rounded-md text-[11px] font-medium border-none cursor-pointer whitespace-nowrap flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
                       notifTab === key ? "bg-indigo-500 text-white" : "bg-transparent text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800")}>
-                    <CatIcon size={11} />
+                    <CatIcon size={11} aria-hidden="true" />
                     {cat.label}
                     {count > 0 && <span className="min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-semibold">{count}</span>}
                   </button>
@@ -472,10 +569,10 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
             </div>
 
             {/* Notification list */}
-            <div className="overflow-y-auto max-h-[380px]">
+            <div id="notification-tabpanel" role="tabpanel" className="overflow-y-auto max-h-[calc(100vh-14rem)] sm:max-h-[380px]">
               {filteredNotifs.length === 0 ? (
                 <div className="py-10 text-center">
-                  <Bell size={24} className="text-neutral-300 dark:text-neutral-700 mx-auto mb-2" />
+                  <Bell size={24} aria-hidden="true" className="text-neutral-300 dark:text-neutral-700 mx-auto mb-2" />
                   <p className="text-sm text-neutral-400 dark:text-neutral-500">
                     {notifTab === "all" ? t("notifications.empty") : `${t("notifications.noCategory")} ${NOTIF_CATEGORIES[notifTab]?.label.toLowerCase()}`}
                   </p>
@@ -484,16 +581,17 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 filteredNotifs.map(n => {
                   const cat = NOTIF_CATEGORIES[n.type] || NOTIF_CATEGORIES.system;
                   const CatIcon = cat.icon;
-                  return (
-                    <div key={n.id}
-                      className={cn(
-                        "flex items-start gap-3 px-4 py-3 border-b border-neutral-50 dark:border-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors cursor-pointer",
-                        !n.read && "bg-indigo-50/50 dark:bg-indigo-500/5"
-                      )}
-                      onClick={() => { window.location.href = cat.href; setShowNotifications(false); }}
-                    >
+                  const notificationHref = canNavigateTo(cat.href) ? cat.href : null;
+                  const markNotificationRead = () => {
+                    setNotifications((current) => current.map((notification) => (
+                      notification.id === n.id ? { ...notification, read: true } : notification
+                    )));
+                    if (notificationHref) setShowNotifications(false);
+                  };
+                  const notificationContents = (
+                    <>
                       <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5", cat.bg)}>
-                        <CatIcon size={14} className={cat.color} />
+                        <CatIcon size={14} aria-hidden="true" className={cat.color} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
@@ -507,8 +605,32 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                         </div>
                         <p className="text-[12px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5">{n.body}</p>
                       </div>
-                      {!n.read && <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-2" />}
-                    </div>
+                      {!n.read && <div aria-hidden="true" className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-2" />}
+                    </>
+                  );
+                  const notificationClassName = cn(
+                    "flex w-full items-start gap-3 border-b border-neutral-50 px-4 py-3 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 dark:border-neutral-900 dark:hover:bg-neutral-900/50",
+                    !n.read && "bg-indigo-50/50 dark:bg-indigo-500/5",
+                  );
+
+                  return notificationHref ? (
+                    <Link
+                      key={n.id}
+                      href={notificationHref}
+                      className={notificationClassName}
+                      onClick={markNotificationRead}
+                    >
+                      {notificationContents}
+                    </Link>
+                  ) : (
+                    <button
+                      key={n.id}
+                      type="button"
+                      className={notificationClassName}
+                      onClick={markNotificationRead}
+                    >
+                      {notificationContents}
+                    </button>
                   );
                 })
               )}
@@ -520,28 +642,37 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       {/* User avatar dropdown */}
       <div ref={userMenuRef} className="relative">
         <button
-          onClick={() => setShowUserMenu(!showUserMenu)}
-          className="flex items-center gap-2 p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          ref={userMenuButtonRef}
+          type="button"
+          onClick={() => {
+            setShowNotifications(false);
+            setShowUserMenu(!showUserMenu);
+          }}
+          aria-label={t("userMenu.profile")}
+          aria-haspopup="dialog"
+          aria-expanded={showUserMenu}
+          aria-controls="topbar-user-menu"
+          className="flex items-center gap-2 p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           {user?.picture ? (
-            <img src={user.picture} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+            <Image src={user.picture} alt="" width={32} height={32} unoptimized className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
           ) : (
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold">
               {user?.firstName?.charAt(0) || "U"}
             </div>
           )}
-          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 hidden sm:inline max-w-[120px] truncate">
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 hidden xl:inline max-w-[120px] truncate">
             {user?.firstName}
           </span>
-          <ChevronDown size={14} className="text-neutral-400" />
+          <ChevronDown size={14} aria-hidden="true" className="hidden sm:block text-neutral-400" />
         </button>
 
         {showUserMenu && (
-          <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-lg z-50 py-2">
+          <div id="topbar-user-menu" role="dialog" aria-label={t("userMenu.profile")} className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-lg z-50 py-2">
             {/* Profile info */}
             <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-3">
               {user?.picture ? (
-                <img src={user.picture} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
+                <Image src={user.picture} alt="" width={40} height={40} unoptimized className="w-10 h-10 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
               ) : (
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-semibold shrink-0">
                   {user?.firstName?.charAt(0) || "U"}
@@ -559,9 +690,61 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               </p>
               </div>
             </div>
+            {/* Controls hidden from the compact top bar remain reachable here. */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("navigation:command-open", {
+                detail: { restoreFocus: userMenuButtonRef.current },
+              }))}
+              className="lg:hidden flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 border-b border-neutral-100 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+            >
+              <Search size={15} aria-hidden="true" />
+              {tRoot("navigation.command.open")}
+            </button>
+            <div className="xl:hidden flex items-center justify-center gap-1 px-3 py-2 border-b border-neutral-100 dark:border-neutral-800">
+              {themeOptions.map((opt) => {
+                const Icon = opt.icon;
+                const isActive = theme === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setTheme(opt.key)}
+                    aria-label={opt.label}
+                    aria-pressed={isActive}
+                    title={opt.label}
+                    className={cn(
+                      "flex-1 flex items-center justify-center p-2 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
+                      isActive
+                        ? "bg-neutral-100 dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400"
+                        : "text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200",
+                    )}
+                  >
+                    <Icon size={15} aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+            <div className="2xl:hidden px-3 py-2 border-b border-neutral-100 dark:border-neutral-800">
+              <select
+                value={currentLocale}
+                onChange={(e) => {
+                  document.cookie = `locale=${e.target.value};path=/;max-age=31536000`;
+                  window.location.reload();
+                }}
+                aria-label={t("language")}
+                className="h-8 w-full rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {locales.map((locale) => (
+                  <option key={locale} value={locale}>{localeNames[locale]}</option>
+                ))}
+              </select>
+            </div>
             {/* Quick links */}
             <Link
-              href="/admin/settings/profile"
+              href={pathname.startsWith("/admin/settings")
+                ? "/admin/settings/profile"
+                : `/admin/settings/profile?returnTo=${encodeURIComponent(currentNavigationLocation)}`}
               onClick={() => setShowUserMenu(false)}
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
@@ -569,7 +752,9 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               {t("userMenu.profile")}
             </Link>
             <Link
-              href="/admin/settings"
+              href={pathname.startsWith("/admin/settings")
+                ? "/admin/settings"
+                : `/admin/settings?returnTo=${encodeURIComponent(currentNavigationLocation)}`}
               onClick={() => setShowUserMenu(false)}
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
@@ -579,6 +764,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
             {/* Logout */}
             <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
               <button
+                type="button"
                 onClick={() => {
                   setShowUserMenu(false);
                   logout();
@@ -616,8 +802,8 @@ function TimezoneIndicator() {
     .formatToParts(now).find(p => p.type === "timeZoneName")?.value || "";
 
   return (
-    <div className="hidden md:flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-neutral-500 dark:text-neutral-400" title={tz}>
-      <Clock size={12} />
+    <div className="hidden 2xl:flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-neutral-500 dark:text-neutral-400 shrink-0" title={tz}>
+      <Clock size={12} aria-hidden="true" />
       <span>{city} {offset}</span>
     </div>
   );

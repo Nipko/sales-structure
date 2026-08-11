@@ -42,7 +42,7 @@ export class AlertsController {
     }
 
     @Post('alerts/:tenantId')
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @ApiOperation({ summary: 'Create alert rule' })
     async createAlert(
         @Param('tenantId') tenantId: string,
@@ -57,7 +57,7 @@ export class AlertsController {
     }
 
     @Put('alerts/:tenantId/:ruleId')
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @ApiOperation({ summary: 'Update alert rule' })
     async updateAlert(
         @Param('tenantId') tenantId: string,
@@ -70,7 +70,7 @@ export class AlertsController {
     }
 
     @Delete('alerts/:tenantId/:ruleId')
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Delete alert rule' })
     async deleteAlert(
@@ -108,7 +108,7 @@ export class AlertsController {
     }
 
     @Post('reports/:tenantId')
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @ApiOperation({ summary: 'Create or update scheduled report config' })
     async upsertReportConfig(
         @Param('tenantId') tenantId: string,
@@ -145,7 +145,7 @@ export class AlertsController {
     }
 
     @Post('saved-reports/:tenantId')
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @ApiOperation({ summary: 'Create a custom saved report' })
     async createSavedReport(
         @Param('tenantId') tenantId: string,
@@ -161,7 +161,7 @@ export class AlertsController {
     }
 
     @Put('saved-reports/:tenantId/:reportId')
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @ApiOperation({ summary: 'Update a saved report' })
     async updateSavedReport(
         @Param('tenantId') tenantId: string,
@@ -174,7 +174,7 @@ export class AlertsController {
     }
 
     @Delete('saved-reports/:tenantId/:reportId')
-    @Roles('tenant_admin', 'super_admin')
+    @Roles('tenant_admin', 'tenant_supervisor', 'super_admin')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Delete a saved report' })
     async deleteSavedReport(

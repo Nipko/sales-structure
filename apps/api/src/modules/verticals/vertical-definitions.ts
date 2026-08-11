@@ -715,7 +715,7 @@ const TECHNOLOGY = createGenericVertical('technology', {
     // nombran las etapas en el lenguaje del rubro.
     sidebar: {
         labelOverrides: {
-            contacts: { es: 'Cuentas', en: 'Accounts', pt: 'Contas', fr: 'Comptes' },
+            crm: { es: 'Cuentas', en: 'Accounts', pt: 'Contas', fr: 'Comptes' },
             pipeline: { es: 'Pipeline', en: 'Pipeline', pt: 'Pipeline', fr: 'Pipeline' },
         },
         hiddenItems: [],

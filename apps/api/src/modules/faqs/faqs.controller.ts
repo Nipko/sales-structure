@@ -18,7 +18,7 @@ export class FaqsController {
 
     @Get(':tenantId')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @Roles('super_admin', 'tenant_admin', 'tenant_agent')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async list(
         @Param('tenantId') tenantId: string,
         @Query('publishedOnly') publishedOnly?: string,
@@ -33,7 +33,7 @@ export class FaqsController {
 
     @Get(':tenantId/:id')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @Roles('super_admin', 'tenant_admin', 'tenant_agent')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async get(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const faq = await this.service.get(tenantId, id);
         return { success: true, data: faq };
@@ -41,7 +41,7 @@ export class FaqsController {
 
     @Post(':tenantId')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async create(@Param('tenantId') tenantId: string, @Body() body: UpsertFaqInput) {
         const faq = await this.service.create(tenantId, body);
         return { success: true, data: faq };
@@ -49,7 +49,7 @@ export class FaqsController {
 
     @Put(':tenantId/:id')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async update(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -61,7 +61,7 @@ export class FaqsController {
 
     @Delete(':tenantId/:id')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async delete(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         await this.service.delete(tenantId, id);
         return { success: true };

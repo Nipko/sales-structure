@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { LogOut, Eye, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { broadcastAuthSessionSwap } from "@/lib/auth-session-sync";
 
 interface ImpersonationState {
   originalAccessToken: string;
@@ -63,6 +64,8 @@ export default function ImpersonationBanner() {
     }
 
     localStorage.removeItem("impersonation");
+    localStorage.removeItem("verticalConfig");
+    broadcastAuthSessionSwap("/admin/tenants");
     window.location.href = "/admin/tenants";
   };
 

@@ -10,13 +10,15 @@ import { DataSourceBadge } from "@/hooks/useApiData";
 import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
+import { useRole } from "@/hooks/useRole";
+import { allowedOrderTransitions, type OrderLifecycleStatus } from "@/lib/order-status-contract";
 import {
     ShoppingCart, Search, Plus, CreditCard, DollarSign, Package, CheckCircle, Clock, XCircle, X, User, Check, FileText,
 } from "lucide-react";
 
 interface OrderItem { id: string; productId: string; productName: string; quantity: number; unitPrice: number; totalPrice: number; }
 interface Order { id: string; contactId: string; contactName: string; status: "pending" | "confirmed" | "paid" | "cancelled"; totalAmount: number; currency: string; paymentMethod: string; notes: string; createdAt: string; updatedAt: string; items: OrderItem[]; }
-interface OrdersOverview { totalRevenue: number; pendingRevenue: number; orderCount: number; pendingCount: number; orders: Order[]; }
+interface OrdersOverview { totalRevenue: number; pendingRevenue: number; financialsVisible?: boolean; orderCount: number; pendingCount: number; orders: Order[]; }
 interface Product { id: string; name: string; price: number; stock: number; unit: string; }
 
 const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
@@ -35,6 +37,7 @@ export default function OrdersPage() {
     const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
+    const { canSeeGlobalAnalytics, isAgentOnly } = useRole();
     const [data, setData] = useState<OrdersOverview | null>(null);
     const [isLive, setIsLive] = useState(false);
     const [search, setSearch] = useState("");
@@ -42,6 +45,7 @@ export default function OrdersPage() {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [products, setProducts] = useState<Product[]>([]);
+    const [statusError, setStatusError] = useState("");
 
     useEffect(() => {
         async function load() {
@@ -60,8 +64,14 @@ export default function OrdersPage() {
 
     const handleUpdateStatus = async (orderId: string, status: string) => {
         if (!activeTenantId) return;
-        const res = await api.updateOrderStatus(activeTenantId, orderId, status);
-        if (res.success) { setData(prev => prev ? { ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, status: status as any } : o) } : prev); }
+        setStatusError("");
+        try {
+            const res = await api.updateOrderStatus(activeTenantId, orderId, status);
+            if (!res.success) throw new Error(res.error || "status_update_failed");
+            setData(prev => prev ? { ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, status: status as OrderStatus } : o) } : prev);
+        } catch {
+            setStatusError(t("statusUpdateError"));
+        }
     };
 
     const handleOpenInvoice = async (orderId: string) => {
@@ -106,7 +116,14 @@ export default function OrdersPage() {
                 mediaKey="orders"
             />
 
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            {statusError && (
+                <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                    {statusError}
+                </div>
+            )}
+
+            {canSeeGlobalAnalytics && data.financialsVisible !== false && (
+            <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                     { key: "totalRevenue", label: t("kpi.totalRevenue"), value: formatCurrency(data.totalRevenue), icon: DollarSign, color: "#2ecc71", sub: t("kpi.completedOrders", { count: data.orders.filter(o => o.status === "paid").length }) },
                     { key: "accountsReceivable", label: t("kpi.accountsReceivable"), value: formatCurrency(data.pendingRevenue), icon: Clock, color: "#ffa502", sub: t("kpi.pendingOrders", { count: data.pendingCount }) },
@@ -128,6 +145,7 @@ export default function OrdersPage() {
                     );
                 })}
             </div>
+            )}
 
             <div className="flex gap-4 mb-5 justify-between">
                 <div className="flex gap-2 flex-wrap">
@@ -160,6 +178,7 @@ export default function OrdersPage() {
                         {filteredOrders.map(order => {
                             const style = statusStyle[order.status];
                             const StatusIcon = style.icon;
+                            const transitions = allowedOrderTransitions(order.status as OrderLifecycleStatus, !isAgentOnly);
                             return (
                                 <tr key={order.id} className="border-b border-border">
                                     <td className="px-5 py-4">
@@ -185,12 +204,26 @@ export default function OrdersPage() {
                                     </td>
                                     <td className="px-5 py-4">
                                         <div className="flex gap-2 items-center">
-                                            <select value={order.status} onChange={(e) => handleUpdateStatus(order.id, e.target.value)} className="px-3 py-1.5 rounded-lg border border-border bg-muted text-foreground text-[13px] cursor-pointer outline-none">
-                                                <option value="pending">{t("status.pending")}</option>
-                                                <option value="confirmed">{t("status.confirmed")}</option>
-                                                <option value="paid">{t("status.paid")}</option>
-                                                <option value="cancelled">{t("status.cancelled")}</option>
-                                            </select>
+                                            {transitions.length > 0 ? (
+                                                <select
+                                                    key={`${order.id}:${order.status}`}
+                                                    defaultValue=""
+                                                    aria-label={t("changeStatus", { order: order.id.slice(0, 8) })}
+                                                    onChange={(event) => {
+                                                        const next = event.currentTarget.value;
+                                                        event.currentTarget.value = "";
+                                                        if (next) void handleUpdateStatus(order.id, next);
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg border border-border bg-muted text-foreground text-[13px] cursor-pointer outline-none"
+                                                >
+                                                    <option value="" disabled>{t("changeStatusShort")}</option>
+                                                    {transitions.map((next) => (
+                                                        <option key={next} value={next}>{t(`status.${next}`)}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <span className="px-2 text-xs text-muted-foreground">{t("terminalStatus")}</span>
+                                            )}
                                             <button onClick={() => handleOpenInvoice(order.id)} className="px-3 py-1.5 rounded-lg border border-primary bg-primary/10 text-primary text-[13px] font-semibold cursor-pointer flex items-center gap-1.5">
                                                 <FileText size={14} /> {t("viewReceipt")}
                                             </button>

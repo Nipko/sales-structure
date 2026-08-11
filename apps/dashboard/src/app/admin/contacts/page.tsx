@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -62,6 +62,7 @@ export default function ContactsPage() {
     const { canCreate, getLimit } = usePlanLimits();
     const { activeTenantId } = useTenant();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [contacts, setContacts] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeSegment, setActiveSegment] = useState<string>("all");
@@ -81,6 +82,12 @@ export default function ContactsPage() {
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
     const [reloadTrigger, setReloadTrigger] = useState(0);
     const triggerReload = () => setReloadTrigger(n => n + 1);
+
+    useEffect(() => {
+        if (searchParams.get("create") !== "contact") return;
+        setShowCreateModal(true);
+        router.replace("/admin/contacts", { scroll: false });
+    }, [searchParams, router]);
 
     // Bulk selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

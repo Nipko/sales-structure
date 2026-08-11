@@ -12,12 +12,44 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
+    sanitizeInternalReturnTo,
+    selectActiveNavigationTarget,
+} from "@/lib/navigation-contract";
+import {
+    BarChart2,
+    Bell,
+    BellRing,
+    Brain,
+    Building2,
+    CalendarCheck,
+    Clock,
     CreditCard,
-    User, Shield, Bell, Palette, Building2, Globe, Clock,
-    Database, Zap, MessageSquare, Mail, Image as ImageIcon, Brain,
-    SlidersHorizontal, Settings, Info, Scale, RotateCcw, Phone,
-    BellRing, GitBranch, BarChart2, Plug, CalendarCheck, Webhook, MessageCircle,
-    RefreshCw, Sparkles, Key, Slack, Plug2, Star, Receipt, ShoppingBag,
+    Database,
+    GitBranch,
+    Globe,
+    Image as ImageIcon,
+    Key,
+    Mail,
+    MessageCircle,
+    MessageSquare,
+    Palette,
+    Phone,
+    Plug,
+    Plug2,
+    Receipt,
+    RefreshCw,
+    RotateCcw,
+    Scale,
+    Settings,
+    Shield,
+    ShoppingBag,
+    Slack,
+    SlidersHorizontal,
+    Sparkles,
+    Star,
+    User,
+    Webhook,
+    Zap,
 } from "lucide-react";
 
 export type Role = {
@@ -43,6 +75,8 @@ export interface SettingSection {
     visible?: (r: Role) => boolean;
 }
 
+export const SETTINGS_HUB_HREF = "/admin/settings";
+
 export const SETTINGS_SECTIONS: SettingSection[] = [
     // ── Account — visible to everyone (their own profile / security) ──
     {
@@ -60,57 +94,75 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
         visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
         items: [
             { key: "businessInfo", href: "/admin/settings/business-info", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
-            { key: "policies", href: "/admin/settings/policies", icon: Scale, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
             { key: "localization", href: "/admin/settings/localization", icon: Globe, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "fiscal", href: "/admin/settings/fiscal", icon: Receipt, iconColor: "text-teal-500", iconBg: "bg-teal-500/10", visible: (r) => r.canManageBilling },
             { key: "businessHours", href: "/admin/settings/business-hours", icon: Clock, iconColor: "text-sky-500", iconBg: "bg-sky-500/10" },
         ],
     },
-    // ── Operations — supervisor+ but hidden for super_admin in platform mode ──
+    // ── CRM & Operations — supervisor+ but hidden for platform mode ──
     {
-        key: "operations",
+        key: "crmOperations",
         visible: (r) => r.isSupervisor && !r.isSuperAdminPlatformMode,
         items: [
             { key: "pipelineStages", href: "/admin/settings/pipeline", icon: GitBranch, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
             { key: "scoringConfig", href: "/admin/settings/scoring-config", icon: BarChart2, iconColor: "text-fuchsia-500", iconBg: "bg-fuchsia-500/10" },
             { key: "customAttributes", href: "/admin/settings/custom-attributes", icon: Database, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
-            { key: "prechat", href: "/admin/settings/prechat", icon: MessageSquare, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "publicBooking", href: "/admin/settings/public-booking", icon: CalendarCheck, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
             { key: "nurturing", href: "/admin/settings/nurturing", icon: RefreshCw, iconColor: "text-amber-500", iconBg: "bg-amber-500/10", visible: (r) => r.canManageBilling },
         ],
     },
-    // ── Communication — supervisor+ but hidden for super_admin in platform mode ──
+    // ── Conversations — content and tools used while serving customers ──
     {
-        key: "communication",
+        key: "conversations",
         visible: (r) => r.isSupervisor && !r.isSuperAdminPlatformMode,
         items: [
+            { key: "prechat", href: "/admin/settings/prechat", icon: MessageSquare, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "emailTemplates", href: "/admin/settings/email-templates", icon: Mail, iconColor: "text-purple-500", iconBg: "bg-purple-500/10" },
             { key: "macros", href: "/admin/settings/macros", icon: Zap, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
             { key: "mediaBank", href: "/admin/settings/media", icon: ImageIcon, iconColor: "text-pink-500", iconBg: "bg-pink-500/10" },
             { key: "recall", href: "/admin/settings/recall", icon: RotateCcw, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10", visible: (r) => r.canManageBilling },
         ],
     },
-    // ── Integrations & alerts — admin only, hidden for super_admin in platform mode ──
+    // ── Channels & Integrations — business connections, admin only ──
     {
-        key: "integrations",
+        key: "channelsIntegrations",
         visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
         items: [
             { key: "crmIntegrations", href: "/admin/settings/integrations/crm", icon: Plug, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
-            { key: "outboundWebhooks", href: "/admin/settings/integrations/webhooks", icon: Webhook, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
             { key: "webChat", href: "/admin/settings/integrations/web-chat", icon: MessageCircle, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "slack", href: "/admin/settings/integrations/slack", icon: Slack, iconColor: "text-fuchsia-500", iconBg: "bg-fuchsia-500/10" },
             { key: "smsNotifications", href: "/admin/settings/integrations/sms-notifications", icon: MessageSquare, iconColor: "text-green-500", iconBg: "bg-green-500/10" },
             { key: "verticalIntegrations", href: "/admin/settings/integrations/vertical", icon: Plug, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
-            { key: "mcp", href: "/admin/settings/integrations/mcp", icon: Plug2, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
             { key: "reviews", href: "/admin/settings/integrations/reviews", icon: Star, iconColor: "text-yellow-500", iconBg: "bg-yellow-500/10" },
-            // Faltaba: el editor de agente ya dejaba encender las tools de
-            // e-commerce y no había dónde conectar la tienda.
-            // Cobros del tenant a SU cliente (seña, anticipo, matrícula). No
-            // confundir con billing, que es lo que el tenant nos paga a nosotros.
             { key: "payments", href: "/admin/settings/integrations/payments", icon: CreditCard, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10", visible: (r) => r.canManageBilling },
             { key: "ecommerce", href: "/admin/settings/integrations/ecommerce", icon: ShoppingBag, iconColor: "text-pink-500", iconBg: "bg-pink-500/10" },
+        ],
+    },
+    // ── Developer — machine-to-machine integrations, admin only ──
+    {
+        key: "developer",
+        visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
+        items: [
+            { key: "outboundWebhooks", href: "/admin/settings/integrations/webhooks", icon: Webhook, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
+            { key: "mcp", href: "/admin/settings/integrations/mcp", icon: Plug2, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
             { key: "apiKeys", href: "/admin/settings/api-keys", icon: Key, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
+        ],
+    },
+    // ── Governance & Alerts — supervisor+; policies remain admin-only ──
+    {
+        key: "governance",
+        visible: (r) => r.isSupervisor && !r.isSuperAdminPlatformMode,
+        items: [
+            { key: "policies", href: "/admin/settings/policies", icon: Scale, iconColor: "text-amber-500", iconBg: "bg-amber-500/10", visible: (r) => r.canManageBilling },
             { key: "alerts", href: "/admin/settings/alerts", icon: BellRing, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
+        ],
+    },
+    // ── Plan & Billing — what the tenant pays Parallly ──
+    {
+        key: "planBilling",
+        visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
+        items: [
+            { key: "billing", href: "/admin/settings/billing", icon: CreditCard, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
         ],
     },
     // ── AI advanced — super_admin only ──
@@ -143,4 +195,60 @@ export function getVisibleSections(role: Role): SettingSection[] {
             items: s.items.filter((i) => !i.visible || i.visible(role)),
         }))
         .filter((s) => s.items.length > 0);
+}
+
+/**
+ * Return the single best match for the current Settings pathname.
+ * Longest-prefix matching prevents parent routes such as `/platform` from
+ * being highlighted alongside a more specific child route.
+ */
+export function getActiveSettingHref(
+    pathname: string,
+    sections: SettingSection[],
+): string | null {
+    return selectActiveNavigationTarget(
+        pathname,
+        sections.flatMap((section) => section.items.map((item) => ({ href: item.href }))),
+    )?.href ?? null;
+}
+
+/** Make Settings search case- and accent-insensitive across all four locales. */
+export function normalizeSettingsSearch(value: string): string {
+    return value
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .trim()
+        .toLocaleLowerCase();
+}
+
+type AccessCheck = (pathname: string) => boolean;
+
+/**
+ * Resolve a contextual Settings return target without accepting external,
+ * malformed, inaccessible or self-referential URLs.
+ */
+export function resolveSettingsReturnTo(
+    value: string | null | undefined,
+    canAccess: AccessCheck,
+    currentPathname?: string,
+): string {
+    const safe = sanitizeInternalReturnTo(value, {
+        isAllowedPath: (pathname) => (
+            pathname !== currentPathname
+            && pathname !== SETTINGS_HUB_HREF
+            && !pathname.startsWith(`${SETTINGS_HUB_HREF}/`)
+            && canAccess(pathname)
+        ),
+    });
+    return safe ?? SETTINGS_HUB_HREF;
+}
+
+/** Preserve a validated contextual return while moving inside Settings. */
+export function withSettingsReturnTo(href: string, returnTo: string): string {
+    if (returnTo === SETTINGS_HUB_HREF) return href;
+
+    const base = "https://settings.parallly.invalid";
+    const destination = new URL(href, base);
+    destination.searchParams.set("returnTo", returnTo);
+    return `${destination.pathname}${destination.search}${destination.hash}`;
 }

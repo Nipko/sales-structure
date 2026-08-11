@@ -93,6 +93,7 @@ export class KnowledgeController {
     }
 
     @Get('usage/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'Get KB usage stats (embeddings, documents, cost)' })
     async getUsageStats(@Param('tenantId') tenantId: string) {
@@ -134,6 +135,7 @@ export class KnowledgeController {
     }
 
     @Get('documents/quality')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Get quality scores for all documents' })
     async getQualityScores(@Req() req: any) {
@@ -245,6 +247,7 @@ export class KnowledgeController {
     // ─── KB Analytics ────────────────────────────────────────────────────────
 
     @Get('analytics/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'Get KB usage analytics (plan-gated: starter+)' })
     async getAnalytics(
@@ -310,6 +313,7 @@ export class KnowledgeController {
     }
 
     @Get(':tenantId/gap-report')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'Get KB content gap analysis report' })
     async getGapReport(

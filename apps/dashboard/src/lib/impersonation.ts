@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { broadcastAuthSessionSwap } from "@/lib/auth-session-sync";
 
 /**
  * Start an act-as session on a tenant.
@@ -36,7 +37,11 @@ export async function startImpersonation(
     // The session must carry the tenant identity, otherwise the UI stays in
     // platform mode while holding a tenant token and no page resolves a tenant.
     if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+    // Vertical capabilities belong to the tenant being viewed. Never carry a
+    // previous tenant's menu contract into an impersonated workspace.
+    localStorage.removeItem("verticalConfig");
 
+    broadcastAuthSessionSwap("/admin");
     window.location.href = "/admin";
     return { ok: true };
 }

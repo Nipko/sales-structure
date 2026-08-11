@@ -18,14 +18,14 @@ export class KbHealthController {
     }
 
     @Post(':tenantId/scan')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async scan(@Param('tenantId') tenantId: string) {
         const found = await this.kbHealth.scanContradictions(tenantId);
         return { success: true, data: { found } };
     }
 
     @Post(':tenantId/:id/status')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async updateIssue(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,

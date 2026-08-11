@@ -11,6 +11,7 @@ import { Response } from 'express';
 @ApiTags('dashboard-analytics')
 @Controller('dashboard-analytics')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@Roles('tenant_admin', 'tenant_supervisor')
 @ApiBearerAuth()
 export class DashboardAnalyticsController {
     constructor(
@@ -145,7 +146,7 @@ export class DashboardAnalyticsController {
     }
 
     @Get('ai-resolution/:tenantId')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'AI resolution rate: stats, trend, and breakdown by channel' })
     async getAiResolution(
         @Param('tenantId') tenantId: string,

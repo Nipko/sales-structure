@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { HelpCircle, Plus, Trash2, Save, X, Edit2, Eye, EyeOff, Tag, BookOpen, Search } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { useRole } from "@/hooks/useRole";
 
 type Faq = {
     id: string;
@@ -42,6 +43,7 @@ const EMPTY_FORM: FaqForm = {
 
 export default function FaqsPage() {
     const { activeTenantId } = useTenant();
+    const { canEditKnowledge } = useRole();
     const t = useTranslations("knowledge.faqs");
     const tKb = useTranslations("knowledge");
     const tHelp = useTranslations("help");
@@ -64,6 +66,7 @@ export default function FaqsPage() {
     useEffect(() => { load(); }, [activeTenantId]);
 
     const openNew = () => {
+        if (!canEditKnowledge) return;
         setEditing(null);
         setForm(EMPTY_FORM);
         setError("");
@@ -71,6 +74,7 @@ export default function FaqsPage() {
     };
 
     const openEdit = (faq: Faq) => {
+        if (!canEditKnowledge) return;
         setEditing(faq);
         setForm({
             question: faq.question,
@@ -85,7 +89,7 @@ export default function FaqsPage() {
     };
 
     const save = async () => {
-        if (!activeTenantId) return;
+        if (!activeTenantId || !canEditKnowledge) return;
         if (!form.question.trim() || !form.answer.trim()) {
             setError(t("errors.required"));
             return;
@@ -110,7 +114,7 @@ export default function FaqsPage() {
     };
 
     const remove = async (id: string) => {
-        if (!activeTenantId) return;
+        if (!activeTenantId || !canEditKnowledge) return;
         if (!confirm(t("confirmDelete"))) return;
         const result = await api.deleteFaq(activeTenantId, id);
         if (result.success) load();
@@ -131,13 +135,13 @@ export default function FaqsPage() {
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
-                <button
+                {canEditKnowledge && <button
                     onClick={openNew}
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors"
                 >
                     <Plus size={16} />
                     {t("newFaq")}
-                </button>
+                </button>}
             </div>
 
             {/* Sub-nav mirrors the Knowledge landing for consistency */}
@@ -178,7 +182,7 @@ export default function FaqsPage() {
                                     {cat}
                                 </h3>
                                 <div className="space-y-2">
-                                    {items.map(faq => <FaqRow key={faq.id} faq={faq} onEdit={openEdit} onDelete={remove} t={t} />)}
+                                    {items.map(faq => <FaqRow key={faq.id} faq={faq} canEdit={canEditKnowledge} onEdit={openEdit} onDelete={remove} t={t} />)}
                                 </div>
                             </div>
                         );
@@ -187,14 +191,14 @@ export default function FaqsPage() {
                         <div>
                             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">{t("uncategorized")}</h3>
                             <div className="space-y-2">
-                                {faqs.filter(f => !f.category).map(faq => <FaqRow key={faq.id} faq={faq} onEdit={openEdit} onDelete={remove} t={t} />)}
+                                {faqs.filter(f => !f.category).map(faq => <FaqRow key={faq.id} faq={faq} canEdit={canEditKnowledge} onEdit={openEdit} onDelete={remove} t={t} />)}
                             </div>
                         </div>
                     )}
                 </div>
             )}
 
-            {editorOpen && (
+            {canEditKnowledge && editorOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setEditorOpen(false)}>
                     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-6" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-4">
@@ -257,7 +261,7 @@ export default function FaqsPage() {
     );
 }
 
-function FaqRow({ faq, onEdit, onDelete, t }: { faq: Faq; onEdit: (f: Faq) => void; onDelete: (id: string) => void; t: any }) {
+function FaqRow({ faq, canEdit, onEdit, onDelete, t }: { faq: Faq; canEdit: boolean; onEdit: (f: Faq) => void; onDelete: (id: string) => void; t: any }) {
     return (
         <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
             <div className="flex items-start justify-between gap-3">
@@ -283,12 +287,12 @@ function FaqRow({ faq, onEdit, onDelete, t }: { faq: Faq; onEdit: (f: Faq) => vo
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                     <span className="text-[10px] text-neutral-400 mr-2">{faq.views} {t("views")}</span>
-                    <button onClick={() => onEdit(faq)} className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800" title={t("edit")}>
+                    {canEdit && <button onClick={() => onEdit(faq)} className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800" title={t("edit")}>
                         <Edit2 size={14} className="text-neutral-600 dark:text-neutral-400" />
-                    </button>
-                    <button onClick={() => onDelete(faq.id)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title={t("delete")}>
+                    </button>}
+                    {canEdit && <button onClick={() => onDelete(faq.id)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title={t("delete")}>
                         <Trash2 size={14} className="text-red-600 dark:text-red-400" />
-                    </button>
+                    </button>}
                 </div>
             </div>
         </div>

@@ -321,7 +321,6 @@ export default function AgentListPage() {
           title={t("listTitle")}
           subtitle={t("listSubtitle")}
         />
-        <SetupBanner show onAction={handleNewAgent} />
         <div className="flex flex-col items-center justify-center py-20">
           <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center mb-4">
             <Bot size={32} className="text-indigo-500" />

@@ -27,6 +27,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { useRole } from "@/hooks/useRole";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +56,7 @@ const modelBarColors = [
 
 export default function AdminDashboard() {
     const { user, verticalConfig } = useAuth();
+    const { canAccess, canManageChannels } = useRole();
     const t = useTranslations("dashboard");
     const tSetup = useTranslations("setupWizard");
     const tVw = useTranslations("verticalWelcome");
@@ -322,11 +324,11 @@ export default function AdminDashboard() {
         { href: "/admin/channels/whatsapp", icon: MessageSquare, tk: "test", iconBg: "bg-emerald-500/10", iconText: "text-emerald-500" },
         { href: "/admin/knowledge", icon: Brain, tk: "knowledge", iconBg: "bg-violet-500/10", iconText: "text-violet-500" },
         { href: "/admin/users", icon: Users, tk: "team", iconBg: "bg-sky-500/10", iconText: "text-sky-500" },
-    ];
+    ].filter((action) => canAccess(action.href));
 
     return (
         <div className="animate-in">
-            {needsChannel && user?.role !== "super_admin" && (
+            {needsChannel && user?.role !== "super_admin" && canManageChannels && (
                 <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
                         <MessageSquare size={18} className="text-amber-600 dark:text-amber-400" />
@@ -342,7 +344,7 @@ export default function AdminDashboard() {
             )}
             {/* Retomar el asistente guiado. Sin esto, "Saltar" era irreversible: no
                 existe ningún otro enlace al wizard en toda la aplicación. */}
-            {wizardSkipped && !needsChannel && (
+            {wizardSkipped && !needsChannel && canAccess("/admin/setup-wizard") && (
                 <div className="mb-6 rounded-xl border border-indigo-300 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 p-4 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center shrink-0">
                         <Sparkles size={18} className="text-indigo-600 dark:text-indigo-400" />

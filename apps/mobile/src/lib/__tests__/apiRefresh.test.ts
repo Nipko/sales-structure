@@ -83,8 +83,26 @@ describe('safe API response parsing', () => {
             json: async () => ({ message: 'Bad gateway' }),
         } as Response);
 
-        expect(result).toEqual({ success: false, error: 'Bad gateway' });
+        expect(result).toEqual({ success: false, error: 'Bad gateway', message: 'Bad gateway' });
         expect(() => requireApiSuccess(result)).toThrow('Bad gateway');
+    });
+
+    it('preserves structured backend error details needed by auth flows', async () => {
+        const result = await parseApiResponse({
+            ok: false,
+            status: 409,
+            json: async () => ({
+                error: 'session_conflict',
+                message: 'Ya hay una sesión activa para esta cuenta',
+            }),
+        } as Response);
+
+        expect(result).toEqual({
+            success: false,
+            error: 'Ya hay una sesión activa para esta cuenta',
+            errorCode: 'session_conflict',
+            message: 'Ya hay una sesión activa para esta cuenta',
+        });
     });
 
     it('returns successful envelopes unchanged', () => {

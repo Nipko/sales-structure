@@ -8,17 +8,12 @@ import { disconnectSocket } from '../lib/socket';
 import { activateOutboxScope, clearAllOutboxStorage, deactivateOutboxScope } from '../lib/outbox';
 import { deactivatePushScope, unregisterPushForLogout } from '../lib/push';
 import { setUnreadTotal } from '../lib/unread';
+import { authFailureReason, withSessionTakeover } from '../lib/authResponse';
 
 // Re-lock biométrico tras background prolongado. 15 min: a los 90s originales
 // cada cambio de app (responder un WhatsApp personal, mirar el calendario)
 // volvía a exigir huella — se percibía como "me pide loguearme cada rato".
 const RELOCK_AFTER_MS = 15 * 60_000;
-
-// Backend rejects a 2nd concurrent session unless force=true. On a personal phone
-// we always take over our own prior session (e.g. after an unclean exit / crash).
-const isSessionConflict = (res: any) =>
-    res?.error === 'session_conflict' ||
-    (typeof res?.message === 'string' && res.message.toLowerCase().includes('sesión activa'));
 
 export type TwoFAMethod = 'totp' | 'email' | 'backup';
 
@@ -140,21 +135,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Código propio del backend (p. ej. 'no_account' cuando alguien entra con
         // Google desde el móvil sin tener cuenta): se propaga tal cual para que la
         // pantalla muestre el mensaje correcto en vez del genérico.
-        if (typeof res?.error === 'string') return { ok: false, error: res.error };
-        return { ok: false, error: res?.error?.message || res?.message || fallbackError };
+        return { ok: false, error: authFailureReason(res, fallbackError) };
     }, [loadVertical]);
 
     const login = useCallback(async (email: string, password: string) => {
         const dt = (await tokens.getDeviceTrust()) || undefined;
-        let res = await api.login(email, password, dt, false);
-        if (isSessionConflict(res)) res = await api.login(email, password, dt, true);
+        const res = await withSessionTakeover((force) => api.login(email, password, dt, force));
         return applyAuth(res, 'Credenciales inválidas');
     }, [applyAuth]);
 
     const loginWithGoogle = useCallback(async (idToken: string) => {
         const dt = (await tokens.getDeviceTrust()) || undefined;
-        let res = await api.googleLogin(idToken, dt, false);
-        if (isSessionConflict(res)) res = await api.googleLogin(idToken, dt, true);
+        const res = await withSessionTakeover((force) => api.googleLogin(idToken, dt, force));
         return applyAuth(res, 'No se pudo iniciar sesión con Google');
     }, [applyAuth]);
 

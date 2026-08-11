@@ -15,6 +15,10 @@ export interface ApiResult<T = any> {
     success: boolean;
     data?: T;
     error?: string;
+    /** Stable backend error identifier when the response provides one. */
+    errorCode?: string;
+    /** Human-readable backend detail, kept separate from the stable identifier. */
+    message?: string;
     [key: string]: any;
 }
 
@@ -35,7 +39,15 @@ export async function parseApiResponse<T = any>(res: Response): Promise<ApiResul
     try { body = await res.json(); } catch { body = null; }
 
     if (!res.ok) {
-        return { success: false, error: responseError(body, res.status) };
+        const rawError = typeof body?.error === 'string' ? body.error : undefined;
+        const errorCode = rawError && /^[a-z][a-z0-9_]*$/.test(rawError) ? rawError : undefined;
+        const message = typeof body?.message === 'string' ? body.message : undefined;
+        return {
+            success: false,
+            error: responseError(body, res.status),
+            ...(errorCode ? { errorCode } : {}),
+            ...(message ? { message } : {}),
+        };
     }
     if (body === null || body === undefined) {
         return { success: false, error: 'empty_response' };

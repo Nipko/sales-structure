@@ -1,10 +1,14 @@
 # Play Store — Estado y checklist de publicación (Parallly Mobile)
 
-> **Estado al 10-ago-2026.** La app ya existe en Google Play Console, pero **todavía no
-> está publicada ni se ha iniciado un rollout**. El AAB `1.0.0 (2)` está guardado como
-> borrador en Prueba interna; el **AAB `1.0.0 (3)` ya está construido y validado** pero
-> aún no subido. Todo estado `✅` de este documento fue comprobado en Play Console, en el
-> artefacto generado o contra la URL real.
+> **Estado al 10-ago-2026.** La aplicación ya existe en Google Play Console y la prueba
+> interna está activa; aún no fue enviada a revisión ni publicada en Producción. El
+> candidato vigente es el AAB
+> `1.0.0 (6)`, generado desde `main` en el commit `41d58962`, validado con bundletool e
+> instalado en el dispositivo de pruebas. Play lo tiene en un release interno que contiene
+> únicamente v6; App access, Target audience, Data safety y la ficha con cuatro capturas
+> están guardados, App content figura al día, la declaración de IA/opinión está
+> completada y la ficha aparece **Lista para enviar a revisión**. Todos los elementos
+> marcados como pendientes requieren todavía confirmación explícita.
 
 ## Identidad en Google Play
 
@@ -18,34 +22,30 @@
 | Correo de soporte | `support@parallext.com` |
 | Teléfono de soporte | `+573134328491` |
 | Sitio web | `https://parallly-chat.cloud` |
-| Cuenta de desarrollador | Organización; identidad, sitio y contactos verificados; sin problemas de políticas |
+| Cuenta de desarrollador | Organización; identidad, sitio y contactos verificados |
 
----
+## Resumen ejecutivo
 
-## 🚦 Resumen: qué falta para publicar
-
-| # | Bloqueante | Estado real |
+| # | Requisito | Estado real |
 |---|---|---|
-| 1 | Publicar los ajustes de privacidad de logout, notificaciones y outbox | ✅ **Cerrado** — commit `652c38f9`, desplegado y verificado en vivo (§9) |
-| 2 | Generar y validar un **AAB v3** con esos ajustes | ✅ **Construido y validado** (§1); ⏳ falta subirlo a Play |
-| 3 | Smoke test del APK v3 y recorrido por modos operativos | ◐ El dispositivo tiene el versionCode 3 **del build local**, no el de EAS; permisos verificados idénticos (§1) |
-| 4 | Crear tenant y agente demo permanentes para **App access** | ◐ La cuenta existe y **sí tiene tenant** ("Test Business"), pero está casi vacía y con PII real (§2) |
-| 5 | Capturas de pantalla seguras (mínimo 2) | ✅ 4 nuevas en `store-assets/play/` (1080×2096, sin alfa). La del Inbox se rehará con más conversaciones |
-| 6 | Enviar **Data safety** | ◐ Los 5 pasos y las correcciones están guardados como borrador; falta Target audience y el envío final |
-| 7 | Completar **Target audience** | ⏳ Pendiente; seleccionar solo `18 años o más` |
-| 8 | Terminar la ficha de tienda | ◐ Textos, ícono y gráfico destacado cargados; faltan capturas |
-| 9 | Configurar testers y lanzar Prueba interna | ⏳ El release está guardado, pero no hay testers ni rollout |
+| 1 | AAB final de Android | ✅ v6 construido, validado, firmado, instalado y cargado (§1) |
+| 2 | Prueba física del artefacto | ✅ Desconexión/reconexión técnica y visible aprobada (§1) |
+| 3 | Cuenta de revisión | ◐ Existe y tiene tenant; faltan confirmar 2FA y plan no expirante (§2) |
+| 4 | Capturas de teléfono | ✅ 4 archivos compatibles, autorizados y cargados (§3) |
+| 5 | App access | ✅ Detalle agregado y página guardada |
+| 6 | Target audience | ✅ Guardado únicamente como `18 años o más` |
+| 7 | Data safety | ✅ Revisado y guardado; App content al día (§4) |
+| 8 | Ficha de tienda | ✅ Textos, ícono, gráfico y 4 capturas guardados |
+| 9 | Prueba interna | ✅ v6 activa, un verificador y enlace de participación disponibles |
+| 10 | Declaración IA/opinión | ✅ 2 recursos promocionales etiquetados; 4 capturas reales sin etiqueta |
+| 11 | Producción | ◐ Habilitada; preparación `0/5` y países/regiones pendientes |
 
-El cuestionario IARC, las demás declaraciones de App content y los datos de contacto ya
-están completos. **Nada de lo anterior equivale a una publicación.**
+El camino crítico restante es: instalar v6 desde Play y repetir el smoke interno,
+confirmar 2FA y el plan permanente de la cuenta demo, y completar las 5 tareas de
+Producción, incluida la selección de países/regiones. La prueba interna activa no
+equivale a una publicación en Producción.
 
-**El camino crítico hoy es el bloqueante 4→5**: el tenant demo casi vacío es lo que a la
-vez frena las capturas y degrada lo que verá el revisor. Todo lo demás está listo o es
-trabajo manual de consola.
-
----
-
-## ✅ Completado y verificado
+## Completado y verificado
 
 | Requisito | Evidencia / estado |
 |---|---|
@@ -54,323 +54,224 @@ trabajo manual de consola.
 | Términos | `https://parallly-chat.cloud/terms` → HTTP 200 |
 | Eliminación de cuenta y datos | `https://parallly-chat.cloud/data-deletion` → HTTP 200 |
 | Alta de cuenta accesible | `https://admin.parallly-chat.cloud/signup` → HTTP 200 |
-| Target API level | `targetSdkVersion 36` (Android 16) |
-| Seguridad de red | TLS y plugin `withAndroidNetworkSecurity`; sin tráfico en claro |
-| Secretos de build en EAS | `GOOGLE_SERVICES_JSON`, `SENTRY_ORG/PROJECT/AUTH_TOKEN` |
-| Recorrido de quien instala sin cuenta | Bienvenida, login y enlaces de alta/legales implementados; ver §5 |
-| App content | Ads: No · Gobierno: No · Advertising ID: No · Funciones financieras: Seguros · Salud: administración/servicios de atención médica |
-| IARC | Completado con `support@parallext.com`; clasificaciones recibidas: todos, PEGI con orientación parental, USK 16 y genérica 12+ |
-| Textos de tienda | Nombre, descripción corta y descripción completa cargados en el borrador |
-| Ícono de tienda | `apps/mobile/store-assets/play-icon-512.png`, 512×512, cargado |
-| Gráfico destacado | `apps/mobile/store-assets/play-feature-graphic-1024x500.png`, 1024×500 RGB/24 bits, cargado |
+| Seguridad Android | minSdk 24; targetSdk/compileSdk 36; TLS; sin tráfico en claro |
+| Secretos de build | `GOOGLE_SERVICES_JSON`, `SENTRY_ORG/PROJECT/AUTH_TOKEN` en EAS |
+| IARC | Completado con `support@parallext.com` |
+| Textos de tienda | Nombre, descripción corta y descripción completa guardados |
+| Ícono | `apps/mobile/store-assets/play-icon-512.png`, 512×512, cargado |
+| Gráfico destacado | `apps/mobile/store-assets/play-feature-graphic-1024x500.png`, 1024×500, cargado |
+| App access | Detalle de acceso agregado y página guardada |
+| Target audience | Guardado únicamente como `18 años o más` |
+| Data safety / App content | Formulario revisado y guardado; App content muestra `Ya estás al día` |
+| Capturas | Cuatro capturas de teléfono cargadas y ficha guardada |
+| Declaración IA/opinión | Completada; solo ícono y gráfico destacado etiquetados |
+| Estado de ficha | `Lista para enviar a revisión` |
+| Prueba interna | Borrador guardado con únicamente `1.0.0 (6)` |
 
----
+## 1. AAB v6 y prueba física
 
-## 1. AAB y permisos
+### Artefacto cargado
 
-### AAB v2 ya generado y validado
+| Dato | Valor comprobado |
+|---|---|
+| EAS build ID | `e8a0b188-d8a9-41c5-a9e0-c30ebb270279` |
+| Commit exacto | `41d589629d4c9ab52d9e3bb18896bffbcb8e359b` |
+| Perfil / distribución | Android `production` · `STORE` |
+| package | `cloud.parallly.mobile` |
+| versionName / versionCode | `1.0.0` / `6` |
+| minSdk / targetSdk / compileSdk | `24` / `36` / `36` |
+| Tamaño del AAB | `53.293.577` bytes |
+| SHA-256 del AAB | `D9C0DDD82EC0E27F464A7E885087067731E7F8679746C603F68CA64F57B7555F` |
+| Archivo local | `C:\Users\USER\Desktop\parallly-v6-play\parallly-1.0.0-v6.aab` |
 
-El build de producción `1.0.0 (2)` se generó con EAS y se validó antes de subirlo:
+Validaciones realizadas sobre el artefacto exacto:
 
-- package: `cloud.parallly.mobile`
-- versionName: `1.0.0`
-- versionCode: `2`
-- minSdk: `24`
-- targetSdk: `36`
-- tamaño: `53.253.426` bytes
-- SHA-256: `960945052243F263F39A45B4352A59B0C8381E23004DE532222896125AEB204E`
-- `bundletool validate`: OK
-- firma de upload: válida
-- `SYSTEM_ALERT_WINDOW`: ausente
-- `WRITE_EXTERNAL_STORAGE`: ausente
-- `READ_EXTERNAL_STORAGE`: limitado a `maxSdkVersion=32`
+- EAS terminó el build con estado `FINISHED`.
+- `bundletool validate`: **PASS**.
+- El manifest declara package `cloud.parallly.mobile`, versionCode `6`, versionName
+  `1.0.0`, minSdk `24` y targetSdk/compileSdk `36`.
+- `jarsigner -verify`: firma del AAB verificada.
+- Certificado de upload SHA-256:
+  `42:DE:BB:77:51:83:D1:D9:63:7D:43:60:79:C0:CF:71:D6:79:E4:F6:36:C8:C2:5A:F6:0C:61:44:AE:B5:A1:34`.
+- El manifest no incluye `SYSTEM_ALERT_WINDOW` ni `WRITE_EXTERNAL_STORAGE`;
+  `READ_EXTERNAL_STORAGE` está limitado a `maxSdkVersion=32` y `RECORD_AUDIO` está
+  presente para las notas de voz.
+- Se generó `parallly-1.0.0-v6-universal.apks` y de allí `universal.apk`.
+- SHA-256 de `universal.apk`:
+  `F1C14E5F12D82415AD0BB2733CC560A401F9E0A3E84BC8038D30F57AFEA0C4FB`.
 
-Está cargado en **Prueba interna** como `1.0.0 (2) — prueba interna`, pero únicamente
-como borrador: no tiene testers y no se lanzó.
+El APK universal derivado del AAB se instaló por cable con `adb install -r` en un
+**Samsung SM-S918B**. La actualización conservó la sesión. La app arrancó y los logs
+no mostraron fatal ni `JSON Parse error: Unexpected end of input`.
 
-### Qué artefacto va a Play
+El APK universal está firmado por bundletool para pruebas locales; sirve para probar el
+contenido del bundle, pero el archivo que va a Play es exclusivamente el AAB.
+
+Play Console aceptó el AAB y la prueba interna activa muestra únicamente `6 (1.0.0)`,
+API 24+ y target SDK 36. El release está disponible para verificadores internos desde
+`https://play.google.com/apps/internaltest/4701526887696492046`.
+
+### Prueba de desconexión
+
+La prueba técnica y visible pasó:
+
+- Android reportó `Active default network: none` durante la pérdida de conectividad;
+- el proceso de Parallly permaneció vivo con PID activo;
+- Inbox mostró `SIN CONEXIÓN`;
+- CRM mostró `No se pudieron cargar los datos.` y `Reintentar`, sin falso estado vacío;
+- logcat registró `0` coincidencias de `FATAL` o `JSON Parse`;
+- la red se restauró y Android volvió a reportarla como activa;
+- al pulsar `Reintentar`, CRM cargó los leads inmediatamente sin cerrar la sesión.
+
+Resultado de desconexión/reconexión visible: **PASS**.
+
+### Historial de artefactos
 
 | AAB | Commit | Estado |
 |---|---|---|
-| v2 | anterior | Borrador en Prueba interna, sin testers. **Descartado** |
-| v3 | `652c38f9` | Construido y validado (abajo). **Descartado**: anterior a los arreglos de §7-bis |
-| v4 | `e268912b` | Construido durante la sesión, pero **anterior al arreglo del CRM**. Descartado |
-| **v5** | `d9d81927` | **El que se sube** — construido, validado e instalado (abajo) |
+| v2 | anterior | Retirado del borrador; recuperable en la biblioteca de artefactos |
+| v3 | `652c38f9` | Descartado; anterior a correcciones funcionales |
+| v4 | `e268912b` | Descartado; anterior al arreglo de CRM |
+| v5 | `d9d81927` | Validado e instalado, pero sustituido por v6 |
+| **v6** | **`41d58962`** | **Único artefacto de la prueba interna activa** |
 
-### AAB v5 — validado (10-ago-2026)
+La prueba interna publicada muestra únicamente versionCode `6`.
 
-| Dato | Valor comprobado |
-|---|---|
-| EAS build ID | `20df60d6-73af-45cc-8f5e-6cf3252c1205` |
-| Commit | `d9d81927` (incluye `e268912b` y `ab3e5cbc`) |
-| package | `cloud.parallly.mobile` |
-| versionName / versionCode | `1.0.0` / `5` |
-| minSdk / targetSdk / compileSdk | `24` / `36` / `36` |
-| Tamaño | `53.289.549` bytes |
-| SHA-256 del AAB | `D6B702E5500AF494869C35872908EC1B134446137A9FA289E3C8257FDA658A1B` |
-| `bundletool validate` | OK |
-| Permisos | 31 — **idénticos al v3**, sin una sola diferencia |
+## 2. App access guardado; cuenta demo por verificar
 
-Higiene de permisos: `SYSTEM_ALERT_WINDOW` y `WRITE_EXTERNAL_STORAGE` **ausentes**,
-`READ_EXTERNAL_STORAGE` con `maxSdkVersion=32`, `POST_NOTIFICATIONS` / `WAKE_LOCK` /
-`RECEIVE_BOOT_COMPLETED` / `c2dm.permission.RECEIVE` **presentes**, sin ubicación ni
-contactos.
+La aplicación exige login. Google necesita credenciales reutilizables, sin código
+temporal, pago ni configuración adicional.
 
-**Instalado y verificado en dispositivo.** El APK universal derivado de este AAB
-(77.655.876 bytes) se instaló sobre un **SM-S918B (Android 16, 1080×2316)** que no tenía
-la app. Comparte firma con el APK universal anterior, así que `adb install -r` conservó
-la sesión. En él se verificó que la pestaña y el encabezado de la agenda ya **coinciden**.
+### Cuenta de revisión
 
-La validación del v3, más abajo, queda como el procedimiento de referencia.
-
-### AAB v3 — construido y validado (10-ago-2026)
-
-Los ajustes de privacidad ya están dentro del artefacto: el logout quita la suscripción
-push, invalida el registro nativo, limpia las notificaciones y aísla el outbox y la
-caché del inbox por usuario y tenant. Las políticas nombran expresamente a Sentry, Expo
-y FCM y **ya están desplegadas** (§9).
-
-| Dato | Valor comprobado |
-|---|---|
-| EAS build ID | `5c3dc850-ce3f-48d3-9259-9c6c4a311884` |
-| Commit | `652c38f9` (árbol limpio) |
-| package | `cloud.parallly.mobile` |
-| versionName / versionCode | `1.0.0` / `3` |
-| minSdk / targetSdk / compileSdk | `24` / `36` / `36` |
-| Tamaño | `53.263.867` bytes |
-| SHA-256 del AAB | `7DFB867EB3894A8F79646EBAD9DBD947D9825BB9358742A51EC3697C0CBF1483` |
-| Certificado de firma (SHA-256) | `42:DE:BB:77:51:83:D1:D9:63:7D:43:60:79:C0:CF:71:D6:79:E4:F6:36:C8:C2:5A:F6:0C:61:44:AE:B5:A1:34` |
-| `bundletool validate` | OK |
-| Permisos declarados | 31 |
-
-Higiene de permisos, verificada sobre el manifest extraído del propio AAB:
-
-- `SYSTEM_ALERT_WINDOW`: **ausente**
-- `WRITE_EXTERNAL_STORAGE`: **ausente**
-- `READ_EXTERNAL_STORAGE`: presente con `maxSdkVersion=32`
-- `POST_NOTIFICATIONS`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `com.google.android.c2dm.permission.RECEIVE`: **presentes** — sin el primero el push estaría muerto en Android 13+
-- Sin `ACCESS_FINE_LOCATION` ni `READ_CONTACTS`, coherente con lo declarado en Data safety
-- El resto son permisos de badge de launcher (Samsung/Huawei/Oppo/Sony…), todos `normal`
-
-Comandos usados (reproducibles):
-
-```bash
-npx eas-cli build:list --platform android --limit 5 --non-interactive --json
-java -jar bundletool.jar validate --bundle=parallly-v3.aab
-java -jar bundletool.jar dump manifest --bundle=parallly-v3.aab
-```
-
-Si `SYSTEM_ALERT_WINDOW` o `WRITE_EXTERNAL_STORAGE` aparece en un AAB futuro, **no subirlo**.
-
-### Smoke test: qué está instalado hoy y qué falta
-
-El SM-S938B (Android 16) tiene instalado `versionCode 3`, pero firmado con
-`CN=Android Debug` → es el **build local de `gradlew`**, no el artefacto de EAS. Sirve
-para probar comportamiento, no para dar por validado el artefacto de la tienda.
-
-Mitigación ya hecha: se comparó permiso por permiso el APK instalado contra el manifest
-del AAB de EAS → **31 vs 31, sin diferencias en ninguna dirección**. El riesgo que
-cubría esta verificación (que el manifest local no reflejara el de EAS) queda descartado.
-
-Para correr el smoke test sobre el artefacto exacto:
-
-```bash
-java -jar bundletool.jar build-apks --bundle=parallly-v3.aab --output=universal.apks --mode=universal
-```
-
-El APK universal resultante (77.606.724 bytes) queda firmado con el debug keystore de
-bundletool, que **no** coincide con el del build local → instalarlo exige `adb uninstall`
-primero y eso borra la sesión y el outbox del dispositivo.
-
-Falta recorrer al menos un tenant representativo de cada modo operativo: agenda,
-estadías, tours, restaurante, pedidos, clases, matrículas, seguros, solicitudes de
-servicio, fotografía y pruebas de manejo, alquiler vehicular y hospedaje de mascotas.
-Ninguna vertical debe caer en una cita genérica que no corresponda.
-
-## 2. App access — bloqueante de revisión
-
-La app exige login; el revisor necesita credenciales reutilizables que no dependan de
-un código temporal.
-
-### Cuenta de revisión (10-ago-2026)
-
-- Usuario: `architerin@gmail.com`. **La contraseña no se guarda en el repo**: vive
-  únicamente en Play Console → App content → App access. Un repo no es un gestor de
-  secretos, y esa credencial tiene que sobrevivir a revalidaciones futuras de Google.
-- Estado verificado en dispositivo: la sesión abre y **el usuario sí tiene tenant**
-  (`Test Business`). Esto descarta el peor escenario: con `tenantId` nulo la app cae en
-  `NoWorkspaceScreen`, que solo ofrece "terminar la configuración en la web" y logout —
-  un callejón sin salida que Google reporta como "no pudimos acceder a la app".
-
-### Lo que todavía falta en esa cuenta
+- Usuario: `architerin@gmail.com`.
+- Tenant: `Test Business`.
+- La contraseña debe vivir únicamente en Play Console. No debe guardarse en el repo ni
+  enviarse por chat.
+- Los registros visibles y las cuatro capturas fueron confirmados por el propietario
+  como datos ficticios de prueba, incluido `Nir Levin`.
 
 | Punto | Estado |
 |---|---|
-| CRM con datos ficticios | ✅ 6 leads sintéticos cargados (Camila Restrepo, Daniela Ospina, Mariana Ochoa, Santiago Franco, Laura Bedoya, Diego Pardo), teléfonos `5730000001xx` |
-| Inbox con conversaciones | ❌ Sigue con 1 sola conversación. **No se puede crear desde la app**: el compose sólo abre el envío saliente. Requiere el dashboard, mensajes reales al bot de Telegram, o el widget público |
-| Agenda con citas | ❌ Vacía |
-| Sin PII real | ❌ La conversación y el lead **"Nir Levin"** siguen ahí. `LeadDetailScreen` **no ofrece editar el nombre** (sólo llamar, WhatsApp, etiqueta, nota, tarea) → hay que renombrarlo desde el dashboard |
-| 2FA desactivado | ⏳ Sin confirmar |
-| Plan/trial que no expire | 🔴 **El trial vence en 7 días** (visto en el dashboard el 10-ago-2026: *"Tu prueba gratuita termina en 7 días"*, plan STARTER) |
+| Cuenta con tenant funcional | ✅ |
+| Contenido autorizado como ficticio | ✅ |
+| Sin configuración o pago adicional | ✅ |
+| 2FA desactivado | ⏳ Pendiente de confirmar |
+| Plan/tenant que no expire | ⏳ Pendiente de confirmar |
+| Detalle de acceso agregado y página guardada | ✅ |
 
-> **Por qué el trial importa más de lo que parece.** Google **no revisa una sola vez**:
-> revalida la cuenta de App access en **cada actualización futura**. Con el trial vencido,
-> el día que se suba la 1.0.1 llega un rechazo por *"no pudimos acceder a la app"* — y va
-> a parecer no tener relación con el cambio que se subió, así que se pierde tiempo
-> buscando en el lugar equivocado.
->
-> Salidas, de mejor a peor:
-> 1. **Dejar el tenant demo en un plan que no expire** (comp/interno desde el super admin).
->    Es lo correcto: la cuenta de revisión no debería estar en el ciclo comercial.
-> 2. Extender el trial con un cupón de meses gratis. Sólo posterga el problema.
-> 3. Recordatorio para renovarlo a mano. Frágil: falla justo cuando nadie mira.
-| Sin exigir pago ni correo externo | ✅ El alta y el pago ocurren fuera del APK (§5) |
+Play Console tiene guardado el detalle con estos datos no secretos:
 
-Los leads se cargaron manejando la app por ADB, resolviendo cada control por sus bounds
-reales (`uiautomator dump`) en vez de coordenadas fijas: al abrir el teclado la hoja se
-desplaza y las coordenadas fijas dejan de servir. La hoja **tampoco resetea sus campos**
-al cerrarse, así que hay que vaciarlos antes de reescribir.
+- Nombre: `Agent console login`
+- Usuario: `architerin@gmail.com`
+- Acceso: todas las funciones de la app
+- Instrucciones:
 
-### Dos defectos menores observados de paso
+```text
+Sign in with the credentials above. Two-factor authentication is disabled. Open Inbox
+to review synthetic conversations, CRM for sample leads, and Deal for appointments.
+All records are fictional and no additional setup or payment is required. The app is
+an agent console for an existing business account; sign-up and billing happen on the
+web dashboard, not inside the app.
+```
 
-- Tras crear un lead la app navega al detalle; al volver, **la lista queda obsoleta**
-  hasta hacer pull-to-refresh. Los 6 leads existían pero no se veían.
-- Los 6 leads quedaron en etapa `lead`, pero el **Embudo sigue mostrando `Lead · 0`**
-  incluso tras refrescar: la cadena lead → opportunity → deal → tablero se corta en
-  algún punto. No frena la revisión, pero deja el tablero vacío para el revisor.
-  Registrado aparte para investigar.
+El detalle ya fue agregado y la página quedó guardada. La frase sobre 2FA debe
+comprobarse ahora contra el estado real de la cuenta antes de publicar.
 
-No existe hoy un sembrador de datos demo en el repo (`apps/api/prisma` solo tiene
-`seed.ts`, `seed-billing-plans.js` y `seed-gecko.sql`). Poblar el tenant es trabajo
-manual, o bien vía la app, o bien vía el dashboard, o bien generando conversaciones
-reales con el widget público (`POST /widget/sessions` acepta un `name` de visitante sin
-autenticación, lo que permite nombres ficticios y respuestas reales de la IA).
-
-Texto sugerido para el campo de instrucciones en inglés:
-
-> Sign in with the credentials above. The account does not require two-factor
-> authentication. Open Inbox to review synthetic conversations, CRM for sample leads,
-> and Operations for restaurant orders and reservations. All records are fictional and
-> no additional setup or payment is required.
-
-**Estado:** pendiente crear la cuenta y completar App content → App access.
+La cuenta de revisión debe quedar en un plan interno o compensado que no expire. Google
+puede volver a comprobarla en futuras actualizaciones; un trial temporal no es una
+credencial estable de revisión.
 
 ## 3. Capturas de pantalla
 
-Google Play exige mínimo 2 y máximo 8 capturas, lado entre 320 y 3840 px, relación
-máxima 2:1 y JPEG o PNG RGB de 24 bits sin alfa.
+Las cuatro capturas finales están tanto en el repo como en la carpeta de entrega:
 
-Las tres capturas que hay en `apps/mobile/store-assets/` fueron auditadas una por una el
-10-ago-2026 y **ninguna es utilizable**:
-
-| Archivo | Problema |
+| Orden | Archivo |
 |---|---|
-| `screen-1-inbox.png` | Pantalla **vacía**: "No hay conversaciones" |
-| `screen-2-crm.png` | **PII real**: nombres, 6 teléfonos y 2 handles de Instagram de personas reales |
-| `screen-3-reserva.png` | Pantalla **vacía**: "No hay citas próximas" |
-| Las tres | 1080×2340 → ratio **2.167**, por encima del máximo 2:1 · `Format32bppArgb` (con canal alfa) |
+| 1 | `apps/mobile/store-assets/play/1-inbox.png` |
+| 2 | `apps/mobile/store-assets/play/2-conversacion.png` |
+| 3 | `apps/mobile/store-assets/play/3-crm.png` |
+| 4 | `apps/mobile/store-assets/play/4-agenda.png` |
 
-`diag-inbox.png` tiene los mismos defectos y tampoco debe subirse.
+Copia para carga manual:
+`C:\Users\USER\Desktop\parallly-v6-play\`.
 
-### Normalización (resuelta)
+Todas son PNG RGB de 24 bits, sin alfa, con resolución `1080×2096` y relación `1.941`,
+dentro del máximo 2:1 de Play. Su contenido fue autorizado explícitamente como
+ficticio. Las cuatro fueron cargadas en ese orden y la ficha quedó guardada.
 
-No hace falta escalar ni deformar. Las barras del sistema, medidas en el propio
-dispositivo (no estimadas), son:
-
-```bash
-adb shell dumpsys window | grep -E 'statusBars frame|navigationBars frame'
-#   statusBars     frame=[0,0][1080,96]
-#   navigationBars frame=[0,2214][1080,2340]
-```
-
-Recortándolas, un `screencap` de 1080×2340 queda en **1080×2118 → ratio 1.961**, dentro
-del máximo 2:1, y se exporta en `Format24bppRgb` (sin canal alfa). De paso desaparecen
-la hora, la batería y los iconos de notificación personales del dueño, que no deben
-salir en la ficha de tienda.
-
-El script está en el scratchpad de la sesión (`normalize-shots.ps1`) y ya se validó
-sobre una captura real.
-
-Regenerar al menos cuatro capturas, autenticado en el tenant demo:
-
-- Inbox
-- conversación con copiloto de IA
-- CRM / detalle de lead
-- operación vertical, por ejemplo pedidos o reservas de restaurante
-
-```bash
-adb exec-out screencap -p > screen-1-inbox.png
-```
-
-El ícono y el gráfico destacado ya están cargados; solo faltan las capturas seguras.
+No usar los recursos antiguos `screen-1-inbox.png`, `screen-2-crm.png`,
+`screen-3-reserva.png` ni `diag-inbox.png`: son capturas de una iteración anterior y no
+son los archivos aprobados para este release.
 
 ## 4. Data safety
 
-Los cinco pasos se completaron y se guardaron como **borrador**, con estas decisiones
-generales:
+El formulario fue revisado sin cambiar sus respuestas y quedó guardado con estas
+decisiones:
 
-- la app recopila datos;
-- los datos se cifran en tránsito;
-- se ofrece eliminación de cuenta mediante
-  `https://parallly-chat.cloud/data-deletion`;
-- no se declararon datos compartidos, considerando a Sentry, Expo y FCM proveedores de
-  servicio que procesan datos por cuenta de Parallly;
-- los 27 tipos seleccionados tienen configurado propósito, obligatoriedad y tratamiento.
+- la app recopila datos y los cifra en tránsito;
+- eliminación de cuenta mediante `https://parallly-chat.cloud/data-deletion`;
+- Sentry, Expo y FCM se tratan como proveedores de servicio que procesan datos por
+  cuenta de Parallly, no como terceros a quienes se venden o comparten datos;
+- no se declara “Información de pago del usuario”;
+- no se declara “Otros datos de rendimiento de la app”; Sentry queda cubierto por
+  registros de fallas y diagnóstico;
+- permanecen identidad/contacto, mensajes y adjuntos, archivos, actividad, crash logs,
+  diagnóstico e identificador de dispositivo/token push;
+- no se recopila ubicación.
 
-Las dos correcciones de precisión ya se guardaron en Play Console:
+Target audience quedó guardado únicamente como `18 años o más` y el resumen de App
+content muestra `Ya estás al día`.
 
-- se quitó “Información de pago del usuario”, porque la app registra el método de pago
-  operativo, no números de tarjeta ni datos de cuenta financiera;
-- se quitó “Otros datos de rendimiento de la app”, porque Sentry queda cubierto por
-  `Registros de fallas` y `Diagnóstico`.
+La declaración de IA/opinión quedó completada con criterio conservador:
 
-Falta completar Target audience; Play no permite enviar Data safety mientras ese
-bloque siga incompleto.
-
-Datos que sí deben permanecer declarados según el uso efectivo incluyen identidad y
-contacto, mensajes y adjuntos, archivos, actividad dentro de la app, crash
-logs/diagnósticos e identificador de dispositivo o token push. No se recopila ubicación.
+- `apps/mobile/store-assets/play-icon-512.png` y
+  `apps/mobile/store-assets/play-feature-graphic-1024x500.png` fueron etiquetados;
+- las cuatro capturas de pantalla reales de la app no fueron etiquetadas, porque
+  documentan la interfaz real y no son recursos generados o alterados por IA.
 
 ## 5. Qué ve quien instala sin cuenta
 
-La app es la consola del agente. El alta y la configuración de la empresa se completan
-en el wizard web; el APK no ofrece una compra ni muestra precios.
+La app es la consola móvil del agente. El alta y la configuración de empresa ocurren
+en el wizard web; el APK no ofrece compras ni muestra precios.
 
 | Situación | Qué ve | Salida |
 |---|---|---|
-| Primer arranque | Bienvenida con “Ya tengo cuenta” y “Crear cuenta en la web” | Login o navegador |
-| Login | Enlace permanente para crear la cuenta en la web | Navegador |
-| Google sin cuenta existente | El backend rechaza con `no_account`; no crea un usuario huérfano | Permanece en login |
-| Cuenta sin empresa configurada | “Falta terminar la configuración” y botón a `/onboarding` | Navegador o logout |
+| Primer arranque | Bienvenida con acceso y alta web | Login o navegador |
+| Login | Enlace permanente para crear cuenta en web | Navegador |
+| Google sin cuenta | El backend responde `no_account`; no crea usuario huérfano | Permanece en login |
+| Cuenta sin empresa | Pantalla para terminar configuración | Onboarding web o logout |
 
-Los enlaces a privacidad y solicitud de eliminación de cuenta/datos están disponibles
-en **Más → Cuenta**.
+Privacidad y eliminación de cuenta/datos están disponibles en **Más → Cuenta**.
 
-Mientras alta y pago ocurran fuera del APK y la app no muestre precios ni llamadas a
-comprar, la suscripción se trata como SaaS externo. Añadir una compra dentro de la app
-obligaría a reevaluar Google Play Billing.
-
-## 6. IARC, Target audience y App content
+## 6. App content y ficha de tienda
 
 ### Completado
 
-- IARC enviado; la app se declaró como herramienta de comunicación/negocios con
-  contenido generado por usuarios.
+- IARC enviado.
 - Ads: No.
 - Aplicación gubernamental: No.
 - Advertising ID: No.
 - Funciones financieras: Seguros.
 - Salud: Administración y servicios de atención médica.
+- App access agregado y guardado.
+- Target audience guardado únicamente como `18 años o más`.
+- Data safety guardado; App content al día.
+- Nombre, descripción, ícono, gráfico destacado y cuatro capturas guardados.
+- Declaración IA/opinión completada con los dos recursos promocionales etiquetados y
+  las cuatro capturas reales sin etiquetar.
+- Ficha en estado `Lista para enviar a revisión`.
+- AAB v6 publicado como único artefacto de la prueba interna.
+- Lista `Parallly Android v6 testers` guardada y seleccionada con un verificador.
+- Release `1.0.0 (6) — prueba interna` activo y disponible para verificadores.
 
 ### Pendiente
 
-- App access: agregar la cuenta demo y las instrucciones de acceso.
-- Target audience: elegir únicamente **18 años o más**; no está dirigida a niños.
-- Enviar Data safety una vez completados los puntos anteriores.
+- confirmar 2FA desactivado y plan no expirante para la cuenta demo;
+- instalar desde el enlace de participación y repetir el smoke test de la entrega de Play;
+- completar las 5 tareas de Producción, incluida la selección de países/regiones.
 
-## 7. Ficha de tienda
-
-La ficha está guardada como borrador con estos textos:
+Textos vigentes de la ficha:
 
 **Nombre:** Parallly
 
@@ -380,103 +281,60 @@ La ficha está guardada como borrador con estos textos:
 
 **Descripción completa:**
 
-> Parallly es la app del agente para atender y vender por WhatsApp, Instagram, Messenger y Telegram desde un solo lugar.
+> Parallly es la app del agente para atender y vender por WhatsApp, Instagram,
+> Messenger y Telegram desde un solo lugar.
 >
 > • Bandeja unificada en tiempo real con alertas para el equipo.
 > • Responde con texto, imágenes, documentos, video y notas de voz.
-> • Copiloto de IA: sugiere respuestas, reescribe en 6 tonos, resume la conversación, traduce y propone la próxima mejor acción de venta.
-> • CRM integrado: leads, pipeline, notas, tareas y escáner de tarjetas de visita.
-> • Toma el control del bot con un tap, asigna conversaciones y colabora con tu equipo.
-> • Gestiona la operación real de cada negocio: agenda, reservas, pedidos, clases, matrículas, solicitudes de servicio, alquileres y hospedajes.
+> • Copiloto de IA para sugerir, reescribir, resumir, traducir y proponer acciones.
+> • CRM integrado con leads, pipeline, notas y tareas.
+> • Control del bot, asignación de conversaciones y colaboración.
+> • Operación adaptada a agenda, reservas, pedidos, clases, matrículas, solicitudes,
+> alquileres y hospedajes.
 >
-> Diseñada para equipos de ventas y atención en Latinoamérica. Requiere una cuenta de Parallly.
+> Diseñada para equipos de ventas y atención en Latinoamérica. Requiere una cuenta de
+> Parallly.
 
-Los dos gráficos base ya están cargados:
+## 7. Correcciones incluidas en el artefacto final
 
-- `apps/mobile/store-assets/play-icon-512.png`
-- `apps/mobile/store-assets/play-feature-graphic-1024x500.png`
+v5 incorporó las correcciones de coherencia entre el nombre de la operación vertical y
+su pantalla, además del flujo de creación de leads en CRM. v6 lo sustituye porque el
+commit `41d58962` completa el endurecimiento móvil integral:
 
-Faltan únicamente las capturas descritas en §3 para completar los recursos visuales.
-No usar marcas de Meta de forma que impliquen respaldo oficial.
+- parseo seguro de respuestas vacías o no JSON;
+- autenticación y 2FA sin exponer `Unexpected end of input`;
+- mutaciones que no muestran éxito cuando la API responde `success: false`;
+- loaders con error y reintento en lugar de falsos estados vacíos;
+- toasts visibles y accesibles dentro de modales nativos;
+- manejo uniforme de fallos en Inbox, CRM, agenda y operaciones verticales.
 
-## 7-bis. Defectos encontrados preparando la publicación
+La validación local fue TypeScript limpio y 22 suites / 302 pruebas Jest aprobadas. Los
+workflows de Release y Vertical Quality Evidence del commit `41d58962` finalizaron con
+éxito.
 
-Los dos salieron de recorrer la app con la cuenta de revisión. Ambos **ya están
-arreglados**; se dejan documentados porque explican por qué el artefacto final es el v5
-y no el v3.
+## 8. Orden para continuar
 
-### a) La pestaña y el encabezado de la agenda decían cosas distintas — `e268912b`
+1. Abrir el enlace de participación con la cuenta verificadora, instalar v6 desde Play y
+   repetir el smoke interno.
+2. Confirmar 2FA desactivado y convertir el tenant demo a un plan que no expire.
+3. Completar las 5 tareas de Producción, incluidos países/regiones, y solo entonces
+   preparar el envío a revisión.
 
-La pestaña inferior decía **"Deal"** y el encabezado de esa misma pantalla decía
-**"Agenda"**. La pestaña resolvía el nombre con tres fuentes (`labelOverrides` →
-catálogo de workspaces → `transactionNoun`) y `AppointmentsScreen` sólo miraba la
-primera, cayendo a `citas.title`. La vertical `technology` trae
-`transactionNoun.es = 'deal'`, de ahí la contradicción.
+## 9. Acceso a Producción
 
-Ahora ambos llaman a `resolveVerticalWorkspaceLabel`, con 7 tests que fijan la
-invariante. `ReservationsScreen` ya coincidía (`stays.title` == `workspace.stays` en los
-4 idiomas), así que no se tocó.
+El panel de esta app muestra Producción habilitada y no presenta un requisito visible
+de 12 testers durante 14 días. Esta es una observación de la consola para esta app, no
+una afirmación de que ese requisito nunca pueda aplicar en otras cuentas o momentos.
 
-### b) Crear un lead fallaba SIEMPRE con un 500 — `ab3e5cbc` ⚠️ era bloqueante real
+La preparación de Producción está en `0/5`. Países/regiones continúa pendiente y no hay
+un release de Producción enviado a revisión.
 
-Un revisor que tocara "Crear lead" habría visto **un botón que no hace nada**. Tres
-defectos encadenados:
+## 10. Notas de despliegue
 
-1. **La causa raíz.** `ALLOWED_FIELDS` en `leads.repository.ts` nombraba cinco columnas
-   que la tabla `leads` nunca tuvo: `source`, `notes`, `tags`, `customer_profile_id` y
-   `converted_at`. Una whitelist que admite una columna fantasma es peor que ninguna:
-   la promueve al INSERT y Postgres rechaza la sentencia entera con **42703**. La app
-   móvil estampa `source: 'mobile'` en cada lead → fallaba el 100% de las veces.
-   La atribución real vive en `utm_source`, que es lo que lee el breakdown de fuentes de
-   CRM analytics; `source` nunca formó parte del modelo.
-2. **`leads.phone` es `NOT NULL`**, pero el formulario ofrecía crear un lead sólo con
-   nombre. Ese camino terminaba en otro 500.
-3. **El fallo era invisible.** En Android un `<Modal>` es su propia ventana nativa, así
-   que el toast de error — un `View` absoluto del árbol de la app — se dibujaba
-   **detrás** de la hoja. Por eso un 500 se veía como un botón muerto. Es exactamente
-   la clase de falla silenciosa que el GATE 0 (G0.2) debía haber eliminado.
-
-Arreglado: una sola lista de columnas reales compartida por `createLead`/`updateLead`,
-las claves que no son columnas se pliegan en `metadata` (no se pierde la atribución),
-400 en vez de 500 si falta el teléfono, la app lo exige, y el error se muestra **dentro**
-de la hoja. 5 tests de regresión en `leads.repository.spec.ts`.
-
-> **Pendiente de auditar:** el mismo patrón de whitelist a mano existe en otros
-> repositorios del CRM. Conviene revisar si alguno más nombra columnas inexistentes.
-
-## 8. Orden recomendado para continuar
-
-Los pasos 1-3 de la lista original ya están hechos. Lo que queda, en orden:
-
-1. **Poblar el tenant demo** con datos ficticios y sacar de ahí el nombre real del dueño.
-   Es el camino crítico: destraba a la vez las capturas y la calidad de lo que ve el revisor.
-2. Confirmar en esa cuenta: 2FA desactivado y plan/trial que no expire.
-3. Tomar las 4 capturas nuevas y normalizarlas a 1080×1920 RGB sin alfa.
-4. (Opcional, recomendado antes de fijar capturas) arreglar el desfase "Deal" / "Agenda" (§7-bis).
-5. Subir el AAB v3 reemplazando el v2 en Prueba interna y cargar las capturas en la ficha.
-6. Completar App access, Target audience (`18 años o más`) y enviar Data safety.
-7. Agregar testers, revisar todos los avisos y lanzar el rollout interno.
-
-Solo después de validar la prueba interna se debe preparar el release de producción.
-
-## 9. Notas de despliegue
-
-- ✅ **Las páginas legales nuevas ya están desplegadas y verificadas en vivo**
-  (10-ago-2026). El commit `652c38f9` está en `origin/main` y el contenido servido lo
-  confirma:
-
-  | URL | HTTP | Sentry / Expo / Firebase / FCM |
-  |---|---|---|
-  | `https://parallly-chat.cloud/privacy` | 200 | 4 / 5 / 3 / 2 menciones |
-  | `https://parallly-chat.cloud/data-policy` | 200 | 3 / 4 / 2 / 3 menciones |
-  | `https://parallly-chat.cloud/terms` | 200 | — |
-  | `https://parallly-chat.cloud/data-deletion` | 200 | — |
-  | `https://admin.parallly-chat.cloud/signup` | 200 | — |
-
-  Nota: `WebFetch` recibe 403 de Cloudflare contra este dominio; hay que verificar con
-  `Invoke-WebRequest` y un User-Agent de navegador.
-- Los builds locales con `gradlew assembleRelease` sirven para probar en el dispositivo,
-  pero no representan por sí solos el manifest final de EAS.
-- El AAB v2 de Play Console es un borrador recuperable; no llegó a usuarios ni testers.
-- Mantener separados los conceptos **guardado**, **enviado a revisión** y **publicado**:
-  en este momento solo hay configuración y artefactos guardados como borrador.
+- Las páginas legales están desplegadas y responden HTTP 200.
+- `41d58962` está en `origin/main`; es un cambio exclusivamente móvil y no requiere un
+  despliegue adicional de API para construir o subir el AAB.
+- El v2 de Play es un borrador recuperable; no llegó a usuarios ni testers.
+- Mantener separados los estados **prueba interna activa**, **enviado a revisión** y
+  **publicado en Producción**. Actualmente v6 está activa solo para verificadores y no
+  se ha enviado a revisión de Producción.

@@ -96,7 +96,8 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: "npm run dev --workspace=@parallext/dashboard",
+      command:
+        "npm run build --workspace=@parallext/shared && npm run dev --workspace=@parallext/dashboard",
       cwd: repositoryRoot,
       env: safeBrowserEnvironment,
       url: `${dashboardUrl}/login`,

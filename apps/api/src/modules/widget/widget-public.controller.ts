@@ -71,7 +71,7 @@ export class WidgetPublicController {
 
         let triggers: any[] = [];
         try {
-            triggers = await this.triggersService.getTriggersForWidget(config.id);
+            triggers = await this.triggersService.getTriggersForWidget(config.tenant_id, config.id);
         } catch {
             // Table may not exist yet — ignore
         }

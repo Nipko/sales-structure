@@ -2,13 +2,15 @@
 id: cuenta-seguridad
 title: "Your account, team, and security"
 routes: ["/admin/users", "/admin/settings/security", "/admin/settings/change-password"]
-roles: ["tenant_admin"]
+roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["account", "security", "team", "users", "invite user", "add user", "roles", "permissions", "administrator", "supervisor", "agent", "two-factor authentication", "2fa", "authentication", "code", "password", "change password", "trusted devices", "sso", "single sign-on", "saml", "language", "theme", "dark mode", "sign out", "inactivity", "session"]
 ---
 
-This section is where you manage who on your team can access the platform, with which permissions, and how you protect access to your account. Most of these options are handled by the **Administrator** role.
+# Your account, team, and security
 
-## Your team and roles
+Every user can protect their own account with 2FA, trusted devices, and password changes. Team, role, and SSO administration is restricted to the **Administrator** role.
+
+## Your team and roles (administrator only)
 
 You can invite the people on your team to work with you on the platform. Each person has a **role** that defines what they can see and do:
 
@@ -27,7 +29,7 @@ You can invite the people on your team to work with you on the platform. Each pe
 
 From the same screen you can change a user's role or deactivate their access when someone leaves the team.
 
-> **How many users can I have**: it depends on your plan. If you need more, upgrade your plan in **Settings** → **Billing**.
+> **How many users can I have**: check your account's current capacity under **Administration → Plan & Billing**.
 
 ---
 
@@ -43,7 +45,7 @@ Two-factor authentication adds a second layer of security: in addition to your p
 
 ### Trusted devices
 
-When you sign in from your usual computer or phone, you can mark it as a **trusted device**. That way it won't ask you for the two-step code on that device for 30 days. From **Settings** → **Security** you can see the list of your trusted devices and remove any you no longer use (for example, a borrowed computer).
+When you sign in from your usual computer or phone, you can mark it as a **trusted device**. While that trust remains valid, the device will not ask for the two-step code. Under **Settings** → **Security** you can see the list and remove any device you no longer use (for example, a borrowed computer).
 
 ---
 
@@ -57,7 +59,7 @@ When you sign in from your usual computer or phone, you can mark it as a **trust
 
 ---
 
-## Single sign-on (SSO)
+## Single sign-on (SSO, administrator only)
 
 If your company uses a corporate identity system (for example, the one from your business email provider), you can set up **single sign-on (SSO)** so your team signs in with the company credentials, without managing separate passwords.
 
@@ -65,7 +67,7 @@ If your company uses a corporate identity system (for example, the one from your
 2. In the **SSO / SAML** section, fill in the details provided by your identity provider and download the Parallly details it asks you for.
 3. Optionally, you can **enforce SSO** so that all of your company's users must sign in this way.
 
-> SSO is a feature of the higher-tier plans. If you don't see the option or want help setting it up, reach out to support.
+> SSO availability depends on your account configuration. If you don't see the option or want help setting it up, reach out to support.
 
 ---
 
@@ -89,6 +91,6 @@ No. Each role sees only what it needs for its job. An agent sees the inbox and t
 Use one of the **backup codes** you saved when you turned it on. If you don't have those either, reach out to support so we can verify your identity and restore your access.
 
 **Can I require my whole team to use two-factor authentication?**
-Two-factor authentication is enabled per user. If you need to require it company-wide or use mandatory SSO, contact us and we'll help based on your plan.
+Two-factor authentication is enabled per user. If you need to require it company-wide or use mandatory SSO, contact us to review the options enabled for your account.
 
 Still have questions? Reach out to us at https://parallly-chat.cloud/support

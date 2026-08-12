@@ -4,17 +4,23 @@ _Actualizado: jul 2026_
 
 Guía paso a paso para dejar MercadoPago funcionando en Parallly **con credenciales de prueba** (sandbox). Sin plata real, sin clientes reales. Para el cutover a producción, ver [`docs/billing-runbook.md` → Sección 7](./billing-runbook.md#7-credenciales-sandbox-vs-producción). Para el detalle del ciclo anual (planes separados, prorrateo, descuento ~15%), ver [`docs/billing-annual-cycle.md`](./billing-annual-cycle.md).
 
-> **Dos caminos.** Todo lo de esta guía se puede hacer por SSH (scripts) **o** desde el panel **`/admin/plans`** (super admin), que expone `sync-mp`, `reconcile`, `refund` y el badge sandbox/producción sin tocar la VPS. Ver la sección [Panel de MercadoPago (super admin)](#panel-de-mercadopago-super-admin). El SSH sigue siendo el camino que corre en cada deploy de forma automática.
+> **Estado actual (agosto de 2026): integración en pausa.** El deploy no ejecuta
+> preflight ni sincronización de MercadoPago. Esta guía es un procedimiento de
+> reactivación para cuando el collector vuelva a ser viable; no describe una tarea
+> automática vigente. El panel **`/admin/plans`** expone `sync-mp`, `reconcile`,
+> `refund` y el badge de entorno; SSH es una alternativa manual, no parte del deploy.
 
 ---
 
 ## ¿Qué vas a lograr con esta guía?
 
-Al terminar, vas a tener:
+Cuando la integración sea reactivada y completes la guía, vas a tener:
 1. Una cuenta de desarrollador en MP con una aplicación creada.
 2. Credenciales de sandbox (Access Token + Webhook Secret + Public Key) cargadas en GitHub Secrets.
 3. El webhook apuntando al endpoint de Parallly con los 4 topics correctos.
-4. Los **5 planes** de Parallly (emprendedor, starter, pro, enterprise, custom) sembrados en la DB; los **4 de pago sincronizados en MP sandbox de Colombia** (ciclo **mensual**). El ciclo **anual** se crea aparte — es un `preapproval_plan` separado por plan (ver Paso 6.b). `custom` es sales-led y no se sincroniza.
+4. El catálogo activo de `billing_plans` en la DB y los planes de pago elegibles
+   sincronizados manualmente en MP sandbox para cada ciclo. `custom` es sales-led y
+   no se sincroniza.
 5. Una prueba end-to-end confirmando que los webhooks llegan y se verifican bien.
 
 **Tiempo estimado**: 25–40 minutos de trabajo tuyo (una sola vez).
@@ -123,49 +129,43 @@ Ahora cargamos las 3 credenciales en el repo para que los deploys las inyecten e
 
 ---
 
-## Paso 6 — Disparar un deploy
+## Paso 6 — Publicar credenciales runtime (sin aprovisionar planes)
 
-Cada push a `main` dispara un deploy completo que incluye el auto-setup de planes en MP (lo que dejamos automatizado en Sprint 2.12).
+Un push a `main` publica código y secretos runtime, pero desde agosto de 2026 el
+workflow **omite el preflight y el sync de MercadoPago** porque la integración está
+en pausa por cumplimiento del collector. No hagas un commit vacío ni re-ejecutes un
+deploy para intentar crear planes: no ocurrirá.
 
-**Opción A — Re-ejecutar el último deploy:**
-1. Andá a https://github.com/Nipko/sales-structure/actions
-2. Buscá el último workflow exitoso (debería ser "Deploy Parallext Engine")
-3. Clic en él → botón **"Re-run all jobs"** arriba a la derecha.
-
-**Opción B — Pushear cualquier cambio:**
-Cualquier commit a `main` dispara el deploy. Si no tenés nada que pushear, podés hacer un commit vacío:
-```bash
-git commit --allow-empty -m "chore: trigger deploy for MP sandbox setup" && git push
-```
-
-**Mientras corre** (5–8 minutos):
-- Seguí el log en la tab Actions → run actual → job "deploy" → step "Deploy to VPS".
-- El seed (`prisma/seed-billing-plans.js`) es **create-only**: en una DB fresca crea los 5 planes; si ya existen, los deja intactos porque el panel `/admin/plans` es la fuente de verdad (`--force` restaura los valores de fábrica a propósito). Log en DB fresca:
+Cuando la pasarela vuelva a estar habilitada, publica solo cambios reales y después
+ejecuta el preflight y el sync como una operación manual, separada y auditada. Sigue
+el log del deploy únicamente para confirmar que el runtime quedó activo y que muestra
+`Sync de planes a MercadoPago: omitido (integración en pausa)`.
+- El seed (`prisma/seed-billing-plans.js`) es **create-only**: en una DB fresca crea
+  las filas factory faltantes; si ya existen, las deja intactas porque el panel
+  `/admin/plans` es la fuente de verdad (`--force` restaura deliberadamente todos los
+  valores de fábrica). Log ilustrativo en DB fresca:
   ```
-  ===> Seeding billing_plans (idempotent upsert)...
+  ===> Bootstrapping missing billing_plans (create-only)...
   Seeding billing_plans… (create-only: existing plans are left untouched)
-    Created emprendedor (USD $21.00, 7d trial, … features)
-    Created starter (USD $49.00, 7d trial, … features)
-    Created pro (USD $129.00, 15d trial, … features)
-    Created enterprise (USD $349.00, 15d trial, … features)
-    Created custom (USD $0.00, 0d trial, … features)
+    Created <plan-slug> (<valores factory vigentes>)
   Done.
   ```
   En una DB ya sembrada verás `Skipped <slug> (already exists — panel is source of truth…)` en cada línea. Eso es normal, no un error.
 
-  > El encabezado `===> Seeding billing_plans (idempotent upsert)...` es un `echo` cosmético heredado en `deploy.yml`: el comportamiento real del script **no** es upsert sino **create-only** (línea `Seeding billing_plans… (create-only: …)` que imprime el propio script). No te fíes del rótulo del `echo`, fíjate en la línea del script.
+  > El workflow rotula este paso como bootstrap create-only. El script crea filas
+  > faltantes y omite las existentes; no aplica cambios de precio/cuota del archivo a
+  > producción.
 
-- El sync (`scripts/sync-mp-plans.js`) corre **solo el ciclo mensual** en el deploy (`--country=CO --fx="${PROD_MP_FX_CO:-4200}"`). Importante: el `fx=4200` es **solo un fallback**. Como el seed ya carga `priceLocalOverrides[CO].amountCents`, los montos que se registran salen de esos precios locales fijos, **no** de multiplicar USD×fx. El fx solo se usa si un plan/país todavía no tiene precio local. Procesa los 4 planes de pago (`custom` se salta). Log esperado:
+- El sync (`scripts/sync-mp-plans.js`) **no corre en el deploy actual**. La integración
+  está en pausa. El siguiente log solo aplica a una ejecución manual futura, después
+  de validar merchant/cumplimiento. `fx=4200` es un fallback: si existe un precio
+  local vigente, ese monto tiene precedencia. El script procesa los planes de pago y
+  omite los planes no elegibles. Los nombres y montos del ejemplo deben leerse del
+  catálogo runtime, no de este documento:
   ```
   ===> Syncing billing plans to MercadoPago (Colombia)...
-  Sync plans to MercadoPago — country=CO currency=COP prices=fx=4200
-    [emprendedor] creating MP month plan: COP 125.700/mes…
-      OK mpPlanId=2c93808...
-    [starter] creating MP month plan: COP 276.900/mes…
-      OK mpPlanId=...
-    [pro] creating MP month plan: COP 757.700/mes…
-      OK mpPlanId=...
-    [enterprise] creating MP month plan: COP 1.789.800/mes…
+  Sync plans to MercadoPago — country=CO currency=COP
+    [plan-slug] creating MP month plan: <monto runtime>…
       OK mpPlanId=...
   Done.
   ```
@@ -175,9 +175,12 @@ Si ves algún "FAILED" o el log no muestra esas líneas, saltar a **Troubleshoot
 
 ---
 
-## Paso 6.b — Crear el ciclo ANUAL (no lo hace el deploy)
+## Paso 6.b — Crear ciclos en una operación manual (solo al reactivar la pasarela)
 
-El deploy solo sincroniza el ciclo **mensual**. Si no corrés este paso, MP queda con **4 planes mensuales y 0 anuales**, y cualquier intento de suscribir a alguien al plan anual falla porque no existe el `preapproval_plan` correspondiente.
+El deploy no sincroniza ciclos mensuales ni anuales. Mientras la integración siga en
+pausa, no asumas que existen `preapproval_plan`. Al reactivarla, crea y verifica ambos
+ciclos explícitamente; cualquier suscripción cuyo ciclo no tenga `mpPlanId` falla
+cerrado.
 
 El anual es un `preapproval_plan` **separado** (frecuencia 12 meses). El monto sale **exclusivamente** de `priceLocalOverrides[CO].annual.amountCents` (el total del año, ya con el ~15% de descuento seedeado) — el anual **no** tiene fuente USD/FX, así que si no está el precio anual local, el sync lo saltea con `no annual price in DB`.
 
@@ -222,21 +225,26 @@ docker exec parallext-postgres psql -U parallext -d parallext_engine -c \
 | custom | 0 | 0 | `(null)` | `{}` |
 
 Notas:
-- Si **solo** corriste el deploy (Paso 6) y todavía no el Paso 6.b, el sub-objeto `annual` tendrá `amountCents` (viene del seed) pero **sin** `mpPlanId` — eso es esperado hasta que sincronices el ciclo anual.
-- Si `mp_plan_id` (mensual) está en null para los 4 planes de pago → el sync mensual no corrió o falló. Ir a Troubleshooting.
+- Después de un deploy, los IDs pueden seguir ausentes porque el workflow no ejecuta
+  ningún sync. Solo una operación manual autorizada puede materializarlos.
+- Si `mp_plan_id` está en null, no asumas un fallo del deploy: confirma primero que
+  la pasarela fue reactivada y que existe un registro de preflight/sync manual.
 
 ### 7.2 En el dashboard de MP
 
 1. Andá a **https://www.mercadopago.com.co/developers** → tu aplicación → **"Suscripciones"** (menú lateral).
-2. Después del deploy (mensual) deberías ver **4 planes**:
+2. Después de un **sync manual exitoso** del ciclo mensual deberías ver los planes de
+   pago habilitados en el catálogo vigente, por ejemplo:
    - "Emprendedor — Parallly CO"
    - "Starter — Parallly CO"
    - "Pro — Parallly CO"
    - "Enterprise — Parallly CO"
-3. Si además corriste el Paso 6.b, vas a ver **4 más** con el sufijo "(Anual)" (ej. "Pro — Parallly CO (Anual)"), con período de 12 meses.
+3. Si además sincronizaste el ciclo anual, verás sus planes separados con el sufijo
+   "(Anual)" y período de 12 meses.
 4. Clic en cualquiera para ver los detalles: precio en COP, período (1 mes o 12 meses). El trial **no** se define en el plan sino al crear la suscripción del tenant.
 
-Si no ves los planes → el sync no los creó. Revisar el log del deploy.
+Si no ves los planes, revisa el registro de la operación manual; el log del deploy no
+contiene un sync mientras la integración esté en pausa.
 
 ---
 
@@ -336,7 +344,9 @@ La compra de paquetes de créditos SMS (modelo reseller monetizado, ver [`docs/s
 Si todavía no lo hiciste, correr el **Paso 6.b** para que exista el `preapproval_plan` anual de cada plan. Sin eso, nadie puede suscribirse al ciclo anual.
 
 ### Si querés agregar otro país
-Ver [`docs/billing-runbook.md` → Sección 3](./billing-runbook.md#3-agregar-un-país-nuevo). En el deploy, duplicar la línea del sync con el ISO + su FX (los secrets `MP_FX_*` ya están cableados); el anual del nuevo país necesita su propio `annual.amountCents` seedeado.
+Ver [`docs/billing-runbook.md` → Sección 3](./billing-runbook.md#3-agregar-un-país-nuevo).
+No agregues el sync como condición del deploy general. Prepara el catálogo local y,
+cuando la pasarela esté habilitada, ejecuta preflight y sync manual por país/ciclo.
 
 ### Si querés pasar a producción
 Ver [`docs/billing-runbook.md` → Sección 7](./billing-runbook.md#7-credenciales-sandbox-vs-producción). Después del cutover, confirmar el badge con `GET /billing-admin/provider-status` (debe decir `production`) y correr un `POST /billing-admin/reconcile`.
@@ -345,8 +355,12 @@ Ver [`docs/billing-runbook.md` → Sección 7](./billing-runbook.md#7-credencial
 
 ## Troubleshooting
 
-### El log del deploy no muestra las secciones "Seeding billing_plans" ni "Syncing billing plans..."
-El deploy corrió con una versión vieja del workflow. Verificá en `.github/workflows/deploy.yml` que el job `deploy` incluya los pasos `Seeding billing_plans` y `Syncing billing plans to MercadoPago (Colombia)`. Si tu `main` es anterior a esos pasos, hacé merge/rebase y pusheá de nuevo.
+### El log del deploy dice que el sync de MercadoPago fue omitido
+
+Es el comportamiento esperado desde agosto de 2026. El workflow solo hace bootstrap
+create-only de `billing_plans` y declara la integración en pausa; no crea planes en
+MercadoPago. No repitas el deploy para intentar sincronizarlos. Reactiva la pasarela
+mediante un procedimiento operativo independiente después de resolver cumplimiento.
 
 ### "FAILED: MP returned no plan id" en el sync
 El sync llamó a MP pero recibió error. Mirá el body de respuesta en el log. Causas comunes:
@@ -367,7 +381,8 @@ Normalmente no pasa porque el script skip-ea plans ya sincronizados (idempotente
      "UPDATE billing_plans SET mp_plan_id = NULL, price_local_overrides = '{}'::jsonb WHERE slug IN ('emprendedor','starter','pro','enterprise');"
    ```
    > Ojo: vaciar `price_local_overrides` a `{}` también borra el `annual.amountCents`. Si querés conservar los precios locales y solo soltar los ids de MP, re-corré el seed con `--force` después (restaura los overrides de fábrica) o editá el JSON quirúrgicamente en vez del `= '{}'`.
-3. Re-correr el deploy o el sync manual (mensual + `--cycle=annual`) — esta vez crea los plans limpios.
+3. Cuando la pasarela esté habilitada, ejecutar el sync manual (mensual y
+   `--cycle=annual`) en una ventana controlada. Repetir el deploy no crea planes.
 
 ### No sé qué deploy corrió ni cuándo
 En la VPS:

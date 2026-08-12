@@ -10,21 +10,13 @@ keywords: ["base de conocimiento", "conocimiento", "knowledge base", "subir docu
 
 La base de conocimiento es la "memoria" de tu agente de IA: los documentos, preguntas frecuentes y páginas que subes aquí son la información con la que responde a tus clientes. Mientras más completa y actualizada esté, más precisas son sus respuestas.
 
-La encuentras en el menú lateral, sección **Crecimiento → Automatización → Base de Conocimiento**. Adentro verás las pestañas **Biblioteca**, **FAQs**, **Buscar en contexto**, **Calidad**, **Analíticas** y **Brechas**.
+La encuentras en **IA y crecimiento → Base de Conocimiento**. Adentro verás las pestañas **Biblioteca**, **FAQs**, **Buscar en contexto**, **Calidad**, **Analíticas** y **Brechas**.
 
 > Esta sección la administran los roles **administrador** y **supervisor**.
 
-## Qué incluye tu plan
+## Disponibilidad y capacidad
 
-| Plan | Artículos / documentos | Importación de páginas web | Tamaño máx. por documento | Analíticas de conocimiento |
-|------|:---:|:---:|:---:|:---:|
-| Emprendedor | 5 | No incluida | 25.000 caracteres | No |
-| Starter | 20 | 50 páginas | 100.000 caracteres | Sí |
-| Pro | Ilimitados | 500 páginas | 250.000 caracteres | Sí |
-| Enterprise | Ilimitados | Ilimitadas | 500.000 caracteres | Sí |
-| Custom | Ilimitados | Ilimitadas | Sin límite | Sí |
-
-Si llegas al límite verás el aviso **Límite de documentos alcanzado** con la opción de mejorar tu plan.
+La pantalla muestra si están habilitados los documentos, la importación web y las analíticas, junto con el uso actual. Si llegas al cupo verás **Límite de documentos alcanzado**; consulta **Plan y facturación**.
 
 ## Cómo subir documentos (PDF, Word y más)
 
@@ -43,7 +35,7 @@ Al terminar verás un resumen de cuántos se importaron con éxito. Cada documen
 
 ## Cómo importar una página web (con actualización automática)
 
-Disponible desde el plan **Starter**:
+Cuando la importación web está habilitada:
 
 1. En **Biblioteca**, haz clic en **Importar URL**.
 2. Escribe la **URL de la página** (por ejemplo, la página de preguntas frecuentes de tu sitio). El **Título** es opcional: se detecta automáticamente.
@@ -80,7 +72,7 @@ Las FAQs son pares de pregunta y respuesta que el agente usa para dar respuestas
 
 ## Analíticas: qué se consulta y qué falta
 
-Desde el plan **Starter**, la pestaña **Analíticas** te muestra:
+Cuando está habilitada, la pestaña **Analíticas** te muestra:
 
 - **Consultas únicas**, **tasa de acierto** y volumen diario de búsquedas del agente en tu base de conocimiento.
 - **Documentos más consultados** — tu contenido estrella.
@@ -109,7 +101,7 @@ Solo se muestran los documentos que marcaste como públicos; todo lo demás sigu
 
 ## Cómo usa el agente tu base de conocimiento
 
-Cuando un cliente pregunta algo, el agente busca en tus documentos y FAQs los fragmentos más relevantes y construye su respuesta con esa información — no inventa datos que no le diste. Para que funcione:
+Cuando un cliente pregunta algo, el agente busca en tus documentos y FAQs los fragmentos más relevantes y los usa como fuente para reducir respuestas sin respaldo. Como toda IA generativa, puede equivocarse: prueba los casos críticos y mantén el contenido actualizado. Para que funcione:
 
 - En **Agente IA**, abre tu agente y, en sus herramientas, verifica que la tarjeta **Base de conocimiento** esté activada. Ahí mismo puedes ajustar cuántos fragmentos usa por respuesta y qué tan exigente es con la relevancia.
 - Prueba qué encontraría el agente con la pestaña **Buscar en contexto**: escribe una pregunta como la haría un cliente y verás los fragmentos que la IA usaría, con su porcentaje de relevancia. Si no aparece nada útil, ahí tienes tu próximo artículo.
@@ -120,7 +112,7 @@ Cuando un cliente pregunta algo, el agente busca en tus documentos y FAQs los fr
 Es señal de que falta contenido. Escribe la misma pregunta en **Buscar en contexto**: si no hay resultados, crea un artículo o FAQ que la cubra. Revisa también **Analíticas → Preguntas sin respuesta**, donde esa consulta quedó registrada.
 
 **¿Puedo importar mi sitio web completo?**
-Puedes importar página por página con **Importar URL**, hasta el límite de tu plan (50 páginas en Starter, 500 en Pro, sin límite en Enterprise y Custom). Empieza por las páginas con más valor: preguntas frecuentes, precios, políticas.
+Puedes importar página por página con **Importar URL** hasta el límite indicado en pantalla. Empieza por las páginas con más valor: preguntas frecuentes, precios y políticas.
 
 **¿Los cambios en mi sitio web se reflejan solos?**
 Sí. Las páginas importadas se revisan automáticamente cada semana y se actualizan si cambiaron. Si necesitas el cambio ya, usa **Actualizar contenido** en el documento.
@@ -132,6 +124,6 @@ No. Todo es privado salvo lo que marques como **Público** para el portal de ayu
 Sí. Abre el **Historial de versiones** del documento y haz clic en **Restaurar** sobre la versión anterior.
 
 **¿Por qué no veo la pestaña Analíticas con datos?**
-Las analíticas de conocimiento requieren plan **Starter o superior**, y se empiezan a llenar con las conversaciones reales de tus clientes. Si acabas de empezar, dale unos días.
+Las analíticas deben estar habilitadas y se llenan con conversaciones reales. Si acabas de empezar, dales tiempo para reunir datos.
 
 ¿Necesitas más ayuda? Escríbenos en https://parallly-chat.cloud/support

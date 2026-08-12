@@ -188,7 +188,7 @@ export class CrmController {
     }
 
     @Post('leads/:tenantId/bulk-update')
-    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async bulkUpdateLeads(
         @Param('tenantId') tenantId: string,
         @Body() body: { leadIds: string[]; action: string; payload: any },
@@ -208,7 +208,7 @@ export class CrmController {
     }
 
     @Delete('leads/:tenantId/:leadId')
-    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async archiveLead(
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,
@@ -218,7 +218,7 @@ export class CrmController {
     }
 
     @Put('leads/:tenantId/:leadId/restore')
-    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async restoreLead(
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,

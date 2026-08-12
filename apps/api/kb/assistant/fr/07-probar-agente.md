@@ -14,13 +14,13 @@ Avant de laisser votre agent IA discuter avec de vrais clients, il vaut mieux v�
 - **Simulations** — des dizaines de « clients simulés » conversent avec votre agent, et une IA évaluatrice note chaque conversation.
 - **Procédures (SOP)** — rédigez vos processus en langage naturel pour que l'agent les suive étape par étape, sans improviser.
 
-> Ces outils sont réservés au rôle **administrateur**. Vous les trouvez dans la barre latérale, section **Croissance** → **Automatisation**.
+> Ces outils sont réservés au rôle **administrateur**. **Agent IA** et **Procédures** se trouvent dans **IA et croissance**.
 
 ## Comment discuter avec votre agent (chat de test)
 
 C'est la façon la plus rapide de voir votre agent en action :
 
-1. Dans la barre latérale, allez dans **Croissance** → **Automatisation** → **Agent IA**.
+1. Dans la barre latérale, allez dans **IA et croissance** → **Agent IA**.
 2. Ouvrez l'agent que vous souhaitez vérifier.
 3. Cliquez sur le bouton **Tester l'agent**.
 4. Écrivez comme si vous étiez un client (« Quels sont vos tarifs ? », « Avez-vous des disponibilités samedi ? ») et cliquez sur **Envoyer**.
@@ -32,7 +32,7 @@ Le chat de test est un espace sûr : il ne crée aucun contact, n'apparaît pas 
 
 Lorsque vous voulez une évaluation plus complète que quelques messages saisis à la main, utilisez les simulations. Voyez-les comme un « contrôle qualité » automatique de votre agent.
 
-1. Dans la barre latérale, allez dans **Croissance** → **Automatisation** → **Tester l'agent**.
+1. Ouvrez **Agent IA**, choisissez l'agent, puis sélectionnez **Tester l'agent**.
 2. Dans le panneau **Nouvelle simulation**, choisissez l'**Agent** que vous voulez évaluer.
 3. Dans **Source des scénarios**, choisissez comment les clients de test sont générés :
    - **Synthétiques** — l'IA génère des clients variés et réalistes de votre secteur : faciles, sceptiques, agacés, comparateurs de prix, etc.
@@ -61,7 +61,7 @@ En ouvrant une simulation terminée, vous verrez :
 
 Les procédures apprennent à votre agent à exécuter les processus de votre entreprise **étape par étape** : remboursements, garanties, réclamations, qualification de leads… L'agent décide comment rédiger chaque message avec naturel, mais le flux est contrôlé par la procédure — c'est pourquoi il ne saute ni n'invente jamais d'étapes.
 
-1. Dans la barre latérale, allez dans **Croissance** → **Automatisation** → **Procédures**.
+1. Dans la barre latérale, allez dans **IA et croissance** → **Procédures**.
 2. Choisissez comment la créer :
    - **Rédiger un SOP** (recommandé) — décrivez la procédure en langage naturel, par exemple : *« Quand un client demande un remboursement, demandez-lui le numéro de commande et vérifiez son statut ; si elle est livrée, proposez un coupon, sinon transférez à un agent. »* Cliquez ensuite sur **Compiler en étapes** : l'IA la convertit en une séquence d'étapes concrètes, conservée comme **Brouillon** pour votre révision.
    - **Vierge** — construisez les étapes manuellement, une par une, avec **Ajouter une étape**.

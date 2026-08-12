@@ -176,6 +176,14 @@ SMTP_PORT=587
 SMTP_USER=CAMBIAR
 SMTP_PASS=CAMBIAR
 SMTP_FROM=Parallly <no-reply@parallly-chat.cloud>
+# Solo para el adaptador Email inbound administrado (JSON autenticado; no
+# multipart directo del proveedor). Generar con `openssl rand -hex 32`; si
+# queda vacio, el endpoint responde 503.
+EMAIL_INBOUND_WEBHOOK_SECRET=CAMBIAR
+EMAIL_INBOUND_WEBHOOK_HEADER=x-email-webhook-secret
+EMAIL_INBOUND_MAX_BODY_BYTES=1048576
+EMAIL_INBOUND_RATE_LIMIT_PER_MINUTE=600
+EMAIL_INBOUND_RECIPIENT_RATE_LIMIT_PER_MINUTE=120
 
 # ---- Frontend / App URLs ----
 NEXT_PUBLIC_API_URL=https://api.TU-DOMINIO.com/api/v1
@@ -454,11 +462,21 @@ En el repositorio de GitHub, ve a Settings > Secrets and variables > Actions.
 | `SMTP_PORT` | SMTP port (587) |
 | `SMTP_USER` | SMTP user/email |
 | `SMTP_PASS` | SMTP password |
+| `EMAIL_INBOUND_WEBHOOK_SECRET` | Secret de al menos 32 caracteres para autenticar el ingreso administrado de Email; obligatorio para habilitarlo |
+| `EMAIL_INBOUND_WEBHOOK_HEADER` | Header que debe inyectar el proveedor/proxy administrado (por defecto `x-email-webhook-secret`) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token del Cloudflare Tunnel |
 | `BULL_BOARD_TOKEN` | Token para acceder al dashboard de colas BullMQ |
 | `GRAFANA_PASSWORD` | Password del admin de Grafana |
 
 **IMPORTANTE**: El deploy workflow regenera el `.env` completo desde estos secrets en CADA deploy. Si agregas una variable manual al `.env` del VPS sin agregarla a GitHub Secrets, se perdera en el proximo deploy.
+
+El endpoint administrado `POST /api/v1/channels/email/inbound` acepta únicamente
+`Content-Type: application/json`. El adaptador o reverse proxy confiable debe
+convertir el evento del proveedor, inyectar el header secreto y enviar un
+`envelope.to` con **exactamente un destinatario SMTP canónico**. El campo visible
+`to` no se usa para resolver el tenant y un envelope con varios destinatarios se
+rechaza para impedir cruces por CC/BCC. Los eventos multipart directos de
+SendGrid Inbound Parse u otros proveedores responden `415`.
 
 ### Como funciona el deploy
 Push a `main` > GitHub Actions > build 5 Docker images > push a GHCR > SSH al VPS > pull images > regenerar `.env` > migrate DB > recreate containers.

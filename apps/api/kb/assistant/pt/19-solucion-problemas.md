@@ -14,13 +14,13 @@ Algo não está funcionando como você esperava? Este guia reúne os problemas m
 
 Se seus clientes escrevem para você, mas as mensagens não aparecem na **Caixa de entrada**:
 
-1. Acesse **Canais** na barra lateral e procure o cartão do canal afetado.
-2. Verifique o status da conexão: se disser **Desconectado** ou você vir um aviso como "**Token expirado. Por favor, reconecte sua conta**", essa é a causa. Siga os passos da próxima seção para reconectar.
-3. Se você tem **várias contas do mesmo canal** (por exemplo, dois números de WhatsApp), confirme que o cliente escreveu para o número ou a conta que está conectado: cada conexão é independente.
+1. Peça ao administrador para abrir **Administração → Canais** e localizar o cartão do canal afetado. Se você é administrador, faça isso diretamente.
+2. O administrador verifica o status da conexão: se estiver **Desconectado** ou mostrar um token vencido, deve seguir os passos da próxima seção.
+3. Se houver **várias contas do mesmo canal**, o administrador confirma que o cliente escreveu para o número ou a conta conectados: cada conexão é independente.
 4. Faça um teste você mesmo: envie uma mensagem de outro telefone ou conta e verifique se ela aparece na **Caixa de entrada** em alguns segundos.
 5. Se o canal aparecer como **Conectado** e mesmo assim as mensagens não chegarem, escreva para o suporte informando o canal, o horário aproximado e um exemplo da mensagem que não chegou.
 
-> Apenas o papel de **administrador** pode conectar, reconectar ou desconectar canais. Supervisores e agentes veem o status, mas não podem alterá-lo.
+> **Canais** é uma tela exclusiva do administrador. Supervisores e agentes devem informar ao administrador o canal, o horário aproximado e um exemplo; não podem consultar nem alterar o status nessa tela.
 
 ## Canal desconectado ou token vencido: como reconectar
 
@@ -45,7 +45,7 @@ Confira esta lista na ordem; quase sempre a causa é uma destas:
 3. **Está dentro do horário dele?** No editor do agente, confira o cartão **Horário**: fora desse intervalo, o agente não responde automaticamente.
 4. **O modo de resposta está correto?** Em **Comportamento**, se o modo estiver em "sempre humano", a IA nunca responde sozinha. Mude para "sempre IA" ou "híbrido", conforme o que você precisa.
 5. **A conversa está com um humano?** Se você ou alguém da equipe assumiu a conversa na **Caixa de entrada** (ou o cliente pediu para falar com uma pessoa), a IA fica pausada nessa conversa até que se clique em **Resolver**. É o comportamento esperado, não uma falha.
-6. **As mensagens de IA do mês acabaram?** Acesse **Configurações → Faturamento** e veja a barra de uso de mensagens de IA. Cada plano inclui uma quantidade mensal (por exemplo, Emprendedor 1.000 e Starter 5.000); se acabar, atualize seu plano ou aguarde a virada do mês.
+6. **A capacidade de mensagens de IA acabou?** Abra **Plano e faturamento** e confira a barra de uso e as opções atuais.
 
 Se o agente **responde, mas responde mal** (inventa dados, não conhece seus preços ou foge do assunto):
 
@@ -55,20 +55,15 @@ Se o agente **responde, mas responde mal** (inventa dados, não conhece seus pre
 
 ## Não consigo enviar uma campanha
 
-As causas mais comuns ao criar ou enviar uma campanha em **Campanhas**:
-
-- **Seu plano não inclui campanhas ou você atingiu o limite do mês.** Emprendedor não inclui campanhas; Starter inclui 3 por mês; Pro, Enterprise e Custom têm campanhas ilimitadas. Se você atingiu o limite, verá o aviso de limite com a opção **Atualizar plano**.
-- **O modelo do WhatsApp não está aprovado.** Para escrever a clientes que não falaram com você nas últimas 24 horas, o WhatsApp exige um modelo revisado e aprovado pela Meta. Confira o status em **Canais → WhatsApp → Ver todos os modelos**: ele deve constar como **Aprovado** (a revisão da Meta costuma levar de alguns minutos a 72 horas). Se tiver sido **Rejeitado**, você verá o motivo; corrija o texto e envie novamente.
-- **Alguns destinatários não recebem.** É normal que alguns poucos falhem: contatos que cancelaram a inscrição (não recebem mais transmissões) ou números que já não existem. Você vê isso nas métricas da campanha.
-- **Vários números conectados**: verifique se você escolheu o **número remetente** correto ao criar a campanha.
+O lançamento pelo editor atual não está certificado para produção: ainda falta vincular com segurança o identificador e os componentes do modelo aprovado ao remetente, e adicionar uma ação de cancelamento para campanhas programadas. Use **Campanhas** somente para preparar rascunhos e públicos e consultar métricas existentes. Não clique em **Enviar agora** nem programe uma campanha real; coordene um teste controlado com o [suporte](https://parallly-chat.cloud/support).
 
 ## Atingi o limite do meu plano
 
 Quando um recurso chega ao seu limite (agentes, contatos, campanhas, mensagens de IA etc.), a plataforma avisa com uma mensagem do tipo "Você atingiu o limite do seu plano atual" e você não poderá criar mais desse recurso.
 
-- Em **Configurações → Faturamento** você vê as barras de uso: aviso âmbar aos **80%** e alerta vermelho aos **95%** com o botão **Atualizar plano**.
-- A mudança para um plano superior é aplicada **na hora**: você paga o novo plano e os limites são ampliados imediatamente.
-- Os contadores mensais (mensagens de IA, campanhas, multimídia) **são reiniciados no primeiro dia de cada mês**.
+- **Plano e faturamento** mostra as barras de uso e avisa quando você se aproxima da capacidade.
+- A tela confirma quando uma mudança e qualquer cobrança serão aplicadas antes da aceitação.
+- Cada contador mostra seu período e a próxima renovação.
 - Você também pode liberar espaço (por exemplo, excluir um agente ou contatos que não usa) em vez de subir de plano.
 
 ## O agendamento não aparece no meu calendário
@@ -108,8 +103,8 @@ Porque essa conversa está atribuída a uma pessoa da sua equipe. Enquanto estiv
 **Quem pode reconectar canais ou alterar a configuração do agente?**
 Apenas o papel de **administrador**. Se você é supervisor ou agente e detecta o problema, avise o seu administrador.
 
-**Quando os limites mensais do meu plano são reiniciados?**
-No primeiro dia de cada mês. Os limites fixos (agentes, contatos, calendários) só mudam ao trocar de plano.
+**Quando os limites da minha conta são reiniciados?**
+Cada barra de uso mostra seu período e a próxima renovação em **Plano e faturamento**.
 
 **Quanto tempo a Meta leva para aprovar um modelo do WhatsApp?**
-Normalmente entre alguns minutos e 72 horas. O status (Pendente, Aprovado ou Rejeitado) aparece em **Canais → WhatsApp**.
+A Meta não garante um prazo. O status (Pendente, Aprovado ou Rejeitado) aparece em **Canais → WhatsApp**.

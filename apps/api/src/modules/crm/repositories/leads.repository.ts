@@ -22,8 +22,17 @@ import { PipelineService } from '../../pipeline/pipeline.service';
  */
 const LEAD_WRITABLE_COLUMNS = [
   'first_name', 'last_name', 'phone', 'phone_normalized', 'email',
-  'stage', 'score', 'assigned_to', 'is_vip', 'metadata', 'archived_at',
+  'stage', 'score', 'is_vip', 'metadata',
 ] as const;
+
+const PROTECTED_LEAD_COLUMNS = ['assigned_to', 'archived_at'] as const;
+
+function rejectProtectedLeadColumns(record: Record<string, any>): void {
+  const protectedField = PROTECTED_LEAD_COLUMNS.find((key) => Object.prototype.hasOwnProperty.call(record, key));
+  if (protectedField) {
+    throw new BadRequestException(`${protectedField} must be changed through its dedicated endpoint`);
+  }
+}
 
 /** Keys that are meaningful to callers but are not columns — kept in metadata. */
 const METADATA_FOLDED_KEYS = ['source', 'notes', 'tags'] as const;
@@ -267,6 +276,7 @@ export class LeadsRepository {
     if (!schema) return null;
 
     const record = { ...(data as Record<string, any>) };
+    rejectProtectedLeadColumns(record);
     foldNonColumnsIntoMetadata(record);
     // `leads.phone` is NOT NULL. Without this the missing-phone case reaches
     // Postgres and comes back as a 500, which the caller can only read as
@@ -301,6 +311,7 @@ export class LeadsRepository {
     if (!schema) return null;
 
     const record = { ...(data as Record<string, any>) };
+    rejectProtectedLeadColumns(record);
     foldNonColumnsIntoMetadata(record);
     if (record.stage !== undefined) {
       record.stage = (await this.pipelineService.resolveTenantStage(

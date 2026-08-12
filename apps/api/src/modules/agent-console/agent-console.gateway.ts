@@ -22,6 +22,9 @@ import { RedisService } from '../redis/redis.service';
 import { JwtPayload } from '@parallext/shared';
 import { resolveReadyUserTenantContext } from '../../common/utils/tenant-lifecycle.util';
 
+const INBOX_SOCKET_ROLES = ['tenant_admin', 'tenant_supervisor', 'tenant_agent'] as const;
+const RELAY_EVICT_CONVERSATION_ROOM = '__evict_conversation_room';
+
 @WebSocketGateway({
     cors: { origin: '*' },
     namespace: '/agent',
@@ -31,7 +34,7 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
     server: any;
 
     private readonly logger = new Logger(AgentConsoleGateway.name);
-    private connectedAgents = new Map<string, string>(); // agentId -> socketId
+    private connectedAgents = new Map<string, string>(); // tenantId:agentId -> socketId
     private socketMeta = new Map<string, { agentId: string; tenantId: string; role: string; agentName: string }>();
 
     constructor(
@@ -51,6 +54,10 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
      */
     afterInit() {
         this.wsRelay.subscribe('agent', ({ room, event, payload }) => {
+            if (event === RELAY_EVICT_CONVERSATION_ROOM && room) {
+                this.server?.in?.(room).socketsLeave(room);
+                return;
+            }
             if (room) this.server?.to(room).emit(event, payload);
         });
     }
@@ -62,6 +69,37 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
     private relayEmit(room: string, event: string, payload: any) {
         if (this.server) this.server.to(room).emit(event, payload);
         else this.wsRelay.publish('agent', { room, event, payload });
+    }
+
+    private conversationRoom(tenantId: string, conversationId: string): string {
+        return `conversation:${tenantId}:${conversationId}`;
+    }
+
+    private agentRoom(tenantId: string, agentId: string): string {
+        return `agent:${tenantId}:${agentId}`;
+    }
+
+    private roleRoom(tenantId: string, role: 'tenant_admin' | 'tenant_supervisor'): string {
+        return `role:${tenantId}:${role}`;
+    }
+
+    private evictConversationRoom(tenantId: string, conversationId: string): void {
+        const room = this.conversationRoom(tenantId, conversationId);
+        if (this.server) this.server.in?.(room).socketsLeave(room);
+        else this.wsRelay.publish('agent', { room, event: RELAY_EVICT_CONVERSATION_ROOM, payload: {} });
+    }
+
+    private relaySensitiveToElevatedRoles(tenantId: string, event: string, payload: any): void {
+        this.relayEmit(this.roleRoom(tenantId, 'tenant_admin'), event, payload);
+        this.relayEmit(this.roleRoom(tenantId, 'tenant_supervisor'), event, payload);
+    }
+
+    private agentKey(tenantId: string, agentId: string): string {
+        return `${tenantId}:${agentId}`;
+    }
+
+    private isAllowedInboxRole(role: string): boolean {
+        return (INBOX_SOCKET_ROLES as readonly string[]).includes(role);
     }
 
     async handleConnection(client: any) {
@@ -98,8 +136,30 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
                 return;
             }
 
-            // Store verified JWT data on the socket for later use
-            (client as any).jwtPayload = { ...payload, tenantId: readyContext.tenantId };
+            const currentUser = await this.prisma.user.findFirst({
+                where: {
+                    id: payload.sub,
+                    tenantId: readyContext.tenantId,
+                    isActive: true,
+                    role: { in: [...INBOX_SOCKET_ROLES] },
+                },
+                select: { role: true, email: true },
+            });
+            if (!currentUser || !this.isAllowedInboxRole(currentUser.role)) {
+                this.logger.warn(`Connection rejected (role not allowed): ${client.id}`);
+                client.emit('error', { message: 'Role is not allowed to use the agent console' });
+                client.disconnect(true);
+                return;
+            }
+
+            // Store current database role and authoritative tenant context. A
+            // stale JWT cannot retain Inbox access after a role downgrade.
+            (client as any).jwtPayload = {
+                ...payload,
+                email: currentUser.email,
+                role: currentUser.role,
+                tenantId: readyContext.tenantId,
+            };
             this.logger.log(`Agent authenticated: ${payload.sub} (tenant: ${payload.tenantId}) socket: ${client.id}`);
         } catch (error: any) {
             const reason = error?.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token';
@@ -118,14 +178,14 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
                 for (const { tenantId, conversationId } of affected) {
                     const viewers = await this.collisionDetectionService.getViewers(tenantId, conversationId);
                     this.server
-                        ?.to(`conversation:${conversationId}`)
+                        ?.to(this.conversationRoom(tenantId, conversationId))
                         .emit('conversation:viewers_update', { conversationId, viewers });
                 }
             } catch (error: any) {
                 this.logger.error(`Collision cleanup failed for agent ${meta.agentId}: ${error.message}`);
             }
 
-            this.connectedAgents.delete(meta.agentId);
+            this.connectedAgents.delete(this.agentKey(meta.tenantId, meta.agentId));
             this.socketMeta.delete(client.id);
             this.logger.log(`Agent disconnected: ${meta.agentId}`);
         }
@@ -147,6 +207,12 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         const verifiedUserId = jwtPayload.sub;
         const verifiedTenantId = jwtPayload.tenantId!;
         const verifiedRole = jwtPayload.role;
+
+        if (!this.isAllowedInboxRole(verifiedRole)) {
+            client.emit('error', { message: 'Role is not allowed to use the agent console' });
+            client.disconnect(true);
+            return;
+        }
 
         // If client supplies agentId, validate it matches the JWT user
         if (data.agentId && data.agentId !== verifiedUserId) {
@@ -177,14 +243,19 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
             role: verifiedRole,
             agentName,
         });
-        this.connectedAgents.set(verifiedUserId, client.id);
+        this.connectedAgents.set(this.agentKey(verifiedTenantId, verifiedUserId), client.id);
 
         // Join tenant room for broadcasts
         client.join(`tenant:${verifiedTenantId}`);
-        client.join(`agent:${verifiedUserId}`);
+        client.join(this.agentRoom(verifiedTenantId, verifiedUserId));
+        if (verifiedRole === 'tenant_admin' || verifiedRole === 'tenant_supervisor') {
+            client.join(this.roleRoom(verifiedTenantId, verifiedRole));
+        }
 
         // Send initial inbox
-        const inbox = await this.agentConsoleService.getInbox(verifiedTenantId, verifiedUserId);
+        const inbox = await this.agentConsoleService.getInbox(
+            verifiedTenantId, verifiedUserId, 'all', 50, 0, verifiedRole,
+        );
         client.emit('inbox:update', inbox);
 
         this.logger.log(`Agent ${verifiedUserId} (${agentName}) joined tenant ${verifiedTenantId} (role: ${verifiedRole})`);
@@ -198,12 +269,38 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
 
+        const canView = await this.agentConsoleService.canViewConversation(
+            meta.tenantId,
+            data.conversationId,
+            meta.agentId,
+            meta.role,
+        );
+        if (!canView) {
+            client.emit('error', { message: 'No tienes permiso para ver esta conversación.' });
+            return;
+        }
+
         const conversation = await this.agentConsoleService.getConversation(
             meta.tenantId,
             data.conversationId,
         );
+        if (!conversation) {
+            client.emit('error', { message: 'Conversation not found' });
+            return;
+        }
 
-        client.join(`conversation:${data.conversationId}`);
+        const room = this.conversationRoom(meta.tenantId, data.conversationId);
+        // Join before the final visibility check. This closes the eviction race:
+        // a concurrent assignment either makes the re-check fail (and we leave)
+        // or runs afterwards and evicts this already-joined socket from the room.
+        client.join(room);
+        if (!await this.agentConsoleService.canViewConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        )) {
+            client.leave(room);
+            return;
+        }
+
         client.emit('conversation:detail', conversation);
 
         // Track viewer and broadcast to other agents
@@ -215,7 +312,7 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         );
         const viewers = await this.collisionDetectionService.getViewers(meta.tenantId, data.conversationId);
         this.server
-            .to(`conversation:${data.conversationId}`)
+            .to(this.conversationRoom(meta.tenantId, data.conversationId))
             .emit('conversation:viewers_update', { conversationId: data.conversationId, viewers });
     }
 
@@ -226,6 +323,18 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
     ) {
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
+        if (!await this.agentConsoleService.canViewConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        )) return;
+
+        const room = this.conversationRoom(meta.tenantId, data.conversationId);
+        client.join(room);
+        if (!await this.agentConsoleService.canViewConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        )) {
+            client.leave(room);
+            return;
+        }
 
         await this.collisionDetectionService.startViewing(
             meta.tenantId,
@@ -235,7 +344,7 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         );
         const viewers = await this.collisionDetectionService.getViewers(meta.tenantId, data.conversationId);
         this.server
-            .to(`conversation:${data.conversationId}`)
+            .to(this.conversationRoom(meta.tenantId, data.conversationId))
             .emit('conversation:viewers_update', { conversationId: data.conversationId, viewers });
     }
 
@@ -252,9 +361,13 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
             data.conversationId,
             meta.agentId,
         );
+        client.leave(this.conversationRoom(meta.tenantId, data.conversationId));
+        if (!await this.agentConsoleService.canViewConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        )) return;
         const viewers = await this.collisionDetectionService.getViewers(meta.tenantId, data.conversationId);
         this.server
-            .to(`conversation:${data.conversationId}`)
+            .to(this.conversationRoom(meta.tenantId, data.conversationId))
             .emit('conversation:viewers_update', { conversationId: data.conversationId, viewers });
     }
 
@@ -265,6 +378,9 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
     ) {
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
+        if (!await this.agentConsoleService.canViewConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        )) return;
 
         await this.collisionDetectionService.heartbeat(
             meta.tenantId,
@@ -282,15 +398,12 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
 
-        // Permission check: agent must be assigned, or have supervisor/admin role
-        if (!this.hasElevatedRole(meta.role)) {
-            const canAct = await this.agentConsoleService.canActOnConversation(
-                meta.tenantId, data.conversationId, meta.agentId,
-            );
-            if (!canAct) {
-                client.emit('error', { message: 'No tienes permiso para enviar mensajes en esta conversación.' });
-                return;
-            }
+        const canAct = await this.agentConsoleService.canActOnConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        );
+        if (!canAct) {
+            client.emit('error', { message: 'No tienes permiso para enviar mensajes en esta conversación.' });
+            return;
         }
 
         const message = await this.agentConsoleService.sendAgentMessage(
@@ -303,7 +416,7 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
 
         // Broadcast to all agents watching this conversation
         this.server
-            .to(`conversation:${data.conversationId}`)
+            .to(this.conversationRoom(meta.tenantId, data.conversationId))
             .emit('conversation:message', message);
     }
 
@@ -315,21 +428,33 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
 
-        // Permission check: only allow if assigning to themselves OR has supervisor/admin role
-        const isAssigningToSelf = data.agentId === meta.agentId;
-        if (!isAssigningToSelf && !this.hasElevatedRole(meta.role)) {
+        const elevated = this.hasElevatedRole(meta.role);
+        if (!elevated && data.agentId !== meta.agentId) {
             client.emit('error', { message: 'No tienes permiso para asignar conversaciones a otros agentes.' });
             return;
         }
+        const targetAgentId = elevated ? data.agentId : meta.agentId;
 
-        await this.agentConsoleService.assignConversation(
-            meta.tenantId,
-            data.conversationId,
-            data.agentId,
-        );
+        if (elevated) {
+            await this.agentConsoleService.assignConversation(
+                meta.tenantId,
+                data.conversationId,
+                targetAgentId,
+            );
+        } else {
+            // An agent may take only a currently unassigned conversation. The
+            // target identity comes from the authenticated socket metadata.
+            await this.agentConsoleService.claimConversation(
+                meta.tenantId,
+                data.conversationId,
+                meta.agentId,
+            );
+        }
+
+        this.evictConversationRoom(meta.tenantId, data.conversationId);
 
         // Notify assigned agent
-        this.server?.to(`agent:${data.agentId}`).emit('inbox:assigned', {
+        this.server?.to(this.agentRoom(meta.tenantId, targetAgentId)).emit('inbox:assigned', {
             conversationId: data.conversationId,
         });
 
@@ -345,15 +470,12 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
 
-        // Permission check: agent must be assigned, or have supervisor/admin role
-        if (!this.hasElevatedRole(meta.role)) {
-            const canAct = await this.agentConsoleService.canActOnConversation(
-                meta.tenantId, data.conversationId, meta.agentId,
-            );
-            if (!canAct) {
-                client.emit('error', { message: 'No tienes permiso para resolver esta conversación.' });
-                return;
-            }
+        const canAct = await this.agentConsoleService.canActOnConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        );
+        if (!canAct) {
+            client.emit('error', { message: 'No tienes permiso para resolver esta conversación.' });
+            return;
         }
 
         await this.agentConsoleService.resolveConversation(
@@ -364,8 +486,9 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
 
         this.server?.to(`tenant:${meta.tenantId}`).emit('inbox:refresh');
         this.server
-            .to(`conversation:${data.conversationId}`)
+            .to(this.conversationRoom(meta.tenantId, data.conversationId))
             .emit('conversation:resolved', { conversationId: data.conversationId });
+        this.evictConversationRoom(meta.tenantId, data.conversationId);
     }
 
     @SubscribeMessage('agent:typing')
@@ -374,8 +497,12 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         @MessageBody() data: { conversationId: string; typing: boolean },
     ) {
         const meta = this.socketMeta.get(client.id);
-        client.to(`conversation:${data.conversationId}`).emit('agent:typing', {
-            agentId: meta?.agentId,
+        if (!meta) return;
+        if (!await this.agentConsoleService.canViewConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        )) return;
+        client.to(this.conversationRoom(meta.tenantId, data.conversationId)).emit('agent:typing', {
+            agentId: meta.agentId,
             typing: data.typing,
         });
     }
@@ -388,14 +515,26 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
 
+        if (!await this.agentConsoleService.canViewConversation(
+            meta.tenantId, data.conversationId, meta.agentId, meta.role,
+        )) {
+            client.emit('error', { message: 'No tienes permiso para usar Copilot en esta conversación.' });
+            return;
+        }
+
         try {
             const suggestions = await this.copilotService.getSuggestions(
                 meta.tenantId,
                 data.conversationId,
+                meta.agentId,
+                meta.role,
             );
             client.emit('copilot:suggestions', { conversationId: data.conversationId, suggestions });
         } catch (error: any) {
             this.logger.error(`Copilot suggest failed: ${error.message}`);
+            if (error?.getStatus?.() === 429) {
+                client.emit('error', { statusCode: 429, code: 'copilot_rate_limit', message: error.message });
+            }
             client.emit('copilot:suggestions', { conversationId: data.conversationId, suggestions: [] });
         }
     }
@@ -404,18 +543,18 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
      * Called by the system when a new customer message arrives
      */
     notifyNewMessage(tenantId: string, conversationId: string, message: any) {
-        this.relayEmit(`tenant:${tenantId}`, 'inbox:new_message', {
-            conversationId,
-            message,
-        });
-        this.relayEmit(`conversation:${conversationId}`, 'conversation:message', message);
+        // Tenant-wide listeners receive only a refresh signal. Message content
+        // stays in the tenant-scoped conversation room whose members passed
+        // canViewConversation before joining.
+        this.relayEmit(`tenant:${tenantId}`, 'inbox:refresh', {});
+        this.relayEmit(this.conversationRoom(tenantId, conversationId), 'conversation:message', message);
     }
 
     /**
      * Check if the agent role allows acting on any conversation (supervisor or admin).
      */
     private hasElevatedRole(role: string): boolean {
-        return ['super_admin', 'tenant_admin', 'tenant_supervisor'].includes(role);
+        return role === 'tenant_admin' || role === 'tenant_supervisor';
     }
 
     /**
@@ -444,17 +583,20 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
             urgent: true,
         };
 
-        // Broadcast to all agents in tenant
-        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:handoff', payload);
+        // Sensitive handoff context is never sent tenant-wide. Only elevated
+        // roles, the assigned agent and authorized viewers in the scoped
+        // conversation room receive it.
+        this.relaySensitiveToElevatedRoles(event.tenantId, 'inbox:handoff', payload);
+        this.relayEmit(this.conversationRoom(event.tenantId, event.conversationId), 'inbox:handoff', payload);
 
-        // Notificación directa al asignado, por su room `agent:{userId}` (se une
+        // Notificación directa al asignado, por su room tenant-scoped (se une
         // en el register, mismo patrón que 'inbox:assigned'). El bloque anterior
         // recorría sockets con 3 bugs acumulados (Namespace.sockets no tiene
         // .adapter, el Map estaba destructurado al revés y meta nunca vivió en
         // socket.data) — 'inbox:assigned_to_you' jamás llegó a nadie pese a que
         // el móvil y el TopBar del dashboard lo escuchan.
         if (event.assignedTo) {
-            this.relayEmit(`agent:${event.assignedTo}`, 'inbox:assigned_to_you', {
+            this.relayEmit(this.agentRoom(event.tenantId, event.assignedTo), 'inbox:assigned_to_you', {
                 ...payload,
                 message: `${event.contactName || 'Un cliente'} ha sido asignado a ti: ${event.reason}`,
             });
@@ -471,11 +613,17 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
      */
     @OnEvent('draft.suggested')
     handleDraftSuggested(event: { tenantId: string; conversationId: string; text: string; contactName?: string }) {
-        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:draft_suggestion', {
+        const payload = {
             conversationId: event.conversationId,
             suggestedText: event.text,
             contactName: event.contactName,
-        });
+        };
+        this.relaySensitiveToElevatedRoles(event.tenantId, 'inbox:draft_suggestion', payload);
+        this.relayEmit(
+            this.conversationRoom(event.tenantId, event.conversationId),
+            'inbox:draft_suggestion',
+            payload,
+        );
         this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
@@ -500,19 +648,40 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         error?: string;
     }) {
         if (!event?.tenantId) return;
-        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:tool_approval', event);
+        this.relaySensitiveToElevatedRoles(event.tenantId, 'inbox:tool_approval', event);
+        if (event.conversationId) {
+            this.relayEmit(
+                this.conversationRoom(event.tenantId, event.conversationId),
+                'inbox:tool_approval',
+                event,
+            );
+        }
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
     @OnEvent('handoff.escalated_supervisor')
     handleSupervisorEscalation(event: { tenantId: string; conversationId: string; contactName: string; reason: string; waitMinutes: number }) {
         this.logger.warn(`[Escalation] Supervisor notified: ${event.contactName} waiting ${event.waitMinutes}min`);
-        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:escalation', {
+        this.relaySensitiveToElevatedRoles(event.tenantId, 'inbox:escalation', {
             conversationId: event.conversationId,
             contactName: event.contactName,
             reason: event.reason,
             waitMinutes: event.waitMinutes,
             urgent: true,
         });
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
+    }
+
+    @OnEvent('conversation.assigned')
+    handleConversationAssigned(event: { tenantId: string; conversationId: string }) {
+        this.evictConversationRoom(event.tenantId, event.conversationId);
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
+    }
+
+    @OnEvent('conversation.resolved')
+    handleConversationResolvedAccess(event: { tenantId: string; conversationId: string }) {
+        this.evictConversationRoom(event.tenantId, event.conversationId);
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
     /**

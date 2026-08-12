@@ -154,7 +154,6 @@ export function ConversationScreen() {
     useEffect(() => {
         const inbox = getInboxSocket();
         const agent = getAgentSocket();
-        const agentName = user?.name || user?.email || 'Agente';
 
         // Live messages arrive tenant-wide on /inbox → filter to this conversation.
         const onNewMessage = (payload: any) => {
@@ -170,15 +169,15 @@ export function ConversationScreen() {
         inbox.on('newMessage', onNewMessage);
         agent.on('conversation:viewers_update', onViewers);
         agent.emit('conversation:open', { conversationId }); // joins the conversation room
-        agent.emit('conversation:viewing_start', { conversationId, agentId: user?.id, agentName });
+        agent.emit('conversation:viewing_start', { conversationId });
         const hb = setInterval(
-            () => agent.emit('conversation:heartbeat', { conversationId, agentId: user?.id, agentName }),
+            () => agent.emit('conversation:heartbeat', { conversationId }),
             15000,
         );
 
         return () => {
             clearInterval(hb);
-            agent.emit('conversation:viewing_stop', { conversationId, agentId: user?.id });
+            agent.emit('conversation:viewing_stop', { conversationId });
             inbox.off('newMessage', onNewMessage);
             agent.off('conversation:viewers_update', onViewers);
         };
@@ -206,6 +205,7 @@ export function ConversationScreen() {
     const resolved = conv?.status === 'resolved' || conv?.status === 'closed';
     const channel: string | undefined = conv?.channel || conv?.channelType || conv?.contact?.channel;
     const assignedToMe = !!(conv?.assignedAgentId && user?.id && conv.assignedAgentId === user.id);
+    const canReassign = ['super_admin', 'tenant_admin', 'tenant_supervisor'].includes(user?.role || '');
     // Who is responding right now — surfaced as a persistent banner so the agent
     // never wonders whether the bot is still in control (job #2: takeover ambiguity).
     const mode: 'you' | 'ai' | 'waiting' | 'resolved' =
@@ -228,7 +228,7 @@ export function ConversationScreen() {
         patchConv({ assignedAgentId: user.id, status: 'with_human' }); // optimista
         setActing(true);
         try {
-            requireApiSuccess(await api.assignConversation(tenantId, conversationId, user.id));
+            requireApiSuccess(await api.claimConversation(tenantId, conversationId));
             toast.success(t('conv.assigned'));
             load();
         } catch {
@@ -257,7 +257,7 @@ export function ConversationScreen() {
                 if (!tenantId) return;
                 setActing(true);
                 try {
-                    requireApiSuccess(await api.resolveConversation(tenantId, conversationId, user?.id));
+                    requireApiSuccess(await api.resolveConversation(tenantId, conversationId));
                     // Undo → reopen. Toast is app-global so it survives goBack().
                     toast.success(t('conv.resolved'), undo(t('common.undo'), () =>
                         api.reopenConversation(tenantId, conversationId).then((result) => {
@@ -322,14 +322,14 @@ export function ConversationScreen() {
     const runMacro = async (macroId: string) => {
         if (!tenantId || !user?.id) return;
         setMacrosOpen(false); setActing(true);
-        try { requireApiSuccess(await api.executeMacro(tenantId, macroId, conversationId, user.id)); toast.success(t('conv.macroDone')); load(); }
+        try { requireApiSuccess(await api.executeMacro(tenantId, macroId, conversationId)); toast.success(t('conv.macroDone')); load(); }
         catch { toast.error(t('conv.macroError')); }
         finally { setActing(false); }
     };
     const saveNote = async () => {
         if (!tenantId || !noteText.trim()) return;
         setActing(true);
-        try { requireApiSuccess(await api.addNote(tenantId, conversationId, noteText.trim(), user?.id)); setNoteText(''); setNoteOpen(false); toast.success(t('conv.noteSaved')); load(); }
+        try { requireApiSuccess(await api.addNote(tenantId, conversationId, noteText.trim())); setNoteText(''); setNoteOpen(false); toast.success(t('conv.noteSaved')); load(); }
         catch { toast.error(t('conv.noteSaveError')); }
         finally { setActing(false); }
     };
@@ -400,7 +400,7 @@ export function ConversationScreen() {
         const tmpId = `tmp-${Date.now()}`;
         setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
         try {
-            const result = await api.sendMessage(tenantId, conversationId, body, user?.id);
+            const result = await api.sendMessage(tenantId, conversationId, body);
             if (!result?.success) throw new Error(result?.error || 'send_failed');
             haptic.success();
             load();
@@ -430,7 +430,7 @@ export function ConversationScreen() {
                 const fname = `voice_${Date.now()}.m4a`;
                 const uploadRes: any = await api.uploadMedia(tenantId, { uri: result.uri, fileName: fname, mimeType: 'audio/m4a' });
                 if (!uploadRes?.success || !uploadRes.data?.url) { toast.error(uploadRes?.message || t('conv.audioError')); return; }
-                const r: any = await api.sendMediaMessage(tenantId, conversationId, uploadRes.data.url, '', user?.id, 'audio', fname);
+                const r: any = await api.sendMediaMessage(tenantId, conversationId, uploadRes.data.url, '', 'audio', fname);
                 if (!r?.success) throw new Error('fail');
                 load();
             } catch {
@@ -466,7 +466,7 @@ export function ConversationScreen() {
             const url = up?.data?.url;
             if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaError')); return; }
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
-            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id);
+            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '');
             if (!r?.success) throw new Error('fail');
             haptic.success();
             load();
@@ -487,7 +487,7 @@ export function ConversationScreen() {
             const url = up?.data?.url;
             if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaTypeError')); return; }
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
-            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id, 'document', f.name);
+            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', 'document', f.name);
             if (!r?.success) throw new Error('fail');
             haptic.success();
             load();
@@ -513,7 +513,7 @@ export function ConversationScreen() {
             const url = up?.data?.url;
             if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaTypeError')); return; }
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
-            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id, 'video', name);
+            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', 'video', name);
             if (!r?.success) throw new Error('fail');
             haptic.success();
             load();
@@ -633,13 +633,13 @@ export function ConversationScreen() {
 
             <View style={styles.actionBar}>
                 <Action icon="information-circle-outline" label={t('conv.action.contact')} color={theme.textSecondary} onPress={() => setContactOpen(true)} />
-                {/* Take control = assign to me (pauses the bot via handoff). Hidden once it's already mine. */}
-                {!resolved && (mode === 'ai' || mode === 'waiting') &&
+                {/* Take control = atomically claim a free conversation. */}
+                {!resolved && !conv?.assignedAgentId && (mode === 'ai' || mode === 'waiting') &&
                     <Action icon="hand-left-outline" label={t('conv.action.takeControl')} color={theme.success} onPress={assignToMe} disabled={acting} />}
                 {/* Return to AI = give the bot back control. Shown whenever a human currently holds it. */}
                 {!resolved && mode !== 'ai' &&
                     <Action icon="sparkles-outline" label={t('conv.action.returnAi')} color={theme.accent} onPress={returnToAI} disabled={acting} />}
-                {!resolved && <Action icon="people-outline" label={t('conv.action.reassign')} color={theme.textSecondary} onPress={openReassign} disabled={acting} />}
+                {!resolved && canReassign && <Action icon="people-outline" label={t('conv.action.reassign')} color={theme.textSecondary} onPress={openReassign} disabled={acting} />}
                 <Action icon="document-text-outline" label={t('conv.action.summarize')} color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
                 <Action icon="bulb-outline" label={t('conv.action.nextAction')} color={theme.accent} onPress={doNextAction} disabled={aiBusy} />
                 <Action icon="create-outline" label={t('conv.action.note')} color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />

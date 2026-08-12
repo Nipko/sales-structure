@@ -12,14 +12,14 @@ WhatsApp est le canal principal de Parallly : une fois connecté, votre agent IA
 
 ## Avant de commencer
 
-- Vous devez être **administrateur** de votre compte Parallly (les superviseurs et les agents peuvent consulter les canaux, mais pas les connecter).
+- Vous devez être **administrateur** de votre compte Parallly ; l'administration des canaux n'est pas accessible aux superviseurs ni aux agents.
 - Vous avez besoin d'un compte Facebook avec accès à l'entreprise dans Meta Business Suite.
 - Gardez à portée de main le numéro de téléphone que vous allez utiliser : il doit pouvoir recevoir des SMS ou des appels (les numéros virtuels VoIP et les lignes premium ne fonctionnent pas).
-- WhatsApp est disponible dans tous les forfaits, dès Emprendedor.
+- L'écran **Canaux** indique si WhatsApp est activé pour votre compte.
 
 ## Comment connecter votre numéro
 
-1. Dans la barre latérale, section **Gestion**, accédez à **Canaux**.
+1. Dans la barre latérale, section **Administration**, accédez à **Canaux**.
 2. Sur la carte **WhatsApp**, cliquez sur **Connecter**.
 3. Vous verrez l'écran **« Choisissez votre méthode de connexion »** avec ces options :
    - **Numéro de test** — explorez la plateforme sans engagement et connectez votre vrai numéro plus tard.
@@ -78,23 +78,15 @@ WhatsApp permet de répondre librement pendant les **24 heures** qui suivent le 
 Pour les gérer : **Canaux → WhatsApp → Voir tous les modèles** (la page **Modèles WhatsApp**).
 
 - **Synchroniser depuis Meta** — importe dans Parallly les modèles déjà approuvés sur votre compte.
-- **Créer un modèle** — créez-en un nouveau sans quitter Parallly : nom, langue, catégorie, corps avec variables (par exemple `{{1}}` pour le nom du client), en-tête, pied de page et jusqu'à 3 boutons, avec aperçu en direct. Une fois terminé, cliquez sur **Envoyer à Meta** ; l'approbation prend généralement de quelques minutes à 72 heures.
+- **Créer un modèle** — créez-en un nouveau sans quitter Parallly : nom, langue, catégorie, corps avec variables (par exemple `{{1}}` pour le nom du client), en-tête, pied de page et jusqu'à 3 boutons, avec aperçu en direct. Une fois terminé, cliquez sur **Envoyer à Meta** ; Meta détermine le statut et le délai d'examen.
 - Chaque modèle affiche son statut : **Approuvé**, **En attente** ou **Rejeté** (avec le motif du rejet pour que vous puissiez le corriger et le renvoyer).
-- Lors de la connexion de WhatsApp, Parallly soumet automatiquement **3 modèles de départ** déjà validés (rappel de rendez-vous, confirmation de commande et paiement reçu) pour que vous ayez de quoi commencer.
+- Lors de la connexion de WhatsApp, Parallly soumet automatiquement **4 modèles de départ** déjà validés (rappel de rendez-vous, confirmation de présence, confirmation de commande et paiement reçu) pour que vous ayez de quoi commencer.
 
 ## Plus d'un numéro WhatsApp ?
 
-Vous pouvez connecter plusieurs numéros sur le même canal selon votre forfait. Sur la carte WhatsApp, vous verrez le compteur de comptes (par exemple « 1/2 comptes ») et le bouton **Ajouter un autre** tant qu'il vous reste de la place.
+Vous pouvez connecter plusieurs numéros si votre compte dispose de la capacité nécessaire. La carte WhatsApp affiche l'utilisation actuelle et le bouton **Ajouter un autre** tant qu'une place reste disponible. Consultez la limite actuelle dans **Forfait et facturation**.
 
-| Forfait | Numéros WhatsApp |
-|------|:---:|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 2 |
-| Enterprise | 3 |
-| Custom | Illimité |
-
-Chaque connexion est indépendante : elle a son propre agent IA (vous l'attribuez dans l'éditeur d'agent), ses conversations ne se mélangent pas et, lors de l'envoi de campagnes ou de modèles, vous choisissez le numéro d'envoi du message. Si vous avez besoin de plus de numéros que ne le permet votre forfait, écrivez-nous au [support](https://parallly-chat.cloud/support).
+Chaque connexion est indépendante : elle a son propre agent IA (vous l'attribuez dans l'éditeur d'agent) et ses conversations ne se mélangent pas. Un brouillon de campagne peut enregistrer le numéro émetteur prévu, mais ne lancez pas de campagne réelle depuis l'éditeur actuel : l'association exacte modèle/émetteur et l'annulation ne sont pas encore certifiées de bout en bout. Si vous avez besoin de plus de numéros que ne le permet la configuration actuelle de votre compte, écrivez-nous au [support](https://parallly-chat.cloud/support).
 
 ## Comment déconnecter un numéro
 

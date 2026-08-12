@@ -69,6 +69,26 @@
     "languageAriaLabel": "Idioma del sitio",
     "mobileNavigationAriaLabel": "Navegación móvil"
   },
+  "supportPage": {
+    "eyebrow": "Ayuda para clientes",
+    "title": "Centro de soporte de Parallly",
+    "subtitle": "Cuéntanos qué necesitas y nuestro equipo revisará tu caso por correo electrónico.",
+    "contactTitle": "Escríbenos directamente",
+    "contactBody": "Usa el correo asociado a tu cuenta para que podamos identificar tu organización y darte una respuesta con el contexto correcto.",
+    "emailCta": "Escribir a soporte",
+    "emailLabel": "Correo de soporte:",
+    "emailSubject": "Soporte Parallly",
+    "prepareTitle": "Qué incluir en tu mensaje",
+    "prepareBody": "Estos datos nos ayudan a entender y revisar el caso con mayor precisión:",
+    "checklist": {
+      "account": "El correo de tu cuenta y el nombre de tu organización.",
+      "issue": "Una descripción clara de lo que intentabas hacer y qué ocurrió.",
+      "context": "Capturas, fecha aproximada y dispositivo o navegador, si son relevantes."
+    },
+    "securityTitle": "Protege tus credenciales",
+    "securityBody": "Nunca envíes contraseñas, códigos de verificación, tokens ni claves API. El equipo de Parallly no te pedirá estos datos por correo.",
+    "backHome": "Volver al inicio"
+  },
   "channels": {
     "title": "Funciona en todos tus canales",
     "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram, SMS y Email. Cada canal usa el agente que le asignes, con una experiencia coherente o una personalidad y reglas adaptadas a ese canal.",

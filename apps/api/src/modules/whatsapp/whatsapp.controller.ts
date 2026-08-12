@@ -91,7 +91,7 @@ export class WhatsappController {
 
   @Post('connect/start')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('tenant_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Start WhatsApp connection onboarding' })
   async startConnection() {
@@ -108,7 +108,7 @@ export class WhatsappController {
 
   @Post('connect/complete')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('tenant_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Complete WhatsApp connection onboarding' })
   async completeConnection(@Request() req: any, @Body() data: any) {
@@ -136,7 +136,7 @@ export class WhatsappController {
 
   @Post('disconnect')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('tenant_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Disconnect WhatsApp channel — calls Meta to unsubscribe the app from the WABA, then marks BD inactive' })
   async disconnect(@Request() req: any) {

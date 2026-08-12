@@ -8,9 +8,9 @@ keywords: ["inbox", "handoff", "take conversation", "assist customer", "human ag
 
 # Inbox and human support
 
-The **Inbox** is where your team sees every conversation in real time and where a person can take over when the AI needs help. You'll find it in the sidebar, under **Operation → Inbox**.
+The **conversation inbox** is where your team sees every chat in real time and where a person can take over when the AI needs help. Find it under **Essentials → Conversations**.
 
-The screen has three areas: on the left, the conversation list (with filters like **All**, **Mine**, **Unassigned**, **Handoff** and **Resolved**, plus filters by channel); in the center, the message thread; and on the right, the contact panel with their information, notes and appointments. Conversations from all your connected channels land here: WhatsApp, Instagram, Messenger, Telegram, Email and your website chat.
+The screen has three areas: on the left, the conversation list (with filters like **All**, **Mine**, **Unassigned**, **Handoff** and **Resolved**, plus filters by channel); in the center, the message thread; and on the right, the contact panel with their information, notes and appointments. Conversations from your operational surfaces land here: WhatsApp, Instagram, Messenger, Telegram and your website chat.
 
 ## How to take a conversation (handoff)
 
@@ -20,7 +20,7 @@ When a customer asks to speak with a person, or the AI detects it can't resolve 
 2. You'll see an orange notice: **Human attention required** — "The AI assistant has been paused. The customer is waiting for a response from a human."
 3. Click **Take conversation**. The conversation is assigned to you and you can now write to the customer directly.
 
-You can also take any conversation at any time using the **Assign to me** button in the chat header, even if no one requested help. While the conversation is with you, the AI stays silent: the customer talks only with you.
+You can also use **Assign to me** on a conversation that currently has no owner. If it is already assigned to someone else, only an admin or supervisor can reassign it. Once the conversation is yours, the AI stays silent: the customer talks only with you.
 
 ## The AI summary when you take a conversation
 
@@ -73,18 +73,18 @@ If a case can't move forward right now ("call me on Monday"), don't leave it tak
 ## Assignment between agents
 
 - Each conversation can have an owner. Use the **Mine** filter to see only your own, and **Unassigned** to find orphaned conversations.
-- Any team member can take a conversation with **Assign to me**; if it was already with someone else, an admin or supervisor can reassign it.
+- Any authorized team member can take an **unassigned** conversation with **Assign to me**; if it was already with someone else, only an admin or supervisor can reassign it.
 - If you set up **skills** in your team's profiles (**Users** menu), Parallly automatically routes each escalation to the right person — for example, English-language cases to the agent who speaks English.
 - Macros can also assign to a specific agent as part of their actions.
 - If an escalated conversation goes more than 5 minutes without a response, supervisors receive an alert so no one is left waiting.
 
-The number of people who can use Parallly depends on your plan: Emprendedor includes 1 user, Starter 3, Pro 5, and Enterprise and Custom have no limit.
+The number of people who can use Parallly depends on your account capacity; check current usage and limits in **Plan & Billing**.
 
 ## Notifications
 
 The **bell** in the top bar gathers all alerts and groups them by category: **Messages**, **Transfers** (escalations to a human), **Privacy**, **Appointments**, **Automation**, **Orders** and **System**. Direct escalations (the customer asked for a human) are highlighted in red; escalations due to low AI confidence, in yellow; and supervisor alerts arrive with sound.
 
-If your plan is Pro or higher, you can also receive an SMS when the AI escalates a conversation: turn it on in **Settings → Integrations → SMS alerts**.
+If SMS alerts are enabled for your account, turn them on under **Settings → Channels & Integrations → SMS alerts**.
 
 ## Teamwork without stepping on each other
 

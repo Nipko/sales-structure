@@ -174,8 +174,16 @@ jobs:
           apps/api/src/modules/conversations/ephemeral-agent-sandbox.spec.ts
           apps/api/src/modules/conversations/active-operations-context.service.spec.ts
           apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
+          apps/api/src/modules/channels/email/email-webhook-security.service.spec.ts
+          apps/api/src/modules/channels/email/email-webhook.controller.spec.ts
+          apps/api/src/modules/copilot/assistant-kb-contract.spec.ts
+          apps/api/src/modules/copilot/copilot.controller.spec.ts
+          apps/api/src/modules/copilot/copilot.service.context.spec.ts
           apps/api/src/modules/widget/widget.gateway.security.spec.ts
           apps/api/src/modules/widget/widget-capability-policy.spec.ts
+          apps/api/src/modules/widget/widget-public.controller.security.spec.ts
+          apps/api/src/modules/widget/widget-triggers.controller.security.spec.ts
+          apps/api/src/modules/widget/widget-triggers.service.security.spec.ts
           apps/api/src/modules/verticals/operating-currency.service.spec.ts
           apps/api/src/modules/verticals/temporal-capacity-contract.service.spec.ts
           apps/api/src/modules/verticals/staff-operations-model.service.spec.ts
@@ -202,6 +210,7 @@ jobs:
           npx jest --config apps/dashboard/jest.config.cjs --runInBand
           apps/dashboard/src/lib/vertical-dashboard-resolver.spec.ts
           apps/dashboard/src/lib/local-timestamp.spec.ts
+          apps/dashboard/src/lib/help-assistant-contract.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
@@ -579,6 +588,7 @@ jobs:
           PROD_SMTP_USER: ${{ secrets.SMTP_USER }}
           PROD_SMTP_PASS: ${{ secrets.SMTP_PASS }}
           PROD_SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          PROD_EMAIL_INBOUND_WEBHOOK_SECRET: ${{ secrets.EMAIL_INBOUND_WEBHOOK_SECRET }}
           PROD_BULL_BOARD_TOKEN: ${{ secrets.BULL_BOARD_TOKEN }}
           PROD_GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
           PROD_JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
@@ -651,7 +661,7 @@ jobs:
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
             PROD_SENTRY_DSN,PROD_SENTRY_AUTH_TOKEN,PROD_SENTRY_ORG,PROD_SENTRY_PROJECT,PROD_SENTRY_API_URL,PROD_TELEGRAM_ALERT_BOT_TOKEN,PROD_TELEGRAM_ALERT_CHAT_ID,
             PROD_SMS_ALERT_ACCOUNT_SID,PROD_SMS_ALERT_AUTH_TOKEN,PROD_SMS_ALERT_FROM,PROD_SMS_ALERT_TO,PROD_SMS_SENDER_ID,
-            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,PROD_SMTP_FROM,
+            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,PROD_SMTP_FROM,PROD_EMAIL_INBOUND_WEBHOOK_SECRET,
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
@@ -761,6 +771,11 @@ jobs:
             echo "SMTP_USER=${PROD_SMTP_USER}" >> .env
             echo "SMTP_PASS=${PROD_SMTP_PASS}" >> .env
             echo "SMTP_FROM=${PROD_SMTP_FROM:-Parallly <${PROD_SMTP_USER}>}" >> .env
+            echo "EMAIL_INBOUND_WEBHOOK_SECRET=${PROD_EMAIL_INBOUND_WEBHOOK_SECRET}" >> .env
+            echo "EMAIL_INBOUND_WEBHOOK_HEADER=x-email-webhook-secret" >> .env
+            echo "EMAIL_INBOUND_MAX_BODY_BYTES=1048576" >> .env
+            echo "EMAIL_INBOUND_RATE_LIMIT_PER_MINUTE=600" >> .env
+            echo "EMAIL_INBOUND_RECIPIENT_RATE_LIMIT_PER_MINUTE=120" >> .env
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             echo "CLOUDFLARE_TUNNEL_TOKEN=${PROD_TUNNEL_TOKEN}" >> .env
             echo "# Observability" >> .env
@@ -917,7 +932,7 @@ jobs:
               fi
             fi
 
-            echo "===> Seeding billing_plans (idempotent upsert)..."
+            echo "===> Bootstrapping missing billing_plans (create-only)..."
             # No "|| true": the seed is create-only; a failure here means a real DB
             # problem, so abort rather than deploy against a bad plan catalog.
             $DC \

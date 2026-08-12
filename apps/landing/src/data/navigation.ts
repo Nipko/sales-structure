@@ -52,7 +52,7 @@ export const FOOTER_SECTIONS = [
   {
     titleKey: "footerCompany",
     links: [
-      { labelKey: "footerSupport", href: "mailto:it.executive@parallext.com" },
+      { labelKey: "footerSupport", href: "/support" },
       { labelKey: "footerContact", href: "mailto:it.executive@parallext.com" },
     ],
   },

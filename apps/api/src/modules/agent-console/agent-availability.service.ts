@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,14 +19,23 @@ export class AgentAvailabilityService {
         private readonly cronLock: CronLockService,
     ) {}
 
-    async updateStatus(userId: string, status: AvailabilityStatus): Promise<void> {
-        await this.prisma.user.update({
-            where: { id: userId },
+    async updateStatus(tenantId: string, userId: string, status: AvailabilityStatus): Promise<void> {
+        if (!['online', 'busy', 'offline'].includes(status)) {
+            throw new BadRequestException('Invalid availability status');
+        }
+        const result = await this.prisma.user.updateMany({
+            where: {
+                id: userId,
+                tenantId,
+                isActive: true,
+                role: { in: ['tenant_admin', 'tenant_supervisor', 'tenant_agent'] },
+            },
             data: {
                 availabilityStatus: status,
                 lastActiveAt: new Date(),
             },
         });
+        if (result.count !== 1) throw new NotFoundException('Active tenant agent not found');
         this.logger.log(`Agent ${userId} status → ${status}`);
     }
 

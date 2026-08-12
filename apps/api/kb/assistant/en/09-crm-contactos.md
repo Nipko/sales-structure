@@ -8,7 +8,7 @@ keywords: ["contacts", "crm", "leads", "customers", "score", "lead scoring", "st
 
 # Contacts and CRM
 
-Parallly's CRM is where all your contacts live: every person who messages you through WhatsApp, Instagram, Messenger, Telegram, Email, or your website chat is registered here automatically, along with their full history. You can also add contacts by hand or import them from Excel.
+Parallly's CRM is where all your contacts live: every person who messages you through WhatsApp, Instagram, Messenger, Telegram, or your website chat is registered here automatically, along with their full history. You can also add contacts by hand or import them from Excel.
 
 You'll find it in the sidebar: open **CRM** and go to the first option, **CRM**. You'll land on the **Contacts** page, with a table showing name, channel, conversations, value, last interaction, score, stage, and tags. Up top you have quick chips to filter by group: **All**, **New**, **Leads**, **Qualified**, **Customers**, and **Churned**, plus a search box.
 
@@ -108,17 +108,9 @@ If the same person messages you through two channels with the same phone or emai
 - **Automatic suggestions**: pairs of very similar contacts detected by the system, with their **Confidence** level. Review each pair and choose **Approve** (they merge) or **Reject**.
 - **Merge manually**: search for and select the first and second contact, then click **Merge contacts**. They become a single profile with all their history.
 
-## Plan limits
+## CRM capacity
 
-| Plan | Contacts | Saved segments | Custom attributes |
-|------|----------|----------------|-------------------|
-| Emprendedor | 100 | Not included | Not included |
-| Starter | 500 | 3 | 5 |
-| Pro | 5,000 | 15 | 20 |
-| Enterprise | 50,000 | Unlimited | Unlimited |
-| Custom | Unlimited | Unlimited | Unlimited |
-
-As you approach your plan's contact limit, you'll see a notice to expand it from **Settings → Billing**.
+The screen shows current usage and limits for contacts, segments, and attributes. If you approach capacity, review **Plan & Billing**.
 
 ## Frequently asked questions
 

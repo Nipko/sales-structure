@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert, Animated, PanResponder, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert, Animated, PanResponder, LayoutAnimation, Platform, UIManager, type AlertButton } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // LayoutAnimation en Android old-arch necesita el flag experimental (no-op en new-arch/iOS).
@@ -179,9 +179,11 @@ export function InboxScreen() {
         queryKey,
         queryFn: async () => {
             if (!tenantId) return { items: [], hasMore: false };
-            // agentId scopes the 'mine' filter server-side — without it that filter
-            // has nothing to match and always comes back empty.
-            const res: any = requireApiSuccess(await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: 0, agentId: user?.id }));
+            const res: any = requireApiSuccess(await api.getInbox(
+                tenantId,
+                filter === 'all' ? undefined : filter,
+                { limit: PAGE_SIZE, offset: 0 },
+            ));
             // Lanzar en fallo: devolver [] hacía que CUALQUIER error (sesión
             // caída, sin red, 500) se viera como "No hay conversaciones" — el
             // agente creía tener la bandeja limpia con la API caída.
@@ -226,7 +228,11 @@ export function InboxScreen() {
         setLoadingMore(true);
         try {
             const nextPage = page + 1;
-            const res: any = requireApiSuccess(await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE, agentId: user?.id }));
+            const res: any = requireApiSuccess(await api.getInbox(
+                tenantId,
+                filter === 'all' ? undefined : filter,
+                { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE },
+            ));
             const more: Conv[] = Array.isArray(res?.data) ? res.data : [];
             setAllItems((prev) => {
                 const ids = new Set(prev.map((c) => c.id));
@@ -271,7 +277,7 @@ export function InboxScreen() {
         if (!tenantId) return;
         if (action === 'assign') {
             if (!user?.id) return;
-            try { requireApiSuccess(await api.assignConversation(tenantId, item.id, user.id)); toast.success(t('inbox.qa.assigned')); queryClient.invalidateQueries({ queryKey }); }
+            try { requireApiSuccess(await api.claimConversation(tenantId, item.id)); toast.success(t('inbox.qa.assigned')); queryClient.invalidateQueries({ queryKey }); }
             catch { toast.error(t('conv.assignError')); }
             return;
         }
@@ -280,7 +286,7 @@ export function InboxScreen() {
         setAllItems((prev) => prev.filter((c) => c.id !== item.id)); // optimistic
         if (action === 'resolve') {
             try {
-                requireApiSuccess(await api.resolveConversation(tenantId, item.id, user?.id));
+                requireApiSuccess(await api.resolveConversation(tenantId, item.id));
                 toast.success(t('conv.resolved'), { label: t('common.undo'), onPress: () =>
                     api.reopenConversation(tenantId, item.id).then((result) => {
                         requireApiSuccess(result);
@@ -302,12 +308,15 @@ export function InboxScreen() {
 
     const openQuickActions = useCallback((item: Conv) => {
         haptic.tap();
-        Alert.alert(item.contactName || t('inbox.customer'), undefined, [
-            { text: t('inbox.qa.assign'), onPress: () => doQuick(item, 'assign') },
+        const actions: AlertButton[] = [
             { text: t('inbox.qa.snooze'), onPress: () => doQuick(item, 'snooze') },
             { text: t('inbox.qa.resolve'), style: 'destructive', onPress: () => doQuick(item, 'resolve') },
             { text: t('common.cancel'), style: 'cancel' },
-        ]);
+        ];
+        if (!item.assignedAgentId) {
+            actions.unshift({ text: t('inbox.qa.assign'), onPress: () => doQuick(item, 'assign') });
+        }
+        Alert.alert(item.contactName || t('inbox.customer'), undefined, actions);
     }, [doQuick, t]);
 
     // Channels actually present in the loaded list → drive the channel filter chips.

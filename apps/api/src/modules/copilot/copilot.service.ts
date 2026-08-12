@@ -1,12 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { VerticalsService } from '../verticals/verticals.service';
 import * as path from 'path';
 import * as fs from 'fs';
+import { CopilotRateLimitService } from './copilot-rate-limit.service';
 
 // ─── Existing interfaces (platform copilot chat) ────────────────────────────
 
@@ -14,14 +16,13 @@ export interface CopilotChatRequest {
     message: string;
     context: {
         page: string;
-        tenantId?: string;
-        tenantName?: string;
+        tenantId: string;
         userName: string;
         userRole: string;
         /** UI locale (es|en|pt|fr) — drives KB language and reply language. */
-        locale?: string;
+        locale: string;
     };
-    history: { role: string; content: string }[];
+    history: { role: 'user' | 'assistant'; content: string }[];
 }
 
 /** One functional help article of the assistant KB (kb/assistant/{locale}/*.md). */
@@ -79,6 +80,8 @@ export class CopilotService {
         private llmRouter: LLMRouterService,
         private knowledgeService: KnowledgeService,
         private throttle: TenantThrottleService,
+        private verticals: VerticalsService,
+        private rateLimiter: CopilotRateLimitService = null as any,
     ) {}
 
     // ─── Per-plan capability context ────────────────────────────────────────
@@ -101,7 +104,6 @@ export class CopilotService {
         { key: 'automationRules', label: 'Reglas de automatización', kind: 'num' },
         { key: 'maxDripSequences', label: 'Secuencias de nurturing', kind: 'num' },
         { key: 'knowledgeArticles', label: 'Artículos de base de conocimiento', kind: 'num' },
-        { key: 'maxPipelines', label: 'Embudos de venta', kind: 'num' },
         { key: 'maxProperties', label: 'Propiedades (turismo)', kind: 'num' },
         { key: 'segments', label: 'Segmentos guardados', kind: 'num' },
         { key: 'mediaStorageMb', label: 'Almacenamiento multimedia (MB)', kind: 'num' },
@@ -119,7 +121,6 @@ export class CopilotService {
         { key: 'sso', label: 'Inicio de sesión único (SSO/SAML)', kind: 'bool' },
         { key: 'auditLog', label: 'Registro de auditoría', kind: 'bool' },
         { key: 'whiteLabel', label: 'Marca blanca (white-label)', kind: 'bool' },
-        { key: 'customDomainKb', label: 'Dominio propio para el portal de ayuda', kind: 'bool' },
         { key: 'publicApi', label: 'API pública', kind: 'bool' },
         { key: 'biApi', label: 'API de BI (analítica)', kind: 'bool' },
         { key: 'staffScheduling', label: 'Agenda de personal (staff)', kind: 'bool' },
@@ -330,17 +331,38 @@ REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y dispo
         };
     }
 
-    /** Top-N articles for the query, front-matter keywords weighted highest. */
-    private searchKb(query: string, locale: string, topN = 3): KbArticle[] {
-        const articles = this.loadKb(locale); // already merged with es fallback per-article
+    private routeMatchesPage(page: string, route: string): boolean {
+        const normalizePage = (value: string) => {
+            const pathname = (value || '').split(/[?#]/, 1)[0].replace(/\/+$/, '');
+            return pathname || '/';
+        };
+        const current = normalizePage(page);
+        const target = normalizePage(route);
+        // The dashboard root is a destination, not a parent category. Treating
+        // `/admin` as a prefix makes every page look like dashboard context and
+        // lets generic home articles displace exact keyword matches.
+        if (target === '/admin') return current === target;
+        return current === target || current.startsWith(`${target}/`);
+    }
+
+    /** Top-N role-authorized articles, with the authenticated current page as a relevance boost. */
+    private searchKb(
+        query: string,
+        locale: string,
+        page: string,
+        userRole: string,
+        topN = 3,
+    ): KbArticle[] {
+        const articles = this.loadKb(locale)
+            .filter((article) => article.roles.includes(userRole));
         if (articles.length === 0) return [];
 
         const words = this.normalize(query)
             .split(/[^a-z0-9]+/)
             .filter(w => w.length >= 2 && !CopilotService.KB_STOPWORDS.has(w));
-        if (words.length === 0) return [];
+        if (words.length === 0 && !page) return [];
 
-        const scored = articles.map(a => {
+        const semanticMatches = articles.map(a => {
             const nKeywords = a.keywords.map(k => this.normalize(k));
             const nTitle = this.normalize(a.title);
             const nBody = this.normalize(a.body);
@@ -351,8 +373,21 @@ REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y dispo
                 if (nTitle.includes(w)) score += 3;
                 if (nBody.includes(w)) score += 1;
             }
-            return { a, score };
+            return {
+                a,
+                semanticScore: score,
+                pageMatches: a.routes.some((route) => this.routeMatchesPage(page, route)),
+            };
         });
+
+        const hasSemanticMatch = semanticMatches.some(({ semanticScore }) => semanticScore > 0);
+        const scored = semanticMatches.map(({ a, semanticScore, pageMatches }) => ({
+            a,
+            // Page context breaks ties between relevant articles. It is also a
+            // useful fallback for generic "help" queries, but must not displace
+            // a real semantic match such as "MCP" from the dashboard root.
+            score: semanticScore + (pageMatches && (semanticScore > 0 || !hasSemanticMatch) ? 8 : 0),
+        }));
 
         return scored
             .filter(x => x.score > 0)
@@ -361,12 +396,39 @@ REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y dispo
             .map(x => x.a);
     }
 
+    private async buildVerticalContext(tenantId: string): Promise<string> {
+        try {
+            const config = await this.verticals.getVerticalConfig(tenantId);
+            if (!config) return '';
+            const effectiveCapabilities = Array.isArray(config.effectiveCapabilities)
+                ? config.effectiveCapabilities.filter((capability) => typeof capability === 'string')
+                : [];
+            const context = {
+                industry: config.industry,
+                subType: config.subType || null,
+                effectiveCapabilities,
+            };
+            return `## CONTEXTO VERTICAL EFECTIVO (autoritativo, derivado del tenant autenticado)
+${JSON.stringify(context)}
+REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presentes como disponibles las capacidades incluidas en effectiveCapabilities; una lista vacía es fail-closed y no autoriza inferir funciones verticales.`;
+        } catch (error: any) {
+            this.logger.warn(`buildVerticalContext failed: ${error.message}`);
+            return '';
+        }
+    }
+
     // ─── Conversation Copilot Methods ───────────────────────────────────────
 
     /**
      * Returns 3 suggested replies based on conversation context.
      */
-    async getSuggestions(tenantId: string, conversationId: string): Promise<SuggestedReply[]> {
+    async getSuggestions(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
+    ): Promise<SuggestedReply[]> {
+        await this.authorizeConversationCopilot(tenantId, conversationId, actorId, actorRole);
         const cacheKey = this.redis.tenantKey(tenantId, `copilot:suggestions:${conversationId}`);
         const cached = await this.redis.getJson<SuggestedReply[]>(cacheKey);
         if (cached) return cached;
@@ -425,7 +487,13 @@ No incluyas explicaciones, solo el JSON.`,
     /**
      * Returns a concise summary of the conversation so far.
      */
-    async getSummary(tenantId: string, conversationId: string): Promise<ConversationSummary> {
+    async getSummary(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
+    ): Promise<ConversationSummary> {
+        await this.authorizeConversationCopilot(tenantId, conversationId, actorId, actorRole);
         const cacheKey = this.redis.tenantKey(tenantId, `copilot:summary:${conversationId}`);
         const cached = await this.redis.getJson<ConversationSummary>(cacheKey);
         if (cached) return cached;
@@ -486,7 +554,13 @@ Usa español latinoamericano. No incluyas explicaciones, solo el JSON.`,
     /**
      * Analyzes the last few messages and returns intent analysis.
      */
-    async detectIntent(tenantId: string, conversationId: string): Promise<IntentAnalysis> {
+    async detectIntent(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
+    ): Promise<IntentAnalysis> {
+        await this.authorizeConversationCopilot(tenantId, conversationId, actorId, actorRole);
         const cacheKey = this.redis.tenantKey(tenantId, `copilot:intent:${conversationId}`);
         const cached = await this.redis.getJson<IntentAnalysis>(cacheKey);
         if (cached) return cached;
@@ -560,7 +634,10 @@ El campo confidence debe ser un número entre 0 y 1. No incluyas explicaciones, 
         tenantId: string,
         conversationId: string,
         agentQuery: string,
+        actorId: string,
+        actorRole: string,
     ): Promise<ContextualAnswer> {
+        await this.authorizeConversationCopilot(tenantId, conversationId, actorId, actorRole);
         const messages = await this.loadRecentMessages(tenantId, conversationId);
         const conversationContext = messages
             ? messages.map((m: any) => `${m.direction === 'inbound' ? 'Cliente' : 'Agente'}: ${m.content_text}`).join('\n')
@@ -626,8 +703,11 @@ Reglas:
         tenantId: string,
         draft: string,
         tone: string,
-        conversationId?: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
     ): Promise<{ text: string }> {
+        await this.authorizeConversationCopilot(tenantId, conversationId, actorId, actorRole);
         if (!draft || !draft.trim()) {
             return { text: '' };
         }
@@ -703,7 +783,12 @@ Reglas estrictas:
     async chat(request: CopilotChatRequest): Promise<CopilotChatResponse> {
         const tenantId = request.context.tenantId;
         const locale = (request.context.locale || 'es').slice(0, 2).toLowerCase();
-        const articles = this.searchKb(request.message, locale);
+        const articles = this.searchKb(
+            request.message,
+            locale,
+            request.context.page,
+            request.context.userRole,
+        );
 
         // Each retrieved article is injected with its navigation metadata so the
         // assistant can give exact menu paths and role requirements.
@@ -720,7 +805,12 @@ Reglas estrictas:
 
         // The user's live plan + per-plan capability matrix, so "can I do X on my
         // plan?" is answered accurately and personally.
-        const planContext = await this.buildPlanContext(tenantId);
+        const [planContext, verticalContext] = await Promise.all([
+            request.context.userRole === 'tenant_admin'
+                ? this.buildPlanContext(tenantId)
+                : Promise.resolve(''),
+            this.buildVerticalContext(tenantId),
+        ]);
 
         const systemPrompt = `Eres **Parallly Assist**, el asistente oficial de ayuda de la plataforma Parallly.
 Tu única misión: ayudar a los usuarios (administradores, supervisores y agentes de negocio) a entender, configurar y usar las funcionalidades de la plataforma.
@@ -728,6 +818,7 @@ Tu única misión: ayudar a los usuarios (administradores, supervisores y agente
 ## BASE DE CONOCIMIENTO (única fuente de verdad sobre la plataforma):
 ${kbContext}
 ${planContext ? '\n' + planContext + '\n' : ''}
+${verticalContext ? '\n' + verticalContext + '\n' : ''}
 
 ## REGLAS CRÍTICAS:
 1. **RESPONDE SOLO DESDE LA BASE DE CONOCIMIENTO.** Toda afirmación sobre la plataforma (menús, funciones, límites, precios, pasos) debe salir de los artículos de arriba. Si la información no está ahí, dilo con honestidad: "No tengo esa información con certeza" y sugiere escribir a soporte (https://parallly-chat.cloud/support). NUNCA inventes menús, funciones, precios ni límites.
@@ -736,10 +827,11 @@ ${planContext ? '\n' + planContext + '\n' : ''}
 4. **NAVEGACIÓN EXACTA:** cuando guíes al usuario, usa las rutas de menú tal como aparecen en los artículos (sección y nombre del ítem). Formato paso a paso con listas numeradas.
 5. **ROLES:** si la acción requiere un rol que el usuario no tiene (ver "Requiere rol" del artículo y el rol del usuario abajo), acláralo amablemente ("esto lo configura un administrador de la cuenta").
 6. **FORMATO:** Markdown limpio: pasos numerados, viñetas, **negritas** para nombres de menús y botones. Respuestas concisas; máximo ~10 líneas salvo que pidan detalle.
-7. **CONSCIENCIA DE PLAN:** si hay un bloque "PLAN DEL USUARIO", úsalo para responder con precisión qué puede o no hacer el usuario según SU plan; para límites/disponibilidad por plan, ese bloque manda sobre cualquier cifra de los artículos. Si algo no está en su plan, indícalo y menciona desde qué plan se obtiene. Si NO hay bloque de plan (p. ej. super_admin sin tenant), responde en términos generales de los planes según los artículos.
+7. **CONSCIENCIA DE PLAN:** si hay un bloque "PLAN DEL USUARIO", úsalo para responder con precisión qué puede o no hacer el usuario según SU plan; para límites/disponibilidad por plan, ese bloque manda sobre cualquier cifra de los artículos. Si algo no está en su plan, indícalo y menciona desde qué plan se obtiene. Si NO hay bloque de plan, no reveles ni infieras el plan, las cuotas o la facturación del tenant; indica que esa información corresponde al administrador.
+8. **CONTEXTO VERTICAL:** si existe el bloque de contexto vertical, úsalo para priorizar ejemplos relevantes. No anuncies herramientas o flujos verticales que no aparezcan en effectiveCapabilities.
 
 ## Contexto de la consulta:
-- Usuario: ${request.context.userName} (rol: ${request.context.userRole})
+- Rol autenticado: ${request.context.userRole}
 - Página actual del panel: ${request.context.page}`;
 
         const messages = [
@@ -799,6 +891,35 @@ ${planContext ? '\n' + planContext + '\n' : ''}
             this.logger.error(`Failed to load messages for ${conversationId}: ${error.message}`);
             return null;
         }
+    }
+
+    private async authorizeConversationCopilot(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
+    ): Promise<void> {
+        if (!['tenant_admin', 'tenant_supervisor', 'tenant_agent'].includes(actorRole)) {
+            throw new ForbiddenException('Role cannot use conversation Copilot');
+        }
+        const schemaName = await this.tenantSchema(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<Array<{ assigned_to: string | null }>>(
+            schemaName,
+            `SELECT assigned_to FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+        if (!rows?.length) throw new NotFoundException('Conversation not found');
+        if (
+            actorRole === 'tenant_agent'
+            && rows[0].assigned_to !== null
+            && rows[0].assigned_to !== actorId
+        ) {
+            throw new ForbiddenException('Conversation is assigned to another agent');
+        }
+
+        // Ownership is checked before consuming a cost/rate-limit bucket so an
+        // attacker cannot burn another tenant member's quota with guessed UUIDs.
+        await this.rateLimiter.consume(tenantId, actorId);
     }
 
     private buildChatMessages(messages: any[]): { role: 'user' | 'assistant'; content: string }[] {

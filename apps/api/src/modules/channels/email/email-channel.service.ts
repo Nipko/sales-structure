@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
+import { createHash } from 'node:crypto';
 
 export interface EmailChannelConfig {
     id: string;
@@ -173,11 +174,25 @@ export class EmailChannelService {
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT tenant_id FROM public.email_channel_configs
              WHERE LOWER(from_email) = LOWER($1) AND is_active = true
-             LIMIT 1`,
+             ORDER BY tenant_id
+             LIMIT 2`,
             toEmail,
         ) as any[];
 
-        return rows?.length ? rows[0].tenant_id : null;
+        if (rows?.length !== 1) {
+            if (rows?.length > 1) {
+                const recipientHash = createHash('sha256')
+                    .update(toEmail.trim().toLowerCase(), 'utf8')
+                    .digest('hex')
+                    .slice(0, 16);
+                this.logger.error(
+                    `[AUDIT] Ambiguous inbound email route rejected recipientHash=${recipientHash} matches=${rows.length}`,
+                );
+            }
+            return null;
+        }
+
+        return rows[0].tenant_id;
     }
 
     // ── Tenant schema: email_threads ─────────────────────────

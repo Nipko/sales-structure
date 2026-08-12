@@ -222,7 +222,7 @@ export class ChannelManagementController {
     }
 
     @Post('telegram/connect')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Connect a Telegram bot — validates token, sets webhook, stores credentials' })
     async connectTelegram(
         @Body() body: { botToken: string; displayName?: string },
@@ -450,7 +450,7 @@ export class ChannelManagementController {
     // ==========================================
 
     @Post('messenger/oauth-connect')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Receive user access token from FB.login(), list pages, subscribe webhooks, store encrypted credentials' })
     async messengerOAuthConnect(
         @Body() body: { userAccessToken: string },
@@ -735,7 +735,7 @@ export class ChannelManagementController {
     }
 
     @Delete('messenger/disconnect')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Disconnect Messenger — unsubscribes the app from each FB Page and deactivates channel' })
     async disconnectMessenger(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -823,7 +823,7 @@ export class ChannelManagementController {
     // ==========================================
 
     @Post('instagram/oauth-connect')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Exchange Instagram OAuth code for long-lived token, fetch profile, store encrypted credentials' })
     async instagramOAuthConnect(
         @Body() body: { code: string },
@@ -1031,7 +1031,7 @@ export class ChannelManagementController {
     }
 
     @Delete('instagram/disconnect')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Disconnect Instagram — revokes app permissions on the IG account and deactivates channel' })
     async disconnectInstagram(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -1200,7 +1200,7 @@ export class ChannelManagementController {
     }
 
     @Delete('sms/disconnect')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Disconnect Twilio SMS — clears the webhook URL on the Twilio phone number and deactivates channel' })
     async disconnectSms(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -1302,7 +1302,7 @@ export class ChannelManagementController {
     // ==========================================
 
     @Post(':channelType/connect')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Connect a channel (Instagram, Messenger, etc.)' })
     async connect(
         @Param('channelType') channelType: string,
@@ -1380,7 +1380,7 @@ export class ChannelManagementController {
     }
 
     @Delete(':channelType/account/:accountId')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Disconnect ONE specific connected account of a channel type (multi-account)' })
     async disconnectAccount(
         @Param('channelType') channelType: string,

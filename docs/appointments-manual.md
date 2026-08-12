@@ -94,7 +94,7 @@ Prefijo global: `/api/v1`. Todas las rutas autenticadas usan `@UseGuards(AuthGua
 | `GET` | `/appointments/:tenantId/calendar/microsoft/connect` | Iniciar OAuth Microsoft/Outlook |
 | `PUT` | `/appointments/:tenantId/calendar/:integrationId/assignment` | Actualizar etiqueta/asignación de un calendario |
 | `DELETE` | `/appointments/:tenantId/calendar/:integrationId` | Desconectar calendario |
-| `POST` | `/appointments/:tenantId/calendar/:integrationId/reassign-disconnect` | Reasignar citas futuras a otro calendario y desconectar |
+| `POST` | `/appointments/:tenantId/calendar/:integrationId/reassign-disconnect` | Endpoint de compatibilidad; hoy falla cerrado con `applySupported:false` y no reasigna. Reasignar/cancelar manualmente y verificar antes de desconectar |
 | `GET` / `POST` | `/appointments/:tenantId/reminder-settings` | Leer / actualizar toggles de recordatorios |
 | `GET` / `POST` | `/appointments/:tenantId/booking-flows-config` | Leer / actualizar WhatsApp Flows de reserva |
 | `GET` / `POST` | `/appointments/:tenantId/public-booking-config` | Leer / actualizar toggle y branding de la reserva pública |
@@ -263,14 +263,21 @@ El agente IA reserva mediante **tool calling** sobre un motor de reserva **deter
 
 ## Gating por plan
 
-| Feature | emprendedor | starter | pro | enterprise | custom |
-|---------|-------------|---------|-----|------------|--------|
-| `appointmentsServices` (servicios activos) | 1 | 2 | ∞ | ∞ | ∞ |
-| `maxCalendars` (calendarios conectados) | 1 | 1 | 3 | 10 | ∞ |
+Las capacidades `appointmentsServices` y `maxCalendars` se leen de
+`billing_plans.features` y de los overrides autorizados del tenant. No se duplican
+valores por plan en este manual porque el catálogo puede cambiar sin despliegue. La
+creación de servicios se bloquea en `POST /services`
+(`throttle.enforcePlanLimit('appointmentsServices', …)`) y la conexión de
+calendarios en `calendar-integration.service.ts`
+(`enforcePlanLimit('maxCalendars', …)`). Ambas claves están registradas en
+`throttle/plan-features.registry.ts`.
 
-Fuente: `prisma/seed-billing-plans.js` (`features`). `-1` = ilimitado. La creación de servicios se bloquea en `POST /services` (`throttle.enforcePlanLimit('appointmentsServices', …)`) y la conexión de calendarios en `calendar-integration.service.ts` (`enforcePlanLimit('maxCalendars', …)`). Ambas claves están registradas en `throttle/plan-features.registry.ts`.
-
-**Multi-calendario — resolución en 3 niveles** al sincronizar: calendario específico de servicio → específico de staff → general del tenant. Genera automáticamente enlaces de Google Meet / Teams para servicios `online`/`hybrid` y maneja con gracia la desconexión a mitad de uso (modal de reasignación / cancelación en el dashboard).
+**Multi-calendario — resolución en 3 niveles** al sincronizar: calendario
+específico de servicio → específico de staff → general del tenant. Genera enlaces
+de Google Meet / Teams para servicios `online`/`hybrid`. La desconexión con citas
+dependientes no tiene hoy una reasignación/cancelación automática certificada: el
+endpoint de compatibilidad responde `applySupported:false`; hay que reasignar o
+cancelar manualmente, verificar el resultado y solo entonces desconectar.
 
 ---
 

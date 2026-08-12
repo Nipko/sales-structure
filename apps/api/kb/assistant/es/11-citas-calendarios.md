@@ -25,7 +25,7 @@ Los servicios son lo que tus clientes pueden reservar (una consulta, un corte, u
    - Si es online o híbrido, puedes dejar vacío el **Enlace de reunión**: se genera automáticamente un link de Meet o Teams para cada cita.
 6. Guarda con **Crear servicio**. Puedes activar o desactivar servicios cuando quieras.
 
-Cuántos servicios puedes crear depende de tu plan: Emprendedor 1, Starter 2, y desde Pro en adelante sin límite.
+La pantalla muestra la capacidad actual de servicios; consulta el detalle vigente en **Plan y facturación**.
 
 ## Cómo definir tu disponibilidad
 
@@ -51,15 +51,7 @@ Conectar tu calendario evita choques de horario: las citas de Parallly aparecen 
 3. Autoriza el acceso con tu cuenta de Google o Microsoft.
 4. Listo: las citas nuevas se crean también en tu calendario externo automáticamente.
 
-Cuántos calendarios puedes conectar depende de tu plan:
-
-| Plan | Calendarios conectados |
-|------|------------------------|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
-| Custom | Sin límite |
+La pantalla muestra cuántos calendarios puedes conectar y cuánto cupo queda. Consulta el detalle vigente en **Plan y facturación**.
 
 ### Con varios calendarios, ¿a cuál va cada cita?
 
@@ -71,7 +63,7 @@ A cada calendario conectado le pones una etiqueta: **General**, **Miembro del eq
 
 ### Desconectar un calendario que tiene citas futuras
 
-Si intentas desconectar un calendario con citas pendientes, el panel te ofrece dos opciones: **Reasignar citas a otro calendario** (eliges el destino, las citas se mueven y recién entonces se desconecta) o **Cancelar todas las citas y desconectar**. Así ninguna reserva queda en el aire sin que lo decidas tú.
+La reasignación o cancelación guiada durante la desconexión **no está certificada de punta a punta en esta versión**: la operación puede no aplicarse aunque el panel parezca terminar. Antes de desconectar, reasigna o cancela manualmente cada cita futura, recarga la agenda y verifica que ya no quede ninguna vinculada al calendario. No tomes solo el mensaje de éxito como confirmación.
 
 ## Links de reunión automáticos
 
@@ -86,7 +78,7 @@ En **Citas** → **Configuración** → sección **Recordatorios y seguimiento**
 - **Confirmación de asistencia** — después de la cita, se le pregunta al cliente si asistió.
 - **Completar automáticamente** — las citas se marcan como completadas 2 horas después de su hora de fin, sin trabajo manual.
 
-Los recordatorios por WhatsApp usan plantillas de notificación aprobadas por Meta, así que llegan siempre, incluso si el cliente lleva más de 24 horas sin escribir.
+Los recordatorios por WhatsApp pueden usar plantillas aprobadas por Meta para intentar el envío fuera de la ventana de 24 horas. La entrega no está garantizada: depende del estado de la plantilla, la cuenta, Meta y el destinatario.
 
 ## La IA agenda sola en la conversación
 

@@ -1,6 +1,15 @@
-# Parallly — Análisis Competitivo Exhaustivo 2026 (Edición Rigurosa Q2)
+# Parallly — Análisis Competitivo Exhaustivo 2026 (edición histórica Q2)
 
-> **Documento definitivo.** Supersede a `competitive-analysis-2026-05.md` y `competitive-analysis-2026-05-enhanced.md`.
+> **Documento histórico; no es una fuente de alcance actual.** Conserva la foto y
+> los supuestos de mayo de 2026, incluidos claims que después se comprobaron como
+> incompletos (Email autoservicio, múltiples pipelines, lanzamiento de campañas y
+> ejecución pública de triggers). Para disponibilidad vigente usa
+> [`product-capabilities-reference.md`](product-capabilities-reference.md) y el
+> [`user-manual.md`](user-manual.md).
+>
+> En su momento supersedió a `competitive-analysis-2026-05.md` y
+> `competitive-analysis-2026-05-enhanced.md`; hoy también está supersedido para
+> decisiones de producto y publicación.
 > Fecha: 29 de mayo de 2026. Próxima revisión sugerida: agosto 2026.
 > Metodología: auditoría del código real del monorepo (no solo de la documentación) + investigación web multi-fuente y cruzada de **~40 competidores** en 6 clusters, con datos 2025-2026.
 
@@ -28,12 +37,12 @@ Esta sección reemplaza la suposición por la verificación. Cada afirmación es
 | **Multi-agente por canal** | ✅ Maduro | `persona/persona.service.ts` — YAML versionado, 3-tier fallback por canal, 6 templates + custom |
 | **Multimedia (audio+imagen)** | ✅ Maduro | `media-processing/` — Whisper-1 ($0.006/min), Vision por tier, throttle de 6 capas |
 | **Resolution rate tracking** | ✅ Nuevo (v5.4) | columnas `was_handed_off`, `resolution_type` en conversations; endpoint `/analytics-v2/:tenantId/ai-resolution` |
-| **6 canales reales** | ✅ | WhatsApp, Instagram, Messenger, Telegram, SMS (Twilio), **Email** (SendGrid Inbound + SMTP, thread tracking) |
-| **Web Chat Widget** | ✅ Maduro (v5.4) | `widget/` — 5 triggers proactivos, theming, visitor monitoring, pre-chat form, WebSocket |
-| **CRM + Pipeline** | ✅ | múltiples pipelines plan-gated, lead scoring dinámico (5 factores, no-ML), segmentos guardados, identity merge |
+| **Canales** | ⚠️ Snapshot supersedido | WhatsApp, Instagram, Messenger, Telegram y Web Chat son las superficies conversacionales actuales; SMS es one-way y Email inbound es administrado/no autoservicio |
+| **Web Chat Widget** | ⚠️ Parcial | Chat abierto por el visitante, theming, pre-chat y WebSocket; el editor guarda triggers pero el loader público no los ejecuta todavía |
+| **CRM + Pipeline** | ⚠️ Parcial | Embudo activo, lead scoring, segmentos e identity merge; no hay contrato operativo certificado para múltiples pipelines ni aprobación terminal aplicada |
 | **Automatización** | ✅ | HTTP request step (con SSRF protection + secrets AES-256-GCM), drip sequences, 15+ templates, webhook subscriptions HMAC |
 | **Inbox / Agent console** | ✅ Maduro (v5.4) | collision detection (Redis ZSET + heartbeat), copilot, auto-summary, SLA escalation cron, macros |
-| **Broadcasting** | ✅ | A/B testing (z-test, auto-winner p<0.05), multi-canal WA+Email+SMS |
+| **Broadcasting** | ⚠️ No certificado para producción | El editor conserva borradores/métricas, pero el launch WhatsApp no vincula de forma segura la plantilla y no existe cancelación de programadas |
 | **Booking** | ✅ | motor determinístico, multi-calendar 3-tier, plan-gated, recordatorios, no-show follow-up |
 | **Knowledge Base RAG** | ✅ | pgvector (text-embedding-3-small), content gap analytics, feedback widget thumbs up/down |
 | **REST API pública** | ✅ Nuevo (v5.4) | `public-api/` — 11 scopes, API keys SHA-256, Swagger, webhook subscriptions HMAC |
@@ -104,12 +113,12 @@ Manteniendo las 25 dimensiones originales y **añadiendo 6 dimensiones nuevas** 
 | 4 | Multi-Agente AI | **9/10** | Birdeye (multi-agente colaborativo) 7 | **+2** | Sigue siendo diferenciador, pero Birdeye/Sierra apuntan a agentes que **colaboran** |
 | 5 | LLM Router multi-provider | **9/10** | Zendesk/Salesforce (Bedrock multi-modelo) 7 | **+2** | Diferenciador. Botmaker valida (selección de modelo); nosotros lo automatizamos |
 | 6 | CRM — Contactos | **6/10** ⬇ | HubSpot 10 | -4 | **Bajado:** sin entidad Organización/B2B confirmada |
-| 7 | CRM — Pipeline/Deals | **7/10** | HubSpot 10 | -3 | Múltiples pipelines ✅. Falta forecast/rotting/weighted |
+| 7 | CRM — Pipeline/Deals | **7/10** | HubSpot 10 | -3 | Embudo activo; múltiples pipelines y aprobación terminal no certificados. Falta forecast/rotting/weighted |
 | 8 | CRM — Lead Scoring | **6/10** | HubSpot (ML predictivo) 9 | -3 | Dinámico ✅ pero rule-based, no ML |
 | 9 | CRM — Segmentación | **6/10** | Respond.io 9 | -3 | Falta conectar segmentos dinámicos a broadcast en tiempo de envío |
 | 10 | Automatización/Workflows | **8/10** | GoHighLevel (NL builder) 9 | -1 | HTTP+drip+templates ✅. Falta AI step + NL builder |
 | 11 | Inbox/Consola Agente | **8/10** | Intercom / Front (Smart QA) 9 | -1 | Collision ✅. Falta QA inferido (Front) y keyboard-first real |
-| 12 | Broadcasting/Campañas | **7/10** | Manychat 8 | -1 | A/B ✅. Falta revenue attribution + Click-to-WA attribution |
+| 12 | Broadcasting/Campañas | **No puntuable para release** | Manychat 8 | — | Launch/programación no certificados; conservar solo como deuda histórica de este análisis |
 | 13 | Analytics/Reportes | **8/10** | Salesforce (Command Center) 9 | -1 | Fuerte en LLM observability. Falta QA score + agent vs IA |
 | 14 | Booking/Citas | **8/10** | Calendly (routing+payment) 9 | -1 | Determinístico = ventaja. Falta payment-at-booking + round-robin |
 | 15 | Knowledge Base Pública | **7/10** | Zendesk Guide 9 | -2 | Content gaps ✅. Falta multi-brand + temas |
@@ -118,7 +127,7 @@ Manteniendo las 25 dimensiones originales y **añadiendo 6 dimensiones nuevas** 
 | 18 | API/Integraciones | **6/10** | Zendesk (1.800+ apps) 10 | -4 | REST API ✅. Falta Zapier native, Slack, marketplace |
 | 19 | Mobile Experience | **3/10** ⬇ | Respond.io (nativa+voz) 8 | -5 | **Bajado:** ni PWA real. Solo responsive |
 | 20 | UX/Diseño | **7/10** | Intercom / Manychat (flow builder) 9 | -2 | Sólido. Falta CMD+K, flow builder visual pulido |
-| 21 | Web Chat Widget | **8/10** | Tidio 9 | -1 | Proactive triggers ✅. Falta visitor typing-preview, rich media |
+| 21 | Web Chat Widget | **6/10** | Tidio 9 | -3 | Chat base operativo; triggers solo se persisten y no se ejecutan en el loader público |
 | 22 | White Label / Multi-tenant | **7/10** | GoHighLevel (SaaS mode) 9 | -2 | Schema isolation = ventaja. Falta reseller/rebilling |
 | 23 | E-commerce | **5/10** | Tidio/Manychat 9 | -4 | Shopify sync ✅. Falta checkout conversacional + in-chat payments |
 | 24 | Adaptación Vertical | **8/10** ⬇ | Ninguno comparable 3 | **+5** | **Bajado de 9:** los módulos son esquemas, no integraciones. Sigue siendo foso |

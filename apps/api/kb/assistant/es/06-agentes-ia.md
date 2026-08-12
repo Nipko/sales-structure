@@ -8,21 +8,13 @@ keywords: ["agente", "agentes de ia", "bot", "chatbot", "asistente virtual", "cr
 
 # Agentes de IA: crear y configurar
 
-Tu agente de IA es el "vendedor virtual" que responde a tus clientes en WhatsApp, Instagram, Messenger, Telegram, Email y el chat de tu sitio web, las 24 horas. Aquí aprendes a crearlo, darle personalidad, definir su horario y asignarlo a tus conexiones.
+Tu agente de IA es el "vendedor virtual" que responde a tus clientes en WhatsApp, Instagram, Messenger, Telegram y el chat de tu sitio web, las 24 horas. Aquí aprendes a crearlo, darle personalidad, definir su horario y asignarlo a tus conexiones.
 
 > Esta sección la administra el rol **administrador**. Los supervisores y agentes humanos ven el resultado en el inbox, pero no configuran los agentes de IA.
 
-## Cuántos agentes incluye tu plan
+## Capacidad de agentes
 
-| Plan | Agentes de IA | Guardar plantillas propias |
-|------|:---:|:---:|
-| Emprendedor | 1 | No |
-| Starter | 1 | No |
-| Pro | 3 | Sí |
-| Enterprise | 10 | Sí |
-| Custom | Ilimitado | Sí |
-
-Si alcanzas el límite, verás el aviso **Límite de agentes alcanzado** con la opción **Mejorar plan**.
+**Agente IA** muestra cuántos agentes puedes crear y si puedes guardar plantillas propias. Si alcanzas el cupo verás **Límite de agentes alcanzado**; consulta la capacidad vigente en **Plan y facturación**.
 
 ## Cómo crear un agente
 
@@ -31,7 +23,7 @@ Si alcanzas el límite, verás el aviso **Límite de agentes alcanzado** con la 
 3. Elige una plantilla. Verás tres grupos:
    - **Recomendados para tu negocio** — plantillas ajustadas a tu industria (por ejemplo, recepcionista para clínicas, asesor inmobiliario, toma de pedidos para restaurantes).
    - **Plantillas generales** — **Asesor de Ventas**, **Agente de Soporte**, **Bot de Preguntas Frecuentes**, **Agendador de Citas**, **Calificador de Leads** y **Agente en Blanco** (para configurar todo desde cero).
-   - **Mis plantillas** — las que guardaste tú (disponible desde el plan Pro).
+   - **Mis plantillas** — las que guardaste tú, cuando la función esté habilitada para tu cuenta.
 4. Haz clic en **Usar esta** sobre la plantilla elegida.
 5. Escribe el **Nombre del agente** si quieres uno propio (por ejemplo, Sofía o Max); si lo dejas vacío, se usa el de la plantilla.
 
@@ -44,7 +36,7 @@ Dentro de **Agente IA**, haz clic en **Editar** sobre el agente. El editor está
 - **Identidad** — nombre, rol o título (por ejemplo, "Asesora de ventas") e idioma.
 - **Personalidad** — el **Estilo de comunicación** (Amigable, Profesional, Formal, Casual o Empático), la **Extensión de respuestas** (Conciso, Estándar o Detallado) y el saludo inicial.
 - **Comportamiento** — tus reglas propias en texto libre (por ejemplo, "siempre ofrece el combo familiar antes de cerrar"), los temas prohibidos que el agente nunca debe tocar y el modo de respuesta (siempre IA, siempre humano o híbrido).
-- **Modelo IA** — qué tan avanzado es el "cerebro" del agente. Los planes superiores desbloquean modelos más potentes.
+- **Modelo IA** — qué motor usa el agente. El editor muestra los modelos habilitados para tu cuenta.
 - **Horario** — cuándo está activo (ver más abajo).
 - **Capacidades** — qué puede hacer el agente, con interruptores para activar o desactivar cada una:
   - Buscar respuestas en tu base de conocimiento
@@ -72,21 +64,11 @@ La regla es simple: **un agente de IA por conexión**. Una conexión es cada cue
 3. Si la conexión ya estaba asignada a otro agente, el editor te avisa que **se reasignará** desde el agente anterior.
 4. Haz clic en **Guardar cambios**.
 
-Cuántas conexiones del mismo tipo puedes tener depende de tu plan:
-
-| Plan | WhatsApp | Instagram | Messenger | Telegram |
-|------|:---:|:---:|:---:|:---:|
-| Emprendedor | 1 | 1 | 1 | 1 |
-| Starter | 1 | 1 | 1 | 1 |
-| Pro | 2 | 1 | 3 | 1 |
-| Enterprise | 3 | 2 | 5 | 2 |
-| Custom | Ilimitado | Ilimitado | Ilimitado | Ilimitado |
-
-> El plan Emprendedor incluye solo el canal WhatsApp. Los demás canales se desbloquean desde Starter (Telegram desde Pro).
+La cantidad y el tipo de conexiones disponibles se muestran en **Canales** y **Plan y facturación**.
 
 ## Qué significa el aviso "canales sin agente asignado"
 
-Si en **Agente IA** ves un aviso destacado tipo "2 canal(es) sin agente asignado", significa que tienes conexiones activas que ningún agente atiende de forma específica. Mientras tanto, esos mensajes los responde tu **agente predeterminado**, con una configuración genérica.
+Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras tanto, esos mensajes los responde tu **agente predeterminado**, con una configuración genérica.
 
 Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexión y dar una experiencia personalizada.
 
@@ -95,7 +77,7 @@ Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexi
 En la lista de **Agente IA**, cada agente tiene un menú de acciones:
 
 - **Duplicar** — crea una copia exacta, ideal para experimentar sin tocar el agente que ya funciona.
-- **Guardar como plantilla** — convierte la configuración en una plantilla reutilizable (aparece en **Mis plantillas**). Disponible desde el plan Pro.
+- **Guardar como plantilla** — convierte la configuración en una plantilla reutilizable cuando la función está habilitada (aparece en **Mis plantillas**).
 - **Establecer como predeterminado** — define qué agente responde en las conexiones que no tienen uno asignado.
 - **Eliminar** — borra el agente (te pide confirmación). El agente predeterminado no se puede eliminar.
 
@@ -106,16 +88,16 @@ Desde el menú **Agente IA → Probar agente** puedes chatear con tu agente en m
 ## Preguntas frecuentes
 
 **¿Puedo tener un agente distinto para ventas y otro para soporte?**
-Sí, desde el plan Pro (3 agentes). Crea uno con la plantilla **Asesor de Ventas** y otro con **Agente de Soporte**, y asigna cada uno a la conexión correspondiente — por ejemplo, dos números de WhatsApp diferentes.
+Sí, cuando tu cuenta tenga cupo. Crea uno con la plantilla **Asesor de Ventas** y otro con **Agente de Soporte**, y asigna cada uno a la conexión correspondiente.
 
 **¿Qué pasa si conecto un canal y no le asigno agente?**
 Responde tu agente predeterminado. Verás el aviso de canales sin asignar en **Agente IA** para corregirlo con un clic.
 
 **¿El agente puede responder por SMS?**
-No. El SMS en Parallly no es un canal de conversación: se usa solo para notificaciones salientes con créditos (1 crédito = 1 segmento). Los canales conversacionales son WhatsApp, Instagram, Messenger, Telegram, Email y el chat web.
+No. El SMS en Parallly no es un canal de conversación: se usa solo para notificaciones salientes con créditos (1 crédito = 1 segmento). Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y el chat web. Email conserva un adaptador inbound interno, pero no una configuración autoservicio certificada.
 
 **Cambié las instrucciones y el agente sigue igual, ¿qué reviso?**
 Confirma que hiciste clic en **Guardar cambios** en la barra inferior del editor y que editaste el agente asignado a esa conexión (no otro). Luego verifícalo en **Probar agente**.
 
 **¿Cómo agrego más agentes o más números?**
-Ambos límites dependen de tu plan (mira las tablas de arriba). Puedes mejorar tu plan desde Configuración → Facturación, o escribirnos en https://parallly-chat.cloud/support si necesitas un límite especial.
+La pantalla muestra la capacidad disponible para agentes y conexiones. Consulta las opciones vigentes en **Administración → Plan y facturación**, o escríbenos en https://parallly-chat.cloud/support si necesitas otra capacidad.

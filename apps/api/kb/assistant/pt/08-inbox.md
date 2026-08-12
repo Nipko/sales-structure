@@ -8,9 +8,9 @@ keywords: ["inbox", "caixa de entrada", "handoff", "assumir conversa", "atender 
 
 # Caixa de entrada e atendimento humano
 
-O **Inbox** é onde sua equipe vê todas as conversas em tempo real e onde uma pessoa pode assumir o controle quando a IA precisa de ajuda. Você o encontra na barra lateral, na seção **Operação → Conversas**.
+A **Caixa de conversas** é onde sua equipe vê todos os chats em tempo real e onde uma pessoa pode assumir o controle quando a IA precisa de ajuda. Ela fica em **Essenciais → Conversas**.
 
-A tela tem três áreas: à esquerda a lista de conversas (com filtros como **Todos**, **Meus**, **Sem atribuir**, **Handoff** e **Resolvidas**, além de filtros por canal), no centro a thread de mensagens e à direita o painel do contato com suas informações, notas e agendamentos. Aqui chegam as conversas de todos os seus canais conectados: WhatsApp, Instagram, Messenger, Telegram, Email e o chat do seu site.
+A tela tem três áreas: à esquerda a lista de conversas (com filtros como **Todos**, **Meus**, **Sem atribuir**, **Handoff** e **Resolvidas**, além de filtros por canal), no centro a thread de mensagens e à direita o painel do contato com suas informações, notas e agendamentos. Aqui chegam as conversas das suas superfícies operacionais: WhatsApp, Instagram, Messenger, Telegram e o chat do seu site.
 
 ## Como assumir uma conversa (handoff)
 
@@ -20,7 +20,7 @@ Quando um cliente pede para falar com uma pessoa, ou a IA percebe que não conse
 2. Você verá um aviso laranja: **Atenção humana necessária** — "O assistente de IA foi pausado. O cliente está aguardando uma resposta humana."
 3. Clique em **Atender conversa**. A conversa fica atribuída a você e já pode escrever diretamente ao cliente.
 
-Você também pode assumir qualquer conversa a qualquer momento com o botão **Atribuir a mim** no cabeçalho do chat, mesmo que não tenha havido um pedido de ajuda. Enquanto a conversa está com você, a IA não responde: o cliente fala somente com você.
+Você também pode usar **Atribuir a mim** em uma conversa que esteja sem responsável. Se ela já estiver atribuída a outra pessoa, somente um administrador ou supervisor pode reatribuí-la. Quando a conversa fica com você, a IA não responde: o cliente fala somente com você.
 
 ## O resumo da IA ao assumir uma conversa
 
@@ -73,18 +73,18 @@ Se um caso não pode avançar agora ("me ligue na segunda"), não o deixe ocupan
 ## Atribuição entre agentes
 
 - Cada conversa pode ter um responsável. Use o filtro **Meus** para ver só o que é seu e **Sem atribuir** para encontrar conversas órfãs.
-- Qualquer membro da equipe pode assumir uma conversa com **Atribuir a mim**; se já estava com outra pessoa, um administrador ou supervisor pode reatribuí-la.
+- Qualquer membro autorizado da equipe pode assumir uma conversa **sem atribuição** com **Atribuir a mim**; se ela já estava com outra pessoa, somente um administrador ou supervisor pode reatribuí-la.
 - Se você configurar **habilidades (skills)** nos perfis da sua equipe (menu **Usuários**), o Parallly encaminha automaticamente cada escalonamento para a pessoa certa — por exemplo, casos em inglês para o agente que fala inglês.
 - As macros também podem atribuir a um agente específico como parte de suas ações.
 - Se uma conversa escalada fica mais de 5 minutos sem resposta, os supervisores recebem um alerta para que ninguém fique esperando.
 
-A quantidade de pessoas que podem usar o Parallly depende do seu plano: Emprendedor inclui 1 usuário, Starter 3, Pro 5, e Enterprise e Custom não têm limite.
+A quantidade de pessoas que podem usar a Parallly depende da capacidade da sua conta; confira o uso e o limite atuais em **Plano e faturamento**.
 
 ## Notificações
 
 O **sino** na barra superior concentra os avisos e os agrupa por categoria: **Mensagens**, **Transferências** (escalonamentos para humano), **Privacidade**, **Agendamentos**, **Automação**, **Pedidos** e **Sistema**. Os escalonamentos diretos (o cliente pediu um humano) ficam destacados em vermelho; os escalonamentos por baixa confiança da IA, em amarelo; e os alertas de supervisor chegam com som.
 
-Se o seu plano é Pro ou superior, você também pode receber um SMS quando a IA escala uma conversa: ative em **Configurações → Integrações → Avisos por SMS**.
+Se os avisos por SMS estiverem habilitados para sua conta, ative-os em **Configurações → Canais e integrações → Avisos por SMS**.
 
 ## Trabalho em equipe sem atropelos
 

@@ -10,6 +10,7 @@ import { SmsAdapter } from './sms/sms.adapter';
 import { EmailAdapter } from './email/email.adapter';
 import { EmailChannelService } from './email/email-channel.service';
 import { EmailWebhookController } from './email/email-webhook.controller';
+import { EmailWebhookSecurityService } from './email/email-webhook-security.service';
 import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.processor';
 import { OutboundQueueService } from './outbound-queue.service';
 import { ChannelTokenService } from './channel-token.service';
@@ -50,6 +51,7 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         SmsAdapter,
         EmailAdapter,
         EmailChannelService,
+        EmailWebhookSecurityService,
         OutboundQueueProcessor,
         OutboundQueueService,
         ChannelTokenService,

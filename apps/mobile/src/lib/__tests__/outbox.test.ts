@@ -43,7 +43,9 @@ describe('outbox account isolation', () => {
         expect(enqueue({ id: 'm1', tenantId: 'tenant-1', conversationId: 'conv-ok', body: 'hola' })).toBe(true);
         await tick();
 
-        expect(sendMessage).toHaveBeenCalledWith('tenant-1', 'conv-ok', 'hola', 'user-1');
+        // Actor identity is derived by the API from the authenticated session; the
+        // outbox keeps userId only for local queue isolation and never sends it.
+        expect(sendMessage).toHaveBeenCalledWith('tenant-1', 'conv-ok', 'hola');
         expect(pendingFor('conv-ok')).toHaveLength(0);
     });
 

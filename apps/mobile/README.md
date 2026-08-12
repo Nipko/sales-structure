@@ -1,9 +1,11 @@
 # Parallly Mobile (Expo / React Native)
 
-App nativa para **agentes** — inbox en tiempo real, CRM, citas y analítica.
+App nativa operativa para usuarios tenant — inbox en tiempo real, CRM, tareas,
+indicadores permitidos y workspace adaptado a la vertical.
 Consume la API existente (`auth` + `agent-console`) y Socket.io `/inbox`. Codebase **separado** del web (no se despliega con `git push`).
 
-Ver el plan completo en `docs/mobile-app-plan.md`.
+Manual funcional: [`../../docs/mobile-user-manual.md`](../../docs/mobile-user-manual.md).
+El plan histórico de implementación permanece en `docs/mobile-app-plan.md`.
 
 ## Contexto / contrato compartido
 Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../packages/shared`) → el contrato de tipos de la API queda **enforced por TypeScript** (si el backend cambia un tipo, el mobile no compila). Metro está configurado para monorepo en `metro.config.js` (`watchFolders` + `nodeModulesPaths`). La superficie completa de API a espejar está en `apps/dashboard/src/lib/api.ts`.
@@ -11,17 +13,19 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 ## Estado
 - ✅ Tipos compartidos conectados (`@parallext/shared`) — contrato enforced
 - ✅ Auth (email/contraseña → JWT en SecureStore) + **desbloqueo biométrico**
-- ✅ Navegación (tabs: Inbox · CRM · Citas · Más)
+- ✅ Navegación (tabs: Inbox · CRM · Operación vertical · Más)
 - ✅ **Inbox en tiempo real** (lista rica: avatar+canal, hora, badges handoff/IA, filtros, **búsqueda**) vía Socket.io
-- ✅ **Chat profesional**: burbujas con hora, notas internas intercaladas, banner de handoff, **imágenes + nota de voz** (entrantes); acciones: **contacto 360° · asignarme · devolver a IA · resolver · resumir (IA) · nota interna**; composer con **canned · macros · IA contextual** (vacío→sugiere, con texto→**reescribe por tono**); **indicador de colisión** (quién más está viendo, en tiempo real)
+- ✅ **Chat profesional**: burbujas con hora, notas internas intercaladas, banner de handoff, **imágenes + nota de voz** (entrantes); acciones: **contacto 360° · asignarme · devolver a IA · resolver · resumir (IA) · nota interna**; composer con **canned · macros · IA contextual** (vacío→sugiere, con texto→**reescribe por tono**); **indicador de colisión** y outbox offline aislada por cuenta
 - ✅ **CRM**: lista de leads (búsqueda) + detalle 360° (datos, etiquetas, oportunidades, llamar/email)
 - ✅ **Embudo**: etapas del pipeline + **mover deals** entre etapas (desde el header de CRM)
 - ✅ **Citas**: agenda próxima + **confirmar / cancelar**
 - ✅ **Más**: KPIs (resolución IA/verificada, 30 días) + **disponibilidad** + cerrar sesión
-- ✅ **Adaptación por vertical**: las pestañas se relabelan según `verticalConfig` (ej. turismo → "Reservas", restaurantes → "Pedidos", salud → "Pacientes")
+- ✅ **Adaptación por vertical**: el tercer tab se resuelve desde el manifest/capacidades efectivas y puede abrir agenda, estadías, tours, restaurante, pedidos, clases, educación, seguros, solicitudes, fotografía, alquiler vehicular o hospedaje de mascotas
 - ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; **tap → conversación exacta** (deep-link, también en cold start). *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
-- ✅ **Seguridad**: re-bloqueo biométrico al volver de segundo plano (>90s) con overlay de desbloqueo
-- 🚧 Pendiente: EAS build/submit a tiendas (Apple $99 / Google $25). Opcionales aplazados (bajo valor para agentes / refactor invasivo): tema claro, switch multi-tenant, centro de notificaciones persistente.
+- ✅ **Seguridad**: re-bloqueo biométrico al volver tras más de 15 minutos en segundo
+  plano, con overlay de desbloqueo
+- 📦 **Estado Android documentado al 10-ago-2026:** AAB `1.0.0 (7)` validado y activo en prueba interna; el rollout de Producción fue enviado a revisión. Este README no confirma una aprobación posterior ni visibilidad pública: verificar Play Console antes de comunicar el estado actual.
+- 🚧 iOS no se declara publicado. Opcionales aplazados: tema claro, switch multi-tenant y centro de notificaciones persistente.
 
 ## Push nativo — cómo activarlo
 1. `npm i -g eas-cli && eas login`
@@ -64,7 +68,9 @@ src/lib/api.ts         cliente fetch (auth + refresh + agent-console)
 src/lib/socket.ts      socket.io /inbox
 src/contexts/AuthContext.tsx
 src/navigation/RootNavigator.tsx
-src/screens/           Login · Inbox · Conversation · Placeholder
+src/screens/           Login · Welcome · Inbox · Conversation · Outbound · CRM
+                       LeadDetail · Pipeline · Appointments · Reservations
+                       Operations · More · NotificationPrefs · NoWorkspace
 src/theme.ts
 ```
 

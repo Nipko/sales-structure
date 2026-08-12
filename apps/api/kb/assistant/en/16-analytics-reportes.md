@@ -2,15 +2,15 @@
 id: analytics-reportes
 title: "Analytics and reports"
 routes: ["/admin", "/admin/analytics-v2", "/admin/crm-analytics", "/admin/agent-analytics", "/admin/report-builder", "/admin/settings/alerts"]
-roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
+roles: ["tenant_admin", "tenant_supervisor"]
 keywords: ["analytics", "metrics", "reports", "statistics", "kpi", "dashboard", "csat", "satisfaction", "survey", "funnel", "pipeline velocity", "win loss", "won lost deals", "custom report", "scheduled report", "export csv", "agent performance", "resolution rate", "conversion rate"]
 ---
 
 # Analytics and reports
 
-Parallly measures everything that happens in your conversations and sales so you can make decisions with data. Analytics live in the sidebar, under the **Management** section, inside the **Analytics** menu, which groups five views: **Overview**, **CRM Analytics**, **Agent performance**, **Attribution** and **Custom Reports**.
+Parallly measures conversations and sales so you can make decisions with data. Under **Insights** you'll find **Analytics**, **CRM Analytics**, **Agent performance**, **Attribution**, and **Custom Reports**.
 
-Full analytics are for administrators and supervisors. Users with the agent role see only their own metrics.
+Analytics are for administrators and supervisors. Users with the agent role cannot access these views; they should request the information they need from a supervisor or administrator.
 
 ## The main dashboard
 
@@ -18,8 +18,8 @@ When you log in you land on the **Dashboard**: your overview for the day. It ada
 
 ## How to see your general business metrics
 
-1. In the sidebar, open **Analytics** → **Overview**.
-2. Pick the period at the top: **7 days**, **30 days**, **90 days** or **Custom** (a date range of your choosing).
+1. In the sidebar, open **Insights → Analytics**.
+2. Choose one of the available periods or define a custom range.
 3. Move through the tabs: **Overview** (conversations, messages, AI resolution, response time, average CSAT), **AI & Bot**, **AI Resolution**, **Quality (QA)**, **CRM & Sales**, **Agents**, **Automation**, **Campaigns**, **Channels**, **CSAT**, **Anomalies** and **Cohorts**.
 4. Use **Export CSV** to download the data and work with it in your spreadsheet.
 
@@ -37,7 +37,7 @@ If the rate is low on a specific channel, look at the type of questions coming i
 
 ## How to review your agents' and channels' performance
 
-1. Go to **Analytics** → **Agent performance**.
+1. Go to **Insights → Agent performance**.
 2. At the top you see four indicators for the period: **Conversations**, **Avg. response time**, **Resolution rate** and **Average CSAT**.
 3. Go through the tabs:
    - **Summary** — daily conversation volume.
@@ -45,23 +45,19 @@ If the rate is low on a specific channel, look at the type of questions coming i
    - **Channels** — how many conversations arrive through each channel and what percentage of the total they represent.
    - **CSAT** — your customers' satisfaction (see below).
 
-If your role is agent, in this same section you see only your own numbers: your conversations, your response time and your results.
-
 ## How satisfaction measurement (CSAT) works
 
-When a conversation closes, Parallly can send the customer a short survey through the same channel where they chatted: it asks for a rating from **1 to 5** (where 5 is very satisfied) and an optional comment.
-
-The results appear on the **CSAT** tab of **Agent performance**:
+The **CSAT** tab in **Agent performance** displays ratings that have already been registered in the account:
 
 - **Average CSAT** for the period, with the total number of responses.
 - **Distribution by stars** — how many customers rated 5, how many rated 4, and so on.
 - **Recent comments** — exactly what your customers wrote.
 
-On top of that, every time a customer answers a survey, the notification bell lets you know.
+In the current release, closing a conversation does not automatically send or capture a survey through the channel, and it does not create a notification-bell alert. If you need to collect CSAT, use a process or integration enabled for your account and confirm that responses appear before relying on this view.
 
 ## How to analyze your sales funnel (CRM Analytics)
 
-1. Go to **Analytics** → **CRM Analytics**.
+1. Go to **Insights → CRM Analytics**.
 2. At the top you see the key indicators: **Total leads**, **Active opportunities**, **Pipeline value**, **Average score** and **Conversion rate**.
 3. Explore the tabs:
    - **Summary** — leads by stage, lead sources, and the **Won vs Lost** block: how many deals you won, how many you lost, your **Win rate**, the total value won and the most frequent **Loss reasons**.
@@ -69,13 +65,13 @@ On top of that, every time a customer answers a survey, the notification bell le
    - **Velocity** — how many days an opportunity spends on average in each stage. If a stage piles up a lot of days, that's your bottleneck.
    - **Agents** — a team ranking by deals closed and value sold.
 
-The **Attribution** view (in the same **Analytics** menu) complements this by measuring the full path of your ads: clicks → conversations → leads → sales, with the return of each ad campaign.
+The **Attribution** view (under **Insights**) complements this by measuring the full path of your ads: clicks → conversations → leads → sales, with the return of each ad campaign.
 
 ## How to create a custom report
 
 If you need a report with exactly the metrics you care about:
 
-1. Go to **Analytics** → **Custom Reports**.
+1. Go to **Insights → Custom Reports**.
 2. Click **New report**.
 3. Type the **Report name** (e.g. "Weekly performance") and an optional **Description**.
 4. Choose the **Chart type**: **Bar**, **Line**, **Area** or **Pie**.
@@ -89,20 +85,20 @@ Your saved reports stay on the same page, ready to consult whenever you like. Ea
 
 You can get a summary of your indicators in your inbox without opening the dashboard:
 
-1. Go to **Settings** → **Integrations & alerts** section → **System alerts**.
+1. Go to **Settings → Governance & alerts → System alerts**.
 2. Scroll down to **Scheduled reports**.
-3. Choose the **Frequency**: **Weekly (Monday 8 AM)** or **Monthly (1st, 8 AM)**.
+3. Choose one of the frequencies and delivery times available for your account.
 4. Under **Recipients**, enter the email addresses separated by commas.
 5. Check the box to mark it **Enabled** and click **Save changes**.
 
-Below you'll see the date of the last send. Scheduled reports are available from the **Pro** plan onward.
+Below you'll see the date of the last send. If the option is missing, check its availability in **Plan & Billing**.
 
-On that same page you can create **system alerts**: email notifications when a metric crosses a limit you define (active conversations, messages for the day, escalations, among others). They're checked every 15 minutes.
+On that same page you can create **system alerts**: email notifications when a metric crosses a limit you define (active conversations, messages for the day, escalations, among others). The platform evaluates them automatically.
 
 ## Frequently asked questions
 
 **Who can see the analytics?**
-Administrators and supervisors see everything. Agents see only their own metrics under **Agent performance**.
+Administrators and supervisors can access these views. Agents do not have direct access to analytics pages.
 
 **Why does a tab say "no data"?**
 The chosen period has no activity. Widen the date range (for example, from 7 to 30 days) or check that your channels are connected and receiving conversations.
@@ -110,8 +106,8 @@ The chosen period has no activity. Widen the date range (for example, from 7 to 
 **Can I download the data?**
 Yes: use **Export CSV** in the Analytics Overview, or set up **Scheduled reports** to receive them by email.
 
-**Are scheduled reports on every plan?**
-No. They're available on the **Pro**, **Enterprise** and **Custom** plans. On Emprendedor and Starter you can consult all analytics inside the dashboard.
+**Are scheduled reports available for my account?**
+The screen and **Plan & Billing** show current availability. The views you can consult remain visible according to your role and configuration.
 
 **How do I improve my CSAT?**
 Read the **Recent comments** on the CSAT tab: that's where your customers tell you what to adjust. It usually helps to fine-tune your AI agent's tone, complete your knowledge base, and respond quickly to escalated conversations.

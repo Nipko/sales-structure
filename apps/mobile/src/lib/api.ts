@@ -279,12 +279,9 @@ export const api = {
     },
 
     // Agent console (inbox)
-    getInbox: (tenantId: string, filter?: string, opts?: { limit?: number; offset?: number; agentId?: string }) => {
+    getInbox: (tenantId: string, filter?: string, opts?: { limit?: number; offset?: number }) => {
         const params = new URLSearchParams();
         if (filter) params.set('filter', filter);
-        // The 'mine' filter is scoped server-side by agentId — without it the
-        // endpoint has nothing to match and always returns an empty list.
-        if (opts?.agentId) params.set('agentId', opts.agentId);
         if (opts?.limit) params.set('limit', String(opts.limit));
         if (opts?.offset) params.set('offset', String(opts.offset));
         const qs = params.toString();
@@ -297,9 +294,9 @@ export const api = {
         const qs = params.toString();
         return json(`/agent-console/conversation/${tenantId}/${id}${qs ? `?${qs}` : ''}`);
     },
-    sendMessage: (tenantId: string, id: string, content: string, agentId?: string) =>
+    sendMessage: (tenantId: string, id: string, content: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/message`, {
-            method: 'POST', body: JSON.stringify({ content, agentId }),
+            method: 'POST', body: JSON.stringify({ content }),
         }),
     // Outbound media: upload the file, then send a message carrying its URL.
     uploadMedia: async (tenantId: string, asset: { uri: string; fileName?: string; mimeType?: string }) => {
@@ -312,17 +309,21 @@ export const api = {
             return { success: false, error: e?.message || 'upload_error' };
         }
     },
-    sendMediaMessage: (tenantId: string, id: string, mediaUrl: string, caption: string, agentId?: string, type: string = 'image', filename?: string) =>
+    sendMediaMessage: (tenantId: string, id: string, mediaUrl: string, caption: string, type: string = 'image', filename?: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/message`, {
-            method: 'POST', body: JSON.stringify({ agentId, content: caption || '', type, mediaUrl, caption, filename }),
+            method: 'POST', body: JSON.stringify({ content: caption || '', type, mediaUrl, caption, filename }),
         }),
     assignConversation: (tenantId: string, id: string, agentId: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/assign`, {
             method: 'PUT', body: JSON.stringify({ agentId }),
         }),
-    resolveConversation: (tenantId: string, id: string, agentId?: string) =>
+    claimConversation: (tenantId: string, id: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/claim`, {
+            method: 'PUT', body: '{}',
+        }),
+    resolveConversation: (tenantId: string, id: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/resolve`, {
-            method: 'PUT', body: JSON.stringify({ agentId }),
+            method: 'PUT', body: '{}',
         }),
     getAiSuggestion: (tenantId: string, id: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/suggest`),
@@ -334,8 +335,8 @@ export const api = {
         json(`/agent-console/conversation/${tenantId}/${id}/unsnooze`, { method: 'PUT', body: '{}' }),
     reopenConversation: (tenantId: string, id: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/reopen`, { method: 'POST', body: '{}' }),
-    addNote: (tenantId: string, id: string, content: string, agentId?: string) =>
-        json(`/agent-console/conversation/${tenantId}/${id}/note`, { method: 'POST', body: JSON.stringify({ content, agentId }) }),
+    addNote: (tenantId: string, id: string, content: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/note`, { method: 'POST', body: JSON.stringify({ content }) }),
     copilotRewrite: (conversationId: string, draft: string, tone: string) =>
         json(`/copilot/${conversationId}/rewrite`, { method: 'POST', body: JSON.stringify({ draft, tone }) }),
     copilotSummary: (conversationId: string) => json(`/copilot/${conversationId}/summary`),
@@ -345,8 +346,8 @@ export const api = {
         json(`/agent-console/agents/${tenantId}/status`),
     getCannedResponses: (tenantId: string) => json(`/agent-console/canned/${tenantId}`),
     getMacros: (tenantId: string) => json(`/agent-console/macros/${tenantId}`),
-    executeMacro: (tenantId: string, macroId: string, conversationId: string, agentId: string) =>
-        json(`/agent-console/macros/${tenantId}/${macroId}/execute`, { method: 'POST', body: JSON.stringify({ conversationId, agentId }) }),
+    executeMacro: (tenantId: string, macroId: string, conversationId: string) =>
+        json(`/agent-console/macros/${tenantId}/${macroId}/execute`, { method: 'POST', body: JSON.stringify({ conversationId }) }),
 
     // Vertical config (terminology per industry)
     getVerticalConfig: (tenantId: string) => json(`/verticals/${tenantId}`),

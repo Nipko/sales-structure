@@ -8,29 +8,30 @@ keywords: ["primeiros passos", "começar", "iniciar", "cadastro", "cadastrar", "
 
 # Primeiros passos e configuração inicial
 
-Boas-vindas ao Parallly! Neste guia, acompanhamos você desde a criação da conta até o seu agente de IA responder à primeira mensagem. Em menos de 15 minutos, dá para deixar tudo pronto.
+Boas-vindas ao Parallly! Neste guia, acompanhamos você desde a criação da conta até o seu agente de IA responder à primeira mensagem.
 
 ## Como criar sua conta
 
 1. Acesse [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud) e clique em **Crie sua conta gratuita**.
 2. Preencha seu nome, e-mail e senha, ou use **Continuar com o Google**.
 3. Confira seu e-mail: você vai receber um **código de 6 dígitos** para verificar o endereço. Digite o código e continue.
-4. O assistente de boas-vindas de **3 etapas** vai abrir:
+4. O assistente de boas-vindas de **4 etapas** vai abrir:
    - **Sua empresa** — nome do negócio, setor, subtipo e fuso horário (campos como site, telefone e descrição são opcionais, mas ajudam seu agente a responder melhor).
    - **Seus clientes** — para quem você vende. As opções se adaptam ao seu setor.
    - **Objetivos** — o que você quer alcançar: responder perguntas frequentes, agendar horários, vender, dar suporte e muito mais.
+   - **Plano** — confira as opções atuais e escolha como começar.
 5. Clique em **Criar minha conta**.
 
-Sua conta começa com um **teste grátis de 7 dias do plano Emprendedor, sem cartão**. Quando quiser, você pode migrar para Starter, Pro, Enterprise ou Custom em **Configurações → Faturamento**.
+As condições de teste, preços e opções de pagamento aparecem no cadastro e em **Administração → Plano e faturamento**. Essa tela é a fonte atual para sua conta e país.
 
 Ao terminar, o Parallly deixa seu espaço pré-configurado de acordo com o seu setor: um funil de vendas com etapas adaptadas, um agente de IA sugerido com nome e tom, perguntas frequentes básicas da sua área e as ferramentas próprias do seu ramo (cardápio, imóveis, passeios etc., conforme o caso).
 
 ## Como completar o assistente de configuração
 
-Depois do cadastro, ao entrar no painel, abre o **assistente de configuração** (também disponível na rota `/admin/setup-wizard`). São 5 etapas que levam menos de 5 minutos:
+Depois do cadastro, ao entrar no painel, abre o **assistente de configuração** (também disponível na rota `/admin/setup-wizard`). São 5 etapas:
 
 1. **Escolha seu agente** — selecione um modelo. Você verá primeiro os recomendados para o seu setor e depois os genéricos (Vendedor Virtual, Suporte ao Cliente, Assistente de Agendamentos, entre outros).
-2. **Personalize** — defina o **Nome do agente**, a **Mensagem de boas-vindas**, o **Tom de comunicação** (Amigável, Profissional ou Casual) e o **Horário de atendimento** (24/7 ou personalizado). Você também pode cadastrar de 1 a 3 perguntas frequentes para que ele responda com precisão desde o primeiro dia.
+2. **Personalize** — defina o **Nome do agente**, a **Mensagem de boas-vindas**, o **Tom de comunicação**, o **Horário de atendimento** e perguntas frequentes iniciais.
 3. **Teste** — converse com o seu agente como se fosse um cliente. Experimente «Quais são os preços?» ou «Vocês têm disponibilidade?».
 4. **Conecte** — conecte seu primeiro canal (veja a seção seguinte). Se ainda não puder, use **Conectar depois**.
 5. **Descubra** — um passeio pelas ferramentas do seu negócio: base de conhecimento, informações do negócio, serviços e agenda, catálogo e mais.
@@ -51,9 +52,9 @@ Dicas úteis:
 
 - Se você conectar seu número atual do WhatsApp Business, pode escanear um **código QR** pelo app para manter suas conversas.
 - Não tem um número pronto? Escolha a opção de **teste (Sandbox)** para experimentar sem compromisso.
-- Você também pode conectar **Instagram**, **Messenger**, **Telegram**, **E-mail** ou o **Chat web** para o seu site, conforme o que o seu plano incluir.
+- Você também pode conectar **Instagram**, **Messenger**, **Telegram** ou o **Chat web** para o seu site, conforme o que o seu plano incluir. Email ainda não tem configuração de autosserviço certificada.
 
-Mais adiante, você administra tudo pelo menu **Canais**, na seção **Gestão** da barra lateral.
+Mais adiante, você administra tudo em **Canais**, na seção **Administração** da barra lateral.
 
 ## O tour do produto
 
@@ -79,7 +80,7 @@ Cada item pendente tem um botão que leva direto à tela certa. Você pode minim
 ## O que fazer primeiro: ordem recomendada
 
 1. **Conecte o WhatsApp** (ou seu canal principal) — sem isso, nada chega ao seu agente.
-2. **Envie uma mensagem de teste** do seu próprio celular e acompanhe a conversa na **Caixa de entrada**.
+2. **Envie uma mensagem de teste** do seu próprio celular e acompanhe a conversa em **Conversas**.
 3. **Alimente a base de conhecimento** pelo menu **Base de Conhecimento**: envie seu site, documentos ou perguntas frequentes. Quanto mais contexto ele tiver, melhores as respostas.
 4. **Ajuste seu agente** no menu **Agente IA**: tom, regras, saudação e ferramentas.
 5. **Convide sua equipe** pelo menu **Usuários** e atribua funções: administrador, supervisor ou agente.
@@ -87,16 +88,16 @@ Cada item pendente tem um botão que leva direto à tela certa. Você pode minim
 ## Perguntas frequentes
 
 **Preciso de cartão para testar o Parallly?**
-Não. O teste de 7 dias do plano Emprendedor não pede cartão. Os planos Pro e Enterprise oferecem 15 dias de teste, mas exigem cadastrar um cartão para ativá-lo.
+Depende da opção disponível para sua conta. O cadastro e **Plano e faturamento** informam se um método de pagamento é necessário e quando uma cobrança começaria.
 
 **Quanto custam os planos?**
-Emprendedor USD $21/mês, Starter $49/mês, Pro $129/mês, Enterprise $349/mês e Custom sob consulta. Pagando anualmente, você economiza cerca de 15%. Você troca de plano quando quiser em **Configurações → Faturamento**.
+Abra **Administração → Plano e faturamento** para ver preços, moeda, ciclo e condições atuais.
 
 **Quais canais o meu plano inclui?**
-O Emprendedor inclui WhatsApp. O Starter soma Instagram, Messenger, E-mail e o Chat web. Pro e Enterprise adicionam o Telegram. A quantidade de conexões do mesmo tipo (por exemplo, dois números de WhatsApp) também depende do plano.
+Em **Canais** você vê quais conexões pode ativar; **Plano e faturamento** mostra a disponibilidade e os limites da sua conta.
 
 **Posso ter vários agentes de IA?**
-Sim. Cada conexão tem seu próprio agente: se o seu plano permitir dois números de WhatsApp, cada número pode atender com um agente diferente. Emprendedor e Starter incluem 1 agente, Pro até 3, Enterprise até 10 e Custom sem limite.
+Sim, quando sua conta tiver capacidade disponível. Cada conexão usa seu próprio agente; confira o limite atual em **Plano e faturamento**.
 
 **E o canal de SMS?**
 O SMS não é um canal de conversa: ele serve para enviar notificações aos seus clientes usando créditos (1 crédito = 1 segmento de mensagem).

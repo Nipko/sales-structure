@@ -184,7 +184,7 @@ export async function flush(): Promise<void> {
                 continue;
             }
             try {
-                const result = await api.sendMessage(item.tenantId, item.conversationId, item.body, scope.userId);
+                const result = await api.sendMessage(item.tenantId, item.conversationId, item.body);
                 if (!result?.success) throw new Error(result?.error || 'send_failed');
                 if (generation !== scopeGeneration || activeScope?.storageKey !== scope.storageKey) return;
                 queue = queue.filter((q) => q.id !== item.id);

@@ -1,6 +1,6 @@
 # Parallly
 
-**Plataforma multi-tenant de IA conversacional para automatizar ventas en WhatsApp, Instagram, Messenger y Telegram**
+**Plataforma multi-tenant de IA conversacional para automatizar ventas y servicio en WhatsApp, Instagram, Messenger, Telegram y Web Chat**
 
 [![Deploy](https://github.com/Nipko/sales-structure/actions/workflows/deploy.yml/badge.svg)](https://github.com/Nipko/sales-structure/actions)
 
@@ -8,24 +8,27 @@
 |----------|-----|--------|
 | Landing | [parallly-chat.cloud](https://parallly-chat.cloud) | 80 |
 | Dashboard | [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud) | 3001 |
-| API | [api.parallly-chat.cloud](https://api.parallly-chat.cloud) | 3000 |
-| WhatsApp Service | [wa.parallly-chat.cloud](https://wa.parallly-chat.cloud) | 3002 |
+| API (health) | [api.parallly-chat.cloud/api/v1/health](https://api.parallly-chat.cloud/api/v1/health) | 3000 |
+| WhatsApp Service (health) | [wa.parallly-chat.cloud/api/v1/health/live](https://wa.parallly-chat.cloud/api/v1/health/live) | 3002 |
 | KB Portal | [admin.parallly-chat.cloud/kb/{slug}](https://admin.parallly-chat.cloud/kb) | 3001 |
-| BI API | [api.parallly-chat.cloud/api/v1/bi-api/](https://api.parallly-chat.cloud/api/v1/bi-api/) | 3000 |
+| BI API | Integracion autenticada por `X-API-Key` (no publica) | 3000 |
 
 ---
 
 ## Que es Parallly
 
-Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar sus ventas y atencion al cliente por mensajeria. Un agente de IA responde a los clientes 24/7 por WhatsApp, Instagram, Messenger y Telegram, califica leads, gestiona el CRM, y escala a agentes humanos cuando es necesario.
+Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar sus ventas y atencion al cliente por mensajeria. Un agente de IA responde a los clientes 24/7 por WhatsApp, Instagram, Messenger, Telegram y Web Chat, califica leads, gestiona el CRM, y escala a agentes humanos cuando es necesario.
 
 ### Funcionalidades principales
 
-**Canales de comunicacion (4)**
+**Superficies conversacionales disponibles**
 - WhatsApp Cloud API (Meta Embedded Signup v4)
 - Instagram Direct Messages
 - Facebook Messenger
 - Telegram Bot API
+- Web Chat Widget
+- Email tiene adaptador e ingreso tecnico interno, pero no configuracion autoservicio ni certificacion conversacional E2E
+- SMS se ofrece por separado para notificaciones one-way con creditos; no es un canal conversacional
 - Arquitectura de adaptadores extensible para agregar nuevos canales
 
 **Agente de IA**
@@ -51,7 +54,7 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 - Macros (acciones secuenciales predefinidas)
 - Snooze de conversaciones con wake-up programado
 - Disponibilidad por agente (online/busy/offline con auto-offline)
-- CSAT surveys automaticos post-resolucion
+- Analitica CSAT para valoraciones ya registradas; el cierre de una conversacion no envia una encuesta automatica en la version actual
 
 **Automatizacion**
 - Motor de reglas trigger -> condiciones -> acciones (wizard de 4 pasos)
@@ -60,7 +63,8 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 - Rate limiting por plan de tenant
 
 **Broadcast y campanas**
-- Envio masivo de templates WhatsApp
+- Preparacion de borradores, audiencias y metricas de campanas; el lanzamiento de
+  produccion WhatsApp/Email y la cancelacion de programadas aun no estan certificados
 - Funnel de tracking: enviado -> entregado -> leido -> respondido
 - Rate limiting configurable
 - Soporte multi-canal
@@ -80,7 +84,7 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 **Alertas y reportes**
 - Alertas por umbral: 6 metricas, evaluacion cada 15min, notificacion por email
 - Reportes programados: email HTML semanal o mensual con KPIs y tendencias
-- BI API: 7 endpoints con autenticacion por API key para Grafana/Metabase
+- BI API: 7 endpoints protegidos por `X-API-Key` para integraciones configuradas; no ofrece acceso publico
 
 **Seguridad y compliance**
 - JWT con refresh token rotation (Redis-backed)
@@ -110,7 +114,7 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 Internet -> Cloudflare (SSL + Zero Trust Tunnel) -> Docker Stack (VPS 8GB RAM)
     |-- Landing           (Next.js static, port 80)
     |-- Dashboard         (Next.js 16, port 3001)
-    |-- API               (NestJS 10, port 3000, 36 modules, Pino + Bull Board)
+    |-- API               (NestJS 10, port 3000, 88 module declaration files, Pino + Bull Board)
     |-- Worker            (BullMQ processors + cron jobs)
     |-- WhatsApp Service  (NestJS 10, port 3002)
     |-- PostgreSQL        (pgvector, schema-per-tenant)
@@ -122,16 +126,17 @@ Internet -> Cloudflare (SSL + Zero Trust Tunnel) -> Docker Stack (VPS 8GB RAM)
     |-- Uptime Kuma       (endpoint monitoring + alerting, port 3003)
     |-- Grafana           (dashboards + alerting, port 3004)
     |-- Loki              (log aggregation, port 3100)
-    |-- Watchtower        (auto-deploy on push to main)
 ```
+
+Watchtower fue retirado; los despliegues de produccion se ejecutan de forma controlada mediante GitHub Actions.
 
 ### Flujo de mensaje
 
 ```
-Cliente (WhatsApp/IG/Messenger/Telegram)
-    -> Channel API (Meta/Telegram)
-    -> API webhooks -> ChannelGatewayService -> IChannelAdapter.handleWebhook()
-    -> ConversationsService.processIncomingMessage()
+Cliente (WhatsApp/IG/Messenger/Telegram/Web Chat)
+    -> Canales API: webhook -> IChannelAdapter -> InboundQueueService (BullMQ)
+    -> Web Chat: WidgetGateway (WebSocket + streaming)
+    -> ConversationsService (orquestacion conversacional)
         -> IdentityService (resolver/crear perfil unificado)
         -> PersonaService (cargar config del agente IA)
         -> LLMRouter (seleccionar modelo por tier) -> LLM Provider -> respuesta
@@ -150,24 +155,25 @@ Cliente (WhatsApp/IG/Messenger/Telegram)
 | Capa | Tecnologia |
 |------|-----------|
 | **Backend** | NestJS 10, TypeScript, Prisma ORM, BullMQ |
-| **Frontend** | Next.js 16, React 19, Tailwind CSS, shadcn/ui, recharts, next-intl |
+| **Frontend** | Next.js 16, React 19, Expo/React Native, Tailwind CSS, shadcn/ui, recharts, next-intl |
 | **Database** | PostgreSQL 16 + pgvector, Redis 7 (noeviction) |
 | **AI** | OpenAI GPT-4o, Anthropic Claude, Google Gemini, DeepSeek, xAI Grok |
-| **Messaging** | WhatsApp Cloud API, Instagram Graph API, Messenger API, Telegram Bot API |
+| **Messaging** | WhatsApp Cloud API, Instagram Graph API, Messenger API, Telegram Bot API y Web Chat Widget; adaptador Email inbound interno no autoservicio |
 | **Infra** | Docker, PgBouncer, Cloudflare Tunnel, Nginx, Sentry |
 | **CI/CD** | GitHub Actions -> SSH deploy -> Docker rebuild |
 | **Monorepo** | npm workspaces + shared types package |
 
 ---
 
-## Estructura del Monorepo
+## Estructura del Monorepo (5 apps)
 
 ```
 apps/
-  api/          -- NestJS 10, 36 modules. Core business logic
-  dashboard/    -- Next.js 16, 45+ pages. Admin panel + agent inbox
+  api/          -- NestJS 10, 88 module declaration files. Core business logic
+  dashboard/    -- Next.js 16, 143 filesystem routes. Admin panel + agent inbox
   whatsapp/     -- NestJS 10. Embedded Signup + Meta webhook router
   landing/      -- Next.js static export. Marketing site (4 idiomas)
+  mobile/       -- Expo / React Native. App movil distribuida mediante EAS/stores
 packages/
   shared/       -- TypeScript types compartidos
 infra/
@@ -179,13 +185,13 @@ docs/           -- Architecture specs, analytics manual, API reference
 
 ---
 
-## API Modules (36)
+## API Modules (88 module declaration files)
 
 | Categoria | Modulos |
 |-----------|---------|
 | **Infraestructura** | prisma, redis, health, throttle, internal |
 | **Auth & Tenants** | auth (JWT + refresh rotation + Google OAuth + 2FA + session mgmt), tenants, settings |
-| **Pipeline de mensajes** | channels (WA/IG/Messenger/Telegram), conversations, whatsapp, handoff, agent-console |
+| **Pipeline de mensajes** | channels (WA/IG/Messenger/Telegram, Email inbound interno y Web Chat), conversations, whatsapp, handoff, agent-console |
 | **IA** | ai (router + 5 providers), persona, knowledge, copilot |
 | **CRM & Ventas** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, scoring), pipeline, catalog |
 | **Automatizacion** | automation (rules engine, listener, processor, nurturing) |
@@ -197,7 +203,7 @@ docs/           -- Architecture specs, analytics manual, API reference
 
 ---
 
-## Dashboard (45+ paginas)
+## Dashboard (143 filesystem routes)
 
 | Seccion | Paginas |
 |---------|---------|
@@ -208,7 +214,7 @@ docs/           -- Architecture specs, analytics manual, API reference
 | **IA** | Agent Config (wizard 6 pasos + modo custom), AI Settings |
 | **Automatizacion** | Rules wizard (4 pasos), Settings |
 | **Analytics** | Analytics V2 (8 tabs), Agent Performance (4 tabs legacy) |
-| **Canales** | Overview, WhatsApp, Instagram, Messenger, Telegram setup |
+| **Canales** | Overview, WhatsApp, Instagram, Messenger, Telegram y Web Chat; la pantalla Email no tiene configuracion autoservicio certificada; SMS es one-way |
 | **Identidad** | Merge Suggestions |
 | **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media, Email Templates, Change Password, Alertas & Reportes |
 | **Scheduling** | Appointments (calendario, lista, disponibilidad) |

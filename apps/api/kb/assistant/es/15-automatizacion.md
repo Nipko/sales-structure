@@ -8,7 +8,7 @@ keywords: ["automatizacion", "automatizaciones", "reglas", "regla automatica", "
 
 # Automatizaciones y seguimiento
 
-Las automatizaciones hacen que Parallly trabaje por ti: cuando ocurre algo en tu negocio (llega un lead, un cliente deja de responder, alguien cambia de etapa), la plataforma ejecuta acciones automáticas sin que nadie tenga que estar pendiente. Hay tres herramientas, todas en la sección **Crecimiento → Automatización** de la barra lateral:
+Las automatizaciones hacen que Parallly trabaje por ti: cuando ocurre algo en tu negocio (llega un lead, un cliente deja de responder, alguien cambia de etapa), la plataforma ejecuta acciones automáticas sin que nadie tenga que estar pendiente. En **IA y crecimiento** encontrarás **Automatización**, **Secuencias Drip** y **Plantillas**:
 
 - **Reglas**: "cuando pase X, haz Y" (una sola vez por evento).
 - **Secuencias Drip**: series de mensajes de seguimiento con esperas entre cada uno.
@@ -46,7 +46,7 @@ Si prefieres ver tu automatización como un diagrama en lugar del asistente paso
 2. Arma el flujo en el lienzo conectando bloques de **Disparador**, **Condición**, **Acción** y **Espera**. Las condiciones bifurcan el flujo en ramas **Sí** / **No**.
 3. Guarda con **Guardar**. Una regla creada en el constructor visual se puede seguir editando con **Editar con asistente**, y viceversa: son la misma regla vista de dos formas.
 
-> Desde el plan Pro, entre las acciones del constructor también aparece **HTTP Request**, que permite que una regla le avise a otro sistema que uses en tu negocio (tu sistema de facturación, tu inventario, etc.). Si necesitas configurarla, pide ayuda a tu proveedor técnico o escríbenos a soporte.
+> Si **HTTP Request** está habilitado para tu cuenta, una regla puede avisar a otro sistema de tu negocio. Trátalo como una integración técnica y pruébalo con datos no sensibles.
 
 ## Cómo crear una secuencia de seguimiento (Drip)
 
@@ -61,10 +61,7 @@ Las **Secuencias Drip** envían varios mensajes espaciados en el tiempo: ideales
 3. Con **Agregar paso** crea cada mensaje. Cada paso tiene:
    - **Espera**: cuánto esperar antes de enviarlo (**Minutos**, **Horas** o **Días**).
    - **Tipo de mensaje**: **Plantilla WhatsApp**, **Mensaje personalizado** o **Generado por IA** (el agente redacta el mensaje según el contexto de ese lead).
-4. En **Detener si**, marca cuándo debe salir el contacto de la secuencia:
-   - **El contacto responde** — para no insistirle a alguien que ya te está hablando.
-   - **El contacto convierte** — si avanza a una etapa final del embudo, la secuencia se cancela.
-   Además, si un cliente pide no recibir más mensajes (opt-out), la plataforma detiene los envíos automáticamente.
+4. En **Detener si**, usa **El contacto responde** para no insistirle a alguien que ya te está hablando. Si pide no recibir más mensajes (opt-out), la plataforma también detiene los envíos. La opción visual **El contacto convierte** aún no se ejecuta automáticamente en esta versión: desinscribe manualmente al contacto cuando convierta.
 5. Activa la secuencia con el interruptor **Activa**.
 
 En cada tarjeta verás el contador **Inscritos**: cuántos contactos están dentro de ese flujo en este momento.
@@ -82,33 +79,25 @@ En cada tarjeta verás el contador **Inscritos**: cuántos contactos están dent
 3. Haz clic en **Instalar**: un modal te muestra el disparador, las acciones y las **Variables** que puedes ajustar (textos, tiempos) antes de confirmar con **Instalar plantilla**.
 4. Al terminar, usa **Ver reglas** para ir directo a tus reglas. La regla instalada queda **inactiva** por defecto: revisa los textos y actívala cuando estés listo.
 
-## Límites por plan
+## Disponibilidad y capacidad
 
-| Plan | Reglas de automatización | Secuencias Drip | Ejecuciones por hora |
-|------|--------------------------|-----------------|----------------------|
-| Emprendedor (USD $21/mes) | No incluye | No incluye | — |
-| Starter (USD $49/mes) | 5 | 3 | 50 |
-| Pro (USD $129/mes) | Ilimitadas | 10 | 500 |
-| Enterprise (USD $349/mes) | Ilimitadas | Ilimitadas | 5.000 |
-| Custom (a cotizar) | Ilimitadas | Ilimitadas | Sin límite |
-
-La acción **HTTP Request** (conexión con otros sistemas) está disponible desde el plan **Pro**. Puedes cambiar de plan en **Configuración → Facturación**; el ciclo anual tiene ~15% de descuento.
+La pantalla muestra si reglas, secuencias y **HTTP Request** están habilitados, además del uso actual. Consulta los límites vigentes en **Plan y facturación**.
 
 ## Preguntas frecuentes
 
 **¿Cuál es la diferencia entre una regla y una secuencia drip?**
-Una regla reacciona una vez a un evento ("lead nuevo → asignar agente"). Una secuencia drip envía varios mensajes a lo largo de días, con esperas entre cada uno, y se detiene sola si el contacto responde o convierte.
+Una regla reacciona una vez a un evento ("lead nuevo → asignar agente"). Una secuencia drip envía varios mensajes a lo largo de días, con esperas entre cada uno, y puede detenerse si el contacto responde o solicita no recibir más mensajes.
 
 **Creé una regla y no pasa nada, ¿qué reviso?**
 Primero verifica que esté **Activa** (las plantillas se instalan inactivas por defecto). Luego revisa las condiciones: todas deben cumplirse a la vez, y una condición mal puesta (por ejemplo, un canal que no usas) bloquea la regla. El **Historial de ejecuciones** te dice si la regla corrió y qué resultado tuvo.
 
 **¿Puedo pausar una secuencia sin borrarla?**
-Sí. Usa el interruptor **Activa/Inactiva** en la tarjeta de la secuencia — útil en vacaciones o durante una campaña especial. Los contactos ya inscritos dejan de recibir pasos mientras esté inactiva.
+El interruptor **Activa/Inactiva** impide nuevas inscripciones, pero los pasos ya programados para contactos inscritos pueden continuar en esta versión. Para detenerlos, desinscribe esos contactos antes de desactivar la secuencia.
 
 **¿Las automatizaciones pueden escribirle a cualquier contacto a cualquier hora?**
 Envían según las esperas que configures, respetando siempre los opt-outs. En WhatsApp, los mensajes fuera de la ventana de conversación requieren plantillas aprobadas, por eso el tipo de paso **Plantilla WhatsApp** es el más seguro para seguimientos de varios días.
 
-**Estoy en plan Emprendedor y no veo estas opciones.**
-El plan Emprendedor no incluye automatizaciones ni secuencias. Sube a Starter o superior desde **Configuración → Facturación** para desbloquearlas.
+**No veo estas opciones.**
+Confirma tu rol y revisa en **Plan y facturación** si la función está habilitada para tu cuenta.
 
 ¿Dudas? Escríbenos en https://parallly-chat.cloud/support

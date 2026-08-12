@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { WidgetTriggersService } from './widget-triggers.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,8 +15,6 @@ import { RedisService } from '../redis/redis.service';
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class WidgetTriggersController {
-    private readonly logger = new Logger(WidgetTriggersController.name);
-
     constructor(
         private readonly triggersService: WidgetTriggersService,
         private readonly throttle: TenantThrottleService,
@@ -26,8 +25,14 @@ export class WidgetTriggersController {
     @Get(':widgetConfigId')
     @Roles('tenant_admin', 'super_admin')
     @ApiOperation({ summary: 'List triggers for a widget' })
-    async list(@Param('widgetConfigId') widgetConfigId: string) {
-        const triggers = await this.triggersService.listTriggers(widgetConfigId);
+    async list(
+        @CurrentTenant() tenantId: string,
+        @Param('widgetConfigId', ParseUUIDPipe) widgetConfigId: string,
+    ) {
+        const triggers = await this.triggersService.listTriggers(
+            this.requireTenantId(tenantId),
+            widgetConfigId,
+        );
         return { success: true, data: triggers };
     }
 
@@ -35,27 +40,20 @@ export class WidgetTriggersController {
     @Roles('tenant_admin', 'super_admin')
     @ApiOperation({ summary: 'Create a trigger' })
     async create(
-        @Param('widgetConfigId') widgetConfigId: string,
+        @CurrentTenant() tenantId: string,
+        @Param('widgetConfigId', ParseUUIDPipe) widgetConfigId: string,
         @Body() body: any,
     ) {
-        // Resolve tenant from widget config
-        const widgets: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT tenant_id FROM public.widget_configs WHERE id = $1::uuid`,
-            widgetConfigId,
-        );
-        if (!widgets?.length) {
-            return { success: false, error: 'Widget not found' };
-        }
-        const tenantId = widgets[0].tenant_id;
+        const currentTenantId = this.requireTenantId(tenantId);
 
         // Check plan limit
-        const currentCount = await this.triggersService.countTriggersForWidget(widgetConfigId);
-        await this.throttle.enforcePlanLimit(tenantId, 'widgetTriggers', currentCount, 'widget triggers');
+        const currentCount = await this.triggersService.countTriggersForWidget(currentTenantId, widgetConfigId);
+        await this.throttle.enforcePlanLimit(currentTenantId, 'widgetTriggers', currentCount, 'widget triggers');
 
-        const trigger = await this.triggersService.createTrigger(widgetConfigId, body);
+        const trigger = await this.triggersService.createTrigger(currentTenantId, widgetConfigId, body);
 
         // Invalidate widget config cache
-        await this.invalidateWidgetCache(widgetConfigId);
+        await this.invalidateWidgetCache(currentTenantId, widgetConfigId);
 
         return { success: true, data: trigger };
     }
@@ -64,16 +62,15 @@ export class WidgetTriggersController {
     @Roles('tenant_admin', 'super_admin')
     @ApiOperation({ summary: 'Update a trigger' })
     async update(
-        @Param('triggerId') triggerId: string,
+        @CurrentTenant() tenantId: string,
+        @Param('triggerId', ParseUUIDPipe) triggerId: string,
         @Body() body: any,
     ) {
-        const trigger = await this.triggersService.updateTrigger(triggerId, body);
-        if (!trigger) {
-            return { success: false, error: 'Trigger not found' };
-        }
+        const currentTenantId = this.requireTenantId(tenantId);
+        const trigger = await this.triggersService.updateTrigger(currentTenantId, triggerId, body);
 
         // Invalidate widget config cache
-        await this.invalidateWidgetCache(trigger.widget_config_id);
+        await this.invalidateWidgetCache(currentTenantId, trigger.widget_config_id);
 
         return { success: true, data: trigger };
     }
@@ -81,26 +78,29 @@ export class WidgetTriggersController {
     @Delete(':triggerId')
     @Roles('tenant_admin', 'super_admin')
     @ApiOperation({ summary: 'Delete a trigger' })
-    async remove(@Param('triggerId') triggerId: string) {
-        // Get trigger to find widget config id for cache invalidation
-        const triggers: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT widget_config_id FROM public.widget_triggers WHERE id = $1::uuid`,
-            triggerId,
-        );
-
-        await this.triggersService.deleteTrigger(triggerId);
-
-        if (triggers?.length) {
-            await this.invalidateWidgetCache(triggers[0].widget_config_id);
-        }
+    async remove(
+        @CurrentTenant() tenantId: string,
+        @Param('triggerId', ParseUUIDPipe) triggerId: string,
+    ) {
+        const currentTenantId = this.requireTenantId(tenantId);
+        const deleted = await this.triggersService.deleteTrigger(currentTenantId, triggerId);
+        await this.invalidateWidgetCache(currentTenantId, deleted.widget_config_id);
 
         return { success: true };
     }
 
-    private async invalidateWidgetCache(widgetConfigId: string): Promise<void> {
+    private requireTenantId(tenantId: string | undefined): string {
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+        return tenantId;
+    }
+
+    private async invalidateWidgetCache(tenantId: string, widgetConfigId: string): Promise<void> {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT widget_id FROM public.widget_configs WHERE id = $1::uuid`,
+                `SELECT widget_id
+                   FROM public.widget_configs
+                  WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+                tenantId,
                 widgetConfigId,
             );
             if (rows?.length) {

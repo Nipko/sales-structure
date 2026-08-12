@@ -25,7 +25,7 @@ Os serviços são aquilo que seus clientes podem reservar (uma consulta, um cort
    - Se for online ou híbrido, você pode deixar vazio o **Link da reunião**: um link de Meet ou Teams é gerado automaticamente para cada agendamento.
 6. Salve com **Criar serviço**. Você pode ativar ou desativar serviços quando quiser.
 
-Quantos serviços você pode criar depende do seu plano: Emprendedor 1, Starter 2 e, do Pro em diante, sem limite.
+A tela mostra a capacidade atual de serviços; confira os detalhes vigentes em **Plano e faturamento**.
 
 ## Como definir sua disponibilidade
 
@@ -51,15 +51,7 @@ Conectar seu calendário evita conflitos de horário: os agendamentos do Paralll
 3. Autorize o acesso com sua conta Google ou Microsoft.
 4. Pronto: os novos agendamentos também são criados automaticamente no seu calendário externo.
 
-Quantos calendários você pode conectar depende do seu plano:
-
-| Plano | Calendários conectados |
-|-------|------------------------|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
-| Custom | Sem limite |
+A tela mostra quantos calendários você pode conectar e quanto espaço resta. Confira os detalhes vigentes em **Plano e faturamento**.
 
 ### Com vários calendários, para qual vai cada agendamento?
 
@@ -71,7 +63,7 @@ Para cada calendário conectado você atribui uma etiqueta: **Geral**, **Membro 
 
 ### Desconectar um calendário que tem agendamentos futuros
 
-Se você tentar desconectar um calendário com agendamentos pendentes, o painel oferece duas opções: **Reatribuir agendamentos a outro calendário** (você escolhe o destino, os agendamentos são movidos e só então ele é desconectado) ou **Cancelar todos os agendamentos e desconectar**. Assim, nenhuma reserva fica no ar sem que você decida.
+A reatribuição ou o cancelamento guiado durante a desconexão **não está certificado de ponta a ponta nesta versão**: a operação pode não ser aplicada mesmo que o painel pareça concluir. Antes de desconectar, reatribua ou cancele manualmente cada agendamento futuro, recarregue a agenda e confirme que nenhum continua vinculado ao calendário. Não considere apenas a mensagem de sucesso como confirmação.
 
 ## Links de reunião automáticos
 
@@ -86,7 +78,7 @@ Em **Agendamentos** → **Configurações** → seção **Lembretes e acompanham
 - **Confirmação de presença** — depois do agendamento, o cliente é perguntado se compareceu.
 - **Concluir automaticamente** — os agendamentos são marcados como concluídos 2 horas após o horário de término, sem trabalho manual.
 
-Os lembretes por WhatsApp usam modelos de notificação aprovados pela Meta, então eles sempre chegam, mesmo que o cliente esteja há mais de 24 horas sem escrever.
+Os lembretes por WhatsApp podem usar modelos aprovados pela Meta para tentar o envio fora da janela de 24 horas. A entrega não é garantida: depende do status do modelo e da conta, da Meta e do destinatário.
 
 ## A IA agenda sozinha na conversa
 

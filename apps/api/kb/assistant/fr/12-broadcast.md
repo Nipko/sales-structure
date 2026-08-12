@@ -8,103 +8,57 @@ keywords: ["campagne", "campagnes", "broadcast", "diffusion", "envoi de masse", 
 
 # Campagnes et diffusion (broadcast)
 
-Une **campagne** (ou broadcast) est un message que vous envoyez en une seule fois à un grand nombre de vos contacts : une promotion, une annonce, un rappel général. Il part par **WhatsApp** et/ou **Email**, vers l'ensemble de vos contacts ou vers un segment précis.
+La section **IA et croissance → Campagnes** regroupe les brouillons, audiences, états et métriques des envois en masse. Les administrateurs et superviseurs peuvent y accéder lorsque la fonction est activée pour le compte.
 
-Vous trouvez les campagnes dans la barre latérale, section **Croissance → Campagnes**. Elles peuvent être créées par les utilisateurs ayant le rôle **administrateur** ou **superviseur** (pas les agents).
+## Disponibilité dans cette version
 
-## Avant de commencer
+Le lancement depuis l'éditeur **n'est pas certifié de bout en bout pour la production** :
 
-- **WhatsApp utilise des modèles approuvés par Meta.** Pour écrire à un client qui ne vous a pas parlé au cours des dernières 24 heures, WhatsApp exige que le message soit un modèle vérifié et approuvé par Meta. Consultez vos modèles dans **Canaux → WhatsApp** (vous y verrez le résumé des modèles et le bouton **Voir tous les modèles**).
-- **Préparez votre audience.** Vous pouvez envoyer à **Tous les contacts** ou à un **Segment** (groupe enregistré de contacts avec des filtres, par exemple « clients VIP »). Les segments se créent dans **CRM → Segments**.
-- **Vérifiez votre offre.** L'offre Emprendedor n'inclut pas les campagnes, et Starter en autorise jusqu'à 3 par mois (voir le tableau des limites plus bas).
+- Pour WhatsApp, l'éditeur actuel ne relie pas de manière sûre le texte saisi au nom et aux composants exacts d'un modèle approuvé par Meta. Un envoi peut échouer même si le texte semble correct.
+- Une campagne programmée ne dispose d'aucune action opérationnelle d'annulation avant sa prise en charge par le processus automatique.
+- L'Email de campagne ne certifie pas Email comme canal conversationnel et ne fournit pas de connexion Email en libre-service.
 
-## Comment créer et envoyer une campagne
+Pour l'instant, utilisez l'écran pour préparer des brouillons, vérifier les segments et consulter des résultats déjà enregistrés. **N'utilisez pas Envoyer maintenant et ne programmez pas de campagne de production** tant que le panneau ne propose pas un sélecteur vérifié de modèle/expéditeur et une action d'annulation. Coordonnez un test contrôlé avec le support avant tout envoi réel.
 
-1. Allez dans **Croissance → Campagnes** et cliquez sur **Nouvelle campagne**.
-2. Saisissez le **Nom de la campagne** (par exemple, « Promo été 2026 »). Il sert uniquement à un usage interne.
-3. Dans **Canaux d'envoi**, choisissez **WhatsApp**, **Email** ou les deux.
-4. Rédigez le contenu de chaque canal :
-   - **Modèle WhatsApp** : écrivez le texte du message. Utilisez `{{name}}` pour insérer automatiquement le nom de chaque contact. N'oubliez pas qu'il doit correspondre à un modèle approuvé par Meta si vous contactez des clients en dehors de la fenêtre de 24 heures.
-   - **Contenu de l'email** : objet et corps du message.
-5. Si vous avez **plus d'un numéro WhatsApp connecté**, le sélecteur **Envoyer depuis le numéro** apparaît : choisissez depuis quel numéro part la campagne, ou laissez **Numéro principal (par défaut)**.
-6. Dans **Audience**, choisissez **Tous les contacts** ou **Segment** (et sélectionnez lequel ; vous verrez combien de contacts il contient).
-7. Dans **Date d'envoi (optionnel)** :
-   - Si vous choisissez une date et une heure, le bouton affichera **Programmer** et la campagne partira toute seule à ce moment-là.
-   - Si vous la laissez vide, le bouton affichera **Enregistrer brouillon** et la campagne reste enregistrée sans être envoyée.
-8. Pour envoyer un brouillon immédiatement, ouvrez-le dans la liste et utilisez **Envoyer maintenant**.
+## Préparer un brouillon sûr
 
-> Astuce : les envois de masse partent à un rythme contrôlé pour protéger votre numéro WhatsApp. Si la campagne est volumineuse, il est normal qu'elle prenne plusieurs minutes à se terminer.
+1. Allez dans **IA et croissance → Campagnes** et créez une campagne.
+2. Donnez-lui un nom interne.
+3. Choisissez **Tous les contacts** ou un **Segment** créé dans **CRM → Segments**.
+4. Vérifiez le nombre de destinataires et les désabonnements.
+5. Enregistrez le brouillon sans date d'envoi.
 
-## États d'une campagne
+N'insérez pas de données sensibles dans le nom interne. La disponibilité, les canaux et la capacité actuels apparaissent à l'écran et dans **Administration → Forfait et facturation**.
 
-Chaque campagne affiche son état dans la liste : **Brouillon** (enregistrée, non programmée), **Programmée**, **En envoi**, **Envoyée**, **Terminée** ou **Échouée**.
-
-## Métriques : comment lire les résultats
-
-En haut de **Campagnes**, vous voyez les totaux : **Campagnes**, **Envoyées**, **Programmées** et **Réponses**. De plus, chaque campagne affiche son entonnoir :
-
-- **Destinataires** — à combien de contacts elle a été adressée.
-- **Livré** — combien de messages sont arrivés sur le téléphone ou dans la boîte du client.
-- **Lu** — combien l'ont ouvert (WhatsApp signale les lectures lorsque le client les a activées).
-- **Ont répondu** — combien ont répondu au message.
-
-Si vous voulez en plus savoir combien de **ventes** chaque campagne a générées, consultez **Revenus par campagnes** dans la section d'attribution des Analytiques.
-
-## Tests A/B (offres Pro et supérieures)
-
-Avec l'interrupteur **Tester deux variantes (A/B)** lors de la création de la campagne, vous pouvez envoyer deux versions du message et découvrir laquelle fonctionne le mieux :
-
-1. Activez **Tester deux variantes (A/B)** et rédigez la **Variante A** et la **Variante B**.
-2. Ajustez la **Répartition de l'envoi** (quel pourcentage de l'audience reçoit chaque variante).
-3. Optionnel : activez l'**Auto-sélection** pour que le système détecte la variante gagnante et l'utilise automatiquement avec le reste de l'audience.
-4. Après l'envoi, la campagne affiche les résultats par variante (envoyés, livrés, taux de lecture) et vous pouvez utiliser **Sélectionner gagnante**.
-
-> Conseil : ne changez qu'un seul élément entre les variantes (le texte, l'offre ou l'appel à l'action). Vous saurez ainsi exactement ce qui a fait la différence.
-
-## Modèles WhatsApp : créer et faire approuver
+## Modèles WhatsApp
 
 Chemin : **Canaux → WhatsApp → Voir tous les modèles**.
 
-- **Créer un modèle** : donnez-lui un nom (minuscules et tirets bas, ex. `recordatorio_pago`), choisissez la langue et la catégorie, écrivez l'en-tête, le corps (avec des variables comme `{{1}}`), le pied de page et jusqu'à 3 boutons. Une fois terminé, **Envoyer à Meta**.
-- Meta l'examine normalement entre quelques minutes et 72 heures. Les états sont **Approuvés**, **En attente** et **Rejetés** (avec le motif du rejet visible).
-- **Synchroniser depuis Meta** récupère les modèles déjà approuvés dans votre compte.
-- En connectant WhatsApp, Parallly envoie automatiquement 3 **modèles de départ** utilitaires (rappel de rendez-vous, confirmation de commande et paiement reçu) que Meta approuve généralement en quelques minutes.
-- Si vous avez plusieurs numéros, lors de la création du modèle vous choisissez le **Numéro / compte** auquel il appartient.
+- Un modèle possède un nom technique, une langue, une catégorie et des composants qui doivent correspondre exactement à ce que Meta a approuvé.
+- **Synchroniser depuis Meta** actualise les états affichés dans Parallly.
+- Lors de la connexion de WhatsApp, Parallly peut soumettre **4 modèles de départ** : rappel de rendez-vous, confirmation de présence, confirmation de commande et paiement reçu.
+- Meta décide d'approuver ou de rejeter chaque modèle et de la durée de l'examen ; Parallly affiche uniquement l'état reçu.
 
-## Limites par offre
+La présence d'un modèle approuvé ne corrige pas à elle seule la limite de l'éditeur de campagnes décrite ci-dessus.
 
-| Offre | Campagnes par mois | Tests A/B | Segments | Contacts |
-|------|-----------------|-------------|-----------|-----------|
-| Emprendedor | Non inclus | — | — | 100 |
-| Starter | 3 | Non | 3 | 500 |
-| Pro | Illimitées | Oui | 15 | 5.000 |
-| Enterprise | Illimitées | Oui | Illimités | 50.000 |
-| Custom | Illimitées | Oui | Illimités | Illimités |
+## États et métriques
 
-Autres limites associées : le canal **Email** est disponible à partir de l'offre Starter, et le nombre de **numéros WhatsApp** que vous pouvez connecter dépend de l'offre (Pro : 2, Enterprise : 3, Custom : sans limite). Vous pouvez changer d'offre dans **Configuration → Facturation**.
+La liste peut afficher des brouillons et des campagnes déjà traitées avec destinataires, livraisons, lectures, réponses ou échecs. Ces données dépendent des événements transmis par chaque prestataire ; les informations de livraison ou de lecture ne sont pas toujours disponibles.
 
-## Et le SMS ?
-
-Le SMS dans Parallly **n'est pas un canal de conversation** : c'est une notification à sens unique qui fonctionne avec des **crédits** (1 crédit = 1 segment de SMS) et qui part via l'infrastructure de la plateforme, sans que vous ayez besoin de souscrire à quoi que ce soit à part. L'achat de packs et votre solde se gèrent dans **Configuration → Facturation**. Si l'option SMS n'apparaît pas lors de la création de votre campagne, c'est qu'elle n'est pas encore activée pour votre compte.
+Les contrôles de variantes A/B sont présents dans l'éditeur, mais leur envoi utilise le même lancement non vérifié. Utilisez-les uniquement comme configuration de brouillon jusqu'à la certification du flux.
 
 ## Questions fréquentes
 
-**Pourquoi je ne vois pas la section Campagnes ?**
-Votre rôle doit être administrateur ou superviseur, et votre offre doit inclure les campagnes (l'offre Emprendedor ne les inclut pas).
-
 **Puis-je annuler une campagne programmée ?**
-Tant qu'elle est à l'état **Programmée**, vous pouvez la gérer depuis la liste avant l'heure d'envoi. Une fois à l'état **En envoi**, les messages sont déjà en train de partir.
+Il n'existe aucune action opérationnelle d'annulation dans la version actuelle. Ne programmez donc pas de campagnes de production depuis cet éditeur.
 
-**Pourquoi ma campagne WhatsApp n'arrive-t-elle pas à certains contacts ?**
-Les causes les plus fréquentes : le modèle n'est pas **Approuvé** par Meta, le contact s'est désabonné (on ne lui envoie plus de diffusions) ou le numéro n'existe plus. Vérifiez l'état du modèle dans **Canaux → WhatsApp**.
-
-**Puis-je personnaliser le message avec le nom de chaque client ?**
-Oui : écrivez `{{name}}` dans le texte et chaque contact recevra son propre nom.
+**Puis-je saisir directement le texte du modèle WhatsApp et l'envoyer ?**
+Pas de manière sûre dans cette version. WhatsApp exige l'identifiant et les composants exacts d'un modèle approuvé ; l'éditeur n'effectue pas encore cette liaison de bout en bout.
 
 **Combien de temps Meta met-il pour approuver un modèle ?**
-Normalement entre quelques minutes et 72 heures. Vous verrez l'état (En attente/Approuvé/Rejeté) dans la liste des modèles.
+Aucun délai n'est garanti. Consultez l'état synchronisé dans **Canaux → WhatsApp**.
 
-**Est-ce que l'IA répond à la campagne ?**
-Si un client répond à votre campagne WhatsApp, la réponse entre comme une conversation normale et est prise en charge par l'agent IA de cette connexion.
+**L'Email de campagne active-t-il un canal Email ?**
+Non. L'Email conversationnel en libre-service n'est pas certifié actuellement.
 
-Besoin de plus d'aide ? Écrivez-nous sur https://parallly-chat.cloud/support
+**Besoin de plus d'aide ?** Écrivez-nous sur https://parallly-chat.cloud/support

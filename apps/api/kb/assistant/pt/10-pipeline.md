@@ -3,7 +3,7 @@ id: pipeline
 title: "Funil de vendas (pipeline)"
 routes: ["/admin/pipeline", "/admin/settings/pipeline"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["funil", "funil de vendas", "pipeline", "kanban", "etapas", "oportunidades", "negócios", "deals", "auto-avanço", "avanço automático", "mover cartão", "arrastar", "probabilidade", "cores das etapas", "aprovação de negócios", "aprovar", "rejeitar", "re-sincronizar", "vários pipelines", "etapa ganha", "etapa perdida"]
+keywords: ["funil", "funil de vendas", "pipeline", "kanban", "etapas", "oportunidades", "negócios", "deals", "auto-avanço", "avanço automático", "mover cartão", "arrastar", "probabilidade", "cores das etapas", "aprovação de negócios", "aprovar", "rejeitar", "re-sincronizar", "etapa ganha", "etapa perdida"]
 ---
 
 # Funil de vendas (pipeline)
@@ -27,10 +27,7 @@ Além disso, quando seus clientes conversam com o agente de IA, as oportunidades
 
 É só **arrastar o cartão** para a coluna desejada. Todos os perfis (administrador, supervisor e agente) podem mover cartões.
 
-Duas coisas podem travar o movimento:
-
-- **Condições da etapa**: se a etapa de destino exige certos dados (e-mail, telefone, nome completo, pontuação mínima, consultor atribuído, agendamento marcado ou cotação ativa), você verá uma mensagem explicando exatamente o que falta.
-- **Aprovação**: se a etapa exige aprovação, o cartão fica em **Aprovação pendente** até que um supervisor ou administrador o revise.
+As **Condições da etapa** configuradas podem travar o movimento. Se a etapa de destino exige certos dados (e-mail, telefone, nome completo, pontuação mínima, consultor atribuído, agendamento marcado ou cotação ativa), você verá uma mensagem explicando exatamente o que falta.
 
 Ao clicar em um cartão, você abre o detalhe do negócio: valor, **Probabilidade**, **Dias na etapa**, **Histórico de etapas**, responsável atribuído e atalhos para **Ver conversa** e **Ver contato**. De lá você também pode **Arquivar** a oportunidade (ela é marcada como perdida).
 
@@ -64,40 +61,14 @@ Ao lado do interruptor está o botão **Re-sincronizar**: ele realinha as oportu
 
 > O avanço automático também respeita suas **Condições de Transição**: se o contato não cumpre os requisitos de uma etapa, a IA não o move para lá.
 
-## Como funciona a aprovação de negócios
+## Estado da aprovação de negócios
 
-Para etapas sensíveis (por exemplo, "Fechamento") você pode exigir que um supervisor aprove a passagem:
-
-1. Um agente move o cartão para a etapa que exige aprovação → o cartão mostra o selo **Aprovação pendente**.
-2. Um supervisor ou administrador revisa e escolhe **Aprovar** ou **Rejeitar** (se rejeitar, informa o **Motivo da rejeição**).
-3. Só depois da aprovação a oportunidade avança para a etapa de destino.
-
-## Como ter mais de um funil
-
-Se você trabalha com processos de venda diferentes (ex.: venda direta vs. pós-venda), pode criar vários pipelines, cada um com seu próprio quadro e etapas:
-
-1. Em **Funil de vendas**, use o seletor de abas na parte de cima e clique em **Novo pipeline**.
-2. Dê um **Nome** (ex.: "Pipeline de serviços") e uma **Descrição** opcional.
-3. Alterne entre pipelines clicando na aba de cada um. No detalhe de um negócio você pode movê-lo para outro pipeline (ele entra na primeira etapa do novo).
-
-Se você excluir um pipeline, os negócios dele vão para o pipeline padrão; o pipeline padrão não pode ser excluído.
-
-### Limites por plano
-
-| Plano | Pipelines | Etapas por plano |
-|-------|-----------|------------------|
-| Emprendedor | 1 | 3 |
-| Starter | 1 | 5 |
-| Pro | 3 | 15 |
-| Enterprise | 10 | Sem limite |
-| Custom | Sem limite | Sem limite |
-
-> **Dica:** use pipelines separados quando os processos forem realmente diferentes. Para separar por produto dentro do mesmo processo, prefira etiquetas ou campos personalizados.
+A interface contém elementos de aprovação, mas **o fluxo de solicitação, revisão e bloqueio de etapas finais não está certificado de ponta a ponta na versão atual**. Não o use como controle financeiro ou de auditoria: uma movimentação direta pode alterar a etapa sem concluir essa revisão. Até que o painel marque o fluxo como disponível, restrinja operacionalmente os fechamentos a administradores/supervisores e revise o histórico de cada oportunidade.
 
 ## Perguntas frequentes
 
 **Por que não consigo mover um cartão para determinada etapa?**
-A etapa tem **Condições de Transição** que o contato ainda não cumpre (a mensagem diz o que falta), ou exige aprovação de um supervisor.
+A etapa tem **Condições de Transição** que o contato ainda não cumpre; a mensagem indica o que falta. Não dependa dos elementos de aprovação como bloqueio aplicado nesta versão.
 
 **O auto-avanço desfaz o que eu movo manualmente?**
 A IA só avança oportunidades com base em sinais novos da conversa. Se você prefere controle total sobre as etapas, desligue o interruptor **Auto-avanço** no quadro.

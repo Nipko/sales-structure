@@ -8,7 +8,7 @@ keywords: ["automatisation", "automatisations", "règles", "règle automatique",
 
 # Automatisations et suivi
 
-Les automatisations font en sorte que Parallly travaille pour vous : lorsqu'il se passe quelque chose dans votre entreprise (un lead arrive, un client cesse de répondre, quelqu'un change d'étape), la plateforme exécute des actions automatiques sans que personne n'ait à surveiller. Il existe trois outils, tous dans la section **Croissance → Automatisation** de la barre latérale :
+Les automatisations font en sorte que Parallly travaille pour vous : lorsqu'il se passe quelque chose dans votre entreprise (un lead arrive, un client cesse de répondre, quelqu'un change d'étape), la plateforme exécute des actions automatiques. Dans **IA et croissance**, vous trouverez **Automatisation**, **Séquences Drip** et **Modèles** :
 
 - **Règles** : « quand X se produit, fais Y » (une seule fois par événement).
 - **Séquences Drip** : séries de messages de suivi avec des délais d'attente entre chacun.
@@ -46,7 +46,7 @@ Si vous préférez voir votre automatisation sous forme de diagramme plutôt qu'
 2. Construisez le flux sur le canevas en reliant des blocs **Déclencheur**, **Condition**, **Action** et **Attente**. Les conditions divisent le flux en branches **Oui** / **Non**.
 3. Enregistrez avec **Enregistrer**. Une règle créée dans le constructeur visuel peut continuer à être modifiée avec **Modifier avec l'assistant**, et vice versa : c'est la même règle vue de deux façons.
 
-> À partir du plan Pro, parmi les actions du constructeur apparaît aussi **HTTP Request**, qui permet à une règle d'avertir un autre système que vous utilisez dans votre entreprise (votre système de facturation, votre inventaire, etc.). Si vous avez besoin de la configurer, demandez de l'aide à votre prestataire technique ou écrivez-nous au support.
+> Si **HTTP Request** est activé pour votre compte, une règle peut avertir un autre système de l'entreprise. Traitez-le comme une intégration technique et testez-le avec des données non sensibles.
 
 ## Comment créer une séquence de suivi (Drip)
 
@@ -61,10 +61,7 @@ Les **Séquences Drip** envoient plusieurs messages espacés dans le temps : id�
 3. Avec **Ajouter une étape**, créez chaque message. Chaque étape comporte :
    - **Attente** : combien de temps attendre avant de l'envoyer (**Minutes**, **Heures** ou **Jours**).
    - **Type de message** : **Modèle WhatsApp**, **Message personnalisé** ou **Généré par l'IA** (l'agent rédige le message selon le contexte de ce lead).
-4. Dans **Arrêter si**, indiquez quand le contact doit sortir de la séquence :
-   - **Le contact répond** — pour ne pas insister auprès de quelqu'un qui vous parle déjà.
-   - **Le contact convertit** — s'il avance vers une étape finale de l'entonnoir, la séquence est annulée.
-   De plus, si un client demande à ne plus recevoir de messages (opt-out), la plateforme arrête les envois automatiquement.
+4. Dans **Arrêter si**, utilisez **Le contact répond** pour ne pas insister auprès de quelqu'un qui vous parle déjà. Si le client demande à ne plus recevoir de messages (opt-out), la plateforme arrête également les envois. L'option visible **Le contact convertit** n'est pas encore appliquée automatiquement dans cette version : désinscrivez manuellement le contact après sa conversion.
 5. Activez la séquence avec l'interrupteur **Active**.
 
 Sur chaque carte, vous verrez le compteur **Inscrits** : combien de contacts se trouvent dans ce flux en ce moment.
@@ -82,33 +79,25 @@ Sur chaque carte, vous verrez le compteur **Inscrits** : combien de contacts se 
 3. Cliquez sur **Installer** : une fenêtre vous montre le déclencheur, les actions et les **Variables** que vous pouvez ajuster (textes, délais) avant de confirmer avec **Installer le modèle**.
 4. Une fois terminé, utilisez **Voir les règles** pour accéder directement à vos règles. La règle installée reste **inactive** par défaut : vérifiez les textes et activez-la lorsque vous êtes prêt.
 
-## Limites par plan
+## Disponibilité et capacité
 
-| Plan | Règles d'automatisation | Séquences Drip | Exécutions par heure |
-|------|-------------------------|----------------|----------------------|
-| Emprendedor (USD $21/mois) | Non inclus | Non inclus | — |
-| Starter (USD $49/mois) | 5 | 3 | 50 |
-| Pro (USD $129/mois) | Illimitées | 10 | 500 |
-| Enterprise (USD $349/mois) | Illimitées | Illimitées | 5 000 |
-| Custom (sur devis) | Illimitées | Illimitées | Sans limite |
-
-L'action **HTTP Request** (connexion avec d'autres systèmes) est disponible à partir du plan **Pro**. Vous pouvez changer de plan dans **Configuration → Facturation** ; le cycle annuel bénéficie d'environ 15 % de remise.
+L'écran indique si les règles, séquences et **HTTP Request** sont activés, ainsi que l'utilisation actuelle. Consultez les limites en vigueur dans **Forfait et facturation**.
 
 ## Questions fréquentes
 
 **Quelle est la différence entre une règle et une séquence drip ?**
-Une règle réagit une fois à un événement (« nouveau lead → assigner un agent »). Une séquence drip envoie plusieurs messages sur plusieurs jours, avec des délais entre chacun, et s'arrête d'elle-même si le contact répond ou convertit.
+Une règle réagit une fois à un événement (« nouveau lead → assigner un agent »). Une séquence drip envoie plusieurs messages sur plusieurs jours, avec des délais entre chacun, et peut s'arrêter si le contact répond ou demande à ne plus recevoir de messages.
 
 **J'ai créé une règle et rien ne se passe, que dois-je vérifier ?**
 Vérifiez d'abord qu'elle est **Active** (les modèles s'installent inactifs par défaut). Ensuite, examinez les conditions : elles doivent toutes être remplies en même temps, et une condition mal définie (par exemple, un canal que vous n'utilisez pas) bloque la règle. L'**Historique des exécutions** vous indique si la règle s'est déclenchée et quel résultat elle a eu.
 
 **Puis-je mettre en pause une séquence sans la supprimer ?**
-Oui. Utilisez l'interrupteur **Active/Inactive** sur la carte de la séquence — utile pendant les vacances ou une campagne spéciale. Les contacts déjà inscrits cessent de recevoir des étapes tant qu'elle est inactive.
+L'interrupteur **Active/Inactive** empêche les nouvelles inscriptions, mais des étapes déjà planifiées peuvent continuer pour les contacts inscrits dans cette version. Utilisez **Désinscrire** pour ces contacts avant de désactiver la séquence.
 
 **Les automatisations peuvent-elles écrire à n'importe quel contact à n'importe quelle heure ?**
 Elles envoient selon les délais que vous configurez, en respectant toujours les opt-outs. Sur WhatsApp, les messages en dehors de la fenêtre de conversation requièrent des modèles approuvés, c'est pourquoi le type d'étape **Modèle WhatsApp** est le plus sûr pour les suivis sur plusieurs jours.
 
-**Je suis sur le plan Emprendedor et je ne vois pas ces options.**
-Le plan Emprendedor n'inclut ni les automatisations ni les séquences. Passez à Starter ou supérieur depuis **Configuration → Facturation** pour les débloquer.
+**Je ne vois pas ces options.**
+Vérifiez votre rôle et consultez **Forfait et facturation** pour confirmer que la fonction est activée pour votre compte.
 
 Des questions ? Écrivez-nous sur https://parallly-chat.cloud/support

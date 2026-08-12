@@ -6,9 +6,11 @@ roles: ["tenant_admin"]
 keywords: ["instagram", "messenger", "telegram", "facebook", "conectar canal", "conectar instagram", "conectar messenger", "conectar telegram", "reconectar", "token expirado", "bot", "botfather", "mensajes directos", "dm", "desconectar canal", "cuenta business", "varias cuentas", "limite de cuentas", "pagina de facebook", "redes sociales"]
 ---
 
-Además de WhatsApp, tu negocio puede atender clientes por **Instagram**, **Messenger** y **Telegram**. Los tres se conectan desde la sección **Canales** de la barra lateral, y cada conexión puede tener su propio agente de IA. Aquí te explicamos qué necesitas, cómo conectar cada uno, qué significan los estados y qué hacer cuando una conexión expira.
+# Conectar Instagram, Messenger y Telegram
 
-> Solo el rol **administrador** puede conectar y desconectar canales. Supervisores y agentes pueden ver el estado, pero no modificarlo.
+Además de WhatsApp, tu negocio puede atender clientes por **Instagram**, **Messenger** y **Telegram**. Los tres se conectan desde **Administración → Canales**, y cada conexión puede tener su propio agente de IA. Aquí te explicamos qué necesitas, cómo conectar cada uno, qué significan los estados y qué hacer cuando una conexión expira.
+
+> Solo el rol **administrador** puede entrar a Canales y administrar conexiones.
 
 ## Antes de empezar: requisitos por canal
 
@@ -68,17 +70,7 @@ Recuerda: cada conexión necesita un agente de IA asignado para responder autom�
 
 ## Varias cuentas del mismo canal
 
-Según tu plan, puedes conectar más de una cuenta del mismo tipo (por ejemplo, dos cuentas de Instagram o dos bots de Telegram) sin que sus conversaciones se mezclen. Límites incluidos por plan:
-
-| Plan | Instagram | Messenger | Telegram |
-|------|:---------:|:---------:|:--------:|
-| Emprendedor | 1 | 1 | 1 |
-| Starter | 1 | 1 | 1 |
-| Pro | 1 | 3 | 1 |
-| Enterprise | 2 | 5 | 2 |
-| Custom | Ilimitado | Ilimitado | Ilimitado |
-
-Si necesitas más conexiones de las que incluye tu plan, escríbenos a [soporte](https://parallly-chat.cloud/support): los límites pueden ampliarse para tu cuenta.
+Puedes conectar más de una cuenta del mismo tipo cuando tu cuenta tenga capacidad, sin mezclar conversaciones. La pantalla muestra el uso actual; consulta disponibilidad y límites vigentes en **Plan y facturación**.
 
 ## Cómo desconectar una cuenta
 

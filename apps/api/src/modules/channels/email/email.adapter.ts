@@ -6,13 +6,14 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { EmailChannelService } from './email-channel.service';
+import { canonicalEmailMessageId } from './email-message-id.util';
 import * as nodemailer from 'nodemailer';
 
 /**
  * Email Channel Adapter
  *
  * Implements IChannelAdapter for email as a conversational channel.
- * Inbound: SendGrid Inbound Parse webhook format
+ * Inbound: authenticated JSON normalized by a managed provider adapter/proxy
  * Outbound: SMTP via nodemailer (per-tenant config or platform default)
  *
  * NOT to be confused with the transactional EmailService in modules/email/ —
@@ -31,20 +32,20 @@ export class EmailAdapter implements IChannelAdapter {
     ) {}
 
     /**
-     * SendGrid Inbound Parse uses basic auth, not a verify token challenge.
-     * Return null to indicate no challenge-response is needed.
+     * Inbound authenticity is enforced by EmailWebhookSecurityService before
+     * this adapter is invoked. Email providers do not use a Meta-style
+     * challenge-response, so there is no adapter-level token to return.
      */
     verifyWebhook(_query: any): string | null {
         return null;
     }
 
     /**
-     * Parse incoming SendGrid Inbound Parse webhook into a NormalizedMessage.
+     * Parse the bounded JSON webhook into a NormalizedMessage.
      *
-     * SendGrid sends multipart/form-data POST with fields:
-     *   from, to, subject, text, html, headers (full email headers),
-     *   envelope (JSON: {to: [...], from: "..."}), attachments (count),
-     *   attachment-info (JSON), attachment1, attachment2, etc.
+     * The controller accepts application/json only. A managed provider adapter
+     * may translate an upstream multipart event, but attachment blobs are not
+     * part of this contract.
      */
     async handleWebhook(payload: any, accountId: string): Promise<NormalizedMessage | null> {
         try {
@@ -58,9 +59,11 @@ export class EmailAdapter implements IChannelAdapter {
                 return null;
             }
 
-            // Extract Message-ID from headers for idempotency
+            // Use the exact same canonical identity as the controller. The
+            // explicit field is required as a fallback because a managed JSON
+            // adapter may not forward the raw header block.
             const headers = payload?.headers || '';
-            const messageIdHeader = this.extractHeader(headers, 'Message-ID') || uuid();
+            const messageIdHeader = canonicalEmailMessageId(payload) || uuid();
 
             // Sanitize HTML content
             const sanitizedHtml = htmlBody ? this.sanitizeHtml(htmlBody) : undefined;

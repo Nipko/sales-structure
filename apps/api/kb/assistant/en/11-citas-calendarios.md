@@ -25,7 +25,7 @@ Services are what your customers can book (a consultation, a haircut, an advisor
    - If it's online or hybrid, you can leave the **Meeting link** empty: a Meet or Teams link is generated automatically for each appointment.
 6. Save with **Create service**. You can activate or deactivate services whenever you like.
 
-How many services you can create depends on your plan: Emprendedor 1, Starter 2, and Pro and up with no limit.
+The screen shows your current service capacity; check current details in **Plan & Billing**.
 
 ## How to set your availability
 
@@ -51,15 +51,7 @@ Connecting your calendar avoids scheduling conflicts: Parallly appointments show
 3. Authorize access with your Google or Microsoft account.
 4. Done: new appointments are also created in your external calendar automatically.
 
-How many calendars you can connect depends on your plan:
-
-| Plan | Connected calendars |
-|------|---------------------|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
-| Custom | No limit |
+The screen shows how many calendars you can connect and how much capacity remains. Check current details in **Plan & Billing**.
 
 ### With several calendars, which one gets each appointment?
 
@@ -71,7 +63,7 @@ You give each connected calendar a label: **General**, **Team member**, or **Ser
 
 ### Disconnecting a calendar that has upcoming appointments
 
-If you try to disconnect a calendar with pending appointments, the panel offers you two options: **Reassign appointments to another calendar** (you choose the destination, the appointments move, and only then does it disconnect) or **Cancel all appointments and disconnect**. That way no booking is left hanging without you deciding.
+Guided reassignment or cancellation during disconnect is **not certified end to end in this release**: the operation may not be applied even if the panel appears to finish. Before disconnecting, manually reassign or cancel every future appointment, reload the calendar, and verify that none remains linked to it. Do not treat the success message alone as confirmation.
 
 ## Automatic meeting links
 
@@ -86,7 +78,7 @@ In **Appointments** → **Settings** → **Reminders & follow-up** section you c
 - **Attendance confirmation** — after the appointment, the customer is asked whether they showed up.
 - **Auto-complete** — appointments are marked as completed 2 hours after their end time, with no manual work.
 
-WhatsApp reminders use notification templates pre-approved by Meta, so they always arrive, even if the customer hasn't written in over 24 hours.
+WhatsApp reminders can use Meta-approved templates to attempt delivery outside the 24-hour window. Delivery is not guaranteed; it depends on the template and account status, Meta, and the recipient.
 
 ## The AI books on its own in the conversation
 

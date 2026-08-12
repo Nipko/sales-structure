@@ -1,13 +1,13 @@
 # Parallext Engine — Claude Code Context
 
 ## What is this project?
-Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, Email, and a Web Chat Widget. (SMS is a one-way reseller-credits notification product, not a conversational channel — conversational SMS was discarded.)
-Monorepo with 5 apps (83 API modules, 139 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
+Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, and a Web Chat Widget. Email has an internal inbound adapter but no certified tenant self-service configuration; SMS is a one-way reseller-credits notification product, not a conversational channel.
+Monorepo with 5 apps (88 API module declaration files, 143 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
 
 ## Architecture (high-level)
 
 ```
-Customer (WA/IG/Messenger/Telegram/SMS) → Channel API → API (port 3000) → ConversationsService
+Customer (WA/IG/Messenger/Telegram/Web Chat) → Channel ingress → API (port 3000) → ConversationsService
     → IdentityService → PersonaService.getPersonaForChannel(tenantId, channelType, accountId?)
     → BusinessInfoService + KnowledgeService (RAG) + BookingEngine
     → PromptAssemblerService (L1 contract + L2 persona + L3 turn) → LLMRouter → Provider
@@ -23,8 +23,8 @@ For full message flow + module dependency graph see **`docs/architecture-detail.
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. 83 modules
-  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts. 139 pages
+  api/          — NestJS 10, port 3000. 88 module declaration files
+  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts. 143 pages
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. parallly-chat.cloud, 4-language i18n
   mobile/       — React Native / Expo (@parallext/mobile). Agent inbox app. EAS build, Firebase, Sentry. Ships via EAS, NOT the web deploy pipeline (docs/ + apps/mobile are paths-ignored in deploy.yml)
@@ -56,12 +56,12 @@ docs/            — Detailed reference (see Index at bottom)
 - **LLM Router**: Task-based routing (conversation vs tool_calling). 4-tier fallback with circuit breaker. Plan-gated tier access
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
-- **Channels**: Adapter pattern via `IChannelAdapter` (WhatsApp, Instagram, Messenger, Telegram, Email, Web Chat Widget). **One AI agent per _connection_** — with multi-channel-per-type a tenant can hold N connections of the same type (2 WhatsApp numbers, 2 IG accounts…), each bound to its own agent via `agent_personas.channel_bindings`, gated by `features.maxChannelAccounts` (default 1). Tokens are per-account (`channel_accounts.access_token`)
+- **Channels**: Adapter pattern via `IChannelAdapter` (WhatsApp, Instagram, Messenger, Telegram and Web Chat Widget). Email is currently an internal inbound adapter: `/admin/channels/email` calls tenant config routes that do not exist, so it is not a certified self-service conversational connection. **One AI agent per operational connection** — multi-account availability and limits come from the tenant's runtime plan; tokens are per-account (`channel_accounts.access_token`).
 - **Conversation mutex**: Redis SETNX lock per conversation ID (`lock:conv:{conversationId}`, 30s TTL)
 - **Booking state**: Redis (`booking:{conversationId}`, 1h TTL) primary, PostgreSQL backup. In directive mode, only last 4 messages sent to LLM
 - **Multi-agent**: Plan-gated agent count. One agent per _connection_ (see Channels above)
-- **Subscription plans**: **5 plans** — emprendedor (USD $21), starter ($49), pro ($129), enterprise ($349), custom (quote). Control agent count, template access, rate limits, calendar count, property count, SMS credits, media quotas. Source of truth: `apps/api/prisma/seed-billing-plans.js` + `billing_plans` table. Monthly/annual billing cycle (~15% annual discount) — see `docs/billing-annual-cycle.md`
-- **Multi-calendar**: Plan-gated (starter:1, pro:3, enterprise:10, custom:999). 3-tier resolution: service → staff → general fallback
+- **Subscription plans**: names, prices, billing cycles, quotas and feature flags come from the runtime `billing_plans` catalog plus authorized tenant overrides. Do not copy fixed prices or limits into prompts/docs. The seed is only a provisioning baseline; see `docs/billing-annual-cycle.md`
+- **Multi-calendar**: Capacity comes from the runtime plan/overrides. 3-tier resolution: service → staff → general fallback
 - **Vacation Rental**: `Propiedades` sidebar item visible only when `verticalConfig.industry === 'turismo'`
 - **Test in production**: User tests in production, never locally. Deploy via `git push` → GitHub Actions
 - **No mocks for DB**: Integration tests hit real database
@@ -96,7 +96,7 @@ See `.env.example`. Critical:
 - `META_APP_ID/SECRET/CONFIG_ID/VERIFY_TOKEN`, `SYSTEM_USER_ID`
 - LLM keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY` (≥1 required)
 - `SENTRY_DSN`, `GOOGLE_OAUTH_CLIENT_ID`, `SMTP_HOST/USER/PASS`, `MEDIA_STORAGE_PATH`
-- `MERCADOPAGO_ACCESS_TOKEN/PUBLIC_KEY/WEBHOOK_SECRET`
+- `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`
 - `OWNER_COUPON_PIN` — PIN del dueño para emitir cupones de alto impacto (lotes/emisiones grandes o que superan la cuota mensual). Vive en Secrets, NO en la DB (para que ningún super_admin pueda resetearlo). Si no se setea, los cupones de rutina funcionan igual pero los de alto impacto se bloquean. Gobernanza en `billing/coupon-governance.service.ts` (cuota mensual + motivo + PIN, config editable en `platform_settings` key `coupons.governance`)
 - `NEXT_PUBLIC_INSTAGRAM_APP_ID`, `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI`, `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID`
 
@@ -106,7 +106,7 @@ See `.env.example`. Critical:
 
 - Landing: https://parallly-chat.cloud (static, nginx, 4-lang i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js)
-- API: https://api.parallly-chat.cloud (NestJS, 83 modules)
+- API: https://api.parallly-chat.cloud (NestJS, 88 module declaration files)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
@@ -126,7 +126,7 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | Topic | File |
 |-------|------|
 | **Detailed architecture, prompt layers (3-tier), 5-tier knowledge, language detection, auth/sessions, OAuth flows, calendar, observability, BullMQ, pipeline hardening, production resilience, LLM Router task-based routing** | `docs/architecture-detail.md` |
-| **83 modules reference + all endpoints + 139 dashboard pages + 11 BullMQ queues + ~46 cron jobs** | `docs/modules-reference.md` |
+| **Inventario técnico: 88 archivos de módulo API, 143 páginas dashboard, 11 colas BullMQ y crons documentados (snapshot ago 2026)** | `docs/modules-reference.md` |
 | **Platform audit (May 2026, ARCHIVED — historical snapshot)** | `docs/archive/platform-audit-2026-05.md` |
 | **Analytics endpoints (12 dashboard + 7 BI), Redis keys, tenant/global schemas, billing, offboarding, financials, super admin, vertical adaptation, vacation rental, CRM overhaul, handoff system, AI usage dashboard** | `docs/analytics-billing-reference.md` |
 | **Historical changelog (Session entries, navigation redesigns, security fixes, UX overhauls)** | `docs/CHANGELOG.md` |
@@ -149,8 +149,11 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Security policies** | `docs/SECURITY.md` |
 | **Server installation** | `docs/server-installation.md` |
 | **Infrastructure capacity, scaling projections, cost analysis, 1000-tenant scenario, provider comparison** | `docs/infrastructure-capacity-analysis.md` |
-| **User manual** | `docs/user-manual.md` |
-| **Competitive analysis (Q2 2026 — canonical): ~40 competidores en 6 clusters, 31 dimensiones code-grounded, blueprint por competidor, 8 macro-tendencias, pricing WhatsApp/Meta, plan priorizado** | `docs/competitive-analysis-2026-q2.md` (las versiones `-2026-05` y `-05-enhanced` están en `docs/archive/`) |
+| **Manual web tenant v4.4 (navegación, roles, flujos y 18 verticales)** | `docs/user-manual.md` |
+| **Arquitectura de navegación dashboard (orden, retorno, tour y contrato de acceso)** | `docs/dashboard-navigation-architecture-2026-08.md` |
+| **Referencia canónica de capacidades, roles, planes, superficies web/móvil y 18 verticales** | `docs/product-capabilities-reference.md` |
+| **Contrato documental de Parallly Assist: KB runtime, alcance, roles y publicación** | `docs/platform-assistant-knowledge.md` |
+| **Competitive analysis (Q2 2026 — historical snapshot, not a current capability source)** | `docs/competitive-analysis-2026-q2.md`; use `docs/product-capabilities-reference.md` for current scope |
 | **Platform test plan (May 2026, ARCHIVED — historical snapshot)** | `docs/archive/test-plan-2026-05.md` |
 | **Onboarding redesign (Q2 2026): research + proposal — guided/mandatory first-channel flow, 13-competitor teardown, WhatsApp Embedded Signup deep-dive, feature normalization into 5 levels, cohesive with `/onboarding`** | `docs/onboarding-redesign-2026-q2.md` |
 | **Onboarding redesign — technical implementation plan (file-by-file, endpoints, i18n, phases). Reuses existing `WhatsAppEmbeddedSignup` + route cards + ESU/coexistence backend; mostly wiring not building** | `docs/onboarding-redesign-implementation-plan.md` |
@@ -166,7 +169,7 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Super_admin governance & impersonación (platform mode, roles.ts deny-by-default, sesión emparejada, actor real en auditoría)** | `docs/superadmin-governance.md` |
 | **Billing: ciclo anual/mensual, sync a MercadoPago, billing-ops cross-tenant, refund inline, reconciliación** | `docs/billing-annual-cycle.md` |
 | **Pricing / rentabilidad (precios COP por país, márgenes)** | `docs/plan-profitability-2026-07.md` |
-| **App móvil (`apps/mobile`, React Native/Expo): plan, EAS build, Sentry sourcemaps, GATE 0, Play Store, audit** | `docs/mobile-app-plan.md`, `docs/mobile-eas-build.md`, `docs/mobile-sentry-sourcemaps.md`, `docs/mobile-gate0-checklist.md`, `docs/play-store-publish-checklist.md`, `docs/mobile-app-audit-2026-q2.md` |
+| **App móvil (`apps/mobile`, React Native/Expo): manual vigente, plan, EAS build, Sentry sourcemaps, GATE 0, Play Store y audit** | `docs/mobile-user-manual.md`, `apps/mobile/README.md`, `docs/mobile-app-plan.md`, `docs/mobile-eas-build.md`, `docs/mobile-sentry-sourcemaps.md`, `docs/mobile-gate0-checklist.md`, `docs/play-store-publish-checklist.md`, `docs/mobile-app-audit-2026-q2.md`, `docs/mobile-functional-test-2026-08.md` |
 | **Onboarding audit (Jun 2026, estado fases 0-4)** | `docs/onboarding-audit-2026-06.md` |
 | **Auditoría del onboarding (Jul 2026 — VIGENTE, supersede a la de jun): recorrido real end-to-end, nota 4.5/10. Causa raíz = `/onboarding` y `/admin/setup-wizard` son dos flujos que se pisan + el estado vive en 3 lugares sin autoridad. Camino canónico elegido: `/onboarding` extendido, setup-wizard degradado a editor de agente. Bloques "Ahora" y casi todo "Después" ya implementados** | `docs/onboarding-audit-2026-07.md` |
 | **Marketing/contenido (Jul 2026): capacidades de creación de contenido operables desde Claude Code — stack local $0 (satori/sharp + Playwright + Remotion + ffmpeg), APIs de imagen/video/voz (fal.ai, Kling 3.0 es-LA, Veo 3.1, ElevenLabs, HeyGen), publicación (Meta directo + Postiz), precios verificados y fases** | `docs/marketing-content-capabilities-2026-07.md` |

@@ -14,13 +14,13 @@ Something not working the way you expected? This guide gathers the most common i
 
 If your customers write to you but the messages don't show up in the **Inbox**:
 
-1. Go to **Channels** in the sidebar and find the card for the affected channel.
-2. Check the connection status: if it says **Disconnected** or you see a notice like "**Token expired. Please reconnect your account**", that's the cause. Follow the steps in the next section to reconnect.
-3. If you have **several accounts on the same channel** (for example, two WhatsApp numbers), confirm the customer wrote to the number or account that is connected: each connection is independent.
+1. Ask an administrator to open **Administration → Channels** and find the affected channel card. If you are an administrator, open it directly.
+2. The administrator checks the connection status: if it says **Disconnected** or shows an expired token, they should follow the steps in the next section.
+3. If there are **several accounts on the same channel**, the administrator confirms the customer wrote to the connected number or account: each connection is independent.
 4. Test it yourself: send a message from another phone or account and check whether it appears in the **Inbox** within a few seconds.
 5. If the channel shows as **Connected** and messages still aren't arriving, write to support with the channel, the approximate time, and an example of the message that didn't come through.
 
-> Only the **administrator** role can connect, reconnect, or disconnect channels. Supervisors and agents can see the status, but can't change it.
+> **Channels** is an administrator-only screen. Supervisors and agents should report the channel, approximate time, and an example to an administrator; they cannot view or change the status on that screen.
 
 ## Channel disconnected or token expired: how to reconnect
 
@@ -45,7 +45,7 @@ Run through this list in order; the cause is almost always one of these:
 3. **Is it within its working hours?** In the agent editor, check the **Working hours** card: outside that range the agent doesn't respond automatically.
 4. **Is the response mode correct?** Under **Behavior**, if the mode is set to "always human", the AI never replies on its own. Switch it to "always AI" or "hybrid" depending on what you need.
 5. **Is the conversation with a human?** If you or someone on the team took over the conversation in the **Inbox** (or the customer asked to speak with a person), the AI stays paused in that conversation until **Resolve** is clicked. This is expected behavior, not a failure.
-6. **Did you run out of AI messages for the month?** Go to **Settings → Billing** and look at the AI message usage bar. Each plan includes a monthly amount (for example, Emprendedor 1,000 and Starter 5,000); if it runs out, upgrade your plan or wait for the monthly reset.
+6. **Did you run out of AI message capacity?** Open **Plan & Billing** and review the usage bar and current options.
 
 If the agent **responds, but responds poorly** (makes up data, doesn't know your prices, or goes off topic):
 
@@ -55,20 +55,15 @@ If the agent **responds, but responds poorly** (makes up data, doesn't know your
 
 ## I can't send a campaign
 
-The most common causes when creating or sending a campaign in **Campaigns**:
-
-- **Your plan doesn't include campaigns or you reached this month's cap.** Emprendedor doesn't include campaigns; Starter includes 3 per month; Pro, Enterprise, and Custom have them unlimited. If you hit the cap you'll see the limit notice with the **Upgrade plan** option.
-- **The WhatsApp template isn't approved.** To message customers who haven't written to you in the last 24 hours, WhatsApp requires a template reviewed and approved by Meta. Check the status in **Channels → WhatsApp → View all templates**: it must show as **Approved** (Meta's review usually takes anywhere from a few minutes to 72 hours). If it was **Rejected**, you'll see the reason; fix the text and submit it again.
-- **Some recipients don't receive it.** It's normal for a few to fail: contacts who opted out (they get no more broadcasts) or numbers that no longer exist. You can see this in the campaign metrics.
-- **Multiple numbers connected**: make sure you chose the correct **sender number** when creating the campaign.
+Launching from the current editor is not certified for production: it still needs safe binding between the approved template identifier and components and the sender, plus a cancellation action for scheduled campaigns. Use **Campaigns** only to prepare drafts and audiences and to review existing metrics. Do not press **Send now** or schedule a real campaign; coordinate a controlled test with [support](https://parallly-chat.cloud/support).
 
 ## I reached my plan's limit
 
 When a resource hits its cap (agents, contacts, campaigns, AI messages, etc.), the platform warns you with a message like "You've reached your current plan's limit" and you won't be able to create more of that resource.
 
-- In **Settings → Billing** you'll see the usage bars: amber warning at **80%** and red alert at **95%** with the **Upgrade plan** button.
-- Upgrading takes effect **instantly**: you pay for the new plan and the limits expand right away.
-- Monthly counters (AI messages, campaigns, multimedia) **reset on the first day of each month**.
+- **Plan & Billing** shows usage bars and warns you as you approach capacity.
+- The screen confirms when a change and any charge will apply before you accept it.
+- Each counter shows its period and next renewal.
 - You can also free up space (for example, delete an agent or contacts you don't use) instead of upgrading.
 
 ## The appointment doesn't appear in my calendar
@@ -108,8 +103,8 @@ Because that conversation is assigned to someone on your team. While it's taken,
 **Who can reconnect channels or change the agent's settings?**
 Only the **administrator** role. If you're a supervisor or agent and you spot the problem, let your administrator know.
 
-**When do my plan's monthly limits reset?**
-On the first day of each month. Fixed limits (agents, contacts, calendars) only change when you change plans.
+**When do my account limits reset?**
+Each usage bar shows its period and next renewal in **Plan & Billing**.
 
 **How long does Meta take to approve a WhatsApp template?**
-Usually anywhere from a few minutes to 72 hours. The status (Pending, Approved, or Rejected) is shown in **Channels → WhatsApp**.
+Meta does not guarantee a timeframe. The status (Pending, Approved, or Rejected) is shown in **Channels → WhatsApp**.

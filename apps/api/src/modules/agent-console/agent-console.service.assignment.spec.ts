@@ -15,6 +15,9 @@ describe('AgentConsoleService canonical manual-assignment event', () => {
             return [];
         });
         const prisma: any = {
+            user: {
+                findFirst: jest.fn().mockResolvedValue({ id: agentId }),
+            },
             transactionInTenantSchema: jest.fn().mockImplementation(async (_schema: string, callback: any) => {
                 if (transactionFails) throw new Error('manual assignment transaction failed');
                 const result = await callback(query);
@@ -87,5 +90,55 @@ describe('AgentConsoleService canonical manual-assignment event', () => {
         const event = h.events.emit.mock.calls[0][1];
         expect(event).not.toHaveProperty('contactId');
         expect(event).not.toHaveProperty('phone');
+    });
+
+    it('claims only when the conversation is still unassigned', async () => {
+        const h = makeHarness();
+
+        await h.service.claimConversation(tenantId, conversationId, agentId);
+
+        const assignmentUpdate = h.query.mock.calls.find(([sql]) =>
+            String(sql).includes('UPDATE conversations'),
+        );
+        expect(assignmentUpdate?.[0]).toContain('AND assigned_to IS NULL');
+        expect(assignmentUpdate?.[1]).toEqual([conversationId, agentId]);
+        expect(h.events.emit).toHaveBeenCalledWith(
+            'conversation.assigned',
+            expect.objectContaining({ tenantId, conversationId, agentId }),
+        );
+    });
+
+    it('fails atomically when another agent already claimed the conversation', async () => {
+        const h = makeHarness();
+        h.query.mockImplementation(async (sql: string) => {
+            if (sql.includes('UPDATE conversations')) return [];
+            return [];
+        });
+
+        await expect(h.service.claimConversation(tenantId, conversationId, agentId))
+            .rejects.toMatchObject({ status: 409 });
+
+        expect(h.query).not.toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO conversation_assignments'),
+            expect.any(Array),
+        );
+        expect(h.events.emit).not.toHaveBeenCalled();
+    });
+
+    it('rejects an inactive or cross-tenant assignment target before opening a transaction', async () => {
+        const h = makeHarness();
+        h.prisma.user.findFirst.mockResolvedValue(null);
+
+        await expect(h.service.assignConversation(tenantId, conversationId, agentId))
+            .rejects.toMatchObject({ status: 400 });
+
+        expect(h.prisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                id: agentId,
+                tenantId,
+                isActive: true,
+            }),
+        }));
+        expect(h.prisma.transactionInTenantSchema).not.toHaveBeenCalled();
     });
 });

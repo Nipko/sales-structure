@@ -10,21 +10,13 @@ keywords: ["knowledge base", "knowledge", "upload documents", "pdf", "faq", "fre
 
 The knowledge base is your AI agent's "memory": the documents, FAQs and pages you upload here are the information it uses to answer your customers. The more complete and up to date it is, the more accurate its replies.
 
-You'll find it in the side menu, under **Growth → Automation → Knowledge Base**. Inside you'll see the **Library**, **FAQs**, **Search in context**, **Quality**, **Analytics** and **Gaps** tabs.
+You'll find it under **AI & Growth → Knowledge Base**. Inside you'll see the **Library**, **FAQs**, **Search in context**, **Quality**, **Analytics** and **Gaps** tabs.
 
 > This section is managed by the **administrator** and **supervisor** roles.
 
-## What your plan includes
+## Availability and capacity
 
-| Plan | Articles / documents | Web page importing | Max size per document | Knowledge analytics |
-|------|:---:|:---:|:---:|:---:|
-| Emprendedor | 5 | Not included | 25,000 characters | No |
-| Starter | 20 | 50 pages | 100,000 characters | Yes |
-| Pro | Unlimited | 500 pages | 250,000 characters | Yes |
-| Enterprise | Unlimited | Unlimited | 500,000 characters | Yes |
-| Custom | Unlimited | Unlimited | No limit | Yes |
-
-If you hit the limit you'll see the **Document limit reached** notice with an option to upgrade your plan.
+The screen shows whether documents, web importing, and analytics are enabled, together with current usage. If you reach capacity, you'll see **Document limit reached**; check **Plan & Billing**.
 
 ## How to upload documents (PDF, Word and more)
 
@@ -43,7 +35,7 @@ When it finishes you'll see a summary of how many were imported successfully. Ea
 
 ## How to import a web page (with automatic updates)
 
-Available from the **Starter** plan:
+When web importing is enabled:
 
 1. In **Library**, click **Import URL**.
 2. Enter the **Page URL** (for example, your site's FAQ page). The **Title** is optional: it's detected automatically.
@@ -80,7 +72,7 @@ FAQs are question-and-answer pairs the agent uses to give exact replies, word fo
 
 ## Analytics: what's queried and what's missing
 
-From the **Starter** plan, the **Analytics** tab shows you:
+When enabled, the **Analytics** tab shows:
 
 - **Unique queries**, **hit rate** and the daily volume of the agent's searches in your knowledge base.
 - **Most queried documents** — your star content.
@@ -109,7 +101,7 @@ Only the documents you marked as public are shown; everything else stays private
 
 ## How the agent uses your knowledge base
 
-When a customer asks something, the agent searches your documents and FAQs for the most relevant fragments and builds its reply from that information — it doesn't make up data you didn't give it. To make this work:
+When a customer asks something, the agent searches your documents and FAQs for the most relevant fragments and uses them as sources to reduce unsupported answers. Like any generative AI, it can still make mistakes: test critical cases and keep the content current. To make this work:
 
 - In **AI agent**, open your agent and, in its tools, make sure the **Knowledge base** card is enabled. Right there you can adjust how many fragments it uses per reply and how strict it is about relevance.
 - Test what the agent would find with the **Search in context** tab: type a question the way a customer would, and you'll see the fragments the AI would use, with their relevance percentage. If nothing useful shows up, there's your next article.
@@ -120,7 +112,7 @@ When a customer asks something, the agent searches your documents and FAQs for t
 That's a sign content is missing. Type the same question in **Search in context**: if there are no results, create an article or FAQ that covers it. Also check **Analytics → Unanswered questions**, where that query was logged.
 
 **Can I import my entire website?**
-You can import page by page with **Import URL**, up to your plan's limit (50 pages on Starter, 500 on Pro, unlimited on Enterprise and Custom). Start with your highest-value pages: FAQs, pricing, policies.
+You can import page by page with **Import URL** up to the limit shown on screen. Start with your highest-value pages: FAQs, pricing, and policies.
 
 **Do changes on my website show up on their own?**
 Yes. Imported pages are reviewed automatically every week and updated if they changed. If you need the change now, use **Refresh content** on the document.
@@ -132,6 +124,6 @@ No. Everything is private except what you mark as **Public** for the help portal
 Yes. Open the document's **Version history** and click **Restore** on the earlier version.
 
 **Why don't I see the Analytics tab with data?**
-Knowledge analytics require the **Starter plan or higher**, and they start filling up with your customers' real conversations. If you just got started, give it a few days.
+Knowledge analytics must be enabled and fill with real customer conversations. If you just started, give them time to collect data.
 
 Need more help? Write to us at https://parallly-chat.cloud/support

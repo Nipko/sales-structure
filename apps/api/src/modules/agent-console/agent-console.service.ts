@@ -1,5 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+    BadRequestException,
+    ConflictException,
+    ForbiddenException,
+    Injectable,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
@@ -119,7 +127,9 @@ export class AgentConsoleService {
         filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' | 'ai' = 'all',
         limit = 50,
         offset = 0,
+        actorRole = 'tenant_agent',
     ): Promise<InboxConversation[]> {
+        if (!this.isTenantInboxRole(actorRole)) return [];
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return [];
 
@@ -162,6 +172,12 @@ export class AgentConsoleService {
                 break;
         }
 
+        let visibilityFilter = '';
+        if (!this.isElevatedTenantInboxRole(actorRole)) {
+            params.push(agentId);
+            visibilityFilter = `AND (c.assigned_to IS NULL OR c.assigned_to = $${params.length})`;
+        }
+
         const conversations = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT
@@ -182,6 +198,7 @@ export class AgentConsoleService {
       ) m ON true
       WHERE ${baseStatusFilter}
       ${statusFilter}
+      ${visibilityFilter}
       ORDER BY ${filter === 'resolved' ? 'c.resolved_at DESC NULLS LAST' : 'm.created_at DESC NULLS LAST'}
       LIMIT ${limit + 1} OFFSET ${offset}`,
             params,
@@ -492,9 +509,29 @@ export class AgentConsoleService {
     }
 
     /**
-     * Assign a conversation to an agent
+     * Assign or reassign a conversation to an agent. Authorization for choosing
+     * the target agent belongs to the controller/gateway boundary.
      */
     async assignConversation(tenantId: string, conversationId: string, agentId: string): Promise<void> {
+        await this.persistConversationAssignment(tenantId, conversationId, agentId, false);
+    }
+
+    /**
+     * Atomically claim an unassigned conversation for the authenticated agent.
+     * The conditional UPDATE closes the check/use race: two agents cannot both
+     * observe an empty assignee and then overwrite one another.
+     */
+    async claimConversation(tenantId: string, conversationId: string, agentId: string): Promise<void> {
+        await this.persistConversationAssignment(tenantId, conversationId, agentId, true);
+    }
+
+    private async persistConversationAssignment(
+        tenantId: string,
+        conversationId: string,
+        agentId: string,
+        onlyIfUnassigned: boolean,
+    ): Promise<void> {
+        await this.assertAssignmentTarget(tenantId, agentId);
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return;
 
@@ -510,10 +547,16 @@ export class AgentConsoleService {
                     `UPDATE conversations
                         SET assigned_to = $2, status = 'with_human', updated_at = NOW()
                       WHERE id = $1::uuid
+                        ${onlyIfUnassigned ? 'AND assigned_to IS NULL' : ''}
                       RETURNING contact_id`,
                     [conversationId, agentId],
                 );
-                if (!conversations[0]) throw new Error(`Conversation ${conversationId} not found`);
+                if (!conversations[0]) {
+                    if (onlyIfUnassigned) {
+                        throw new ConflictException('Conversation is already assigned or does not exist');
+                    }
+                    throw new Error(`Conversation ${conversationId} not found`);
+                }
 
                 await query(
                     `UPDATE conversation_assignments SET resolved_at = NOW()
@@ -555,7 +598,9 @@ export class AgentConsoleService {
             this.logger.error(`conversation.assigned listener failed: ${error.message}`);
         }
 
-        this.logger.log(`Conversation ${conversationId} assigned to agent ${agentId}`);
+        this.logger.log(
+            `Conversation ${conversationId} ${onlyIfUnassigned ? 'claimed' : 'assigned'} by agent ${agentId}`,
+        );
     }
 
     /**
@@ -808,11 +853,31 @@ Rules: only include fields that are clearly visible. Return valid JSON only.`,
         }
     }
 
+    async conversationExists(tenantId: string, conversationId: string): Promise<boolean> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return false;
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT 1 FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+
+        return Boolean(rows?.length);
+    }
+
     /**
-     * Check if an agent can act on a conversation (assigned to them, or conversation is unassigned).
-     * Returns true if the agent is assigned or the conversation has no assignee.
+     * Tenant admins/supervisors may manage any tenant-visible conversation.
+     * Agents must explicitly claim a free conversation first and may then act
+     * only while it remains assigned to their authenticated user id.
      */
-    async canActOnConversation(tenantId: string, conversationId: string, agentId: string): Promise<boolean> {
+    async canActOnConversation(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string = 'tenant_agent',
+    ): Promise<boolean> {
+        if (!this.isTenantInboxRole(actorRole)) return false;
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return false;
 
@@ -823,10 +888,133 @@ Rules: only include fields that are clearly visible. Return valid JSON only.`,
         );
 
         if (!rows || rows.length === 0) return false;
+        if (this.isElevatedTenantInboxRole(actorRole)) return true;
+        return rows[0].assigned_to === actorId;
+    }
 
-        const assignedTo = rows[0].assigned_to;
-        // Allow if unassigned or assigned to this agent
-        return assignedTo === null || assignedTo === agentId;
+    /**
+     * Read access is intentionally broader than mutation access: agents may
+     * inspect their own conversations and the unassigned queue so they can
+     * decide whether to claim an item, but never a conversation held by a peer.
+     */
+    async canViewConversation(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string = 'tenant_agent',
+    ): Promise<boolean> {
+        if (!this.isTenantInboxRole(actorRole)) return false;
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return false;
+
+        const rows = await this.prisma.executeInTenantSchema<Array<{ assigned_to: string | null }>>(
+            schemaName,
+            `SELECT assigned_to FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+        if (!rows?.length) return false;
+        if (this.isElevatedTenantInboxRole(actorRole)) return true;
+        return rows[0].assigned_to === null || rows[0].assigned_to === actorId;
+    }
+
+    async assertCanViewConversation(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
+    ): Promise<void> {
+        if (!this.isTenantInboxRole(actorRole)) {
+            throw new ForbiddenException('Role cannot read Inbox conversations');
+        }
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+        const rows = await this.prisma.executeInTenantSchema<Array<{ assigned_to: string | null }>>(
+            schemaName,
+            `SELECT assigned_to FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+        if (!rows?.length) throw new NotFoundException('Conversation not found');
+        if (
+            !this.isElevatedTenantInboxRole(actorRole)
+            && rows[0].assigned_to !== null
+            && rows[0].assigned_to !== actorId
+        ) {
+            throw new ForbiddenException('Conversation is assigned to another agent');
+        }
+    }
+
+    async assertCanActOnConversation(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
+    ): Promise<void> {
+        if (!this.isTenantInboxRole(actorRole)) {
+            throw new ForbiddenException('Role cannot mutate Inbox conversations');
+        }
+
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT assigned_to FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+        if (!rows?.length) throw new NotFoundException('Conversation not found');
+        if (!this.isElevatedTenantInboxRole(actorRole) && rows[0].assigned_to !== actorId) {
+            throw new ForbiddenException('Conversation is not assigned to the authenticated agent');
+        }
+    }
+
+    async assertCanActOnConversations(
+        tenantId: string,
+        conversationIds: string[],
+        actorId: string,
+        actorRole: string,
+    ): Promise<void> {
+        if (!this.isTenantInboxRole(actorRole)) {
+            throw new ForbiddenException('Role cannot mutate Inbox conversations');
+        }
+        const ids = [...new Set(conversationIds || [])];
+        if (ids.length === 0) throw new BadRequestException('At least one conversation is required');
+
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+        const rows = await this.prisma.executeInTenantSchema<Array<{ id: string; assigned_to: string | null }>>(
+            schemaName,
+            `SELECT id, assigned_to FROM conversations WHERE id = ANY($1::uuid[])`,
+            [ids],
+        );
+        if ((rows || []).length !== ids.length) throw new NotFoundException('One or more conversations were not found');
+        if (!this.isElevatedTenantInboxRole(actorRole) && rows.some((row) => row.assigned_to !== actorId)) {
+            throw new ForbiddenException('One or more conversations are not assigned to the authenticated agent');
+        }
+    }
+
+    private async assertAssignmentTarget(tenantId: string, agentId: string): Promise<void> {
+        if (!isUUID(agentId)) {
+            throw new BadRequestException('Assignment target is not an active member of this tenant');
+        }
+        const target = await this.prisma.user.findFirst({
+            where: {
+                id: agentId,
+                tenantId,
+                isActive: true,
+                role: { in: ['tenant_admin', 'tenant_supervisor', 'tenant_agent'] },
+            },
+            select: { id: true },
+        });
+        if (!target) {
+            throw new BadRequestException('Assignment target is not an active member of this tenant');
+        }
+    }
+
+    private isTenantInboxRole(role: string): boolean {
+        return ['tenant_admin', 'tenant_supervisor', 'tenant_agent'].includes(role);
+    }
+
+    private isElevatedTenantInboxRole(role: string): boolean {
+        return role === 'tenant_admin' || role === 'tenant_supervisor';
     }
 
     /**
@@ -900,14 +1088,14 @@ Rules: only include fields that are clearly visible. Return valid JSON only.`,
     /**
      * Delete a single message
      */
-    async deleteMessage(tenantId: string, messageId: string): Promise<void> {
+    async deleteMessage(tenantId: string, conversationId: string, messageId: string): Promise<void> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) throw new Error('Tenant not found');
 
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `DELETE FROM messages WHERE id = $1::uuid`,
-            [messageId],
+            `DELETE FROM messages WHERE id = $1::uuid AND conversation_id = $2::uuid`,
+            [messageId, conversationId],
         );
 
         this.logger.log(`Message ${messageId} deleted`);

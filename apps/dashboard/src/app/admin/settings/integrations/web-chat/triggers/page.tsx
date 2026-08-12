@@ -99,7 +99,7 @@ export default function WidgetTriggersPage() {
         if (res.success && list.length) {
             const wid = list[0].id;
             setWidgetConfigId(wid);
-            const trigRes = await api.listWidgetTriggers(wid);
+            const trigRes = await api.listWidgetTriggers(wid, activeTenantId);
             if (trigRes.success) setTriggers(trigRes.data || []);
         }
         setLoading(false);
@@ -133,7 +133,7 @@ export default function WidgetTriggersPage() {
         setSaving(true);
         try {
             if (editingId) {
-                const res = await api.updateWidgetTrigger(editingId, form);
+                const res = await api.updateWidgetTrigger(editingId, form, activeTenantId || undefined);
                 if (res.success) {
                     showToast(t("toast.updated"));
                     setShowModal(false);
@@ -142,7 +142,7 @@ export default function WidgetTriggersPage() {
                     showToast(res.error || t("toast.error"), "err");
                 }
             } else {
-                const res = await api.createWidgetTrigger(widgetConfigId, form);
+                const res = await api.createWidgetTrigger(widgetConfigId, form, activeTenantId || undefined);
                 if (res.success) {
                     showToast(t("toast.created"));
                     setShowModal(false);
@@ -163,7 +163,7 @@ export default function WidgetTriggersPage() {
 
     const handleDelete = async (triggerId: string) => {
         if (!confirm(t("confirmDelete"))) return;
-        const res = await api.deleteWidgetTrigger(triggerId);
+        const res = await api.deleteWidgetTrigger(triggerId, activeTenantId || undefined);
         if (res.success) {
             showToast(t("toast.deleted"));
             setTriggers(prev => prev.filter(tr => tr.id !== triggerId));
@@ -171,7 +171,7 @@ export default function WidgetTriggersPage() {
     };
 
     const toggleActive = async (tr: Trigger) => {
-        const res = await api.updateWidgetTrigger(tr.id, { isActive: !tr.is_active });
+        const res = await api.updateWidgetTrigger(tr.id, { isActive: !tr.is_active }, activeTenantId || undefined);
         if (res.success) {
             setTriggers(prev => prev.map(t2 => t2.id === tr.id ? { ...t2, is_active: !t2.is_active } : t2));
         }

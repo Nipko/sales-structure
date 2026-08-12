@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Versión 4.3 — Julio 2026
+  Versión 4.4 — Agosto 2026
 </p>
 
 <p align="center">
@@ -48,6 +48,7 @@
 | 23 | [Sistema de ayuda contextual](#23-sistema-de-ayuda-contextual) |
 | 24 | [Conversaciones resueltas](#24-conversaciones-resueltas) |
 | 25 | [Subir fotos a catálogos](#25-subir-fotos-a-catálogos) |
+| 26 | [App móvil](#26-app-móvil) |
 | 27 | [Procesamiento multimedia](#27-procesamiento-multimedia) |
 | 28 | [Integraciones y API pública](#28-integraciones-y-api-pública) |
 | 29 | [Probar agente — simulación](#29-probar-agente--simulación) |
@@ -64,7 +65,7 @@
 
 # 1. Introducción
 
-Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de **WhatsApp, Instagram, Messenger, Telegram, Email y un Web Chat Widget** — con agentes de inteligencia artificial que operan sobre tu catálogo, tu agenda y tu base de clientes reales. El **SMS dejó de ser un canal conversacional**: hoy se usa solo para **notificaciones salientes** por créditos (ver sección 20.14).
+Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de **WhatsApp, Instagram, Messenger, Telegram y un Web Chat Widget** — con agentes de inteligencia artificial que operan sobre tu catálogo, tu agenda y tu base de clientes reales. Email conserva un adaptador e ingreso técnico interno, pero no tiene configuración autoservicio certificada. El **SMS no es un canal conversacional**; cuando la cuenta tiene esa capacidad habilitada, se usa para **notificaciones salientes** por créditos (ver sección 20.14).
 
 ### ¿Para quién es Parallly?
 
@@ -81,9 +82,11 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 - Agendar citas automáticamente con sincronización a Google Calendar
 - Gestionar contactos, leads y pipeline de ventas
 - Crear reglas de automatización
-- Enviar campañas masivas
+- Preparar borradores, audiencias y métricas de campañas; el envío de producción
+  permanece deshabilitado por procedimiento hasta cerrar los controles descritos en
+  la sección 12
 - Analizar métricas de rendimiento
-- Adaptar la plataforma a más de 16 industrias verticales
+- Adaptar la experiencia a 18 industrias verticales con capacidades disponibles según el negocio
 
 ---
 
@@ -99,7 +102,7 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 
 ## 2.2 Asistente de Onboarding
 
-Al crear tu cuenta, un asistente de 5 pasos configura tu negocio:
+Al crear tu cuenta, un asistente de **4 pasos** configura tu negocio.
 
 ### Paso 1 — Perfil de empresa
 
@@ -129,11 +132,13 @@ El título y opciones se adaptan al nombre del agente IA recomendado:
 - **Inmobiliaria**: "¿Cómo ayudará Carlos a tus clientes?"
 - **Restaurantes**: "¿Cómo ayudará Luca a tus comensales?"
 
-### Paso 4 — Referencia
-¿Cómo conociste Parallly? (Google, Instagram, recomendación, etc.)
+### Paso 4 — Plan
 
-### Paso 5 — Plan
-Tu cuenta arranca con una **prueba del plan Emprendedor sin tarjeta**. Podés cambiar a Starter, Pro, Enterprise o Custom cuando quieras desde **Configuración → Facturación** (ver sección 20).
+Selecciona país de facturación, ciclo mensual/anual cuando esté disponible y una
+opción del catálogo vivo. Los planes reconocidos son Emprendedor, Starter, Pro,
+Enterprise y Custom; la elegibilidad, precio, periodo de prueba y forma de
+contratación que devuelve el catálogo son la fuente vigente. Puedes revisar o cambiar
+tu plan desde **Configuración → Facturación**.
 
 ### Configuración automática al terminar
 
@@ -166,13 +171,17 @@ Tu cuenta arranca con una **prueba del plan Emprendedor sin tarjeta**. Podés ca
 
 Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los administradores definen quién es qué desde Configuración → Usuarios.
 
+También puede aparecer `tenant_viewer` en cuentas heredadas. Es un rol de
+compatibilidad limitado a Configuración personal; no se ofrece como rol normal al
+invitar o editar miembros.
+
 ## 3.1 Resumen rápido
 
 | Rol | A quién va | Acceso típico |
 |-----|------------|---------------|
 | **Tenant Admin** | Dueño del negocio, gerente | TODO — incluye facturación, canales, usuarios, agente IA |
 | **Tenant Supervisor** | Líder de operaciones, jefe de equipo | Operación + analytics + automatización (sin facturación ni usuarios) |
-| **Tenant Agent** | Asesor, vendedor, recepcionista | Solo bandeja, contactos, citas, su propia performance |
+| **Tenant Agent** | Asesor, vendedor, recepcionista | Bandeja, contactos, pipeline, citas y conocimiento en lectura |
 
 ## 3.2 Tenant Admin — Acceso completo
 
@@ -180,7 +189,7 @@ Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los
 
 **Puede:**
 - ✅ Todo lo del Supervisor y Agent
-- ✅ Conectar y desconectar canales (WhatsApp, Instagram, Messenger, Telegram, Email) — incluyendo varias conexiones del mismo tipo según el plan
+- ✅ Conectar y desconectar los canales autoservicio disponibles (WhatsApp, Instagram, Messenger y Telegram) — incluyendo varias conexiones del mismo tipo cuando el plan vigente lo permite; Web Chat se administra desde Integraciones
 - ✅ Configurar agentes IA (crear, editar, asignar canales, eliminar)
 - ✅ Gestionar usuarios (invitar, cambiar roles, desactivar)
 - ✅ Cambiar plan de facturación, método de pago, pausar/cancelar
@@ -200,18 +209,19 @@ Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los
 **Puede:**
 - ✅ Todo lo del Agent
 - ✅ Crear y editar reglas de automatización
-- ✅ Crear y enviar campañas de broadcast
+- ✅ Preparar borradores, audiencias y revisar métricas de campañas; el lanzamiento de producción aún no está certificado (ver sección 12)
 - ✅ Cargar contenido a la base de conocimiento
 - ✅ Ver analytics completas (CRM, agentes, canales, CSAT)
 - ✅ Configurar etapas del pipeline y reglas de scoring
 - ✅ Crear macros, plantillas de email y formularios pre-chat
-- ✅ Definir campos personalizados, horarios de atención y localización
-- ✅ Aprobar deals que requieren aprobación
+- ✅ Definir campos personalizados, etapas/scoring, macros, media, plantillas y pre-chat
+- ✅ Revisar el historial y controlar operativamente los cierres del pipeline; la aprobación automática aún no está certificada
 - ✅ Hacer merge manual de contactos en duplicados
 
 **No puede:**
 - ❌ Conectar/desconectar canales
 - ❌ Crear o eliminar agentes IA
+- ❌ Modificar datos de empresa, horarios, localización o integraciones
 - ❌ Ver ni cambiar facturación
 - ❌ Gestionar usuarios
 
@@ -225,14 +235,14 @@ Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los
 - ✅ Mover deals en el pipeline
 - ✅ Agendar y reprogramar citas
 - ✅ Ver el calendario propio y del negocio
-- ✅ Ver sus propias métricas en agent-analytics
 - ✅ Ver y solicitar features (feature requests)
-- ✅ Acceder a media (logos, fotos compartidas)
+- ✅ Consultar la base de conocimiento en modo lectura
 
 **No puede:**
 - ❌ Configurar agentes IA, canales o automatizaciones
-- ❌ Ver analytics generales (solo las propias)
+- ❌ Abrir las páginas de analytics o rendimiento del equipo
 - ❌ Crear campañas masivas o cargar conocimiento
+- ❌ Administrar media, macros, plantillas o formularios
 - ❌ Modificar pipeline, scoring, o configuración del tenant
 - ❌ Ver facturación ni gestionar usuarios
 
@@ -247,12 +257,17 @@ Solo un **Tenant Admin** puede cambiar roles:
 
 > **Importante:** Si bajás de Admin a Supervisor a alguien que tiene canales conectados, los canales siguen funcionando — solo se le quita la habilidad de modificarlos.
 
+> **Nota sobre métricas personales:** el modelo de permisos contempla indicadores
+> propios para Agent y la app móvil puede mostrarlos cuando el endpoint los autoriza,
+> pero la página web `/admin/agent-analytics` está restringida actualmente a
+> Admin/Supervisor. No uses esa URL como flujo para Agent.
+
 ---
 
 # 4. Dashboard
 
 **Ruta:** Menú → Dashboard
-**Roles:** Todos
+**Roles:** Admin/Supervisor. Agent inicia en Conversaciones; Viewer, en su Perfil.
 
 El dashboard es tu vista general al iniciar sesión y se adapta a tu industria.
 
@@ -360,7 +375,7 @@ Acceso solo para admin/supervisor. Pestañas disponibles:
 |---------|-----------|
 | Resumen | KPIs principales |
 | Conversaciones | Volumen, resolución, tiempo respuesta |
-| CSAT | Encuestas de satisfacción |
+| CSAT | Valoraciones de satisfacción ya registradas |
 | Embudo | Funnel de conversión |
 | Velocidad | Días por etapa del pipeline |
 | Win/Loss | Tasa de cierre y motivos |
@@ -373,8 +388,8 @@ Acceso solo para admin/supervisor. Pestañas disponibles:
 
 # 6. Inbox — Bandeja de Entrada
 
-**Ruta:** Sidebar → Bandeja de entrada
-**Roles:** Todos
+**Ruta:** Esenciales → Conversaciones
+**Roles:** Admin/Supervisor/Agent
 
 ## 6.1 Vista general
 
@@ -396,7 +411,7 @@ Pills arriba de la lista:
 - **Con humano** — ya tienen agente
 - **Resueltas** — cerradas hace 72h o manualmente
 
-Filtros por canal: WhatsApp, Instagram, Messenger, Telegram y Email.
+Filtros por canal: WhatsApp, Instagram, Messenger y Telegram. Email puede aparecer en datos históricos o integraciones administradas, pero no implica que exista configuración autoservicio certificada.
 
 ## 6.3 Notificaciones de handoff
 
@@ -406,24 +421,23 @@ La campana en TopBar muestra 7 categorías:
 - **escalation** — supervisor: alguien lleva >5min sin responder (rojo + sonido)
 - **system** — alertas de plataforma
 - **billing** — pagos, trials terminando
-- **csat** — encuesta respondida
 - **mention** — alguien te etiquetó
 
 ## 6.4 Acciones de conversación
 
 | Acción | Quién |
 |--------|-------|
-| Responder | Todos |
-| Tomar control (handoff) | Todos |
-| Devolver al bot | Todos |
-| Snooze (posponer) | Todos |
-| Marcar como resuelta | Todos |
-| Archivar | Todos |
+| Responder | Admin/Supervisor/Agent |
+| Tomar control (handoff) | Admin/Supervisor/Agent |
+| Devolver al bot | Admin/Supervisor/Agent |
+| Snooze (posponer) | Admin/Supervisor/Agent |
+| Marcar como resuelta | Admin/Supervisor/Agent |
+| Archivar | Admin/Supervisor/Agent |
 | Eliminar conversación | Admin |
 | Asignar a otro agente | Admin/Supervisor |
-| Mover etapa pipeline | Todos |
-| Aplicar macro | Todos |
-| Ver historial cross-canal | Todos |
+| Mover etapa pipeline | Admin/Supervisor/Agent |
+| Aplicar macro | Admin/Supervisor/Agent |
+| Ver historial cross-canal | Admin/Supervisor/Agent |
 
 ## 6.5 Panel del contacto
 
@@ -459,8 +473,8 @@ Cuando varios agentes humanos abren la misma conversación al mismo tiempo, Para
 
 ## 7.1 Contactos
 
-**Ruta:** Sidebar → Contactos
-**Roles:** Todos (con limitaciones de edición según rol)
+**Ruta:** Esenciales → CRM → Contactos
+**Roles:** Admin/Supervisor/Agent (con limitaciones de edición según rol)
 
 ### Ver contactos
 
@@ -470,12 +484,12 @@ Tabla con columnas: nombre, canal, último mensaje, score, etapa pipeline, tags.
 
 | Acción | Roles |
 |--------|-------|
-| Ver detalle | Todos |
-| Editar | Todos |
-| Crear lead | Todos |
+| Ver detalle | Admin/Supervisor/Agent |
+| Editar | Admin/Supervisor/Agent |
+| Crear lead | Admin/Supervisor/Agent |
 | Archivar | Admin/Supervisor |
 | Acciones masivas | Admin/Supervisor |
-| Filtros avanzados | Todos |
+| Filtros avanzados | Admin/Supervisor/Agent |
 
 ### Crear un lead
 
@@ -520,7 +534,7 @@ Pestañas:
 
 ## 7.2 Pipeline (Kanban)
 
-**Ruta:** Sidebar → Pipeline
+**Ruta:** Esenciales → CRM → Embudo
 
 Vista kanban con etapas configurables. Cada deal una tarjeta arrastrable.
 
@@ -534,10 +548,11 @@ Solo Admin/Supervisor desde Configuración → Pipeline:
 
 ### Aprobación de deals
 
-Para etapas marcadas como "requieren aprobación":
-- Agente mueve la tarjeta → aparece badge amarillo "Pendiente"
-- Supervisor/Admin revisa y aprueba/rechaza con motivo
-- Solo entonces avanza a la siguiente etapa
+La interfaz contiene elementos de aprobación, pero el bloqueo, la solicitud y la
+revisión de una etapa terminal **no están certificados de punta a punta en esta
+versión**. Una llamada directa puede mover la oportunidad sin completar esa
+revisión. No uses este mecanismo como control financiero o de auditoría: limita
+operativamente los cierres a Admin/Supervisor y revisa el historial de cada deal.
 
 ### Deduplicación
 
@@ -573,7 +588,7 @@ Si un contacto te escribe desde dos canales con el mismo número o email, Parall
 
 ### Sugerencias de merge
 
-Sidebar → Identidad → tab "Sugerencias":
+CRM → Identidad → pestaña **Sugerencias**:
 - Lista de pares de contactos con alta similitud (nombre + teléfono parcial, etc.)
 - Botón aprobar / rechazar para cada par
 
@@ -613,46 +628,29 @@ Tarjeta en el detalle del lead con análisis automático:
 
 Drawer con chips combinables. Multi-criterio (AND), guardable como segmento.
 
-## 7.9 Múltiples Pipelines
+## 7.9 Alcance actual del Pipeline
 
-**Roles:** Admin/Supervisor
-**Ruta:** Sidebar → Pipeline
+**Roles:** Admin/Supervisor/Agent para operar; Admin/Supervisor para configurar etapas
+**Ruta:** Esenciales → CRM → Embudo
 
-Para negocios que manejan diferentes procesos de venta o tipos de producto, Parallly permite crear **múltiples pipelines independientes**, cada uno con sus propias etapas, probabilidades y reglas.
+La experiencia vigente garantiza el embudo activo del tenant: consultar etapas y
+deals, crear o editar oportunidades y moverlas mediante la transición canónica. La
+creación y administración de múltiples pipelines independientes no forma parte del
+contrato backend expuesto actualmente, aunque existan referencias históricas en
+planes o clientes antiguos.
 
-### Crear un pipeline adicional
-
-1. Pipeline → selector de pestañas en la parte superior → **"+ Nuevo pipeline"**
-2. Nombre del pipeline (ej: "Ventas corporativas", "Postventa", "Renovaciones")
-3. Configura las etapas iniciales (se pueden editar después)
-4. Guardar
-
-### Cambiar entre pipelines
-
-En la parte superior de la vista kanban hay un **selector de pestañas** con todos tus pipelines. Click en la pestaña del pipeline que quieras ver. Cada uno tiene su propio tablero kanban independiente.
-
-### Límites por plan
-
-| Plan | Pipelines |
-|------|-----------|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
-| Custom | Ilimitados |
-
-### Mover deals entre pipelines
-
-Desde el detalle de un deal, puedes cambiar el pipeline asignado. El deal se reubica en la primera etapa del nuevo pipeline.
-
-> **Tip:** Usa pipelines separados cuando los procesos de venta son fundamentalmente diferentes (ej: venta directa vs. licitaciones), no cuando simplemente quieres separar por producto. Para filtrar por producto dentro de un mismo proceso, usa tags o campos personalizados.
+Para separar procesos mientras esa capacidad no esté habilitada, usa etapas, tags,
+segmentos y campos personalizados dentro del embudo activo.
 
 ---
 
 # 8. Agentes IA
 
-**Ruta:** Sidebar → Agente IA
-**Roles:** Tenant Admin (lectura limitada para Supervisor desde inbox)
+**Ruta:** IA y crecimiento → Agente IA
+**Roles:** Tenant Admin
+
+Supervisor y Agent pueden trabajar con conversaciones atendidas por la IA desde el
+Inbox, pero no acceden al listado ni al editor de agentes.
 
 ## 8.1 Lista de agentes
 
@@ -674,15 +672,12 @@ Si tienes canales conectados sin agente asignado, aparece banner rojo: "Tienes X
 - **Eliminar** — con confirmación
 - **Guardar como plantilla** — para reusar
 
-### Límites por plan
+### Capacidad del plan
 
-| Plan | Agentes IA | Plantillas custom |
-|------|-----------|-------------------|
-| Emprendedor | 1 | No |
-| Starter | 1 | No |
-| Pro | 3 | Sí |
-| Enterprise | 10 | Sí |
-| Custom | Ilimitado | Sí |
+El número de agentes y el acceso a plantillas se obtienen del catálogo vigente y de
+los overrides autorizados del tenant. La pantalla bloquea nuevas altas al alcanzar
+la capacidad. Confirma el valor aplicable en **Configuración → Facturación** antes
+de planificar una expansión.
 
 ## 8.2 Editor del agente
 
@@ -763,8 +758,8 @@ Modo simulador: chateá con tu agente sin afectar contactos reales. Útil antes 
 
 # 9. Canales de Comunicación
 
-**Ruta:** Sidebar → Canales
-**Roles:** Tenant Admin (lectura para los demás)
+**Ruta:** Administración → Canales
+**Roles:** Tenant Admin
 
 ## 9.1 WhatsApp
 
@@ -825,44 +820,23 @@ Cron diario @6AM revisa y renueva tokens que expiran en menos de 30 días. Recib
 
 ## 9.5 SMS — notificación saliente (no es un canal conversacional)
 
-El **SMS conversacional fue descartado**: la tarjeta de auto-conexión de Twilio ya no aparece en Canales. Hoy el SMS se usa únicamente como **notificación saliente one-way** hacia tus clientes, mediante un sistema de **créditos** (1 crédito = 1 segmento de SMS) que salen por el Twilio de la plataforma.
+El **SMS conversacional no está disponible**. Cuando la plataforma y el plan de la
+cuenta habilitan notificaciones SMS, Facturación muestra los paquetes, equivalencia,
+saldo y checkout aplicables (ver 20.14). Solo entonces Campañas puede ofrecer SMS
+como envío saliente medido.
 
-- No necesitás conectar tu propia cuenta de Twilio.
-- La compra de paquetes y el saldo se gestionan en **Configuración → Facturación** (ver 20.14).
-- El envío se hace desde Campañas/broadcast eligiendo el canal SMS (consume créditos).
-- Está sujeto a un **interruptor maestro** de plataforma que puede estar apagado (ver 20.14).
+Si esa sección o el canal no aparecen, la capacidad no está disponible para la cuenta;
+no se debe inferir un proveedor, precio o equivalencia fija desde este manual.
 
-> Los canales realmente **conectables y conversacionales** son: WhatsApp, Instagram, Messenger, Telegram y Email. El Web Chat Widget se configura aparte (Configuración → Integraciones → Web Chat).
+> Los canales **conectables en autoservicio y conversacionales** son WhatsApp, Instagram, Messenger y Telegram. El Web Chat Widget es una superficie conversacional operativa que se configura aparte en **Configuración → Canales e integraciones → Web Chat**.
 
-## 9.6 Email
+## 9.6 Email — estado actual
 
-Parallly ahora soporta **email como canal de comunicación**, permitiendo que los correos entrantes aparezcan en el inbox junto a WhatsApp, Instagram y los demás canales.
+Email existe en el backend como **adaptador técnico y entrada inbound interna** para integraciones administradas. Esto no equivale a un canal conversacional certificado para autoservicio.
 
-### Conectar
+La pantalla **Canales → Email** existe, pero actualmente intenta usar rutas de configuración por tenant que el API no implementa. Por eso no debe usarse para ingresar credenciales ni asumirse que el botón de guardar deja el canal operativo.
 
-1. Canales → Email → **"Conectar"**
-2. Configurar los datos de envío:
-   - **From email**: dirección desde la cual se enviarán los correos (ej: `ventas@tuempresa.com`)
-   - **From name**: nombre que aparece como remitente (ej: "Equipo de Ventas — MiEmpresa")
-   - **Reply-to**: dirección a la que llegan las respuestas (puede ser diferente al from)
-3. Seleccionar proveedor de envío:
-   - **SMTP**: configuración manual (host, puerto, usuario, contraseña). Funciona con cualquier servidor de correo
-   - **SendGrid**: pega tu API Key de SendGrid. Ideal para alto volumen
-4. Guardar → Parallly envía un email de prueba para verificar la configuración
-5. Listo — los correos entrantes aparecen como conversaciones en tu inbox
-
-### Cómo funciona en el inbox
-
-- Los emails recibidos crean una conversación nueva (o se agregan a una existente si el contacto ya existe)
-- El agente IA puede responder emails igual que mensajes de WhatsApp o Instagram
-- Las respuestas se envían como email estándar desde la dirección configurada
-- El historial de emails se muestra con formato: asunto, cuerpo y adjuntos
-
-### Asignar agente IA al email
-
-Igual que cualquier otra conexión: en el editor del agente IA, asigná la conexión de Email. Recordá la regla de **un agente por conexión** (ver 8.2).
-
-> **Tip:** Configura un Reply-to diferente al From si quieres que las respuestas de clientes lleguen a una bandeja específica monitoreada por Parallly.
+Si tu organización necesita correo integrado, solicita una evaluación técnica a soporte. Hasta que el flujo de lectura, guardado, envío, recepción y respuesta se implemente y certifique de extremo a extremo, no se debe prometer que los correos aparecerán en Inbox ni que un agente IA podrá responderlos.
 
 ## 9.7 Desconectar un canal
 
@@ -878,30 +852,23 @@ La desconexión es **por cuenta/conexión**: si tenés varios números o cuentas
 
 Podés conectar **más de una cuenta del mismo canal** — por ejemplo dos números de WhatsApp, dos cuentas de Instagram o dos bots de Telegram — sin que sus conversaciones se mezclen.
 
-- **Límite por plan y canal**: cada plan define cuántas conexiones del mismo tipo permite (`features.maxChannelAccounts`, **por defecto 1** por canal). Un super_admin puede subir el límite por tenant.
+- **Límite por plan y canal**: el catálogo y los overrides vigentes determinan cuántas conexiones admite cada tipo para tu cuenta. Consulta **Configuración → Facturación**; este manual no fija cantidades.
 - **Contador visible**: cada tarjeta de canal en **Canales** muestra "**X de Y cuentas**" (Y = tu límite; ∞ si es ilimitado) y un enlace **"Conectar otra"** cuando todavía tenés cupo.
 - **Tokens por cuenta**: cada conexión guarda su propio token de acceso (`channel_accounts.access_token`), de modo que los mensajes salen por el número o cuenta correctos.
 - **Un agente por conexión**: podés asignar un agente IA distinto a cada cuenta (ver 8.2).
-- **Emisor en campañas**: cuando tenés más de una conexión, al enviar un broadcast o una plantilla elegís desde qué número/cuenta sale.
+- **Emisor previsto en borradores de campaña**: cuando tenés más de una conexión,
+  el borrador permite indicar desde qué número/cuenta debería salir. No lances una
+  campaña real hasta que el selector de plantilla/emisor y la cancelación estén
+  certificados según la sección 12.
 
-Límites de fábrica por plan (conexiones del mismo tipo):
-
-| Plan | WhatsApp | Instagram | Messenger | Telegram |
-|------|:--------:|:---------:|:---------:|:--------:|
-| Emprendedor | 1 | 1 | 1 | 1 |
-| Starter | 1 | 1 | 1 | 1 |
-| Pro | 2 | 1 | 3 | 1 |
-| Enterprise | 3 | 2 | 5 | 2 |
-| Custom | ∞ | ∞ | ∞ | ∞ |
-
-> Estos son los valores de fábrica; tu super_admin puede ajustarlos por tenant.
+La tarjeta del canal y **Configuración → Facturación** muestran el cupo efectivo. Si ambos difieren, no intentes inferir un valor desde tablas de seed o documentos históricos: solicita validación a soporte.
 
 ---
 
 # 10. Citas y Agenda
 
-**Ruta:** Sidebar → Agenda
-**Roles:** Todos (configuración solo Admin/Supervisor)
+**Ruta:** Operación → Agenda
+**Roles:** Admin/Supervisor/Agent (configuración solo Admin/Supervisor)
 
 ## 10.1 Calendario
 
@@ -947,15 +914,10 @@ Bloquea días específicos (vacaciones, feriados) — el agente IA no ofrecerá 
 3. Selecciona qué calendario sincronizar
 4. Listo — citas se crean en ambos lados
 
-### Multi-calendar (plan-gated)
+### Multi-calendar (según capacidad vigente)
 
-| Plan | Calendarios |
-|------|-------------|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
-| Custom | Ilimitados |
+La cantidad de calendarios se obtiene del plan activo y sus overrides. La pantalla
+muestra el uso y el cupo aplicable; revísalo en **Configuración → Facturación**.
 
 Resolución 3-tier al sincronizar:
 1. Calendario específico del **servicio**
@@ -964,10 +926,10 @@ Resolución 3-tier al sincronizar:
 
 ### Desconectar un calendario con citas futuras
 
-Si el calendario tiene citas futuras, antes de desconectar:
-1. Botón "Reasignar a otro calendario"
-2. Selecciona destino
-3. Las citas se mueven y luego se desconecta
+La reasignación/cancelación guiada durante la desconexión no está certificada de
+punta a punta. Antes de desconectar, reasigna o cancela manualmente todas las citas
+futuras, recarga la agenda y confirma que ninguna siga vinculada. No confíes solo
+en el mensaje visual de éxito.
 
 ## 10.5 Reserva por IA
 
@@ -997,7 +959,7 @@ Cron horario (`@Cron('20 * * * *')`):
 
 # 11. Automatización
 
-**Ruta:** Sidebar → Automatización
+**Ruta:** IA y crecimiento → Automatización
 **Roles:** Admin/Supervisor
 
 ## 11.1 Crear una regla (4 pasos)
@@ -1050,7 +1012,7 @@ Para tokens de API y credenciales, usa la sección de **Secretos** en la configu
 
 Las secuencias drip son flujos automatizados de **mensajes secuenciales con delays** entre cada paso. Ideales para nurturing de leads, onboarding de clientes o seguimiento post-venta.
 
-**Ruta:** Crecimiento → Automatización → **Secuencias Drip**
+**Ruta:** IA y crecimiento → Automatización → **Secuencias Drip**
 
 ### Crear una secuencia
 
@@ -1076,11 +1038,15 @@ Cada paso tiene 3 componentes:
 
 ### Condiciones de parada automáticas
 
-La secuencia se detiene para un contacto si:
-- El contacto **responde** a cualquier mensaje de la secuencia
-- El contacto **convierte** (avanza a una etapa terminal del pipeline)
-- El contacto hace **opt-out**
-- Se cumple una **condición custom** que configures (ej: "si el score supera 80")
+En la versión actual, la ejecución automática aplica:
+
+- **Respuesta** del contacto.
+- **Opt-out** del contacto.
+
+La opción visible de **conversión** y las condiciones personalizadas todavía no se
+evalúan automáticamente. Cuando el contacto convierta, desinscríbelo de forma
+manual. Desactivar la secuencia evita nuevas inscripciones, pero los pasos ya
+programados pueden continuar; desinscribe primero a los contactos activos.
 
 ### Ejemplo práctico
 
@@ -1097,7 +1063,7 @@ Día 10: "¿Te gustaría agendar una visita personalizada? Responde SÍ y te coo
 
 Para facilitar la creación de reglas, Parallly ofrece una **galería de plantillas pre-configuradas** organizadas por categoría e industria.
 
-**Ruta:** Crecimiento → Automatización → **"Explorar plantillas"**
+**Ruta:** IA y crecimiento → Automatización → **Explorar plantillas**
 
 ### Categorías disponibles
 
@@ -1124,78 +1090,50 @@ Las plantillas también se filtran por **industria** — si tu tenant es de salu
 
 # 12. Campañas y Broadcast
 
-**Ruta:** Sidebar → Campañas
+**Ruta:** IA y crecimiento → Campañas
 **Roles:** Admin/Supervisor
 
-## 12.1 Crear una campaña
+## 12.1 Estado de disponibilidad
 
-1. Selecciona segmento (o sube CSV)
-2. Selecciona template aprobado de WhatsApp
-3. Personaliza variables ({{nombre}}, {{empresa}}, etc.)
-4. Programa envío (inmediato o futuro)
-5. Confirmar → entra a cola con rate limit (80 msg/s)
+La pantalla permite preparar borradores, escoger una audiencia, revisar estados y
+consultar métricas ya registradas. El lanzamiento desde el editor **no está
+certificado de punta a punta para producción**:
 
-## 12.2 Métricas de seguimiento
+- WhatsApp todavía no vincula de forma segura el texto escrito con el identificador
+  y los componentes exactos de una plantilla aprobada por Meta.
+- Una campaña programada no dispone de una acción operativa de cancelación.
+- Email de campañas no habilita un canal conversacional de Email de autoservicio.
 
-- Total enviados / pendientes / errores
-- Tasa de entrega
-- Tasa de lectura
-- Tasa de respuesta
-- Click-through (si hay buttons)
+Hasta que la pantalla muestre un selector verificado de plantilla/emisor y una
+acción de cancelación, no uses **Enviar ahora** ni programes campañas reales. Para
+una prueba controlada, coordina primero con soporte.
 
-## 12.3 Límites por plan
+## 12.2 Preparar un borrador
 
-| Plan | Campañas/mes |
-|------|--------------|
-| Emprendedor | 0 (no incluido) |
-| Starter | 3 |
-| Pro | Ilimitadas |
-| Enterprise | Ilimitadas |
-| Custom | Ilimitadas |
+1. Crea la campaña y asigna un nombre interno sin datos sensibles.
+2. Elige **Todos los contactos** o un segmento de **CRM → Segmentos**.
+3. Revisa el número de destinatarios y las bajas de comunicación.
+4. Guarda sin fecha de envío.
 
-## 12.4 Pruebas A/B
+La capacidad vigente se consulta en la pantalla y en **Configuración →
+Facturación**. Los controles A/B comparten la misma limitación del lanzamiento y
+por ahora deben usarse solo como configuración de borrador.
 
-**Roles:** Admin/Supervisor
-**Planes:** Pro y superiores
+## 12.3 Plantillas de WhatsApp
 
-Las pruebas A/B permiten enviar dos variantes de contenido a tu audiencia para descubrir cuál funciona mejor antes de comprometer toda la campaña.
-
-### Crear una campaña con prueba A/B
-
-1. Al crear una campaña, activa el toggle **"Prueba A/B"**
-2. Se despliegan dos editores lado a lado: **Variante A** y **Variante B**
-3. Escribe contenido diferente para cada variante (asunto, texto, call-to-action, etc.)
-4. Configura el **porcentaje de split**: qué proporción del segmento recibe cada variante (ej: 50/50, 30/70)
-5. Programa el envío y confirma
-
-### Ver resultados
-
-Después del envío, la vista de detalle de la campaña muestra métricas separadas por variante:
-
-| Métrica | Variante A | Variante B |
-|---------|-----------|-----------|
-| Entregados | X | Y |
-| Tasa de lectura | X% | Y% |
-| Tasa de respuesta | X% | Y% |
-| Click-through | X% | Y% |
-
-### Selección automática de ganador
-
-En planes **Pro y superiores**, puedes activar la opción **"Auto-seleccionar ganador"**. El sistema:
-
-1. Envía ambas variantes al porcentaje configurado (ej: 20% a cada variante)
-2. Espera a que haya suficiente volumen para determinar significancia estadística
-3. Envía automáticamente la variante ganadora al **60% restante** de la audiencia
-4. Te notifica cuál ganó y por qué margen
-
-> **Tip:** Para pruebas A/B efectivas, cambia solo un elemento a la vez (el texto, el CTA o el horario), no todo junto. Así sabrás exactamente qué generó la diferencia.
+En **Canales → WhatsApp → Ver todas las plantillas** puedes consultar nombre
+técnico, idioma, componentes y estado sincronizado con Meta. Parallly puede enviar
+cuatro plantillas semilla (recordatorio de cita, confirmación de asistencia,
+confirmación de pedido y pago recibido), pero Meta determina la aprobación y el
+tiempo de revisión. Tener una plantilla aprobada no corrige por sí solo la
+limitación actual del editor de campañas.
 
 ---
 
 # 13. Base de Conocimiento
 
-**Ruta:** Sidebar → Base de Conocimiento
-**Roles:** Admin/Supervisor
+**Ruta:** IA y crecimiento → Base de conocimiento
+**Roles:** Admin/Supervisor para editar; Agent en modo lectura
 
 ## 13.1 Tipos de contenido
 
@@ -1282,14 +1220,14 @@ Modal con 6 presets visuales — elige el estilo (corporativo, friendly, minimal
 
 # 15. Analytics y Reportes
 
-**Roles:** Admin/Supervisor (los Agents ven solo sus propias métricas)
+**Roles:** Admin/Supervisor
 
 ## 15.1 Analytics del negocio
 
 Pestañas:
 - Resumen — KPIs principales
 - Conversaciones — volumen y resolución
-- CSAT — satisfacción del cliente (encuestas post-cierre)
+- CSAT — valoraciones de satisfacción registradas. En la versión actual, cerrar una conversación no envía una encuesta automática por el canal.
 - Embudo, Velocidad, Win/Loss
 - Fuentes — origen de leads
 
@@ -1302,13 +1240,13 @@ Leaderboard con:
 - Tasa de conversión
 - CSAT promedio
 
-## 15.3 Mis métricas (rol Agent)
+## 15.3 Indicadores personales del Agent
 
-Cada agente ve solo sus propias métricas en `/admin/agent-analytics`:
-- Mis conversaciones hoy / semana / mes
-- Mi tiempo de respuesta
-- Mis deals
-- Mi ranking interno
+La app móvil puede presentar indicadores personales u operativos cuando el endpoint
+y el tenant los autorizan. Esto **no habilita** la página web
+`/admin/agent-analytics`: la ruta web de rendimiento del equipo está restringida a
+Admin/Supervisor. Si el Agent necesita un informe adicional, debe solicitarlo a su
+supervisor.
 
 ## 15.4 Tasa de resolución IA
 
@@ -1320,7 +1258,7 @@ Widget dedicado en la vista de Analytics que muestra qué porcentaje de conversa
 
 - **Porcentaje de resolución IA**: conversaciones resueltas sin handoff / total de conversaciones × 100
 - **Gráfico de tendencia**: evolución de la tasa a lo largo del tiempo (últimos 7, 30 o 90 días)
-- **Desglose por canal**: tasa de resolución separada por WhatsApp, Instagram, Messenger, Telegram y Email. Esto ayuda a identificar en qué canales el agente rinde mejor o peor
+- **Desglose por canal**: tasa de resolución separada por las superficies que tengan conversaciones reales. Email solo aparece cuando existe una integración administrada con datos; no certifica configuración autoservicio
 
 ### Cómo se calcula
 
@@ -1342,8 +1280,8 @@ Una conversación se considera "resuelta por IA" si:
 
 # 16. Inventario y Pedidos
 
-**Ruta:** Sidebar → Inventario / Pedidos
-**Roles:** Todos (Admin/Supervisor para gestionar productos)
+**Ruta:** Operación → Inventario / Pedidos
+**Roles:** Inventario, Admin/Supervisor; Pedidos, Admin/Supervisor/Agent
 
 ## 16.1 Inventario
 
@@ -1390,7 +1328,7 @@ Permite gestionar todos los documentos legales que se presentan a los contactos.
   - Divulgación de IA (AI disclosure)
   - Mensaje de opt-in
   - Confirmación de opt-out
-- **Asignación multi-canal**: cada texto legal puede aplicarse a uno o varios canales (WhatsApp, Instagram, Messenger, Telegram, SMS, Web, Email)
+- **Asignación multi-canal**: cada texto legal puede asociarse a los valores disponibles (WhatsApp, Instagram, Messenger, Telegram, SMS, Web, Email). Elegir Email aquí no conecta ni configura el canal; solo aplica cuando existe una integración administrada habilitada
 - **Asignación multi-agente**: cada texto legal puede asignarse a agentes IA específicos. Si no se asigna a ninguno, aplica a todos los agentes
 - **Filtro por tipo de documento** para localizar rápidamente los textos necesarios
 - **Tarjeta visual mejorada**: cada texto legal muestra nombre, badge de tipo, versión, estado (activo/inactivo), chips de canales asignados y chips de agentes asignados
@@ -1407,37 +1345,40 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 
 # 18. Configuración General
 
-**Ruta:** Sidebar → Configuración
+**Ruta:** Configuración
 
-## 18.1 Cuenta (todos los roles)
-- Mi perfil (nombre, foto, idioma de la UI)
-- Cambiar contraseña
-- Sesiones activas
-- Cerrar sesión en todos los dispositivos
+## 18.1 Cuenta (Admin, Supervisor, Agent, Viewer y Super Admin)
+- Perfil personal
+- Seguridad y cambio de contraseña
+- Preferencias de notificaciones
+- Apariencia
 
 ## 18.2 Empresa (Admin)
 - Datos del negocio (nombre, dirección, teléfono, sitio)
 - Logo (usado en emails y portal público)
 - Horarios de atención
 - Localización (idioma y zona horaria)
-- Custom attributes (campos personalizados)
 
-## 18.3 Herramientas (Admin/Supervisor)
+## 18.3 CRM, operación y conversaciones (Admin/Supervisor)
 - Etapas del Pipeline
 - Lead Scoring
+- Custom attributes (campos personalizados)
+- Reserva pública
 - Macros (acciones rápidas con un click)
 - Plantillas de email
 - Pre-chat (formularios pre-conversación)
-- Sistema de Recall (recordatorios automáticos)
+- Banco de medios
 
-## 18.4 IA (Admin)
-- Modelo por defecto del tenant
-- Configuración global de comportamiento del agente
-- **Monitoreo de salud de proveedores LLM**: panel que muestra el estado de cada proveedor (OpenAI, Anthropic, Google, xAI, DeepSeek). Alertas automáticas cuando un proveedor falla
-- **Circuit breaker**: si un proveedor acumula fallos consecutivos, se desactiva temporalmente y el tráfico se redirige al siguiente proveedor en la cadena de fallback
-- **Ruteo por tarea**: configuración de cadenas de modelos separadas para tareas de conversación y tareas de tool calling, permitiendo optimizar por costo o calidad según la operación
+Nurturing y Recall son ajustes tenant-wide reservados actualmente a Admin.
 
-## 18.5 Seguridad (todos los roles)
+## 18.4 IA avanzada (solo Super Admin de plataforma)
+
+Las páginas de proveedores LLM, circuit breakers y ruteo global pertenecen a la
+consola de plataforma. Un Tenant Admin configura el comportamiento de sus agentes
+desde **IA y crecimiento → Agente IA**, pero no administra credenciales ni cadenas
+globales de proveedores.
+
+## 18.5 Seguridad (Admin, Supervisor, Agent, Viewer y Super Admin)
 
 ### Autenticación de dos factores (2FA)
 
@@ -1469,17 +1410,18 @@ Cuando inicias sesión con 2FA, podés marcar **"Confiar en este dispositivo"**.
 - Al confiar un nuevo dispositivo, recibís un email de notificación de seguridad
 - Si cambias tu contraseña, todos los dispositivos de confianza se revocan automáticamente
 
-## 18.6 Avanzado (Admin)
-- Compliance (consentimientos, opt-outs, GDPR)
-- Webhooks de salida (para integrar con sistemas externos)
-- Exportar datos
-- API keys del tenant
+## 18.6 Canales, gobierno y desarrolladores
+
+- **Admin:** canales e integraciones, políticas, compliance, webhooks, MCP y API keys.
+- **Admin/Supervisor:** alertas y reportes.
+- **Admin/Supervisor/Agent/Viewer y Super Admin:** solo los ajustes personales
+  descritos en 18.1; este acceso no concede permisos de configuración del tenant.
 
 ## 18.7 Claves de API pública
 
 **Ruta:** Configuración → Claves de API
 **Roles:** Tenant Admin
-**Planes:** Pro y superiores
+**Planes:** según la capacidad `publicApi` del plan vigente
 
 Las claves de API permiten que sistemas externos se conecten con tu cuenta de Parallly de forma programática — ideal para integraciones con tu ERP, CRM externo, sitio web o herramientas de automatización como Zapier o Make.
 
@@ -1488,13 +1430,12 @@ Las claves de API permiten que sistemas externos se conecten con tu cuenta de Pa
 1. Configuración → **Claves de API** → **"+ Nueva clave"**
 2. Nombre descriptivo (ej: "ERP Integración", "Zapier Webhook", "Sitio web")
 3. **Seleccionar scopes** (permisos): elige qué puede hacer esta clave:
-   - `contacts:read` — leer contactos
-   - `contacts:write` — crear/editar contactos
-   - `conversations:read` — leer conversaciones
-   - `deals:read` / `deals:write` — leer/escribir deals
-   - `appointments:read` / `appointments:write` — citas
-   - `campaigns:write` — crear campañas
-   - `kb:read` — consultar base de conocimiento
+   - `read:contacts` / `write:contacts` — contactos
+   - `read:deals` / `write:deals` — deals
+   - `read:conversations` / `write:messages` — conversaciones y mensajes
+   - `read:appointments` / `write:appointments` — citas
+   - `read:webhooks` / `write:webhooks` — suscripciones webhook
+   - `read:analytics` — analítica disponible en la API pública
 4. Click **"Crear"**
 5. Se muestra la clave completa **una sola vez** — cópiala y guárdala en un lugar seguro
 
@@ -1513,22 +1454,25 @@ Las claves de API permiten que sistemas externos se conecten con tu cuenta de Pa
 Incluye la clave en el header `X-API-Key` de tus peticiones HTTP:
 
 ```
-GET https://api.parallly-chat.cloud/api/v1/bi-api/contacts
+GET https://api.parallly-chat.cloud/api/v1/bi-api/kpis
 X-API-Key: pk_live_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 > **Tip:** Crea claves separadas por integración (una para Zapier, otra para tu ERP). Así si necesitas revocar una, no afectas a las demás.
 
-## 18.8 Triggers proactivos del Web Chat Widget
+## 18.8 Definiciones de triggers del Web Chat Widget
 
-**Ruta:** Configuración → Integraciones → Web Chat → **Triggers**
-**Roles:** Admin/Supervisor
+**Ruta:** Configuración → Canales e integraciones → Web Chat → **Triggers**
+**Roles:** Tenant Admin
 
-Los triggers proactivos permiten que el widget de chat de tu sitio web se active automáticamente basándose en el comportamiento del visitante, sin esperar a que haga click.
+La pantalla permite guardar definiciones de triggers, pero el script público del
+widget **todavía no las evalúa ni ejecuta en esta versión**. El chat que abre el
+visitante sí funciona; no dependas de aperturas, burbujas o banners proactivos en
+producción.
 
-### Configurar un trigger
+### Guardar una definición (sin ejecución pública todavía)
 
-1. Configuración → Integraciones → Web Chat → pestaña **"Triggers"**
+1. Configuración → Canales e integraciones → Web Chat → pestaña **Triggers**
 2. Click **"+ Nuevo trigger"**
 3. Selecciona la **condición** (cuándo se dispara):
 
@@ -1548,21 +1492,23 @@ Los triggers proactivos permiten que el widget de chat de tu sitio web se active
 | **Mostrar burbuja** | Aparece un mensaje de burbuja junto al ícono del widget (ej: "¿Necesitas ayuda?") |
 | **Mostrar banner** | Banner superior o inferior con mensaje y botón de acción |
 
-5. Personaliza el **mensaje** del trigger
-6. Guardar → el trigger queda activo
+5. Personaliza el **mensaje** del trigger.
+6. Guarda la definición. El estado activo se almacena, pero no hace que el loader
+   público la ejecute todavía.
 
-### Ejemplo práctico
+### Ejemplos de configuración futura
 
 - **Página de precios + 15 segundos** → burbuja: "¿Tienes dudas sobre nuestros planes? Te ayudo a elegir el mejor para ti"
 - **Exit intent en checkout** → abrir widget: "¡Espera! ¿Puedo ayudarte a completar tu compra?"
 - **3ra visita sin conversión** → banner: "Bienvenido de vuelta — agenda una demo gratuita"
 
-> **Tip:** No sobrecargues con triggers. Uno o dos bien colocados generan más conversiones que bombardear al visitante en cada página.
+> Estos ejemplos sirven para preparar la configuración; no describen un flujo
+> operativo hasta que el cargador público incorpore el evaluador de triggers.
 
 ## 18.9 Suscripciones Webhook (integraciones externas)
 
-**Ruta:** Configuración → Avanzado → Webhooks
-**Roles:** Admin
+**Ruta:** Configuración → Canales e integraciones → Webhooks
+**Roles:** Tenant Admin
 
 Las suscripciones webhook permiten que aplicaciones externas reciban notificaciones automáticas cuando ocurren eventos en tu cuenta de Parallly. Es la base para integraciones con **Zapier**, **Make (Integromat)**, **n8n** y cualquier sistema que consuma webhooks.
 
@@ -1604,7 +1550,7 @@ Cada evento se envía como POST con un payload JSON que incluye:
 
 # 19. Gestión de Usuarios
 
-**Ruta:** Sidebar → Usuarios
+**Ruta:** Administración → Usuarios
 **Roles:** Tenant Admin
 
 ## 19.1 Crear usuario
@@ -1642,176 +1588,184 @@ Cada conversación asignada tiene un SLA de 5 minutos por defecto:
 **Ruta:** Configuración → Facturación
 **Roles:** Tenant Admin
 
-## 20.1 Planes disponibles
+## 20.1 Catálogo vigente de planes
 
-| Plan | Precio mensual | Agentes IA | Mensajes IA/mes | Calendarios | Trial |
-|------|----------------|-----------|-----------------|-------------|-------|
-| **Emprendedor** | USD $21 | 1 | 1.000 | 1 | 7 días (sin tarjeta) |
-| **Starter** | USD $49 | 1 | 5.000 | 1 | 7 días (sin tarjeta) |
-| **Pro** | USD $129 | 3 | 25.000 | 3 | 15 días (con tarjeta) |
-| **Enterprise** | USD $349 | 10 | 100.000 | 10 | 15 días (con tarjeta) |
-| **Custom** | A medida | Ilimitados | Ilimitados | Ilimitados | — |
+Parallly reconoce las familias **Emprendedor, Starter, Pro, Enterprise y Custom**,
+pero la página solo muestra las filas activas que devuelve el catálogo de facturación.
+Cada tarjeta informa el precio y moneda aplicables, ciclos disponibles, periodo de
+prueba, límites y funciones incluidos para esa cuenta.
 
-> **Emprendedor** es el plan de entrada: 1 agente, **solo WhatsApp**, 1.000 mensajes IA/mes, **sin automatizaciones ni campañas**, 1 pipeline y 1 calendario. Ideal para arrancar; subís de plan para desbloquear más canales y funciones. Los precios son los valores de fábrica (USD); el super_admin puede ajustarlos y cada país puede tener precio local (ver 20.2).
+No uses precios o cuotas copiados de un documento antiguo: el catálogo activo y los
+overrides del tenant son la fuente contractual vigente.
 
-## 20.2 Precio en moneda local
+## 20.2 Precio, moneda y ciclo
 
-El dashboard detecta tu país (campo `billingCountry`) y muestra automáticamente:
-- Precio en moneda local si hay override curado (CO/AR/MX/CL/PE/UY/BR principal)
-- Precio convertido por tasa FX si no hay override (con leyenda "≈ USD X")
-- Precio en USD si no hay datos de FX
+El importe se presenta con la moneda y el periodo que devuelve la API para el país de
+facturación. Si existe más de un ciclo, aparece el selector correspondiente; si un
+plan o ciclo no está habilitado, no se ofrece como acción.
 
-Las monedas soportadas para display: COP, ARS, MXN, CLP, PEN, UYU, BRL, USD.
+La tarjeta y el resumen de confirmación indican el total, la periodicidad y cualquier
+ahorro aplicable. No asumas una moneda, descuento ni conversión fija fuera de esa vista.
 
-## 20.3 Cambiar plan
+## 20.3 Cambiar de plan
 
-1. Configuración → Facturación
-2. Click en el plan deseado
-3. Si subis (upgrade): se requiere tarjeta — pago inmediato del nuevo plan
-4. Si bajas: aplica al final del período actual (no se cobra de nuevo)
+1. Abre **Configuración → Facturación**.
+2. Selecciona una tarjeta cuyo botón de acción esté habilitado.
+3. Revisa plan, ciclo, importe y fecha de efecto en el resumen.
+4. Confirma solo si esos datos coinciden con lo esperado.
 
-> MercadoPago no soporta cambio de plan dinámico — el sistema cancela la suscripción vieja y crea una nueva con el nuevo plan.
+La API decide si el cambio es inmediato, programado o requiere contacto comercial.
+La respuesta y el estado mostrados después de confirmar prevalecen sobre cualquier
+regla histórica de upgrade o downgrade.
 
-## 20.4 Cambiar tarjeta
+## 20.4 Método de pago
 
-1. Botón "Cambiar tarjeta"
-2. Modal de MercadoPago para tokenizar nueva tarjeta
-3. Confirmar — el cobro siguiente se hace con la nueva
+La acción para agregar o cambiar el método de pago aparece solo cuando el checkout
+activo la soporta. El flujo puede abrir un formulario seguro o redirigir al proveedor
+habilitado para la cuenta. Parallly muestra datos enmascarados y no solicita que pegues
+credenciales sensibles en campos de texto libre.
 
-## 20.5 Pausar suscripción
+Si el botón no aparece, consulta la modalidad indicada en la tarjeta del plan o
+contacta al administrador comercial.
 
-**Para tomar un descanso sin cancelar.**
+## 20.5 Pausar o reanudar
 
-1. Botón "Pausar suscripción"
-2. Modal pide motivo (opcional, queda en audit log)
-3. Confirmar → el proveedor deja de cobrarte
+Estas acciones solo aparecen para suscripciones y proveedores compatibles. Antes de
+confirmar, lee la fecha de efecto y las condiciones que presenta la interfaz.
 
-Mientras está pausada:
-- Banner ámbar "Tu suscripción está pausada"
-- Solo aparece el botón "Reanudar"
-- Los límites del plan siguen aplicando (no son ilimitados durante la pausa)
+Tras la operación, verifica el badge de estado y las fechas de acceso/cobro. Una
+pausa no convierte las cuotas del plan en ilimitadas.
 
-### Reanudar
-Click en "Reanudar" → vuelve a `ACTIVE` (o `TRIALING` si aún quedaba trial). Próximo cobro en la fecha original del ciclo.
+## 20.6 Pago pendiente y sincronización
 
-## 20.6 Reintentar cobro (recovery de past_due)
+Cuando la suscripción está en **Pago pendiente**, la página puede ofrecer **Cambiar
+método de pago** y/o **Reintentar ahora**. La segunda acción consulta el estado real
+del proveedor y actualiza la suscripción; no garantiza por sí sola un cobro exitoso.
 
-Si tu suscripción quedó en estado **"Pago pendiente"** (past_due) por una tarjeta rechazada, hay 2 caminos:
+Si ninguna acción está disponible, sigue el mensaje de la pantalla o contacta soporte
+con el tenant, la hora y el identificador visible del pago, sin compartir datos de tarjeta.
 
-1. **Cambiar la tarjeta** y esperar al próximo intento del cron (cada hora)
-2. **"Reintentar cobro ahora"** — botón verde que fuerza una sincronización inmediata con MercadoPago
+## 20.7 Cancelar la suscripción
 
-Si MercadoPago ya reintentó en background y el cobro fue exitoso, este botón actualiza tu estado al toque.
+La interfaz muestra únicamente las modalidades permitidas para la suscripción, por
+ejemplo cancelación al final del periodo o inmediata. El diálogo de confirmación
+indica la fecha de pérdida de acceso y cualquier condición aplicable.
 
-## 20.7 Cancelar suscripción
+No presupongas reembolso, prorrateo ni conservación de acceso: verifica el resultado
+y la fecha que devuelve la operación antes de cerrar el diálogo.
 
-Dos opciones:
+## 20.8 Cupones promocionales
 
-| Opción | Comportamiento |
-|--------|----------------|
-| **Cancelar al final del período** | Conservas acceso hasta `currentPeriodEnd`. Banner ámbar te avisa la fecha. |
-| **Cancelar inmediatamente** | Acceso revocado al instante. Sin reembolso del período actual (a menos que pidas refund por separado). |
+Si la sección **Código de cupón** está visible:
 
-## 20.8 Aplicar cupón promocional
+1. Ingresa el código recibido.
+2. Pulsa **Aplicar**.
+3. Confirma el beneficio, vigencia y planes elegibles que devuelve el sistema.
 
-Si recibiste un código promocional (campaña, regalo de Parallly, etc.):
-
-1. Configuración → Facturación
-2. Sección "Código de cupón"
-3. Pegá el código (se normaliza a mayúsculas automáticamente)
-4. Click "Aplicar"
-
-3 tipos de cupones:
-- **% de descuento** durante N ciclos de cobro
-- **Monto fijo** descontado durante N ciclos
-- **Meses gratis** — extiende tu trial sin cobrar
-
-Errores posibles al aplicar:
-- "Cupón no existe"
-- "Vencido"
-- "Llegó al máximo de canjes"
-- "No aplica a tu plan actual"
-- "Ya usaste este cupón antes"
+Un código puede estar vencido, agotado, ya utilizado o no aplicar al plan/ciclo actual.
+La respuesta del catálogo determina el descuento efectivo.
 
 ## 20.9 Historial de pagos
 
-Tabla con últimos 20 pagos:
-- Fecha
-- Monto (en moneda original del cobro)
-- Estado (Exitoso / Fallido / Reembolsado / Pendiente)
-- Factura PDF (cuando esté disponible)
+Cuando hay movimientos, la tabla muestra la fecha, monto, moneda, estado y referencia
+disponible. Un comprobante o documento descargable solo aparece si el backend lo ha
+publicado para ese pago; su ausencia no debe reemplazarse con un archivo inventado.
 
-## 20.10 Trial — recordatorios
+## 20.10 Periodo de prueba
 
-3 días antes de que termine tu trial, recibís email automático: "Tu prueba termina pronto — agregá una tarjeta para seguir".
+La duración, necesidad de método de pago y acciones al vencimiento dependen del plan
+y se muestran en su tarjeta y en el resumen de suscripción. Usa la fecha exacta de
+finalización del panel para planificar la continuidad.
 
-Si el trial vence sin tarjeta:
-- Suscripción pasa a `expired`
-- Acceso a la plataforma revocado (banner de "Suscripción vencida" al hacer login)
-- Datos preservados — se reactivan al pagar
+Los recordatorios, conservación de datos y restricciones posteriores al vencimiento
+siguen la configuración vigente de la cuenta; no se debe asumir un plazo universal.
 
-## 20.11 Uso de procesamiento multimedia
+## 20.11 Uso y cuotas
 
-En la página de Facturación aparecen barras de uso para **audio** (transcripción de notas de voz) e **imágenes** (visión por IA):
+Facturación puede mostrar consumo de mensajes IA, agentes, contactos, calendarios,
+conocimiento, multimedia u otros recursos habilitados. Cada indicador compara uso y
+cuota efectiva, incluidos overrides del tenant.
 
-- Barra de progreso con porcentaje usado vs. límite del plan
-- Icono de micrófono (audio) y ojo (imagen)
-- **80% de uso** → advertencia ámbar: "Te estás acercando al límite"
-- **95% de uso** → advertencia roja: "Límite casi alcanzado" con botón "Mejorar plan"
-- Planes Custom muestran "Ilimitado"
+Si un recurso llega al límite, sigue el mensaje específico de esa capacidad. Algunas
+funciones se bloquean y otras aplican un modo degradado; no todas reaccionan igual.
 
-Esto te permite monitorear cuántos audios e imágenes ha procesado tu agente IA en el mes. Cuando se alcanza el límite, los mensajes multimedia se procesan como texto genérico ("El cliente envió un audio/imagen") sin transcripción ni análisis.
+## 20.12 Después de un pago fallido
 
-## 20.12 Pasos post-pago fallido
+Un fallo puede cambiar el estado de la suscripción y mostrar un banner con acciones.
+Revisa, en este orden:
 
-Cuando un cobro falla, MercadoPago reintenta automáticamente con su lógica de retries. Mientras tanto:
-1. Tu suscripción queda en `past_due`
-2. Email automático "Pago fallido" con instrucciones
-3. Banner en dashboard
-4. Después de 7 días sin recuperar → suspensión automática del tenant
+1. estado y referencia del pago;
+2. método disponible para corregirlo;
+3. fecha límite o periodo de gracia que muestre la cuenta;
+4. resultado después de reintentar o sincronizar.
 
-## 20.13 Ciclo de facturación: mensual o anual
+Los reintentos, avisos y suspensión dependen del proveedor y de la política activa; no
+hay un plazo universal que pueda inferirse de este manual.
 
-Cada plan de pago puede cobrarse en **ciclo mensual** o **anual**. El ciclo anual aplica un **descuento (~15%)** sobre el total del año frente a pagar 12 meses sueltos.
+## 20.13 Ciclos mensual y anual
 
-- En **Configuración → Facturación** hay un selector **Mensual / Anual**; al elegir Anual, las tarjetas de plan muestran el precio anual y el porcentaje de ahorro.
-- **Cambiar de ciclo** (por ejemplo, pasar de mensual a anual) es un cambio **inmediato**: MercadoPago no permite editar el ciclo de una suscripción existente, así que el sistema **cancela la suscripción actual y crea una nueva** con el ciclo elegido (mismo mecanismo que un cambio de plan).
-- Una **bajada de plan dentro del mismo ciclo** se programa sin cobro para el final del período; un **cambio de ciclo** siempre recrea la suscripción.
+El selector **Mensual / Anual** aparece solo si al menos un plan self-service publica
+ambos ciclos. Cada tarjeta indica qué ciclo acepta, su importe y el ahorro devuelto por
+el catálogo.
 
-## 20.14 Créditos SMS (notificaciones salientes)
+Al cambiar de ciclo, revisa el resumen: allí se informa si la operación es inmediata,
+programada, requiere un nuevo método de pago o no está disponible.
 
-El envío de **SMS es one-way** (notificaciones a tus clientes) y funciona con **créditos**: **1 crédito = 1 segmento** de SMS. No es un canal conversacional (ver 9.5).
+## 20.14 Créditos SMS, cuando estén habilitados
 
-- **Comprar**: en **Configuración → Facturación**, sección de créditos SMS, elegís un paquete y pagás con **MercadoPago** como **pago único** (no es suscripción). Tras el pago, los créditos se acreditan automáticamente (vía webhook, unos segundos).
-- **Saldo**: la misma página muestra tu **saldo** de créditos, comprados y consumidos (total y del mes). Cuando el saldo llega a 0, aparece un aviso para recargar.
-- **Envío medido**: cada notificación descuenta créditos según la cantidad de segmentos; el consumo queda registrado en un **ledger** (histórico) atómico.
-- **Interruptor maestro (kill-switch)**: el modelo de SMS reseller puede estar **apagado a nivel plataforma** (por defecto OFF). Si está apagado, no se pueden comprar ni enviar créditos aunque tu plan lo permita.
-- Los paquetes, precios y el número emisor los define la plataforma (super_admin) y pueden variar por país.
+SMS es una notificación saliente, no un canal conversacional (ver 9.5). La sección de
+créditos solo aparece cuando la plataforma devuelve paquetes disponibles para la cuenta.
 
-## 20.15 Datos fiscales — Facturación electrónica DIAN (Colombia)
+Si está visible, permite consultar saldo y consumo, elegir un paquete y continuar por
+el checkout habilitado. El precio, moneda, acreditación y equivalencia de segmentos se
+muestran antes de confirmar. Si la sección no aparece o la compra falla por capacidad
+deshabilitada, no intentes enviar SMS desde Campañas y consulta al administrador.
 
-Para tenants en Colombia, Parallly puede emitir **factura electrónica DIAN** de tus cobros a través de un proveedor tecnológico autorizado (Factus).
+## 20.15 Datos y documentos fiscales, cuando correspondan
 
-**Ruta:** Configuración → **Datos fiscales**
+La tarjeta **Datos fiscales** y los documentos relacionados dependen del país de
+facturación, la configuración de plataforma y el proveedor activo. Si la cuenta los
+requiere o los ofrece, completa únicamente los campos y tipos de documento que muestra
+la pantalla y revisa el estado de cada documento publicado.
 
-Cargás el perfil fiscal del adquirente:
-- **Tipo de organización**: persona jurídica o natural
-- **Tipo de documento** y **número** (NIT, cédula, etc.); si es NIT, el **dígito de verificación (DV)** se calcula automáticamente
-- **Responsabilidad tributaria** (responsable / no responsable de IVA)
-- **Razón social** (jurídica) o **nombres** (natural)
-- **Municipio** (con su **código DANE**), **dirección**, email y teléfono
-
-En la misma página ves el **historial de facturas** emitidas (número, estado, monto, PDF/XML) y podés **reintentar** una que haya quedado pendiente o fallida.
-
-### Gate "cobrar con datos fiscales" (opcional)
-
-La plataforma puede exigir que completes tus datos fiscales **antes de cobrarte** (gate collect-before-pay). Este gate viene **desactivado por defecto**; cuando está activo, al intentar pagar aparece un aviso/modal que te lleva a **Datos fiscales** y, una vez guardados, retoma el pago automáticamente.
+Un checkout puede pedir datos adicionales antes de continuar solo cuando el backend
+lo indique para esa cuenta. Si la tarjeta o el aviso no aparecen, este manual no debe
+interpretarse como una obligación fiscal universal.
 
 ---
 
 # 21. Adaptación por Industria — Verticales
 
-Parallly opera 16 industrias verticales. Cada una activa funcionalidades específicas durante el onboarding.
+Parallly reconoce **18 industrias verticales**. El onboarding configura terminología,
+pipeline, FAQs, servicios y módulos a partir de la industria y el subtipo; la pantalla
+final también depende del rol, plan y capacidades publicadas para el tenant.
+
+> **Alcance honesto:** las 18 verticales tienen comportamiento implementado, pero a
+> agosto de 2026 ninguna cuenta todavía con certificación E2E completa. Usa estas
+> secciones para operar lo que aparece habilitado en tu cuenta, no como garantía de
+> cobertura total del sector. En actividades reguladas, decisiones sensibles y
+> excepciones, interviene una persona autorizada.
+
+| Vertical | Superficie principal posible |
+|----------|------------------------------|
+| Salud | Agenda y, según subtipo, planes de tratamiento |
+| Moda y belleza | Agenda; catálogo/pedidos para boutique heredada |
+| Inmobiliaria | Agenda e inmuebles |
+| Restaurantes | Menú, pedidos y reservas |
+| Automotriz | Vehículos; agenda, repuestos o alquiler según subtipo |
+| Turismo | Tours o propiedades/estadías según subtipo |
+| Educación | Cursos, cohortes e inscripciones |
+| Finanzas | CRM y agenda, con handoff para decisiones financieras |
+| Servicios profesionales | CRM, agenda y consulta contextual de casos |
+| Retail | Inventario y pedidos |
+| Tecnología | CRM/agenda; inventario y pedidos para hardware |
+| Veterinaria | Agenda y mascotas |
+| Gimnasios | Membresías y clases |
+| Seguros | Cotizaciones, pólizas y reclamos con controles de rol |
+| Servicios del hogar | Solicitudes de servicio |
+| Servicios para mascotas | Agenda u hospedaje según subtipo |
+| Fotografía | Sesiones fotográficas |
+| Otro | CRM, catálogo y pedidos genéricos |
 
 ## 21.1 Turismo — Tours, Paquetes y Alquiler Vacacional
 
@@ -1824,7 +1778,7 @@ Parallly opera 16 industrias verticales. Cada una activa funcionalidades especí
 
 ### 21.1.1 Tours y Paquetes
 
-**Ruta:** Sidebar → Tours
+**Ruta:** Operación → Tours
 
 **Cómo crear paquetes:**
 1. Tours → "Crear paquete"
@@ -1843,7 +1797,7 @@ Parallly opera 16 industrias verticales. Cada una activa funcionalidades especí
 
 ### 21.1.2 Propiedades (Alquiler vacacional)
 
-**Ruta:** Sidebar → Propiedades
+**Ruta:** Operación → Propiedades
 
 **Crear propiedad:**
 1. Propiedades → "Crear propiedad"
@@ -1861,15 +1815,9 @@ Parallly opera 16 industrias verticales. Cada una activa funcionalidades especí
 - Reordenar, elegir foto portada
 - Botones flecha para mover, ✓ para portada
 
-**Límites por plan:**
-
-| Plan | Propiedades |
-|------|-------------|
-| Emprendedor | 0 |
-| Starter | 2 |
-| Pro | 10 |
-| Enterprise | 50 |
-| Custom | Ilimitadas |
+**Límites por plan:** consulta **Configuración → Facturación**. Las cuotas de
+propiedades se administran en runtime y pueden cambiar; una tabla histórica o un seed
+del repositorio no reemplaza el límite mostrado para tu cuenta.
 
 ### 21.1.3 Calendario y sincronización iCal
 
@@ -1939,7 +1887,7 @@ Tab "Check-in" en cada propiedad:
 Para tratamientos multi-sesión (ortodoncia, fisioterapia, series estéticas, psicoterapia, etc.).
 
 **Vista global:**
-**Ruta:** Sidebar → Planes de Tratamiento
+**Ruta:** Operación → Planes de tratamiento
 
 Tabla con todos los planes activos/pausados/completados de la clínica:
 - Paciente, plan, progreso (barra), estado, fecha inicio, costo
@@ -1966,7 +1914,7 @@ Tabla con todos los planes activos/pausados/completados de la clínica:
 
 ### 21.4.1 Fichas de mascotas
 
-**Ruta:** Sidebar → Mascotas
+**Ruta:** Operación → Mascotas
 
 Grid de cards de mascotas con:
 - Foto / emoji por especie (🐕 perro, 🐈 gato, 🦜 ave, 🐰 conejo, 🦎 reptil)
@@ -1998,7 +1946,7 @@ Igual que 21.3 — sirve para tratamientos veterinarios multi-sesión (oncologí
 
 ### 21.5.1 Menú
 
-**Ruta:** Sidebar → Menú
+**Ruta:** Operación → Menú
 
 **Crear categoría:**
 1. Menú → "Categoría" → nombre, orden visual
@@ -2012,7 +1960,7 @@ Igual que 21.3 — sirve para tratamientos veterinarios multi-sesión (oncologí
 
 ### 21.5.2 Pedidos de comida (Kanban tipo cocina)
 
-**Ruta:** Sidebar → Pedidos
+**Ruta:** Operación → Pedidos
 
 Vista kanban con columnas:
 - **Recibido** — entró pedido
@@ -2039,7 +1987,7 @@ Crear promos con dto. % o fijo, vigencia, condiciones (mín de pedido), aplicaci
 
 ### 21.6.1 Planes de membresía
 
-**Ruta:** Sidebar → Membresías
+**Ruta:** Operación → Membresías
 
 **Crear plan:**
 1. "Crear plan" → nombre (ej: Mensual, Trimestral), precio, duración (días)
@@ -2056,7 +2004,7 @@ Lista de miembros con:
 
 ### 21.6.3 Clases programadas
 
-**Ruta:** Sidebar → Clases
+**Ruta:** Operación → Clases
 
 Calendario con clases:
 - Tipo (yoga, crossfit, spinning, funcional)
@@ -2080,7 +2028,7 @@ Calendario con clases:
 
 ### 21.7.1 Cursos
 
-**Ruta:** Sidebar → Cursos
+**Ruta:** Operación → Cursos
 
 **Crear curso:**
 1. Nombre, descripción, duración (semanas), precio total
@@ -2120,7 +2068,7 @@ Para idiomas / coaching técnico:
 
 ### 21.8.1 Planes
 
-**Ruta:** Sidebar → Seguros → Planes
+**Ruta:** Operación → Seguros → Planes
 
 **Crear plan:**
 1. Nombre, tipo (salud/auto/hogar/vida/viaje)
@@ -2146,7 +2094,7 @@ Lista de pólizas vigentes:
 
 ### 21.8.4 Reclamos (claims)
 
-**Ruta:** Sidebar → Seguros → Reclamos
+**Ruta:** Operación → Seguros → Reclamos
 
 Cliente reporta siniestro:
 1. Datos del incidente (fecha, lugar, descripción)
@@ -2160,7 +2108,7 @@ Cliente reporta siniestro:
 
 ### 21.9.1 Solicitudes de servicio
 
-**Ruta:** Sidebar → Solicitudes
+**Ruta:** Operación → Solicitudes
 
 Vista priorizada por urgencia + scheduled_at:
 - 🔴 Emergencia (fugas, sin luz)
@@ -2202,7 +2150,7 @@ Comparte ficha de mascotas (sección 21.4.1) + agenda de citas pero con servicio
 
 ### 21.11.1 Sesiones
 
-**Ruta:** Sidebar → Sesiones fotográficas
+**Ruta:** Operación → Sesiones fotográficas
 
 Cards por sesión con:
 - Cliente, paquete contratado
@@ -2226,6 +2174,75 @@ Cards por sesión con:
 3. El sistema cambia a `delivered`, registra `deliveredAt`
 4. El agente puede mandar el link al cliente automáticamente
 
+## 21.12 Moda y belleza — Agenda, tratamientos y catálogo
+
+**Subtipos vigentes:** salón de belleza, barbería, spa y estética. El subtipo
+`boutique` se conserva para tenants heredados.
+
+- Salón, barbería, spa y estética usan **Agenda** para servicios y disponibilidad.
+- Spa y estética pueden habilitar **Planes de tratamiento**.
+- Una boutique heredada usa catálogo/inventario y pedidos en vez de agenda.
+
+El agente puede orientar y reservar con la información configurada, pero no debe
+diagnosticar, garantizar resultados ni recomendar productos no autorizados.
+
+## 21.13 Automotriz — Vehículos, citas, repuestos y alquiler
+
+**Subtipos:** concesionario, taller, repuestos y alquiler.
+
+- Concesionario y taller combinan inventario vehicular con agenda para visitas,
+  revisiones o pruebas de manejo.
+- Repuestos usa inventario y pedidos.
+- Alquiler usa el workspace de alquileres de vehículos.
+
+La pantalla exacta se deriva del subtipo y capacidades publicadas. Una prueba de
+manejo creada no implica aprobación de financiación ni reserva definitiva del vehículo.
+
+## 21.14 Finanzas — CRM y agenda con límites regulados
+
+**Subtipos:** asesoría, fintech y créditos.
+
+Esta vertical ofrece un preset horizontal de CRM, FAQs y agenda. Sirve para captar,
+calificar y coordinar consultas; no automatiza aprobación de crédito, recomendaciones
+de inversión, rentabilidades ni asesoría tributaria individual. Esas decisiones deben
+pasar a una persona autorizada.
+
+## 21.15 Servicios profesionales — Consultas y casos
+
+**Subtipos:** abogados, contadores, arquitectos y consultores.
+
+Combina CRM, FAQs y agenda. Cuando el tenant publica la capacidad correspondiente, el
+agente puede consultar el estado contextual de un caso tras validar la identidad
+requerida. No existe una promesa de expediente jurídico/contable completo ni de
+asesoría profesional automática.
+
+## 21.16 Retail — Inventario y pedidos
+
+**Subtipos:** moda, electrónica, hogar y marketplace.
+
+La operación principal usa **Inventario** y **Pedidos**. El catálogo permite consultar
+productos disponibles y el flujo de órdenes usa los estados habilitados por el backend.
+Precios, stock y condiciones deben venir de los datos vigentes del tenant; el agente no
+debe inventarlos.
+
+## 21.17 Tecnología — Demos, servicios y hardware
+
+**Subtipos:** SaaS, consultoría TI, desarrollo y hardware.
+
+- SaaS, consultoría y desarrollo usan CRM y agenda para demos o reuniones.
+- Hardware usa inventario y pedidos.
+
+La vertical ayuda a organizar el ciclo comercial, pero no sustituye herramientas de
+gestión de proyectos, soporte técnico o licenciamiento si esas capacidades no aparecen
+habilitadas en la cuenta.
+
+## 21.18 Otro — Fallback genérico
+
+Cuando una empresa no encaja en las categorías anteriores, Parallly usa un preset
+estable de CRM, FAQs, catálogo y pedidos. El nombre de la operación se mantiene
+genérico y no se infieren módulos especializados. Un Admin puede completar identidad,
+pipeline, conocimiento y catálogo desde la web.
+
 ---
 
 # 22. Sistema de Recall
@@ -2243,8 +2260,11 @@ Cards por sesión con:
 | Habilitado | On/Off |
 | Días umbral | A partir de cuántos días sin visita disparar (ej: 180 dental) |
 | Días cooldown | No re-disparar a la misma persona en N días |
-| Canal | WhatsApp / Email |
+| Canal | WhatsApp; Email solo para integraciones administradas habilitadas |
 | Mensaje | Template con `{name}` y `{months}` |
+
+La opción Email de Recall usa entrega administrada cuando está habilitada; no activa
+la pantalla **Canales → Email** ni sustituye el contrato autoservicio faltante.
 
 Ejemplo de mensaje:
 ```
@@ -2268,26 +2288,41 @@ Botón "Disparar ahora" — útil para pruebas controladas. Solo afecta a contac
 
 # 23. Sistema de Ayuda Contextual
 
-Cada sección de la plataforma tiene un botón **"?"** que despliega ayuda específica.
+Parallly combina las descripciones y estados vacíos de cada página con el asistente
+global **Parallly Assist**. No todas las pantallas tienen un tutorial propio.
 
-## 23.1 Qué muestra
+## 23.1 Ayuda de la página
 
-- Descripción de la sección
-- Video tutorial (cuando esté disponible — embebido de YouTube)
-- Imágenes de referencia
-- Tips prácticos
+- El título y la descripción explican el propósito de la sección.
+- Los estados vacíos indican la primera acción disponible.
+- Los mensajes de validación y error muestran cuándo reintentar o pedir ayuda.
+- El breadcrumb y la búsqueda global ayudan a regresar o localizar otro módulo.
 
-## 23.2 Dónde aparece
+## 23.2 Parallly Assist
 
-15 secciones principales: Conversaciones, CRM, Embudo, Agenda, Propiedades, Campañas, Automatización, Agente IA, Conocimiento, Analíticas, Canales, Usuarios, Configuración, Plantillas, Plan.
+El botón flotante abre un chat que responde preguntas sobre el uso de la plataforma
+con la base de ayuda versionada y el contexto autorizado de página, rol, plan y
+vertical. También ofrece sugerencias rápidas y, para los roles habilitados, puede
+reiniciar el tour. Sus respuestas siguen los permisos del usuario: conocer una
+función no concede acceso a su pantalla.
 
-## 23.3 Cómo usar
+> La fuente runtime de Parallly Assist es
+> `apps/api/kb/assistant/{es,en,pt,fr}`. Este manual no se carga automáticamente en
+> el asistente. El contrato de actualización está en
+> [platform-assistant-knowledge.md](platform-assistant-knowledge.md).
 
-1. Botón **"?"** esquina superior derecha
-2. Click → expande panel con la información
-3. Click otra vez → colapsa para recuperar espacio
+## 23.3 Cómo usar ambas ayudas
 
-> Si aún no hay video para tu sección, la ayuda textual y los tips siguen disponibles. Los videos se irán agregando gradualmente.
+1. Lee la descripción o el estado vacío si necesitas la primera acción de la página.
+2. Abre el botón flotante para preguntar por esa sección o por un flujo entre páginas.
+3. Indica qué quieres hacer. El sistema conoce la página actual y deriva rol y tenant de
+   la sesión; no necesita confiar en un rol escrito dentro del chat.
+4. Verifica que la ruta sugerida sea visible para tu cuenta.
+
+Parallly Assist está autorizado para Tenant Admin, Tenant Supervisor y Tenant Agent;
+`tenant_viewer` no tiene acceso al chat. En modo plataforma, `super_admin` debe usar
+la documentación operativa correspondiente o entrar al tenant mediante el flujo
+explícito de impersonación; no existe una KB runtime completa de plataforma.
 
 ---
 
@@ -2331,6 +2366,31 @@ Si una foto se rechaza (>2 MB o no es imagen), aparece mensaje específico con n
 
 ---
 
+# 26. App Móvil
+
+Parallly Mobile es una compañera operativa para Inbox, CRM, embudo, tareas,
+disponibilidad y el workspace de la industria. No replica la configuración completa
+del dashboard web.
+
+- **Tabs:** Inbox, CRM, Operación adaptada y Más.
+- **Conversación:** asignar/tomar control, devolver a IA, resolver, notas, macros,
+  sugerencias y resumen, según rol y estado; los mensajes sin conexión pueden quedar
+  en una outbox local aislada por cuenta hasta reconectar.
+- **CRM:** consultar o crear leads y mover deals cuando el backend lo autoriza.
+- **Operación:** agenda, estadías, tours, pedidos, clases, matrículas, seguros,
+  solicitudes, sesiones, alquileres o mascotas según capacidades publicadas.
+- **Más:** disponibilidad, tareas, indicadores permitidos, idioma, push y cuenta.
+
+La configuración de canales, agentes IA, usuarios, facturación, empresa e
+integraciones continúa en la web. Consulta la guía completa en
+[mobile-user-manual.md](mobile-user-manual.md).
+
+> La existencia del código o de un build de prueba no confirma aprobación ni
+> visibilidad pública en una tienda. Comprueba la versión instalada y el estado de la
+> publicación antes de una prueba.
+
+---
+
 # 27. Procesamiento Multimedia
 
 Parallly permite que tus agentes IA comprendan mensajes de voz e imágenes enviados por los clientes, no solo texto.
@@ -2362,16 +2422,12 @@ Cuando un cliente envía un **audio** o **imagen** por cualquier canal (WhatsApp
 | SMS | ❌ | ❌ |
 | Web Chat | ❌ | ❌ |
 
-## 27.3 Límites por plan
+## 27.3 Límites y protección de uso
 
-Cada plan tiene cuotas mensuales de procesamiento multimedia:
-
-| Límite | Emprendedor | Starter | Pro | Enterprise | Custom |
-|--------|-------------|---------|-----|------------|--------|
-| Audios/mes | 30 | 150 | 500 | 2.000 | Ilimitado |
-| Imágenes/mes | 50 | 250 | 1.000 | 5.000 | Ilimitado |
-| Duración máx. audio | 2 min | 3 min | 5 min | 5 min | 10 min |
-| Por contacto/día | 10 | 20 | 30 | 50 | 100 |
+El backend obtiene las cuotas mensuales, duración máxima y límites de ráfaga desde
+el plan vigente y los overrides del tenant. Consulta **Configuración →
+Facturación** para confirmar los valores actuales; no uses cifras copiadas de una
+versión anterior del catálogo.
 
 Además hay protecciones automáticas contra abuso:
 - Límite por conversación (ráfaga de 3-5 archivos en 5 minutos)
@@ -2407,7 +2463,7 @@ Esta sección agrupa las funcionalidades de integración con sistemas externos. 
 | **Claves de API** | [18.7](#187-claves-de-api-pública) | Crear y gestionar API keys para acceso programático |
 | **Webhooks** | [18.9](#189-suscripciones-webhook-integraciones-externas) | Recibir notificaciones de eventos en sistemas externos (Zapier, Make) |
 | **Acciones HTTP** | [11.4](#114-acciones-http-llamadas-a-apis-externas) | Llamar APIs externas desde reglas de automatización |
-| **Web Chat Triggers** | [18.8](#188-triggers-proactivos-del-web-chat-widget) | Automatizar comportamiento del widget en tu sitio web |
+| **Definiciones de Web Chat Triggers** | [18.8](#188-definiciones-de-triggers-del-web-chat-widget) | Preparar reglas; ejecución pública pendiente |
 
 ### Guía rápida de integración
 
@@ -2523,7 +2579,7 @@ Si activas la tarjeta **Tienda e-commerce**, el agente puede:
 
 Conecta tu **sistema real** por industria para que el agente trabaje con datos en vivo, no solo con prompts.
 
-**Dónde:** **Configuración → Integraciones → Integraciones verticales**.
+**Dónde:** **Configuración → Canales e integraciones → Integraciones verticales**.
 
 | Integración | Industria | Qué sincroniza |
 |-------------|-----------|----------------|
@@ -2539,7 +2595,7 @@ Para cada una: ingresa las credenciales, pulsa **Probar** la conexión y **Sincr
 
 **MCP (Model Context Protocol)** es un estándar abierto para conectar "herramientas de acción" a la IA, sin quedar atado a un proveedor.
 
-**Dónde:** **Configuración → Integraciones → MCP**.
+**Dónde:** **Configuración → Desarrolladores → MCP**.
 
 - **Tu servidor MCP** — expón las herramientas de tu agente (catálogo, FAQs, base de conocimiento…) a clientes MCP externos mediante un endpoint, autenticado con tu API Key.
 - **Servidores MCP externos** — conecta servidores MCP de terceros (añadir/probar/activar): tu agente podrá usar sus herramientas automáticamente.
@@ -2597,7 +2653,7 @@ Usa el selector de rango (30 / 90 / 365 días).
 
 Conecta **Google Business Profile** y responde reseñas con IA en español.
 
-**Dónde:** **Configuración → Integraciones → Reseñas**.
+**Dónde:** **Configuración → Canales e integraciones → Reseñas**.
 
 ## 36.1 Conectar
 
@@ -2617,19 +2673,25 @@ Pulsa **Conectar Google Business** y autoriza el acceso. Luego configura tu Acco
 ## General
 
 **¿Cuánto cuesta Parallly?**
-Desde USD $21/mes (Emprendedor) o USD $49/mes (Starter). Ver tabla completa en sección 20.1. Se puede pagar en ciclo mensual o anual (~15% de descuento — ver 20.13).
+Depende del país, plan y ciclo disponibles. Consulta **Configuración → Facturación**:
+las tarjetas se cargan desde el catálogo activo y muestran el importe, moneda, cuotas y
+modalidad aplicables a tu cuenta.
 
 **¿Puedo probar antes de pagar?**
-Sí: 7 días en Emprendedor y Starter (sin tarjeta), 15 días en Pro y Enterprise (con tarjeta).
+Cuando un plan ofrece prueba, su tarjeta indica la duración, si requiere método de pago
+y la fecha exacta de finalización. No todos los planes o países tienen la misma oferta.
 
 **¿En qué países funciona?**
-Toda Latinoamérica. Soporte de moneda local: COP, ARS, MXN, CLP, PEN, UYU, BRL, USD.
+La disponibilidad comercial, moneda y método de cobro dependen del catálogo activo para
+el país de facturación. Verifica la opción que muestra el checkout o consulta ventas.
 
 **¿Cómo cambio de plan?**
-Configuración → Facturación → click en el plan deseado. Si bajás aplica al final del período actual.
+Configuración → Facturación → selecciona una tarjeta habilitada y revisa el resumen. La
+pantalla confirma si el cambio es inmediato, programado o requiere contacto comercial.
 
 **¿Puedo pausar mi suscripción?**
-Sí — botón "Pausar" en Facturación. No se cobra mientras esté pausada y los datos se preservan.
+Solo cuando la suscripción y el proveedor activos muestran la acción **Pausar**. Lee
+las condiciones y verifica el estado y las fechas después de confirmar.
 
 ## Agente IA
 
@@ -2654,7 +2716,7 @@ Solo para mensajes salientes fuera de la ventana de 24h. Para conversaciones que
 No — solo Instagram Business. Es un requisito de Meta, no de Parallly.
 
 **¿Cuántos canales puedo conectar?**
-Podés conectar todos los canales de tu plan, e incluso **varias conexiones del mismo tipo** (p. ej. 2 números de WhatsApp) según `maxChannelAccounts` (por defecto 1 por canal). Cada conexión puede tener su propio agente. Ver secciones 9.8 y 8.2.
+Podés conectar los canales autoservicio habilitados para tu cuenta y, cuando el plan vigente lo permita, **varias conexiones del mismo tipo** (p. ej. dos números de WhatsApp). Cada conexión puede tener su propio agente. Revisa el cupo aplicable en **Configuración → Facturación** y consulta las secciones 9.8 y 8.2.
 
 ## Citas
 
@@ -2676,7 +2738,8 @@ Sí — transcribe notas de voz (Whisper) y describe imágenes (visión IA). Ver
 Los mensajes se reciben pero no se procesan con IA. El agente responde pidiendo que el cliente escriba por texto. Ver límites en sección 27.3.
 
 **¿Me cobran extra por multimedia?**
-No — está incluido en tu plan con cuotas mensuales. Los límites varían según plan (Emprendedor: 30 audios, Starter: 150, Pro: 500, Enterprise: 2.000).
+La disponibilidad, cuota y cualquier cargo aplicable son los que muestra tu plan
+vigente en **Configuración → Facturación**.
 
 ## Seguridad
 
@@ -2692,19 +2755,26 @@ Al marcar "Confiar en este dispositivo" al iniciar sesión con 2FA, no te pedir�
 Sí — crea una suscripción webhook (Configuración → Avanzado → Webhooks) para recibir eventos, y usa las claves de API para enviar datos. Ver secciones 18.7 y 18.9.
 
 **¿Cuántas API keys puedo crear?**
-Sin límite, pero necesitas plan Pro o superior. Recomendamos una clave por integración.
+La pantalla muestra si la API pública está habilitada y cuántas claves permite el
+plan vigente. Recomendamos una clave separada por integración.
 
 **¿Parallly soporta email como canal?**
-Sí — configúralo en Canales → Email con SMTP o SendGrid. Los correos aparecen en el inbox junto a los demás canales. Ver sección 9.6.
+Email tiene un adaptador inbound interno para integraciones administradas, pero todavía no es un canal conversacional configurable y certificado en autoservicio. La pantalla **Canales → Email** no completa hoy ese contrato. Si necesitás la integración, solicita una evaluación técnica a soporte; ver sección 9.6.
 
 **¿Puedo hacer pruebas A/B en campañas?**
-Sí — al crear una campaña, activa el toggle "Prueba A/B". Disponible en planes Pro y superiores. Ver sección 12.4.
+Los controles A/B existen, pero el envío comparte el flujo de campañas que todavía
+no está certificado para producción. Úsalos solo al preparar borradores; ver
+sección 12.
 
 **¿Puedo tener más de un pipeline?**
-Sí — según tu plan (Emprendedor: 1, Starter: 1, Pro: 3, Enterprise: 10). Ver sección 7.9.
+No hay un contrato operativo certificado para administrar varios pipelines. La
+experiencia actual trabaja con el embudo activo del tenant.
 
 **¿Qué son las secuencias drip?**
-Son flujos automatizados de mensajes con delays entre cada paso. Ideales para nurturing de leads. Se detienen si el contacto responde o convierte. Ver sección 11.5.
+Son flujos automatizados de mensajes con esperas entre pasos. En esta versión se
+detienen automáticamente por respuesta u opt-out; la condición de conversión
+visible aún no se aplica. Desinscribe manualmente al contacto cuando convierta y
+antes de pausar una secuencia con pasos ya programados. Ver sección 11.5.
 
 ## Datos y Privacidad
 

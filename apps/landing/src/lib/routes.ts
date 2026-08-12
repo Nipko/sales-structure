@@ -9,6 +9,7 @@ export const routes = {
   productCrm: "/producto/crm",
   productAndroid: "/producto/app-android",
   pricing: "/precios",
+  support: "/support",
   privacy: "/privacy",
   terms: "/terms",
   dataPolicy: "/data-policy",

@@ -1,7 +1,51 @@
 # 📋 Changelog — Parallext Engine
 
 > Registro de todos los cambios significativos del proyecto.
-> **Última actualización: 2026-07-23 · Versión actual: v6.7.0**
+> **Última actualización documental: 2026-08-11.** `v6.7.0` es el último release
+> histórico enumerado abajo; no debe interpretarse como la versión runtime vigente.
+
+---
+
+## Sin publicar — Ago 11, 2026 (referencias de producto y ayuda)
+
+- Se actualiza el manual web a v4.4 con la navegación vigente, roles explícitos,
+  onboarding de cuatro pasos, Parallly Assist, operación móvil y las 18 verticales.
+- Se incorporan referencias canónicas de capacidades y del contrato editorial entre
+  documentación humana y la KB runtime del asistente en cuatro idiomas.
+- Parallly Assist unifica la ayuda en un único chat respaldado por 25 artículos en
+  cada idioma (`es`, `en`, `pt`, `fr`); se retira la segunda guía factual embebida
+  en el dashboard para evitar respuestas y rutas contradictorias.
+- `/copilot/chat` deriva tenant, identidad y rol exclusivamente de la sesión, valida
+  página, idioma e historial, y añade contexto efectivo de plan y vertical desde el
+  servidor. La búsqueda filtra por rol y combina relevancia semántica con la página
+  actual sin permitir que el inicio desplace coincidencias exactas.
+- El cliente limita el historial y la longitud de los mensajes; los contratos de KB,
+  seguridad y UI pasan a ser gates explícitos de los workflows de calidad y deploy.
+- Se separan el manual móvil actual y el informe histórico del build Android v3. La
+  documentación no presupone aprobación ni disponibilidad pública en Google Play.
+- La referencia de API aclara el body permitido y la identidad derivada de JWT para
+  `/copilot/chat`, además del alcance distinto del Copilot contextual de Inbox.
+- Parallly Assist aplica límites Redis por usuario/tenant, filtra artículos por rol
+  y no expone detalles de plan a Supervisor/Agent. La ayuda enlaza ahora a una ruta
+  `/support` real y localizada.
+- La documentación queda fail-closed ante flujos todavía no certificados: aprobación
+  terminal de deals, desconexión/reasignación de calendarios, lanzamiento/cancelación
+  de campañas, conversión/pausa de drip, encuesta CSAT automática, Email autoservicio
+  y ejecución pública de triggers del widget.
+- Se corrige el aislamiento tenant de los triggers del widget, se ocultan sus IDs en
+  la configuración pública y se alinean los roles de campañas, canales, CRM e Inbox.
+- Inbox y su WebSocket derivan actor/tenant de la sesión, separan visibilidad de
+  capacidad de actuar, aíslan salas y fanout por tenant, limitan Agent a hilos
+  propios o sin asignar y reservan borrados/reasignaciones destructivas al rol
+  correspondiente. El Copilot contextual aplica la misma propiedad y límites de uso.
+- Se mantiene temporalmente el `PUT .../assign` usado por la app móvil v7: para Agent
+  solo acepta su propio ID y se traduce a `claim` atómico sobre conversaciones libres;
+  no permite reasignar. Los clientes actuales usan `/claim` y el alias queda deprecado.
+- Los campos protegidos de CRM (`assigned_to`, `archived_at`) solo cambian por sus
+  flujos dedicados; el update genérico ya no permite evadir los controles de rol.
+- El ingreso administrado de Email exige JSON autenticado, destinatario canónico de
+  envelope, límites de tamaño/tasa e idempotencia post-cola aislada por tenant; sin
+  secret válido permanece deshabilitado de forma segura.
 
 ---
 
@@ -530,7 +574,7 @@ Each template ships with industry-tuned tools enabled, behavior rules, forbidden
 - **Sub-types**: Each industry has 3-5 sub-types (e.g., salud → dental, medica_general, estetica, psicologia)
 - **4-language support**: All vertical definitions in es/en/pt/fr
 - **LLM Vertical Context**: `<vertical_context>` XML injected into prompt assembler with customer_noun, transaction_noun — the AI naturally uses industry vocabulary
-- **Dashboard Visual Adaptation**: 
+- **Dashboard Visual Adaptation**:
   - Contextual welcome ("Bienvenido a tu consultorio virtual, Dr. López")
   - Industry-specific homepage (agenda for clinics, recent leads for real estate)
   - Vertical KPIs (Citas Hoy/No Shows for health; Leads/Test Drives for automotive)

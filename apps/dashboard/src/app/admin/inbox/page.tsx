@@ -8,6 +8,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
+import { isSupervisor } from "@/lib/roles";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { ViewersIndicator } from "./_components/ViewersIndicator";
 import { io } from "socket.io-client";
@@ -249,6 +250,7 @@ function WaitTimer({ triggeredAt }: { triggeredAt: string }) {
 
 export default function InboxPage() {
     const { user } = useAuth();
+    const canReassignConversations = isSupervisor(user?.role);
     const { activeTenantId } = useTenant();
     const t = useTranslations("inbox");
     const tEmpty = useTranslations("verticalEmptyStates");
@@ -325,7 +327,7 @@ export default function InboxPage() {
 
     // --- Collision Detection: viewers ---
     const [viewers, setViewers] = useState<{ agentId: string; agentName: string }[]>([]);
-    const socketRef = useRef<Socket | null>(null);
+    const agentSocketRef = useRef<Socket | null>(null);
     const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // --- Inline error/success feedback ---
@@ -370,12 +372,12 @@ export default function InboxPage() {
 
     // Load custom attribute definitions on mount
     useEffect(() => {
-        if (!activeTenantId) return;
+        if (!activeTenantId || !user?.id) return;
         api.getCustomAttributes(activeTenantId, 'contact').then((res: any) => {
             if (res?.success && Array.isArray(res.data)) setCustomAttrDefs(res.data);
             else if (Array.isArray(res)) setCustomAttrDefs(res);
         }).catch(() => {});
-    }, [activeTenantId]);
+    }, [activeTenantId, user?.id]);
 
     // Reset contact metadata when conversation changes
     useEffect(() => {
@@ -458,7 +460,7 @@ export default function InboxPage() {
     const handleExecuteMacro = async (macroId: string) => {
         if (!activeTenantId || !selectedConv || !user?.id) return;
         try {
-            await api.executeMacro(activeTenantId, macroId, selectedConv.id, user.id);
+            await api.executeMacro(activeTenantId, macroId, selectedConv.id);
             setShowMacrosMenu(false);
         } catch (err) {
             console.error("Macro execution failed:", err);
@@ -483,7 +485,7 @@ export default function InboxPage() {
         if (!activeTenantId || !selectedConv || archiving) return;
         setArchiving(true);
         try {
-            await api.archiveConversation(activeTenantId, selectedConv.id, user?.id);
+            await api.archiveConversation(activeTenantId, selectedConv.id);
             setConversations(prev => prev.filter(c => c.id !== selectedConv.id));
             setSelectedConv(null);
             setMessages([]);
@@ -672,33 +674,45 @@ export default function InboxPage() {
 
     // WebSocket real-time updates
     useEffect(() => {
-        if (!activeTenantId) return;
+        const actorId = user?.id;
+        if (!activeTenantId || !actorId) return;
 
         const token = localStorage.getItem("accessToken");
         // Socket.io needs the base URL without /api/v1 path
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
         const socketUrl = apiUrl.replace(/\/api\/v\d+\/?$/, '');
 
-        const socket = io(`${socketUrl}/inbox`, {
+        const inboxSocket = io(`${socketUrl}/inbox`, {
             auth: { token },
             query: { tenantId: activeTenantId },
             transports: ['websocket', 'polling'],
         });
-        socketRef.current = socket;
+        const agentSocket = io(`${socketUrl}/agent`, {
+            auth: { token },
+            query: { tenantId: activeTenantId },
+            transports: ['websocket', 'polling'],
+        });
+        agentSocketRef.current = agentSocket;
 
-        socket.on('connect', () => {
+        inboxSocket.on('connect', () => {
             console.log('Connected to Inbox live updates');
             setIsLive(true);
             setSocketConnected(true);
         });
 
-        socket.on('disconnect', () => {
+        inboxSocket.on('disconnect', () => {
             // Don't set isLive=false — data is still real, just temporarily disconnected.
             // The socket will auto-reconnect. Showing "DEMO" is misleading.
             setSocketConnected(false);
         });
 
-        socket.on('newMessage', (payload: any) => {
+        // Handoffs, assignments and collision detection live on /agent. Rooms
+        // are per socket, so re-join after every automatic reconnect.
+        agentSocket.on('connect', () => {
+            agentSocket.emit('agent:join', { agentId: actorId, tenantId: activeTenantId });
+        });
+
+        inboxSocket.on('newMessage', (payload: any) => {
             const { conversationId, message } = payload;
 
             // FIX: Use direction field -- 'inbound' = customer, 'outbound' = AI/agent
@@ -789,19 +803,19 @@ export default function InboxPage() {
             }
         });
 
-        socket.on('inbox:refresh', () => {
+        agentSocket.on('inbox:refresh', () => {
             console.log('Received inbox:refresh, reloading...');
             loadInbox({ silent: true });
         });
 
         // Draft-for-approval (WS3 #6): the AI suggested a reply for a human to review.
-        socket.on('inbox:draft_suggestion', (payload: { conversationId: string; suggestedText: string; contactName?: string }) => {
+        agentSocket.on('inbox:draft_suggestion', (payload: { conversationId: string; suggestedText: string; contactName?: string }) => {
             if (payload?.conversationId && payload?.suggestedText) {
                 setDraftsByConv(prev => ({ ...prev, [payload.conversationId]: payload.suggestedText }));
             }
         });
 
-        socket.on('inbox:handoff', (payload: any) => {
+        agentSocket.on('inbox:handoff', (payload: any) => {
             console.log('Received inbox:handoff', payload);
             const { conversationId, reason, summary, triggeredAt } = payload;
             setConversations((prev: any[]) => prev.map(c => {
@@ -830,7 +844,7 @@ export default function InboxPage() {
             });
         });
 
-        socket.on('inbox:handoff_completed', (payload: any) => {
+        agentSocket.on('inbox:handoff_completed', (payload: any) => {
             console.log('Received inbox:handoff_completed', payload);
             const { conversationId } = payload;
             setConversations((prev: any[]) => prev.map(c => {
@@ -859,27 +873,28 @@ export default function InboxPage() {
             });
         });
 
-        socket.on('inbox:escalation', (payload: any) => {
+        agentSocket.on('inbox:escalation', (payload: any) => {
             console.log('Received inbox:escalation', payload);
             loadInbox({ silent: true });
         });
 
         // --- Collision Detection: listen for viewers updates ---
-        socket.on('conversation:viewers_update', (payload: { conversationId: string; viewers: { agentId: string; agentName: string }[] }) => {
+        agentSocket.on('conversation:viewers_update', (payload: { conversationId: string; viewers: { agentId: string; agentName: string }[] }) => {
             if (payload.conversationId === selectedConvIdRef.current) {
                 setViewers(payload.viewers || []);
             }
         });
 
         return () => {
-            socketRef.current = null;
-            socket.disconnect();
+            agentSocketRef.current = null;
+            inboxSocket.disconnect();
+            agentSocket.disconnect();
         };
-    }, [activeTenantId, loadInbox]);
+    }, [activeTenantId, loadInbox, t, user?.id]);
 
     // --- Collision Detection: emit viewing_start / viewing_stop + heartbeat ---
     useEffect(() => {
-        const socket = socketRef.current;
+        const socket = agentSocketRef.current;
         if (!socket || !selectedConv?.id || !user?.id) {
             // Clear viewers when no conversation is selected
             setViewers([]);
@@ -887,26 +902,23 @@ export default function InboxPage() {
         }
 
         const convId = selectedConv.id;
-        const agentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || t('agent');
-
         // Emit start viewing
-        socket.emit('conversation:viewing_start', { conversationId: convId, agentId: user.id, agentName });
+        socket.emit('conversation:viewing_start', { conversationId: convId });
 
         // Heartbeat every 15 seconds
         heartbeatRef.current = setInterval(() => {
-            socket.emit('conversation:heartbeat', { conversationId: convId, agentId: user.id, agentName });
+            socket.emit('conversation:heartbeat', { conversationId: convId });
         }, 15000);
 
         return () => {
             // Emit stop viewing
-            socket.emit('conversation:viewing_stop', { conversationId: convId, agentId: user.id });
+            socket.emit('conversation:viewing_stop', { conversationId: convId });
             setViewers([]);
             if (heartbeatRef.current) {
                 clearInterval(heartbeatRef.current);
                 heartbeatRef.current = null;
             }
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedConv?.id, user?.id]);
 
     // --- Fetch AI Suggestion when conversation changes ---
@@ -1011,7 +1023,9 @@ export default function InboxPage() {
         if (!activeTenantId || !selectedConv?.id || !user?.id) return;
         setAssignLoading(true);
         try {
-            const result = await api.assignConversation(activeTenantId, selectedConv.id, user.id);
+            const result = selectedConv.assignedAgentId
+                ? await api.assignConversation(activeTenantId, selectedConv.id, user.id)
+                : await api.claimConversation(activeTenantId, selectedConv.id);
             if (result.success) {
                 const agentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || t('agent');
                 // Update the selected conversation -- backend assignConversation() sets status 'with_human'
@@ -1159,7 +1173,7 @@ export default function InboxPage() {
         // API call
         try {
             if (activeTenantId && selectedConv?.id) {
-                await api.sendMessage(activeTenantId, selectedConv.id, content, user?.id);
+                await api.sendMessage(activeTenantId, selectedConv.id, content);
                 // Draft-for-approval (#6): the agent replied — clear any pending AI draft.
                 const convId = selectedConv.id;
                 setDraftsByConv(prev => { const n = { ...prev }; delete n[convId]; return n; });
@@ -1183,7 +1197,7 @@ export default function InboxPage() {
         // API call
         try {
             if (activeTenantId && selectedConv.id) {
-                await api.addNote(activeTenantId, selectedConv.id, content, user?.id);
+                await api.addNote(activeTenantId, selectedConv.id, content);
                 // Optimistic add to notes list
                 setNotes(prev => [...prev, {
                     id: `note_${Date.now()}`,
@@ -1209,7 +1223,7 @@ export default function InboxPage() {
         // API call
         try {
             if (activeTenantId && selectedConv.id) {
-                await api.resolveConversation(activeTenantId, selectedConv.id, user?.id);
+                await api.resolveConversation(activeTenantId, selectedConv.id);
             }
         } catch (err) {
             console.error("Resolve failed:", err);
@@ -1689,23 +1703,26 @@ export default function InboxPage() {
                                     <CheckCircle size={14} />
                                     <span className="hidden md:inline">{t("resolve")}</span>
                                 </button>
-                                {/* Assign — always visible */}
-                                <button
-                                    onClick={handleAssign}
-                                    disabled={assignLoading}
-                                    className={cn(
-                                        "py-1.5 px-2.5 rounded-lg border-none text-xs font-semibold flex gap-1.5 items-center transition-all",
-                                        assignLoading
-                                            ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
-                                            : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
-                                    )}
-                                    title={t("assignToMe")}
-                                >
-                                    {assignLoading ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
-                                    <span className="hidden md:inline">
-                                        {assignLoading ? '...' : (selectedConv.assignedAgentId === user?.id ? t('reassignToMe') : t('assignToMe'))}
-                                    </span>
-                                </button>
+                                {/* Agents can claim free conversations; only elevated roles can reassign. */}
+                                {(!selectedConv.assignedAgentId ||
+                                    (canReassignConversations && selectedConv.assignedAgentId !== user?.id)) && (
+                                    <button
+                                        onClick={handleAssign}
+                                        disabled={assignLoading}
+                                        className={cn(
+                                            "py-1.5 px-2.5 rounded-lg border-none text-xs font-semibold flex gap-1.5 items-center transition-all",
+                                            assignLoading
+                                                ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+                                                : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
+                                        )}
+                                        title={selectedConv.assignedAgentId ? t("reassignToMe") : t("assignToMe")}
+                                    >
+                                        {assignLoading ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                                        <span className="hidden md:inline">
+                                            {assignLoading ? '...' : (selectedConv.assignedAgentId ? t('reassignToMe') : t('assignToMe'))}
+                                        </span>
+                                    </button>
+                                )}
                                 {/* More actions — contains Notes, Snooze, Macros, Archive, Delete */}
                                 <div ref={moreMenuRef} className="relative">
                                     <button

@@ -8,7 +8,7 @@ keywords: ["contacts", "crm", "prospects", "leads", "clients", "score", "scoring
 
 # Contacts et CRM
 
-Le CRM de Parallly est l'endroit où vivent tous vos contacts : chaque personne qui vous écrit via WhatsApp, Instagram, Messenger, Telegram, Email ou le chat de votre site web y est enregistrée automatiquement, avec son historique complet. Vous pouvez aussi ajouter des contacts à la main ou les importer depuis Excel.
+Le CRM de Parallly est l'endroit où vivent tous vos contacts : chaque personne qui vous écrit via WhatsApp, Instagram, Messenger, Telegram ou le chat de votre site web y est enregistrée automatiquement, avec son historique complet. Vous pouvez aussi ajouter des contacts à la main ou les importer depuis Excel.
 
 Vous le trouvez dans la barre latérale : ouvrez **CRM** et entrez dans la première option, **CRM**. Vous arriverez sur la page **Contacts**, avec un tableau qui affiche le nom, le canal, les conversations, la valeur, la dernière interaction, le score, l'étape et les tags. En haut, vous disposez de puces rapides pour filtrer par groupe : **Tous**, **Nouveaux**, **Prospects**, **Qualifiés**, **Clients** et **Perdus**, ainsi qu'une barre de recherche.
 
@@ -96,7 +96,7 @@ Un segment est un groupe de contacts défini par des filtres qui se met à jour 
 
 Si vous devez enregistrer des données propres à votre activité (anniversaire, taille, numéro de police…), créez des champs sur mesure. Disponible pour les administrateurs et les superviseurs :
 
-1. Allez dans **Paramètres** et, dans la section **Opérations**, entrez dans **Attributs personnalisés**.
+1. Allez dans **Paramètres → CRM et opérations → Attributs personnalisés**.
 2. Cliquez sur **Nouvel attribut**.
 3. Choisissez le **Type d'entité** (Contact, Lead, Entreprise ou Conversation), saisissez le **Libellé** (ex. « Anniversaire ») et le **Type de données** : Texte, Nombre, Date, Booléen, Liste (avec des options séparées par des virgules) ou URL. Vous pouvez le marquer comme **Champ obligatoire**.
 4. Enregistrez. Le champ apparaîtra dans la section **Champs personnalisés** de la fiche de chaque contact.
@@ -108,17 +108,9 @@ Si la même personne vous écrit via deux canaux avec le même téléphone ou em
 - **Suggestions automatiques** : des paires de contacts très similaires détectées par le système, avec leur niveau de **Confiance**. Examinez chaque paire et choisissez **Approuver** (ils sont fusionnés) ou **Rejeter**.
 - **Fusion manuelle** : recherchez et sélectionnez le premier et le second contact, puis cliquez sur **Fusionner les contacts**. Ils sont réunis en un seul profil avec tout leur historique.
 
-## Limites par plan
+## Capacité du CRM
 
-| Plan | Contacts | Segments enregistrés | Attributs personnalisés |
-|------|----------|----------------------|-------------------------|
-| Emprendedor | 100 | Non inclus | Non inclus |
-| Starter | 500 | 3 | 5 |
-| Pro | 5 000 | 15 | 20 |
-| Enterprise | 50 000 | Sans limite | Sans limite |
-| Custom | Sans limite | Sans limite | Sans limite |
-
-En vous approchant de la limite de contacts de votre plan, vous verrez un avis pour l'augmenter depuis **Paramètres → Facturation**.
+L'écran affiche l'utilisation et les limites actuelles des contacts, segments et attributs. Si vous approchez de la capacité, consultez **Forfait et facturation**.
 
 ## Questions fréquentes
 

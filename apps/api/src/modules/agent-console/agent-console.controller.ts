@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AgentConsoleService } from './agent-console.service';
 import { CannedResponsesService } from './canned-responses.service';
@@ -12,6 +12,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('agent-console')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
 export class AgentConsoleController {
 
     constructor(
@@ -28,15 +29,16 @@ export class AgentConsoleController {
     @Get('inbox/:tenantId')
     async getInbox(
         @Param('tenantId') tenantId: string,
-        @Query('agentId') agentId: string,
+        @Req() req: any,
         @Query('filter') filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' | 'ai' = 'all',
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
     ) {
         const inbox = await this.agentConsoleService.getInbox(
-            tenantId, agentId, filter,
+            tenantId, req.user.id, filter,
             limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50,
             offset ? Math.max(parseInt(offset, 10) || 0, 0) : 0,
+            req.user.role,
         );
         return { success: true, data: inbox, hasMore: (inbox as any).__hasMore ?? false };
     }
@@ -46,7 +48,11 @@ export class AgentConsoleController {
     async reopenConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         await this.agentConsoleService.reopenConversation(tenantId, conversationId);
         return { success: true };
     }
@@ -57,9 +63,13 @@ export class AgentConsoleController {
     async getConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
         @Query('limit') limit?: string,
         @Query('before') before?: string,
     ) {
+        await this.agentConsoleService.assertCanViewConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         const conversation = await this.agentConsoleService.getConversation(
             tenantId, conversationId,
             limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50,
@@ -72,7 +82,11 @@ export class AgentConsoleController {
     async getArchivedMessages(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.agentConsoleService.assertCanViewConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         const archive = await this.archiveMaintenanceService.getArchivedMessages(tenantId, conversationId);
         return { success: true, data: archive };
     }
@@ -82,12 +96,16 @@ export class AgentConsoleController {
     async sendMessage(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
-        @Body() body: { agentId: string; content: string; type?: string; mediaUrl?: string; caption?: string; filename?: string },
+        @Req() req: any,
+        @Body() body: { content: string; type?: string; mediaUrl?: string; caption?: string; filename?: string },
     ) {
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         const message = await this.agentConsoleService.sendAgentMessage(
             tenantId,
             conversationId,
-            body.agentId,
+            req.user.id,
             body.content,
             body.type,
             body.mediaUrl,
@@ -102,10 +120,36 @@ export class AgentConsoleController {
     async assignConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
         @Body() body: { agentId: string },
     ) {
+        // Deprecated mobile-v7 compatibility path. Agents may only use the legacy
+        // assignment route as a self-claim; the atomic UPDATE prevents reassignment.
+        if (req.user.role === 'tenant_agent') {
+            if (body?.agentId !== req.user.id) {
+                throw new ForbiddenException('Agents can only claim conversations for themselves');
+            }
+            await this.agentConsoleService.claimConversation(tenantId, conversationId, req.user.id);
+            return { success: true, message: 'Conversation claimed' };
+        }
+
+        if (!['tenant_admin', 'tenant_supervisor'].includes(req.user.role)) {
+            throw new ForbiddenException('Conversation assignment requires an elevated role');
+        }
+
         await this.agentConsoleService.assignConversation(tenantId, conversationId, body.agentId);
         return { success: true, message: 'Conversation assigned' };
+    }
+
+    @Put('conversation/:tenantId/:conversationId/claim')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    async claimConversation(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+        @Req() req: any,
+    ) {
+        await this.agentConsoleService.claimConversation(tenantId, conversationId, req.user.id);
+        return { success: true, message: 'Conversation claimed' };
     }
 
     @Put('conversation/:tenantId/:conversationId/resolve')
@@ -113,9 +157,12 @@ export class AgentConsoleController {
     async resolveConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
-        @Body() body: { agentId: string },
+        @Req() req: any,
     ) {
-        await this.agentConsoleService.resolveConversation(tenantId, conversationId, body.agentId);
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
+        await this.agentConsoleService.resolveConversation(tenantId, conversationId, req.user.id);
         return { success: true, message: 'Conversation resolved' };
     }
 
@@ -124,7 +171,11 @@ export class AgentConsoleController {
     async returnToAI(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         await this.agentConsoleService.returnToAI(tenantId, conversationId);
         return { success: true, message: 'Conversation returned to AI' };
     }
@@ -134,9 +185,13 @@ export class AgentConsoleController {
     async addNote(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
-        @Body() body: { agentId: string; content: string },
+        @Req() req: any,
+        @Body() body: { content: string },
     ) {
-        const note = await this.agentConsoleService.addNote(tenantId, conversationId, body.agentId, body.content);
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
+        const note = await this.agentConsoleService.addNote(tenantId, conversationId, req.user.id, body.content);
         return { success: true, data: note };
     }
 
@@ -144,7 +199,11 @@ export class AgentConsoleController {
     async getAISuggestion(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.agentConsoleService.assertCanViewConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         const suggestion = await this.agentConsoleService.getAISuggestion(tenantId, conversationId);
         return { success: true, data: { suggestion } };
     }
@@ -182,7 +241,11 @@ export class AgentConsoleController {
     async nextBestAction(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.agentConsoleService.assertCanViewConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         const action = await this.agentConsoleService.nextBestAction(tenantId, conversationId);
         return { success: true, data: { action } };
     }
@@ -232,10 +295,11 @@ export class AgentConsoleController {
     @Put('status/:userId')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateAgentStatus(
-        @Param('userId') userId: string,
+        @Param('userId') _ignoredUserId: string,
+        @Req() req: any,
         @Body() body: { status: string },
     ) {
-        await this.availabilityService.updateStatus(userId, body.status as any);
+        await this.availabilityService.updateStatus(req.user.tenantId, req.user.id, body.status as any);
         return { success: true };
     }
 
@@ -258,8 +322,12 @@ export class AgentConsoleController {
     async snoozeConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
         @Body() body: { snoozeUntil: string },
     ) {
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         await this.snoozeService.snooze(tenantId, conversationId, new Date(body.snoozeUntil));
         return { success: true, message: 'Conversation snoozed' };
     }
@@ -269,7 +337,11 @@ export class AgentConsoleController {
     async unsnoozeConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         await this.snoozeService.unsnooze(tenantId, conversationId);
         return { success: true, message: 'Conversation unsnoozed' };
     }
@@ -305,9 +377,15 @@ export class AgentConsoleController {
     async executeMacro(
         @Param('tenantId') tenantId: string,
         @Param('macroId') macroId: string,
-        @Body() body: { conversationId: string; agentId: string },
+        @Req() req: any,
+        @Body() body: { conversationId: string },
     ) {
-        const result = await this.macrosService.executeMacro(tenantId, macroId, body.conversationId, body.agentId);
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, body.conversationId, req.user.id, req.user.role,
+        );
+        const result = await this.macrosService.executeMacro(
+            tenantId, macroId, body.conversationId, req.user.id, req.user.role,
+        );
         return { success: true, data: result };
     }
 
@@ -318,30 +396,41 @@ export class AgentConsoleController {
     async archiveConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
-        @Body() body: { agentId: string },
+        @Req() req: any,
     ) {
-        await this.agentConsoleService.archiveConversation(tenantId, conversationId, body.agentId);
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
+        await this.agentConsoleService.archiveConversation(tenantId, conversationId, req.user.id);
         return { success: true, message: 'Conversation archived' };
     }
 
     @Delete('conversation/:tenantId/:conversationId')
-    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @Roles('tenant_admin')
     async deleteConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
         await this.agentConsoleService.deleteConversation(tenantId, conversationId);
         return { success: true, message: 'Conversation deleted' };
     }
 
     @Delete('conversation/:tenantId/:conversationId/message/:messageId')
-    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @Roles('tenant_admin')
     async deleteMessage(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
         @Param('messageId') messageId: string,
+        @Req() req: any,
     ) {
-        await this.agentConsoleService.deleteMessage(tenantId, messageId);
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
+        await this.agentConsoleService.deleteMessage(tenantId, conversationId, messageId);
         return { success: true, message: 'Message deleted' };
     }
 
@@ -349,18 +438,26 @@ export class AgentConsoleController {
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async bulkArchive(
         @Param('tenantId') tenantId: string,
+        @Req() req: any,
         @Body() body: { conversationIds: string[] },
     ) {
+        await this.agentConsoleService.assertCanActOnConversations(
+            tenantId, body.conversationIds, req.user.id, req.user.role,
+        );
         await this.agentConsoleService.bulkArchive(tenantId, body.conversationIds);
         return { success: true, message: 'Conversations archived' };
     }
 
     @Post('conversations/:tenantId/bulk-delete')
-    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @Roles('tenant_admin')
     async bulkDelete(
         @Param('tenantId') tenantId: string,
+        @Req() req: any,
         @Body() body: { conversationIds: string[] },
     ) {
+        await this.agentConsoleService.assertCanActOnConversations(
+            tenantId, body.conversationIds, req.user.id, req.user.role,
+        );
         await this.agentConsoleService.bulkDelete(tenantId, body.conversationIds);
         return { success: true, message: 'Conversations deleted' };
     }

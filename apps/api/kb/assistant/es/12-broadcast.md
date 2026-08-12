@@ -8,103 +8,57 @@ keywords: ["campaña", "campañas", "broadcast", "difusión", "envío masivo", "
 
 # Campañas y difusión (broadcast)
 
-Una **campaña** (o broadcast) es un mensaje que envías de una sola vez a muchos de tus contactos: una promoción, un anuncio, un recordatorio general. Se envía por **WhatsApp** y/o **Email**, a todos tus contactos o a un segmento específico.
+La sección **IA y crecimiento → Campañas** reúne borradores, audiencia, estados y métricas de envíos masivos. Pueden verla los administradores y supervisores cuando la función está habilitada para la cuenta.
 
-Encuentras las campañas en la barra lateral, sección **Crecimiento → Campañas**. Pueden crearlas los usuarios con rol de **administrador** o **supervisor** (los agentes no).
+## Estado de disponibilidad de esta versión
 
-## Antes de empezar
+El flujo de lanzamiento desde el editor **no está certificado de punta a punta para producción**:
 
-- **WhatsApp usa plantillas aprobadas por Meta.** Para escribirle a un cliente que no te ha hablado en las últimas 24 horas, WhatsApp exige que el mensaje sea una plantilla revisada y aprobada por Meta. Revisa tus plantillas en **Canales → WhatsApp** (verás el resumen de plantillas y el botón **Ver todas las plantillas**).
-- **Prepara tu audiencia.** Puedes enviar a **Todos los contactos** o a un **Segmento** (grupo guardado de contactos con filtros, por ejemplo "clientes VIP"). Los segmentos se crean en **CRM → Segmentos**.
-- **Verifica tu plan.** El plan Emprendedor no incluye campañas y Starter permite hasta 3 por mes (ver tabla de límites más abajo).
+- En WhatsApp, el editor actual no vincula de forma segura el texto escrito con el nombre y los componentes de una plantilla aprobada por Meta. Un envío puede fallar aunque el texto se vea correcto.
+- Una campaña programada no tiene una acción operativa de cancelación antes de que el proceso automático la tome.
+- El envío de Email de campañas no certifica Email como canal conversacional ni ofrece una conexión de Email de autoservicio.
 
-## Cómo crear y enviar una campaña
+Por ahora usa la pantalla para preparar borradores, revisar segmentos y consultar resultados ya registrados. **No pulses Enviar ahora ni programes una campaña de producción** hasta que el panel muestre un selector verificado de plantilla/emisor y una acción de cancelación. Para un envío real, coordina primero una prueba controlada con soporte.
 
-1. Ve a **Crecimiento → Campañas** y haz clic en **Nueva campaña**.
-2. Escribe el **Nombre de la campaña** (por ejemplo, "Promo Verano 2026"). Es solo para uso interno.
-3. En **Canales de envío**, elige **WhatsApp**, **Email** o ambos.
-4. Redacta el contenido de cada canal:
-   - **Plantilla WhatsApp**: escribe el texto del mensaje. Usa `{{name}}` para insertar el nombre de cada contacto automáticamente. Recuerda que debe corresponder a una plantilla aprobada por Meta si vas a contactar clientes fuera de la ventana de 24 horas.
-   - **Contenido del email**: asunto y cuerpo del correo.
-5. Si tienes **más de un número de WhatsApp conectado**, aparece el selector **Enviar desde el número**: elige desde qué número sale la campaña, o deja **Número principal (por defecto)**.
-6. En **Audiencia**, elige **Todos los contactos** o **Segmento** (y selecciona cuál; verás cuántos contactos incluye).
-7. En **Fecha de envío (opcional)**:
-   - Si eliges fecha y hora, el botón dirá **Programar** y la campaña saldrá sola en ese momento.
-   - Si la dejas vacía, el botón dirá **Guardar borrador** y la campaña queda guardada sin enviarse.
-8. Para enviar un borrador de inmediato, ábrelo en la lista y usa **Enviar ahora**.
+## Preparar un borrador seguro
 
-> Tip: los envíos masivos salen a un ritmo controlado para proteger tu número de WhatsApp. Si la campaña es grande, es normal que tarde varios minutos en completarse.
+1. Ve a **IA y crecimiento → Campañas** y crea una campaña.
+2. Dale un nombre interno.
+3. Elige **Todos los contactos** o un **Segmento** creado en **CRM → Segmentos**.
+4. Revisa la cantidad de destinatarios y las bajas de comunicación.
+5. Guarda el borrador sin fecha de envío.
 
-## Estados de una campaña
+No uses datos sensibles en el nombre interno. La disponibilidad, los canales y la capacidad vigentes se muestran en la propia pantalla y en **Administración → Plan y facturación**.
 
-Cada campaña muestra su estado en la lista: **Borrador** (guardada, sin programar), **Programada**, **Enviando**, **Enviada**, **Completada** o **Fallida**.
-
-## Métricas: cómo leer los resultados
-
-En la parte superior de **Campañas** ves los totales: **Campañas**, **Enviadas**, **Programadas** y **Respuestas**. Además, cada campaña muestra su embudo:
-
-- **Destinatarios** — a cuántos contactos se dirigió.
-- **Entregado** — cuántos mensajes llegaron al teléfono o buzón del cliente.
-- **Leído** — cuántos lo abrieron (WhatsApp reporta lecturas cuando el cliente las tiene activadas).
-- **Respondieron** — cuántos contestaron el mensaje.
-
-Si además quieres saber cuántas **ventas** generó cada campaña, revisa **Ingresos por campañas** en la sección de atribución de Analíticas.
-
-## Pruebas A/B (planes Pro y superiores)
-
-Con el interruptor **Probar dos variantes (A/B)** al crear la campaña puedes enviar dos versiones del mensaje y descubrir cuál funciona mejor:
-
-1. Activa **Probar dos variantes (A/B)** y redacta la **Variante A** y la **Variante B**.
-2. Ajusta la **División del envío** (qué porcentaje de la audiencia recibe cada variante).
-3. Opcional: activa **Auto-selección** para que el sistema detecte la variante ganadora y la use automáticamente con el resto de la audiencia.
-4. Después del envío, la campaña muestra resultados por variante (enviados, entregados, tasa de lectura) y puedes usar **Seleccionar ganadora**.
-
-> Consejo: cambia un solo elemento entre variantes (el texto, la oferta o el llamado a la acción). Así sabrás exactamente qué hizo la diferencia.
-
-## Plantillas de WhatsApp: crear y aprobar
+## Plantillas de WhatsApp
 
 Ruta: **Canales → WhatsApp → Ver todas las plantillas**.
 
-- **Crear plantilla**: dale un nombre (minúsculas y guiones bajos, ej. `recordatorio_pago`), elige idioma y categoría, escribe encabezado, cuerpo (con variables como `{{1}}`), pie y hasta 3 botones. Al terminar, **Enviar a Meta**.
-- Meta la revisa normalmente entre minutos y 72 horas. Los estados son **Aprobadas**, **Pendientes** y **Rechazadas** (con el motivo del rechazo visible).
-- **Sincronizar desde Meta** trae las plantillas que ya tengas aprobadas en tu cuenta.
-- Al conectar WhatsApp, Parallly envía automáticamente 3 **plantillas semilla** de utilidad (recordatorio de cita, confirmación de pedido y pago recibido) que Meta suele aprobar en minutos.
-- Si tienes varios números, al crear la plantilla eliges el **Número / cuenta** al que pertenece.
+- Una plantilla tiene un nombre técnico, idioma, categoría y componentes que deben coincidir exactamente con lo aprobado por Meta.
+- **Sincronizar desde Meta** actualiza los estados visibles en Parallly.
+- Al conectar WhatsApp, Parallly puede enviar **4 plantillas semilla**: recordatorio de cita, confirmación de asistencia, confirmación de pedido y pago recibido.
+- Meta determina si aprueba o rechaza cada plantilla y cuánto tarda; Parallly solo muestra el estado recibido.
 
-## Límites por plan
+Tener una plantilla aprobada no corrige por sí solo la limitación del editor de campañas descrita arriba.
 
-| Plan | Campañas por mes | Pruebas A/B | Segmentos | Contactos |
-|------|-----------------|-------------|-----------|-----------|
-| Emprendedor | No incluido | — | — | 100 |
-| Starter | 3 | No | 3 | 500 |
-| Pro | Ilimitadas | Sí | 15 | 5.000 |
-| Enterprise | Ilimitadas | Sí | Ilimitados | 50.000 |
-| Custom | Ilimitadas | Sí | Ilimitados | Ilimitados |
+## Estados y métricas
 
-Otros límites relacionados: el canal **Email** está disponible desde el plan Starter, y la cantidad de **números de WhatsApp** que puedes conectar depende del plan (Pro: 2, Enterprise: 3, Custom: sin límite). Puedes subir de plan en **Configuración → Facturación**.
+La lista puede mostrar borradores y campañas ya procesadas con destinatarios, entregas, lecturas, respuestas o fallos. Estos datos dependen de los eventos que reporte cada proveedor; una lectura o entrega no siempre está disponible.
 
-## ¿Y el SMS?
-
-El SMS en Parallly **no es un canal de conversación**: es una notificación de una sola vía que funciona con **créditos** (1 crédito = 1 segmento de SMS) y sale por la infraestructura de la plataforma, sin que necesites contratar nada aparte. La compra de paquetes y tu saldo se gestionan en **Configuración → Facturación**. Si la opción de SMS no aparece al crear tu campaña, es porque aún no está habilitada para tu cuenta.
+Los controles de variantes A/B forman parte del editor, pero su envío comparte la misma limitación de lanzamiento. Úsalos solo como configuración de borrador hasta que el flujo esté certificado.
 
 ## Preguntas frecuentes
 
-**¿Por qué no veo la sección Campañas?**
-Tu rol debe ser administrador o supervisor, y tu plan debe incluir campañas (el plan Emprendedor no las incluye).
-
 **¿Puedo cancelar una campaña programada?**
-Mientras esté en estado **Programada** puedes gestionarla desde la lista antes de la hora de envío. Una vez en estado **Enviando**, los mensajes ya están saliendo.
+No existe una acción operativa de cancelación en la versión actual. Por eso no programes campañas de producción desde este editor.
 
-**¿Por qué mi campaña de WhatsApp no llega a algunos contactos?**
-Las causas más comunes: la plantilla no está **Aprobada** por Meta, el contacto se dio de baja (no se le envían más difusiones) o el número ya no existe. Revisa el estado de la plantilla en **Canales → WhatsApp**.
-
-**¿Puedo personalizar el mensaje con el nombre de cada cliente?**
-Sí: escribe `{{name}}` en el texto y cada contacto recibirá su propio nombre.
+**¿Puedo escribir directamente el texto de una plantilla de WhatsApp y enviarlo?**
+No de forma segura en esta versión. WhatsApp exige el identificador y los componentes exactos de una plantilla aprobada; el editor todavía no realiza esa vinculación de punta a punta.
 
 **¿Cuánto tarda Meta en aprobar una plantilla?**
-Normalmente entre unos minutos y 72 horas. Verás el estado (Pendiente/Aprobada/Rechazada) en la lista de plantillas.
+No hay un plazo garantizado. Consulta el estado sincronizado en **Canales → WhatsApp**.
 
-**¿La campaña la responde la IA?**
-Si un cliente contesta tu campaña de WhatsApp, la respuesta entra como una conversación normal y la atiende el agente de IA de esa conexión.
+**¿El Email de campañas habilita un canal de Email?**
+No. El Email conversacional de autoservicio no está certificado actualmente.
 
-¿Necesitas más ayuda? Escríbenos en https://parallly-chat.cloud/support
+**¿Necesitas más ayuda?** Escríbenos en https://parallly-chat.cloud/support

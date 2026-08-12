@@ -142,38 +142,31 @@ widget_triggers            — Web chat widget trigger rules (conditions, action
 
 ## Billing System
 
+> **Autoridad de runtime:** este bloque conserva ejemplos históricos de seed para
+> diagnóstico. No debe usarse para responder precios, trials, cuotas o features a
+> clientes. La única fuente vigente es `billing_plans` y la pantalla **Plan y
+> facturación**. Email conversacional no es autoservicio aunque un seed antiguo lo
+> enumere.
+
 - **Payment providers**: MercadoPago (LatAm, default) + Stripe adapter. Adapter pattern via `IPaymentProvider`; `PaymentProviderFactory` enruta según config del tenant. `mock` solo en dev
 - **Plans**: 5 plans seeded en `billing_plans` (`seed-billing-plans.js`, create-only por defecto — el panel es la fuente de verdad), sincronizados a MercadoPago vía `billing-admin` `POST plans/:slug/sync-mp` (o `sync-mp-plans.js` por SSH)
-- **Precios (USD/mes)**: emprendedor $21, starter $49, pro $129, enterprise $349, custom sales-led ($0). Overrides locales COP en `priceLocalOverrides.CO`
-- **Ciclo mensual/anual**: el anual (~15% desc vs 12× mensual) crea un `preapproval_plan` MP separado; su id vive en `priceLocalOverrides[country].annual.mpPlanId` (el mensual en `.mpPlanId` / columna legacy `mpPlanId` solo CO). Ver `docs/billing-annual-cycle.md`
+- **Precios**: se leen de `billing_plans` y sus overrides locales; no se fijan en esta referencia
+- **Ciclo mensual/anual**: precio, descuento y elegibilidad se leen del catálogo vigente; las referencias del proveedor viven en `priceLocalOverrides`. Ver `docs/billing-annual-cycle.md`
 - **Subscription lifecycle**: pending_auth → trialing → active → past_due → cancelled/expired. `pendingPlan` + `pendingPlanChangeAt` difieren downgrades al fin de período
-- **Trial**: Created at end of onboarding (emprendedor/starter 7d sin tarjeta; pro/enterprise 15d con tarjeta). Daily cron fires `trial.ending_soon` before end
+- **Trial**: condiciones y duración se leen de `billing_plans`; el cron emite `trial.ending_soon` según la configuración vigente
 - **Webhooks**: `POST /billing/webhook/:provider` (`:provider` ∈ mercadopago|stripe; `mock` solo fuera de producción). Firma verificada contra el raw body (fail-closed 401) → idempotencia Redis `idem:billing:{provider}:{eventId}` (48h) → idempotencia DB `billing_events` UNIQUE(provider, providerEventId). Siempre responde 200 al ingerir (incl. duplicados) para cortar reintentos
 - **Reconciliation**: barrido past_due horario + detección de drift diaria (`reconciliation.processor`). On-demand desde `billing-admin` (`POST reconcile`, `POST tenants/:tenantId/reconcile`)
 - **Plan quotas**: enforcement server-side (services, automation rules, broadcast, pipelines, drip, webhooks, widget triggers, channel accounts) vía `TenantThrottleService` leyendo `billing_plans.features` en runtime
 - **Email templates**: 5 billing-specific (payment_success, payment_failed, trial_ending, subscription_cancelled, plan_upgraded)
 - **Card tokenization**: MercadoPago para checkout self-serve (planes con `requiresCardForTrial`)
 - **Cupones** (`/billing-coupons`): percent_off / amount_off / free_months. Admin CRUD (super_admin) + validate/redeem tenant-facing. `billing_coupons` + `billing_coupon_redemptions` (un canje por tenant×cupón)
-- **Plan rate limits** (auto/h + outbound/h): emprendedor (0+100), starter (50+200), pro (500+2000), enterprise (5000+20000), custom (∞)
-- **Plan agent count** (`maxAgents`): emprendedor=1, starter=1, pro=3, enterprise=10, custom=999
-- **Plan calendar count** (`maxCalendars`): emprendedor=1, starter=1, pro=3, enterprise=10, custom=unlimited
-- **Plan property count** (`maxProperties`): emprendedor=0, starter=2, pro=10, enterprise=50, custom=unlimited
-- **Multi-cuenta por tipo** (`features.maxChannelAccounts`, default 1 por tipo): emprendedor/starter=1 todos; pro={whatsapp:2, messenger:3}; enterprise={whatsapp:3, instagram:2, messenger:5, telegram:2, sms:2}; custom=∞. Un agente por conexión vía `agent_personas.channel_bindings` (ver sección Multi-canal)
-
-### Plan Feature Matrix (Competitive Analysis Additions)
-
-| Feature | Emprendedor | Starter | Pro | Enterprise | Custom |
-|---------|-------------|---------|-----|------------|--------|
-| publicApi | false | false | true | true | true |
-| publicApiKeys | 0 | 0 | 3 | -1 (unlimited) | -1 (unlimited) |
-| publicApiRateLimit | 0 | 0 | 60 req/min | 300 req/min | 1000 req/min |
-| httpRequestAction | false | false | true | true | true |
-| maxPipelines | 1 | 1 | 3 | 10 | -1 (unlimited) |
-| maxDripSequences | 0 | 3 | 10 | -1 (unlimited) | -1 (unlimited) |
-| maxWebhookSubscriptions | 0 | 3 | 10 | -1 (unlimited) | -1 (unlimited) |
-| abTestBroadcasts | false | false | true | true | true |
-| widgetTriggers | 0 | 3 | 10 | -1 (unlimited) | -1 (unlimited) |
-| channels += 'email' | no | yes | yes | yes | yes |
+- **Límites y features**: rate limits, agentes, calendarios, propiedades,
+  conexiones por canal, API, drip, webhooks y cualquier otra capacidad se leen de
+  `billing_plans.features` y de overrides autorizados. No se duplican en esta
+  referencia porque pueden cambiar sin despliegue de código.
+- **Email**: un valor histórico `channels += email` no habilita Email
+  conversacional autoservicio. El único alcance actual es el ingreso administrado,
+  autenticado y fail-closed documentado en la referencia API.
 
 ## Offboarding System
 
@@ -362,7 +355,9 @@ Centro de Operaciones para el super_admin. Liveness `GET /health` + `GET /health
 
 - **Module**: `apps/api/src/modules/vacation-rental/`
 - **4 tenant-schema tables**: `properties`, `ical_blocks`, `ical_feeds`, `property_bookings`
-- **Plan-gated**: starter:2, pro:10, enterprise:50, custom:unlimited
+- **Plan-gated**: la cuota de propiedades se obtiene de
+  `billing_plans.features` y de los overrides autorizados; esta referencia no fija
+  valores por plan
 - **Availability check**: `checkAvailability(propertyId, checkIn, checkOut)` merges `ical_blocks` (external) + `property_bookings` (internal)
 - **iCal Import**: `IcalSyncService` parses Airbnb/Booking.com `.ics` using `node-ical`. Cron `*/30 * * * *`
 - **iCal Export**: `ical-generator`. Includes both blocks and confirmed bookings
@@ -385,7 +380,11 @@ Centro de Operaciones para el super_admin. Liveness `GET /health` + `GET /health
 - **Configurable scoring**: `scoring_config` table (weights JSON, purchase_keywords, decay). GET/POST `/crm/scoring-config/:tenantId`
 - **Dynamic segments**: Rule-based filters auto-evaluated. CRUD + contact count
 - **AI Insights**: GET `/crm/leads/:tenantId/:leadId/insight` — summary, recommended action, risk, top signals
-- **Deal approval**: `PUT request-approval`, `PUT approve`, `PUT reject`. Fields: `approval_status`, `approval_stage`, `approved_by`
+- **Deal approval**: existen `PUT request-approval`, `PUT approve` y `PUT reject`,
+  con `approval_status`, `approval_stage` y `approved_by`. El bloqueo efectivo de
+  movimientos directos a etapas terminales no está certificado de punta a punta;
+  no debe tratarse como control de aprobación obligatorio hasta cerrar y probar ese
+  contrato en UI, repositorio y API.
 
 ## Handoff System (Apr 26-28, 2026)
 

@@ -2,7 +2,7 @@
 id: multi-cuenta
 title: "Varias conexiones del mismo canal (multi-cuenta)"
 routes: ["/admin/channels", "/admin/agent", "/admin/broadcast", "/admin/channels/whatsapp/templates"]
-roles: ["tenant_admin", "tenant_supervisor"]
+roles: ["tenant_admin"]
 keywords: ["multi-cuenta", "varias cuentas", "dos numeros de whatsapp", "segundo numero", "otra cuenta de instagram", "limite de cuentas", "conectar otra cuenta", "agregar otra", "desconectar una cuenta", "numero emisor", "elegir numero", "enviar desde el numero", "cuentas por canal", "varias conexiones", "dos cuentas", "contador de cuentas", "limite por plan", "varios numeros"]
 ---
 
@@ -10,30 +10,16 @@ keywords: ["multi-cuenta", "varias cuentas", "dos numeros de whatsapp", "segundo
 
 ¿Tu negocio tiene un número de WhatsApp para ventas y otro para soporte? ¿O dos cuentas de Instagram para marcas distintas? Con Parallly puedes conectar **más de una cuenta del mismo canal** — por ejemplo dos números de WhatsApp, dos cuentas de Instagram o dos bots de Telegram — y cada una funciona de forma independiente: las conversaciones nunca se mezclan y cada conexión puede tener su propio agente de IA.
 
-> Conectar y desconectar cuentas es tarea del rol **administrador**. Los supervisores pueden ver el estado de los canales y elegir el número emisor al enviar campañas.
+> Conectar, desconectar y revisar las cuentas de canal es tarea del rol **administrador**. Los supervisores pueden elegir un emisor disponible dentro del flujo de campañas, pero no administran canales desde esta pantalla.
 
-## Cuántas cuentas del mismo canal incluye tu plan
+## Capacidad de conexiones
 
-Cada plan define cuántas conexiones del mismo tipo puedes tener. Estos son los límites incluidos:
-
-| Plan | WhatsApp | Instagram | Messenger | Telegram |
-|------|:--------:|:---------:|:---------:|:--------:|
-| Emprendedor | 1 | 1 | 1 | 1 |
-| Starter | 1 | 1 | 1 | 1 |
-| Pro | 2 | 1 | 3 | 1 |
-| Enterprise | 3 | 2 | 5 | 2 |
-| Custom | Ilimitado | Ilimitado | Ilimitado | Ilimitado |
-
-Ten en cuenta:
-
-- Los canales disponibles también dependen de tu plan: el plan **Emprendedor** incluye solo WhatsApp, y **Telegram** está disponible desde el plan **Pro**.
-- El canal de **Email** admite una conexión por negocio.
-- Si necesitas más cuentas de las que incluye tu plan, puedes mejorar de plan desde **Configuración → Facturación**, o escribirnos para ampliar tu límite: el equipo de Parallly puede ajustarlo para tu negocio.
+La cantidad y los tipos de conexión disponibles dependen de la configuración de tu cuenta. Cada tarjeta de **Canales** muestra el uso actual y si puedes agregar otra; **Plan y facturación** muestra el límite vigente. El chat web se administra en su propia pantalla.
 
 ## Cómo ver cuántas cuentas tienes conectadas
 
 1. En la barra lateral, entra a **Canales**.
-2. Cada tarjeta de canal muestra un contador con el formato **"X/Y cuentas"** — por ejemplo, "1/2 cuentas" significa que tienes 1 cuenta conectada y tu plan permite hasta 2 de ese canal. Si tu límite es ilimitado, verás el símbolo ∞.
+2. Cada tarjeta de canal muestra el uso actual y el límite aplicable a tu cuenta. Si la capacidad es ilimitada, puede aparecer el símbolo ∞.
 3. Cuando todavía tienes cupo, la tarjeta muestra el enlace **Agregar otra**.
 
 ## Cómo conectar otra cuenta del mismo canal
@@ -70,12 +56,12 @@ La desconexión es **por cuenta**: puedes desconectar un número sin afectar a l
 
 ## Elegir el número emisor en campañas
 
-Cuando tienes más de un número de WhatsApp conectado, al crear una campaña eliges desde cuál se envía:
+Cuando tienes más de un número de WhatsApp conectado, el borrador de campaña permite elegir el emisor:
 
 1. En la barra lateral, entra a **Campañas** y crea una **Nueva campaña**.
 2. En el formulario verás el campo **Enviar desde el número**.
-3. Elige el número emisor, o deja **Número principal (por defecto)** para enviar desde tu número principal.
-4. Completa el resto de la campaña (audiencia, plantilla, programación) y confirma.
+3. Elige el número emisor, o deja **Número principal (por defecto)**.
+4. Guarda el borrador sin programarlo ni lanzarlo. El envío de producción desde el editor no está certificado de punta a punta y no ofrece cancelación de campañas programadas; consulta el artículo **Campañas y difusión** antes de operar.
 
 ## Plantillas de WhatsApp con varios números
 
@@ -83,7 +69,7 @@ Las plantillas aprobadas por Meta pertenecen a un número concreto. Si tienes va
 
 1. Entra a **Canales → WhatsApp** y haz clic en **Ver todas las plantillas**.
 2. Al crear una plantilla, aparece el campo **Número / cuenta**: elige para cuál número la estás creando, o deja **Número principal (por defecto)**.
-3. Envíala a aprobación como de costumbre. Al enviar campañas, usa plantillas del mismo número que elegiste como emisor.
+3. Envíala a aprobación y verifica el estado recibido desde Meta. Al preparar un borrador, selecciona una plantilla y un emisor de la misma cuenta; esto no elimina la limitación actual del lanzamiento de campañas.
 
 ## Preguntas frecuentes
 
@@ -94,15 +80,15 @@ No. Cada conexión mantiene sus conversaciones separadas en el inbox, y las resp
 No. Cada conexión tiene exactamente un agente asignado. Lo que sí puedes hacer es asignar el mismo agente a varias conexiones.
 
 **Llegué al límite de cuentas de mi plan, ¿qué hago?**
-Puedes mejorar tu plan desde **Configuración → Facturación**, o contactarnos en https://parallly-chat.cloud/support para evaluar una ampliación del límite para tu negocio.
+Revisa las opciones vigentes en **Administración → Plan y facturación**, o contáctanos en https://parallly-chat.cloud/support si necesitas una capacidad distinta para tu negocio.
 
 **Si desconecto una cuenta, ¿las otras siguen funcionando?**
 Sí. La desconexión es individual: las demás cuentas del mismo canal siguen recibiendo y respondiendo mensajes con normalidad.
 
-**¿El multi-cuenta aplica al chat web o al Email?**
-El Email admite una conexión por negocio, y el widget de chat web se configura aparte en **Configuración → Integraciones → Web Chat**. El multi-cuenta aplica a WhatsApp, Instagram, Messenger y Telegram.
+**¿El multi-cuenta aplica al chat web?**
+El widget de chat web se configura aparte en **Configuración → Canales e integraciones**. El multi-cuenta aplica únicamente a las conexiones que la pantalla de **Canales** permita agregar.
 
 **¿Cuentan las cuentas de canales distintos para el mismo límite?**
-No. El límite es por tipo de canal: por ejemplo, en el plan Pro puedes tener 2 números de WhatsApp y además 3 páginas de Messenger.
+No necesariamente. La pantalla calcula la capacidad por tipo de canal y muestra cada uso por separado.
 
 ¿Dudas? Escríbenos en https://parallly-chat.cloud/support — con gusto te ayudamos.

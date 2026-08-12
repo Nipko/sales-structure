@@ -2,7 +2,7 @@
 id: multi-cuenta
 title: "Multiple connections of the same channel (multi-account)"
 routes: ["/admin/channels", "/admin/agent", "/admin/broadcast", "/admin/channels/whatsapp/templates"]
-roles: ["tenant_admin", "tenant_supervisor"]
+roles: ["tenant_admin"]
 keywords: ["multi-account", "multiple accounts", "two whatsapp numbers", "second number", "another instagram account", "account limit", "connect another account", "add another", "disconnect an account", "sender number", "choose number", "send from number", "accounts per channel", "multiple connections", "two accounts", "account counter", "plan limit", "several numbers"]
 ---
 
@@ -10,30 +10,16 @@ keywords: ["multi-account", "multiple accounts", "two whatsapp numbers", "second
 
 Does your business have one WhatsApp number for sales and another for support? Or two Instagram accounts for different brands? With Parallly you can connect **more than one account of the same channel** — for example two WhatsApp numbers, two Instagram accounts, or two Telegram bots — and each one works independently: conversations never get mixed up, and each connection can have its own AI agent.
 
-> Connecting and disconnecting accounts is an **admin** task. Supervisors can view channel status and choose the sender number when sending campaigns.
+> Connecting, disconnecting, and reviewing channel accounts is an **admin** task. Supervisors may choose an available sender inside the campaign flow, but they do not manage channels from this page.
 
-## How many accounts of the same channel your plan includes
+## Connection capacity
 
-Each plan defines how many connections of the same type you can have. These are the included limits:
-
-| Plan | WhatsApp | Instagram | Messenger | Telegram |
-|------|:--------:|:---------:|:---------:|:--------:|
-| Emprendedor | 1 | 1 | 1 | 1 |
-| Starter | 1 | 1 | 1 | 1 |
-| Pro | 2 | 1 | 3 | 1 |
-| Enterprise | 3 | 2 | 5 | 2 |
-| Custom | Unlimited | Unlimited | Unlimited | Unlimited |
-
-Keep in mind:
-
-- The channels available also depend on your plan: the **Emprendedor** plan includes WhatsApp only, and **Telegram** is available starting with the **Pro** plan.
-- The **Email** channel supports one connection per business.
-- If you need more accounts than your plan includes, you can upgrade from **Settings → Billing**, or write to us to expand your limit: the Parallly team can adjust it for your business.
+The number and types of available connections depend on your account configuration. Each **Channels** card shows current usage and whether another connection can be added; **Plan & Billing** shows the current limit. Web chat is managed on its own screen.
 
 ## How to see how many accounts you have connected
 
 1. In the sidebar, go to **Channels**.
-2. Each channel card shows a counter in the format **"X/Y accounts"** — for example, "1/2 accounts" means you have 1 account connected and your plan allows up to 2 for that channel. If your limit is unlimited, you'll see the ∞ symbol.
+2. Each channel card shows current usage and the limit that applies to your account. If capacity is unlimited, the ∞ symbol may appear.
 3. When you still have room, the card shows the **Add another** link.
 
 ## How to connect another account of the same channel
@@ -70,12 +56,12 @@ Disconnection is **per account**: you can disconnect one number without affectin
 
 ## Choosing the sender number in campaigns
 
-When you have more than one WhatsApp number connected, you choose which one to send from when creating a campaign:
+When you have more than one WhatsApp number connected, the campaign draft lets you choose a sender:
 
 1. In the sidebar, go to **Campaigns** and create a **New campaign**.
 2. In the form you'll see the **Send from number** field.
-3. Choose the sender number, or leave **Primary number (default)** to send from your main number.
-4. Complete the rest of the campaign (audience, template, scheduling) and confirm.
+3. Choose the sender number, or leave **Primary number (default)**.
+4. Save the draft without scheduling or launching it. Production sending from the editor is not certified end to end and scheduled campaigns have no cancel action; read **Campaigns and broadcasts** before operating.
 
 ## WhatsApp templates with multiple numbers
 
@@ -83,7 +69,7 @@ Templates approved by Meta belong to a specific number. If you have several numb
 
 1. Go to **Channels → WhatsApp** and click **View all templates**.
 2. When creating a template, the **Number / account** field appears: choose which number you're creating it for, or leave **Primary number (default)**.
-3. Submit it for approval as usual. When sending campaigns, use templates from the same number you chose as the sender.
+3. Submit it for approval and verify the status received from Meta. When preparing a draft, select a template and sender from the same account; this does not remove the current campaign-launch limitation.
 
 ## Frequently asked questions
 
@@ -94,15 +80,15 @@ No. Each connection keeps its conversations separate in the inbox, and replies a
 No. Each connection has exactly one assigned agent. What you can do is assign the same agent to several connections.
 
 **I hit my plan's account limit — what do I do?**
-You can upgrade your plan from **Settings → Billing**, or contact us at https://parallly-chat.cloud/support to evaluate expanding the limit for your business.
+Review the current options under **Administration → Plan & Billing**, or contact us at https://parallly-chat.cloud/support if your business needs different capacity.
 
 **If I disconnect one account, do the others keep working?**
 Yes. Disconnection is individual: the other accounts on the same channel keep receiving and answering messages as usual.
 
-**Does multi-account apply to the web chat or Email?**
-Email supports one connection per business, and the web chat widget is configured separately in **Settings → Integrations → Web Chat**. Multi-account applies to WhatsApp, Instagram, Messenger, and Telegram.
+**Does multi-account apply to web chat?**
+The web chat widget is configured separately under **Settings → Channels & Integrations**. Multi-account applies only to connections the **Channels** screen lets you add.
 
 **Do accounts from different channels count toward the same limit?**
-No. The limit is per channel type: for example, on the Pro plan you can have 2 WhatsApp numbers and also 3 Messenger pages.
+Not necessarily. The screen calculates capacity by channel type and shows each usage separately.
 
 Questions? Write to us at https://parallly-chat.cloud/support — we're happy to help.

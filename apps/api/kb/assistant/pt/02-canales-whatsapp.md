@@ -12,14 +12,14 @@ O WhatsApp é o canal principal do Parallly: ao conectá-lo, seu agente de IA co
 
 ## Antes de começar
 
-- Você precisa ser **administrador** da sua conta Parallly (supervisores e agentes podem ver os canais, mas não conectá-los).
+- Você precisa ser **administrador** da sua conta Parallly; a administração de canais não está disponível para supervisores nem agentes.
 - Você precisa de uma conta do Facebook com acesso ao negócio no Meta Business Suite.
 - Deixe à mão o número de telefone que vai usar: ele deve poder receber SMS ou chamadas (números virtuais VoIP e linhas premium não funcionam).
-- O WhatsApp está disponível em todos os planos, a partir do Emprendedor.
+- A tela **Canais** informa se o WhatsApp está habilitado para sua conta.
 
 ## Como conectar seu número
 
-1. Na barra lateral, seção **Gestão**, entre em **Canais**.
+1. Na barra lateral, seção **Administração**, entre em **Canais**.
 2. No card do **WhatsApp**, clique em **Conectar**.
 3. Você verá a tela **"Escolha seu método de conexão"** com estas opções:
    - **Número de teste** — explore a plataforma sem compromisso e conecte seu número real depois.
@@ -78,23 +78,15 @@ O WhatsApp permite responder livremente durante as **24 horas** seguintes à úl
 Para gerenciá-los: **Canais → WhatsApp → Ver todos os modelos** (a página **Modelos do WhatsApp**).
 
 - **Sincronizar com a Meta** — traz para o Parallly os modelos que você já tem aprovados na sua conta.
-- **Criar template** — crie um novo sem sair do Parallly: nome, idioma, categoria, corpo com variáveis (por exemplo `{{1}}` para o nome do cliente), cabeçalho, rodapé e até 3 botões, com pré-visualização ao vivo. Ao terminar, clique em **Enviar para a Meta**; a aprovação costuma levar de minutos a 72 horas.
+- **Criar template** — crie um novo sem sair do Parallly: nome, idioma, categoria, corpo com variáveis (por exemplo `{{1}}` para o nome do cliente), cabeçalho, rodapé e até 3 botões, com pré-visualização ao vivo. Ao terminar, clique em **Enviar para a Meta**; a Meta determina o status e o prazo da análise.
 - Cada modelo mostra seu status: **Aprovado**, **Pendente** ou **Rejeitado** (com o motivo da rejeição para você corrigir e enviar de novo).
-- Ao conectar o WhatsApp, o Parallly envia automaticamente **3 modelos iniciais** já validados (lembrete de agendamento, confirmação de pedido e pagamento recebido) para você ter por onde começar.
+- Ao conectar o WhatsApp, o Parallly envia automaticamente **4 modelos iniciais** já validados (lembrete de agendamento, confirmação de presença, confirmação de pedido e pagamento recebido) para você ter por onde começar.
 
 ## Mais de um número de WhatsApp?
 
-Você pode conectar vários números do mesmo canal conforme o seu plano. No card do WhatsApp aparece o contador de contas (por exemplo "1/2 contas") e o botão **Adicionar outra** enquanto houver vaga disponível.
+Você pode conectar vários números quando sua conta tiver capacidade. O card do WhatsApp mostra o uso atual e o botão **Adicionar outra** enquanto houver vaga. Confira o limite atual em **Plano e faturamento**.
 
-| Plano | Números de WhatsApp |
-|------|:---:|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 2 |
-| Enterprise | 3 |
-| Custom | Sem limite |
-
-Cada conexão é independente: tem seu próprio agente de IA (você o atribui no editor do agente), suas conversas não se misturam e, ao enviar campanhas ou modelos, você escolhe de qual número a mensagem sai. Se precisar de mais números do que o seu plano oferece, escreva para o [suporte](https://parallly-chat.cloud/support).
+Cada conexão é independente: tem seu próprio agente de IA (você o atribui no editor do agente) e suas conversas não se misturam. Um rascunho de campanha pode registrar o número remetente previsto, mas não lance campanhas reais pelo editor atual: a vinculação exata de modelo/remetente e o cancelamento ainda não estão certificados de ponta a ponta. Se precisar de mais números do que a configuração vigente da sua conta permite, escreva para o [suporte](https://parallly-chat.cloud/support).
 
 ## Como desconectar um número
 

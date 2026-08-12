@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -114,7 +115,13 @@ export class MacrosService {
         return result.length > 0;
     }
 
-    async executeMacro(tenantId: string, macroId: string, conversationId: string, agentId: string) {
+    async executeMacro(
+        tenantId: string,
+        macroId: string,
+        conversationId: string,
+        agentId: string,
+        actorRole: string,
+    ) {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant not found');
 
@@ -129,6 +136,33 @@ export class MacrosService {
         const actions: MacroAction[] = typeof macro.actions_json === 'string'
             ? JSON.parse(macro.actions_json)
             : macro.actions_json;
+
+        const assignmentTargets = [...new Set(
+            actions
+                .filter((action) => action.type === 'assign')
+                .map((action) => action.value),
+        )];
+        if (assignmentTargets.length > 0) {
+            if (actorRole !== 'tenant_admin' && actorRole !== 'tenant_supervisor') {
+                throw new ForbiddenException('Only tenant admins and supervisors can execute assignment macros');
+            }
+
+            if (assignmentTargets.some((target) => typeof target !== 'string' || !isUUID(target))) {
+                throw new BadRequestException('Macro assignment target is invalid');
+            }
+            const activeTargets = await this.prisma.user.findMany({
+                where: {
+                    id: { in: assignmentTargets as string[] },
+                    tenantId,
+                    isActive: true,
+                    role: { in: ['tenant_admin', 'tenant_supervisor', 'tenant_agent'] },
+                },
+                select: { id: true },
+            });
+            if (activeTargets.length !== assignmentTargets.length) {
+                throw new BadRequestException('Macro assignment target is not an active member of this tenant');
+            }
+        }
 
         this.logger.log(`Executing macro "${macro.name}" (${actions.length} actions) on conversation ${conversationId}`);
 

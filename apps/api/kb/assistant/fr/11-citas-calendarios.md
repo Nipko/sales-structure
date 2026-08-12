@@ -25,7 +25,7 @@ Les services correspondent à ce que vos clients peuvent réserver (une consulta
    - Si c'est en ligne ou hybride, vous pouvez laisser le champ **Lien de réunion** vide : un lien Meet ou Teams est généré automatiquement pour chaque rendez-vous.
 6. Enregistrez avec **Créer service**. Vous pouvez activer ou désactiver des services à tout moment.
 
-Le nombre de services que vous pouvez créer dépend de votre plan : Emprendedor 1, Starter 2, et à partir de Pro sans limite.
+L'écran affiche votre capacité actuelle de services ; consultez les détails à jour dans **Forfait et facturation**.
 
 ## Comment définir votre disponibilité
 
@@ -51,15 +51,7 @@ Connecter votre calendrier évite les conflits d'horaires : les rendez-vous de P
 3. Autorisez l'accès avec votre compte Google ou Microsoft.
 4. C'est fait : les nouveaux rendez-vous se créent aussi automatiquement dans votre calendrier externe.
 
-Le nombre de calendriers que vous pouvez connecter dépend de votre plan :
-
-| Plan | Calendriers connectés |
-|------|------------------------|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
-| Custom | Sans limite |
+L'écran indique combien de calendriers vous pouvez connecter et quelle capacité reste disponible. Consultez les détails à jour dans **Forfait et facturation**.
 
 ### Avec plusieurs calendriers, où va chaque rendez-vous ?
 
@@ -71,7 +63,7 @@ Le nombre de calendriers que vous pouvez connecter dépend de votre plan :
 
 ### Déconnecter un calendrier qui contient des rendez-vous à venir
 
-Si vous essayez de déconnecter un calendrier comportant des rendez-vous en attente, le panneau vous propose deux options : **Réassigner les rendez-vous à un autre calendrier** (vous choisissez la destination, les rendez-vous sont déplacés et la déconnexion n'a lieu qu'ensuite) ou **Annuler tous les rendez-vous et déconnecter**. Ainsi, aucune réservation ne reste en suspens sans que vous en décidiez.
+La réaffectation ou l'annulation guidée pendant la déconnexion **n'est pas certifiée de bout en bout dans cette version** : l'opération peut ne pas être appliquée même si le panneau semble se terminer. Avant de déconnecter, réaffectez ou annulez manuellement chaque rendez-vous futur, rechargez l'agenda et vérifiez qu'aucun ne reste lié au calendrier. Ne considérez pas le seul message de réussite comme une confirmation.
 
 ## Liens de réunion automatiques
 
@@ -86,7 +78,7 @@ Dans **Rendez-vous** → **Configuration** → section **Rappels et suivi**, vou
 - **Confirmation de présence** — après le rendez-vous, on demande au client s'il s'est présenté.
 - **Compléter automatiquement** — les rendez-vous sont marqués comme terminés 2 heures après leur heure de fin, sans travail manuel.
 
-Les rappels par WhatsApp utilisent des modèles de notification approuvés par Meta, ils arrivent donc toujours, même si le client n'a pas écrit depuis plus de 24 heures.
+Les rappels WhatsApp peuvent utiliser des modèles approuvés par Meta pour tenter l'envoi hors de la fenêtre de 24 heures. La livraison n'est pas garantie : elle dépend de l'état du modèle et du compte, de Meta et du destinataire.
 
 ## L'IA prend les rendez-vous seule dans la conversation
 

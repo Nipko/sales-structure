@@ -10,7 +10,7 @@ El procesamiento de interacciones se basa en un flujo desacoplado y tolerante a 
 
 ```mermaid
 graph TD
-    A[Cliente: WhatsApp/IG/Messenger/Telegram/Email/Web Widget] -->|Webhook / API| B[Channels Module: API port 3000]
+    A[Cliente: WhatsApp/IG/Messenger/Telegram/Web Widget] -->|Webhook / API| B[Channels Module: API port 3000]
     B -->|Normalizado| C[ConversationsService: API port 3000]
     C -->|Identidad única| D[IdentityService: Normalización/Merge]
     C -->|Persona por conexión| E[PersonaService: getPersonaForChannel tenant/channel/accountId]
@@ -31,7 +31,7 @@ graph TD
 ```
 
 ### Protocolo de Flujo Técnico:
-1. **Normalización del Mensaje**: El módulo `channels/` del **API (port 3000)** expone los webhooks de todos los canales conversacionales — Instagram, Messenger, Telegram, SMS y Email entran directamente por `ChannelsController` (`/api/v1/channels/webhook/{canal}`), mientras que WhatsApp valida y enruta vía `WhatsappWebhookService`. El servicio `whatsapp/` (port 3002) es un app dedicado al **Embedded Signup v4** y al *router* de webhooks de Meta, no al procesamiento del pipeline. Cada adaptador (`IChannelAdapter`) recibe el payload oficial (Meta Cloud API, Telegram Bot API, Twilio, etc.), valida firmas criptográficas (`meta-signature.util.ts` HMAC-SHA256 para Meta; HMAC-SHA1 para Twilio) e inyecta una clave de idempotencia atómica en Redis vía `SET NX` (`idem:wa:{id}`, `idem:ig:{mid}`, `idem:fb:{mid}`, `idem:tg:{bot}:{update_id}`, `idem:sms:{sid}`) con TTL de 24h para evitar el doble procesamiento ante reintentos de la red.
+1. **Normalización del Mensaje**: El módulo `channels/` del **API (port 3000)** procesa las superficies conversacionales certificadas — Instagram, Messenger y Telegram vía sus controladores/adaptadores, WhatsApp mediante `WhatsappWebhookService`, y Web Chat por su gateway. SMS es notificación one-way, no canal conversacional. Email dispone únicamente de un ingreso administrado, autenticado por secret y fail-closed; no es configurable ni certificado en autoservicio. El servicio `whatsapp/` (port 3002) se dedica al **Embedded Signup v4** y al *router* de webhooks de Meta. Cada adaptador oficial valida autenticidad e idempotencia antes de entrar al orquestador.
    - **Multi-cuenta por tipo (jul 2026)**: la conexión de origen se resuelve contra la tabla `channel_accounts` por `accountId` (IG User ID, Page ID, bot username, número Twilio), lo que permite N conexiones del mismo tipo por tenant (2 números de WhatsApp, 2 cuentas IG…) gateado por `features.maxChannelAccounts` (default 1). Los tokens viven por-cuenta en `channel_accounts.access_token` (cifrados AES-256-GCM, sin migración global) y `ChannelTokenService.getChannelToken(tenantId, channelType, accountId?)` los resuelve (cache 5 min en Redis).
 2. **Orquestación de la Conversación**: `ConversationsService.processIncomingMessage()` adquiere un Mutex distribuido en Redis (`lock:conv:{conversationId}`) durante 30 segundos. Resuelve la identidad unificada con `IdentityService` y carga el estado de reserva temporal de Redis (`booking:{conversationId}`). La persona se resuelve **por conexión** con `PersonaService.getPersonaForChannel(tenantId, channelType, accountId?)`: primero busca un binding exacto `"${channelType}:${accountId}"` en `agent_personas.channel_bindings` (índice GIN) — un agente por conexión — y cae al agente por canal / por defecto / legacy. Cachea por-cuenta (`persona:{tenant}:channel:{type}:acct:{accountId}`).
 3. **Filtro de RAG e Intentos**: Se ejecuta la búsqueda de FAQs, políticas activas y RAG híbrido (Coseno Vectorial + ILIKE). Si no hay un flujo de reserva activo, se alimenta la IA.
@@ -347,17 +347,14 @@ Cada tarea tiene una cadena ordenada por costo-efectividad (los tier premium van
 
 `buildCandidates(task, allowedTiers)` filtra la cadena por: (1) elegibilidad por tarea (`supportsTools` en `tool_calling`), (2) **proveedor configurado** (API key presente, vía `LlmKeyService.isConfigured`), (3) **salud del proveedor** (breaker cerrado). Luego parte la lista en `primary` (tiers del plan) + `escalation` (tiers fuera del plan): si no queda ningún candidato en los tiers del plan, el sistema **auto-escala** al siguiente disponible (marcado como `escalated`, sin persistir affinity). También descarta candidatos cuyo `maxContextTokens` no alcanza el prompt estimado (chars/4).
 
-### Restricciones por Plan (mapLlmTierToAllowed)
+### Restricciones por plan (`mapLlmTierToAllowed`)
 
-El `llmTier` del plan (en `billing_plans.features`) mapea a los tiers permitidos:
-
-| Plan | `llmTier` | Tiers permitidos |
-|------|-----------|------------------|
-| emprendedor ($21) | `tier_4` | tier_4_budget |
-| starter ($49) | `tier_3` | tier_3_efficient + tier_4_budget |
-| pro ($129) | `tier_2` | tier_2_standard + tier_3_efficient + tier_4_budget |
-| enterprise ($349) | `tier_1` | los 4 tiers |
-| custom (a cotizar) | `tier_1` | los 4 tiers |
+El valor `llmTier` de `billing_plans.features` se resuelve en runtime y determina
+los tiers permitidos. La tabla activa y los overrides autorizados son la fuente de
+verdad; esta referencia no copia precios ni una matriz por plan porque ambos pueden
+cambiar sin despliegue. El resolver puede usar los tiers de menor costo incluidos
+por el nivel efectivo y solo escala fuera de ellos cuando no queda un proveedor
+configurado y saludable, dejando el evento marcado como `escalated`.
 
 ### Enrutamiento por Valor + Sticky Affinity
 

@@ -25,7 +25,7 @@ describe('WidgetPublicController security containment', () => {
         const request = {
             headers: {}, ip: '203.0.113.10', socket: { remoteAddress: '203.0.113.10' },
         } as any;
-        return { controller, widgetService, rateLimit, request };
+        return { controller, widgetService, triggers, rateLimit, request };
     }
 
     it('fails closed when a session request omits Origin', async () => {
@@ -42,6 +42,14 @@ describe('WidgetPublicController security containment', () => {
         const { controller } = makeController();
         await expect(controller.getConfig({ widgetId: 'wgt_123' }, 'https://example.com.evil.test'))
             .rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('scopes public trigger projection to the already validated widget tenant', async () => {
+        const { controller, triggers } = makeController();
+
+        await controller.getConfig({ widgetId: 'wgt_123' }, 'https://shop.example.com');
+
+        expect(triggers.getTriggersForWidget).toHaveBeenCalledWith('tenant-1', 'widget-config-1');
     });
 
     it('returns HTTP 429 before creating a session when any atomic scope blocks', async () => {

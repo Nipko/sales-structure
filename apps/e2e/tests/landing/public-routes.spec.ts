@@ -11,6 +11,7 @@ const PUBLIC_ROUTES = [
   "/soluciones/salud",
   "/producto/agente-ia",
   "/precios",
+  "/support",
   "/privacy",
   "/terms",
   "/data-policy",
@@ -52,5 +53,32 @@ test.describe("landing public routes", () => {
     await expect(
       page.locator('header a[href="https://admin.parallly-chat.cloud/login"]'),
     ).toHaveText("Ingresar");
+  });
+
+  test("support is a dedicated localized page with the canonical contact address", async ({ page }) => {
+    await page.goto("/support");
+
+    await expect(page).toHaveURL(/\/support\/?$/);
+    await expect(page.getByTestId("support-page-title")).toHaveText(
+      "Centro de soporte de Parallly",
+    );
+    await expect(page.locator("#hero-title")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Escribir a soporte" })).toHaveAttribute(
+      "href",
+      "mailto:it.executive@parallext.com?subject=Soporte%20Parallly",
+    );
+    await expect(page.locator('footer a[href="/support"]')).toHaveText("Soporte");
+
+    const language = page.locator("header select");
+    const localizedTitles = {
+      en: "Parallly Support Center",
+      pt: "Central de suporte da Parallly",
+      fr: "Centre de support Parallly",
+    } as const;
+
+    for (const [locale, title] of Object.entries(localizedTitles)) {
+      await language.selectOption(locale);
+      await expect(page.getByTestId("support-page-title")).toHaveText(title);
+    }
   });
 });

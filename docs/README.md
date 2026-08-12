@@ -1,6 +1,6 @@
 # Parallext Engine — Documentación
 
-_Última actualización: 2026-08-06_
+_Última actualización: 2026-08-11_
 
 Índice de la documentación del proyecto. La **fuente canónica** del índice es la tabla `## Documentation Index` en [`../CLAUDE.md`](../CLAUDE.md); este README la espeja para navegación humana. Cuando agregues o archives un doc, actualizá **ambos**.
 
@@ -14,10 +14,13 @@ _Última actualización: 2026-08-06_
 |-----------|-------------|
 | [../CLAUDE.md](../CLAUDE.md) | Referencia rápida: arquitectura, convenciones, inventario, índice de docs (canónico) |
 | [architecture-detail.md](architecture-detail.md) | Arquitectura detallada: flujo de mensajes, prompt layers (3), knowledge (5 tiers), LLM Router (routing por tarea, tiers, circuit breaker, cost breaker), auth/sesiones, OAuth, calendario, BullMQ, multi-canal por tipo |
-| [modules-reference.md](modules-reference.md) | 83 módulos API + endpoints + 139 páginas dashboard + 11 colas BullMQ + ~46 crons |
+| [modules-reference.md](modules-reference.md) | Inventario técnico; snapshot actual: 88 archivos `*.module.ts`, 143 páginas dashboard, colas y crons |
 | [API_REFERENCE.md](API_REFERENCE.md) | Endpoints REST (todos bajo `/api/v1`), eventos WebSocket, migraciones, colas |
+| [dashboard-navigation-architecture-2026-08.md](dashboard-navigation-architecture-2026-08.md) | Contrato de navegación tenant, orden, retorno, tour y decisiones de IA |
+| [product-capabilities-reference.md](product-capabilities-reference.md) | Mapa canónico de superficies, roles, planes y las 18 verticales |
+| [platform-assistant-knowledge.md](platform-assistant-knowledge.md) | Fuente runtime, alcance y proceso de publicación de Parallly Assist |
 | [data-dictionary.md](data-dictionary.md) · [database-schema.dbml](database-schema.dbml) | Diccionario de datos y ERD (schema público + por-tenant) |
-| [analytics-billing-reference.md](analytics-billing-reference.md) | Analytics, billing, super admin, adaptación vertical, handoff |
+| [analytics-billing-reference.md](analytics-billing-reference.md) | Snapshot técnico de analytics/billing; precios, cuotas y features deben verificarse en `billing_plans` runtime |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de cambios por sesión |
 | [../apps/api/CLAUDE.md](../apps/api/CLAUDE.md) · [../apps/dashboard/CLAUDE.md](../apps/dashboard/CLAUDE.md) · [../apps/whatsapp/CLAUDE.md](../apps/whatsapp/CLAUDE.md) | Contexto por app |
 
@@ -62,24 +65,32 @@ _Última actualización: 2026-08-06_
 | Documento | Descripción |
 |-----------|-------------|
 | [user-manual.md](user-manual.md) | Manual de usuario (tenant) |
+| [mobile-user-manual.md](mobile-user-manual.md) | Manual funcional de la app móvil y límites frente a la web |
 | [appointments-manual.md](appointments-manual.md) · [analytics-manual.md](analytics-manual.md) · [offboarding-manual.md](offboarding-manual.md) | Citas, analytics, offboarding |
 | [vertical-strategy.md](vertical-strategy.md) | Estrategia de adaptación por vertical |
+
+> La base que responde Parallly Assist vive en
+> [`../apps/api/kb/assistant/`](../apps/api/kb/assistant/); el manual humano no la
+> actualiza automáticamente.
 
 ## App móvil (`apps/mobile`, React Native/Expo)
 
 | Documento | Descripción |
 |-----------|-------------|
-| [mobile-app-plan.md](mobile-app-plan.md) · [mobile-eas-build.md](mobile-eas-build.md) · [mobile-sentry-sourcemaps.md](mobile-sentry-sourcemaps.md) | Plan, build EAS, Sentry sourcemaps |
-| [mobile-gate0-checklist.md](mobile-gate0-checklist.md) · [play-store-publish-checklist.md](play-store-publish-checklist.md) · [mobile-app-audit-2026-q2.md](mobile-app-audit-2026-q2.md) | GATE 0, Play Store, auditoría |
+| [mobile-user-manual.md](mobile-user-manual.md) | Uso vigente: acceso, Inbox, CRM, workspace vertical, push y troubleshooting |
+| [mobile-eas-build.md](mobile-eas-build.md) · [mobile-sentry-sourcemaps.md](mobile-sentry-sourcemaps.md) | Build EAS y Sentry sourcemaps; el estado de tienda es una foto fechada |
+| [mobile-functional-test-2026-08.md](mobile-functional-test-2026-08.md) | Evidencia histórica del build v3 y seguimientos posteriores; no representa por sí sola el release vigente |
+| [mobile-gate0-checklist.md](mobile-gate0-checklist.md) · [play-store-publish-checklist.md](play-store-publish-checklist.md) · [mobile-app-audit-2026-q2.md](mobile-app-audit-2026-q2.md) | GATE 0, estado de Play fechado y auditoría point-in-time |
+| [mobile-app-plan.md](mobile-app-plan.md) | Plan histórico de implementación; usar el manual móvil para comportamiento actual |
 
 ## Estrategia & Research
 
 | Documento | Descripción |
 |-----------|-------------|
-| [vertical-system-audit-2026-08.md](vertical-system-audit-2026-08.md) | Auditoría vigente de las 18 verticales: madurez, trazabilidad, benchmark competitivo, seguridad y backlog P0/P1/P2 con criterios de cierre |
+| [vertical-system-audit-2026-08.md](vertical-system-audit-2026-08.md) | Auditoría point-in-time de las 18 verticales; el manifest y la política de producto gobiernan el estado actual |
 | [wave-0-execution-2026-08.md](wave-0-execution-2026-08.md) | Estado de ejecución de Ola 0: mitigaciones P0, evidencia automática, contrato comercial, manifest v1 y gates de integración pendientes |
 | [vertical-master-test-plan-2026-08.md](vertical-master-test-plan-2026-08.md) | Plan maestro de certificación: 76 configuraciones, 1.520 escenarios de bootstrap, tools, IA, seguridad, UI, integraciones y quality gates |
-| [competitive-analysis-2026-q2.md](competitive-analysis-2026-q2.md) | Análisis competitivo Q2 2026 (canónico) |
+| [competitive-analysis-2026-q2.md](competitive-analysis-2026-q2.md) | Análisis competitivo histórico Q2 2026; no usar como fuente de alcance vigente |
 | [onboarding-redesign-2026-q2.md](onboarding-redesign-2026-q2.md) · [onboarding-redesign-implementation-plan.md](onboarding-redesign-implementation-plan.md) · [onboarding-audit-2026-06.md](onboarding-audit-2026-06.md) | Rediseño de onboarding + estado |
 | [market-research-latam.md](market-research-latam.md) · [external-crm-integration-research.md](external-crm-integration-research.md) · [feature-board-research.md](feature-board-research.md) | Research |
 

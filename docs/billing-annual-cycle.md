@@ -45,7 +45,11 @@ Fail-closed: si no hay precio anual local para el país, responde error pidiendo
 node scripts/sync-mp-plans.js --country=CO --cycle=annual   # alias: --cycle=year (frequency 12 meses)
 ```
 
-> ⚠️ **El deploy auto-sincroniza SOLO el ciclo mensual** (CO). Ver `deploy.yml`: `sync-mp-plans.js --country=CO --fx=...` **sin** `--cycle`. Por lo tanto los planes **anuales** hay que crearlos **explícitamente** una vez (panel o script con `--cycle=year`). Si un tenant intenta suscribirse al anual sin `mpPlanId` anual, la operación falla en vez de cobrar mal.
+> ⚠️ **El deploy no sincroniza ningún ciclo con MercadoPago.** La integración está en
+> pausa desde agosto de 2026 y el workflow omite de forma explícita el preflight y el
+> sync. Cuando la pasarela vuelva a estar habilitada, los planes mensuales y anuales
+> deberán crearse en una operación controlada desde el panel o los scripts. Si falta
+> el `mpPlanId` del ciclo solicitado, la suscripción falla en vez de cobrar mal.
 
 ## 3. Suscripción y cambio de ciclo
 
@@ -73,17 +77,12 @@ Toda edición de precio/plan de catálogo queda **auditada** (se registra `from`
 
 ## 6. Planes (fuente de verdad)
 
-Los 5 planes y sus features viven en `apps/api/prisma/seed-billing-plans.js` + tabla `billing_plans` (el seed es **create-only** para no pisar ediciones del panel):
-
-| Plan | Precio base (USD/mes) |
-|------|-----|
-| emprendedor | $21 |
-| starter | $49 |
-| pro | $129 |
-| enterprise | $349 |
-| custom | a cotizar |
-
-Los precios locales por país (COP, etc.) viven en `priceLocalOverrides`; ver [`plan-profitability-2026-07.md`](plan-profitability-2026-07.md) para el análisis de precios/márgenes.
+Los planes, ciclos y features aplicables viven en la tabla runtime `billing_plans` y
+se editan con auditoría desde `/admin/plans`. El archivo
+`apps/api/prisma/seed-billing-plans.js` es solo un baseline **create-only** para filas
+faltantes; no actualiza planes existentes. Los precios locales por país viven en
+`priceLocalOverrides`. Los documentos fechados de rentabilidad sirven para análisis,
+no como contrato de precio vigente.
 
 ---
 

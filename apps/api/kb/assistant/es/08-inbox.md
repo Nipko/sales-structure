@@ -8,9 +8,9 @@ keywords: ["inbox", "bandeja de entrada", "handoff", "tomar conversacion", "aten
 
 # Bandeja de entrada y atención humana
 
-El **Inbox** es donde tu equipo ve todas las conversaciones en tiempo real y donde una persona puede tomar el control cuando la IA necesita ayuda. Lo encuentras en la barra lateral, en la sección **Operación → Inbox**.
+La **Bandeja de conversaciones** es donde tu equipo ve los chats en tiempo real y donde una persona puede tomar el control cuando la IA necesita ayuda. La encuentras en **Esenciales → Conversaciones**.
 
-La pantalla tiene tres zonas: a la izquierda la lista de conversaciones (con filtros como **Todos**, **Míos**, **Sin asignar**, **Handoff** y **Resueltas**, además de filtros por canal), al centro el hilo de mensajes y a la derecha el panel del contacto con su información, notas y citas. Aquí llegan las conversaciones de todos tus canales conectados: WhatsApp, Instagram, Messenger, Telegram, Email y el chat de tu sitio web.
+La pantalla tiene tres zonas: a la izquierda la lista de conversaciones (con filtros como **Todos**, **Míos**, **Sin asignar**, **Handoff** y **Resueltas**, además de filtros por canal), al centro el hilo de mensajes y a la derecha el panel del contacto con su información, notas y citas. Aquí llegan las conversaciones de tus superficies operativas: WhatsApp, Instagram, Messenger, Telegram y el chat de tu sitio web.
 
 ## Cómo tomar una conversación (handoff)
 
@@ -20,7 +20,7 @@ Cuando un cliente pide hablar con una persona, o la IA detecta que no puede reso
 2. Verás un aviso naranja: **Atención humana requerida** — "El asistente de IA ha sido pausado. El cliente está esperando respuesta de un humano."
 3. Haz clic en **Atender conversación**. La conversación queda asignada a ti y ya puedes escribir directamente al cliente.
 
-También puedes tomar cualquier conversación en cualquier momento con el botón **Asignarme** en el encabezado del chat, aunque no haya habido un pedido de ayuda. Mientras la conversación está contigo, la IA no responde: el cliente habla solo contigo.
+También puedes tomar con **Asignarme** una conversación que esté sin responsable. Si ya está asignada a otra persona, solo un administrador o supervisor puede reasignarla. Cuando la conversación queda contigo, la IA no responde: el cliente habla solo contigo.
 
 ## El resumen de IA al tomar una conversación
 
@@ -73,18 +73,18 @@ Si un caso no puede avanzar ahora ("llámame el lunes"), no lo dejes ocupando tu
 ## Asignación entre agentes
 
 - Cada conversación puede tener un responsable. Usa el filtro **Míos** para ver solo lo tuyo y **Sin asignar** para encontrar conversaciones huérfanas.
-- Cualquier miembro del equipo puede tomar una conversación con **Asignarme**; si ya estaba con otra persona, un administrador o supervisor puede reasignarla.
+- Cualquier miembro habilitado del equipo puede tomar una conversación **sin asignar** con **Asignarme**; si ya estaba con otra persona, solo un administrador o supervisor puede reasignarla.
 - Si configuras **habilidades (skills)** en los perfiles de tu equipo (menú **Usuarios**), Parallly enruta automáticamente cada escalamiento a la persona adecuada — por ejemplo, casos en inglés al agente que habla inglés.
 - Las macros también pueden asignar a un agente específico como parte de sus acciones.
 - Si una conversación escalada lleva más de 5 minutos sin respuesta, los supervisores reciben una alerta para que nadie quede esperando.
 
-La cantidad de personas que pueden usar Parallly depende de tu plan: Emprendedor incluye 1 usuario, Starter 3, Pro 5, y Enterprise y Custom no tienen límite.
+La cantidad de personas que pueden usar Parallly depende de la capacidad de tu cuenta; consulta el uso y límite vigentes en **Plan y facturación**.
 
 ## Notificaciones
 
 La **campana** en la barra superior concentra los avisos y los agrupa por categoría: **Mensajes**, **Transferencias** (escalamientos a humano), **Privacidad**, **Citas**, **Automatización**, **Órdenes** y **Sistema**. Los escalamientos directos (el cliente pidió un humano) se destacan en rojo; los escalamientos por baja confianza de la IA, en amarillo; y las alertas de supervisor llegan con sonido.
 
-Si tu plan es Pro o superior, también puedes recibir un SMS cuando la IA escala una conversación: actívalo en **Configuración → Integraciones → Avisos por SMS**.
+Si los avisos por SMS están habilitados para tu cuenta, actívalos en **Configuración → Canales e integraciones → Avisos por SMS**.
 
 ## Trabajo en equipo sin pisarse
 

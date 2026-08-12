@@ -245,20 +245,14 @@ y un número en coexistencia es simplemente **una conexión más**. El routing y
 
 ### Gate por plan (`features.maxChannelAccounts`)
 
-- Límite **por tipo de canal**, objeto `{ whatsapp, instagram, messenger, telegram, sms }`, **default 1** por tipo;
-  admite override por tenant (`quotaOverrides.maxChannelAccounts`). Fuente de verdad: `billing_plans.features`
-  (`apps/api/prisma/seed-billing-plans.js`), resuelto en runtime por `TenantThrottleService`.
-- Matriz por plan (WhatsApp / Instagram / Messenger / Telegram / SMS):
-
-  | Plan | WhatsApp | Instagram | Messenger | Telegram | SMS |
-  |------|:--------:|:---------:|:---------:|:--------:|:---:|
-  | Emprendedor ($21) | 1 | 1 | 1 | 1 | 1 |
-  | Starter ($49)     | 1 | 1 | 1 | 1 | 1 |
-  | Pro ($129)        | 2 | 1 | 3 | 1 | 1 |
-  | Enterprise ($349) | 3 | 2 | 5 | 2 | 2 |
-  | Custom            | ∞ | ∞ | ∞ | ∞ | ∞ |
-
-  (`-1` = ilimitado en runtime.)
+- El límite es **por tipo de canal** y se representa en
+  `features.maxChannelAccounts`; admite override autorizado por tenant en
+  `quotaOverrides.maxChannelAccounts`.
+- `TenantThrottleService` resuelve en runtime el override, la feature del plan y el
+  fallback conservador. La tabla activa `billing_plans` es la fuente de verdad; el
+  seed es solo una base de aprovisionamiento.
+- Este manual no reproduce precios ni una matriz por plan. Consulta el cupo efectivo
+  en **Configuración → Facturación** o en la operación de conexión correspondiente.
 
 ### Enforcement en el onboarding de un número adicional
 

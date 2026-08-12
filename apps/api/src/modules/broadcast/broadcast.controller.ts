@@ -82,6 +82,7 @@ export class BroadcastController {
     }
 
     @Get('campaigns')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'List all campaigns with stats' })
     async getCampaigns(@CurrentTenant() tenantId: string) {
         const data = await this.broadcastService.getCampaigns(tenantId);
@@ -89,6 +90,7 @@ export class BroadcastController {
     }
 
     @Get('campaigns/:id/stats')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Get detailed delivery stats for a campaign' })
     async getCampaignStats(
         @CurrentTenant() tenantId: string,
@@ -99,6 +101,7 @@ export class BroadcastController {
     }
 
     @Get('campaigns/:id/variants')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Get A/B test variant stats with significance' })
     async getAbVariants(
         @CurrentTenant() tenantId: string,

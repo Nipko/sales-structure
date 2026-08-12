@@ -21,6 +21,7 @@ export class WidgetController {
     ) {}
 
     @Get(':tenantId')
+    @Roles('tenant_admin', 'super_admin')
     @ApiOperation({ summary: 'List widgets for tenant' })
     async list(@Param('tenantId') tenantId: string) {
         const widgets = await this.widgetService.listWidgets(tenantId);
@@ -59,6 +60,7 @@ export class WidgetController {
     }
 
     @Get(':tenantId/:widgetId/snippet')
+    @Roles('tenant_admin', 'super_admin')
     @ApiOperation({ summary: 'Get embed snippet' })
     async getSnippet(
         @Param('tenantId') tenantId: string,

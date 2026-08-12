@@ -2,13 +2,15 @@
 id: cuenta-seguridad
 title: "Votre compte, votre équipe et la sécurité"
 routes: ["/admin/users", "/admin/settings/security", "/admin/settings/change-password"]
-roles: ["tenant_admin"]
+roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["compte", "sécurité", "équipe", "utilisateurs", "inviter un utilisateur", "ajouter un utilisateur", "rôles", "permissions", "administrateur", "superviseur", "agent", "authentification à deux facteurs", "2fa", "authentification", "code", "mot de passe", "changer le mot de passe", "appareils de confiance", "sso", "authentification unique", "saml", "langue", "thème", "mode sombre", "déconnexion", "inactivité", "session"]
 ---
 
-Dans cette section, vous gérez qui, au sein de votre équipe, accède à la plateforme, avec quelles permissions, et comment vous protégez l'accès à votre compte. La plupart de ces options relèvent du rôle **administrateur**.
+# Votre compte, votre équipe et la sécurité
 
-## Votre équipe et les rôles
+Chaque utilisateur peut protéger son propre compte avec la 2FA, les appareils de confiance et le changement de mot de passe. La gestion de l'équipe, des rôles et du SSO est réservée au rôle **administrateur**.
+
+## Votre équipe et les rôles (administrateur uniquement)
 
 Vous pouvez inviter les personnes de votre équipe à travailler avec vous sur la plateforme. Chaque personne dispose d'un **rôle** qui définit ce qu'elle peut voir et faire :
 
@@ -27,7 +29,7 @@ Vous pouvez inviter les personnes de votre équipe à travailler avec vous sur l
 
 Depuis ce même écran, vous pouvez modifier le rôle d'un utilisateur ou désactiver son accès lorsqu'une personne quitte l'équipe.
 
-> **Combien d'utilisateurs puis-je avoir** : cela dépend de votre plan. Si vous en avez besoin de plus, faites évoluer votre plan dans **Paramètres** → **Facturation**.
+> **Combien d'utilisateurs puis-je avoir** : consultez la capacité actuelle de votre compte dans **Administration → Forfait et facturation**.
 
 ---
 
@@ -43,7 +45,7 @@ L'authentification à deux facteurs ajoute une seconde couche de sécurité : en
 
 ### Appareils de confiance
 
-Lorsque vous vous connectez depuis votre ordinateur ou votre téléphone habituel, vous pouvez le marquer comme **appareil de confiance**. Ainsi, le code à deux facteurs ne vous sera plus demandé sur cet appareil pendant 30 jours. Depuis **Paramètres** → **Sécurité**, vous voyez la liste de vos appareils de confiance et pouvez retirer ceux que vous n'utilisez plus (par exemple, un appareil emprunté).
+Lorsque vous vous connectez depuis votre ordinateur ou votre téléphone habituel, vous pouvez le marquer comme **appareil de confiance**. Tant que cette confiance reste valide, le code à deux facteurs n'est plus demandé sur cet appareil. Depuis **Paramètres** → **Sécurité**, vous voyez la liste et pouvez retirer les appareils que vous n'utilisez plus (par exemple, un appareil emprunté).
 
 ---
 
@@ -57,7 +59,7 @@ Lorsque vous vous connectez depuis votre ordinateur ou votre téléphone habitue
 
 ---
 
-## Authentification unique (SSO)
+## Authentification unique (SSO, administrateur uniquement)
 
 Si votre entreprise utilise un système d'identité d'entreprise (par exemple celui de votre fournisseur de messagerie professionnelle), vous pouvez configurer l'**authentification unique (SSO)** afin que votre équipe se connecte avec les identifiants de l'entreprise, sans gérer de mots de passe distincts.
 
@@ -65,7 +67,7 @@ Si votre entreprise utilise un système d'identité d'entreprise (par exemple ce
 2. Dans la section **SSO / SAML**, renseignez les informations fournies par votre fournisseur d'identité et téléchargez les données que celui-ci vous demande concernant Parallly.
 3. Vous pouvez, en option, **forcer le SSO** afin que tous les utilisateurs de votre entreprise soient obligés de se connecter par cette voie.
 
-> Le SSO est une fonctionnalité des plans supérieurs. Si vous ne voyez pas l'option ou souhaitez de l'aide pour la configurer, écrivez-nous au support.
+> La disponibilité du SSO dépend de la configuration de votre compte. Si vous ne voyez pas l'option ou souhaitez de l'aide pour la configurer, écrivez-nous au support.
 
 ---
 
@@ -89,6 +91,6 @@ Non. Chaque rôle ne voit que ce dont il a besoin pour son travail. Un agent voi
 Utilisez l'un des **codes de secours** que vous avez conservés lors de l'activation. Si vous ne les avez pas non plus, écrivez-nous au support pour vérifier votre identité et récupérer l'accès.
 
 **Puis-je obliger toute mon équipe à utiliser l'authentification à deux facteurs ?**
-L'authentification à deux facteurs s'active utilisateur par utilisateur. Si vous devez l'imposer à l'échelle de toute l'entreprise ou utiliser un SSO obligatoire, contactez-nous et nous vous aiderons selon votre plan.
+L'authentification à deux facteurs s'active utilisateur par utilisateur. Si vous devez l'imposer à l'échelle de toute l'entreprise ou utiliser un SSO obligatoire, contactez-nous pour examiner les options activées sur votre compte.
 
 Vous avez encore des questions ? Écrivez-nous sur https://parallly-chat.cloud/support

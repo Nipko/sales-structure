@@ -1,13 +1,15 @@
 # Parallext Engine — Codex Context
 
 ## What is this project?
-Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, and Telegram.
-Monorepo with 4 NestJS/Next.js apps, deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
+Multi-tenant conversational AI SaaS platform (Parallly) for automating sales and service across WhatsApp, Instagram, Messenger, Telegram, and Web Chat. Email has an internal inbound adapter, but its dashboard setup is not backed by a tenant configuration API and is not a certified self-service conversational channel.
+Monorepo with 5 apps (including the Expo mobile app), deployed on Hostinger VPS via Docker + Cloudflare Tunnel; mobile binaries are distributed separately through EAS/stores.
+
+Current product scope and user-facing behavior are documented in `docs/product-capabilities-reference.md`, `docs/user-manual.md`, `docs/mobile-user-manual.md`, and `docs/platform-assistant-knowledge.md`. Exact routes, roles, plans, and vertical availability must be checked against the code-backed sources listed there rather than inferred from historical prose in this file.
 
 ## Architecture
 
 ```
-Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API → WhatsApp Service (port 3002) OR API webhooks
+Customer (WhatsApp/IG/Messenger/Telegram/Web Chat) → official channel APIs / widget gateway → WhatsApp Service (port 3002) OR API webhooks
     → API (port 3000) → ConversationsService (orchestrator)
         → IdentityService (resolve/create unified profile)
         → PersonaService (load agent config) → getPersonaForChannel(tenantId, channelType) (select agent by channel)
@@ -21,7 +23,7 @@ Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API 
         → Human agent responds via Dashboard (port 3001) → AgentConsoleService → Channel API
 
     Rate limiting:
-        → TenantThrottleService (per-plan: starter/pro/enterprise/custom) checks Redis before every job
+        → TenantThrottleService reads the tenant's runtime plan/overrides and checks Redis before every job
 
     Session management:
         → Refresh token rotation (Redis-backed) + idle timeout (60min) + BroadcastChannel multi-tab sync
@@ -31,10 +33,11 @@ Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API 
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. Core business logic, 40 modules
+  api/          — NestJS 10, port 3000. Core business logic, 88 module declaration files
   dashboard/    — Next.js 16, port 3001. Admin panel (50+ pages), React 19, Tailwind + shadcn/ui + recharts
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. Marketing landing page (parallly-chat.cloud), 4-language i18n
+  mobile/       — Expo / React Native companion app. Distributed through EAS/stores, not the web deploy
 packages/
   shared/       — TypeScript types (NormalizedMessage, OutboundMessage, TenantConfig, ChannelType, etc.)
 infra/
@@ -61,19 +64,19 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **CRM is built-in**: No external CRM. Handoff → internal agent console via WebSocket
 - **Event-driven**: HandoffService emits events, AgentConsoleGateway listens via @OnEvent
 - **Outbound messages**: Always through OutboundQueueService (BullMQ, 3 retries, priority by tenant plan)
-- **Rate limiting**: TenantThrottleService (starter: 50 auto/h + 200 outbound/h, pro: 500+2000, enterprise: 5000+20000)
+- **Rate limiting**: `TenantThrottleService` reads limits from runtime plan data and authorized overrides; do not duplicate fixed plan figures in user-facing guidance
 - **Webhook idempotency**: Redis keys `idem:wa:{id}`, `idem:ig:{id}`, `idem:fb:{id}`, `idem:tg:{id}`, `idem:sms:{id}` with 24h TTL
 - **LLM Router**: Skips unconfigured providers. Auto-upgrades tier if no key available
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
 - **i18n**: Every page edit/creation MUST include i18n updates in all 4 JSON files (es/en/pt/fr)
-- **Multi-agent**: Each tenant can have N agents (plan-gated: starter=1, pro=3, enterprise=10, custom=unlimited). One agent per channel. Pipeline uses getPersonaForChannel() for routing.
-- **Subscription plans**: 4 plans: starter, pro, enterprise, custom — controls agent count, template access, rate limits, and calendar count
-- **Channels**: Adapter pattern via `IChannelAdapter`. Supported: WhatsApp, Instagram, Messenger, Telegram, SMS (Twilio). One AI agent per channel (hard rule).
+- **Multi-agent**: Each tenant can have N agents according to runtime plan capacity. One agent per operational connection. Pipeline uses `getPersonaForChannel()` for routing.
+- **Subscription plans**: 5 plan families: emprendedor, starter, pro, enterprise, custom. Runtime `billing_plans` rows are authoritative for prices, quotas, and availability.
+- **Channels**: Adapter pattern via `IChannelAdapter`. Certified self-service conversational surfaces include WhatsApp, Instagram, Messenger, Telegram, and Web Chat. Email currently exposes an internal inbound adapter only; `/admin/channels/email` has no matching tenant config handler and must not be treated as an operational self-service channel. SMS is a one-way reseller-credit notification product, not a conversational channel. One AI agent per operational connection (hard rule).
 - **Conversation mutex**: Redis SETNX lock per conversation ID (`lock:conv:{conversationId}`, 30s TTL) prevents race conditions when messages arrive simultaneously
 - **Booking state**: Redis-backed (`booking:{conversationId}`, 1h TTL) as primary, PostgreSQL as backup. Loaded from Redis first. In directive mode, only last 4 messages sent to LLM (not full history) to prevent LLM from ignoring directives
 - **Booking engine i18n**: All 21 directive strings in 4 languages (es/en/pt/fr). Language auto-detected from customer message. No LLM translation needed
-- **Multi-calendar**: N calendars per tenant, plan-gated (starter:1, pro:3, enterprise:10, custom:999). 3-tier resolution: service → staff → general fallback. Auto meeting links (Google Meet / Microsoft Teams). Calendar sync on AI booking via `appointment.created` event
+- **Multi-calendar**: N calendars per tenant according to runtime plan capacity. 3-tier resolution: service → staff → general fallback. Auto meeting links (Google Meet / Microsoft Teams). Calendar sync on AI booking via `appointment.created` event
 
 ## Prompt Architecture (3 layers — Apr 2026 refactor)
 
@@ -101,13 +104,13 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 
 `LanguageDetectorService` heuristically detects es/en/pt/fr from the inbound message. Default is the configured agent language; auto-override when the customer switches languages mid-conversation. Fed into `<turn><language>` so the LLM answers in the customer's language.
 
-## API modules (40 total)
+## API modules (88 module declaration files; use `docs/modules-reference.md` for the current inventory)
 
 | Category | Modules |
 |----------|---------|
 | **Infrastructure** | prisma, redis, health, throttle, internal |
 | **Auth & Tenants** | auth (JWT + refresh rotation + Google OAuth + 2FA + password reset + session management + impersonation), tenants, settings |
-| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram/SMS adapters + IG OAuth + Messenger FB SDK + IG token refresh cron), conversations, whatsapp, handoff, agent-console |
+| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram adapters, internal Email inbound adapter, legacy SMS adapter + IG OAuth + Messenger FB SDK + IG token refresh cron), conversations, whatsapp, handoff, agent-console |
 | **AI & Config** | ai (router + 5 providers), persona (multi-agent CRUD, templates, channel assignment), knowledge, copilot |
 | **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring, analytics, insights, deal-approval, bulk-update, pipeline-stages), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
@@ -125,7 +128,7 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 WhatsappModule → ConversationsModule → [PersonaModule, AIModule, ChannelsModule, HandoffModule, IdentityModule]
                                                                       ↓ (EventEmitter)
                                                               AgentConsoleModule
-ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, InstagramTokenRefreshService, adapters (WA/IG/Messenger/Telegram/SMS)
+ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, InstagramTokenRefreshService, conversational adapters (WA/IG/Messenger/Telegram) plus internal Email inbound and legacy one-way SMS support
 ThrottleModule: @Global — TenantThrottleService available everywhere
 AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsService, ScheduledReportsService, BIApiController
 BillingModule provides: BillingService, MercadoPagoAdapter, ReconciliationProcessor, BillingEmailService
@@ -214,16 +217,16 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **Prompt assembler** | `conversations/prompt-assembler.service.ts` (3-layer + safety guardrails) |
 | **Identity manual merge** | `identity/identity.controller.ts` (POST manual-merge) |
 | **Pipeline stages** | `crm/crm.controller.ts` (CRUD pipeline-stages endpoints) |
-| **Vertical definitions** | `verticals/vertical-definitions.ts` (12 industry configs with 4 languages) |
+| **Vertical definitions** | `verticals/vertical-definitions.ts` plus the shared manifest/policy (18 canonical verticals, 4 languages) |
 | **Vertical service** | `verticals/verticals.service.ts` (bootstrapVertical, getVerticalConfig) |
 | **Vertical terms hook** | `dashboard/src/hooks/useVerticalTerms.ts` |
 
-## Dashboard pages (60+)
+## Dashboard pages (143 filesystem routes; 130 under `/admin` and 13 outside it)
 
 | Section | Pages |
 |---------|-------|
 | **Auth** | Login (Remember Me, session expired banner), Forgot Password (OTP), Setup Password (Google OAuth), Verify Email (6-digit OTP) |
-| **Onboarding** | 5-step company wizard (step 5: plan picker — Starter self-serve, Pro/Enterprise tagged for contact) |
+| **Onboarding** | 4-step company wizard (final step: plan picker) |
 | **Core** | Dashboard, Inbox (WhatsApp-style chat + channel identification + notifications), Trial Countdown Banner (persistent, all admin pages) |
 | **CRM** | Contacts (bulk actions, advanced filters, create modal), Lead Detail (inline edit, archive, custom fields, score breakdown, AI insight), Pipeline/Embudo (Kanban, configurable stages), Segments, CRM Analytics (4 tabs) |
 | **AI** | Agent List (multi-agent management, templates), Agent Editor (/agent/[agentId] — hub card grid + channel assignment + custom prompt mode), AI Settings |
@@ -332,7 +335,7 @@ scoring_config         — Lead scoring configuration (weights JSONB, purchase_k
 
 ### Global Prisma Tables (Billing & Finance)
 ```
-billing_plans              — 4 plan definitions (starter/pro/enterprise/custom) with prices
+billing_plans              — 5 plan families (emprendedor/starter/pro/enterprise/custom); runtime rows are authoritative
 billing_subscriptions      — Per-tenant subscription (status, trial, MercadoPago external IDs)
 billing_payments           — Payment history (amount, status, provider reference)
 financial_snapshots        — Monthly platform-wide SaaS metrics (MRR, churn, costs, plan distribution)
@@ -345,14 +348,14 @@ audit_logs                 — Offboarding and billing audit trail
 ## Billing System (Apr 2026)
 
 - **Payment provider**: MercadoPago (LatAm market). Adapter pattern via `IPaymentProvider` interface
-- **Plans**: 4 plans seeded in `billing_plans` table, synced to MercadoPago via `sync-mp-plans.js`
+- **Plans**: 5 plan families seeded in `billing_plans`; active database rows are authoritative. Provider sync scripts do not by themselves prove a payment provider is enabled in production.
 - **Subscription lifecycle**: trialing → active → past_due → cancelled/expired. State machine in `BillingService`
 - **Trial**: Created at end of onboarding (`completeOnboarding`). Daily cron fires `trial.ending_soon` 3 days before end
-- **Webhooks**: `POST /billing/webhooks/mercadopago` with HMAC-SHA256 verification + Redis idempotency
+- **Webhooks**: `POST /billing/webhook/:provider` (for example, `mercadopago`) with provider-specific signature verification + Redis idempotency
 - **Reconciliation**: Hourly past_due sweep + daily drift detection via `ReconciliationProcessor`
 - **Plan quotas**: Server-side enforcement on services count, automation rules count, broadcast limits
 - **Email templates**: 5 billing-specific templates (payment_success, payment_failed, trial_ending, subscription_cancelled, plan_upgraded)
-- **Dashboard pages**: `/admin/settings/billing` (plan info, countdown, actions, payment history), onboarding step 5 (plan picker)
+- **Dashboard pages**: `/admin/settings/billing` (plan info, countdown, actions, payment history), final onboarding step (plan picker)
 - **Card tokenization**: MercadoPago card tokenization for Pro/Enterprise self-serve checkout
 
 ## Offboarding System (Apr 2026)
@@ -431,7 +434,7 @@ audit_logs                 — Offboarding and billing audit trail
 
 ## Calendar System (Apr 22-23, 2026)
 
-- **Multi-calendar**: N calendars per tenant, plan-gated (starter:1, pro:3, enterprise:10, custom:999)
+- **Multi-calendar**: N calendars per tenant according to the current runtime plan/overrides
 - **Calendar assignment model**: Each calendar assigned to staff, service, or general (fallback)
 - **3-tier resolution**: service → staff → general when checking availability or creating events
 - **Auto meeting links**: Google creates Meet link, Microsoft creates Teams link when service is online
@@ -474,7 +477,7 @@ audit_logs                 — Offboarding and billing audit trail
 - **Configurable scoring**: `scoring_config` table (weights JSON, purchase_keywords array, decay_enabled, decay_days, decay_factor). Endpoints: GET/POST `/crm/scoring-config/:tenantId`
 - **Dynamic segments**: Rule-based filters (stage, tag, score, channel, date) auto-evaluated on query. CRUD + contact count endpoint
 - **AI Insights**: `CrmInsightsService` provides per-lead AI analysis. Endpoint: GET `/crm/leads/:tenantId/:leadId/insight`
-- **Deal approval workflow**: 3 endpoints — `PUT request-approval` (sets pending status), `PUT approve` (moves to target stage), `PUT reject` (with reason). Fields: `approval_status`, `approval_stage`, `approved_by` on opportunities table
+- **Deal approval surface (not E2E-certified)**: 3 endpoints exist — `PUT request-approval`, `PUT approve`, `PUT reject` — with `approval_status`, `approval_stage`, `approved_by`. Direct moves can bypass the review, so this must not be treated as an enforced financial/audit control.
 
 ## Handoff System Enhancement (Apr 26-28, 2026)
 
@@ -491,14 +494,14 @@ audit_logs                 — Offboarding and billing audit trail
 
 - **Attendance confirmation**: After appointment end time, sends message to customer via their messaging channel asking if they attended. Source metadata: `appointment_attendance_check`
 - **Auto-complete cron**: `@Cron('20 * * * *')` — every hour at :20, marks confirmed appointments as completed if they ended 2+ hours ago (runs after no-show detection at :35)
-- **CSAT trigger**: After completion, triggers customer satisfaction survey via messaging channel
+- **CSAT boundary**: Ratings already stored can be analyzed, but appointment/conversation completion does not currently trigger and capture a customer survey through the messaging channel.
 - **No-show follow-up**: Sends follow-up message to no-shows offering to reschedule
 
 ## Calendar Disconnect with Reassignment (Apr 26-28, 2026)
 
-- **Reassign-or-cancel flow**: When disconnecting a calendar with future appointments, API returns count + other available calendars
-- **Endpoint**: `POST /appointments/:tenantId/calendar/:integrationId/reassign-disconnect` — reassigns all future appointments to target calendar, then disconnects source
-- **Dashboard UI**: Modal shows appointment count and dropdown to select target calendar before confirming disconnect
+- **Reassign-or-cancel surface (fail-closed)**: The API can report blockers and alternatives, but apply/reassign currently returns `applySupported:false`; the UI workflow is not E2E-certified.
+- **Endpoint**: `POST /appointments/:tenantId/calendar/:integrationId/reassign-disconnect` — compatibility endpoint; do not claim it moves appointments. Manually reassign/cancel and verify before disconnecting.
+- **Dashboard UI**: The modal is advisory only until the apply contract is implemented and tested.
 
 ## Safety Guardrails — Layer 1 (Apr 26-28, 2026)
 
@@ -557,7 +560,7 @@ Response when triggered: "I'm not able to help with that. Is there anything else
 
 - **Purpose**: When a tenant selects their industry during onboarding, the entire platform adapts automatically
 - **Module**: `apps/api/src/modules/verticals/` — VerticalsService, VerticalsController, vertical-definitions.ts
-- **12 industries**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, otro
+- **18 canonical verticals**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, veterinaria, gimnasios, seguros, servicios_hogar, pet_services, fotografia, otro. The shared manifest and `vertical-product-policy.ts` govern effective capabilities and certification status.
 - **Sub-types**: Each industry has 3-5 sub-types (e.g., salud → dental, medica_general, estetica, psicologia, farmacia)
 - **Bootstrap on onboarding**: `completeOnboarding()` calls `bootstrapVertical(tenantId, industry, subType, lang)` which:
   1. Seeds pipeline stages (5-7 per industry)
@@ -614,9 +617,9 @@ See `.env.example`. Key ones:
 - `GOOGLE_OAUTH_CLIENT_ID` — Google Sign-In client ID
 - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` — Email service
 - `MEDIA_STORAGE_PATH` — /data/media (Docker volume)
-- `MERCADOPAGO_ACCESS_TOKEN` — MercadoPago API token (sandbox or production)
-- `MERCADOPAGO_PUBLIC_KEY` — MercadoPago public key (for card tokenization)
-- `MERCADOPAGO_WEBHOOK_SECRET` — HMAC-SHA256 secret for webhook verification
+- `MP_ACCESS_TOKEN` — MercadoPago API token (sandbox or production)
+- `MP_PUBLIC_KEY` — MercadoPago public key (for card tokenization)
+- `MP_WEBHOOK_SECRET` — HMAC-SHA256 secret for webhook verification
 - `NEXT_PUBLIC_INSTAGRAM_APP_ID` — Instagram OAuth app ID
 - `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI` — Instagram OAuth redirect URI
 - `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID` — Facebook Login configuration ID for Messenger
@@ -625,7 +628,7 @@ See `.env.example`. Key ones:
 
 - Landing: https://parallly-chat.cloud (static, nginx container, 4-language i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js, Tailwind + shadcn/ui + recharts)
-- API: https://api.parallly-chat.cloud (NestJS, 40 modules, multi-agent)
+- API: https://api.parallly-chat.cloud (NestJS, 88 module declaration files, multi-agent)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)

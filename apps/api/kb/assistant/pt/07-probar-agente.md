@@ -14,13 +14,13 @@ Antes de deixar seu agente de IA conversar com clientes de verdade, vale a pena 
 - **Simulações** — dezenas de "clientes simulados" conversam com seu agente e uma IA avaliadora dá nota para cada conversa.
 - **Procedimentos (SOP)** — escreva seus processos em linguagem natural para o agente segui-los passo a passo, sem improvisar.
 
-> Essas ferramentas estão disponíveis para o papel de **administrador**. Você as encontra na barra lateral, seção **Crescimento** → **Automação**.
+> Essas ferramentas estão disponíveis para o papel de **administrador**. **Agente IA** e **Procedimentos** ficam em **IA e crescimento**.
 
 ## Como conversar com seu agente (chat de teste)
 
 É o jeito mais rápido de ver seu agente em ação:
 
-1. Na barra lateral, vá em **Crescimento** → **Automação** → **Agente IA**.
+1. Na barra lateral, vá em **IA e crescimento** → **Agente IA**.
 2. Abra o agente que você quer revisar.
 3. Clique no botão **Testar agente**.
 4. Escreva como se fosse um cliente ("Quais são os preços?", "Vocês têm horário no sábado?") e clique em **Enviar**.
@@ -32,7 +32,7 @@ O chat de teste é um espaço seguro: não cria contatos, não aparece na sua ca
 
 Quando você quer uma avaliação mais completa do que algumas mensagens manuais, use as simulações. Pense nelas como um "controle de qualidade" automático do seu agente.
 
-1. Na barra lateral, vá em **Crescimento** → **Automação** → **Testar agente**.
+1. Abra **Agente IA**, escolha o agente e selecione **Testar agente**.
 2. No painel **Nova simulação**, escolha o **Agente** que quer avaliar.
 3. Em **Origem dos cenários**, escolha como os clientes de teste são gerados:
    - **Sintéticos** — a IA gera clientes variados e realistas do seu setor: fáceis, desconfiados, irritados, caçadores de preço etc.
@@ -61,7 +61,7 @@ Ao abrir uma simulação concluída você verá:
 
 Os procedimentos ensinam seu agente a executar processos do seu negócio **passo a passo**: reembolsos, garantias, reclamações, qualificação de leads… O agente decide como redigir cada mensagem com naturalidade, mas o fluxo é controlado pelo procedimento — por isso ele nunca pula nem inventa passos.
 
-1. Na barra lateral, vá em **Crescimento** → **Automação** → **Procedimentos**.
+1. Na barra lateral, vá em **IA e crescimento** → **Procedimentos**.
 2. Escolha como criá-lo:
    - **Escrever SOP** (recomendado) — descreva o procedimento em linguagem natural, por exemplo: *"Quando um cliente pedir reembolso, peça o número do pedido e verifique o status; se entregue, ofereça um cupom, senão escale para um agente."* Depois clique em **Compilar em passos**: a IA transforma tudo em uma sequência de passos concretos que fica como **Rascunho** para você revisar.
    - **Em branco** — monte os passos manualmente, um por um, com **Adicionar passo**.

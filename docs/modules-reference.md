@@ -1,12 +1,17 @@
 # Modules Reference
 
-Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 públicas), 11 BullMQ queues, and 46 cron jobs.
+Technical inventory for 88 API module declaration files, 143 dashboard pages
+(130 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
 
-**Last updated:** jul 2026 — Multi-canal por tipo, billing anual + billing-ops, fiscal DIAN (Factus), backup offsite, SMS reseller, Ops Center, gobernanza super_admin
+**Last updated:** ago 2026 — Navigation IA, role alignment, 18-vertical capability manifest and mobile operational workspaces
+
+> Counts are a filesystem snapshot, not a product contract. Recalculate with
+> `rg --files apps/api/src/modules -g '*.module.ts'` and
+> `rg --files apps/dashboard/src/app -g 'page.tsx'` after structural changes.
 
 ---
 
-## API Modules (83 total)
+## API Modules (88 module declaration files)
 
 ### Infrastructure (6 modules)
 
@@ -58,9 +63,9 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 - **Purpose:** Rate limiting por plan y feature flags. `@Global()` module. Lee `features` de `billing_plans` en runtime (cacheado; invalidado en cambios de plan)
 - **Services:** `tenant-throttle.service.ts`, `feature-flags.service.ts`, `plan-features.registry.ts` (registro canónico de claves de `features` + validación)
 - **Controller:** None (consumido por otros módulos)
-- **5 planes:** emprendedor (USD $21), starter ($49), pro ($129), enterprise ($349), custom. Fuente: `prisma/seed-billing-plans.js` + tabla `billing_plans`
-- **Calendar limits:** starter=1, pro=3, enterprise=10, custom=999
-- **Multi-cuenta por tipo de canal:** `features.maxChannelAccounts` es un objeto `{ whatsapp, instagram, messenger, telegram, sms }` (default 1 por tipo). Resolución: override por-tenant (`quotaOverrides.maxChannelAccounts`) → feature del plan → default 1. Ej. pro: `{ whatsapp: 2, messenger: 3 }`; custom: `-1` (ilimitado). Consumido por los flujos de conexión de canal para gatear conexiones adicionales del mismo tipo
+- **Planes y precios:** el catálogo vigente se consulta en `billing_plans`; no se fijan aquí nombres, precios ni descuentos porque cambian sin despliegue
+- **Calendarios y demás cuotas:** se resuelven desde `billing_plans.features` y los overrides autorizados del tenant
+- **Multi-cuenta por tipo de canal:** `features.maxChannelAccounts` es un objeto por tipo de canal. Resolución: override del tenant (`quotaOverrides.maxChannelAccounts`) → feature del plan → fallback conservador. Los flujos de conexión lo consumen para impedir conexiones adicionales no autorizadas
 
 #### 5. internal
 - **Purpose:** Service-to-service message injection (WhatsApp service → API)
@@ -119,6 +124,7 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - `POST /auth/2fa/disable` — Disable 2FA (password required)
   - `POST /auth/2fa/verify` — Verify TOTP/email/backup code at login
   - `POST /auth/2fa/send-email` — Send email OTP fallback
+  - `POST /auth/2fa/send-sms` — Send SMS OTP fallback when available
   - `POST /auth/2fa/backup-codes` — Generate/regenerate backup codes
   - `GET /auth/trusted-devices` — List user's trusted devices
   - `DELETE /auth/trusted-devices/:id` — Revoke a trusted device
@@ -225,7 +231,7 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 - **Purpose:** Multi-channel message routing, webhook handling, outbound queue
 - **Services:** `channel-gateway.service.ts`, `channel-token.service.ts`, `outbound-queue.service.ts`, `instagram-token-refresh.service.ts`, `webhook-tap.service.ts`
 - **Adapters:** `whatsapp/whatsapp.adapter.ts`, `instagram/instagram.adapter.ts`, `messenger/messenger.adapter.ts`, `sms/sms.adapter.ts`, `telegram/telegram.adapter.ts`, `email/email.adapter.ts` (EmailAdapter implementing IChannelAdapter)
-- **Email sub-module:** `email/email-channel.service.ts` (config CRUD + thread tracking), `email/email-webhook.controller.ts`
+- **Email sub-module:** `email/email-channel.service.ts` (persistencia interna + thread tracking; su CRUD no está expuesto como API tenant), `email/email-webhook.controller.ts`
 - **Controllers:** `channels.controller.ts` (webhooks), `channel-management.controller.ts` (management), `webhook-tap.controller.ts` (debug)
 - **Webhook Endpoints:**
   - `GET /channels/webhook/whatsapp` — WhatsApp verification
@@ -236,7 +242,7 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - `POST /channels/webhook/messenger` — Messenger events
   - `POST /channels/webhook/sms/:phoneNumber` — SMS/Twilio
   - `POST /channels/webhook/telegram/:botUsername` — Telegram
-  - `POST /channels/email/inbound` — Email inbound (SendGrid/SMTP parse)
+  - `POST /channels/email/inbound` — Ingreso técnico JSON de Email para integraciones administradas; exige el secret/header de webhook configurado en el servidor y no acepta multipart directo
 - **Management Endpoints:**
   - `GET /channels/overview` — All channels status + agent assignment
   - `GET /channels/:channelType/status` — Channel status
@@ -252,11 +258,12 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - `GET /channels/sms/status` — SMS status
   - `DELETE /channels/sms/disconnect` — Disconnect SMS
   - `POST /channels/sms/test` — Test SMS
-  - > **Nota:** el **canal SMS conversacional fue descartado**. `channels/sms/sms.adapter.ts` (Twilio) queda como legacy; hoy SMS es solo **notificación one-way** (ver módulos `sms-credits` + `sms-notifications`). Los canales conversacionales activos son WhatsApp, Instagram, Messenger, Telegram, Email y Web Chat Widget (`widget/`)
-  - **Email Channel:**
-    - `GET /channels/email/config` — Email channel config
-    - `PUT /channels/email/config` — Update email config (SMTP/SendGrid)
-    - `DELETE /channels/email/disconnect` — Disconnect email channel
+  - > **Nota:** el **canal SMS conversacional fue descartado**. `channels/sms/sms.adapter.ts` (Twilio) queda como legacy; hoy SMS es solo **notificación one-way** (ver módulos `sms-credits` + `sms-notifications`). Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y Web Chat Widget (`widget/`).
+  - **Email (interno, no autoservicio certificado):**
+    - `POST /channels/email/inbound` — ingreso técnico JSON para una integración previamente administrada; falla cerrado si `EMAIL_INBOUND_WEBHOOK_SECRET` no está configurado, valida el header antes de resolver el tenant, enruta solo con un destinatario canónico en `envelope.to` y rechaza direcciones activas ambiguas entre tenants
+    - `GET /channels/email/config` — coincide con el handler genérico `/:channelType/config` y solo devuelve instrucciones de webhook; no lee credenciales ni configuración tenant
+    - No existen `GET`/`PUT /channels/email/config/:tenantId`; por ello `/admin/channels/email` no puede cargar/guardar una configuración y no debe presentarse como canal operativo autoservicio
+    - El `POST /channels/:channelType/connect` genérico no configura el servicio Email de extremo a extremo
   - **Multi-cuenta por tipo (jul 2026):**
     - `POST /channels/:channelType/connect` — Conectar una cuenta ADICIONAL del mismo tipo (gateada por `features.maxChannelAccounts[type]`)
     - `DELETE /channels/:channelType/account/:accountId` — Desconectar una cuenta específica por `accountId` (no toca las demás)
@@ -321,9 +328,15 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 #### 15. agent-console
 - **Purpose:** Real-time agent workspace (WebSocket + REST) with collision detection
 - **Services:** `agent-console.service.ts`, `agent-availability.service.ts`, `canned-responses.service.ts`, `macros.service.ts`, `snooze.service.ts`, `collision-detection.service.ts` (Redis ZSET viewer tracking with heartbeat/cleanup)
-- **Gateway:** `agent-console.gateway.ts` (WebSocket `/inbox` namespace)
-- **WebSocket Events:** `inbox:handoff`, `inbox:handoff_direct`, `inbox:escalation`, `conversation:viewing_start`, `conversation:viewing_stop`, `conversation:viewing_heartbeat`, `conversation:viewers_update`
+- **Gateway:** `agent-console.gateway.ts` (WebSocket `/agent` namespace)
+- **WebSocket Events:** `inbox:handoff`, `inbox:assigned_to_you`, `inbox:escalation`,
+  `inbox:refresh`, `conversation:viewing_start`, `conversation:viewing_stop`,
+  `conversation:heartbeat`, `conversation:viewers_update`
 - **Controller:** `agent-console.controller.ts`
+- **Ownership:** Admin/Supervisor pueden ver el tenant; Agent solo ve conversaciones
+  propias o sin asignar y solo actúa sobre las propias. Actor y tenant se derivan de
+  la sesión. Las salas WebSocket son tenant-scoped y el fanout general no incluye el
+  contenido sensible de una conversación.
 - **Endpoints:**
   - `GET /agent-console/inbox/:tenantId` — Fetch handoff inbox
   - `GET /agent-console/conversation/:tenantId/:conversationId` — Conversation detail
@@ -331,20 +344,21 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - `POST /agent-console/conversation/:tenantId/:conversationId/note` — Add internal note
   - `GET /agent-console/conversation/:tenantId/:conversationId/suggest` — AI reply suggestion
   - `POST /agent-console/conversation/:tenantId/:conversationId/reopen` — Reopen
-  - `PUT /agent-console/conversation/:tenantId/:conversationId/assign` — Assign
+  - `PUT /agent-console/conversation/:tenantId/:conversationId/assign` — Assign/reassign to an active tenant member (Admin/Supervisor). Deprecated mobile-v7 compatibility alias: Agent may target only the authenticated self and is routed through the atomic unassigned-only claim; it can never reassign
+  - `PUT /agent-console/conversation/:tenantId/:conversationId/claim` — Atomically claim an unassigned conversation as the authenticated user
   - `PUT /agent-console/conversation/:tenantId/:conversationId/resolve` — Resolve
   - `PUT /agent-console/conversation/:tenantId/:conversationId/snooze` — Snooze
   - `PUT /agent-console/conversation/:tenantId/:conversationId/unsnooze` — Unsnooze
   - `PUT /agent-console/conversation/:tenantId/:conversationId/archive` — Archive
-  - `DELETE /agent-console/conversation/:tenantId/:conversationId` — Delete
-  - `DELETE /agent-console/conversation/:tenantId/:conversationId/message/:messageId` — Delete message
+  - `DELETE /agent-console/conversation/:tenantId/:conversationId` — Delete (Admin only)
+  - `DELETE /agent-console/conversation/:tenantId/:conversationId/message/:messageId` — Delete message (Admin only)
   - `POST /agent-console/conversations/:tenantId/bulk-archive` — Bulk archive
-  - `POST /agent-console/conversations/:tenantId/bulk-delete` — Bulk delete
+  - `POST /agent-console/conversations/:tenantId/bulk-delete` — Bulk delete (Admin only)
   - `GET /agent-console/stats/:tenantId/:agentId` — Agent stats
   - `GET /agent-console/canned/:tenantId` — List canned responses
   - `POST /agent-console/canned/:tenantId` — Create canned response
   - `PUT /agent-console/canned/:tenantId/:id` — Update canned response
-  - `PUT /agent-console/status/:userId` — Update online status
+  - `PUT /agent-console/status/:userId` — Update own online status; effective user comes from JWT
   - `GET /agent-console/agents/:tenantId/available` — Available agents
   - `GET /agent-console/agents/:tenantId/status` — All agent statuses
   - `GET /agent-console/macros/:tenantId` — List macros
@@ -356,14 +370,19 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - `*/2 * * * *` — escalateStaleHandoffs: escalate >5min → `inbox:escalation`
 
 #### 16. copilot
-- **Purpose:** AI assistant for human agents (suggestions, summaries, intent)
+- **Purpose:** Parallly Assist for platform guidance plus conversation Copilot
+  (suggestions, summaries, intent, rewrite and contextual questions)
 - **Services:** `copilot.service.ts`
 - **Controller:** `copilot.controller.ts`
+- **Roles:** all six routes explicitly allow `tenant_admin`, `tenant_supervisor` and
+  `tenant_agent`; `tenant_viewer` and platform-mode `super_admin` are excluded
 - **Endpoints:**
-  - `POST /copilot/chat` — Agent AI chat assistant
+  - `POST /copilot/chat` — Tenant guidance; client sends only
+    `{message,page,locale,history}`, identity/role/tenant come from JWT + TenantGuard
   - `GET /copilot/:conversationId/suggestions` — Reply suggestions
   - `GET /copilot/:conversationId/summary` — Conversation summary
   - `GET /copilot/:conversationId/intent` — Intent analysis
+  - `POST /copilot/:conversationId/rewrite` — Rewrite a draft by tone
   - `POST /copilot/:conversationId/ask` — Ask question about conversation
 
 ---
@@ -461,6 +480,8 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
     - `PUT /crm/opportunities/:tenantId/:id/request-approval` — Request deal approval
     - `PUT /crm/opportunities/:tenantId/:id/approve` — Approve deal
     - `PUT /crm/opportunities/:tenantId/:id/reject` — Reject deal
+    - Approval endpoints exist, but terminal-stage blocking is not certified end to
+      end; direct moves must not be treated as an enforced financial/audit control
   - **Kanban:**
     - `GET /crm/kanban/:tenantId` — Kanban board data
     - `PUT /crm/kanban/:tenantId/:opportunityId/move` — Move card
@@ -752,7 +773,9 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - `0 2 * * *` — aggregateYesterday: nightly metrics aggregation
   - `0 8 * * 1` — sendWeeklyReports
   - `0 8 1 * *` — sendMonthlyReports
-  - `10 * * * *` — sendPostAppointmentCSAT: post-appointment survey
+  - El módulo almacena y analiza CSAT, pero el flujo automático
+    cierre/cita → encuesta por canal → captura inbound no está cableado ni tiene un
+    cron operativo certificado
 
 ---
 
@@ -778,7 +801,7 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
     - `GET /appointments/:tenantId/calendar/google/connect` — Google OAuth
     - `GET /appointments/:tenantId/calendar/microsoft/connect` — Microsoft OAuth
     - `DELETE /appointments/:tenantId/calendar/:id` — Disconnect calendar
-    - `POST /appointments/:tenantId/calendar/:id/reassign-disconnect` — Reassign + disconnect
+    - `POST /appointments/:tenantId/calendar/:id/reassign-disconnect` — Compatibilidad fail-closed: devuelve `applySupported:false`; la reasignación/cancelación y la verificación son manuales antes de desconectar
     - `GET /calendar/google/callback` — Google OAuth callback
     - `GET /calendar/microsoft/callback` — Microsoft OAuth callback
   - **Availability:**
@@ -832,8 +855,12 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - **A/B Testing:**
     - `GET /broadcast/campaigns/:id/variants` — List campaign variants with performance stats
     - `POST /broadcast/campaigns/:id/winner` — Select winning variant (manual or auto via z-test)
+  - **Roles:** every campaign read/write endpoint is restricted to tenant_admin or
+    tenant_supervisor. Launch/scheduling from the current dashboard editor is not
+    certified for production; scheduled campaigns have no cancel endpoint.
 - **Tenant tables:** `campaign_variants` (id, campaign_id, name, content, traffic_pct, stats_json)
 - **Multi-channel:** UI supports WA + Email + SMS selection, smart recipient resolution (WA→Email→SMS fallback based on contact info), per-channel content (template/subject+html/body), per-channel delivery stats
+- **Alcance de Email:** el envío saliente de campañas usa el servicio de correo de plataforma; es independiente del adaptador conversacional Email y no habilita la configuración de `/admin/channels/email`
 - **BullMQ:** `broadcast-messages` (concurrency: 10, 80 msg/s rate limit)
 - **Cron:** `* * * * *` — Auto-launch scheduled campaigns
 
@@ -1249,15 +1276,16 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 - **Endpoints:**
   - `GET /vehicles/:tenantId` — List vehicles
   - `POST /vehicles/:tenantId` — Create vehicle
+  - `POST /vehicles/:tenantId/bulk-import` — Import parsed CSV/XLSX rows
   - `GET /vehicles/:tenantId/:vehicleId` — Detail
   - `PUT /vehicles/:tenantId/:vehicleId` — Update (dynamic SET clause)
-  - `DELETE /vehicles/:tenantId/:vehicleId` — Delete vehicle
-  - `POST /vehicles/:tenantId/:vehicleId/mark-sold` — Mark as sold (sold_at, price, buyer)
-  - `POST /vehicles/:tenantId/:vehicleId/test-drive` — Schedule test drive (conflict detection)
+  - `PUT /vehicles/:tenantId/:vehicleId/sold` — Mark as sold (sold_at, price, buyer)
+  - `POST /vehicles/:tenantId/test-drives` — Schedule test drive (conflict detection)
+  - `GET /vehicles/:tenantId/test-drives/list` — List test drives
   - `GET /vehicles/:tenantId/search` — AI-oriented search (budget, category, fuel filters)
   - `GET /vehicles/:tenantId/stats` — Inventory statistics
 - **Key features:**
-  - Full CRUD with dynamic SET clause for partial updates
+  - Create/read/update inventory with dynamic SET clause for partial updates; no delete endpoint
   - `markSold()` records sold_at timestamp, final price, and buyer info
   - `scheduleTestDrive()` with time conflict detection
   - AI-oriented search endpoint with budget/category/fuel type filters
@@ -1268,19 +1296,19 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 ### Other (7 modules)
 
 #### 58. customer-portal
-- **Purpose:** Customer-facing portal with magic-link authentication and read-only access
+- **Purpose:** Customer-facing portal with 6-digit OTP authentication and read-only access
 - **Services:** `customer-portal.service.ts`
 - **Controller:** `customer-portal.controller.ts`
-- **Auth:** Magic-link (6-digit code, Redis 10min TTL, 5-attempt brute-force protection). JWT with `type: 'customer'`. Controller validates `X-Portal-Token` header
+- **Auth:** 6-digit code (Redis 10min TTL, 5-attempt brute-force protection). JWT with `type: 'customer'`. Controller validates `X-Portal-Token` and matches its tenant to the URL
 - **Endpoints:**
-  - `POST /customer-portal/auth/request` — Request magic-link code
-  - `POST /customer-portal/auth/verify` — Verify code and get JWT
-  - `GET /customer-portal/profile` — Customer profile (read-only)
-  - `GET /customer-portal/conversations` — Customer conversations (read-only)
-  - `GET /customer-portal/appointments` — Customer appointments (read-only)
-  - `GET /customer-portal/orders` — Customer orders (read-only)
+  - `POST /portal/:tenantId/request-access` — Request OTP by phone/email
+  - `POST /portal/:tenantId/verify` — Verify code and get portal JWT
+  - `GET /portal/:tenantId/profile` — Customer profile (read-only)
+  - `GET /portal/:tenantId/conversations` — Customer conversations (read-only)
+  - `GET /portal/:tenantId/appointments` — Customer appointments (read-only)
+  - `GET /portal/:tenantId/orders` — Customer orders (read-only)
 - **Key features:**
-  - 6-digit magic-link code with Redis TTL (10 minutes)
+  - 6-digit OTP code with Redis TTL (10 minutes)
   - Brute-force protection (max 5 attempts per code)
   - Read-only endpoints — customers cannot modify data through portal
   - Separate JWT type (`customer`) from admin/agent tokens
@@ -1340,30 +1368,37 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - Lazy table creation per tenant
 
 #### 62. widget
-- **Purpose:** Embeddable JavaScript chat widget for websites with proactive triggers
-- **Services:** `widget.service.ts`, `widget-triggers.service.ts` (CRUD for proactive triggers)
+- **Purpose:** Embeddable JavaScript chat widget; trigger definitions are configurable but not yet executed by the public loader
+- **Services:** `widget.service.ts`, `widget-triggers.service.ts` (tenant-scoped CRUD for trigger definitions)
 - **Gateway:** `widget.gateway.ts` (WebSocket for real-time chat)
-- **Controllers:** `widget-public.controller.ts`, `widget-triggers.controller.ts` (protected CRUD)
+- **Controllers:** `widget-public.controller.ts`, `widget.controller.ts`, `widget-triggers.controller.ts`
 - **Endpoints:**
-  - `GET /widget/:tenantId/config` — Get widget config (includes active triggers)
-  - `PUT /widget/:tenantId/config` — Update widget config (authenticated)
-  - `GET /widget/public/:tenantId/config` — Public widget config (no auth, CORS)
-  - `POST /widget/public/:tenantId/conversation` — Start or resume conversation (no auth)
-  - `GET /widget/public/:tenantId/conversation/:conversationId/messages` — Get messages (no auth)
-  - **Proactive Triggers:**
-    - `GET /widget/:tenantId/triggers` — List triggers
-    - `POST /widget/:tenantId/triggers` — Create trigger
-    - `PUT /widget/:tenantId/triggers/:triggerId` — Update trigger
-    - `DELETE /widget/:tenantId/triggers/:triggerId` — Delete trigger
-- **Global tables:** `widget_triggers` (id, tenant_id, name, type, conditions_json, message, active)
-- **WebSocket Events:** Real-time message delivery for embedded chat
+  - `GET /widget/loader.js` — Embeddable loader
+  - `GET /widget/config/:widgetId` — Public config (origin policy); trigger projection omits internal IDs
+  - `POST /widget/sessions` — Create/resume public session
+  - `POST /widget/sessions/refresh` — Refresh session from token
+  - `GET /widgets/:tenantId` — List widgets (JWT + tenant + feature guard)
+  - `POST /widgets/:tenantId` — Create widget (tenant_admin/super_admin)
+  - `PUT /widgets/:tenantId/:widgetId` — Update widget (tenant_admin/super_admin)
+  - `DELETE /widgets/:tenantId/:widgetId` — Delete widget (tenant_admin/super_admin)
+  - `GET /widgets/:tenantId/:widgetId/snippet` — Get embed snippet
+  - **Trigger definitions** (tenant derived from authenticated session; every query verifies ownership):
+    - `GET /widget/triggers/:widgetConfigId` — List definitions
+    - `POST /widget/triggers/:widgetConfigId` — Create definition
+    - `PUT /widget/triggers/:triggerId` — Update definition
+    - `DELETE /widget/triggers/:triggerId` — Delete definition
+- **Global table:** `widget_triggers` (`widget_config_id`, conditions/operator,
+  action type/config, frequency, active flag and priority)
+- **WebSocket:** namespace `/widget`; client sends `widget:message`, server streams
+  `widget:stream_start/chunk/end` and emits history, ack, typing and error events
 - **Config fields:** bubble color, position (bottom-left/bottom-right), welcome message, pre-chat form toggle
 - **Key features:**
   - Cross-origin embed with CORS configuration
   - WebSocket gateway for real-time chat
   - Conversation management (create + resume)
   - Customizable bubble appearance and position
-  - Proactive triggers (time-on-page, scroll depth, exit intent, URL match)
+  - Trigger-definition editor (time-on-page, scroll depth, exit intent, URL match);
+    the public loader does not execute these definitions yet
 
 #### 63. feature-requests
 - **Purpose:** User feature requests with voting, comments, AI signal extraction
@@ -1424,13 +1459,16 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
   - `GET /api/v1/public/deals` — List deals (scoped)
   - `GET /api/v1/public/conversations` — List conversations (scoped)
   - `GET /api/v1/public/appointments` — List appointments (scoped)
+  - `GET /api/v1/public/hooks` — List webhook subscriptions
   - `POST /api/v1/public/hooks` — Subscribe to webhook events
-  - `DELETE /api/v1/public/hooks` — Unsubscribe from webhook events
+  - `DELETE /api/v1/public/hooks/:hookId` — Unsubscribe from webhook events
 - **Global tables:** `api_keys` (id, tenant_id, name, key_hash, scopes, last_used_at, expires_at)
 - **Tenant tables:** `webhook_subscriptions` (id, url, events[], secret_hash, active)
 - **Key features:**
-  - Plan-gated key limits (starter=1, pro=3, enterprise=10, custom=unlimited)
-  - Scopes: contacts:read, deals:read, conversations:read, appointments:read, hooks:manage
+  - Plan-gated key limits from the active billing plan
+  - Scopes: `read:contacts`, `write:contacts`, `read:deals`, `write:deals`,
+    `read:conversations`, `write:messages`, `read:appointments`,
+    `write:appointments`, `read:webhooks`, `write:webhooks`, `read:analytics`
   - HMAC-SHA256 webhook payload signing
   - Redis-cached key validation (60s TTL)
 
@@ -1629,11 +1667,13 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 
 ---
 
-## Dashboard Pages (139 total — 126 admin + 13 públicas)
+## Dashboard Pages (143 total — 130 admin + 13 non-admin)
 
-> Las tablas por sección de abajo cubren la navegación principal; no son exhaustivas de las 126 páginas admin (existen páginas nuevas de verticales, integraciones en `settings/integrations/*` — mcp, reviews, slack, sms-notifications, vertical, webhooks — y de super_admin listadas abajo).
+> Las tablas por sección cubren la navegación principal; no son exhaustivas de las
+> 130 páginas admin. La autoridad de rutas es `navigation-contract.ts` y la de acceso,
+> `roles.ts`; el sidebar proyecta ese contrato por rol y vertical.
 
-### Public Pages (13)
+### Public Pages
 
 | Route | Purpose | i18n |
 |-------|---------|------|
@@ -1648,27 +1688,28 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/kb/[tenantSlug]` | Public KB portal | ⚠️ Hardcoded EN |
 | `/kb/[tenantSlug]/[slug]` | KB article detail | ⚠️ Hardcoded EN |
 | `/book/[tenantSlug]` | Public booking flow | ⚠️ Only en/es |
-| `/admin/setup-wizard` | First-time agent setup | ✅ setupWizard |
+| `/offline` | Offline fallback | ✅ |
 | `/` | Root redirect | N/A |
 
-### Admin Core (12)
+### Admin Core
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
-| `/admin` | Dashboard home (KPIs, activity, vertical-aware) | All | ✅ |
-| `/admin/inbox` | Agent console (WhatsApp-style chat + WebSocket) | All | ✅ |
-| `/admin/contacts` | CRM contacts list (search, filter, bulk, create) | All | ✅ |
-| `/admin/contacts/[leadId]` | Lead 360° detail (edit, score, custom fields) | All | ✅ |
-| `/admin/contacts/segments` | Contact segments | All | ✅ |
-| `/admin/pipeline` | Sales pipeline Kanban | All | ✅ |
-| `/admin/appointments` | Calendar + list + availability + services | All | ✅ |
+| `/admin` | Dashboard home (KPIs, activity, vertical-aware) | Admin/Supervisor | ✅ |
+| `/admin/inbox` | Agent console (WhatsApp-style chat + WebSocket) | Admin/Supervisor/Agent | ✅ |
+| `/admin/contacts` | CRM contacts list (search, filter, bulk, create) | Admin/Supervisor/Agent | ✅ |
+| `/admin/contacts/[leadId]` | Lead 360° detail (edit, score, custom fields) | Admin/Supervisor/Agent | ✅ |
+| `/admin/contacts/segments` | Contact segments | Admin/Supervisor/Agent | ✅ |
+| `/admin/pipeline` | Sales pipeline Kanban | Admin/Supervisor/Agent | ✅ |
+| `/admin/appointments` | Calendar + list + availability + services | Admin/Supervisor/Agent | ✅ |
 | `/admin/identity` | Cross-channel merge suggestions | Supervisor+ | ✅ |
 | `/admin/conversations` | Conversation archive (not in sidebar) | Supervisor+ | ⚠️ Partial |
 | `/admin/compliance` | Privacy & consent (not in sidebar) | Admin | ✅ |
 | `/admin/users` | User management + invitations | Admin | ✅ |
-| `/admin/feature-requests` | Feature requests + voting + changelog | All | ✅ |
+| `/admin/feature-requests` | Feature requests + voting + changelog | Admin/Supervisor/Agent | ✅ |
+| `/admin/setup-wizard` | First-time tenant setup | Admin | ✅ setupWizard |
 
-### Growth Section (10)
+### Growth Section
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
@@ -1680,21 +1721,19 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/admin/agent` | AI agent list (multi-agent) | Admin | ✅ |
 | `/admin/agent/[agentId]` | Agent editor (hub cards + channel assignment) | Admin | ✅ |
 | `/admin/agent/[agentId]/test` | Agent test console with debug panel | Admin | ✅ |
-| `/admin/knowledge` | Knowledge base (RAG documents) | Supervisor+ | ✅ |
-| `/admin/knowledge/faqs` | FAQ management | Supervisor+ | ✅ |
+| `/admin/knowledge` | Knowledge base (RAG documents) | Admin/Supervisor; Agent read-only | ✅ |
+| `/admin/knowledge/faqs` | FAQs | Admin/Supervisor; Agent read-only | ✅ |
 
-### Analytics (5)
+### Analytics
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
 | `/admin/analytics-v2` | Main analytics (8 tabs, CSV export) | Supervisor+ | ✅ |
 | `/admin/crm-analytics` | CRM analytics (funnel, velocity, leaderboard) | Supervisor+ | ✅ |
-| `/admin/agent-analytics` | Agent performance + CSAT (4 tabs) | All | ✅ |
-| `/admin/report-builder` | Custom report builder (16 metrics, 4 chart types, save/edit/duplicate) | Admin | ✅ |
-| `/admin/analytics` | Legacy analytics (deprecated, not in sidebar) | Supervisor+ | ⚠️ |
-| `/admin/ai` | Legacy LLM config (deprecated, not in sidebar) | Super admin | ⚠️ |
+| `/admin/agent-analytics` | Agent performance + CSAT (4 tabs) | Supervisor+ | ✅ |
+| `/admin/report-builder` | Custom report builder (16 metrics, 4 chart types, save/edit/duplicate) | Supervisor+ | ✅ |
 
-### Channels (9)
+### Channels
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
@@ -1706,18 +1745,18 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/admin/channels/messenger` | Messenger FB SDK setup | Admin | ✅ |
 | `/admin/channels/telegram` | Telegram bot setup | Admin | ✅ |
 | `/admin/channels/sms` | SMS/Twilio setup | Admin | ✅ |
-| `/admin/channels/email` | Email channel config (SMTP/SendGrid) | Admin | ✅ |
+| `/admin/channels/email` | UI de Email sin contrato API tenant de lectura/escritura; no autoservicio certificado | Admin | ✅ |
 
-### Settings (22)
+### Settings
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
-| `/admin/settings` | Settings hub (card grid) | All | ✅ |
-| `/admin/settings/profile` | User profile | All | ✅ |
-| `/admin/settings/security` | 2FA management | All | ✅ |
-| `/admin/settings/notifications` | Notification preferences | All | ⚠️ Hardcoded EN |
-| `/admin/settings/appearance` | Theme switcher | All | ✅ |
-| `/admin/settings/change-password` | Change password | All | ✅ |
+| `/admin/settings` | Settings hub (card grid) | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
+| `/admin/settings/profile` | User profile | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
+| `/admin/settings/security` | 2FA management | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
+| `/admin/settings/notifications` | Notification preferences | Super Admin/Admin/Supervisor/Agent/Viewer | ⚠️ Hardcoded EN |
+| `/admin/settings/appearance` | Theme switcher | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
+| `/admin/settings/change-password` | Change password | Super Admin/Admin/Supervisor/Agent/Viewer | ✅ |
 | `/admin/settings/business-info` | Company identity | Admin | ✅ |
 | `/admin/settings/policies` | Legal policies (versioned) | Admin | ✅ |
 | `/admin/settings/localization` | Timezone, language | Admin | ✅ |
@@ -1729,9 +1768,9 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/admin/settings/public-booking` | Public booking config | Supervisor+ | ✅ |
 | `/admin/settings/email-templates` | Email template editor + preview | Supervisor+ | ✅ |
 | `/admin/settings/macros` | Saved action sequences | Supervisor+ | ✅ |
-| `/admin/settings/media` | Media library + logo | All | ✅ |
+| `/admin/settings/media` | Media library + logo | Supervisor+ | ✅ |
 | `/admin/settings/recall` | Re-engagement campaign config | Admin | ✅ |
-| `/admin/settings/alerts` | Alert rules + scheduled reports | Admin | ✅ |
+| `/admin/settings/alerts` | Alert rules + scheduled reports | Supervisor+ | ✅ |
 | `/admin/settings/api-keys` | API key management (CRUD, copy-once, scopes) | Admin | ✅ |
 | `/admin/settings/integrations/crm` | External CRM connections | Admin | ✅ |
 | `/admin/settings/ai-providers` | LLM API keys | Super admin | ✅ |
@@ -1741,7 +1780,7 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/admin/settings/integrations/web-chat/triggers` | Widget proactive trigger editor | Admin | ✅ |
 | `/admin/settings/billing` | Subscription + payments + invoices | Admin | ✅ |
 
-### Vertical-Specific Pages (13)
+### Vertical-Specific Pages
 
 | Route | Vertical | Purpose | i18n |
 |-------|----------|---------|------|
@@ -1751,6 +1790,8 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/admin/tours/[id]` | Turismo (tours) | Tour detail + inventory | ✅ |
 | `/admin/listings` | Inmobiliaria | Real estate listings | ✅ |
 | `/admin/listings/[id]` | Inmobiliaria | Listing detail | ✅ |
+| `/admin/vehicles` | Automotriz | Vehicle inventory and test-drive operations | ✅ |
+| `/admin/resource-rentals` | Turismo/Automotriz | Resource rental operations | ✅ |
 | `/admin/menu` | Restaurantes | Menu + promotions | ✅ |
 | `/admin/food-orders` | Restaurantes | Order queue | ✅ |
 | `/admin/memberships` | Gimnasios | Plans + members | ✅ |
@@ -1762,7 +1803,7 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/admin/pets` | Veterinaria | Pet registry + vaccinations | ✅ |
 | `/admin/photo-sessions` | Fotografía | Photo sessions | ✅ |
 
-### Super Admin Platform (20)
+### Super Admin Platform
 
 | Route | Purpose | i18n |
 |-------|---------|------|
@@ -1787,14 +1828,14 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | `/admin/vertical-analytics` | Vertical analytics | ✅ |
 | `/admin/coupons` | Coupon management | ✅ |
 
-### Hidden/Orphan Pages (not in sidebar, accessible by URL)
+### Conditional and non-discoverable pages
 
 | Route | Purpose | Status |
 |-------|---------|--------|
-| `/admin/inventory` | Stock management | Functional but hidden |
-| `/admin/orders` | Order tracking | Functional but hidden |
-| `/admin/catalog` | Catalog hub (offers/courses/campaigns) | Functional but hidden |
-| `/admin/catalog/offers` | Promotional offers | Functional but hidden |
+| `/admin/inventory` | Stock management | Shown under Operation when vertical/capability and Supervisor+ permit it |
+| `/admin/orders` | Order tracking | Shown under Operation when vertical/capability permits it; Agent can operate |
+| `/admin/catalog` | Catalog hub (offers/courses/campaigns) | Registered but non-discoverable as a direct sidebar destination |
+| `/admin/catalog/offers` | Promotional offers | Shown under Operation for Supervisor+ |
 | `/admin/landings` | Landing page builder | Placeholder only |
 
 ---
@@ -1849,10 +1890,10 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 | Variable interpolation | `automation/utils/variable-interpolator.ts` |
 | Shared HTTP client (SSRF-safe) | `common/services/http-request.service.ts` |
 | Collision detection (agent console) | `agent-console/collision-detection.service.ts` |
-| Email channel adapter | `channels/email/email.adapter.ts` |
-| Email channel config | `channels/email/email-channel.service.ts` |
+| Email inbound adapter (interno; no autoservicio certificado) | `channels/email/email.adapter.ts` |
+| Email persistence/thread tracking (interno; sin CRUD tenant expuesto) | `channels/email/email-channel.service.ts` |
 | A/B test engine (broadcast) | `broadcast/ab-test.service.ts` |
-| Widget proactive triggers | `widget/widget-triggers.service.ts` |
+| Widget trigger-definition CRUD (public execution pending) | `widget/widget-triggers.service.ts` |
 | Dashboard API client (110+ methods) | `dashboard/src/lib/api.ts` |
 | Auth context | `dashboard/src/contexts/AuthContext.tsx` |
 | Tenant context | `dashboard/src/contexts/TenantContext.tsx` |

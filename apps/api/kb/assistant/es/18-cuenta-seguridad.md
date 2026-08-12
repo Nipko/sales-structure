@@ -2,13 +2,15 @@
 id: cuenta-seguridad
 title: "Tu cuenta, equipo y seguridad"
 routes: ["/admin/users", "/admin/settings/security", "/admin/settings/change-password"]
-roles: ["tenant_admin"]
+roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["cuenta", "seguridad", "equipo", "usuarios", "invitar usuario", "agregar usuario", "roles", "permisos", "administrador", "supervisor", "agente", "verificacion en dos pasos", "2fa", "autenticacion", "codigo", "contrasena", "cambiar contrasena", "dispositivos de confianza", "sso", "inicio de sesion unico", "saml", "idioma", "tema", "modo oscuro", "cerrar sesion", "inactividad", "sesion"]
 ---
 
-En esta sección administras quién de tu equipo entra a la plataforma, con qué permisos, y cómo proteges el acceso a tu cuenta. La mayoría de estas opciones las gestiona el rol **administrador**.
+# Tu cuenta, equipo y seguridad
 
-## Tu equipo y los roles
+Cada usuario puede proteger su propia cuenta con 2FA, dispositivos de confianza y cambio de contraseña. La administración del equipo, los roles y el SSO corresponde únicamente al rol **administrador**.
+
+## Tu equipo y los roles (solo administrador)
 
 Puedes invitar a las personas de tu equipo para que trabajen contigo en la plataforma. Cada persona tiene un **rol** que define qué puede ver y hacer:
 
@@ -27,7 +29,7 @@ Puedes invitar a las personas de tu equipo para que trabajen contigo en la plata
 
 Desde la misma pantalla puedes cambiar el rol de un usuario o desactivar su acceso cuando alguien deja el equipo.
 
-> **Cuántos usuarios puedo tener**: depende de tu plan. Si necesitas más, mejora tu plan en **Configuración** → **Facturación**.
+> **Cuántos usuarios puedo tener**: revisa la capacidad vigente de tu cuenta en **Administración → Plan y facturación**.
 
 ---
 
@@ -43,7 +45,7 @@ La verificación en dos pasos agrega una segunda capa de seguridad: además de t
 
 ### Dispositivos de confianza
 
-Cuando inicias sesión desde tu computadora o teléfono habitual, puedes marcarlo como **dispositivo de confianza**. Así no te pedirá el código de dos pasos en ese dispositivo durante 30 días. Desde **Configuración** → **Seguridad** ves la lista de tus dispositivos de confianza y puedes quitar cualquiera que ya no uses (por ejemplo, un equipo prestado).
+Cuando inicias sesión desde tu computadora o teléfono habitual, puedes marcarlo como **dispositivo de confianza**. Mientras esa confianza siga vigente, no te pedirá el código de dos pasos en ese dispositivo. Desde **Configuración** → **Seguridad** ves la lista y puedes quitar cualquiera que ya no uses (por ejemplo, un equipo prestado).
 
 ---
 
@@ -57,7 +59,7 @@ Cuando inicias sesión desde tu computadora o teléfono habitual, puedes marcarl
 
 ---
 
-## Inicio de sesión único (SSO)
+## Inicio de sesión único (SSO, solo administrador)
 
 Si tu empresa usa un sistema corporativo de identidad (por ejemplo el de tu proveedor de correo empresarial), puedes configurar el **inicio de sesión único (SSO)** para que tu equipo entre con las credenciales de la empresa, sin manejar contraseñas aparte.
 
@@ -65,7 +67,7 @@ Si tu empresa usa un sistema corporativo de identidad (por ejemplo el de tu prov
 2. En la sección de **SSO / SAML**, completa los datos que te da tu proveedor de identidad y descarga los datos que este te pide de Parallly.
 3. Opcionalmente, puedes **forzar el SSO** para que todos los usuarios de tu empresa deban entrar por esta vía.
 
-> El SSO es una función de los planes superiores. Si no ves la opción o quieres ayuda para configurarla, escríbenos a soporte.
+> La disponibilidad de SSO depende de la configuración de tu cuenta. Si no ves la opción o quieres ayuda para configurarla, escríbenos a soporte.
 
 ---
 
@@ -89,6 +91,6 @@ No. Cada rol ve solo lo que necesita para su trabajo. Un agente ve la bandeja de
 Usa uno de los **códigos de respaldo** que guardaste al activarla. Si tampoco los tienes, escríbenos a soporte para verificar tu identidad y recuperar el acceso.
 
 **¿Puedo obligar a todo mi equipo a usar verificación en dos pasos?**
-La verificación en dos pasos se activa por usuario. Si necesitas exigirla a nivel de toda la empresa o usar SSO obligatorio, contáctanos y te ayudamos según tu plan.
+La verificación en dos pasos se activa por usuario. Si necesitas exigirla a nivel de toda la empresa o usar SSO obligatorio, contáctanos para revisar las opciones habilitadas en tu cuenta.
 
 ¿Sigues con dudas? Escríbenos en https://parallly-chat.cloud/support

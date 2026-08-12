@@ -5,8 +5,9 @@
 > Instagram), **gateado por plan y por canal**, con **configuración de agente por conexión** (no por
 > tipo). Reemplaza la regla de facto "una conexión por tipo de canal".
 >
-> Pendiente del usuario para activar en prod: re-correr el seed de planes y (opcional) subir límites
-> por plan en `/admin/plans`; probar en producción reconectando canales. Ver "Pendiente del usuario".
+> Para activar o ajustar límites en una base existente hay que editar el catálogo
+> vigente desde `/admin/plans`; el seed normal es create-only y no materializa cambios
+> sobre planes existentes. Después se valida reconectando canales. Ver "Pendiente del usuario".
 
 ## Problema (estado previo)
 
@@ -163,8 +164,10 @@ getPersonaForChannel(tenantId, channelType, accountId?): TenantConfig  // bindin
   es por-cuenta).
 
 ## Pendiente del usuario (al cierre)
-- Re-correr el seed en prod para materializar `maxChannelAccounts`: `docker exec parallext-api node prisma/seed-billing-plans.js`
-- Decidir/ajustar valores de la matriz por plan (en `/admin/plans`, en vivo, sin deploy).
+- Configurar `maxChannelAccounts` en los planes vigentes desde `/admin/plans` y
+  verificar la lectura. No usar el seed normal (omite filas existentes) ni `--force`
+  como actualización rutinaria (restaura el plan completo desde valores factory).
+- Decidir/ajustar valores por plan en `/admin/plans`, en vivo y con auditoría.
 - Probar en producción (reconectar canales para que adopten el token por-cuenta; asignar agentes por conexión).
 - Deploy normal (push a main → GitHub Actions). Migraciones per-tenant (channel_bindings) se aplican
   vía DDL lazy en primer acceso multi-agente + `tenant-schema.sql` para tenants nuevos; el schema

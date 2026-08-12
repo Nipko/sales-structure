@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -43,17 +43,29 @@ export class WidgetTriggersService {
         this.logger.log('widget_triggers table ensured');
     }
 
-    async listTriggers(widgetConfigId: string): Promise<any[]> {
+    async listTriggers(tenantId: string, widgetConfigId: string): Promise<any[]> {
         await this.ensureTable();
-        return this.prisma.$queryRawUnsafe(
-            `SELECT * FROM public.widget_triggers
-             WHERE widget_config_id = $1::uuid
-             ORDER BY priority ASC, created_at ASC`,
+        // LEFT JOIN deliberately returns one ownership sentinel even when the
+        // widget has no triggers. No row means the config does not belong to the
+        // authenticated tenant (or does not exist), which must be indistinguishable.
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT wc.id AS owned_widget_config_id, wt.*
+               FROM public.widget_configs wc
+               LEFT JOIN public.widget_triggers wt
+                 ON wt.widget_config_id = wc.id
+              WHERE wc.tenant_id = $1::uuid
+                AND wc.id = $2::uuid
+              ORDER BY wt.priority ASC NULLS LAST, wt.created_at ASC NULLS LAST`,
+            tenantId,
             widgetConfigId,
         );
+        this.assertOwned(rows);
+        return rows
+            .filter((row) => Boolean(row.id))
+            .map(({ owned_widget_config_id: _ownedWidgetConfigId, ...trigger }) => trigger);
     }
 
-    async createTrigger(widgetConfigId: string, data: {
+    async createTrigger(tenantId: string, widgetConfigId: string, data: {
         name: string;
         conditions?: any[];
         conditionOperator?: string;
@@ -67,8 +79,12 @@ export class WidgetTriggersService {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO public.widget_triggers
              (widget_config_id, name, conditions, condition_operator, action_type, action_config, frequency_minutes, is_active, priority)
-             VALUES ($1::uuid, $2, $3::jsonb, $4, $5, $6::jsonb, $7, $8, $9)
+             SELECT wc.id, $3, $4::jsonb, $5, $6, $7::jsonb, $8, $9, $10
+               FROM public.widget_configs wc
+              WHERE wc.tenant_id = $1::uuid
+                AND wc.id = $2::uuid
              RETURNING *`,
+            tenantId,
             widgetConfigId,
             data.name,
             JSON.stringify(data.conditions || []),
@@ -79,10 +95,10 @@ export class WidgetTriggersService {
             data.isActive ?? true,
             data.priority ?? 0,
         );
-        return rows[0];
+        return this.assertOwned(rows)[0];
     }
 
-    async updateTrigger(triggerId: string, data: {
+    async updateTrigger(tenantId: string, triggerId: string, data: {
         name?: string;
         conditions?: any[];
         conditionOperator?: string;
@@ -94,18 +110,22 @@ export class WidgetTriggersService {
     }): Promise<any> {
         await this.ensureTable();
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `UPDATE public.widget_triggers
-             SET name = COALESCE($2, name),
-                 conditions = COALESCE($3::jsonb, conditions),
-                 condition_operator = COALESCE($4, condition_operator),
-                 action_type = COALESCE($5, action_type),
-                 action_config = COALESCE($6::jsonb, action_config),
-                 frequency_minutes = COALESCE($7, frequency_minutes),
-                 is_active = COALESCE($8, is_active),
-                 priority = COALESCE($9, priority),
+            `UPDATE public.widget_triggers AS wt
+             SET name = COALESCE($3, wt.name),
+                 conditions = COALESCE($4::jsonb, wt.conditions),
+                 condition_operator = COALESCE($5, wt.condition_operator),
+                 action_type = COALESCE($6, wt.action_type),
+                 action_config = COALESCE($7::jsonb, wt.action_config),
+                 frequency_minutes = COALESCE($8, wt.frequency_minutes),
+                 is_active = COALESCE($9, wt.is_active),
+                 priority = COALESCE($10, wt.priority),
                  updated_at = NOW()
-             WHERE id = $1::uuid
-             RETURNING *`,
+             FROM public.widget_configs AS wc
+             WHERE wt.id = $2::uuid
+               AND wc.id = wt.widget_config_id
+               AND wc.tenant_id = $1::uuid
+             RETURNING wt.*`,
+            tenantId,
             triggerId,
             data.name ?? null,
             data.conditions ? JSON.stringify(data.conditions) : null,
@@ -116,34 +136,70 @@ export class WidgetTriggersService {
             data.isActive ?? null,
             data.priority ?? null,
         );
-        return rows[0];
+        return this.assertOwned(rows)[0];
     }
 
-    async deleteTrigger(triggerId: string): Promise<void> {
+    async deleteTrigger(tenantId: string, triggerId: string): Promise<{ widget_config_id: string }> {
         await this.ensureTable();
-        await this.prisma.$queryRawUnsafe(
-            `DELETE FROM public.widget_triggers WHERE id = $1::uuid`,
+        const rows: Array<{ widget_config_id: string }> = await this.prisma.$queryRawUnsafe(
+            `DELETE FROM public.widget_triggers AS wt
+              USING public.widget_configs AS wc
+              WHERE wt.id = $2::uuid
+                AND wc.id = wt.widget_config_id
+                AND wc.tenant_id = $1::uuid
+              RETURNING wt.widget_config_id`,
+            tenantId,
             triggerId,
         );
+        return this.assertOwned(rows)[0];
     }
 
-    async getTriggersForWidget(widgetConfigId: string): Promise<any[]> {
-        await this.ensureTable();
-        return this.prisma.$queryRawUnsafe(
-            `SELECT id, name, conditions, condition_operator, action_type, action_config, frequency_minutes, priority
-             FROM public.widget_triggers
-             WHERE widget_config_id = $1::uuid AND is_active = true
-             ORDER BY priority ASC`,
-            widgetConfigId,
-        );
-    }
-
-    async countTriggersForWidget(widgetConfigId: string): Promise<number> {
+    async getTriggersForWidget(tenantId: string, widgetConfigId: string): Promise<any[]> {
         await this.ensureTable();
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int as count FROM public.widget_triggers WHERE widget_config_id = $1::uuid`,
+            `SELECT wt.conditions, wt.condition_operator, wt.action_type,
+                    wt.action_config, wt.frequency_minutes, wt.priority
+               FROM public.widget_triggers wt
+               JOIN public.widget_configs wc ON wc.id = wt.widget_config_id
+              WHERE wc.tenant_id = $1::uuid
+                AND wc.id = $2::uuid
+                AND wc.is_active = true
+                AND wt.is_active = true
+              ORDER BY wt.priority ASC`,
+            tenantId,
             widgetConfigId,
         );
-        return rows[0]?.count ?? 0;
+        // Keep an explicit public allowlist as defense in depth. Admin labels,
+        // database UUIDs and timestamps are not part of the browser contract.
+        return rows.map((row) => ({
+            conditions: row.conditions,
+            condition_operator: row.condition_operator,
+            action_type: row.action_type,
+            action_config: row.action_config,
+            frequency_minutes: row.frequency_minutes,
+            priority: row.priority,
+        }));
+    }
+
+    async countTriggersForWidget(tenantId: string, widgetConfigId: string): Promise<number> {
+        await this.ensureTable();
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(wt.id)::int AS count
+               FROM public.widget_configs wc
+               LEFT JOIN public.widget_triggers wt ON wt.widget_config_id = wc.id
+              WHERE wc.tenant_id = $1::uuid
+                AND wc.id = $2::uuid
+              GROUP BY wc.id`,
+            tenantId,
+            widgetConfigId,
+        );
+        return this.assertOwned(rows)[0].count ?? 0;
+    }
+
+    private assertOwned<T>(rows: T[]): T[] {
+        if (!rows?.length) {
+            throw new NotFoundException('Widget trigger resource not found');
+        }
+        return rows;
     }
 }

@@ -6,9 +6,11 @@ roles: ["tenant_admin"]
 keywords: ["instagram", "messenger", "telegram", "facebook", "connecter canal", "connecter instagram", "connecter messenger", "connecter telegram", "reconnecter", "token expire", "jeton expire", "bot", "botfather", "messages prives", "dm", "deconnecter canal", "compte business", "plusieurs comptes", "limite de comptes", "page facebook", "reseaux sociaux"]
 ---
 
-En plus de WhatsApp, votre entreprise peut répondre à ses clients sur **Instagram**, **Messenger** et **Telegram**. Les trois se connectent depuis la section **Canaux** de la barre latérale, et chaque connexion peut avoir son propre agent IA. Voici ce dont vous avez besoin, comment connecter chacun d'eux, ce que signifient les statuts et quoi faire lorsqu'une connexion expire.
+# Connecter Instagram, Messenger et Telegram
 
-> Seul le rôle **administrateur** peut connecter et déconnecter des canaux. Les superviseurs et les agents peuvent consulter le statut, mais pas le modifier.
+En plus de WhatsApp, votre entreprise peut répondre à ses clients sur **Instagram**, **Messenger** et **Telegram**. Les trois se connectent dans **Administration → Canaux**, et chaque connexion peut avoir son propre agent IA. Voici ce dont vous avez besoin, comment connecter chacun d'eux, ce que signifient les statuts et quoi faire lorsqu'une connexion expire.
+
+> Seul le rôle **administrateur** peut ouvrir Canaux et gérer les connexions.
 
 ## Avant de commencer : prérequis par canal
 
@@ -68,17 +70,7 @@ Rappel : chaque connexion a besoin d'un agent IA assigné pour répondre automat
 
 ## Plusieurs comptes du même canal
 
-Selon votre forfait, vous pouvez connecter plusieurs comptes du même type (par exemple deux comptes Instagram ou deux bots Telegram) sans que leurs conversations ne se mélangent. Limites incluses par forfait :
-
-| Forfait | Instagram | Messenger | Telegram |
-|------|:---------:|:---------:|:--------:|
-| Emprendedor | 1 | 1 | 1 |
-| Starter | 1 | 1 | 1 |
-| Pro | 1 | 3 | 1 |
-| Enterprise | 2 | 5 | 2 |
-| Custom | Illimité | Illimité | Illimité |
-
-Si vous avez besoin de plus de connexions que ce que prévoit votre forfait, écrivez-nous au [support](https://parallly-chat.cloud/support) : les limites peuvent être élargies pour votre compte.
+Vous pouvez connecter plusieurs comptes du même type si votre compte dispose de la capacité nécessaire, sans mélanger les conversations. L'écran affiche l'utilisation actuelle ; consultez **Forfait et facturation** pour la disponibilité et les limites en vigueur.
 
 ## Comment déconnecter un compte
 

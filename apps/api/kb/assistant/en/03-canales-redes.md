@@ -6,9 +6,11 @@ roles: ["tenant_admin"]
 keywords: ["instagram", "messenger", "telegram", "facebook", "connect channel", "connect instagram", "connect messenger", "connect telegram", "reconnect", "token expired", "bot", "botfather", "direct messages", "dm", "disconnect channel", "business account", "multiple accounts", "account limit", "facebook page", "social media"]
 ---
 
-Beyond WhatsApp, your business can serve customers on **Instagram**, **Messenger**, and **Telegram**. All three are connected from the **Channels** section in the sidebar, and each connection can have its own AI agent. Here's what you need, how to connect each one, what the statuses mean, and what to do when a connection expires.
+# Connect Instagram, Messenger, and Telegram
 
-> Only the **admin** role can connect and disconnect channels. Supervisors and agents can see the status but can't change it.
+Beyond WhatsApp, your business can serve customers on **Instagram**, **Messenger**, and **Telegram**. All three are connected from **Administration → Channels**, and each connection can have its own AI agent. Here's what you need, how to connect each one, what the statuses mean, and what to do when a connection expires.
+
+> Only the **admin** role can open Channels and manage connections.
 
 ## Before you start: requirements per channel
 
@@ -68,17 +70,7 @@ Remember: each connection needs an assigned AI agent to reply automatically. The
 
 ## Multiple accounts on the same channel
 
-Depending on your plan, you can connect more than one account of the same type (for example, two Instagram accounts or two Telegram bots) without their conversations mixing. Limits included per plan:
-
-| Plan | Instagram | Messenger | Telegram |
-|------|:---------:|:---------:|:--------:|
-| Emprendedor | 1 | 1 | 1 |
-| Starter | 1 | 1 | 1 |
-| Pro | 1 | 3 | 1 |
-| Enterprise | 2 | 5 | 2 |
-| Custom | Unlimited | Unlimited | Unlimited |
-
-If you need more connections than your plan includes, write to us at [support](https://parallly-chat.cloud/support): limits can be extended for your account.
+You can connect more than one account of the same type when your account has capacity, without mixing conversations. The screen shows current usage; check **Plan & Billing** for current availability and limits.
 
 ## How to disconnect an account
 

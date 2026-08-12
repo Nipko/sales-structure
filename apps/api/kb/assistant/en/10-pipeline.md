@@ -3,7 +3,7 @@ id: pipeline
 title: "Sales funnel (pipeline)"
 routes: ["/admin/pipeline", "/admin/settings/pipeline"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["funnel", "sales funnel", "pipeline", "kanban", "stages", "opportunities", "deals", "auto-advance", "automatic progression", "move card", "drag and drop", "probability", "stage colors", "deal approval", "approve", "reject", "re-sync", "multiple pipelines", "won stage", "lost stage"]
+keywords: ["funnel", "sales funnel", "pipeline", "kanban", "stages", "opportunities", "deals", "auto-advance", "automatic progression", "move card", "drag and drop", "probability", "stage colors", "deal approval", "approve", "reject", "re-sync", "won stage", "lost stage"]
 ---
 
 # Sales funnel (pipeline)
@@ -27,10 +27,7 @@ On top of that, when your customers chat with the AI agent, opportunities are cr
 
 Simply **drag the card** to the column you want. All roles (admin, supervisor and agent) can move cards.
 
-Two things can block the move:
-
-- **Stage conditions**: if the target stage requires certain data (email, phone, full name, minimum score, assigned rep, booked appointment or an active quote), you'll see a message telling you exactly what's missing.
-- **Approval**: if the stage requires approval, the card stays in **Pending approval** until a supervisor or admin reviews it.
+Configured **stage conditions** can block the move. If the target stage requires certain data (email, phone, full name, minimum score, assigned rep, booked appointment or an active quote), you'll see a message telling you exactly what's missing.
 
 Clicking a card opens the deal detail: value, **Probability**, **Days in stage**, **Stage history**, assigned owner, and shortcuts to **View conversation** and **View contact**. From there you can also **Archive** the opportunity (it gets marked as lost).
 
@@ -64,40 +61,14 @@ Next to the toggle is the **Re-sync** button: it re-aligns existing opportunitie
 
 > Auto-advance also respects your **Transition Conditions**: if the contact doesn't meet a stage's requirements, the AI won't move them there.
 
-## How deal approval works
+## Deal-approval status
 
-For sensitive stages (for example, "Closing") you can require a supervisor to approve the move:
-
-1. An agent moves the card to the stage that requires approval → the card shows the **Pending approval** badge.
-2. A supervisor or admin reviews it and chooses **Approve** or **Reject** (when rejecting, they enter the **Rejection reason**).
-3. Only once approved does the opportunity move to the target stage.
-
-## How to have more than one funnel
-
-If you run different sales processes (e.g. direct sales vs. after-sales), you can create several pipelines, each with its own board and stages:
-
-1. In **Sales Funnel**, use the tab selector at the top and click **New pipeline**.
-2. Give it a **Name** (e.g. "Services pipeline") and an optional **Description**.
-3. Switch between pipelines by clicking their tab. From a deal's detail view you can move it to another pipeline (it enters the first stage of the new one).
-
-If you delete a pipeline, its deals move to the default pipeline; the default pipeline can't be deleted.
-
-### Limits per plan
-
-| Plan | Pipelines | Stages per plan |
-|------|-----------|-----------------|
-| Emprendedor | 1 | 3 |
-| Starter | 1 | 5 |
-| Pro | 3 | 15 |
-| Enterprise | 10 | Unlimited |
-| Custom | Unlimited | Unlimited |
-
-> **Tip:** use separate pipelines when the processes are genuinely different. To split by product within the same process, tags or custom fields work better.
+The interface contains approval-related elements, but **the request, review, and terminal-stage blocking flow is not certified end to end in the current release**. Do not use it as a financial or audit control: a direct move may change the stage without completing that review. Until the panel marks the flow as available, operationally restrict closing moves to admins/supervisors and review each opportunity's history.
 
 ## Frequently asked questions
 
 **Why can't I move a card to a certain stage?**
-That stage has **Transition Conditions** the contact doesn't meet yet (the message tells you what's missing), or it requires supervisor approval.
+That stage has **Transition Conditions** the contact doesn't meet yet; the message tells you what's missing. Do not rely on the approval elements as an enforced blocker in the current release.
 
 **Does auto-advance undo my manual moves?**
 The AI only advances opportunities based on new signals from the conversation. If you want full control over the stages, turn off the **Auto-advance** toggle on the board.

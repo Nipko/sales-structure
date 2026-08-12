@@ -8,7 +8,7 @@ keywords: ["contatos", "crm", "leads", "clientes", "score", "pontuação", "etap
 
 # Contatos e CRM
 
-O CRM da Parallly é onde ficam todos os seus contatos: cada pessoa que te escreve por WhatsApp, Instagram, Messenger, Telegram, Email ou pelo chat do seu site é registrada aqui automaticamente, com o histórico completo. Você também pode adicionar contatos manualmente ou importá-los a partir de uma planilha Excel.
+O CRM da Parallly é onde ficam todos os seus contatos: cada pessoa que te escreve por WhatsApp, Instagram, Messenger, Telegram ou pelo chat do seu site é registrada aqui automaticamente, com o histórico completo. Você também pode adicionar contatos manualmente ou importá-los a partir de uma planilha Excel.
 
 Você encontra tudo isso na barra lateral: abra **CRM** e entre na primeira opção, **CRM**. Você chegará à página **Contatos**, com uma tabela que mostra nome, canal, conversas, valor, última interação, score, etapa e tags. Na parte de cima há chips rápidos para filtrar por grupo: **Todos**, **Novos**, **Leads**, **Qualificados**, **Clientes** e **Perdidos**, além de um campo de busca.
 
@@ -108,17 +108,9 @@ Se a mesma pessoa te escreve por dois canais com o mesmo telefone ou email, a Pa
 - **Sugestões automáticas**: pares de contatos muito parecidos detectados pelo sistema, com seu nível de **Confiança**. Revise cada par e escolha **Aprovar** (eles são mesclados) ou **Rejeitar**.
 - **Mesclar manualmente**: busque e selecione o primeiro e o segundo contato e clique em **Mesclar contatos**. Eles ficam unidos em um único perfil com todo o histórico.
 
-## Limites por plano
+## Capacidade do CRM
 
-| Plano | Contatos | Segmentos salvos | Atributos personalizados |
-|-------|----------|------------------|--------------------------|
-| Emprendedor | 100 | Não incluído | Não incluído |
-| Starter | 500 | 3 | 5 |
-| Pro | 5.000 | 15 | 20 |
-| Enterprise | 50.000 | Sem limite | Sem limite |
-| Custom | Sem limite | Sem limite | Sem limite |
-
-Ao se aproximar do limite de contatos do seu plano, você verá um aviso para ampliá-lo em **Configurações → Faturamento**.
+A tela mostra o uso e os limites atuais de contatos, segmentos e atributos. Se você se aproximar da capacidade, confira **Plano e faturamento**.
 
 ## Perguntas frequentes
 

@@ -36,7 +36,17 @@ Todas las mutaciones escriben en `audit_log` con el **actor real** (`audit-actor
 
 ## 1. Lo que hace el deploy automáticamente
 
-Cada push a `main` dispara `.github/workflows/deploy.yml`. Después de compilar imágenes, el deploy ejecuta cuatro operaciones relevantes para billing: migración, seed, preflight read-only del collector y sync de planes. **Las cuatro son fail-fast**: si falla una migración, el seed, la identidad del collector o el sync de MercadoPago, el deploy aborta y no se publica como exitoso. Antes de migrar, toma un **pg_dump completo en `/backup/pre-deploy/`** (dentro del contenedor `parallext-postgres`) como punto de rollback — ver §6.
+Cada push a `main` dispara `.github/workflows/deploy.yml`. Después de compilar
+imágenes, el deploy ejecuta dos operaciones relevantes para billing: migraciones y
+bootstrap create-only de planes. Ambas son fail-fast. Antes de migrar toma un
+**pg_dump completo en `/backup/pre-deploy/`** (dentro del contenedor
+`parallext-postgres`) como punto de rollback — ver §6.
+
+El preflight y la sincronización de MercadoPago fueron retirados del deploy en agosto
+de 2026 porque el collector fue rechazado por cumplimiento. La integración está en
+pausa: el workflow publica el runtime sin crear ni sincronizar planes en MP. Los
+scripts siguientes son herramientas manuales y solo deben ejecutarse cuando la
+pasarela vuelva a estar habilitada y el merchant haya superado el preflight.
 
 ### 1.1 Migración de schema Prisma
 ```bash
@@ -54,32 +64,55 @@ Migraciones posteriores extendieron el modelo (p. ej. `20260507120000_add_billin
 ```bash
 docker compose run --rm api node prisma/seed-billing-plans.js
 ```
-Bootstrapea los **5 planes** (`emprendedor` USD $21, `starter` $49, `pro` $129, `enterprise` $349, `custom` a cotizar) en `billing_plans`. Corre **fail-fast** en el pipeline (sin `|| true`): un fallo indica un problema real de DB y aborta el deploy.
+Bootstrapea las filas faltantes del catálogo factory en `billing_plans`. Los nombres,
+precios y cuotas aplicables se consultan en la tabla runtime y el panel; no se copian
+en este runbook. El paso corre **fail-fast** en el pipeline: un error real de DB
+aborta el deploy.
 
 **El seed es CREATE-ONLY por default** (no upsert): en un DB fresco crea los planes faltantes, pero **si un plan ya existe lo saltea y NO lo sobreescribe**. La razón: la fuente de verdad en runtime es la tabla `billing_plans` editada desde el panel (`PUT /billing-admin/plans/:slug`), así que un seed en cada deploy no debe pisar las ediciones del panel. Para restaurar un plan a los valores de fábrica del archivo (p. ej. tras una mala edición manual) hay que pasar **`--force`** — ese path sí sobreescribe, preservando sólo los `mpPlanId` ya sincronizados vía el merge de overrides. Los precios en el archivo están en USD cents; los precios locales (COP, mensual y anual) viven en `priceLocalOverrides`.
 
-### 1.3 Preflight del collector de MercadoPago (Colombia)
+### 1.3 Preflight manual del collector de MercadoPago (Colombia)
 
 ```bash
 docker compose run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO
 ```
 
-Este diagnóstico hace únicamente consultas **read-only** (`/users/me`, estado del usuario y búsqueda de planes) con el `MP_ACCESS_TOKEN` que realmente ve el contenedor. El deploy exige `MCO`, cuenta activa, términos aceptados y ausencia de acciones globales pendientes antes de intentar crear planes. Los flags `billing`, `sell` y `list` del estado de Mercado Libre —incluido `address_pending`— se conservan como advertencias diagnósticas: no documentan por sí solos la elegibilidad de escritura de `preapproval_plan`, cuya prueba autoritativa es el `POST` que ejecuta el sync. El código interpreta un prefijo `APP_USR-` como modo producción, pero el prefijo por sí solo **no demuestra** país, merchant correcto ni cumplimiento del collector.
+Este diagnóstico manual hace únicamente consultas **read-only** (`/users/me`,
+estado del usuario y búsqueda de planes) con el `MP_ACCESS_TOKEN` que ve el
+contenedor. Antes de cualquier intento manual de crear planes debe confirmar `MCO`,
+cuenta activa, términos aceptados y ausencia de acciones globales pendientes. Los
+flags `billing`, `sell` y `list` —incluido `address_pending`— son advertencias; no
+demuestran elegibilidad para escribir `preapproval_plan`. Un prefijo `APP_USR-`
+tampoco demuestra país, merchant correcto ni cumplimiento del collector.
 
-Para fijar también el merchant exacto, obtené su ID numérico desde el portal y usá `--expected-collector-id=<ID>` o definí `MP_EXPECTED_COLLECTOR_ID` dentro del contenedor. La comparación ocurre en memoria: el reporte sólo expone `collector_identity.expected_configured` y `matches`, nunca el ID esperado ni el recibido. El workflow toma el valor del GitHub Secret opcional `MP_EXPECTED_COLLECTOR_ID`; si queda vacío, el diagnóstico puede terminar `ok: true`, pero incluye la advertencia no bloqueante `collector_identity_not_pinned`: MCO/KYC pasaron, la identidad exacta del merchant no quedó probada.
+Para fijar también el merchant exacto, obtené su ID numérico desde el portal y usá
+`--expected-collector-id=<ID>` o definí `MP_EXPECTED_COLLECTOR_ID` dentro del
+contenedor de la operación manual. La comparación ocurre en memoria: el reporte solo
+expone si el valor está configurado y coincide, nunca los IDs. Sin ese pin, un
+resultado `ok: true` conserva la advertencia `collector_identity_not_pinned`.
 
-El preflight tampoco imprime el Access Token. Si falla por token ausente/inválido, site distinto, collector distinto, estado global inactivo, términos no aceptados, una acción global pendiente o una respuesta inválida/no autorizada de MP, el deploy aborta antes del `POST /preapproval_plan`. Las advertencias de `billing`/`sell`/`list` no abortan el deploy. Como sólo ejecuta tres `GET`, un resultado exitoso conserva `read_only_scope.write_eligibility_tested: false`: reduce causas posibles, pero no garantiza que MercadoPago autorice el `POST`.
+El preflight no imprime el Access Token. Si falla, **detén la operación manual** y no
+ejecutes el sync. Como solo hace `GET`, incluso un resultado exitoso conserva
+`read_only_scope.write_eligibility_tested:false`: reduce causas posibles, pero no
+garantiza que MercadoPago autorice el `POST`.
 
-### 1.4 Sync de planes a MercadoPago (Colombia)
+### 1.4 Sync manual de planes a MercadoPago (Colombia; integración en pausa)
 ```bash
 docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --fx=4200
 docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --derive-missing-annual=15
 ```
 Registra los **4 tiers pagos** (`emprendedor`, `starter`, `pro`, `enterprise`; `custom` es sales-led y se omite) como `preapproval_plan` en MercadoPago Colombia. Guarda el ID mensual en `billing_plans.priceLocalOverrides[CO].mpPlanId` y, para Colombia, mantiene el mirror legacy en la columna `mpPlanId`. El FX rate se lee del secret `PROD_MP_FX_CO` (default `4200`), aunque un precio local fijo existente tiene precedencia. `--derive-missing-annual=15` repara filas legacy calculando el total anual desde el mensual; los precios e IDs solo se guardan en una transacción después de que los cuatro planes del ciclo fueron aceptados, por lo que un fallo parcial no habilita un checkout incompleto.
 
-El deploy valida primero, sin escrituras, los payloads mensual y anual que salen de la base productiva (`--force --dry-run`). Sólo si ambos son válidos sincroniza los dos ciclos de forma **fail-fast**. El ciclo anual usa `priceLocalOverrides.CO.annual.amountCents` o, únicamente para una fila legacy sin ese campo, deriva el total desde el precio mensual con el descuento explícito; ver `docs/billing-annual-cycle.md`.
+El deploy actual **no ejecuta** estos comandos. Cuando la integración vuelva a estar
+habilitada, valida primero los payloads mensual y anual con `--force --dry-run` y
+solo después realiza una sincronización manual controlada. El ciclo anual usa
+`priceLocalOverrides.CO.annual.amountCents` o, únicamente para una fila legacy sin
+ese campo, deriva el total desde el precio mensual con el descuento explícito; ver
+`docs/billing-annual-cycle.md`.
 
-**Cómo agregar otro país**: al deploy.yml, después de la línea de Colombia, duplicá la invocación con el código ISO correcto. Ejemplo México:
+**Cómo preparar otro país cuando la pasarela esté habilitada**: añade su catálogo
+local y ejecuta el diagnóstico y el sync como una operación separada, nunca como
+condición del deploy general. Ejemplo manual para México:
 ```yaml
 docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}"
 ```
@@ -116,15 +149,24 @@ Los secrets `MP_FX_*` son todos opcionales. Los seteás en GitHub → Settings �
 
 ## 3. Agregar un país nuevo
 
-La API de Suscripciones de MP es por país — necesitás una cuenta merchant de MercadoPago en ese país. **Hoy el deploy sólo tiene un `MP_ACCESS_TOKEN` runtime y sincroniza CO de forma explícita**; definir `MP_SYNC_COUNTRIES` no activa un loop ni selecciona credenciales por país. Antes de abrir otro país hay que resolver el soporte de credenciales por merchant o reemplazar intencionalmente la única cuenta activa.
+La API de Suscripciones de MP es por país — necesitás una cuenta merchant de
+MercadoPago en ese país. **El deploy actual no sincroniza ningún país** y solo puede
+entregar un `MP_ACCESS_TOKEN` runtime; definir `MP_SYNC_COUNTRIES` no activa un loop
+ni selecciona credenciales. Antes de abrir otro país hay que reactivar la pasarela y
+resolver el soporte de credenciales por merchant o reemplazar intencionalmente la
+única cuenta activa.
 
 1. **Conseguí las credenciales** desde el portal developer específico del país (ej. `mercadopago.com.mx/developers` para México) — cada país tiene su propio Access Token y Webhook Secret. En el corto plazo soportamos solo las credenciales de un país a la vez vía `MP_ACCESS_TOKEN` — el soporte multi-cuenta es trabajo de Fase 4.
 2. **Setear el FX** en GitHub Secrets. Ejemplo México:
    ```
    MP_FX_MX = 18.5
    ```
-3. **Extender primero el preflight MCO-only** para aceptar y probar el `site_id` del nuevo país; después agregar líneas explícitas y fail-fast al deploy: diagnóstico del collector y `sync-mp-plans.js --country=MX ...`. No sincronices MX con el token colombiano.
-4. **Deploy** — el preflight debe confirmar el merchant/site correcto antes de llamar a `/preapproval_plan`; luego el sync persiste los IDs en `billing_plans.priceLocalOverrides[MX]`.
+3. **Extender primero el preflight MCO-only** para aceptar y probar el `site_id` del
+   nuevo país. No agregues ese diagnóstico/sync como blocker del deploy general y no
+   sincronices MX con el token colombiano.
+4. **Operación manual** — el preflight debe confirmar merchant/site antes de llamar a
+   `/preapproval_plan`; luego el sync manual persiste los IDs en
+   `billing_plans.priceLocalOverrides[MX]`.
 5. **Verificá** — entrá a la VPS y chequeá:
    ```bash
    docker exec parallext-postgres psql -U parallext -d parallext_engine -c \
@@ -138,15 +180,29 @@ La API de Suscripciones de MP es por país — necesitás una cuenta merchant de
 
 ### Para un cambio permanente (aplica a todos los signups futuros)
 
-1. Editá `apps/api/prisma/seed-billing-plans.js` → cambiá `priceUsdCents`.
-2. Commit + push → el deploy upsertea el precio nuevo en `billing_plans`.
-3. **Pero los planes de MP están congelados** — los registros `preapproval_plan` ya creados conservan su monto original. Las suscripciones nuevas creadas después de este deploy siguen referenciando el plan ID viejo hasta que hagas el paso 4.
-4. Para forzar que MP use el precio nuevo, tenés que **recrear el plan en MP**:
+1. Entra como `super_admin` a **Planes** (`/admin/plans`), edita el precio
+   USD y/o los overrides locales y guarda. Esa operación usa
+   `PUT /billing-admin/plans/:slug` y actualiza la fuente runtime
+   `billing_plans` con auditoría e invalidación de caché.
+2. Verifica la lectura en el mismo panel y, para una comprobación operativa, consulta
+   la fila de `billing_plans` antes de continuar. **Un commit o deploy por sí solo no
+   cambia una fila existente**: el seed normal es create-only.
+3. Actualiza también `apps/api/prisma/seed-billing-plans.js` si quieres que un entorno
+   nuevo nazca con el mismo valor de fábrica. Ese cambio queda como baseline para DB
+   frescas; no sustituye el paso 1 ni debe aplicarse con `--force` de forma rutinaria,
+   porque `--force` restaura el plan completo desde el archivo.
+4. **Los planes de MP ya creados conservan su monto original.** Para que las nuevas
+   suscripciones usen el precio local actualizado, recrea/sincroniza el plan del
+   proveedor desde el panel o, tras el preflight del merchant correcto, con:
    ```bash
    docker exec parallext-api sh -c \
      'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200 --force'
    ```
-   El flag `--force` crea un plan nuevo en MP y sobreescribe el ID en `priceLocalOverrides[CO].mpPlanId`. Los suscriptores actuales se quedan con el ID viejo — solo los nuevos signups agarran el precio nuevo. **Las suscripciones existentes hay que migrarlas manualmente** con una llamada a `BillingService.upgradeSubscription` si querés pasarlas al precio nuevo.
+   El flag `--force` de `sync-mp-plans.js` crea un plan nuevo en MP y reemplaza su ID
+   en `priceLocalOverrides[CO].mpPlanId`; no es el mismo flag que el del seed. Los
+   suscriptores actuales permanecen en el ID anterior. Una migración de suscripciones
+   existentes requiere un procedimiento explícito, validado y auditado; no la
+   infieras de un deploy ni la ejecutes como efecto lateral de este cambio.
 
 ### Para un ajuste de FX solamente (ej. devaluación)
 
@@ -244,13 +300,17 @@ docker exec parallext-postgres psql -U parallext -d parallext_engine -c \
    ```
 3. Rotá el webhook secret en el dashboard de MP + actualizá el GitHub Secret `MP_WEBHOOK_SECRET` + redeployá.
 
-### El sync de planes falló en el deploy (revisá el log del deploy)
+### El sync manual de planes falló
 Causas comunes:
-- `MP_ACCESS_TOKEN is not set` → falta el GitHub Secret. Agregalo y redeployá.
+- `MP_ACCESS_TOKEN is not set` → falta la credencial en el entorno de la operación.
 - `Invalid --fx value` → el secret `MP_FX_<CC>` tiene un valor no-numérico.
-- MP devolvió un body de error → leé la línea "FAILED: MP returned..." en el log del deploy para la razón específica de MP.
+- MP devolvió un body de error → lee `FAILED: MP returned...` en el log de la
+  operación manual.
 
-El seed y el sync son fail-fast; el preflight también aborta ante sus blockers fuertes. Las advertencias diagnósticas de `billing`/`sell`/`list` no son errores. No agregues `|| true`: un deploy verde con planes sin sincronizar deja el checkout inoperante y oculta el incidente.
+El seed create-only del deploy es fail-fast. El preflight y el sync manual también
+deben detener su propia operación ante blockers fuertes, pero **no forman parte del
+deploy actual**. No conviertas su fallo en un falso éxito ni vuelvas a acoplarlo a la
+publicación general de código.
 
 ### `403 rejected_by_regulations_collector_non_compliant` al crear `preapproval_plan`
 
@@ -288,9 +348,15 @@ Los `preapproval_plan_id` son específicos del ambiente, aplicación y collector
 1. Crear y completar la verificación de la cuenta merchant colombiana de producción; confirmar que la aplicación tiene habilitado el producto Suscripciones.
 2. Guardar un respaldo del mapeo actual de IDs y confirmar que no existen suscripciones reales que dependan de ellos. Un cambio de catálogo no migra suscripciones activas.
 3. Conseguir el Access Token y Public Key de producción de la **misma aplicación**, más el Webhook Secret de producción.
-4. Reemplazar los GitHub Secrets `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY` y `MP_WEBHOOK_SECRET`, guardar también `MP_EXPECTED_COLLECTOR_ID` con el ID numérico del merchant correcto, y disparar un deploy para que el runtime y el dashboard reciban las nuevas credenciales. El preflight debe terminar con `MCO`, `expected_configured: true` y `matches: true`; si falla, el deploy aborta antes del sync.
-5. Durante el deploy, cada ID mensual y anual guardado se valida con la credencial nueva. Los IDs TEST normalmente responden `404` para el token de producción y se reemplazan automáticamente. Revisá ambos resúmenes finales: deben mostrar `failures=0`; en un cutover íntegramente desde TEST normalmente habrá cuatro creaciones mensuales y cuatro anuales.
-6. Antes del primer POST, el deploy ejecuta ambos ciclos con `--force --dry-run` para mostrar y validar los ocho payloads respaldados por la DB. El precio anual debe existir en `priceLocalOverrides.CO.annual.amountCents`; si falta alguno, el deploy aborta antes de crear cualquier plan.
+4. Reemplazar los secrets `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY` y
+   `MP_WEBHOOK_SECRET`, y guardar `MP_EXPECTED_COLLECTOR_ID` con el merchant correcto.
+   Publicar el runtime es un paso separado; no ejecuta preflight ni sync.
+5. Ejecutar manualmente el preflight. Debe terminar con `MCO`,
+   `expected_configured:true` y `matches:true`; si falla, detener el cutover.
+6. Ejecutar ambos ciclos con `--force --dry-run` para validar los payloads respaldados
+   por la DB y, solo entonces, realizar el sync manual. Los IDs TEST normalmente
+   responden `404` con la credencial de producción y se reemplazan durante esa
+   operación. Revisa que ambos resúmenes terminen con `failures=0`.
 7. Usá `--force` sólo si necesitás recrear intencionalmente planes que el sync considera accesibles y correctos, por ejemplo durante un cambio controlado de catálogo:
    ```bash
    docker compose -f infra/docker/docker-compose.prod.yml run --rm api \

@@ -246,17 +246,20 @@ export const api = {
     getConversation: (tenantId: string, id: string) =>
         apiGet(`/agent-console/conversation/${tenantId}/${id}`),
 
-    sendMessage: (tenantId: string, id: string, content: string, agentId?: string) =>
-        apiPost(`/agent-console/conversation/${tenantId}/${id}/message`, { content, agentId }),
+    sendMessage: (tenantId: string, id: string, content: string) =>
+        apiPost(`/agent-console/conversation/${tenantId}/${id}/message`, { content }),
 
     assignConversation: (tenantId: string, id: string, agentId: string) =>
         apiPut(`/agent-console/conversation/${tenantId}/${id}/assign`, { agentId }),
 
-    resolveConversation: (tenantId: string, id: string, agentId?: string) =>
-        apiPut(`/agent-console/conversation/${tenantId}/${id}/resolve`, { agentId }),
+    claimConversation: (tenantId: string, id: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${id}/claim`, {}),
 
-    addNote: (tenantId: string, id: string, content: string, agentId?: string) =>
-        apiPost(`/agent-console/conversation/${tenantId}/${id}/note`, { content, agentId }),
+    resolveConversation: (tenantId: string, id: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${id}/resolve`, {}),
+
+    addNote: (tenantId: string, id: string, content: string) =>
+        apiPost(`/agent-console/conversation/${tenantId}/${id}/note`, { content }),
 
     getStats: (tenantId: string, agentId: string) =>
         apiGet(`/agent-console/stats/${tenantId}/${agentId}`),
@@ -413,8 +416,8 @@ export const api = {
         apiPut(`/agent-console/conversation/${tenantId}/${convId}/unsnooze`, {}),
 
     // --- Archive & Delete ---
-    archiveConversation: (tenantId: string, conversationId: string, agentId?: string) =>
-        apiPut(`/agent-console/conversation/${tenantId}/${conversationId}/archive`, { agentId }),
+    archiveConversation: (tenantId: string, conversationId: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${conversationId}/archive`, {}),
     deleteConversation: (tenantId: string, conversationId: string) =>
         apiDelete(`/agent-console/conversation/${tenantId}/${conversationId}`),
     deleteMessage: (tenantId: string, conversationId: string, messageId: string) =>
@@ -429,8 +432,8 @@ export const api = {
     createMacro: (tenantId: string, data: any) => apiPost(`/agent-console/macros/${tenantId}`, data),
     updateMacro: (tenantId: string, macroId: string, data: any) =>
         apiPut(`/agent-console/macros/${tenantId}/${macroId}`, data),
-    executeMacro: (tenantId: string, macroId: string, conversationId: string, agentId: string) =>
-        apiPost(`/agent-console/macros/${tenantId}/${macroId}/execute`, { conversationId, agentId }),
+    executeMacro: (tenantId: string, macroId: string, conversationId: string) =>
+        apiPost(`/agent-console/macros/${tenantId}/${macroId}/execute`, { conversationId }),
 
     // --- Custom Attributes ---
     getCustomAttributes: (tenantId: string, entityType?: string) =>
@@ -465,7 +468,8 @@ export const api = {
         apiPut(`/widgets/${tenantId}/${widgetId}`, data),
     deleteWidget: (tenantId: string, widgetId: string) =>
         apiDelete(`/widgets/${tenantId}/${widgetId}`),
-    getWidgetTriggers: (widgetConfigId: string) => apiGet(`/widget/triggers/${widgetConfigId}`),
+    getWidgetTriggers: (widgetConfigId: string, tenantId?: string) =>
+        apiGet(`/widget/triggers/${widgetConfigId}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
 
     // --- Identity ---
     getMergeSuggestions: (tenantId: string) =>
@@ -749,15 +753,9 @@ export const api = {
     // --- Copilot ---
     copilotChat: (data: {
         message: string;
-        context: {
-            page: string;
-            tenantId?: string;
-            tenantName?: string;
-            userName: string;
-            userRole: string;
-            locale?: string;
-        };
-        history: { role: string; content: string }[];
+        page: string;
+        locale: string;
+        history: { role: "user" | "assistant"; content: string }[];
     }) =>
         apiPost<{ reply: string }>("/copilot/chat", data),
 
@@ -1940,14 +1938,14 @@ export const api = {
         apiGet(`/webhooks/events`),
 
     // ─── Widget Triggers ───
-    listWidgetTriggers: (widgetConfigId: string) =>
-        apiGet(`/widget/triggers/${widgetConfigId}`),
-    createWidgetTrigger: (widgetConfigId: string, data: any) =>
-        apiPost(`/widget/triggers/${widgetConfigId}`, data),
-    updateWidgetTrigger: (triggerId: string, data: any) =>
-        apiPut(`/widget/triggers/${triggerId}`, data),
-    deleteWidgetTrigger: (triggerId: string) =>
-        apiDelete(`/widget/triggers/${triggerId}`),
+    listWidgetTriggers: (widgetConfigId: string, tenantId?: string) =>
+        apiGet(`/widget/triggers/${widgetConfigId}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
+    createWidgetTrigger: (widgetConfigId: string, data: any, tenantId?: string) =>
+        apiPost(`/widget/triggers/${widgetConfigId}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`, data),
+    updateWidgetTrigger: (triggerId: string, data: any, tenantId?: string) =>
+        apiPut(`/widget/triggers/${triggerId}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`, data),
+    deleteWidgetTrigger: (triggerId: string, tenantId?: string) =>
+        apiDelete(`/widget/triggers/${triggerId}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
 
     // ─── System Updates (Changelog / Novedades) ───
     getSystemUpdates: () => apiGet("/system-updates"),

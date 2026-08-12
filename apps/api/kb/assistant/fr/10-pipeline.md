@@ -3,7 +3,7 @@ id: pipeline
 title: "Entonnoir de ventes (pipeline)"
 routes: ["/admin/pipeline", "/admin/settings/pipeline"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["entonnoir", "pipeline", "tunnel de vente", "kanban", "étapes", "opportunités", "affaires", "deals", "avancement automatique", "avancement auto", "approbation", "approuver affaire", "probabilité", "couleur d'étape", "glisser carte", "gagné", "perdu", "resynchroniser", "conditions de transition", "plusieurs pipelines"]
+keywords: ["entonnoir", "pipeline", "tunnel de vente", "kanban", "étapes", "opportunités", "affaires", "deals", "avancement automatique", "avancement auto", "approbation", "approuver affaire", "probabilité", "couleur d'étape", "glisser carte", "gagné", "perdu", "resynchroniser", "conditions de transition"]
 ---
 
 # Entonnoir de ventes (pipeline)
@@ -68,30 +68,9 @@ Parallly peut faire avancer les opportunités dans l'entonnoir sans que personne
 
 L'avancement automatique respecte vos conditions de transition : s'il manque un prérequis, la carte n'avance pas.
 
-## Approbation des affaires
+## État de l'approbation des affaires
 
-Pour clôturer une affaire avec un contrôle qualité, déplacer une carte vers une **étape finale** (Gagné ou Perdu) requiert une approbation :
-
-1. Faites glisser la carte vers l'étape finale. Une fenêtre s'ouvre pour **Demander l'approbation**.
-2. La carte reçoit le badge **Approbation en attente**.
-3. Un administrateur ou un superviseur la révise et choisit **Approuver** ou **Rejeter** (en cas de rejet, il indique le **Motif du rejet**).
-4. Ce n'est qu'une fois approuvée que l'opportunité passe à l'étape finale.
-
-Ainsi, les agents peuvent proposer des clôtures et l'équipe garde le dernier mot sur ce qui est marqué comme gagné ou perdu.
-
-## Plusieurs entonnoirs et limites par plan
-
-Si vous gérez des processus de vente distincts (par exemple, vente directe et après-vente), vous pouvez avoir plusieurs entonnoirs : en haut du tableau, des onglets permettent de basculer entre eux et un bouton **Nouveau pipeline** en crée un autre. Depuis le détail d'une opportunité, vous pouvez la déplacer vers un autre entonnoir (elle y entre par sa première étape).
-
-| Plan | Entonnoirs | Étapes configurables |
-|------|------------|----------------------|
-| Emprendedor | 1 | jusqu'à 3 |
-| Starter | 1 | jusqu'à 5 |
-| Pro | 3 | jusqu'à 15 |
-| Enterprise | 10 | sans limite |
-| Custom | sans limite | sans limite |
-
-Si vous atteignez la limite de votre plan, le système vous l'indique et vous pouvez passer à un plan supérieur depuis **Paramètres → Facturation**.
+L'interface contient des éléments d'approbation, mais **le circuit de demande, révision et blocage des étapes finales n'est pas certifié de bout en bout dans la version actuelle**. Ne l'utilisez pas comme contrôle financier ou d'audit : un déplacement direct peut changer l'étape sans terminer cette révision. Tant que le panneau n'indique pas que ce flux est disponible, réservez opérationnellement les clôtures aux administrateurs/superviseurs et vérifiez l'historique de chaque opportunité.
 
 ## Foire aux questions
 

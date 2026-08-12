@@ -12,14 +12,14 @@ WhatsApp es el canal principal de Parallly: al conectarlo, tu agente de IA empie
 
 ## Antes de empezar
 
-- Necesitas ser **administrador** de tu cuenta de Parallly (los supervisores y agentes pueden ver los canales, pero no conectarlos).
+- Necesitas ser **administrador** de tu cuenta de Parallly; la administración de canales no está disponible para supervisores ni agentes.
 - Necesitas una cuenta de Facebook con acceso al negocio en Meta Business Suite.
 - Ten a mano el número de teléfono que vas a usar: debe poder recibir SMS o llamadas (no sirven números virtuales VoIP ni líneas premium).
-- WhatsApp está disponible en todos los planes, desde Emprendedor.
+- La pantalla **Canales** indica si WhatsApp está habilitado para tu cuenta.
 
 ## Cómo conectar tu número
 
-1. En la barra lateral, sección **Gestión**, entra a **Canales**.
+1. En la barra lateral, sección **Administración**, entra a **Canales**.
 2. En la tarjeta de **WhatsApp**, haz clic en **Conectar**.
 3. Verás la pantalla **"Elige tu método de conexión"** con estas opciones:
    - **Número de prueba** — explora la plataforma sin compromiso y conecta tu número real después.
@@ -78,23 +78,15 @@ WhatsApp permite responder libremente durante las **24 horas** siguientes al úl
 Para gestionarlas: **Canales → WhatsApp → Ver todas las plantillas** (la página **Plantillas de WhatsApp**).
 
 - **Sincronizar desde Meta** — trae a Parallly las plantillas que ya tengas aprobadas en tu cuenta.
-- **Crear plantilla** — crea una nueva sin salir de Parallly: nombre, idioma, categoría, cuerpo con variables (por ejemplo `{{1}}` para el nombre del cliente), encabezado, pie y hasta 3 botones, con vista previa en vivo. Al terminar, haz clic en **Enviar a Meta**; la aprobación suele tardar de minutos a 72 horas.
+- **Crear plantilla** — crea una nueva sin salir de Parallly: nombre, idioma, categoría, cuerpo con variables (por ejemplo `{{1}}` para el nombre del cliente), encabezado, pie y hasta 3 botones, con vista previa en vivo. Al terminar, haz clic en **Enviar a Meta**; Meta determina el estado y el tiempo de revisión.
 - Cada plantilla muestra su estado: **Aprobada**, **Pendiente** o **Rechazada** (con el motivo del rechazo para que la corrijas y la vuelvas a enviar).
-- Al conectar WhatsApp, Parallly envía automáticamente **3 plantillas semilla** ya validadas (recordatorio de cita, confirmación de pedido y pago recibido) para que tengas con qué empezar.
+- Al conectar WhatsApp, Parallly envía automáticamente **4 plantillas semilla** ya validadas (recordatorio de cita, confirmación de asistencia, confirmación de pedido y pago recibido) para que tengas con qué empezar.
 
 ## ¿Más de un número de WhatsApp?
 
-Puedes conectar varios números del mismo canal según tu plan. En la tarjeta de WhatsApp verás el contador de cuentas (por ejemplo "1/2 cuentas") y el botón **Agregar otra** mientras tengas cupo disponible.
+Puedes conectar varios números cuando tu cuenta tenga capacidad. La tarjeta de WhatsApp muestra el uso actual y el botón **Agregar otra** mientras haya cupo. Consulta el límite vigente en **Plan y facturación**.
 
-| Plan | Números de WhatsApp |
-|------|:---:|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 2 |
-| Enterprise | 3 |
-| Custom | Sin límite |
-
-Cada conexión es independiente: tiene su propio agente de IA (lo asignas en el editor del agente), sus conversaciones no se mezclan y, al enviar campañas o plantillas, eliges desde qué número sale el mensaje. Si necesitas más números que los de tu plan, escríbenos a [soporte](https://parallly-chat.cloud/support).
+Cada conexión es independiente: tiene su propio agente de IA (lo asignas en el editor del agente) y sus conversaciones no se mezclan. En un borrador de campaña puedes indicar el número emisor previsto, pero no lances campañas reales desde el editor actual: la vinculación exacta de plantilla/emisor y la cancelación todavía no están certificadas de punta a punta. Si necesitas más números que los permitidos por la configuración vigente de tu cuenta, escríbenos a [soporte](https://parallly-chat.cloud/support).
 
 ## Cómo desconectar un número
 

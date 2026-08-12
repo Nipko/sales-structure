@@ -2,13 +2,15 @@
 id: cuenta-seguridad
 title: "Sua conta, equipe e segurança"
 routes: ["/admin/users", "/admin/settings/security", "/admin/settings/change-password"]
-roles: ["tenant_admin"]
+roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
 keywords: ["conta", "segurança", "equipe", "usuários", "convidar usuário", "adicionar usuário", "cargos", "permissões", "administrador", "supervisor", "agente", "autenticação de dois fatores", "2fa", "autenticação", "código", "senha", "alterar senha", "dispositivos confiáveis", "sso", "login único", "saml", "idioma", "tema", "modo escuro", "sair", "inatividade", "sessão"]
 ---
 
-Nesta seção você administra quem da sua equipe entra na plataforma, com quais permissões, e como protege o acesso à sua conta. A maioria dessas opções é gerenciada pelo cargo de **administrador**.
+# Sua conta, equipe e segurança
 
-## Sua equipe e os cargos
+Cada usuário pode proteger a própria conta com 2FA, dispositivos confiáveis e alteração de senha. A administração da equipe, dos cargos e do SSO é exclusiva do papel **administrador**.
+
+## Sua equipe e os cargos (somente administrador)
 
 Você pode convidar as pessoas da sua equipe para trabalharem com você na plataforma. Cada pessoa tem um **cargo** que define o que ela pode ver e fazer:
 
@@ -27,7 +29,7 @@ Você pode convidar as pessoas da sua equipe para trabalharem com você na plata
 
 Na mesma tela você pode alterar o cargo de um usuário ou desativar o acesso dele quando alguém sai da equipe.
 
-> **Quantos usuários posso ter**: depende do seu plano. Se precisar de mais, faça o upgrade do seu plano em **Configurações** → **Faturamento**.
+> **Quantos usuários posso ter**: confira a capacidade atual da sua conta em **Administração → Plano e faturamento**.
 
 ---
 
@@ -43,7 +45,7 @@ A autenticação de dois fatores adiciona uma segunda camada de segurança: alé
 
 ### Dispositivos confiáveis
 
-Quando você entra do seu computador ou celular de sempre, pode marcá-lo como **dispositivo confiável**. Assim, o código de dois fatores não será pedido nesse dispositivo por 30 dias. Em **Configurações** → **Segurança** você vê a lista dos seus dispositivos confiáveis e pode remover qualquer um que não use mais (por exemplo, um equipamento emprestado).
+Quando você entra do seu computador ou celular de sempre, pode marcá-lo como **dispositivo confiável**. Enquanto essa confiança estiver vigente, o código de dois fatores não será pedido nesse dispositivo. Em **Configurações** → **Segurança** você vê a lista e pode remover os dispositivos que não usa mais (por exemplo, um equipamento emprestado).
 
 ---
 
@@ -57,7 +59,7 @@ Quando você entra do seu computador ou celular de sempre, pode marcá-lo como *
 
 ---
 
-## Login único (SSO)
+## Login único (SSO, somente administrador)
 
 Se a sua empresa usa um sistema corporativo de identidade (por exemplo, o do seu provedor de email empresarial), você pode configurar o **login único (SSO)** para que a sua equipe entre com as credenciais da empresa, sem precisar gerenciar senhas à parte.
 
@@ -65,7 +67,7 @@ Se a sua empresa usa um sistema corporativo de identidade (por exemplo, o do seu
 2. Na seção **SSO / SAML**, preencha os dados que o seu provedor de identidade fornece e baixe os dados que ele pede do Parallly.
 3. Opcionalmente, você pode **forçar o SSO** para que todos os usuários da sua empresa tenham que entrar por essa via.
 
-> O SSO é um recurso dos planos superiores. Se você não vê a opção ou quer ajuda para configurá-la, escreva para o suporte.
+> A disponibilidade do SSO depende da configuração da sua conta. Se você não vê a opção ou quer ajuda para configurá-la, escreva para o suporte.
 
 ---
 
@@ -89,6 +91,6 @@ Não. Cada cargo vê apenas o que precisa para o seu trabalho. Um agente vê a c
 Use um dos **códigos de backup** que você guardou ao ativá-la. Se também não os tiver, escreva para o suporte para verificar a sua identidade e recuperar o acesso.
 
 **Posso obrigar toda a minha equipe a usar autenticação de dois fatores?**
-A autenticação de dois fatores é ativada por usuário. Se você precisa exigi-la no nível de toda a empresa ou usar SSO obrigatório, entre em contato e ajudamos conforme o seu plano.
+A autenticação de dois fatores é ativada por usuário. Se você precisa exigi-la no nível de toda a empresa ou usar SSO obrigatório, entre em contato para revisar as opções habilitadas na sua conta.
 
 Ainda com dúvidas? Escreva para nós em https://parallly-chat.cloud/support

@@ -8,29 +8,30 @@ keywords: ["getting started", "get started", "start", "sign up", "signup", "regi
 
 # Getting started and initial setup
 
-Welcome to Parallly! This guide walks you from creating your account to your AI agent answering its first message. You can have everything up and running in under 15 minutes.
+Welcome to Parallly! This guide walks you from creating your account to your AI agent answering its first message.
 
 ## How to create your account
 
 1. Go to [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud) and click **Create your free account**.
 2. Fill in your name, email, and password, or use **Continue with Google**.
 3. Check your inbox: you'll receive a **6-digit code** to verify your email. Enter it and continue.
-4. The **3-step** welcome wizard opens:
+4. The **4-step** welcome wizard opens:
    - **Your company** — business name, industry, sub-type, and time zone (fields like website, phone, and description are optional, but they help your agent answer better).
    - **Your customers** — who you sell to. The options adapt to your industry.
    - **Goals** — what you want to achieve: answering FAQs, booking appointments, selling, providing support, and more.
+   - **Plan** — review the current options and choose how to begin.
 5. Click **Create my account**.
 
-Your account starts with a **free 7-day trial of the Emprendedor plan, no card required**. Whenever you're ready, you can upgrade to Starter, Pro, Enterprise, or Custom from **Settings → Billing**.
+Trial terms, prices, and payment options appear during registration and under **Administration → Plan & Billing**. That screen is the current source of truth for your account and country.
 
 When you finish, Parallly pre-configures your workspace based on your industry: a sales funnel with tailored stages, a suggested AI agent with a name and tone, base FAQs for your sector, and the tools specific to your line of business (menu, properties, tours, etc., as applicable).
 
 ## How to complete the setup wizard
 
-After signing up, the **setup wizard** opens when you enter the dashboard (also available at `/admin/setup-wizard`). It's 5 steps and takes less than 5 minutes:
+After signing up, the **setup wizard** opens when you enter the dashboard (also available at `/admin/setup-wizard`). It has 5 steps:
 
 1. **Choose your agent** — pick a template. You'll see the ones recommended for your industry first, then the generic ones (Virtual Salesperson, Customer Support, Appointment Assistant, among others).
-2. **Customize** — set the **Agent name**, the **Welcome message**, the **Communication tone** (Friendly, Professional, or Casual), and the **Business hours** (24/7 or custom). You can also add 1 to 3 FAQs so it answers accurately from day one.
+2. **Customize** — set the **Agent name**, **Welcome message**, **Communication tone**, **Business hours**, and initial FAQs.
 3. **Try it out** — chat with your agent as if you were a customer. Try "What are your prices?" or "Do you have availability?".
 4. **Connect it** — connect your first channel (see the next section). If you can't yet, use **Connect later**.
 5. **Discover it** — a walkthrough of your business tools: knowledge base, business info, services and calendar, catalog, and more.
@@ -51,9 +52,9 @@ Helpful tips:
 
 - If you connect your current WhatsApp Business number, you can scan a **QR code** from the app to keep your chats.
 - Don't have a number ready? Choose the **test (Sandbox)** option to experiment with no commitment.
-- You can also connect **Instagram**, **Messenger**, **Telegram**, **Email**, or the **Web Chat** for your site, depending on what your plan includes.
+- You can also connect **Instagram**, **Messenger**, **Telegram**, or **Web Chat** for your site, depending on what your plan includes. Email does not currently have certified self-service configuration.
 
-Later on, you can manage everything from the **Channels** menu, in the **Management** section of the sidebar.
+Later on, you can manage everything from **Channels**, in the **Administration** section of the sidebar.
 
 ## The product tour
 
@@ -79,7 +80,7 @@ Each pending item has a button that takes you straight to the right screen. You 
 ## What to do first: recommended order
 
 1. **Connect WhatsApp** (or your main channel) — without this, nothing reaches your agent.
-2. **Send it a test message** from your own phone and watch the conversation in **Inbox**.
+2. **Send it a test message** from your own phone and watch the conversation in **Conversations**.
 3. **Feed the knowledge base** from the **Knowledge Base** menu: upload your website, documents, or FAQs. The more context it has, the better its answers.
 4. **Fine-tune your agent** in the **AI Agent** menu: tone, rules, greeting, and tools.
 5. **Invite your team** from the **Users** menu and assign roles: administrator, supervisor, or agent.
@@ -87,16 +88,16 @@ Each pending item has a button that takes you straight to the right screen. You 
 ## Frequently asked questions
 
 **Do I need a card to try Parallly?**
-No. The 7-day trial of the Emprendedor plan doesn't ask for a card. The Pro and Enterprise plans offer a 15-day trial, but require registering a card to activate it.
+It depends on the option available to your account. Registration and **Plan & Billing** show whether a payment method is required and when a charge would begin.
 
 **How much do the plans cost?**
-Emprendedor USD $21/mo, Starter $49/mo, Pro $129/mo, Enterprise $349/mo, and Custom by quote. If you pay annually, you save roughly 15%. You can switch plans anytime from **Settings → Billing**.
+Open **Administration → Plan & Billing** for current prices, currency, billing cycle, and terms.
 
 **Which channels does my plan include?**
-Emprendedor includes WhatsApp. Starter adds Instagram, Messenger, Email, and the Web Chat. Pro and Enterprise add Telegram. The number of connections of the same type (for example, two WhatsApp numbers) also depends on your plan.
+**Channels** shows which connections you can activate; **Plan & Billing** shows the availability and limits for your account.
 
 **Can I have multiple AI agents?**
-Yes. Each connection has its own agent: if your plan allows two WhatsApp numbers, each number can be handled by a different agent. Emprendedor and Starter include 1 agent, Pro up to 3, Enterprise up to 10, and Custom unlimited.
+Yes, when your account has capacity available. Each connection uses its own agent; check the current allowance in **Plan & Billing**.
 
 **What about the SMS channel?**
 SMS is not a conversation channel: it's used to send notifications to your customers using credits (1 credit = 1 message segment).

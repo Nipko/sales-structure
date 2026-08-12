@@ -2,83 +2,40 @@
 id: sms-creditos
 title: "Créditos SMS e notificações por SMS"
 routes: ["/admin/settings/billing", "/admin/broadcast"]
-roles: ["tenant_admin"]
-keywords: ["sms", "creditos", "creditos sms", "pacote sms", "comprar creditos", "saldo sms", "recarga", "mensagens de texto", "notificacoes sms", "segmento", "mercadopago", "pagamento unico", "campanhas sms", "lembretes sms", "saldo esgotado", "avisos por texto", "sms desabilitado", "texto para clientes"]
+roles: ["tenant_admin", "tenant_supervisor"]
+keywords: ["sms", "creditos", "creditos sms", "pacote sms", "comprar creditos", "saldo sms", "recarga", "mensagens de texto", "notificacoes sms", "segmento", "campanhas sms", "lembretes sms", "saldo esgotado", "sms desabilitado", "texto para clientes"]
 ---
 
 # Créditos SMS e notificações por SMS
 
-Com o Parallly você pode enviar **notificações por SMS** para os seus clientes: lembretes, avisos e promoções que chegam como mensagem de texto no celular deles. O SMS funciona com um sistema de **créditos pré-pagos** que você compra em pacotes.
+SMS é um recurso de **notificações de saída**, não um canal de conversa com o agente de IA. Disponibilidade, cobertura, identidade do remetente e forma de provisionar créditos dependem da integração habilitada para a conta e o país.
 
-Importante: o SMS **não é um canal de conversa**. É um envio de **uma única via**: o seu cliente recebe a mensagem, mas não consegue respondê-la por SMS. As conversas com o seu agente de IA acontecem pelo WhatsApp, Instagram, Messenger, Telegram, E-mail ou pelo chat na web.
+## Segmentos e consumo
 
-## O que é um crédito
+Um crédito representa um segmento de SMS. Texto simples geralmente comporta mais caracteres do que uma mensagem com certos símbolos ou emojis, e uma mensagem longa pode ser dividida em vários segmentos. O contador do editor é a referência antes do envio: revise a estimativa, pois a codificação do texto pode alterar o total.
 
-- **1 crédito = 1 segmento de SMS** (aproximadamente **160 caracteres** de texto simples).
-- Se a sua mensagem usar **acentos, cedilha (ç) ou emojis**, cada segmento cai para cerca de **70 caracteres**, porque o texto viaja em um formato diferente.
-- Uma mensagem maior que um segmento é dividida em vários e **consome um crédito por cada segmento**. Por exemplo, um lembrete de uns 120 caracteres com acentos usa 2 segmentos, ou seja, 2 créditos.
+## Saldo ou compra de créditos
 
-Dica: escreva mensagens curtas e diretas. Se der para evitar acentos e emojis, cada crédito rende mais.
+O administrador pode abrir **Administração → Plano e faturamento**. Se a seção **Créditos SMS** aparecer, ela mostra saldo, consumo e opções ativas. Quando existir uma ação de compra ou recarga, a página informa pacotes, preço, moeda, provedor, condições e confirmação; use somente esse fluxo seguro.
 
-## Como comprar um pacote de créditos
+Se a seção ou o botão não aparecer, a compra não está habilitada para essa conta. Não presuma provedor, tipo de pagamento, crédito imediato ou regra de validade: a página e a confirmação da operação são a fonte atual.
 
-Os pacotes são pagos com **MercadoPago** como **pagamento único**: não é uma assinatura e não gera cobranças recorrentes.
+## Preparar um rascunho de campanha SMS
 
-1. No menu lateral, dentro de **Gestão**, entre em **Faturamento**.
-2. Desça até a seção **Créditos SMS**. Ali você verá os pacotes disponíveis com a quantidade de mensagens e o preço (alguns aparecem marcados como **Mais popular**).
-3. Escolha o pacote que você precisa e clique em **Comprar**.
-4. O pagamento do MercadoPago será aberto. Conclua o pagamento como em qualquer compra online.
-5. Ao voltar ao Parallly você verá o aviso "Processando a sua compra…": os créditos são **creditados automaticamente em alguns segundos** depois que o pagamento é confirmado.
+Um administrador ou supervisor pode usar **IA e crescimento → Campanhas** quando SMS aparecer como opção:
 
-Somente o **administrador** da conta pode comprar créditos, porque a compra é feita a partir da página de Faturamento.
+1. Crie a campanha e selecione **SMS**.
+2. Escreva o texto e revise a quantidade estimada de segmentos.
+3. Escolha um público autorizado e confirme o respeito aos opt-outs.
+4. Revise o resumo e salve o rascunho. Não envie nem agende para produção pelo editor atual: ele compartilha o fluxo de campanhas ainda não certificado e uma campanha agendada não tem ação de cancelamento. Consulte **Campanhas e disparo**.
 
-## Como ver o seu saldo e o seu consumo
+Lembretes e automações também podem consumir créditos quando a ação SMS está habilitada. Códigos de segurança enviados pela Parallly a usuários não fazem parte das campanhas da empresa.
 
-Na mesma seção **Créditos SMS** de **Faturamento** você encontra:
+## Se SMS aparecer desabilitado
 
-- O seu **saldo atual** ("créditos disponíveis"), sempre visível na parte superior da seção.
-- Os **SMS consumidos neste mês**.
-- Avisos automáticos: quando o seu saldo **fica abaixo de 50 créditos** aparece um alerta sugerindo recarregar, e quando chega a **0** você verá um aviso em destaque para comprar um pacote.
+- Se SMS não aparecer em **Campanhas**, o serviço não está disponível para essa conta, país ou configuração.
+- Se o saldo for insuficiente, o envio fica bloqueado; confira a página antes de tentar novamente.
+- O supervisor pode preparar ou operar campanhas permitidas, mas somente o administrador acessa faturamento ou uma compra habilitada.
+- Se uma operação confirmada não aparecer, atualize a página e fale com o suporte informando data e estado, sem compartilhar dados sensíveis de pagamento.
 
-Cada envio fica registrado internamente com a sua data e a quantidade de créditos, assim o saldo sempre reflete exatamente o que foi comprado menos o que foi consumido.
-
-## Como enviar notificações SMS para os seus clientes
-
-Os SMS saem a partir de **Campanhas** (menu lateral, seção **Crescimento**):
-
-1. Entre em **Campanhas** e crie uma nova campanha.
-2. Ao escolher os canais de envio, selecione **SMS** (se a opção estiver disponível na sua conta).
-3. Escreva o texto da mensagem. O editor mostra o contador de caracteres para você saber quantos segmentos ela vai usar.
-4. Escolha o público e envie ou agende a campanha.
-
-Além das campanhas, também **consomem créditos** os envios automáticos que você tiver configurados por SMS, como **lembretes de compromisso** e **sequências de acompanhamento**.
-
-O que **não** consome créditos: os SMS que a plataforma envia para você por segurança (por exemplo, códigos de verificação). Os seus créditos são apenas para as mensagens que o seu negócio envia para os **seus clientes**.
-
-## Por que ele pode aparecer desabilitado
-
-Há três situações diferentes:
-
-- **Você não vê a seção "Créditos SMS" em Faturamento, ou o SMS não aparece como canal em Campanhas**: o serviço de SMS é habilitado no nível da plataforma e pode estar desativado temporariamente (por exemplo, enquanto a cobertura no seu país está sendo ajustada). Enquanto estiver desativado não é possível comprar créditos nem enviar SMS. O seu **saldo é mantido intacto** e volta a ficar disponível quando o serviço é reativado.
-- **Você ficou sem saldo**: os envios por SMS simplesmente **não saem** e **nada é cobrado de você**. Compre um pacote e os próximos envios sairão normalmente (as mensagens que não saíram por falta de saldo não são reenviadas sozinhas).
-- **Você não é administrador**: a compra de pacotes fica em Faturamento, que só o administrador da conta enxerga. Peça ao seu administrador para fazer a recarga.
-
-## Perguntas frequentes
-
-**Os créditos vencem?**
-Não têm data de validade: o seu saldo é mantido até você consumi-lo, mesmo que o serviço de SMS seja pausado temporariamente.
-
-**A compra de créditos é uma assinatura?**
-Não. É um **pagamento único** pelo MercadoPago. Você compra quando quiser e recarrega só quando precisar.
-
-**Os meus clientes podem responder o SMS?**
-Não. O SMS é de uma única via. Se você quiser conversar com os seus clientes, use os canais de conversa (WhatsApp, Instagram, Messenger, Telegram, E-mail ou o chat na web).
-
-**Por que uma única mensagem descontou vários créditos?**
-Porque ela ultrapassou um segmento. O texto simples rende ~160 caracteres por segmento; com acentos ou emojis, ~70. Uma mensagem longa é dividida em vários segmentos e cada um custa 1 crédito.
-
-**Paguei e não vejo os créditos?**
-O crédito é automático e costuma levar alguns segundos após a confirmação do pagamento. Atualize a página de **Faturamento**; se depois de alguns minutos o saldo não aparecer, escreva para o nosso suporte: https://parallly-chat.cloud/support
-
-**De qual número os SMS saem?**
-Eles são enviados pelo Parallly com um número emissor da plataforma; você não precisa contratar nem conectar nenhum provedor de SMS próprio.
+O número ou identificador do remetente depende da integração e pode variar por país. Não prometa respostas recebidas por SMS a menos que a própria tela indique mensagens bidirecionais habilitadas.

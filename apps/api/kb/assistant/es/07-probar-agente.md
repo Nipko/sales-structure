@@ -14,13 +14,13 @@ Antes de dejar que tu agente de IA hable con clientes reales, conviene verificar
 - **Simulaciones** — decenas de "clientes simulados" conversan con tu agente y una IA evaluadora califica cada conversación.
 - **Procedimientos (SOP)** — escribe tus procesos en lenguaje natural para que el agente los siga paso a paso, sin improvisar.
 
-> Estas herramientas están disponibles para el rol **administrador**. Las encuentras en la barra lateral, sección **Crecimiento** → **Automatización**.
+> Estas herramientas están disponibles para el rol **administrador**. **Agente IA** y **Procedimientos** están en **IA y crecimiento**.
 
 ## Cómo chatear con tu agente (chat de prueba)
 
 Es la forma más rápida de ver a tu agente en acción:
 
-1. En la barra lateral, ve a **Crecimiento** → **Automatización** → **Agente IA**.
+1. En la barra lateral, ve a **IA y crecimiento** → **Agente IA**.
 2. Abre el agente que quieres revisar.
 3. Haz clic en el botón **Probar agente**.
 4. Escribe como si fueras un cliente ("¿Qué precios manejan?", "¿Tienen disponibilidad el sábado?") y pulsa **Enviar**.
@@ -32,7 +32,7 @@ El chat de prueba es un espacio seguro: no crea contactos, no aparece en tu band
 
 Cuando quieres una evaluación más completa que un par de mensajes manuales, usa las simulaciones. Piensa en ellas como un "control de calidad" automático de tu agente.
 
-1. En la barra lateral, ve a **Crecimiento** → **Automatización** → **Probar agente**.
+1. Entra a **Agente IA**, abre el agente y selecciona **Probar agente**.
 2. En el panel **Nueva simulación**, elige el **Agente** que quieres evaluar.
 3. En **Origen de escenarios**, elige cómo se generan los clientes de prueba:
    - **Sintéticos** — la IA genera clientes variados y realistas de tu industria: fáciles, escépticos, molestos, comparadores de precio, etc.
@@ -61,7 +61,7 @@ Al abrir una simulación completada verás:
 
 Los procedimientos le enseñan a tu agente a ejecutar procesos de tu negocio **paso a paso**: reembolsos, garantías, reclamos, calificación de leads… El agente decide cómo redactar cada mensaje con naturalidad, pero el flujo lo controla el procedimiento — por eso nunca se salta ni inventa pasos.
 
-1. En la barra lateral, ve a **Crecimiento** → **Automatización** → **Procedimientos**.
+1. En la barra lateral, ve a **IA y crecimiento** → **Procedimientos**.
 2. Elige cómo crearlo:
    - **Escribir SOP** (recomendado) — describe el procedimiento en lenguaje natural, por ejemplo: *"Cuando un cliente pida un reembolso, pídele el número de orden y verifica su estado; si está entregada ofrece un cupón, si no escala a un agente."* Luego pulsa **Compilar a pasos**: la IA lo convierte en una secuencia de pasos concretos que queda como **Borrador** para tu revisión.
    - **En blanco** — construye los pasos manualmente, uno por uno, con **Añadir paso**.

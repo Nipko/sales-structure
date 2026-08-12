@@ -8,13 +8,13 @@ keywords: ["automacao", "regras", "regra automatica", "follow-up", "acompanhamen
 
 # Automações e follow-up
 
-As automações são regras do tipo "se acontecer X, faça Y" que trabalham sozinhas em segundo plano: enviam follow-ups, movem leads de etapa, atribuem agentes ou adicionam tags sem que ninguém precise fazer isso na mão. Você encontra tudo na barra lateral, seção **Crescimento** → **Automação**, com três áreas: **Automação** (regras), **Sequências Drip** (acompanhamento por gotejamento) e **Modelos** (galeria pronta para instalar).
+As automações são regras do tipo "se acontecer X, faça Y" que trabalham sozinhas em segundo plano: enviam follow-ups, movem leads de etapa, atribuem agentes ou adicionam tags sem que ninguém precise fazer isso na mão. Em **IA e crescimento** você encontra **Automação**, **Sequências Drip** e **Modelos**.
 
 Podem criá-las e editá-las os usuários com papel de administrador ou supervisor.
 
 ## Como criar uma regra de automação
 
-1. Vá em **Crescimento** → **Automação** e clique em **"Nova regra"**.
+1. Vá em **IA e crescimento → Automação** e clique em **"Nova regra"**.
 2. **Gatilho** — escolha o evento que dispara a regra:
    - **Lead capturado** — quando um novo lead entra no sistema
    - **Nova mensagem** — quando chega uma mensagem do cliente
@@ -34,7 +34,7 @@ Podem criá-las e editá-las os usuários com papel de administrador ou supervis
 
 Cada regra mostra seu **"Histórico de execuções"**, assim você confere quando ela disparou e com que resultado. Se um envio falhar, a plataforma tenta de novo automaticamente até 3 vezes.
 
-> A partir do plano Pro também existe a ação **"Requisição HTTP"**, que permite que uma regra converse com outros sistemas do seu negócio (por exemplo, avisar seu sistema de faturamento ou estoque quando um lead avança). Se precisar dela, seu fornecedor ou equipe de TI pode configurá-la com você.
+> Se **Requisição HTTP** estiver habilitada para sua conta, uma regra pode avisar outro sistema do negócio. Trate-a como integração técnica e teste com dados não sensíveis.
 
 ## Como usar o construtor visual de fluxos
 
@@ -50,7 +50,7 @@ O construtor visual é ideal para fluxos com bifurcações ("se respondeu, adici
 
 As **Sequências Drip** enviam uma série de mensagens com esperas entre cada passo. São perfeitas para nutrir leads frios, dar boas-vindas a clientes novos ou fazer acompanhamento pós-venda.
 
-1. Vá em **Crescimento** → **Automação** → **Sequências Drip** e clique em **"Nova sequência"**.
+1. Vá em **IA e crescimento → Sequências Drip** e clique em **"Nova sequência"**.
 2. Dê um nome (ex.: "Boas-vindas leads novos") e escolha o **Evento gatilho**:
    - **Inscrição manual** — você adiciona contatos com **"Inscrever contato"**
    - **Lead capturado**
@@ -65,9 +65,10 @@ As **Sequências Drip** enviam uma série de mensagens com esperas entre cada pa
 
 ### Quando a sequência para para um contato
 
-- **O contato responde** a qualquer mensagem da série (para que a conversa continue com seu agente de IA ou sua equipe, e não com mensagens enlatadas).
-- **O contato converte** (chega a uma etapa final do funil).
+- **O contato responde** a uma mensagem da série quando a condição de resposta está habilitada.
 - O contato pede para não receber mais mensagens (opt-out).
+
+A opção visível **O contato converte** ainda não é aplicada automaticamente nesta versão. Desinscreva o contato manualmente após a conversão.
 
 > Dica: mantenha as sequências curtas (3 a 5 passos). Um lead que não respondeu depois de 5 tentativas raramente converte; melhor focar a energia em outros.
 
@@ -77,7 +78,7 @@ Dentro de uma sequência ativa você encontra **"Prospectar do CRM"**: escolha u
 
 ## Como instalar um modelo de automação
 
-Se você prefere não começar do zero, vá em **Crescimento** → **Automação** → **Modelos**:
+Se você prefere não começar do zero, vá em **IA e crescimento → Modelos**:
 
 1. Busque ou filtre por **Categoria** (Nutrição de leads, Lembretes de compromissos, Carrinho abandonado, Sequência de boas-vindas, Reativação, Coleta de feedback, Tratamento VIP, Fora do horário) ou por **Setor** — se seu negócio é de saúde, você verá primeiro os modelos de lembrete de consulta, por exemplo.
 2. Clique no card para ver exatamente o que ele faz: gatilho, condições e ações.
@@ -91,17 +92,9 @@ Se você prefere não começar do zero, vá em **Crescimento** → **Automação
 - O horário de funcionamento do seu negócio é configurado à parte, em **Configurações** → **Horário de Atendimento**. Lá você define os dias e horários de atendimento e a mensagem de fora do horário.
 - Na galeria de modelos, a categoria **Fora do horário** traz regras prontas para responder automaticamente quando escrevem para você fora do seu horário.
 
-## Limites por plano
+## Disponibilidade e capacidade
 
-| Plano | Regras de automação | Sequências drip | Execuções por hora |
-|-------|---------------------|-----------------|--------------------|
-| Emprendedor | Não incluído | Não incluído | — |
-| Starter | 5 | 3 | 50 |
-| Pro | Ilimitadas | 10 | 500 |
-| Enterprise | Ilimitadas | Ilimitadas | 5.000 |
-| Custom | Ilimitadas | Ilimitadas | Sem limite |
-
-A ação **"Requisição HTTP"** está disponível a partir do plano Pro. Se você atingir o limite do seu plano, a tela avisa e você pode fazer upgrade em **Configurações** → **Faturamento**.
+A tela mostra se regras, sequências e **Requisição HTTP** estão habilitadas, junto com o uso atual. Confira os limites vigentes em **Plano e faturamento**.
 
 ## Perguntas frequentes
 
@@ -112,12 +105,12 @@ Uma regra reage a um evento e executa ações (uma vez). Uma sequência drip é 
 Confira três coisas: se a regra está **Ativa** (interruptor ligado), se as condições não estão restritivas demais (todas precisam ser atendidas ao mesmo tempo) e o **"Histórico de execuções"** para ver se ela disparou e com que resultado.
 
 **Posso pausar uma sequência sem apagá-la?**
-Sim. Desligue o interruptor **"Ativa"**: os contatos já inscritos param de receber passos e a sequência fica salva. Você também pode retirar um contato específico com **"Desinscrever"**.
+Desligar **Ativa** impede novas inscrições, mas passos já programados podem continuar para contatos inscritos nesta versão. Use **Desinscrever** para esses contatos antes de desativar a sequência.
 
 **As mensagens automáticas podem chegar a alguém que pediu para não ser contatado?**
 Não. A plataforma respeita os opt-outs: se um contato pediu para não receber mensagens, as regras e sequências não enviam nada para ele.
 
 **Por que meu plano não deixa criar mais regras?**
-Cada plano tem um teto (veja a tabela). Você pode excluir regras que não usa mais ou fazer upgrade do plano em **Configurações** → **Faturamento**.
+Exclua regras que não usa mais e confira a capacidade atual e as opções disponíveis em **Administração → Plano e faturamento**.
 
 Precisa de mais ajuda? Escreva para a gente em https://parallly-chat.cloud/support

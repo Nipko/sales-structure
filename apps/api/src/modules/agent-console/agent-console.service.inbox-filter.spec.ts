@@ -54,6 +54,25 @@ describe('AgentConsoleService.getInbox — assigned_to is VARCHAR, not UUID', ()
         expect(sql).not.toMatch(/assigned_to\s*=\s*\$\d+::uuid/);
     });
 
+    it('scopes an agent default inbox to own plus unassigned conversations', async () => {
+        const h = makeHarness();
+
+        await h.service.getInbox(tenantId, agentId, 'all', 50, 0, 'tenant_agent');
+
+        expect(allSql(h.sqls)).toMatch(/assigned_to IS NULL OR c\.assigned_to = \$\d+/);
+    });
+
+    it.each(['tenant_admin', 'tenant_supervisor'])(
+        'does not hide peer conversations from elevated role %s',
+        async (role) => {
+            const h = makeHarness();
+
+            await h.service.getInbox(tenantId, agentId, 'all', 50, 0, role);
+
+            expect(allSql(h.sqls)).not.toContain('assigned_to IS NULL OR c.assigned_to');
+        },
+    );
+
     it('does not cast assigned_to to uuid when counting an agent active load', async () => {
         const h = makeHarness();
 

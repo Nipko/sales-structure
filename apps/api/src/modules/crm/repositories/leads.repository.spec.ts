@@ -130,4 +130,16 @@ describe('LeadsRepository column whitelist', () => {
     expect(columns).not.toContain('converted_at');
     expect(columns).toContain('first_name');
   });
+
+  it.each(['archived_at', 'assigned_to'])(
+    'rejects protected field %s instead of bypassing its dedicated authorization flow',
+    async (field) => {
+      const { repository, calls } = setup();
+
+      await expect(repository.updateLead(tenantId, leadId, { [field]: leadId } as any))
+        .rejects.toBeInstanceOf(BadRequestException);
+
+      expect(calls).toHaveLength(0);
+    },
+  );
 });

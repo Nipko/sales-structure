@@ -8,9 +8,9 @@ keywords: ["boîte de réception", "inbox", "transfert", "handoff", "prendre la 
 
 # Boîte de réception et prise en charge humaine
 
-L'**Inbox** est l'endroit où votre équipe voit toutes les conversations en temps réel et où une personne peut reprendre la main lorsque l'IA a besoin d'aide. Vous le trouvez dans la barre latérale, dans la section **Opération → Inbox**.
+La **boîte de conversations** permet à votre équipe de voir tous les échanges en temps réel et de reprendre la main lorsque l'IA a besoin d'aide. Elle se trouve dans **Essentiels → Conversations**.
 
-L'écran comporte trois zones : à gauche la liste des conversations (avec des filtres comme **Tous**, **Les miens**, **Non assignés**, **Transfert** et **Résolues**, ainsi que des filtres par canal), au centre le fil de messages et à droite le panneau du contact avec ses informations, ses notes et ses rendez-vous. C'est ici qu'arrivent les conversations de tous vos canaux connectés : WhatsApp, Instagram, Messenger, Telegram, Email et le chat de votre site web.
+L'écran comporte trois zones : à gauche la liste des conversations (avec des filtres comme **Tous**, **Les miens**, **Non assignés**, **Transfert** et **Résolues**, ainsi que des filtres par canal), au centre le fil de messages et à droite le panneau du contact avec ses informations, ses notes et ses rendez-vous. C'est ici qu'arrivent les conversations de vos surfaces opérationnelles : WhatsApp, Instagram, Messenger, Telegram et le chat de votre site web.
 
 ## Comment prendre une conversation (transfert)
 
@@ -20,7 +20,7 @@ Lorsqu'un client demande à parler à une personne, ou que l'IA détecte qu'elle
 2. Vous verrez un avis orange : **Intervention humaine requise** — « L'assistant IA a été mis en pause. Le client attend une réponse humaine. »
 3. Cliquez sur **Prendre la conversation**. La conversation vous est assignée et vous pouvez désormais écrire directement au client.
 
-Vous pouvez aussi prendre n'importe quelle conversation à tout moment avec le bouton **M'attribuer** dans l'en-tête du chat, même sans qu'il y ait eu de demande d'aide. Tant que la conversation est avec vous, l'IA ne répond pas : le client échange uniquement avec vous.
+Vous pouvez aussi utiliser **M'attribuer** sur une conversation qui n'a pas encore de responsable. Si elle est déjà assignée à quelqu'un d'autre, seul un administrateur ou un superviseur peut la réattribuer. Une fois la conversation à votre nom, l'IA ne répond pas : le client échange uniquement avec vous.
 
 ## Le résumé IA au moment de prendre une conversation
 
@@ -73,18 +73,18 @@ Si un cas ne peut pas avancer maintenant (« rappelez-moi lundi »), ne le laiss
 ## Répartition entre agents
 
 - Chaque conversation peut avoir un responsable. Utilisez le filtre **Les miens** pour ne voir que ce qui vous concerne et **Non assignés** pour trouver les conversations orphelines.
-- N'importe quel membre de l'équipe peut prendre une conversation avec **M'attribuer** ; si elle était déjà avec quelqu'un d'autre, un administrateur ou un superviseur peut la réattribuer.
+- Tout membre autorisé de l'équipe peut prendre une conversation **non assignée** avec **M'attribuer** ; si elle était déjà avec quelqu'un d'autre, seul un administrateur ou un superviseur peut la réattribuer.
 - Si vous configurez des **compétences (skills)** dans les profils de votre équipe (menu **Utilisateurs**), Parallly achemine automatiquement chaque escalade vers la bonne personne — par exemple, les cas en anglais vers l'agent qui parle anglais.
 - Les macros peuvent également assigner à un agent précis dans le cadre de leurs actions.
 - Si une conversation escaladée reste plus de 5 minutes sans réponse, les superviseurs reçoivent une alerte pour que personne ne reste en attente.
 
-Le nombre de personnes pouvant utiliser Parallly dépend de votre forfait : Emprendedor inclut 1 utilisateur, Starter 3, Pro 5, et Enterprise et Custom n'ont pas de limite.
+Le nombre de personnes pouvant utiliser Parallly dépend de la capacité de votre compte ; consultez l'utilisation et la limite actuelles dans **Forfait et facturation**.
 
 ## Notifications
 
 La **cloche** dans la barre supérieure regroupe les avis et les classe par catégorie : **Messages**, **Transferts** (escalades vers un humain), **Confidentialité**, **Rendez-vous**, **Automatisation**, **Commandes** et **Système**. Les escalades directes (le client a demandé un humain) ressortent en rouge ; les escalades pour faible confiance de l'IA, en jaune ; et les alertes de superviseur arrivent avec un son.
 
-Si votre forfait est Pro ou supérieur, vous pouvez aussi recevoir un SMS lorsque l'IA escalade une conversation : activez-le dans **Configuration → Intégrations → Alertes SMS**.
+Si les alertes SMS sont activées pour votre compte, configurez-les dans **Paramètres → Canaux et intégrations → Alertes SMS**.
 
 ## Travailler en équipe sans se marcher dessus
 

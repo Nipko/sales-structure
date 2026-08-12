@@ -12,14 +12,14 @@ WhatsApp is Parallly's main channel: once connected, your AI agent starts receiv
 
 ## Before you start
 
-- You need to be an **administrator** of your Parallly account (supervisors and agents can view channels, but not connect them).
+- You need to be an **administrator** of your Parallly account; channel administration is not available to supervisors or agents.
 - You need a Facebook account with access to the business in Meta Business Suite.
 - Have the phone number you'll use at hand: it must be able to receive SMS or calls (virtual VoIP numbers and premium lines won't work).
-- WhatsApp is available on every plan, starting with Emprendedor.
+- The **Channels** screen shows whether WhatsApp is enabled for your account.
 
 ## How to connect your number
 
-1. In the sidebar, under the **Management** section, go to **Channels**.
+1. In the sidebar, under **Administration**, go to **Channels**.
 2. On the **WhatsApp** card, click **Connect**.
 3. You'll see the **"Choose your connection method"** screen with these options:
    - **Test number** — explore the platform with no commitment and connect your real number later.
@@ -78,23 +78,15 @@ WhatsApp lets you reply freely during the **24 hours** after the customer's last
 To manage them: **Channels → WhatsApp → View all templates** (the **WhatsApp Templates** page).
 
 - **Sync from Meta** — brings into Parallly the templates you already have approved in your account.
-- **Create template** — build a new one without leaving Parallly: name, language, category, body with variables (for example `{{1}}` for the customer's name), header, footer, and up to 3 buttons, with a live preview. When done, click **Send to Meta**; approval usually takes anywhere from minutes to 72 hours.
+- **Create template** — build a new one without leaving Parallly: name, language, category, body with variables (for example `{{1}}` for the customer's name), header, footer, and up to 3 buttons, with a live preview. When done, click **Send to Meta**; Meta determines the review status and timing.
 - Each template shows its status: **Approved**, **Pending**, or **Rejected** (with the rejection reason so you can fix it and resubmit).
-- When you connect WhatsApp, Parallly automatically submits **3 seed templates** already validated (appointment reminder, order confirmation, and payment received) so you have something to start with.
+- When you connect WhatsApp, Parallly automatically submits **4 seed templates** already validated (appointment reminder, attendance confirmation, order confirmation, and payment received) so you have something to start with.
 
 ## More than one WhatsApp number?
 
-You can connect several numbers on the same channel depending on your plan. On the WhatsApp card you'll see the account counter (for example "1/2 accounts") and the **Add another** button while you still have room.
+You can connect several numbers when your account has capacity. The WhatsApp card shows current usage and the **Add another** button while room remains. Check the current limit in **Plan & Billing**.
 
-| Plan | WhatsApp numbers |
-|------|:---:|
-| Emprendedor | 1 |
-| Starter | 1 |
-| Pro | 2 |
-| Enterprise | 3 |
-| Custom | Unlimited |
-
-Each connection is independent: it has its own AI agent (you assign it in the agent editor), its conversations never mix, and when sending campaigns or templates you choose which number the message goes out from. If you need more numbers than your plan allows, write to us at [support](https://parallly-chat.cloud/support).
+Each connection is independent: it has its own AI agent (you assign it in the agent editor), and its conversations never mix. A campaign draft can record the intended sender number, but do not launch real campaigns from the current editor: exact template/sender binding and cancellation are not yet certified end to end. If you need more numbers than your account's current configuration allows, write to us at [support](https://parallly-chat.cloud/support).
 
 ## How to disconnect a number
 

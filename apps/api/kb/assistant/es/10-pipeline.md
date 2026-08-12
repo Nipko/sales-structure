@@ -3,7 +3,7 @@ id: pipeline
 title: "Embudo de ventas (pipeline)"
 routes: ["/admin/pipeline", "/admin/settings/pipeline"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["embudo", "pipeline", "kanban", "etapas", "oportunidades", "negocios", "tratos", "deals", "auto-avance", "avance automatico", "aprobacion", "aprobar trato", "probabilidad", "color de etapa", "arrastrar tarjeta", "ganado", "perdido", "re-sincronizar", "condiciones de transicion", "varios pipelines"]
+keywords: ["embudo", "pipeline", "kanban", "etapas", "oportunidades", "negocios", "tratos", "deals", "auto-avance", "avance automatico", "aprobacion", "aprobar trato", "probabilidad", "color de etapa", "arrastrar tarjeta", "ganado", "perdido", "re-sincronizar", "condiciones de transicion"]
 ---
 
 # Embudo de ventas (pipeline)
@@ -68,30 +68,9 @@ Parallly puede mover las oportunidades por el embudo sin que nadie toque el tabl
 
 El avance automático respeta tus condiciones de transición: si falta un requisito, la tarjeta no avanza.
 
-## Aprobación de tratos
+## Estado de la aprobación de tratos
 
-Para cerrar un negocio con control de calidad, mover una tarjeta a una **etapa final** (Ganado o Perdido) requiere aprobación:
-
-1. Arrastra la tarjeta a la etapa final. Se abre una ventana para **Solicitar aprobación**.
-2. La tarjeta queda con la insignia **Pendiente aprobación**.
-3. Un administrador o supervisor la revisa y elige **Aprobar** o **Rechazar** (si rechaza, indica la **Razón del rechazo**).
-4. Solo al aprobarse, la oportunidad pasa a la etapa final.
-
-Así los agentes pueden proponer cierres y el equipo mantiene la última palabra sobre lo que se marca como ganado o perdido.
-
-## Varios embudos y límites por plan
-
-Si manejas procesos de venta distintos (por ejemplo, venta directa y postventa), puedes tener varios embudos: en la parte superior del tablero hay pestañas para cambiar entre ellos y un botón **Nuevo pipeline** para crear otro. Desde el detalle de una oportunidad puedes moverla a otro embudo (entra por su primera etapa).
-
-| Plan | Embudos | Etapas por configurar |
-|------|---------|-----------------------|
-| Emprendedor | 1 | hasta 3 |
-| Starter | 1 | hasta 5 |
-| Pro | 3 | hasta 15 |
-| Enterprise | 10 | sin límite |
-| Custom | sin límite | sin límite |
-
-Si alcanzas el límite de tu plan, el sistema te lo indica y puedes subir de plan desde **Configuración → Facturación**.
+La interfaz contiene elementos de aprobación, pero **el circuito de solicitud, revisión y bloqueo de etapas finales no está certificado de extremo a extremo en la versión actual**. No lo uses como control financiero o de auditoría: un movimiento directo puede cambiar la etapa sin completar esa revisión. Hasta que el panel indique que el flujo está disponible, limita operativamente los cierres a administradores/supervisores y revisa el historial de cada oportunidad.
 
 ## Preguntas frecuentes
 

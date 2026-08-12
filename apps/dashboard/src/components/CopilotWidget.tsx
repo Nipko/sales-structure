@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTenant } from "@/contexts/TenantContext";
 import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import { api } from "@/lib/api";
+import { canUseHelpAssistantChat } from "@/lib/help-assistant-contract";
 import {
     Sparkles, X, Send, Bot, User, Loader2, Trash2, Minimize2,
     ChevronRight, Lightbulb,
@@ -13,55 +13,17 @@ import {
 
 interface Message {
     id: string;
-    role: "user" | "assistant" | "system";
+    role: "user" | "assistant";
     content: string;
     timestamp: Date;
 }
 
-function buildSystemPrompt(ctx: {
-    userName: string;
-    userRole: string;
-    tenantName: string | null;
-    currentPage: string;
-}) {
-    return `You are **Parallly Copilot**, the intelligent assistant embedded in the Parallly SaaS platform.
-Your mission is to help the current user understand, configure, and operate all platform modules.
-
-## Current Context
-- **User:** ${ctx.userName} (Role: ${ctx.userRole})
-- **Active Tenant:** ${ctx.tenantName || "None (Super Admin)"}
-- **Current Page:** ${ctx.currentPage}
-
-## Platform Knowledge
-Parallly is a multi-tenant SaaS for conversational sales automation across WhatsApp, Instagram, Messenger, Telegram, and SMS.
-
-### Available Modules:
-1. Dashboard (/admin) - Global KPIs, leads, revenue metrics
-2. Inbox (/admin/inbox) - Unified chat with AI responses, handoff, notes
-3. CRM (/admin/contacts) - Contacts, pipeline, segments, scoring
-4. Appointments (/admin/appointments) - Calendar, services, recurring, public booking
-5. Automation (/admin/automation) - Rules engine with triggers, conditions, actions
-6. AI Agent (/admin/agent) - Persona config, tools, business hours
-7. Analytics (/admin/analytics) - Metrics, charts, anomaly detection, cohorts
-8. Channels (/admin/channels) - WhatsApp, Instagram, Messenger, Telegram, SMS setup
-9. Broadcast (/admin/broadcast) - Mass campaigns with templates
-10. Knowledge Base (/admin/knowledge) - RAG documents for AI context
-11. Settings (/admin/settings) - Company, security, localization, tools
-
-## Behavior Rules:
-- Respond in the same language the user writes in
-- Be concise but complete. Use Markdown formatting when useful
-- If the user asks about a specific page, explain step by step how to use it
-- If you don't know, say so honestly and suggest where to look
-- Suggest concrete actions based on the user's current page`;
-}
-
 export default function CopilotWidget() {
     const { user } = useAuth();
-    const { activeTenantId } = useTenant();
     const pathname = usePathname();
     const t = useTranslations("copilot");
     const locale = useLocale();
+    const chatEnabled = canUseHelpAssistantChat(user);
 
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -85,14 +47,8 @@ export default function CopilotWidget() {
         try {
             const result = await api.copilotChat({
                 message: content,
-                context: {
-                    page: pathname,
-                    tenantId: activeTenantId || undefined,
-                    tenantName: user?.tenantName || undefined,
-                    userName: `${user?.firstName || ""} ${user?.lastName || ""}`.trim(),
-                    userRole: user?.role || "agent",
-                    locale,
-                },
+                page: pathname,
+                locale,
                 history: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
             });
 
@@ -110,7 +66,7 @@ export default function CopilotWidget() {
         } finally {
             setIsLoading(false);
         }
-    }, [input, isLoading, pathname, activeTenantId, user, messages, t]);
+    }, [input, isLoading, pathname, locale, messages, t]);
 
     function renderContent(text: string) {
         const escaped = text
@@ -123,6 +79,8 @@ export default function CopilotWidget() {
             .replace(/`(.*?)`/g, '<code style="background:rgba(108,92,231,0.15);padding:1px 4px;border-radius:3px;font-size:12px">$1</code>')
             .replace(/\n/g, "<br/>");
     }
+
+    if (!chatEnabled) return null;
 
     return (
         <>

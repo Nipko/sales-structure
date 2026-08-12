@@ -14,13 +14,13 @@ Before letting your AI agent talk to real customers, it's worth checking how it 
 - **Simulations** — dozens of "simulated customers" chat with your agent and an evaluator AI scores every conversation.
 - **Procedures (SOP)** — write your processes in plain language so the agent follows them step by step, without improvising.
 
-> These tools are available to the **admin** role. You'll find them in the sidebar, under **Growth** → **Automation**.
+> These tools are available to the **admin** role. **AI Agent** and **Procedures** are under **AI & Growth**.
 
 ## How to chat with your agent (test chat)
 
 This is the fastest way to see your agent in action:
 
-1. In the sidebar, go to **Growth** → **Automation** → **AI Agent**.
+1. In the sidebar, go to **AI & Growth** → **AI Agent**.
 2. Open the agent you want to review.
 3. Click the **Test agent** button.
 4. Type as if you were a customer ("What are your prices?", "Do you have availability on Saturday?") and press **Send**.
@@ -32,7 +32,7 @@ The test chat is a safe space: it doesn't create contacts, doesn't show up in yo
 
 When you want a more thorough evaluation than a few manual messages, use simulations. Think of them as an automated "quality check" for your agent.
 
-1. In the sidebar, go to **Growth** → **Automation** → **Test agent**.
+1. Open **AI Agent**, choose the agent, and select **Test agent**.
 2. In the **New simulation** panel, pick the **Agent** you want to evaluate.
 3. Under **Scenario source**, choose how the test customers are generated:
    - **Synthetic** — the AI generates varied, realistic customers from your industry: easy ones, skeptics, upset customers, price shoppers, and so on.
@@ -61,7 +61,7 @@ When you open a completed simulation you'll see:
 
 Procedures teach your agent to run your business processes **step by step**: refunds, warranties, complaints, lead qualification… The agent decides how to phrase each message naturally, but the flow is controlled by the procedure — that's why it never skips or invents steps.
 
-1. In the sidebar, go to **Growth** → **Automation** → **Procedures**.
+1. In the sidebar, go to **AI & Growth** → **Procedures**.
 2. Choose how to create it:
    - **Write SOP** (recommended) — describe the procedure in plain language, for example: *"When a customer asks for a refund, ask for the order number and check its status; if delivered, offer a coupon, otherwise escalate to an agent."* Then press **Compile to steps**: the AI turns it into a sequence of concrete steps that stays as a **Draft** for your review.
    - **Blank** — build the steps manually, one by one, with **Add step**.

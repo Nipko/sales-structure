@@ -10,21 +10,13 @@ keywords: ["base de connaissances", "connaissance", "knowledge base", "téléver
 
 La base de connaissances est la « mémoire » de votre agent IA : les documents, questions fréquentes et pages que vous ajoutez ici sont les informations avec lesquelles il répond à vos clients. Plus elle est complète et à jour, plus ses réponses sont précises.
 
-Vous la trouvez dans le menu latéral, section **Croissance → Automatisation → Base de connaissances**. À l'intérieur, vous verrez les onglets **Bibliothèque**, **FAQ**, **Rechercher dans le contexte**, **Qualité**, **Analytique** et **Lacunes**.
+Vous la trouvez dans **IA et croissance → Base de connaissances**. À l'intérieur, vous verrez les onglets **Bibliothèque**, **FAQ**, **Rechercher dans le contexte**, **Qualité**, **Analytique** et **Lacunes**.
 
 > Cette section est administrée par les rôles **administrateur** et **superviseur**.
 
-## Ce que votre forfait inclut
+## Disponibilité et capacité
 
-| Forfait | Articles / documents | Importation de pages web | Taille max. par document | Analytique des connaissances |
-|------|:---:|:---:|:---:|:---:|
-| Emprendedor | 5 | Non incluse | 25 000 caractères | Non |
-| Starter | 20 | 50 pages | 100 000 caractères | Oui |
-| Pro | Illimités | 500 pages | 250 000 caractères | Oui |
-| Enterprise | Illimités | Illimitées | 500 000 caractères | Oui |
-| Custom | Illimités | Illimitées | Sans limite | Oui |
-
-Si vous atteignez la limite, vous verrez l'avis **Limite de documents atteinte** avec l'option d'améliorer votre forfait.
+L'écran indique si les documents, l'importation web et l'analytique sont activés, avec l'utilisation actuelle. Lorsque la capacité est atteinte, **Limite de documents atteinte** s'affiche ; consultez **Forfait et facturation**.
 
 ## Comment ajouter des documents (PDF, Word et plus)
 
@@ -43,7 +35,7 @@ Si vous atteignez la limite, vous verrez l'avis **Limite de documents atteinte**
 
 ## Comment importer une page web (avec mise à jour automatique)
 
-Disponible à partir du forfait **Starter** :
+Lorsque l'importation web est activée :
 
 1. Dans **Bibliothèque**, cliquez sur **Importer URL**.
 2. Saisissez l'**URL de la page** (par exemple, la page des questions fréquentes de votre site). Le **Titre** est optionnel : il est détecté automatiquement.
@@ -80,7 +72,7 @@ Les FAQ sont des paires question-réponse que l'agent utilise pour donner des r�
 
 ## Analytique : ce qui est consulté et ce qui manque
 
-À partir du forfait **Starter**, l'onglet **Analytique** vous montre :
+Lorsqu'il est activé, l'onglet **Analytique** affiche :
 
 - **Requêtes uniques**, **taux de réussite** et volume quotidien de recherches de l'agent dans votre base de connaissances.
 - **Documents les plus consultés** — votre contenu vedette.
@@ -109,7 +101,7 @@ Seuls les documents que vous avez marqués comme publics sont affichés ; tout l
 
 ## Comment l'agent utilise votre base de connaissances
 
-Quand un client demande quelque chose, l'agent cherche dans vos documents et FAQ les fragments les plus pertinents et construit sa réponse à partir de ces informations — il n'invente pas de données que vous ne lui avez pas fournies. Pour que cela fonctionne :
+Quand un client pose une question, l'agent recherche les fragments les plus pertinents dans vos documents et FAQ et les utilise comme sources afin de réduire les réponses non étayées. Comme toute IA générative, il peut encore se tromper : testez les cas critiques et gardez le contenu à jour. Pour que cela fonctionne :
 
 - Dans **Agent IA**, ouvrez votre agent et, dans ses outils, vérifiez que la carte **Base de connaissances** est activée. Là, vous pouvez aussi ajuster combien de fragments il utilise par réponse et son niveau d'exigence quant à la pertinence.
 - Testez ce que l'agent trouverait avec l'onglet **Rechercher dans le contexte** : saisissez une question comme le ferait un client et vous verrez les fragments que l'IA utiliserait, avec leur pourcentage de pertinence. Si rien d'utile n'apparaît, vous tenez là votre prochain article.
@@ -120,7 +112,7 @@ Quand un client demande quelque chose, l'agent cherche dans vos documents et FAQ
 C'est le signe qu'il manque du contenu. Saisissez la même question dans **Rechercher dans le contexte** : s'il n'y a aucun résultat, créez un article ou une FAQ qui la couvre. Consultez aussi **Analytique → Questions sans réponse**, où cette requête a été enregistrée.
 
 **Puis-je importer tout mon site web ?**
-Vous pouvez importer page par page avec **Importer URL**, jusqu'à la limite de votre forfait (50 pages en Starter, 500 en Pro, sans limite en Enterprise et Custom). Commencez par les pages à plus forte valeur : questions fréquentes, tarifs, politiques.
+Vous pouvez importer page par page avec **Importer URL** jusqu'à la limite affichée à l'écran. Commencez par les pages à plus forte valeur : questions fréquentes, tarifs et politiques.
 
 **Les changements de mon site web se reflètent-ils tout seuls ?**
 Oui. Les pages importées sont vérifiées automatiquement chaque semaine et mises à jour si elles ont changé. Si vous avez besoin du changement immédiatement, utilisez **Actualiser le contenu** sur le document.
@@ -132,6 +124,6 @@ Non. Tout est privé sauf ce que vous marquez comme **Public** pour le portail d
 Oui. Ouvrez l'**Historique des versions** du document et cliquez sur **Restaurer** sur la version antérieure.
 
 **Pourquoi ne vois-je pas l'onglet Analytique avec des données ?**
-L'analytique des connaissances nécessite le forfait **Starter ou supérieur**, et elle commence à se remplir avec les conversations réelles de vos clients. Si vous venez de démarrer, laissez-lui quelques jours.
+L'analytique doit être activée et se remplit avec de vraies conversations. Si vous venez de démarrer, laissez-lui le temps de collecter des données.
 
 Besoin de plus d'aide ? Écrivez-nous sur https://parallly-chat.cloud/support

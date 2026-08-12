@@ -1,5 +1,13 @@
 # Prueba funcional de la app móvil — ago 2026
 
+> **DOCUMENTO HISTÓRICO — baseline del build v3.** Conserva los hallazgos y la
+> evidencia del recorrido realizado sobre `versionCode 3`; no describe por sí solo el
+> comportamiento ni los defectos abiertos del candidato vigente. El registro de build
+> posterior documenta un AAB v7 validado y activo en prueba interna, con Producción
+> enviada a revisión al 10-ago-2026. No infieras aprobación o publicación actual sin
+> comprobar Play Console. Consulta [mobile-eas-build.md](mobile-eas-build.md) y
+> [play-store-publish-checklist.md](play-store-publish-checklist.md).
+
 > Recorrido completo por la app manejándola en un **Samsung SM-S938B (Android 16)** con
 > la cuenta de revisión (`architerin@gmail.com`, tenant `Test Business`, vertical
 > `technology`/saas), previo a la publicación en Google Play.

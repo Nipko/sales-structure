@@ -180,7 +180,10 @@ export class PaymentSourceService {
             orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
         });
         // Never expose provider ids or consent tokens to the dashboard.
-        return sources.map((s) => ({
+        // The callback parameter is annotated explicitly: integration builds do
+        // not always have the generated Prisma client at hand, and then infer it
+        // as implicit `any` — passing locally and failing there.
+        return sources.map((s: typeof sources[number]) => ({
             id: s.id,
             kind: s.kind,
             status: s.status,

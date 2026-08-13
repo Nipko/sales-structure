@@ -56,9 +56,13 @@ export class ScheduledReportsService {
     async getConfig(schemaName: string, tenantId: string): Promise<any> {
         await this.ensureTable(schemaName);
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            // scheduled_reports.tenant_id es VARCHAR(255), no UUID: con ::uuid
-            // Postgres busca un operador `varchar = uuid` que no existe (42883).
-            `SELECT * FROM "${schemaName}".scheduled_reports WHERE tenant_id = $1 LIMIT 1`,
+            // El tipo de esta columna DEPENDE DEL TENANT: el schema canónico la
+            // crea VARCHAR(255) y ensureTable la crea UUID, ambos con IF NOT
+            // EXISTS, y el ALTER de más arriba convierte a unos schemas y a
+            // otros no (su fallo se descarta en silencio). Comparar la COLUMNA
+            // como texto es lo único que funciona con los dos tipos; fijar el
+            // cast en el parámetro rompe la mitad de la flota con 42883.
+            `SELECT * FROM "${schemaName}".scheduled_reports WHERE tenant_id::text = $1 LIMIT 1`,
             tenantId,
         );
         return rows[0] || null;

@@ -7,7 +7,10 @@ import { PaymentProviderFactory } from './payment-provider.factory';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { BillingEventType } from './types/billing-event.enum';
 import { SubscriptionStatus } from './types/subscription-status.enum';
-import { NormalizedBillingEvent } from './types/provider-types';
+import { NormalizedBillingEvent, PaymentProviderName } from './types/provider-types';
+import { PROVIDER_CAPABILITIES } from './adapters/provider-capabilities';
+import { PaymentRoutingService } from './payment-routing.service';
+import { WompiConfigService } from './adapters/wompi-config.service';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
@@ -68,14 +71,41 @@ describe('BillingService', () => {
                     provide: MercadoPagoConfigService,
                     useValue: mpConfigMock,
                 },
+                {
+                    provide: WompiConfigService,
+                    useValue: { isConfigured: jest.fn().mockReturnValue(false) },
+                },
+                {
+                    // Routing resolves to MercadoPago, matching the previous
+                    // hardcoded default these tests were written against.
+                    provide: PaymentRoutingService,
+                    useValue: {
+                        resolveForNewSubscription: jest.fn().mockResolvedValue({
+                            provider: 'mercadopago',
+                            level: 'country',
+                            substituted: false,
+                        }),
+                        resolveForSubscription: (p: string) => p,
+                        getConfig: jest.fn().mockResolvedValue({
+                            providersEnabled: { mercadopago: true, stripe: false, wompi: false, mock: false },
+                            defaultByCountry: { '*': 'mercadopago' },
+                            wompiMethods: { card: true, nequi: false, bancolombiaTransfer: false },
+                        }),
+                    },
+                },
             ],
         })
             // Override the factory to always return the mock provider so we
             // don't need a real MercadoPagoAdapter instance in this test.
+            // Capabilities stay REAL per provider name so the service takes the
+            // same branch it would in production.
             .overrideProvider(PaymentProviderFactory)
             .useFactory({
                 factory: (mp: MockPaymentProvider) => ({
                     getByName: (_n: string) => mp,
+                    capabilitiesOf: (n: string) =>
+                        PROVIDER_CAPABILITIES[n as PaymentProviderName] ?? PROVIDER_CAPABILITIES.mock,
+                    isRegistered: () => true,
                 }),
                 inject: [MockPaymentProvider],
             })
@@ -253,7 +283,12 @@ describe('BillingService', () => {
             );
         });
 
-        it('fails closed instead of discarding a payment token during a local trial plan change', async () => {
+        it('never silently discards a payment token during a local trial plan change', async () => {
+            // A token during a local trial means "start charging me". It must
+            // never be dropped: either the conversion goes through, or the call
+            // fails loudly. Here the target plan is not synchronized with the
+            // provider, so the conversion is refused instead of silently
+            // downgrading to a local-only plan swap.
             const future = new Date(Date.now() + 20 * 86_400_000);
             prismaMock.billingSubscription.findUnique.mockResolvedValue({
                 id: 'sub-1', tenantId: 'tenant-1', planId: 'plan-emp',
@@ -263,18 +298,82 @@ describe('BillingService', () => {
             prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) => {
                 if (where.slug === 'pro') return Promise.resolve({
                     id: 'plan-pro', slug: 'pro', isActive: true, priceUsdCents: 12_900,
-                    requiresCardForTrial: false, features: {},
+                    requiresCardForTrial: false, features: {}, priceLocalOverrides: {},
                 });
                 if (where.id === 'plan-emp') return Promise.resolve({ id: 'plan-emp', priceUsdCents: 2_100 });
                 return Promise.resolve(null);
             });
+            prismaMock.tenant.findUnique.mockResolvedValue({
+                id: 'tenant-1', name: 'T1', billingCountry: 'CO', billingEmail: 'a@b.co', settings: {},
+            });
             const createSpy = jest.spyOn(mockProvider, 'createSubscription');
 
             await expect(service.upgradeSubscription('tenant-1', 'pro', 'card-token')).rejects.toMatchObject({
-                response: expect.objectContaining({ error: 'local_trial_plan_change_not_supported' }),
+                response: expect.objectContaining({ error: 'provider_plan_not_synchronized' }),
             });
             expect(createSpy).not.toHaveBeenCalled();
             expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+        });
+
+        it('converts a local trial into a paid subscription on the SAME plan', async () => {
+            // The most common conversion: "keep my plan, start charging me".
+            // This used to be impossible — same plan was rejected as `same_plan`
+            // and any other plan as `local_trial_plan_change_not_supported`, so a
+            // trial could only lapse.
+            const future = new Date(Date.now() + 3 * 86_400_000);
+            prismaMock.billingSubscription.findUnique.mockResolvedValue({
+                id: 'sub-1', tenantId: 'tenant-1', planId: 'plan-starter',
+                status: SubscriptionStatus.TRIALING, provider: 'mercadopago',
+                // A local trial never created a provider customer — the
+                // conversion has to create one on the way in.
+                providerSubscriptionId: null, providerCustomerId: null,
+                trialEndsAt: future, metadata: { billingCycle: 'monthly' },
+                currentPeriodStart: null, currentPeriodEnd: null,
+            });
+            const syncedPlan = {
+                id: 'plan-starter', slug: 'starter', isActive: true, priceUsdCents: 4_900,
+                requiresCardForTrial: false, features: {}, stripePlanId: null, mpPlanId: null,
+                priceLocalOverrides: {
+                    CO: {
+                        currency: 'COP', amountCents: 27_690_000, mpPlanId: 'mp-starter-co',
+                        syncedAmountCents: 27_690_000, syncedCurrency: 'COP',
+                    },
+                },
+            };
+            prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) =>
+                Promise.resolve(where.slug === 'starter' || where.id === 'plan-starter' ? syncedPlan : null));
+            prismaMock.tenant.findUnique.mockResolvedValue({
+                id: 'tenant-1', name: 'T1', billingCountry: 'CO', billingEmail: 'owner@tenant.co',
+                paymentProviderCustomerId: null, settings: {},
+            });
+            const createSpy = jest.spyOn(mockProvider, 'createSubscription');
+
+            await service.upgradeSubscription('tenant-1', 'starter', 'card-token');
+
+            expect(createSpy).toHaveBeenCalledTimes(1);
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: { id: 'sub-1' },
+                    data: expect.objectContaining({ planId: 'plan-starter' }),
+                }),
+            );
+        });
+
+        it('still rejects the same plan when there is no payment method to convert with', async () => {
+            prismaMock.billingSubscription.findUnique.mockResolvedValue({
+                id: 'sub-1', tenantId: 'tenant-1', planId: 'plan-starter',
+                status: SubscriptionStatus.TRIALING, provider: 'mercadopago',
+                providerSubscriptionId: null, trialEndsAt: new Date(Date.now() + 86_400_000),
+                metadata: {},
+            });
+            prismaMock.billingPlan.findUnique.mockResolvedValue({
+                id: 'plan-starter', slug: 'starter', isActive: true, priceUsdCents: 4_900,
+                requiresCardForTrial: false, features: {},
+            });
+
+            await expect(service.upgradeSubscription('tenant-1', 'starter')).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'same_plan' }),
+            });
         });
 
         it('keeps requiring a card for a zero-day self-serve plan', async () => {

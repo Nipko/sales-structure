@@ -5,9 +5,13 @@ import { MercadoPagoConfigService } from './adapters/mercadopago-config.service'
 import {
     BILLING_CURRENCY_BY_COUNTRY,
     isBillingCountry,
-    isMercadoPagoCountry,
     normalizeBillingCountry as normalizeCountry,
 } from './billing-country-config';
+import { PaymentRoutingService } from './payment-routing.service';
+import { PaymentProviderFactory } from './payment-provider.factory';
+import { WompiConfigService } from './adapters/wompi-config.service';
+import { providerSupportsCountry } from './adapters/provider-capabilities';
+import { PaymentProviderName } from './types/provider-types';
 
 type JsonRecord = Record<string, any>;
 
@@ -77,7 +81,22 @@ export class BillingPlanCatalogService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly mpConfig: MercadoPagoConfigService,
+        private readonly routing: PaymentRoutingService,
+        private readonly providerFactory: PaymentProviderFactory,
+        private readonly wompiConfig: WompiConfigService,
     ) {}
+
+    /**
+     * Whether the provider has the credentials it needs to actually charge.
+     * Each adapter with its own credential service registers here.
+     */
+    private isProviderConfigured(provider: PaymentProviderName): boolean {
+        if (provider === 'mercadopago') return this.mpConfig.isConfigured();
+        if (provider === 'wompi') return this.wompiConfig.isConfigured();
+        // Adapters without a dedicated credential service count as configured
+        // once registered.
+        return this.providerFactory.isRegistered(provider);
+    }
 
     async listActivePlans(country?: string) {
         const requestedCountry = normalizeBillingCountry(country);
@@ -85,7 +104,31 @@ export class BillingPlanCatalogService {
         // the same deterministic country keeps direct dashboard visits usable.
         const effectiveCountry = requestedCountry || 'CO';
         const billingCountrySupported = isBillingCountry(effectiveCountry);
-        const providerConfigured = this.mpConfig.isConfigured();
+
+        // Availability is judged against the provider that will ACTUALLY bill
+        // this country, not against MercadoPago. Hardcoding MP here would make
+        // the whole catalog read "temporarily unavailable" the moment a country
+        // is switched to another operator — with the price sitting right there.
+        let providerName: PaymentProviderName;
+        let noProviderAvailable = false;
+        try {
+            const resolution = await this.routing.resolveForNewSubscription({ billingCountry: effectiveCountry });
+            providerName = resolution.provider;
+        } catch {
+            // No provider can take an acquisition for this country. The catalog
+            // still renders (prices are informative), but checkout must report
+            // itself unavailable: falling back to MercadoPago's capabilities here
+            // would advertise a buy button whose POST is guaranteed to 400 —
+            // the kill switch would be invisible to the storefront.
+            providerName = 'mercadopago';
+            noProviderAvailable = true;
+        }
+        const capabilities = this.providerFactory.capabilitiesOf(providerName);
+        const providerConfigured = !noProviderAvailable && this.isProviderConfigured(providerName);
+        // Only providers with a remote plan catalog need a synced id + fingerprint.
+        // Ours-engine providers freeze the local amount instead — demanding an id
+        // there would permanently report "not synchronized".
+        const requiresProviderPlanId = capabilities.planCatalog;
         const plans = await this.prisma.billingPlan.findMany({
             where: { isActive: true },
             orderBy: { sortOrder: 'asc' },
@@ -145,7 +188,9 @@ export class BillingPlanCatalogService {
                 priceSource = 'fx';
             }
 
-            const annualDisplay = resolveAnnualPlanDisplay(countryOverride, displayPriceCents);
+            const annualDisplay = resolveAnnualPlanDisplay(countryOverride, displayPriceCents, {
+                requiresProviderPlanId,
+            });
             const annualCurrency = isRecord(countryOverride?.annual)
                 ? String(countryOverride.annual.currency || '').trim().toUpperCase()
                 : '';
@@ -153,7 +198,7 @@ export class BillingPlanCatalogService {
                 && annualCurrency === expectedCurrency;
             const features: JsonRecord = isRecord(plan.features) ? plan.features : {};
             const salesLed = plan.slug === 'custom' || features.salesLed === true;
-            const providerCountrySupported = isMercadoPagoCountry(effectiveCountry);
+            const providerCountrySupported = providerSupportsCountry(capabilities, effectiveCountry);
             const monthlyProviderId = providerId(countryOverride?.mpPlanId);
             // A provider plan is a fixed local-currency amount. An FX preview or
             // USD fallback is display-only and cannot prove that the frozen MP
@@ -173,15 +218,13 @@ export class BillingPlanCatalogService {
                 && providerConfigured
                 && providerCountrySupported
                 && configuredMonthlyPrice
-                && monthlyFingerprintReady
-                && monthlyProviderId !== null;
+                && (!requiresProviderPlanId || (monthlyFingerprintReady && monthlyProviderId !== null));
             const annualAvailable = !salesLed
                 && providerConfigured
                 && providerCountrySupported
                 && annualCurrencyReady
-                && annualFingerprintReady
                 && annualDisplay.displayPriceAnnualCents !== null
-                && annualDisplay.mpPlanIdAnnual !== null;
+                && (!requiresProviderPlanId || (annualFingerprintReady && annualDisplay.mpPlanIdAnnual !== null));
 
             // Mercado Pago card tokens are short-lived and the current local
             // trial flow does not attach/persist them. Until a provider-backed

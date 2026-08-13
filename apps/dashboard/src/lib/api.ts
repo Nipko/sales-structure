@@ -19,6 +19,97 @@ export type MercadoPagoProviderStatus = {
     collectorValidation: 'not_checked';
     configured: boolean;
     webhookConfigured: boolean;
+    /** L0 kill switch state (added with the provider routing switch). */
+    enabled?: boolean;
+    /** Whether an adapter is wired for this provider in the running API. */
+    registered?: boolean;
+};
+
+/** Payment operators the routing layer knows about. Mirrors PAYMENT_PROVIDER_NAMES in the API. */
+export type PaymentProviderName = 'mercadopago' | 'stripe' | 'wompi' | 'mock';
+
+export type PaymentProviderRefunds = 'full' | 'void_only' | 'none';
+
+/** What an operator can actually do — the UI branches on capabilities, never on the name. */
+export type PaymentProviderCapabilities = {
+    nativeSubscriptions: boolean;
+    storedPaymentSources: boolean;
+    planCatalog: boolean;
+    changePlanInPlace: boolean;
+    pauseResume: boolean;
+    nativeProration: boolean;
+    refunds: PaymentProviderRefunds;
+    asyncSettlement: boolean;
+    /** Empty array = no known restriction. */
+    currencies: string[];
+    unattendedMethods: string[];
+    requiresAcceptanceTokens: boolean;
+    /** ISO-3166-1 alpha-2. Empty array = unrestricted. */
+    countries: string[];
+};
+
+/** Wompi methods that ship behind independent runtime flags. */
+export type WompiMethodFlags = {
+    card: boolean;
+    nequi: boolean;
+    bancolombiaTransfer: boolean;
+};
+
+/** The editable part of the operator switch (L0 + L1 + method flags). */
+export type ProviderRoutingSettings = {
+    providersEnabled: Record<PaymentProviderName, boolean>;
+    /** ISO-2 country → provider, plus the '*' catch-all row. */
+    defaultByCountry: Record<string, PaymentProviderName>;
+    wompiMethods: WompiMethodFlags;
+};
+
+/**
+ * GET and PUT /billing-admin/providers both answer with this shape: the settings
+ * plus `available` (adapter registration + capabilities per provider).
+ */
+export type ProviderRoutingConfig = ProviderRoutingSettings & {
+    available: Array<{
+        name: PaymentProviderName;
+        registered: boolean;
+        capabilities: PaymentProviderCapabilities;
+    }>;
+};
+
+export type ProviderRoutingPatch = {
+    providersEnabled?: Partial<Record<PaymentProviderName, boolean>>;
+    /**
+     * ISO-2 country → provider. `null` deletes that country rule, which makes the
+     * country resolve through '*'. The '*' row itself cannot be deleted: sending
+     * `"*": null` answers 400 `catch_all_required`.
+     */
+    defaultByCountry?: Record<string, PaymentProviderName | null>;
+    wompiMethods?: Partial<WompiMethodFlags>;
+};
+
+export type PaymentProviderStatusEntry = {
+    enabled: boolean;
+    registered: boolean;
+    countries: string[];
+    currencies: string[];
+    nativeSubscriptions: boolean;
+    refunds: PaymentProviderRefunds;
+    /** MercadoPago only — credential/environment state. */
+    environment?: MercadoPagoProviderStatus['environment'];
+    configured?: boolean;
+    webhookConfigured?: boolean;
+};
+
+/**
+ * GET /billing-admin/provider-status. `mercadopago` stays at the top level for
+ * backwards compatibility; new consumers should read `providers`.
+ */
+export type PaymentProvidersStatus = {
+    mercadopago: MercadoPagoProviderStatus;
+    providers: Partial<Record<PaymentProviderName, PaymentProviderStatusEntry>>;
+    routing: {
+        defaultByCountry: Record<string, PaymentProviderName>;
+        wompiMethods: WompiMethodFlags;
+    };
 };
 
 export type ResourceRentalType = "vehicle_rental" | "pet_boarding";
@@ -1350,8 +1441,24 @@ export const api = {
     updateAdminPlan: (slug: string, data: any) => apiPut(`/billing-admin/plans/${slug}`, data),
     invalidatePlanCache: (slug: string) => apiPost(`/billing-admin/plans/${slug}/invalidate-cache`, {}),
     getMpProviderStatus: () =>
-        apiGet<{ mercadopago: MercadoPagoProviderStatus }>(
+        apiGet<PaymentProvidersStatus>(
             '/billing-admin/provider-status',
+        ),
+    // --- Payment provider routing (the runtime operator switch, super_admin) ---
+    // Scope: NEW acquisitions only. A live subscription keeps billing through the
+    // provider it was created with, so flipping a country never migrates anyone.
+    getProviderRouting: () =>
+        apiGet<ProviderRoutingConfig>('/billing-admin/providers'),
+    updateProviderRouting: (body: ProviderRoutingPatch) =>
+        apiPut<ProviderRoutingConfig>('/billing-admin/providers', body),
+    /** L2 per-tenant override. `reason` is mandatory; `force` is required when a live subscription exists. */
+    setTenantPaymentProvider: (
+        tenantId: string,
+        body: { provider: PaymentProviderName; reason: string; force?: boolean },
+    ) =>
+        apiPut<{ tenantId: string; paymentProvider: PaymentProviderName; affectsExistingSubscription: boolean }>(
+            `/billing-admin/tenants/${tenantId}/payment-provider`,
+            body,
         ),
     syncPlanToMp: (slug: string, body?: { country?: string; fx?: number; force?: boolean; cycle?: 'month' | 'year' }) =>
         apiPost<{ slug: string; country: string; currency: string; cycle?: 'month' | 'year'; amountCents: number | null; mpPlanId: string; skipped: boolean }>(

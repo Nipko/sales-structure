@@ -26,6 +26,8 @@ describe('BillingAdminController provider price fingerprints', () => {
             mp as any,
             mpConfig as any,
             {} as any,
+            {} as any, // PaymentRoutingService — unused by the sync path under test
+            {} as any, // PaymentProviderFactory — idem
         );
         return { controller, prisma, mp };
     }

@@ -1,4 +1,5 @@
 import { BillingPlanCatalogService, normalizeBillingCountry } from './billing-plan-catalog.service';
+import { MERCADOPAGO_CAPABILITIES } from './adapters/provider-capabilities';
 
 describe('BillingPlanCatalogService', () => {
     const basePlan = {
@@ -19,10 +20,22 @@ describe('BillingPlanCatalogService', () => {
             billingPlan: { findMany: jest.fn().mockResolvedValue(plans) },
             exchangeRate: { findFirst: jest.fn().mockResolvedValue(fx) },
         };
+        // Routing resolves to MercadoPago so these cases keep exercising the
+        // remote-plan-catalog rules (synced id + fingerprint required).
+        const routing = {
+            resolveForNewSubscription: jest.fn().mockResolvedValue({ provider: 'mercadopago', level: 'country', substituted: false }),
+        };
+        const providerFactory = {
+            capabilitiesOf: () => MERCADOPAGO_CAPABILITIES,
+            isRegistered: () => true,
+        };
         return {
             service: new BillingPlanCatalogService(
                 prisma as any,
                 { isConfigured: () => providerConfigured } as any,
+                routing as any,
+                providerFactory as any,
+                { isConfigured: () => false } as any, // WompiConfigService — unused, routing resolves to MercadoPago
             ),
             prisma,
         };

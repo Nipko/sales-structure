@@ -8,11 +8,18 @@
 
 ## Sin publicar — Ago 11, 2026 (referencias de producto y ayuda)
 
+- Se incorpora **Insights → Centro de calidad del agente** para Admin/Supervisor.
+  La vista separa preparación, pruebas repetibles y producción atribuida al agente y
+  a su versión; muestra estados y recomendaciones priorizadas sin presentarlas como
+  certificación, garantía comercial ni autoedición de prompts o conocimiento.
+- El API de calidad añade el selector mínimo `GET /quality/:tenantId/agents` y el
+  overview por agente `GET /quality/:tenantId/agents/:agentId/overview`. La ayuda
+  runtime de Parallly Assist explica la nueva superficie en los cuatro idiomas.
 - Se actualiza el manual web a v4.4 con la navegación vigente, roles explícitos,
   onboarding de cuatro pasos, Parallly Assist, operación móvil y las 18 verticales.
 - Se incorporan referencias canónicas de capacidades y del contrato editorial entre
   documentación humana y la KB runtime del asistente en cuatro idiomas.
-- Parallly Assist unifica la ayuda en un único chat respaldado por 25 artículos en
+- Parallly Assist unifica la ayuda en un único chat respaldado por 26 artículos en
   cada idioma (`es`, `en`, `pt`, `fr`); se retira la segunda guía factual embebida
   en el dashboard para evitar respuestas y rutas contradictorias.
 - `/copilot/chat` deriva tenant, identidad y rol exclusivamente de la sesión, valida

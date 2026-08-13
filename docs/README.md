@@ -14,8 +14,9 @@ _Última actualización: 2026-08-11_
 |-----------|-------------|
 | [../CLAUDE.md](../CLAUDE.md) | Referencia rápida: arquitectura, convenciones, inventario, índice de docs (canónico) |
 | [architecture-detail.md](architecture-detail.md) | Arquitectura detallada: flujo de mensajes, prompt layers (3), knowledge (5 tiers), LLM Router (routing por tarea, tiers, circuit breaker, cost breaker), auth/sesiones, OAuth, calendario, BullMQ, multi-canal por tipo |
-| [modules-reference.md](modules-reference.md) | Inventario técnico; snapshot actual: 88 archivos `*.module.ts`, 143 páginas dashboard, colas y crons |
+| [modules-reference.md](modules-reference.md) | Inventario técnico; snapshot actual: 88 archivos `*.module.ts`, 144 páginas dashboard, colas y crons |
 | [API_REFERENCE.md](API_REFERENCE.md) | Endpoints REST (todos bajo `/api/v1`), eventos WebSocket, migraciones, colas |
+| [agent-quality-center.md](agent-quality-center.md) | Contrato del Centro de calidad: tres pilares, estados, atribución, evidencia y bucle de mejora seguro |
 | [dashboard-navigation-architecture-2026-08.md](dashboard-navigation-architecture-2026-08.md) | Contrato de navegación tenant, orden, retorno, tour y decisiones de IA |
 | [product-capabilities-reference.md](product-capabilities-reference.md) | Mapa canónico de superficies, roles, planes y las 18 verticales |
 | [platform-assistant-knowledge.md](platform-assistant-knowledge.md) | Fuente runtime, alcance y proceso de publicación de Parallly Assist |

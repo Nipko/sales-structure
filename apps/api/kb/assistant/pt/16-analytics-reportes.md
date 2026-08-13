@@ -25,15 +25,7 @@ Ao fazer login, você chega ao **Dashboard**: sua visão geral do dia. Ele se ad
 
 ### A taxa de resolução IA
 
-Na aba **Resolução IA** você vê qual porcentagem das conversas o seu agente de IA resolveu sozinho, sem que um humano precisasse intervir, com a tendência ao longo do tempo e a divisão por canal. Como referência:
-
-| Taxa | O que significa |
-|------|-----------------|
-| Mais de 80% | Excelente: seu agente e sua base de conhecimento estão bem ajustados |
-| 60–80% | Boa: veja quais perguntas ficam sem resposta para melhorar |
-| Menos de 60% | Precisa de atenção: provavelmente faltam FAQs ou as regras de escalonamento estão muito sensíveis |
-
-Se a taxa estiver baixa em um canal específico, veja que tipo de dúvidas chega por ali: talvez esse público precise de conteúdo próprio na sua base de conhecimento.
+Na aba **Resolução IA** você vê qual porcentagem das conversas o seu agente de IA resolveu sozinho, sem que um humano precisasse intervir, com a tendência ao longo do tempo e a divisão por canal. Esse é um sinal operacional, não uma nota de qualidade: uma taxa alta pode coexistir com respostas incorretas, enquanto uma taxa baixa pode refletir transferências seguras. Se ela mudar muito por canal, revise as perguntas, o agente atribuído e as lacunas de conhecimento.
 
 ## Como avaliar o desempenho dos seus agentes e canais
 

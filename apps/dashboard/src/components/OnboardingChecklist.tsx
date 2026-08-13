@@ -39,7 +39,8 @@ export default function OnboardingChecklist() {
     const t = useTranslations("checklist");
     const tChecklist = useTranslations("verticalChecklist");
     const vt = useVerticalTerms();
-    const { user, verticalConfig } = useAuth();
+    const { user } = useAuth();
+    const tenantId = user?.tenantId;
     const router = useRouter();
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
@@ -50,11 +51,11 @@ export default function OnboardingChecklist() {
     const [loaded, setLoaded] = useState(false);
 
     const fetchStatus = useCallback(async () => {
-        if (!user?.tenantId) return;
+        if (!tenantId) return;
         try {
             const [setupRes, channelsRes] = await Promise.all([
-                api.getSetupStatus(user.tenantId!),
-                api.fetch(`/channels/overview?tenantId=${user.tenantId}`).catch(() => ({ data: [] })),
+                api.getSetupStatus(tenantId),
+                api.fetch(`/channels/overview?tenantId=${tenantId}`).catch(() => ({ data: [] })),
             ]);
 
             const data = setupRes?.data || {};
@@ -88,38 +89,40 @@ export default function OnboardingChecklist() {
             // Silently fail
         }
         setLoaded(true);
-    }, [user?.tenantId]);
+    }, [tenantId]);
 
     useEffect(() => {
-        if (!user?.tenantId) return;
+        if (!tenantId) return;
 
-        const key = `checklist_dismissed_${user.tenantId}`;
+        const key = `checklist_dismissed_${tenantId}`;
         if (localStorage.getItem(key) === "true") {
             setDismissed(true);
             setMinimized(true);
         }
 
         fetchStatus();
-    }, [user?.tenantId, fetchStatus]);
+    }, [tenantId, fetchStatus]);
 
     // Re-fetch on route change
     useEffect(() => {
-        if (loaded && user?.tenantId) fetchStatus();
+        if (loaded && tenantId) fetchStatus();
     }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch on window focus
     useEffect(() => {
-        const onFocus = () => { if (user?.tenantId) fetchStatus(); };
-        window.addEventListener("focus", onFocus);
-        document.addEventListener("visibilitychange", () => {
+        const onFocus = () => { if (tenantId) fetchStatus(); };
+        const onVisibilityChange = () => {
             if (document.visibilityState === "visible") onFocus();
-        });
+        };
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
             window.removeEventListener("focus", onFocus);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
         };
-    }, [user?.tenantId, fetchStatus]);
+    }, [tenantId, fetchStatus]);
 
-    if (!loaded || !user?.tenantId) return null;
+    if (!loaded || !tenantId) return null;
 
     // El backend devuelve la ruta del mismo catálogo que acaba de contar. Esto
     // evita certificar `tour_packages` y enviar luego a un hotel a esa pantalla.
@@ -144,9 +147,11 @@ export default function OnboardingChecklist() {
     if (minimized && dismissed && !allDone) {
         return (
             <button
+                type="button"
                 onClick={() => { setDismissed(false); setMinimized(false); }}
                 className="fixed bottom-6 right-24 z-40 flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all hover:scale-105 cursor-pointer"
                 title={t("reopenChecklist")}
+                aria-label={t("reopenChecklist")}
             >
                 <ListChecks size={16} />
                 <span className="text-xs font-semibold">{completedCount}/{totalCount}</span>
@@ -164,7 +169,7 @@ export default function OnboardingChecklist() {
         // la píldora (sigue visible como recordatorio y vuelve completo al recargar).
         // Con canal conectado, se permite descartar de forma persistente.
         if (checkData.hasAnyChannel) {
-            localStorage.setItem(`checklist_dismissed_${user.tenantId}`, "true");
+            localStorage.setItem(`checklist_dismissed_${tenantId}`, "true");
         }
         setDismissed(true);
         setMinimized(true);
@@ -191,10 +196,12 @@ export default function OnboardingChecklist() {
                 </span>
                 {!done && item.href && (
                     <button
+                        type="button"
                         onClick={() => router.push(item.href)}
                         className={accent === "indigo"
                             ? "text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-medium hover:bg-indigo-500/20 transition-colors cursor-pointer"
                             : "text-[10px] px-2 py-0.5 rounded bg-neutral-100 dark:bg-white/10 text-muted-foreground font-medium hover:text-foreground transition-colors cursor-pointer"}
+                        aria-label={`${t(`actions.${item.actionKey}`)}: ${t(`items.${item.key}`)}`}
                     >
                         {t(`actions.${item.actionKey}`)}
                     </button>
@@ -208,12 +215,12 @@ export default function OnboardingChecklist() {
             <div className="p-4">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-foreground">{t("title")}</h3>
+                    <div><h3 id="initial-setup-title" className="text-sm font-semibold text-foreground">{t("title")}</h3><p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{t("description")}</p></div>
                     <div className="flex items-center gap-1">
-                        <button onClick={() => setCollapsed(!collapsed)} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                        <button type="button" onClick={() => setCollapsed(!collapsed)} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={collapsed ? t("expand") : t("collapse")} aria-expanded={!collapsed} aria-controls="initial-setup-content">
                             {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                         </button>
-                        <button onClick={handleDismiss} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                        <button type="button" onClick={handleDismiss} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={t("dismiss")}>
                             <X size={14} />
                         </button>
                     </div>
@@ -224,13 +231,13 @@ export default function OnboardingChecklist() {
                     <div className="flex items-center justify-between mb-1">
                         <span className="text-[11px] text-muted-foreground">{completedCount}/{totalCount} — {percentage}% {t("complete")}</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-neutral-100 dark:bg-white/[0.06] overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-neutral-100 dark:bg-white/[0.06] overflow-hidden" role="progressbar" aria-label={t("progressLabel")} aria-valuemin={0} aria-valuemax={totalCount} aria-valuenow={completedCount}>
                         <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${percentage}%` }} />
                     </div>
                 </div>
 
                 {!collapsed && (
-                    <>
+                    <div id="initial-setup-content" aria-labelledby="initial-setup-title">
                         {/* Nivel 1 — Esencial */}
                         <div className="mb-4">
                             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t("essentials")}</p>
@@ -250,8 +257,11 @@ export default function OnboardingChecklist() {
                         {/* Nivel 3 — Avanzado (progressive disclosure: colapsado por defecto) */}
                         <div>
                             <button
+                                type="button"
                                 onClick={() => setAdvancedOpen(o => !o)}
                                 className="w-full flex items-center justify-between mb-2 cursor-pointer group"
+                                aria-expanded={advancedOpen}
+                                aria-controls="initial-setup-advanced"
                             >
                                 <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider group-hover:text-foreground transition-colors">
                                     {t("advanced")} <span className="text-[10px] normal-case font-normal">({l3Done}/{l3Items.length})</span>
@@ -259,17 +269,17 @@ export default function OnboardingChecklist() {
                                 {advancedOpen ? <ChevronUp size={13} className="text-muted-foreground" /> : <ChevronDown size={13} className="text-muted-foreground" />}
                             </button>
                             {advancedOpen && (
-                                <div className="space-y-1.5">
+                                <div id="initial-setup-advanced" className="space-y-1.5">
                                     {l3Items.map(item => renderItem(item, "neutral"))}
                                 </div>
                             )}
                         </div>
 
                         {/* Dismiss */}
-                        <button onClick={handleDismiss} className="mt-4 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                        <button type="button" onClick={handleDismiss} className="mt-4 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                             {t("dismiss")}
                         </button>
-                    </>
+                    </div>
                 )}
             </div>
         </div>

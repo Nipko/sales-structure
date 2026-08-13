@@ -2,7 +2,7 @@
 
 ## What is this project?
 Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, and a Web Chat Widget. Email has an internal inbound adapter but no certified tenant self-service configuration; SMS is a one-way reseller-credits notification product, not a conversational channel.
-Monorepo with 5 apps (88 API module declaration files, 143 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
+Monorepo with 5 apps (88 API module declaration files, 144 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
 
 ## Architecture (high-level)
 
@@ -24,7 +24,7 @@ For full message flow + module dependency graph see **`docs/architecture-detail.
 ```
 apps/
   api/          — NestJS 10, port 3000. 88 module declaration files
-  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts. 143 pages
+  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts. 144 pages
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. parallly-chat.cloud, 4-language i18n
   mobile/       — React Native / Expo (@parallext/mobile). Agent inbox app. EAS build, Firebase, Sentry. Ships via EAS, NOT the web deploy pipeline (docs/ + apps/mobile are paths-ignored in deploy.yml)
@@ -126,7 +126,7 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | Topic | File |
 |-------|------|
 | **Detailed architecture, prompt layers (3-tier), 5-tier knowledge, language detection, auth/sessions, OAuth flows, calendar, observability, BullMQ, pipeline hardening, production resilience, LLM Router task-based routing** | `docs/architecture-detail.md` |
-| **Inventario técnico: 88 archivos de módulo API, 143 páginas dashboard, 11 colas BullMQ y crons documentados (snapshot ago 2026)** | `docs/modules-reference.md` |
+| **Inventario técnico: 88 archivos de módulo API, 144 páginas dashboard, 11 colas BullMQ y crons documentados (snapshot ago 2026)** | `docs/modules-reference.md` |
 | **Platform audit (May 2026, ARCHIVED — historical snapshot)** | `docs/archive/platform-audit-2026-05.md` |
 | **Analytics endpoints (12 dashboard + 7 BI), Redis keys, tenant/global schemas, billing, offboarding, financials, super admin, vertical adaptation, vacation rental, CRM overhaul, handoff system, AI usage dashboard** | `docs/analytics-billing-reference.md` |
 | **Historical changelog (Session entries, navigation redesigns, security fixes, UX overhauls)** | `docs/CHANGELOG.md` |
@@ -142,6 +142,7 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Observability manual, LLM provider health monitoring** | `docs/observability-manual.md` |
 | **Appointments manual** | `docs/appointments-manual.md` |
 | **Analytics manual** | `docs/analytics-manual.md` |
+| **Centro de calidad del agente: preparación, pruebas, producción atribuida por versión y bucle de mejora seguro** | `docs/agent-quality-center.md` |
 | **Billing setup + runbook** | `docs/billing-mp-setup.md`, `docs/billing-runbook.md` |
 | **Offboarding manual** | `docs/offboarding-manual.md` |
 | **API reference** | `docs/API_REFERENCE.md` |

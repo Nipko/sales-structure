@@ -98,6 +98,7 @@ export default function AgentEditorPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [qualityRefreshKey, setQualityRefreshKey] = useState(0);
   const [apptReadiness, setApptReadiness] = useState<{ services: number; slots: number; loaded: boolean }>({
     services: 0, slots: 0, loaded: false,
   });
@@ -269,6 +270,7 @@ export default function AgentEditorPage() {
       const res = await api.updateAgent(activeTenantId, agentId, payload);
       if (res?.success) {
         setToast(t("savedSuccess"));
+        setQualityRefreshKey((current) => current + 1);
       } else {
         setToast((res as any)?.error || tc("errorSaving"));
       }
@@ -312,7 +314,7 @@ export default function AgentEditorPage() {
     const tplConfig = template.config_json || {};
     const agentName = config.persona.name;
     const agentLang = config.language;
-    setConfig(prev => deepMerge(structuredClone(defaultConfig), {
+    setConfig(deepMerge(structuredClone(defaultConfig), {
       ...tplConfig,
       persona: { ...tplConfig.persona, name: agentName || tplConfig.persona?.name },
       language: agentLang || tplConfig.language,
@@ -432,8 +434,8 @@ export default function AgentEditorPage() {
         }
       />
 
-      {/* ── Readiness del agente (about/horarios/KB/canal) ── */}
-      <AgentReadinessBanner tenantId={activeTenantId} channelAssigned={assignedChannels.length > 0 || assignedBindings.length > 0} />
+      {/* ── Resumen persistente del pasaporte de calidad ── */}
+      <AgentReadinessBanner tenantId={activeTenantId} agentId={agentId} refreshKey={qualityRefreshKey} />
 
       {/* ── Agent profile hero + channels ── */}
       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">

@@ -12,6 +12,8 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { RedisService } from '../redis/redis.service';
+import { personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -28,6 +30,7 @@ export class ChannelManagementController {
         private telegramAdapter: TelegramAdapter,
         private smsAdapter: SmsAdapter,
         private throttle: TenantThrottleService,
+        private redis: RedisService,
     ) {}
 
     /**
@@ -1436,7 +1439,11 @@ export class ChannelManagementController {
             const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { schemaName: true } });
             if (tenant?.schemaName) {
                 await this.prisma.$executeRawUnsafe(
-                    `UPDATE "${tenant.schemaName}".agent_personas SET channel_bindings = array_remove(channel_bindings, $1), updated_at = NOW() WHERE $1 = ANY(channel_bindings)`,
+                    `UPDATE "${tenant.schemaName}".agent_personas
+                        SET channel_bindings = array_remove(channel_bindings, $1),
+                            version = COALESCE(version, 0) + 1,
+                            updated_at = NOW()
+                      WHERE $1 = ANY(channel_bindings)`,
                     `${channelType}:${accountId}`,
                 );
                 if (channelType === 'whatsapp') {
@@ -1450,6 +1457,11 @@ export class ChannelManagementController {
         } catch { /* non-blocking — agent_personas/whatsapp_channels may not exist yet */ }
 
         try { await this.channelToken.invalidateCache(channelType, tenantId, accountId); } catch { /* non-blocking */ }
+        try {
+            for (const key of personaChannelCacheKeys(tenantId, channelType, accountId)) {
+                await this.redis.del(key);
+            }
+        } catch { /* non-blocking — TTL remains the fallback */ }
 
         this.logger.log(`Channel ${channelType} account ${accountId} disconnected for tenant ${tenantId}`);
         return { success: true, message: `Cuenta ${accountId} desconectada`, accountId };

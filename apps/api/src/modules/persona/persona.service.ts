@@ -7,7 +7,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yaml from 'js-yaml';
 import { TenantConfig } from '@parallext/shared';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
-import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
+import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
@@ -20,6 +20,13 @@ import {
 import type { ResolvedVerticalAgentDefaults } from './vertical-agent-defaults.util';
 import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver';
 
+/** Exact durable agent/configuration selected for one live channel turn. */
+export interface PersonaResolution {
+    config: TenantConfig;
+    agentId: string | null;
+    version: number | null;
+}
+
 /**
  * Persona Configuration Engine
  * Loads, validates, and caches tenant persona configurations.
@@ -29,6 +36,7 @@ import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver'
 export class PersonaService {
     private readonly logger = new Logger(PersonaService.name);
     private initializedTenants = new Set<string>();
+    private attributionReadyTenants = new Set<string>();
 
     constructor(
         private prisma: PrismaService,
@@ -117,8 +125,9 @@ export class PersonaService {
             createdBy || 'system',
         );
 
-        // Invalidate cache
-        await this.redis.del(`persona:${tenantId}:active`);
+        // Legacy config remains the fallback for every channel when no durable
+        // agent row exists, so both cache contracts must be invalidated.
+        await this.invalidatePersonaCaches(tenantId);
 
         this.logger.log(`Persona config v${nextVersion} saved for tenant ${tenantId}`);
         return configJson;
@@ -475,75 +484,137 @@ export class PersonaService {
         this.initializedTenants.add(tenantId);
     }
 
+    /**
+     * Lazy, non-blocking compatibility DDL for prospective attribution.
+     * Nullable columns and no UPDATE deliberately leave historical rows unknown.
+     */
+    private async ensureConversationAttributionColumns(
+        tenantId: string,
+        schemaName: string,
+    ): Promise<void> {
+        if (this.attributionReadyTenants.has(tenantId)) return;
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_persona_id UUID`,
+                [],
+                { timeout: 3000 },
+            );
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_config_version INTEGER`,
+                [],
+                { timeout: 3000 },
+            );
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_attribution_conflicted BOOLEAN NOT NULL DEFAULT false`,
+                [],
+                { timeout: 3000 },
+            );
+            this.attributionReadyTenants.add(tenantId);
+        } catch (error: any) {
+            // Attribution is observational; a lock timeout must never suppress a
+            // customer reply. Because the tenant is not marked ready, next turn retries.
+            this.logger.warn(
+                `Conversation attribution migration deferred for tenant ${tenantId}: ${error?.message || error}`,
+            );
+        }
+    }
+
     // ── Multi-Agent System ──────────────────────────────────────
 
     /**
      * Get the persona assigned to a specific channel.
      * Falls back to default persona, then to auto-generated default.
      */
-    async getPersonaForChannel(tenantId: string, channelType: string, accountId?: string): Promise<TenantConfig> {
-        // Check cache first — per-account when an accountId is given so two
-        // accounts of the same type can resolve to different agents.
+    async resolvePersonaForChannel(
+        tenantId: string,
+        channelType: string,
+        accountId?: string,
+    ): Promise<PersonaResolution> {
+        // Resolution metadata has a separate cache contract. Reusing the former
+        // config-only values would make attribution depend on cache state.
         const cacheKey = accountId
-            ? `persona:${tenantId}:channel:${channelType}:acct:${accountId}`
-            : `persona:${tenantId}:channel:${channelType}`;
-        const cached = await this.redis.getJson<TenantConfig>(cacheKey);
-        if (cached) return cached;
-
+            ? `persona-resolution:${tenantId}:channel:${channelType}:acct:${accountId}`
+            : `persona-resolution:${tenantId}:channel:${channelType}`;
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
+        await this.ensureConversationAttributionColumns(tenantId, schemaName);
 
-        let config: TenantConfig | null = null;
+        const cached = await this.redis.getJson<PersonaResolution>(cacheKey);
+        if (cached) return cached;
+
+        let resolution: PersonaResolution | null = null;
 
         // 0. Exact connection binding wins ("${channelType}:${accountId}").
         if (accountId) {
             try {
                 const binding = `${channelType}:${accountId}`;
                 const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT config_json FROM "${schemaName}".agent_personas
+                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
                      WHERE is_active = true AND $1 = ANY(channel_bindings)
                      ORDER BY updated_at DESC LIMIT 1`,
                     binding,
                 ) as any[];
-                if (rows.length > 0) config = rows[0].config_json as TenantConfig;
+                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
             } catch (e: any) {
                 this.logger.warn(`agent_personas binding lookup failed for ${tenantId}/${channelType}:${accountId}: ${e.message}`);
             }
         }
 
         // 1. Fallback: agent assigned to this channel TYPE.
-        if (!config) {
+        if (!resolution) {
             try {
                 const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT config_json FROM "${schemaName}".agent_personas
+                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
                      WHERE is_active = true AND $1 = ANY(channels)
                      ORDER BY updated_at DESC LIMIT 1`,
                     channelType,
                 ) as any[];
-                if (rows.length > 0) config = rows[0].config_json as TenantConfig;
+                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
             } catch (e: any) {
                 this.logger.warn(`agent_personas lookup failed for ${tenantId}/${channelType}: ${e.message}`);
             }
         }
 
         // 2. Fallback to default agent
-        if (!config) {
+        if (!resolution) {
             try {
                 const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT config_json FROM "${schemaName}".agent_personas
+                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
                      WHERE is_active = true AND is_default = true LIMIT 1`,
                 ) as any[];
-                if (rows.length > 0) config = rows[0].config_json as TenantConfig;
+                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
             } catch {}
         }
 
         // 3. Fallback to legacy persona_config
-        if (!config) {
-            return this.getActivePersona(tenantId);
+        if (!resolution) {
+            const legacyConfig = await this.getActivePersona(tenantId);
+            resolution = {
+                config: legacyConfig || this.buildDefaultPersona(tenantId),
+                agentId: null,
+                version: null,
+            };
         }
 
-        await this.redis.setJson(cacheKey, config, 600);
-        return config;
+        await this.redis.setJson(cacheKey, resolution, 600);
+        return resolution;
+    }
+
+    /** Backward-compatible config-only API for non-attributing callers. */
+    async getPersonaForChannel(tenantId: string, channelType: string, accountId?: string): Promise<TenantConfig> {
+        return (await this.resolvePersonaForChannel(tenantId, channelType, accountId)).config;
+    }
+
+    private toPersonaResolution(row: any): PersonaResolution {
+        const parsedVersion = row?.version == null ? Number.NaN : Number(row.version);
+        return {
+            config: row.config_json as TenantConfig,
+            agentId: row.id ? String(row.id) : null,
+            version: Number.isInteger(parsedVersion) ? parsedVersion : null,
+        };
     }
 
     /**
@@ -623,6 +694,22 @@ export class PersonaService {
      * channel-TYPE key, and the per-account keys for the given connection
      * bindings ("${channelType}:${accountId}").
      */
+    async invalidatePersonaResolutionCaches(
+        tenantId: string,
+        target?: { channelType: string; accountId?: string },
+    ): Promise<void> {
+        if (!target) {
+            await this.invalidatePersonaCaches(tenantId);
+            return;
+        }
+        const channelType = target.channelType?.trim();
+        const accountId = target.accountId?.trim();
+        if (!channelType) return;
+        for (const key of personaChannelCacheKeys(tenantId, channelType, accountId || undefined)) {
+            await this.redis.del(key);
+        }
+    }
+
     private async invalidatePersonaCaches(tenantId: string, bindings: string[] = []): Promise<void> {
         await this.redis.del(`persona:${tenantId}:active`);
         // Debe cubrir TODO tipo de canal que llegue a getPersonaForChannel. 'email' y
@@ -631,7 +718,9 @@ export class PersonaService {
         // vieja hasta que venciera el TTL. VerticalsService.invalidateRuntimeCaches
         // comparte esta misma constante.
         for (const ch of PERSONA_CACHE_CHANNELS) {
-            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
+            for (const key of personaChannelCacheKeys(tenantId, ch)) {
+                await this.redis.del(key);
+            }
         }
         // Per-account keys: the live pipeline ALWAYS reads the per-account key
         // (persona:{tenant}:channel:{type}:acct:{accountId}) even when the agent is
@@ -652,7 +741,11 @@ export class PersonaService {
             if (idx <= 0) continue;
             const chType = key.slice(0, idx);
             const acct = key.slice(idx + 1);
-            if (chType && acct) await this.redis.del(`persona:${tenantId}:channel:${chType}:acct:${acct}`);
+            if (chType && acct) {
+                for (const cacheKey of personaChannelCacheKeys(tenantId, chType, acct)) {
+                    await this.redis.del(cacheKey);
+                }
+            }
         }
     }
 
@@ -760,7 +853,11 @@ export class PersonaService {
                 if (conflicts.length > 0) {
                     // Remove channel from conflicting agent
                     await this.prisma.$executeRawUnsafe(
-                        `UPDATE "${schemaName}".agent_personas SET channels = array_remove(channels, $1), updated_at = NOW() WHERE id = $2::uuid`,
+                `UPDATE "${schemaName}".agent_personas
+                    SET channels = array_remove(channels, $1),
+                        version = COALESCE(version, 0) + 1,
+                        updated_at = NOW()
+                  WHERE id = $2::uuid`,
                         ch, conflicts[0].id,
                     );
                     this.logger.log(`Removed channel ${ch} from agent ${conflicts[0].name} (${conflicts[0].id})`);
@@ -772,7 +869,11 @@ export class PersonaService {
         if (data.channelBindings && data.channelBindings.length > 0) {
             for (const b of data.channelBindings) {
                 await this.prisma.$executeRawUnsafe(
-                    `UPDATE "${schemaName}".agent_personas SET channel_bindings = array_remove(channel_bindings, $1), updated_at = NOW() WHERE is_active = true AND $1 = ANY(channel_bindings)`,
+                    `UPDATE "${schemaName}".agent_personas
+                        SET channel_bindings = array_remove(channel_bindings, $1),
+                            version = COALESCE(version, 0) + 1,
+                            updated_at = NOW()
+                      WHERE is_active = true AND $1 = ANY(channel_bindings)`,
                     b,
                 );
             }
@@ -851,7 +952,11 @@ export class PersonaService {
         if (data.channels) {
             for (const ch of data.channels) {
                 await this.prisma.$executeRawUnsafe(
-                    `UPDATE "${schemaName}".agent_personas SET channels = array_remove(channels, $1), updated_at = NOW() WHERE id != $2::uuid AND $1 = ANY(channels)`,
+                    `UPDATE "${schemaName}".agent_personas
+                        SET channels = array_remove(channels, $1),
+                            version = COALESCE(version, 0) + 1,
+                            updated_at = NOW()
+                      WHERE id != $2::uuid AND $1 = ANY(channels)`,
                     ch, agentId,
                 );
             }
@@ -861,7 +966,11 @@ export class PersonaService {
         if (data.channelBindings) {
             for (const b of data.channelBindings) {
                 await this.prisma.$executeRawUnsafe(
-                    `UPDATE "${schemaName}".agent_personas SET channel_bindings = array_remove(channel_bindings, $1), updated_at = NOW() WHERE id != $2::uuid AND $1 = ANY(channel_bindings)`,
+                    `UPDATE "${schemaName}".agent_personas
+                        SET channel_bindings = array_remove(channel_bindings, $1),
+                            version = COALESCE(version, 0) + 1,
+                            updated_at = NOW()
+                      WHERE id != $2::uuid AND $1 = ANY(channel_bindings)`,
                     b, agentId,
                 );
             }
@@ -920,7 +1029,13 @@ export class PersonaService {
         }
 
         await this.prisma.$executeRawUnsafe(
-            `UPDATE "${schemaName}".agent_personas SET is_active = false, channels = '{}', channel_bindings = '{}', updated_at = NOW() WHERE id = $1::uuid`,
+            `UPDATE "${schemaName}".agent_personas
+                SET is_active = false,
+                    channels = '{}',
+                    channel_bindings = '{}',
+                    version = COALESCE(version, 0) + 1,
+                    updated_at = NOW()
+              WHERE id = $1::uuid`,
             agentId,
         );
 

@@ -831,7 +831,12 @@ export class KnowledgeService {
         results: any[], threshold: number, conversationId?: string,
     ) {
         try {
-            if (results.length === 0) {
+            // A retrieval is unanswered when no candidate clears the effective
+            // grounding bar. A wide recall pool below that bar is still a real KB
+            // gap and must not disappear from per-agent quality evidence.
+            const useThreshold = Math.max(threshold, KB_USE_THRESHOLD);
+            const hasUsableResult = results.some((result) => Number(result?.score) >= useThreshold);
+            if (!hasUsableResult) {
                 const queryHash = crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').substring(0, 16);
                 await this.prisma.executeInTenantSchema(schema,
                     `INSERT INTO kb_unanswered_queries (query, query_hash, occurrences, last_seen_at)
@@ -839,12 +844,21 @@ export class KnowledgeService {
                      ON CONFLICT (query_hash) WHERE resolved = false
                      DO UPDATE SET occurrences = kb_unanswered_queries.occurrences + 1, last_seen_at = NOW()`,
                     [query.substring(0, 500), queryHash]);
+
+                // Preserve a conversation-scoped sentinel as well as the
+                // aggregate unanswered-query row. The Quality Center can then
+                // attribute real retrieval gaps to the exact agent/version
+                // that handled the turn without correlating free-form text or
+                // assigning a tenant-wide aggregate to every agent.
+                await this.prisma.executeInTenantSchema(schema,
+                    `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
+                     VALUES (NULL, NULL, $1, NULL, false, $2::uuid)`,
+                    [query.substring(0, 500), conversationId || null]);
             }
 
             // was_used must reflect the EFFECTIVE use bar (a chunk that actually
             // grounds the answer), not the recall threshold (often 0 to return a
             // wide pool to the LLM) — otherwise the hit-rate reports ~100%.
-            const useThreshold = Math.max(threshold, KB_USE_THRESHOLD);
             for (const r of results.slice(0, 10)) {
                 await this.prisma.executeInTenantSchema(schema,
                     `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)

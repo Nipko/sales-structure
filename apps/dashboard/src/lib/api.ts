@@ -6,6 +6,7 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
+import type { AgentQualityOverview } from "@parallext/shared";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -972,6 +973,10 @@ export const api = {
         apiGet(`/quality/${tenantId}?start=${params.start}&end=${params.end}`),
     getQualityFlagged: (tenantId: string, params: { start: string; end: string; limit?: number }) =>
         apiGet(`/quality/${tenantId}/flagged?start=${params.start}&end=${params.end}&limit=${params.limit || 50}`),
+    listAgentQualityAgents: (tenantId: string) =>
+        apiGet<Array<{ id: string; name: string; is_active: boolean; is_default: boolean }>>(`/quality/${tenantId}/agents`),
+    getAgentQualityOverview: (tenantId: string, agentId: string) =>
+        apiGet<AgentQualityOverview>(`/quality/${tenantId}/agents/${agentId}/overview`),
 
     // Conversation trace (T1.7 — observability)
     getConversationTrace: (tenantId: string, conversationId: string) =>

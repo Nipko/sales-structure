@@ -101,6 +101,8 @@ describe('AgentConsoleService canonical manual-assignment event', () => {
             String(sql).includes('UPDATE conversations'),
         );
         expect(assignmentUpdate?.[0]).toContain('AND assigned_to IS NULL');
+        expect(assignmentUpdate?.[0]).toContain('was_handed_off = true');
+        expect(assignmentUpdate?.[0]).not.toContain('agent_attribution_conflicted');
         expect(assignmentUpdate?.[1]).toEqual([conversationId, agentId]);
         expect(h.events.emit).toHaveBeenCalledWith(
             'conversation.assigned',

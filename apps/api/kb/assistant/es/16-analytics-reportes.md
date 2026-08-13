@@ -25,15 +25,7 @@ Al iniciar sesión llegas al **Dashboard**: tu vista general del día. Se adapta
 
 ### La tasa de resolución IA
 
-En la pestaña **Resolución IA** ves qué porcentaje de conversaciones tu agente de IA resolvió solo, sin que un humano tuviera que intervenir, con su tendencia en el tiempo y el desglose por canal. Como referencia:
-
-| Tasa | Qué significa |
-|------|---------------|
-| Más de 80% | Excelente: tu agente y tu base de conocimiento están bien afinados |
-| 60–80% | Buena: revisa qué preguntas quedan sin respuesta para mejorar |
-| Menos de 60% | Necesita atención: probablemente faltan FAQs o las reglas de escalación son muy sensibles |
-
-Si la tasa es baja en un canal específico, revisa qué tipo de consultas llegan por ahí: quizás ese público necesita contenido propio en tu base de conocimiento.
+En la pestaña **Resolución IA** ves qué porcentaje de conversaciones tu agente de IA resolvió solo, sin que un humano tuviera que intervenir, con su tendencia en el tiempo y el desglose por canal. Es una señal operativa, no una nota de calidad: una tasa alta puede coexistir con respuestas incorrectas y una tasa baja puede reflejar handoffs seguros. Si cambia mucho por canal, revisa las consultas, el agente asignado y las brechas de conocimiento.
 
 ## Cómo revisar el rendimiento de tus agentes y canales
 

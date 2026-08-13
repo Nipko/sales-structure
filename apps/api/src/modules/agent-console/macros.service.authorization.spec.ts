@@ -54,4 +54,57 @@ describe('MacrosService assignment authorization', () => {
         });
         expect(h.prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
     });
+
+    it('marks assignment macros as human intervention before changing ownership', async () => {
+        const queries: string[] = [];
+        const prisma = {
+            user: { findMany: jest.fn().mockResolvedValue([{ id: targetId }]) },
+            executeInTenantSchema: jest.fn(async (_schema: string, sql: string) => {
+                queries.push(sql);
+                if (sql.includes('FROM macros')) return [{
+                    id: '55555555-5555-4555-8555-555555555555',
+                    name: 'Assign',
+                    actions_json: [{ type: 'assign', value: targetId }],
+                }];
+                if (sql.includes('SELECT contact_id')) return [{ contact_id: null }];
+                return [];
+            }),
+        };
+        const service = new MacrosService(prisma as any, { get: jest.fn().mockResolvedValue('tenant_acme') } as any);
+
+        await service.executeMacro(tenantId, '55555555-5555-4555-8555-555555555555', conversationId, actorId, 'tenant_supervisor');
+
+        const assignment = queries.find((sql) => sql.includes('SET assigned_to'))!;
+        expect(assignment).toContain("status = 'with_human'");
+        expect(assignment).toContain('was_handed_off = true');
+        expect(assignment).not.toContain('agent_attribution_conflicted');
+    });
+
+    it('marks canned macro replies as human intervention before inserting outbound text', async () => {
+        const queries: string[] = [];
+        const prisma = {
+            user: { findMany: jest.fn() },
+            executeInTenantSchema: jest.fn(async (_schema: string, sql: string) => {
+                queries.push(sql);
+                if (sql.includes('FROM macros')) return [{
+                    id: '55555555-5555-4555-8555-555555555555',
+                    name: 'Reply',
+                    actions_json: [{ type: 'send_canned', value: 'hello' }],
+                }];
+                if (sql.includes('SELECT contact_id')) return [{ contact_id: null }];
+                if (sql.includes('FROM canned_responses')) return [{ content: 'Hola' }];
+                return [];
+            }),
+        };
+        const service = new MacrosService(prisma as any, { get: jest.fn().mockResolvedValue('tenant_acme') } as any);
+
+        await service.executeMacro(tenantId, '55555555-5555-4555-8555-555555555555', conversationId, actorId, 'tenant_agent');
+
+        const humanTouch = queries.find((sql) => sql.includes('SET was_handed_off = true'))!;
+        const touchIndex = queries.indexOf(humanTouch);
+        const messageIndex = queries.findIndex((sql) => sql.includes('INSERT INTO messages'));
+        expect(humanTouch).not.toContain('agent_attribution_conflicted');
+        expect(touchIndex).toBeGreaterThanOrEqual(0);
+        expect(messageIndex).toBeGreaterThan(touchIndex);
+    });
 });

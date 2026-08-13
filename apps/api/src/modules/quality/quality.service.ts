@@ -80,7 +80,9 @@ export class QualityService {
     }
 
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `quality_cols:${schemaName}`;
+        // v2 adds prospective agent/config attribution. A deployment may still
+        // have the former v1 key for 24h, so it must not suppress this migration.
+        const cacheKey = `quality_cols:v2:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -110,6 +112,8 @@ export class QualityService {
                 `CREATE TABLE IF NOT EXISTS conversation_quality_scores (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     conversation_id UUID NOT NULL,
+                    agent_id UUID,
+                    agent_config_version INTEGER,
                     overall_score NUMERIC,
                     resolution_score NUMERIC,
                     tone_score NUMERIC,
@@ -127,6 +131,20 @@ export class QualityService {
             );
         } catch (err) {
             ignoreDupError(err);
+        }
+
+        for (const statement of [
+            `ALTER TABLE conversation_quality_scores ADD COLUMN IF NOT EXISTS agent_id UUID`,
+            `ALTER TABLE conversation_quality_scores ADD COLUMN IF NOT EXISTS agent_config_version INTEGER`,
+            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_persona_id UUID`,
+            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_config_version INTEGER`,
+            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_attribution_conflicted BOOLEAN NOT NULL DEFAULT false`,
+        ]) {
+            try {
+                await this.prisma.executeInTenantSchema(schemaName, statement, []);
+            } catch (err) {
+                ignoreDupError(err);
+            }
         }
 
         try {
@@ -147,6 +165,17 @@ export class QualityService {
             );
         } catch (err) {
             ignoreDupError(err);
+        }
+
+        for (const statement of [
+            `CREATE INDEX IF NOT EXISTS idx_cqs_agent_created ON conversation_quality_scores(agent_id, created_at)`,
+            `CREATE INDEX IF NOT EXISTS idx_conversations_agent_created ON conversations(agent_persona_id, created_at)`,
+        ]) {
+            try {
+                await this.prisma.executeInTenantSchema(schemaName, statement, []);
+            } catch (err) {
+                ignoreDupError(err);
+            }
         }
 
         try {
@@ -174,10 +203,24 @@ export class QualityService {
 
         const convRows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT resolution_type, was_handed_off FROM conversations WHERE id = $1::uuid`,
+            `SELECT resolution_type, was_handed_off, agent_persona_id, agent_config_version,
+                    agent_attribution_conflicted
+               FROM conversations WHERE id = $1::uuid`,
             [conversationId],
         );
         const resolutionType: string | null = convRows?.[0]?.resolution_type ?? null;
+        // Transcript-level QA is only attributable when the whole resolved
+        // conversation belongs to one exact AI config and never entered human
+        // handoff. Handoffs remain a separate production metric.
+        const attributionEligible = resolutionType === 'ai_resolved'
+            && convRows?.[0]?.was_handed_off !== true
+            && convRows?.[0]?.agent_attribution_conflicted !== true;
+        const agentId: string | null = attributionEligible
+            ? convRows?.[0]?.agent_persona_id ?? null
+            : null;
+        const agentConfigVersion: number | null = !attributionEligible || convRows?.[0]?.agent_config_version == null
+            ? null
+            : Number(convRows[0].agent_config_version);
 
         const msgs = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -222,11 +265,14 @@ export class QualityService {
         await this.prisma.executeInTenantSchema(
             schemaName,
             `INSERT INTO conversation_quality_scores
-                (conversation_id, overall_score, resolution_score, tone_score, accuracy_score, empathy_score,
+                (conversation_id, agent_id, agent_config_version,
+                 overall_score, resolution_score, tone_score, accuracy_score, empathy_score,
                  flags, resolution_type, resolution_verified, verification_reason, scored_by, rubric_version)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, 'ai', 'v1')`,
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, 'ai', 'v1')`,
             [
                 conversationId,
+                agentId,
+                agentConfigVersion,
                 overall,
                 resolution,
                 tone,

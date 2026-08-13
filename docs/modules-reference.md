@@ -1,7 +1,7 @@
 # Modules Reference
 
-Technical inventory for 88 API module declaration files, 143 dashboard pages
-(130 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
+Technical inventory for 88 API module declaration files, 144 dashboard pages
+(131 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
 
 **Last updated:** ago 2026 — Navigation IA, role alignment, 18-vertical capability manifest and mobile operational workspaces
 
@@ -1566,10 +1566,10 @@ Technical inventory for 88 API module declaration files, 143 dashboard pages
 - **Cron:** `45 4 * * 0` — pruneOldTurnTraces: poda de trazas antiguas
 
 #### 76. quality
-- **Purpose:** **QA scoring** de conversaciones resueltas (T1.6) con LLM-judge; expone puntajes y conversaciones marcadas (flagged). Alimenta el gate de simulación (`QualityService.judgeTranscript`)
-- **Services:** `quality.service.ts`, `quality-listener.service.ts` (@OnEvent resolución → encola), `quality.processor.ts`
+- **Purpose:** **QA scoring** de conversaciones resueltas (T1.6) con LLM-judge y **Centro de calidad por agente**. El centro separa preparación determinista, pruebas vigentes y producción atribuida a la versión del agente; no emite una certificación ni edita la configuración.
+- **Services:** `quality.service.ts`, `agent-quality.service.ts`, `quality-listener.service.ts` (@OnEvent resolución → encola), `quality.processor.ts`
 - **Controller:** `quality.controller.ts` (`/quality`)
-- **Endpoints:** `GET /quality/:tenantId` (resumen/puntajes), `GET /quality/:tenantId/flagged`
+- **Endpoints:** `GET /quality/:tenantId` (resumen/puntajes), `GET /quality/:tenantId/flagged`, `GET /quality/:tenantId/agents` (selector mínimo) y `GET /quality/:tenantId/agents/:agentId/overview` (tres pilares, estado y recomendaciones). Todos requieren Admin/Supervisor; `super_admin` necesita contexto tenant autorizado.
 - **BullMQ:** `quality-scoring` (concurrency 5; registrada sin adaptador BullBoard)
 
 #### 77. kb-health
@@ -1667,10 +1667,10 @@ Technical inventory for 88 API module declaration files, 143 dashboard pages
 
 ---
 
-## Dashboard Pages (143 total — 130 admin + 13 non-admin)
+## Dashboard Pages (144 total — 131 admin + 13 non-admin)
 
 > Las tablas por sección cubren la navegación principal; no son exhaustivas de las
-> 130 páginas admin. La autoridad de rutas es `navigation-contract.ts` y la de acceso,
+> 131 páginas admin. La autoridad de rutas es `navigation-contract.ts` y la de acceso,
 > `roles.ts`; el sidebar proyecta ese contrato por rol y vertical.
 
 ### Public Pages
@@ -1731,6 +1731,7 @@ Technical inventory for 88 API module declaration files, 143 dashboard pages
 | `/admin/analytics-v2` | Main analytics (8 tabs, CSV export) | Supervisor+ | ✅ |
 | `/admin/crm-analytics` | CRM analytics (funnel, velocity, leaderboard) | Supervisor+ | ✅ |
 | `/admin/agent-analytics` | Agent performance + CSAT (4 tabs) | Supervisor+ | ✅ |
+| `/admin/agent/quality` | Centro de calidad por agente: preparación, pruebas, producción y recomendaciones | Admin/Supervisor | ✅ |
 | `/admin/report-builder` | Custom report builder (16 metrics, 4 chart types, save/edit/duplicate) | Supervisor+ | ✅ |
 
 ### Channels

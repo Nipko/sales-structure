@@ -232,6 +232,7 @@
       "reportBuilder": "Rapports personnalisés",
       "dripSequences": "Séquences Drip",
       "automationTemplates": "Modèles",
+      "agentQuality": "Centre de qualité",
       "agentSimulation": "Tester l'agent",
       "procedures": "Procédures",
       "organizations": "Organisations",
@@ -5274,10 +5275,14 @@
     "errorConnection": "Erreur de connexion. Verifiez votre internet et reessayez."
   },
   "checklist": {
-    "title": "Votre Progrès",
+    "title": "Configuration initiale",
+    "description": "Guide de mise en route ; il ne représente pas la qualité de l'agent.",
     "essentials": "Essentiels",
     "recommended": "Recommandés",
-    "complete": "terminé",
+    "complete": "de la configuration",
+    "progressLabel": "Progression de la configuration initiale",
+    "expand": "Développer le guide de configuration",
+    "collapse": "Réduire le guide de configuration",
     "dismiss": "Fermer le guide",
     "reopenChecklist": "Voir la progression de la configuration",
     "items": {
@@ -9975,6 +9980,44 @@
     "enabled": "Activé",
     "disabled": "Désactivé",
     "lastSent": "Dernier envoi : {date}"
+  },
+  "agentQuality": {
+    "title": "Centre de qualité de l'agent", "subtitle": "Identifiez ce qu'il reste à configurer, ce qui a été testé et ce qui se passe dans les conversations réelles.", "loading": "Analyse des preuves disponibles…", "statusLabel": "État actuel", "agentInactive": "Agent inactif",
+    "agentSelector": { "label": "Agent à évaluer", "empty": "Aucun agent", "default": "par défaut" },
+    "actions": { "refresh": "Actualiser les preuves", "retry": "Réessayer", "editAgent": "Modifier l'agent", "open": "Résoudre", "openCenter": "Ouvrir le centre de qualité", "adminRequired": "Administrateur requis" },
+    "errors": { "title": "Impossible de charger le centre de qualité", "loadAgents": "Impossible de charger les agents.", "loadOverview": "Impossible d'analyser cet agent. Réessayez." },
+    "empty": { "title": "Aucun agent à évaluer pour le moment", "description": "Créez un agent, puis revenez ici pour examiner sa préparation, ses tests et ses performances réelles.", "action": "Créer un agent" },
+    "statuses": {
+      "not_evaluated": { "title": "Pas encore évalué", "description": "Il n'y a pas encore assez de preuves pour déterminer les performances de cet agent. Terminez sa préparation et lancez des tests." },
+      "configuration_incomplete": { "title": "Configuration incomplète", "description": "Des éléments requis manquent avant de pouvoir tester l'agent avec confiance. Résolvez d'abord les blocages critiques." },
+      "at_risk": { "title": "Agent à risque", "description": "Les tests ou interactions révèlent des signaux importants à examiner avant d'étendre son utilisation." },
+      "ready_for_pilot": { "title": "Prêt pour un pilote contrôlé", "description": "La configuration et les tests permettent un pilote limité. Les preuves réelles ne suffisent pas encore à valider son fonctionnement." },
+      "operating_with_evidence": { "title": "Opérationnel avec des preuves", "description": "L'agent dispose d'une configuration, de tests à jour et d'un échantillon utile de conversations réelles. Continuez à surveiller les tendances et changements." },
+      "review_required": { "title": "Révision requise", "description": "Les preuves sont obsolètes ou les performances récentes révèlent des points faibles. Examinez les actions prioritaires." }
+    },
+    "nextMilestone": { "label": "Prochaine étape", "complete_configuration": "Terminer la configuration critique", "pass_critical_tests": "Réussir les tests critiques", "collect_production_evidence": "Recueillir suffisamment de preuves de production", "maintain_quality": "Maintenir la qualité et examiner les changements" },
+    "evidence": { "generatedAt": "Analyse générée", "agentVersion": "Version évaluée", "agentUpdatedAt": "Dernière modification", "latestEvidence": "Preuve la plus récente" },
+    "layers": { "title": "Trois niveaux de preuve", "description": "Chaque niveau répond à une question distincte. Une configuration complète ne remplace ni les tests ni les performances réelles." },
+    "pillarStatuses": { "unknown": "Non évalué", "blocked": "Bloquée", "needs_attention": "Attention requise", "ready": "Préparée", "stale": "Obsolète", "insufficient_evidence": "Preuves insuffisantes", "evidenced": "Avec preuves" },
+    "pillars": {
+      "preparation": { "title": "Préparation", "description": "L'agent dispose-t-il d'un contexte, de connaissances, d'actions, d'une sécurité et de parcours opérationnels bien configurés ?", "passedChecks": "contrôles applicables réussis", "blockers": "{count, plural, one {# blocage critique} other {# blocages critiques}}" },
+      "tested": { "title": "Qualité testée", "description": "Cette version a-t-elle réussi des cas reproductibles, y compris des résultats et actions critiques ?", "gatePassed": "Test critique réussi", "gateFailed": "Échec du test critique", "result": "Résultat {score}/10 · seuil {threshold}/10", "trials": "{count, plural, one {# essai} other {# essais}}", "automatedEvidence": "Preuve automatisée ; ce n'est pas une certification", "noEval": "Aucune évaluation critique pour le moment", "stale": "Le test ne correspond pas à la configuration actuelle.", "simulation": "Simulation complémentaire : {count} scénarios" },
+      "production": { "title": "Production", "description": "Que montrent les conversations réelles attribuées à cet agent sur la période observée ?", "sample": "interactions évaluées · minimum {minimum} · {days} derniers jours", "needMore": "Il manque {count} interactions pour obtenir un premier signal utile.", "attributedSince": "Attribution disponible depuis le {date}" }
+    },
+    "priority": { "title": "Ce qu'il faut améliorer en premier", "description": "Actions classées par risque et impact. Les résoudre ne garantit pas la perfection ; cela augmente les preuves et réduit les faiblesses connues.", "affected": "{count, plural, one {# interaction concernée} other {# interactions concernées}}", "empty": "Aucune action prioritaire ouverte dans cette analyse." },
+    "severities": { "critical": "Critique", "high": "Élevée", "medium": "Moyenne", "low": "Faible" },
+    "dimensions": { "title": "Préparation par dimension", "description": "Ouvrez chaque dimension pour voir les contrôles, les preuves et les liens de correction.", "passed": "{passed} contrôles réussis sur {applicable} applicables", "names": { "business_scope": "Entreprise et périmètre", "knowledge_grounding": "Connaissances et fondement", "conversation_brand": "Conversation et marque", "actions_outcomes": "Actions et résultats", "safety_handoff": "Sécurité et transfert", "robustness_operations": "Robustesse et opérations" } },
+    "checkStatuses": { "pass": "Conforme", "warning": "À vérifier", "fail": "Manquant", "unknown": "Non vérifié", "not_applicable": "Non applicable" },
+    "checks": { "agent_active": "Agent actif", "persona_identity": "Identité et rôle de l'agent", "business_identity": "Identité de l'entreprise", "business_contact": "Coordonnées de l'entreprise", "business_context": "Contexte, objectifs et public", "agent_language": "Langue configurée", "brand_voice": "Voix et ton de la marque", "greeting": "Message d'accueil", "fallback_message": "Réponse en cas d'incertitude", "behavior_rules": "Règles de comportement", "custom_prompt": "Prompt personnalisé", "knowledge_coverage": "Couverture des connaissances", "rag_knowledge": "Base de connaissances prête", "rag_configuration": "Configuration de la récupération", "tool_knowledge": "Outil de connaissance", "tool_faqs": "Questions fréquentes", "tool_policies": "Politiques de l'entreprise", "tool_catalog": "Catalogue disponible", "tool_appointments": "Agenda et disponibilité", "tool_orders": "Gestion des commandes", "tool_ecommerce": "Intégration commerciale", "tool_offers": "Offres actuelles", "tool_crm": "Actions CRM", "channel_assignment": "Canal attribué à l'agent", "operational_channel_scope": "Uniquement les canaux conversationnels certifiés", "channel_connection": "Connexion opérationnelle du canal", "forbidden_topics": "Sujets restreints", "handoff_triggers": "Motifs de transfert", "human_handoff_route": "Parcours vers un humain", "business_hours": "Horaires d'ouverture", "after_hours_behavior": "Comportement hors horaires", "llm_limits": "Limites de réponse du modèle", "vertical_tool": "Outil opérationnel du secteur", "unknown": "Contrôle de configuration" },
+    "recommendations": { "fix": "Configurez : {item}", "investigate": "Examinez : {item}", "run_eval": "Lancez les tests critiques", "refresh_eval": "Répétez les tests pour la version actuelle", "fix_failed_eval": "Corrigez les cas ayant échoué au test critique", "run_simulation": "Élargissez la couverture avec une simulation", "collect_production_evidence": "Recueillez davantage de conversations réelles", "review_tool_failures": "Examinez les échecs d'outils", "resolve_knowledge_gaps": "Renforcez les lacunes de connaissance", "unknown": "Examinez cette recommandation" },
+    "productionDetails": { "label": "Détails de production", "metricsTitle": "Signaux de production", "metricsDescription": "Métriques observées au cours des {days} derniers jours ; elles ne constituent pas une note globale.", "basedOn": "Basé sur {count} cas", "noMetrics": "Aucune métrique n'est encore attribuable à cet agent.", "issuesTitle": "Points faibles détectés", "issuesDescription": "Tendances fréquentes à examiner dans les conversations d'origine.", "affectedCount": "{count, plural, one {# interaction} other {# interactions}}", "openInbox": "Ouvrir l'Inbox", "noIssues": "Aucun problème récurrent dans les preuves disponibles." },
+    "metrics": { "quality_overall": "Qualité conversationnelle observée", "verified_resolution_rate": "Résolution vérifiée", "handoff_rate": "Transfert vers un humain", "tool_failure_rate": "Échecs d'outils", "open_knowledge_gaps": "Lacunes de connaissance ouvertes", "unknown": "Métrique observée" },
+    "issues": { "tool_failures": "Échecs d'outils", "knowledge_gaps": "Lacunes de connaissance", "qa_knowledge_accuracy": "Réponses non fondées ou inexactes", "qa_unresolved_need": "Besoins clients non résolus", "qa_missing_handoff": "Transferts humains omis", "qa_tone_empathy": "Problèmes de ton ou d'empathie", "qa_ignored_question": "Questions clients ignorées", "qa_repetition_clarity": "Répétition ou manque de clarté", "qa_other": "Autre tendance de qualité", "qa_generic": "Tendance de qualité conversationnelle", "unknown": "Signal de qualité à examiner" },
+    "staleReasons": { "agent_configuration_changed_after_eval": "L'agent a changé après l'évaluation critique.", "business_or_knowledge_changed_after_eval": "L'entreprise ou les connaissances ont changé après l'évaluation critique.", "agent_configuration_changed_after_simulation": "L'agent a changé après la simulation.", "simulation_persona_version_mismatch": "La simulation a évalué une autre version de l'agent.", "business_or_knowledge_changed_after_simulation": "L'entreprise ou les connaissances ont changé après la simulation.", "unknown": "Une source évaluée a changé depuis le dernier test." },
+    "evidenceKeys": { "count": "Nombre", "configured": "Configuré", "enabled": "Activé", "active": "Actif", "ready": "Prêt", "connected": "Connecté", "assigned": "Attribué", "hasName": "Nom renseigné", "hasRole": "Rôle renseigné", "hasAbout": "Description renseignée", "goals": "Objectifs", "audiences": "Publics", "availableSources": "Sources disponibles", "unsupportedAssignments": "Attributions incompatibles", "chunks": "Fragments indexés", "published": "Publiées", "services": "Services", "availabilitySlots": "Créneaux de disponibilité", "products": "Produits", "existingOrders": "Commandes existantes", "activeOffers": "Offres actives", "records": "Enregistrements", "activeHumans": "Personnes actives", "maxTokens": "Limite de jetons", "hasTone": "Ton renseigné", "hasFormality": "Formalité renseignée", "minimumSample": "Échantillon minimal", "unknown": "Preuve" },
+    "common": { "yes": "Oui", "no": "Non", "notAvailable": "Non disponible" },
+    "method": { "title": "Comment interpréter ce centre", "description": "Il s'agit d'une aide à la décision, et non d'une promesse de perfection ou d'apprentissage automatique. Elle combine configuration vérifiable, tests reproductibles et preuves d'interactions réelles ; les blocages critiques prévalent sur les moyennes." },
+    "banner": { "loading": "Vérification de la qualité de l'agent…", "unavailableTitle": "L'analyse de qualité n'est pas disponible", "unavailableDescription": "Ouvrez le centre pour réessayer et examiner la configuration.", "openCenter": "Voir la qualité", "blockers": "{count, plural, one {# blocage critique reste} other {# blocages critiques restent}} à résoudre.", "stale": "Les tests sont devenus obsolètes après des modifications de l'agent.", "evidence": "Preuves réelles : {current} interactions sur un minimum de {minimum}.", "current": "L'évaluation est à jour ; examinez les détails et les tendances." }
   },
   "simulation": {
     "title": "Tester l'agent",

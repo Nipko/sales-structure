@@ -67,6 +67,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "agents", pattern: "/admin/agent", titleKey: "nav.items.aiAgent", scope: "tenant" },
   { id: "agentDetail", pattern: "/admin/agent/:agentId", titleKey: "navigation.routes.agentDetail", scope: "tenant", parentId: "agents", dynamicTitleParam: "agentId" },
   { id: "agentTest", pattern: "/admin/agent/:agentId/test", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agentDetail" },
+  { id: "agentQuality", pattern: "/admin/agent/quality", titleKey: "nav.items.agentQuality", scope: "tenant", parentId: "agentAnalytics" },
   { id: "agentSimulation", pattern: "/admin/agent/simulation", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agents" },
   { id: "procedures", pattern: "/admin/procedures", titleKey: "nav.items.procedures", scope: "tenant" },
   { id: "knowledge", pattern: "/admin/knowledge", titleKey: "nav.items.knowledgeBase", scope: "tenant" },

@@ -87,6 +87,17 @@ export interface ChargeInput {
     customerEmail: string;
     providerSourceId: string;
     /**
+     * What kind of instrument the stored source is. Providers require different
+     * fields per method — Wompi rejects a card charge that omits `installments`
+     * — so the adapter cannot guess. Defaults to 'card'.
+     */
+    sourceKind?: PaymentSourceKind;
+    /**
+     * Card instalments. A subscription charge is always 1: the customer pays the
+     * period in full and financing it would change the amount the issuer settles.
+     */
+    installments?: number;
+    /**
      * Card-on-file signalling. true = same amount on a fixed cadence (COF
      * recurring); false = variable amount (stored COF, e.g. a proration).
      * Wrong value here changes how the issuer scores the transaction.

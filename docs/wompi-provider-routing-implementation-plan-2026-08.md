@@ -289,7 +289,26 @@ cd apps/api && npx prisma generate && node ../../node_modules/jest/bin/jest.js -
 | Modelos del motor | `prisma/schema.prisma` | ✅ `BillingPaymentSource`, `BillingChargeAttempt`, `BillingCreditLedger` + 13 columnas aditivas en `BillingSubscription` |
 | Migración | `prisma/migrations/20260813000000_add_billing_recurring_engine/` | ✅ Estrictamente aditiva. **El motor nace apagado**: `engine` default `'provider'` en todas las filas, así que desplegarla no cambia el comportamiento de ninguna suscripción. Encenderlo es un UPDATE por tenant, después de que toda la flota corra el código nuevo — rollout de datos, no de código |
 | Aritmética de períodos | `billing/recurring/period.util.ts` + spec (25 casos) | ✅ Anclaje con clamp **sin arrastre** (una suscripción del 31 cobra el 28 en febrero y **vuelve al 31 en marzo**), zona horaria del tenant con DST, cobro a las 09:00 locales (un rechazo a medianoche no se resuelve hasta la mañana siguiente), claves de idempotencia sin `:` y jitter determinista por suscripción |
-| Verificación del sandbox | `scripts/verify-wompi-sandbox.js` | ✅ Script que corre el ciclo real contra Wompi sandbox (tokens de aceptación → tarjeta → fuente → cobro → liquidación → rescate por referencia → tarjeta rechazada). Se niega a correr con llaves de producción. **Pendiente: ejecutarlo** |
+| Verificación del sandbox | `scripts/verify-wompi-sandbox.js` | ✅ **EJECUTADO 13-ago-2026 — contrato verificado contra la API real** (ver abajo) |
+
+### Verificación empírica del sandbox (13-ago-2026)
+
+Corrida completa contra `sandbox.wompi.co` con las llaves reales. **Encontró un defecto que habría reventado el primer cobro en producción**, que es exactamente para lo que se escribió el script.
+
+| # | Verificación | Resultado |
+|---|---|---|
+| 1 | Tokens de aceptación (habeas data) | ✅ Los **dos** llegan (`END_USER_POLICY` + `PERSONAL_DATA_AUTH`) |
+| 2 | Tokenización de tarjeta con llave pública | ✅ |
+| 3 | Fuente de pago reutilizable | ✅ `AVAILABLE` de inmediato para tarjeta (sin 3DS) |
+| 4 | Cobro merchant-initiated | ❌→✅ **Falló con 422 `"No se especificó el número de cuotas (installments)"`.** La doc describe `payment_method` como opcional cuando va `payment_source_id`; **es obligatorio para CARD**. Corregido: el adapter manda `payment_method: { installments: 1 }` para fuentes de tarjeta y lo omite para billeteras. Cubierto por dos tests |
+| 4b | Firma de integridad | ✅ Aceptada al primer intento — el orden `reference + amount + currency + secret` es correcto |
+| 4c | Liquidación asíncrona | ✅ La transacción nace `PENDING`, como asume el motor |
+| 5 | Liquidación por polling | ✅ `APPROVED` en el primer intento (~2s) |
+| 6 | **Rescate por referencia** | ✅ `GET /transactions?reference=` devuelve la transacción. Es la única salida ante un timeout sin `transaction_id`, y era el riesgo residual ALTO del informe de investigación (W6) — **queda cerrado** |
+| 7 | Tarjeta rechazada | ⚠️ La 4111 se rechaza **al crear la fuente** (422), no al cobrar. Ver nota abajo |
+| 8 | Secreto de eventos | ✅ Presente. La verificación de una entrega real queda para cuando la URL esté configurada en el panel |
+
+**Nota sobre el paso 7 (afecta el diseño del dunning):** en sandbox una tarjeta inválida se rechaza al tokenizar/crear la fuente, así que **el camino `DECLINED` en el cobro no pudo ejercitarse**. En producción el caso frecuente es otro — una tarjeta válida que falla por fondos o por el emisor —, y ese es justamente el que dispara el dunning. La clasificación soft/hard de F2 debe validarse con un rechazo real, no con este script.
 
 **Pendiente de F2** (el 80% del trabajo restante): `renewal-scheduler.service.ts` (cron que solo AGENDA, con `CronLockService`), `processors/renewal-charge.processor.ts` (reserva optimista + revalidación + guarda de tardanza + regla del indeterminado), `processors/charge-poll.processor.ts`, `dunning.service.ts` (D+0/D+1/D+3/D+7/D+10 con clasificación soft/hard/indeterminate), `proration.service.ts`, reconciliación por intento, `PENDING_AUTH → ACTIVE` desde evento, y los 5 chequeos nuevos del Ops Center.
 

@@ -191,6 +191,9 @@ async function main() {
             payment_source_id: sourceId,
             signature,
             recurrent: true,
+            // Required for CARD sources even though the docs call payment_method
+            // optional when payment_source_id is present.
+            payment_method: { installments: 1 },
             acceptance_token: presigned?.acceptance_token,
             accept_personal_auth: personal?.acceptance_token,
         },
@@ -273,6 +276,7 @@ async function main() {
                     payment_source_id: declinedSource.json?.data?.id,
                     signature: integritySignature(ref2, AMOUNT_IN_CENTS, CURRENCY),
                     recurrent: true,
+                    payment_method: { installments: 1 },
                     acceptance_token: presigned?.acceptance_token,
                     accept_personal_auth: personal?.acceptance_token,
                 },

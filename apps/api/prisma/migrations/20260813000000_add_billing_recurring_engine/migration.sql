@@ -13,9 +13,12 @@
 -- ---------------------------------------------------------------------------
 -- 1. Instrumentos de pago reutilizables
 -- ---------------------------------------------------------------------------
+-- Los identificadores son UUID, como el resto de las tablas de facturación:
+-- `tenants.id` y `billing_subscriptions.id` son UUID, y una clave foránea TEXT
+-- contra una columna UUID ni siquiera se puede crear (42804).
 CREATE TABLE IF NOT EXISTS "billing_payment_sources" (
-    "id"                    TEXT PRIMARY KEY,
-    "tenant_id"             TEXT NOT NULL,
+    "id"                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "tenant_id"             UUID NOT NULL,
     "provider"              TEXT NOT NULL,
     -- TEXTO aunque el proveedor devuelva un entero: el tipo del id es del
     -- proveedor, no nuestro, y cambiarlo después sería una migración destructiva.
@@ -75,9 +78,9 @@ CREATE INDEX IF NOT EXISTS "billing_payment_sources_expiry_idx"
 -- compitiendo chocan en el INSERT en vez de cobrar dos veces. Ni la cola ni el
 -- lock de cron son la garantía: ambos fallan abierto.
 CREATE TABLE IF NOT EXISTS "billing_charge_attempts" (
-    "id"                    TEXT PRIMARY KEY,
-    "subscription_id"       TEXT NOT NULL,
-    "tenant_id"             TEXT NOT NULL,
+    "id"                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "subscription_id"       UUID NOT NULL,
+    "tenant_id"             UUID NOT NULL,
 
     "purpose"               TEXT NOT NULL,
     -- {subscriptionId}.{periodStart:YYYYMMDD}.{purpose} — sin ':' (BullMQ lo
@@ -88,7 +91,7 @@ CREATE TABLE IF NOT EXISTS "billing_charge_attempts" (
     "status"                TEXT NOT NULL,
 
     "provider"              TEXT NOT NULL,
-    "payment_source_id"     TEXT,
+    "payment_source_id"     UUID,
 
     -- Monto CONGELADO al agendar: un cambio de precio del catálogo no puede
     -- alterar un cobro ya en vuelo (y en Wompi además invalidaría la firma).
@@ -120,7 +123,7 @@ CREATE TABLE IF NOT EXISTS "billing_charge_attempts" (
     "checkout_expires_at"   TIMESTAMPTZ,
 
     -- Una factura fiscal por intento.
-    "payment_id"            TEXT,
+    "payment_id"            UUID,
 
     "metadata"              JSONB NOT NULL DEFAULT '{}',
     "created_at"            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -154,17 +157,17 @@ CREATE INDEX IF NOT EXISTS "billing_charge_attempts_inflight_idx"
 -- reembolso: sin este ledger, un crédito solo podría vivir en la cabeza de
 -- alguien. El saldo autoritativo es SUM(delta_cents).
 CREATE TABLE IF NOT EXISTS "billing_credit_ledger" (
-    "id"                TEXT PRIMARY KEY,
-    "tenant_id"         TEXT NOT NULL,
-    "subscription_id"   TEXT,
+    "id"                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "tenant_id"         UUID NOT NULL,
+    "subscription_id"   UUID,
 
     -- Con signo: positivo acredita al tenant, negativo consume el crédito.
     "delta_cents"       INTEGER NOT NULL,
     "currency"          TEXT NOT NULL,
 
     "reason"            TEXT NOT NULL,
-    "ref_attempt_id"    TEXT,
-    "ref_payment_id"    TEXT,
+    "ref_attempt_id"    UUID,
+    "ref_payment_id"    UUID,
     "created_by"        TEXT,
     "notes"             TEXT,
 
@@ -194,13 +197,13 @@ ALTER TABLE "billing_subscriptions"
     ADD COLUMN IF NOT EXISTS "billing_timezone" TEXT,
     ADD COLUMN IF NOT EXISTS "charge_amount_cents" INTEGER,
     ADD COLUMN IF NOT EXISTS "charge_currency" TEXT,
-    ADD COLUMN IF NOT EXISTS "default_payment_source_id" TEXT,
+    ADD COLUMN IF NOT EXISTS "default_payment_source_id" UUID,
     ADD COLUMN IF NOT EXISTS "unattended_capable" BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN IF NOT EXISTS "dunning_state" TEXT NOT NULL DEFAULT 'none',
     ADD COLUMN IF NOT EXISTS "dunning_started_at" TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS "dunning_attempts" INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS "credit_balance_cents" INTEGER NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS "pending_upgrade_plan_id" TEXT;
+    ADD COLUMN IF NOT EXISTS "pending_upgrade_plan_id" UUID;
 
 -- El scheduler barre exactamente por esta combinación cada pocos minutos.
 CREATE INDEX IF NOT EXISTS "billing_subscriptions_engine_due_idx"

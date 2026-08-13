@@ -75,6 +75,13 @@ const DEFAULT_BY_COUNTRY: Record<string, PaymentProviderName> = {
     '*': 'mercadopago',
 };
 
+/**
+ * Card is the only method proven end to end against the provider.
+ *
+ * Nequi is implemented but unverified, and it additionally needs the merchant to
+ * enable recurring subscriptions in their own Nequi Negocios portal — a step
+ * outside this codebase. Bancolombia transfer has no checkout flow yet.
+ */
 const DEFAULT_WOMPI_METHODS: WompiMethodFlags = {
     card: true,
     nequi: false,

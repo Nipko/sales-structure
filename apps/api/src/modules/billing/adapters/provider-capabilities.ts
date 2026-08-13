@@ -138,9 +138,19 @@ export const WOMPI_CAPABILITIES: ProviderCapabilities = {
     refunds: 'void_only',
     asyncSettlement: true,
     currencies: ['COP'],
-    // Daviplata needs a commercial activation we deliberately avoid, so it is
-    // not listed. Nequi / Bancolombia transfer ship behind their own flags.
-    unattendedMethods: ['card', 'nequi', 'bancolombia_transfer'],
+    /**
+     * Only what can actually be set up end to end today.
+     *
+     * Daviplata needs a commercial activation we deliberately avoid. Bancolombia
+     * transfer IS chargeable once stored, but authorizing it requires redirecting
+     * the customer to their bank and handling the return — a flow the checkout
+     * does not implement — so declaring it here would let the API accept a method
+     * no one can actually add.
+     *
+     * Nequi is listed because its authorization happens inside the customer's own
+     * app: the checkout tokenizes the phone number and polls until approved.
+     */
+    unattendedMethods: ['card', 'nequi'],
     requiresAcceptanceTokens: true,
     countries: ['CO'],
 };

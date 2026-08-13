@@ -4,7 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TurnTraceContext } from '../trace/turn-trace-context';
-import { PersonaService } from '../persona/persona.service';
+import { PersonaService, type PersonaResolution } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
@@ -426,7 +426,12 @@ export class ConversationsService {
 
         // 2. Load Persona & Check Business Hours — per-connection agent resolution
         //    (two accounts of the same type can run different agents).
-        const config = await this.personaService.getPersonaForChannel(tenantId, channelType, normalizedMsg.channelAccountId);
+        const personaResolution = await this.personaService.resolvePersonaForChannel(
+            tenantId,
+            channelType,
+            normalizedMsg.channelAccountId,
+        );
+        const config = personaResolution.config;
         this.logger.log(`[Pipeline] Persona loaded: ${config?.persona?.name || 'default'} (mode: ${(config as any)?._mode || 'wizard'})`);
 
         if (!config) {
@@ -599,6 +604,13 @@ export class ConversationsService {
             content?.text || '', conversation, config,
         );
         if (handoffReason) {
+            // A configured handoff rule is an agent outcome even though it
+            // deliberately avoids an LLM call.
+            await this.persistConversationPersonaResolution(
+                schemaName,
+                String(conversation.id),
+                personaResolution,
+            );
             this.logger.warn(`HANDOFF TRIGGERED for conversation ${conversation.id}: ${handoffReason}`);
             this.analyticsService.trackEvent({
                 tenantId, eventType: 'handoff_triggered',
@@ -655,6 +667,11 @@ export class ConversationsService {
         }
 
         // 7. Generate AI Response
+        await this.persistConversationPersonaResolution(
+            schemaName,
+            String(conversation.id),
+            personaResolution,
+        );
         this.logger.log(`[Pipeline] Generating AI response...`);
         const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours, inboundMessageId);
 
@@ -960,6 +977,48 @@ export class ConversationsService {
         } catch (e) {
             this.logger.warn(`Failed to load tenant business hours: ${(e as Error).message}`);
             return null;
+        }
+    }
+
+    /**
+     * Persist the exact first durable live agent/configuration for a conversation.
+     * If another agent/version later handles the same conversation, retain the
+     * original identity for audit history but mark the attribution conflicted so
+     * neither version receives production credit for a mixed transcript.
+     */
+    private async persistConversationPersonaResolution(
+        schemaName: string,
+        conversationId: string,
+        resolution: PersonaResolution,
+    ): Promise<void> {
+        if (!resolution.agentId || resolution.version == null) return;
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE conversations
+                    SET agent_attribution_conflicted =
+                            COALESCE(agent_attribution_conflicted, false)
+                            OR (
+                                agent_persona_id IS NOT NULL
+                                AND (
+                                    agent_persona_id IS DISTINCT FROM $2::uuid
+                                    OR agent_config_version IS DISTINCT FROM $3::integer
+                                )
+                            ),
+                        agent_config_version = CASE
+                            WHEN agent_persona_id IS NULL THEN $3::integer
+                            ELSE agent_config_version
+                        END,
+                        agent_persona_id = COALESCE(agent_persona_id, $2::uuid)
+                  WHERE id = $1::uuid`,
+                [conversationId, resolution.agentId, resolution.version],
+            );
+        } catch (error: any) {
+            // Observability cannot block the customer-facing turn; lazy DDL is
+            // retried by persona resolution on a later message.
+            this.logger.warn(
+                `[Attribution] Could not stamp conversation ${conversationId}: ${error?.message || error}`,
+            );
         }
     }
 
@@ -2758,7 +2817,8 @@ export class ConversationsService {
         text: string,
         options?: { allowHumanHandoff?: boolean },
     ): Promise<string | null> {
-        const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
+        const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget');
+        const config = personaResolution.config;
         if (!config) return null;
 
         // Serialize widget turns per conversation, same mutex as the main pipeline
@@ -2789,8 +2849,13 @@ export class ConversationsService {
             [conversationId],
         );
 
+        if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
+            return null;
+        }
+
         const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
         if (handoffReason && options?.allowHumanHandoff === true) {
+            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
             await this.handoffService.executeHandoff(tenantId, conversationId, {
                 tenantId, conversationId, contactId, channelType: 'web_widget',
                 content: { type: 'text', text },
@@ -2798,14 +2863,11 @@ export class ConversationsService {
             return handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
         }
         if (handoffReason) {
+            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
             this.logger.warn(`[Widget] Handoff blocked: no verified human-delivery capability for ${conversationId}`);
             return widgetHandoffUnavailableText(
                 this.languageDetector.detect(text, config.language || 'es'),
             );
-        }
-
-        if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
-            return null;
         }
 
         const turnContext = await this.buildWidgetTurnContext(
@@ -2821,6 +2883,7 @@ export class ConversationsService {
         chatMessages.push({ role: 'user' as const, content: text });
 
         try {
+            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
             const response = await this.llmRouter.execute({
                 model: 'grok-4-1-fast-non-reasoning',
                 messages: chatMessages,
@@ -2857,7 +2920,8 @@ export class ConversationsService {
         inboundMessageId?: string,
         options?: { allowHumanHandoff?: boolean },
     ): AsyncGenerator<string, void, unknown> {
-        const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
+        const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget');
+        const config = personaResolution.config;
         if (!config) return;
 
         const lockKey = `lock:conv:${conversationId}`;
@@ -2902,8 +2966,13 @@ export class ConversationsService {
                 [conversationId],
             );
 
+            if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
+                return;
+            }
+
             const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
             if (handoffReason && options?.allowHumanHandoff === true) {
+                await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
                 await this.handoffService.executeHandoff(tenantId, conversationId, {
                     tenantId, conversationId, contactId, channelType: 'web_widget',
                     content: { type: 'text', text },
@@ -2912,16 +2981,13 @@ export class ConversationsService {
                 return;
             }
             if (handoffReason) {
+                await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
                 this.logger.warn(`[Widget] Handoff blocked: no verified human-delivery capability for ${conversationId}`);
                 yield widgetHandoffUnavailableText(
                     this.languageDetector.detect(text, config.language || 'es'),
                 );
                 return;
             }
-            if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
-                return;
-            }
-
             // Resolve entitlement, allowed model tiers and cost circuit before any
             // provider request. Direct model selection bypassed provider health and
             // plan limits; the task-based router path keeps normal fallback behavior.
@@ -2966,6 +3032,8 @@ export class ConversationsService {
                 yield await this.buildQuotaFallbackMessage(tenantId);
                 return;
             }
+
+            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
 
             const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
                 ? config.llm.maxTokens : undefined;

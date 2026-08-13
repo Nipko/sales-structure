@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversations" (
     "contact_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE CASCADE,
     "channel_type" VARCHAR(50) NOT NULL,
     "channel_account_id" VARCHAR(255) NOT NULL,
+    -- Prospective attribution only. Existing rows deliberately remain NULL.
+    "agent_persona_id" UUID,
+    "agent_config_version" INTEGER,
+    -- True when more than one agent/config version actually handled this
+    -- conversation. Mixed conversations are never credited to either version.
+    "agent_attribution_conflicted" BOOLEAN NOT NULL DEFAULT false,
     "status" VARCHAR(50) DEFAULT 'active',  -- active, waiting_human, with_human, resolved, archived
     "stage" VARCHAR(50) DEFAULT 'greeting', -- greeting, discovery, negotiation, closing, support, complaint
     "assigned_to" VARCHAR(255),
@@ -48,9 +54,17 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversations" (
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations"
+    ADD COLUMN IF NOT EXISTS "agent_persona_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations"
+    ADD COLUMN IF NOT EXISTS "agent_config_version" INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations"
+    ADD COLUMN IF NOT EXISTS "agent_attribution_conflicted" BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS "idx_conversations_contact_id" ON "{{SCHEMA_NAME}}"."conversations" ("contact_id");
 CREATE INDEX IF NOT EXISTS "idx_conversations_status" ON "{{SCHEMA_NAME}}"."conversations" ("status");
 CREATE INDEX IF NOT EXISTS "idx_conversations_created_at" ON "{{SCHEMA_NAME}}"."conversations" ("created_at");
+CREATE INDEX IF NOT EXISTS "idx_conversations_agent_created" ON "{{SCHEMA_NAME}}"."conversations" ("agent_persona_id", "created_at");
+CREATE INDEX IF NOT EXISTS "idx_conversations_agent_version_created" ON "{{SCHEMA_NAME}}"."conversations" ("agent_persona_id", "agent_config_version", "created_at" DESC) WHERE "agent_persona_id" IS NOT NULL;
 
 -- ---- Messages ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."messages" (
@@ -297,6 +311,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_retrieval_log" (
 );
 CREATE INDEX IF NOT EXISTS idx_krl_doc_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("document_id", "created_at" DESC);
 CREATE INDEX IF NOT EXISTS idx_krl_created_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS idx_krl_conversation_created_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("conversation_id", "created_at" DESC) WHERE "conversation_id" IS NOT NULL;
 
 -- ---- KB Unanswered Queries ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_unanswered_queries" (
@@ -3201,6 +3216,8 @@ CREATE INDEX IF NOT EXISTS idx_turntrace_conv ON "{{SCHEMA_NAME}}"."turn_traces"
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_quality_scores" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     conversation_id UUID NOT NULL,
+    agent_id UUID,
+    agent_config_version INTEGER,
     overall_score NUMERIC,
     resolution_score NUMERIC,
     tone_score NUMERIC,
@@ -3214,8 +3231,14 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_quality_scores" (
     rubric_version VARCHAR(20) DEFAULT 'v1',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores"
+    ADD COLUMN IF NOT EXISTS agent_id UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores"
+    ADD COLUMN IF NOT EXISTS agent_config_version INTEGER;
 CREATE INDEX IF NOT EXISTS idx_cqs_conversation ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_cqs_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(created_at);
+CREATE INDEX IF NOT EXISTS idx_cqs_agent_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_cqs_agent_version_conversation_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, agent_config_version, conversation_id, created_at DESC) WHERE agent_id IS NOT NULL;
 
 -- ---- Simulation + eval gate ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."simulation_runs" (

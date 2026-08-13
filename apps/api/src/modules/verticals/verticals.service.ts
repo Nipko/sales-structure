@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
-import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
+import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import {
     listVerticalCapabilityConfigurations,
     ResolvedVerticalCapabilityManifest,
@@ -1577,7 +1577,9 @@ export class VerticalsService {
             await query(
                 `UPDATE agent_personas SET
                     name = $1,
-                    config_json = $2::jsonb
+                    config_json = $2::jsonb,
+                    version = COALESCE(version, 0) + 1,
+                    updated_at = NOW()
                  WHERE id = $3::uuid`,
                 [
                     displayName,
@@ -1875,7 +1877,9 @@ export class VerticalsService {
             await this.redis.del(`persona:${tenantId}:active`);
 
             for (const ch of PERSONA_CACHE_CHANNELS) {
-                await this.redis.del(`persona:${tenantId}:channel:${ch}`);
+                for (const key of personaChannelCacheKeys(tenantId, ch)) {
+                    await this.redis.del(key);
+                }
             }
 
             // El pipeline lee siempre la variante por-cuenta cuando hay conexión
@@ -1885,7 +1889,9 @@ export class VerticalsService {
                 select: { channelType: true, accountId: true },
             });
             for (const acct of accounts) {
-                await this.redis.del(`persona:${tenantId}:channel:${acct.channelType}:acct:${acct.accountId}`);
+                for (const key of personaChannelCacheKeys(tenantId, acct.channelType, acct.accountId)) {
+                    await this.redis.del(key);
+                }
             }
         } catch (error: any) {
             this.logger.warn(`Failed to invalidate caches after vertical bootstrap: ${error.message}`);
@@ -2215,7 +2221,11 @@ export class VerticalsService {
                 tools[toolKey] = { ...(tools[toolKey] || {}), enabled: true };
                 const newConfig = { ...config, tools };
                 await query(
-                    `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                    `UPDATE agent_personas
+                        SET config_json = $1::jsonb,
+                            version = COALESCE(version, 0) + 1,
+                            updated_at = NOW()
+                      WHERE id = $2::uuid`,
                     [JSON.stringify(newConfig), agent.id],
                 );
             }
@@ -2253,7 +2263,11 @@ export class VerticalsService {
                     },
                 };
                 await query(
-                    `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                    `UPDATE agent_personas
+                        SET config_json = $1::jsonb,
+                            version = COALESCE(version, 0) + 1,
+                            updated_at = NOW()
+                      WHERE id = $2::uuid`,
                     [JSON.stringify(newConfig), agent.id],
                 );
             }
@@ -2325,7 +2339,11 @@ export class VerticalsService {
                         tools: { ...config.tools, appointments: disabled },
                     };
                     await query(
-                        `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                        `UPDATE agent_personas
+                            SET config_json = $1::jsonb,
+                                version = COALESCE(version, 0) + 1,
+                                updated_at = NOW()
+                          WHERE id = $2::uuid`,
                         [JSON.stringify(newConfig), agent.id],
                     );
                     continue;
@@ -2362,7 +2380,11 @@ export class VerticalsService {
 
                 const newConfig = { ...config, tools: { ...config.tools, appointments: restored } };
                 await query(
-                    `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                    `UPDATE agent_personas
+                        SET config_json = $1::jsonb,
+                            version = COALESCE(version, 0) + 1,
+                            updated_at = NOW()
+                      WHERE id = $2::uuid`,
                     [JSON.stringify(newConfig), agent.id],
                 );
 

@@ -232,6 +232,7 @@
       "reportBuilder": "Custom Reports",
       "dripSequences": "Drip Sequences",
       "automationTemplates": "Templates",
+      "agentQuality": "Quality center",
       "agentSimulation": "Test agent",
       "procedures": "Procedures",
       "organizations": "Organizations",
@@ -5274,10 +5275,14 @@
     "errorConnection": "Connection error. Check your internet and try again."
   },
   "checklist": {
-    "title": "Your Progress",
+    "title": "Initial setup",
+    "description": "Launch guide; it does not represent agent quality.",
     "essentials": "Essentials",
     "recommended": "Recommended",
-    "complete": "complete",
+    "complete": "of setup",
+    "progressLabel": "Initial setup progress",
+    "expand": "Expand setup guide",
+    "collapse": "Collapse setup guide",
     "dismiss": "Dismiss guide",
     "reopenChecklist": "View setup progress",
     "items": {
@@ -9975,6 +9980,44 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "lastSent": "Last sent: {date}"
+  },
+  "agentQuality": {
+    "title": "Agent quality center", "subtitle": "See what still needs configuration, what has been tested, and what is happening in real conversations.", "loading": "Analyzing available evidence…", "statusLabel": "Current status", "agentInactive": "Inactive agent",
+    "agentSelector": { "label": "Agent to evaluate", "empty": "No agents", "default": "default" },
+    "actions": { "refresh": "Refresh evidence", "retry": "Try again", "editAgent": "Edit agent", "open": "Resolve", "openCenter": "Open quality center", "adminRequired": "Administrator required" },
+    "errors": { "title": "We couldn't load the quality center", "loadAgents": "Agents could not be loaded.", "loadOverview": "This agent could not be analyzed. Please try again." },
+    "empty": { "title": "There is no agent to evaluate yet", "description": "Create an agent, then return here to review its preparation, tests, and real performance.", "action": "Create agent" },
+    "statuses": {
+      "not_evaluated": { "title": "Not evaluated yet", "description": "There is not enough evidence yet to say how this agent is performing. Complete its preparation and run tests." },
+      "configuration_incomplete": { "title": "Configuration incomplete", "description": "Required elements are missing before the agent can be tested with confidence. Resolve critical blockers first." },
+      "at_risk": { "title": "Agent at risk", "description": "Tests or interactions show important signals that require review before expanding its use." },
+      "ready_for_pilot": { "title": "Ready for a controlled pilot", "description": "Configuration and tests support a limited pilot. There is not yet enough real evidence to validate ongoing operation." },
+      "operating_with_evidence": { "title": "Operating with evidence", "description": "The agent has configuration, current tests, and a useful sample of real conversations. Keep monitoring trends and changes." },
+      "review_required": { "title": "Review required", "description": "Evidence is outdated or recent performance shows weak points. Review the priority actions." }
+    },
+    "nextMilestone": { "label": "Next milestone", "complete_configuration": "Complete critical configuration", "pass_critical_tests": "Pass critical tests", "collect_production_evidence": "Collect enough production evidence", "maintain_quality": "Maintain quality and review changes" },
+    "evidence": { "generatedAt": "Analysis generated", "agentVersion": "Evaluated version", "agentUpdatedAt": "Last change", "latestEvidence": "Latest evidence" },
+    "layers": { "title": "Three evidence layers", "description": "Each layer answers a different question. Complete configuration does not replace testing or real performance." },
+    "pillarStatuses": { "unknown": "Not evaluated", "blocked": "Blocked", "needs_attention": "Needs attention", "ready": "Prepared", "stale": "Outdated", "insufficient_evidence": "Insufficient evidence", "evidenced": "Evidence available" },
+    "pillars": {
+      "preparation": { "title": "Preparation", "description": "Does the agent have well-configured context, knowledge, actions, safety, and operational routes?", "passedChecks": "applicable checks passed", "blockers": "{count, plural, one {# critical blocker} other {# critical blockers}}" },
+      "tested": { "title": "Tested quality", "description": "Did this version pass repeatable cases, including critical outcomes and actions?", "gatePassed": "Critical test passed", "gateFailed": "Critical test failed", "result": "Result {score}/10 · threshold {threshold}/10", "trials": "{count, plural, one {# trial} other {# trials}}", "automatedEvidence": "Automated evidence; not a certification", "noEval": "No critical evaluation yet", "stale": "The test does not match the current configuration.", "simulation": "Supporting simulation: {count} scenarios" },
+      "production": { "title": "Production", "description": "What do real conversations attributed to this agent show during the observed period?", "sample": "evaluated interactions · minimum {minimum} · last {days} days", "needMore": "{count} more interactions are needed for an initial useful signal.", "attributedSince": "Attribution available since {date}" }
+    },
+    "priority": { "title": "What to improve first", "description": "Actions ordered by risk and impact. Resolving them does not guarantee perfection; it increases evidence and reduces known weaknesses.", "affected": "{count, plural, one {# affected interaction} other {# affected interactions}}", "empty": "There are no open priority actions in this analysis." },
+    "severities": { "critical": "Critical", "high": "High", "medium": "Medium", "low": "Low" },
+    "dimensions": { "title": "Preparation by dimension", "description": "Open each dimension to see checks, evidence, and correction links.", "passed": "{passed} of {applicable} applicable checks passed", "names": { "business_scope": "Business and scope", "knowledge_grounding": "Knowledge and grounding", "conversation_brand": "Conversation and brand", "actions_outcomes": "Actions and outcomes", "safety_handoff": "Safety and handoff", "robustness_operations": "Robustness and operations" } },
+    "checkStatuses": { "pass": "Pass", "warning": "Review", "fail": "Missing", "unknown": "Unverified", "not_applicable": "Not applicable" },
+    "checks": { "agent_active": "Active agent", "persona_identity": "Agent identity and role", "business_identity": "Business identity", "business_contact": "Business contact details", "business_context": "Context, goals, and audience", "agent_language": "Configured language", "brand_voice": "Brand voice and tone", "greeting": "Initial greeting", "fallback_message": "Unknown-answer response", "behavior_rules": "Behavior rules", "custom_prompt": "Custom prompt", "knowledge_coverage": "Knowledge coverage", "rag_knowledge": "Knowledge base ready", "rag_configuration": "Retrieval configuration", "tool_knowledge": "Knowledge tool", "tool_faqs": "Frequently asked questions", "tool_policies": "Business policies", "tool_catalog": "Available catalog", "tool_appointments": "Scheduling and availability", "tool_orders": "Order management", "tool_ecommerce": "Commerce integration", "tool_offers": "Current offers", "tool_crm": "CRM actions", "channel_assignment": "Channel assigned to agent", "operational_channel_scope": "Certified conversational channels only", "channel_connection": "Operational channel connection", "forbidden_topics": "Restricted topics", "handoff_triggers": "Handoff reasons", "human_handoff_route": "Human support route", "business_hours": "Business hours", "after_hours_behavior": "After-hours behavior", "llm_limits": "Model response limits", "vertical_tool": "Industry operational tool", "unknown": "Configuration check" },
+    "recommendations": { "fix": "Configure: {item}", "investigate": "Investigate: {item}", "run_eval": "Run the critical tests", "refresh_eval": "Repeat tests for the current version", "fix_failed_eval": "Fix cases that failed the critical test", "run_simulation": "Expand coverage with a simulation", "collect_production_evidence": "Collect more real conversations", "review_tool_failures": "Review tool failures", "resolve_knowledge_gaps": "Strengthen knowledge gaps", "unknown": "Review this recommendation" },
+    "productionDetails": { "label": "Production details", "metricsTitle": "Production signals", "metricsDescription": "Metrics observed during the last {days} days; they are not interpreted as a global score.", "basedOn": "Based on {count} cases", "noMetrics": "There are no metrics attributable to this agent yet.", "issuesTitle": "Detected weak points", "issuesDescription": "Frequent patterns worth reviewing in their source conversations.", "affectedCount": "{count, plural, one {# interaction} other {# interactions}}", "openInbox": "Open Inbox", "noIssues": "No recurring issues were found in the available evidence." },
+    "metrics": { "quality_overall": "Observed conversation quality", "verified_resolution_rate": "Verified resolution", "handoff_rate": "Human handoff", "tool_failure_rate": "Tool failures", "open_knowledge_gaps": "Open knowledge gaps", "unknown": "Observed metric" },
+    "issues": { "tool_failures": "Tool failures", "knowledge_gaps": "Knowledge gaps", "qa_knowledge_accuracy": "Ungrounded or inaccurate answers", "qa_unresolved_need": "Unresolved customer needs", "qa_missing_handoff": "Missed human handoffs", "qa_tone_empathy": "Tone or empathy problems", "qa_ignored_question": "Ignored customer questions", "qa_repetition_clarity": "Repetition or unclear answers", "qa_other": "Other quality pattern", "qa_generic": "Conversation quality pattern", "unknown": "Quality signal to review" },
+    "staleReasons": { "agent_configuration_changed_after_eval": "The agent changed after the critical evaluation.", "business_or_knowledge_changed_after_eval": "Business or knowledge changed after the critical evaluation.", "agent_configuration_changed_after_simulation": "The agent changed after the simulation.", "simulation_persona_version_mismatch": "The simulation evaluated another agent version.", "business_or_knowledge_changed_after_simulation": "Business or knowledge changed after the simulation.", "unknown": "An evaluated source changed since the last test." },
+    "evidenceKeys": { "count": "Count", "configured": "Configured", "enabled": "Enabled", "active": "Active", "ready": "Ready", "connected": "Connected", "assigned": "Assigned", "hasName": "Has name", "hasRole": "Has role", "hasAbout": "Has description", "goals": "Goals", "audiences": "Audiences", "availableSources": "Available sources", "unsupportedAssignments": "Unsupported assignments", "chunks": "Indexed chunks", "published": "Published", "services": "Services", "availabilitySlots": "Availability slots", "products": "Products", "existingOrders": "Existing orders", "activeOffers": "Active offers", "records": "Records", "activeHumans": "Active people", "maxTokens": "Token limit", "hasTone": "Has tone", "hasFormality": "Has formality", "minimumSample": "Minimum sample", "unknown": "Evidence" },
+    "common": { "yes": "Yes", "no": "No", "notAvailable": "Not available" },
+    "method": { "title": "How to interpret this center", "description": "This is a decision aid, not a promise of perfection or automatic learning. It combines verifiable configuration, repeatable tests, and evidence from real interactions; critical blockers take precedence over averages." },
+    "banner": { "loading": "Reviewing agent quality…", "unavailableTitle": "Quality analysis is unavailable", "unavailableDescription": "Open the center to retry and review the configuration.", "openCenter": "View quality", "blockers": "There {count, plural, one {is # critical blocker} other {are # critical blockers}} to resolve.", "stale": "Tests became outdated after changes to the agent.", "evidence": "Real evidence: {current} of {minimum} minimum interactions.", "current": "The evaluation is current; review details and trends." }
   },
   "simulation": {
     "title": "Test agent",

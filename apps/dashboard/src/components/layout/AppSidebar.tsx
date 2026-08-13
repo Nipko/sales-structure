@@ -287,6 +287,7 @@ const tenantSections: NavSectionDef[] = [
           { labelKey: "reportBuilder", href: "/admin/report-builder" },
         ]
       },
+      { labelKey: "agentQuality", href: "/admin/agent/quality", icon: ShieldCheck, capability: "canSeeGlobalAnalytics", accent: "text-emerald-500 dark:text-emerald-400" },
       { labelKey: "agentAnalytics", href: "/admin/agent-analytics", icon: Gauge, capability: "canSeeGlobalAnalytics" },
     ],
   },

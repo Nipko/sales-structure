@@ -1136,3 +1136,26 @@ describe('VerticalsService subtype-aware persona reconciliation', () => {
         expect(persistedConfig.tools.appointments).toEqual({ enabled: true });
     });
 });
+
+describe('VerticalsService quality attribution cache invalidation', () => {
+    it('invalidates both legacy config and agent-resolution keys after bootstrap', async () => {
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const redis = { del: jest.fn().mockResolvedValue(undefined) };
+        const prisma = {
+            channelAccount: {
+                findMany: jest.fn().mockResolvedValue([{
+                    channelType: 'whatsapp',
+                    accountId: 'phone-1',
+                }]),
+            },
+        };
+        const service = new VerticalsService(prisma as any, redis as any, {} as any);
+
+        await (service as any).invalidateRuntimeCaches(tenantId);
+
+        expect(redis.del).toHaveBeenCalledWith(`persona:${tenantId}:channel:whatsapp`);
+        expect(redis.del).toHaveBeenCalledWith(`persona-resolution:${tenantId}:channel:whatsapp`);
+        expect(redis.del).toHaveBeenCalledWith(`persona:${tenantId}:channel:whatsapp:acct:phone-1`);
+        expect(redis.del).toHaveBeenCalledWith(`persona-resolution:${tenantId}:channel:whatsapp:acct:phone-1`);
+    });
+});

@@ -11,12 +11,12 @@
 > también usa `api/v1` bajo `https://wa.parallly-chat.cloud/api/v1`.
 
 > **Cobertura.** El API tiene **88 archivos `*.module.ts`** en `apps/api/src/modules`; este documento detalla
-> los ~27 más usados. Muchos módulos verticales (`restaurants`, `gyms`, `pets`, `education`,
+> los ~28 más usados. Muchos módulos verticales (`restaurants`, `gyms`, `pets`, `education`,
 > `insurance`, `tours`, `photography`, `home-services`, `procedures`, `treatment-plans`,
 > `recall`, `policies`, `intake`, `faqs`, `reviews`, `attribution`, `crm-b2b`, `mcp`,
-> `vertical-integrations`, `vertical-analytics`, `simulation`, `quality`, `slack`, `push`,
+> `vertical-integrations`, `vertical-analytics`, `simulation`, `slack`, `push`,
 > `trace`, `carla`, etc.) exponen endpoints propios no listados aquí. El dashboard (Next.js,
-> puerto 3001) tiene **143 páginas** (`page.tsx`): 130 bajo `/admin` y 13 fuera de ese árbol.
+> puerto 3001) tiene **144 páginas** (`page.tsx`): 131 bajo `/admin` y 13 fuera de ese árbol.
 > Estos conteos son un snapshot del filesystem, no un contrato de producto.
 
 ---
@@ -59,6 +59,7 @@
 | SAML/SSO | `modules/auth/saml/` | 6 | Enterprise SSO via SAML 2.0 |
 | Widget | `modules/widget/` | 13 + WS | Web chat widget embebible + triggers + Socket.IO `/widget` |
 | Dashboard Analytics | `modules/dashboard-analytics/` | 1 | Estadísticas resolución IA |
+| Quality | `modules/quality/` | 4 | QA de conversaciones y Centro de calidad por agente |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -171,6 +172,22 @@ Todos los endpoints de lectura requieren JWT + TenantGuard y rol
 | GET | `/:tenantId/channels` | Admin/Supervisor | Rendimiento por canal |
 | GET | `/:tenantId/overview-series` | Admin/Supervisor | Serie temporal |
 | GET | `/:tenantId/performance` | Admin/Supervisor | Performance detallada |
+
+### Calidad por agente (`/api/v1/quality`)
+
+Los endpoints del Centro de calidad son de lectura y usan JWT, `TenantGuard` y roles
+Admin/Supervisor. El selector no expone la configuración del agente; el overview
+mantiene separados preparación, pruebas y producción atribuida a la versión vigente.
+`super_admin` solo los usa dentro de un tenant mediante el contexto autorizado de
+impersonación. Sus estados son evidencia operativa, no una certificación ni una orden
+de autoedición.
+
+| Método | Ruta | Roles | Descripción |
+|--------|------|-------|-------------|
+| GET | `/quality/:tenantId/agents` | Super admin/Admin/Supervisor | Selector mínimo: id, nombre, activo y predeterminado |
+| GET | `/quality/:tenantId/agents/:agentId/overview` | Super admin/Admin/Supervisor | Estado, siguiente hito, tres pilares, dimensiones y recomendaciones del agente |
+| GET | `/quality/:tenantId` | Super admin/Admin/Supervisor | Resumen QA del rango (`start`, `end`) |
+| GET | `/quality/:tenantId/flagged` | Super admin/Admin/Supervisor | Conversaciones QA marcadas (`start`, `end`, `limit`) |
 
 ### Settings (`/api/v1/settings`)
 | Método | Ruta | Descripción |

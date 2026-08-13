@@ -23,3 +23,22 @@ export const PERSONA_CACHE_CHANNELS = [
     'email',
     'web_widget',
 ] as const;
+
+/**
+ * Both cache contracts for one channel resolution target. Keeping construction
+ * here lets channel disconnects invalidate safely without importing
+ * PersonaModule (which would close the Channels/Persona module graph).
+ */
+export function personaChannelCacheKeys(
+    tenantId: string,
+    channelType: string,
+    accountId?: string,
+): [string, string] {
+    const suffix = accountId
+        ? `channel:${channelType}:acct:${accountId}`
+        : `channel:${channelType}`;
+    return [
+        `persona:${tenantId}:${suffix}`,
+        `persona-resolution:${tenantId}:${suffix}`,
+    ];
+}

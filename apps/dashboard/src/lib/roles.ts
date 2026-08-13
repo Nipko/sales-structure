@@ -121,6 +121,10 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/settings/ai-config", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/channels", roles: [ROLE_KEYS.SUPER_ADMIN] },
 
+    // Read-only quality evidence is visible to supervisors. Agent editing below
+    // remains tenant_admin-only.
+    { prefix: "/admin/agent/quality", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+
     // ── Tenant_admin only (also super_admin when impersonating) ─
     { prefix: "/admin/users", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/agent", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN], requiresImpersonationForSuperAdmin: true },

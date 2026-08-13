@@ -2,6 +2,10 @@
 
 These Markdown files are the product-help source loaded by `CopilotService`. They are separate from tenant knowledge, FAQs, and policies, which answer each tenant's customers.
 
+The collection currently has 26 equivalent articles in each locale (`es`, `en`,
+`pt`, `fr`). `centro-calidad-agente` covers the read-only Agent quality center for
+Tenant Admin and Tenant Supervisor; agent editing remains Admin-only.
+
 ## Contract
 
 - Keep the same article `id`, `routes`, and `roles` in `es`, `en`, `pt`, and `fr`.

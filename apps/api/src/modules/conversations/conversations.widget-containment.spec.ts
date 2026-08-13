@@ -17,13 +17,16 @@ describe('ConversationsService widget containment', () => {
             ...overrides.redis,
         };
         const prisma = {
-            executeInTenantSchema: jest.fn()
-                .mockResolvedValue([])
-                .mockResolvedValueOnce([
+            executeInTenantSchema: jest.fn(async (_schema: string, sql: string) => {
+                if (sql.includes('SELECT id, direction, content_text FROM messages')) return [
                     { id: 'old-2', direction: 'outbound', content_text: 'previous answer' },
                     { id: 'old-1', direction: 'inbound', content_text: 'previous question' },
-                ])
-                .mockResolvedValueOnce([{ id: 'conversation-1', status: 'active' }]),
+                ];
+                if (sql.includes('SELECT * FROM conversations')) {
+                    return [{ id: 'conversation-1', status: 'active' }];
+                }
+                return [];
+            }),
             tenant: { findUnique: jest.fn().mockResolvedValue({ language: 'es' }) },
             ...overrides.prisma,
         };
@@ -50,11 +53,15 @@ describe('ConversationsService widget containment', () => {
             throttle,
             llmRouter,
             personaService: {
-                getPersonaForChannel: jest.fn().mockResolvedValue({
-                    language: 'en',
-                    hours: { timezone: 'Europe/Paris' },
-                    llm: { temperature: 0.4, maxTokens: 500 },
-                    persona: { name: 'Widget Agent' },
+                resolvePersonaForChannel: jest.fn().mockResolvedValue({
+                    agentId: '11111111-1111-4111-8111-111111111111',
+                    version: 3,
+                    config: {
+                        language: 'en',
+                        hours: { timezone: 'Europe/Paris' },
+                        llm: { temperature: 0.4, maxTokens: 500 },
+                        persona: { name: 'Widget Agent' },
+                    },
                 }),
             },
             handoffService: {
@@ -103,7 +110,11 @@ describe('ConversationsService widget containment', () => {
             'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'current question', 'inbound-1',
         ))).resolves.toBe('safe reply');
 
-        const [historySql, historyParams] = prisma.executeInTenantSchema.mock.calls[0].slice(1);
+        const historyCall = prisma.executeInTenantSchema.mock.calls.find(
+            (call: any[]) => String(call[1]).includes('SELECT id, direction, content_text FROM messages'),
+        );
+        expect(historyCall).toBeDefined();
+        const [, historySql, historyParams] = historyCall!;
         expect(historySql).toContain('id <> $2::uuid');
         expect(historySql).toContain('ORDER BY created_at DESC, id DESC LIMIT 20');
         expect(historyParams).toEqual(['conversation-1', 'inbound-1']);
@@ -133,7 +144,7 @@ describe('ConversationsService widget containment', () => {
     });
 
     it('does not call the provider after the monthly quota is exhausted', async () => {
-        const { service, throttle, llmRouter } = makeService({
+        const { service, prisma, throttle, llmRouter } = makeService({
             throttle: {
                 getAiMessageUsage: jest.fn().mockResolvedValue({ used: 10, limit: 10 }),
             },
@@ -144,6 +155,9 @@ describe('ConversationsService widget containment', () => {
         ))).resolves.toBe('quota fallback');
         expect(throttle.incrementAiMessageCount).not.toHaveBeenCalled();
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
+        expect(prisma.executeInTenantSchema.mock.calls.some(
+            (call: any[]) => String(call[1]).includes('SET agent_persona_id'),
+        )).toBe(false);
     });
 
     it('fails closed on handoff routing until human widget delivery is verified', async () => {
@@ -156,6 +170,28 @@ describe('ConversationsService widget containment', () => {
         ))).resolves.toContain('cannot transfer');
 
         expect(handoff.executeHandoff).not.toHaveBeenCalled();
+        expect(llmRouter.executeStream).not.toHaveBeenCalled();
+    });
+
+    it('does not attribute a widget conversation already owned by a human', async () => {
+        const executeInTenantSchema = jest.fn(async (_schema: string, sql: string) => {
+            if (sql.includes('SELECT id, direction, content_text FROM messages')) return [];
+            if (sql.includes('SELECT * FROM conversations')) {
+                return [{ id: 'conversation-1', status: 'with_human' }];
+            }
+            return [];
+        });
+        const { service, llmRouter } = makeService({
+            prisma: { executeInTenantSchema },
+        });
+
+        await expect(collect(service.streamWidgetMessage(
+            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human follow-up', 'inbound-1',
+        ))).resolves.toBe('');
+
+        expect(executeInTenantSchema.mock.calls.some(
+            (call: any[]) => String(call[1]).includes('SET agent_persona_id'),
+        )).toBe(false);
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 

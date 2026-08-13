@@ -25,15 +25,7 @@ Dès votre connexion, vous arrivez sur le **Dashboard** : votre vue d'ensemble d
 
 ### Le taux de résolution IA
 
-Dans l'onglet **Résolution IA**, vous voyez quel pourcentage de conversations votre agent IA a résolu seul, sans qu'un humain ait besoin d'intervenir, avec sa tendance dans le temps et la répartition par canal. À titre de repère :
-
-| Taux | Ce que cela signifie |
-|------|---------------|
-| Plus de 80 % | Excellent : votre agent et votre base de connaissances sont bien réglés |
-| 60–80 % | Bon : examinez quelles questions restent sans réponse pour vous améliorer |
-| Moins de 60 % | À surveiller : il manque probablement des FAQ ou les règles d'escalade sont trop sensibles |
-
-Si le taux est faible sur un canal en particulier, examinez le type de demandes qui y arrivent : ce public a peut-être besoin de contenu dédié dans votre base de connaissances.
+Dans l'onglet **Résolution IA**, vous voyez quel pourcentage de conversations votre agent IA a résolu seul, sans qu'un humain ait besoin d'intervenir, avec sa tendance dans le temps et la répartition par canal. Il s'agit d'un signal opérationnel, pas d'une note de qualité : un taux élevé peut coexister avec des réponses incorrectes, tandis qu'un taux faible peut refléter des transferts sûrs. S'il varie fortement selon le canal, examinez les demandes, l'agent attribué et les lacunes de connaissances.
 
 ## Comment examiner la performance de vos agents et de vos canaux
 

@@ -254,7 +254,7 @@ function TenantHelpAssistant() {
           type="button"
           onClick={openAssistant}
           aria-label={t("launcherTooltip")}
-          className={`group fixed bottom-4 right-6 z-40 flex cursor-pointer items-end justify-center drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] transition-[transform,opacity] duration-300 hover:scale-105 active:scale-95 ${
+          className={`group fixed bottom-4 right-4 z-40 flex cursor-pointer items-end justify-center drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] transition-[transform,opacity] duration-300 hover:scale-105 active:scale-95 sm:right-6 ${
             intro === "hidden" ? "pointer-events-none opacity-0" : "opacity-100"
           }`}
         >

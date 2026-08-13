@@ -180,6 +180,7 @@ describe("segment-aware active matching", () => {
 describe("route and breadcrumb resolution", () => {
   it("prefers a static route over a dynamic sibling", () => {
     expect(resolveNavigationRoute("/admin/contacts/organizations")?.definition.id).toBe("organizations");
+    expect(resolveNavigationRoute("/admin/agent/quality")?.definition.id).toBe("agentQuality");
     expect(resolveNavigationRoute("/admin/agent/simulation")?.definition.id).toBe("agentSimulation");
   });
 

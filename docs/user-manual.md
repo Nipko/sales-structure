@@ -212,6 +212,7 @@ invitar o editar miembros.
 - ✅ Preparar borradores, audiencias y revisar métricas de campañas; el lanzamiento de producción aún no está certificado (ver sección 12)
 - ✅ Cargar contenido a la base de conocimiento
 - ✅ Ver analytics completas (CRM, agentes, canales, CSAT)
+- ✅ Consultar el Centro de calidad de cada agente y sus recomendaciones
 - ✅ Configurar etapas del pipeline y reglas de scoring
 - ✅ Crear macros, plantillas de email y formularios pre-chat
 - ✅ Definir campos personalizados, etapas/scoring, macros, media, plantillas y pre-chat
@@ -308,6 +309,9 @@ Banner con pasos pendientes para activar tu cuenta:
 - Crear un servicio/producto
 - Cargar tu logo
 
+Este checklist indica adopción y configuración inicial. No certifica la calidad del
+agente ni sustituye sus pruebas o la evidencia de conversaciones reales.
+
 ---
 
 # 5. Navegación
@@ -338,6 +342,7 @@ orden no cambia entre páginas ni sesiones:
 ### INSIGHTS
 - **Análisis**, analítica CRM, atribución e informes (admin/supervisor)
 - **Rendimiento del equipo** (admin/supervisor)
+- **Centro de calidad** por agente (admin/supervisor, lectura y diagnóstico)
 
 ### ADMINISTRACIÓN
 - Canales, usuarios, cumplimiento, facturación y solicitudes de funciones según rol
@@ -647,10 +652,11 @@ segmentos y campos personalizados dentro del embudo activo.
 # 8. Agentes IA
 
 **Ruta:** IA y crecimiento → Agente IA
-**Roles:** Tenant Admin
+**Roles del listado y editor:** Tenant Admin
 
 Supervisor y Agent pueden trabajar con conversaciones atendidas por la IA desde el
-Inbox, pero no acceden al listado ni al editor de agentes.
+Inbox, pero no acceden al listado ni al editor de agentes. El Supervisor sí puede
+consultar la evidencia de cada agente desde **Insights → Centro de calidad**.
 
 ## 8.1 Lista de agentes
 
@@ -753,6 +759,59 @@ Al crear un agente nuevo, "Recomendados para tu negocio" aparece destacado segú
 ## 8.4 Test del agente
 
 Modo simulador: chateá con tu agente sin afectar contactos reales. Útil antes de activarlo en producción.
+
+Una conversación manual sirve para depurar, pero no demuestra calidad general. El
+Centro de calidad usa por separado pruebas repetibles y evidencia real atribuida a la
+versión del agente.
+
+## 8.5 Centro de calidad del agente
+
+**Ruta:** Insights → Centro de calidad (`/admin/agent/quality`)
+**Roles:** Tenant Admin / Tenant Supervisor
+
+Esta vista responde tres preguntas sin mezclarlas en un porcentaje decorativo:
+
+1. **Preparación:** ¿están configurados el negocio, el conocimiento, el tono, las
+   conexiones, las herramientas, la seguridad, el handoff y la operación aplicables?
+2. **Calidad probada:** ¿la versión actual superó evaluaciones y simulaciones
+   repetibles, y esa evidencia continúa vigente?
+3. **Producción:** ¿qué muestran las conversaciones reales atribuidas a ese agente y
+   a esa versión durante el periodo observado?
+
+Selecciona un agente en la parte superior. La pantalla muestra la versión analizada,
+el siguiente hito, los bloqueos críticos, los controles por dimensión, la última
+evidencia de pruebas, el tamaño de la muestra real y las mejoras prioritarias. Una
+capacidad deshabilitada que no forma parte del alcance puede aparecer como **No
+aplica**; no reduce el resultado. Cuando falta volumen real aparece **Evidencia
+insuficiente**, no un cero.
+
+### Estados que puedes ver
+
+| Estado | Cómo interpretarlo |
+|--------|---------------------|
+| **Aún no evaluado** | Todavía no hay evidencia suficiente para emitir un estado. |
+| **Configuración incompleta** | Falta al menos un requisito o existe una advertencia de preparación. |
+| **Agente en riesgo** | Una prueba crítica o una señal real importante requiere revisión. |
+| **Listo para piloto controlado** | Preparación y pruebas permiten un piloto limitado; aún falta evidencia real suficiente. |
+| **Operando con evidencia** | Hay configuración, pruebas vigentes y una muestra útil de producción. |
+| **Revisión requerida** | La evidencia quedó desactualizada o el desempeño reciente se deterioró. |
+
+Estos estados no son una certificación, no significan que el agente sea perfecto y
+no garantizan resultados comerciales. Los evaluadores automáticos aportan evidencia;
+una persona debe revisar los casos relevantes.
+
+### Cómo usar las recomendaciones
+
+- Empieza por las acciones **Críticas** y **Altas**; cada una indica el pilar, la
+  dimensión y cuántos escenarios o interacciones la originaron cuando ese dato existe.
+- Distingue si debes **reforzar conocimiento**, **ajustar comportamiento** o **reparar
+  una capacidad** como una herramienta, integración o ruta de handoff.
+- El Supervisor puede revisar y coordinar. Solo el Admin puede entrar al editor del
+  agente o cambiar conexiones y configuración.
+- El sistema no reescribe automáticamente prompts, políticas ni conocimiento. Después
+  de un cambio, vuelve a probar la versión y verifica si producción confirma la mejora.
+- La evidencia histórica sin una atribución inequívoca no se asigna retroactivamente a
+  un agente. Por eso un agente recién instrumentado puede necesitar nuevas interacciones.
 
 ---
 
@@ -1268,13 +1327,15 @@ Una conversación se considera "resuelta por IA" si:
 
 ### Cómo interpretar
 
-| Tasa | Interpretación |
-|------|---------------|
-| **> 80%** | Excelente — tu KB y agente están bien configurados |
-| **60-80%** | Buena — revisa las brechas de KB para mejorar |
-| **< 60%** | Necesita atención — probablemente faltan FAQs, el tono no convence o las reglas de handoff son muy agresivas |
+Úsala como una señal operativa, no como una nota de calidad. Una tasa alta puede
+coexistir con respuestas incorrectas o acciones no verificadas; una tasa baja puede
+reflejar handoffs seguros y deliberados. Si cambia mucho por canal, revisa el tipo de
+consultas, el agente asignado y las brechas de conocimiento.
 
-> **Tip:** Si la tasa es baja en un canal específico, revisa el tipo de consultas que llegan por ese canal. Puede que necesites ajustar el agente IA asignado o enriquecer la KB con contenido específico para ese público.
+Para decidir si un agente está preparado, probado y funcionando bien con evidencia
+atribuida a su versión, consulta **Insights → Centro de calidad** (sección 8.5). Allí
+la resolución verificada, la calidad conversacional observada, los fallos de
+herramientas, los handoffs y los vacíos de conocimiento se muestran por separado.
 
 ---
 

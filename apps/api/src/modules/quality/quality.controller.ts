@@ -3,18 +3,39 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { AgentQualityService } from './agent-quality.service';
 import { QualityService } from './quality.service';
 
 @Controller('quality')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class QualityController {
-    constructor(private readonly quality: QualityService) {}
+    constructor(
+        private readonly quality: QualityService,
+        private readonly agentQuality: AgentQualityService,
+    ) {}
 
     private resolveRange(start?: string, end?: string): { startDate: string; endDate: string } {
         if (start && end) return { startDate: start, endDate: end };
         const endDate = new Date();
         const startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
         return { startDate: startDate.toISOString(), endDate: endDate.toISOString() };
+    }
+
+    @Get(':tenantId/agents')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async listAgents(@Param('tenantId') tenantId: string) {
+        const data = await this.agentQuality.listAgents(tenantId);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/agents/:agentId/overview')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async getAgentOverview(
+        @Param('tenantId') tenantId: string,
+        @Param('agentId') agentId: string,
+    ) {
+        const data = await this.agentQuality.getOverview(tenantId, agentId);
+        return { success: true, data };
     }
 
     @Get(':tenantId')

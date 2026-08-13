@@ -30,6 +30,7 @@ del dashboard por sí solo no lo publica.
 | Configuración | `_settings-config.ts` |
 | Plan vigente del tenant | Contexto de plan inyectado desde `billing_plans` |
 | Vertical y herramientas | Manifest v2 y capacidades efectivas del tenant |
+| Centro de calidad del agente | `agent-quality-contract.ts`, guards de `/quality/:tenantId/agents*` y `/admin/agent/quality` |
 | Manual narrativo tenant | `docs/user-manual.md` como apoyo editorial, no como fuente runtime |
 | App móvil | `docs/mobile-user-manual.md` contrastado con `apps/mobile/src` |
 
@@ -78,6 +79,8 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
    funcional integral.
 5. App móvil y límites frente a la web.
 6. Tour de configuración, incluido su comportamiento por rol y en móvil.
+7. Centro de calidad por agente: tres pilares, estados, atribución por versión,
+   evidencia insuficiente y diferencia entre lectura Supervisor y edición Admin.
 
 ## Reglas editoriales
 
@@ -89,6 +92,9 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
   alertas” como ubicación actual del menú.
 - No afirmar aprobación de Play Store, certificación vertical ni disponibilidad de
   una integración sin evidencia vigente.
+- No presentar un estado o puntaje del Centro de calidad como certificación, garantía
+  comercial o permiso para publicar sin revisión; tampoco prometer autoedición de
+  prompts, políticas o conocimiento.
 - No prometer como operativo un control que la KB marca `no certificado`; las
   limitaciones de pipeline, campañas, calendario, drip, CSAT, Email y triggers deben
   mantenerse coherentes en todos los artículos que las mencionen.

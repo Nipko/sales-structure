@@ -232,6 +232,7 @@
       "reportBuilder": "Relatórios personalizados",
       "dripSequences": "Sequências Drip",
       "automationTemplates": "Modelos",
+      "agentQuality": "Centro de qualidade",
       "agentSimulation": "Testar agente",
       "procedures": "Procedimentos",
       "organizations": "Organizações",
@@ -5274,10 +5275,14 @@
     "errorConnection": "Erro de conexao. Verifique sua internet e tente novamente."
   },
   "checklist": {
-    "title": "Seu Progresso",
+    "title": "Configuração inicial",
+    "description": "Guia de implementação; não representa a qualidade do agente.",
     "essentials": "Essenciais",
     "recommended": "Recomendados",
-    "complete": "completo",
+    "complete": "da configuração",
+    "progressLabel": "Progresso da configuração inicial",
+    "expand": "Expandir guia de configuração",
+    "collapse": "Recolher guia de configuração",
     "dismiss": "Fechar guia",
     "reopenChecklist": "Ver progresso da configuração",
     "items": {
@@ -9975,6 +9980,44 @@
     "enabled": "Habilitado",
     "disabled": "Deshabilitado",
     "lastSent": "Último envio: {date}"
+  },
+  "agentQuality": {
+    "title": "Centro de qualidade do agente", "subtitle": "Veja o que falta configurar, o que já foi testado e o que ocorre em conversas reais.", "loading": "Analisando as evidências disponíveis…", "statusLabel": "Estado atual", "agentInactive": "Agente inativo",
+    "agentSelector": { "label": "Agente a avaliar", "empty": "Nenhum agente", "default": "padrão" },
+    "actions": { "refresh": "Atualizar evidências", "retry": "Tentar novamente", "editAgent": "Editar agente", "open": "Resolver", "openCenter": "Abrir centro de qualidade", "adminRequired": "Requer administrador" },
+    "errors": { "title": "Não foi possível carregar o centro de qualidade", "loadAgents": "Não foi possível carregar os agentes.", "loadOverview": "Não foi possível analisar este agente. Tente novamente." },
+    "empty": { "title": "Ainda não há um agente para avaliar", "description": "Crie um agente e volte aqui para revisar preparação, testes e desempenho real.", "action": "Criar agente" },
+    "statuses": {
+      "not_evaluated": { "title": "Ainda não avaliado", "description": "Ainda não há evidência suficiente para afirmar como este agente funciona. Complete a preparação e execute testes." },
+      "configuration_incomplete": { "title": "Configuração incompleta", "description": "Faltam elementos necessários antes de testar o agente com confiança. Resolva primeiro os bloqueios críticos." },
+      "at_risk": { "title": "Agente em risco", "description": "Testes ou interações mostram sinais importantes que exigem revisão antes de ampliar o uso." },
+      "ready_for_pilot": { "title": "Pronto para piloto controlado", "description": "A configuração e os testes permitem um piloto limitado. Ainda falta evidência real suficiente para validar a operação." },
+      "operating_with_evidence": { "title": "Operando com evidências", "description": "O agente possui configuração, testes atuais e uma amostra útil de conversas reais. Continue acompanhando tendências e mudanças." },
+      "review_required": { "title": "Revisão necessária", "description": "As evidências ficaram desatualizadas ou o desempenho recente mostra pontos fracos. Revise as ações prioritárias." }
+    },
+    "nextMilestone": { "label": "Próximo marco", "complete_configuration": "Completar a configuração crítica", "pass_critical_tests": "Superar os testes críticos", "collect_production_evidence": "Reunir evidência suficiente de produção", "maintain_quality": "Manter a qualidade e revisar mudanças" },
+    "evidence": { "generatedAt": "Análise gerada", "agentVersion": "Versão avaliada", "agentUpdatedAt": "Última alteração", "latestEvidence": "Evidência mais recente" },
+    "layers": { "title": "Três camadas de evidência", "description": "Cada camada responde a uma pergunta diferente. Configuração completa não substitui testes nem desempenho real." },
+    "pillarStatuses": { "unknown": "Não avaliado", "blocked": "Bloqueada", "needs_attention": "Requer atenção", "ready": "Preparada", "stale": "Desatualizada", "insufficient_evidence": "Evidência insuficiente", "evidenced": "Com evidência" },
+    "pillars": {
+      "preparation": { "title": "Preparação", "description": "O agente tem contexto, conhecimento, ações, segurança e rotas operacionais bem configurados?", "passedChecks": "controles aplicáveis aprovados", "blockers": "{count, plural, one {# bloqueio crítico} other {# bloqueios críticos}}" },
+      "tested": { "title": "Qualidade testada", "description": "Esta versão superou casos repetíveis, incluindo resultados e ações críticas?", "gatePassed": "Teste crítico aprovado", "gateFailed": "Teste crítico não aprovado", "result": "Resultado {score}/10 · limite {threshold}/10", "trials": "{count, plural, one {# tentativa} other {# tentativas}}", "automatedEvidence": "Evidência automatizada; não é certificação", "noEval": "Ainda não há avaliação crítica", "stale": "O teste não corresponde à configuração atual.", "simulation": "Simulação complementar: {count} cenários" },
+      "production": { "title": "Produção", "description": "O que mostram as conversas reais atribuídas a este agente no período observado?", "sample": "interações avaliadas · mínimo {minimum} · últimos {days} dias", "needMore": "Faltam {count} interações para um sinal inicial útil.", "attributedSince": "Atribuição disponível desde {date}" }
+    },
+    "priority": { "title": "O que melhorar primeiro", "description": "Ações ordenadas por risco e impacto. Resolvê-las não garante perfeição; aumenta as evidências e reduz fraquezas conhecidas.", "affected": "{count, plural, one {# interação afetada} other {# interações afetadas}}", "empty": "Não há ações prioritárias abertas nesta análise." },
+    "severities": { "critical": "Crítica", "high": "Alta", "medium": "Média", "low": "Baixa" },
+    "dimensions": { "title": "Preparação por dimensão", "description": "Abra cada dimensão para ver controles, evidências e links de correção.", "passed": "{passed} de {applicable} controles aplicáveis aprovados", "names": { "business_scope": "Negócio e escopo", "knowledge_grounding": "Conhecimento e embasamento", "conversation_brand": "Conversa e marca", "actions_outcomes": "Ações e resultados", "safety_handoff": "Segurança e transferência", "robustness_operations": "Robustez e operação" } },
+    "checkStatuses": { "pass": "Cumpre", "warning": "Revisar", "fail": "Falta", "unknown": "Não verificado", "not_applicable": "Não se aplica" },
+    "checks": { "agent_active": "Agente ativo", "persona_identity": "Identidade e função do agente", "business_identity": "Identidade do negócio", "business_contact": "Dados de contato do negócio", "business_context": "Contexto, objetivos e público", "agent_language": "Idioma configurado", "brand_voice": "Voz e tom da marca", "greeting": "Saudação inicial", "fallback_message": "Resposta quando não sabe", "behavior_rules": "Regras de comportamento", "custom_prompt": "Prompt personalizado", "knowledge_coverage": "Cobertura de conhecimento", "rag_knowledge": "Base de conhecimento pronta", "rag_configuration": "Configuração de recuperação", "tool_knowledge": "Ferramenta de conhecimento", "tool_faqs": "Perguntas frequentes", "tool_policies": "Políticas do negócio", "tool_catalog": "Catálogo disponível", "tool_appointments": "Agenda e disponibilidade", "tool_orders": "Gestão de pedidos", "tool_ecommerce": "Integração de comércio", "tool_offers": "Ofertas vigentes", "tool_crm": "Ações de CRM", "channel_assignment": "Canal atribuído ao agente", "operational_channel_scope": "Somente canais conversacionais certificados", "channel_connection": "Conexão operacional do canal", "forbidden_topics": "Tópicos restritos", "handoff_triggers": "Motivos de transferência", "human_handoff_route": "Rota para atendimento humano", "business_hours": "Horário comercial", "after_hours_behavior": "Comportamento fora do horário", "llm_limits": "Limites de resposta do modelo", "vertical_tool": "Ferramenta operacional da indústria", "unknown": "Controle de configuração" },
+    "recommendations": { "fix": "Configure: {item}", "investigate": "Investigue: {item}", "run_eval": "Execute os testes críticos", "refresh_eval": "Repita os testes para a versão atual", "fix_failed_eval": "Corrija os casos que falharam no teste crítico", "run_simulation": "Amplie a cobertura com uma simulação", "collect_production_evidence": "Reúna mais conversas reais", "review_tool_failures": "Revise falhas de ferramentas", "resolve_knowledge_gaps": "Reforce lacunas de conhecimento", "unknown": "Revise esta recomendação" },
+    "productionDetails": { "label": "Detalhes de produção", "metricsTitle": "Sinais de produção", "metricsDescription": "Métricas observadas nos últimos {days} dias; não são interpretadas como uma nota global.", "basedOn": "Baseado em {count} casos", "noMetrics": "Ainda não há métricas atribuíveis a este agente.", "issuesTitle": "Pontos fracos detectados", "issuesDescription": "Padrões frequentes que vale revisar nas conversas de origem.", "affectedCount": "{count, plural, one {# interação} other {# interações}}", "openInbox": "Abrir Inbox", "noIssues": "Não há problemas recorrentes nas evidências disponíveis." },
+    "metrics": { "quality_overall": "Qualidade conversacional observada", "verified_resolution_rate": "Resolução verificada", "handoff_rate": "Transferência para humanos", "tool_failure_rate": "Falhas de ferramentas", "open_knowledge_gaps": "Lacunas de conhecimento abertas", "unknown": "Métrica observada" },
+    "issues": { "tool_failures": "Falhas de ferramentas", "knowledge_gaps": "Lacunas de conhecimento", "qa_knowledge_accuracy": "Respostas sem base ou imprecisas", "qa_unresolved_need": "Necessidades do cliente não resolvidas", "qa_missing_handoff": "Transferências humanas omitidas", "qa_tone_empathy": "Problemas de tom ou empatia", "qa_ignored_question": "Perguntas do cliente ignoradas", "qa_repetition_clarity": "Repetição ou falta de clareza", "qa_other": "Outro padrão de qualidade", "qa_generic": "Padrão de qualidade conversacional", "unknown": "Sinal de qualidade a revisar" },
+    "staleReasons": { "agent_configuration_changed_after_eval": "O agente mudou após a avaliação crítica.", "business_or_knowledge_changed_after_eval": "O negócio ou o conhecimento mudou após a avaliação crítica.", "agent_configuration_changed_after_simulation": "O agente mudou após a simulação.", "simulation_persona_version_mismatch": "A simulação avaliou outra versão do agente.", "business_or_knowledge_changed_after_simulation": "O negócio ou o conhecimento mudou após a simulação.", "unknown": "Uma fonte avaliada mudou desde o último teste." },
+    "evidenceKeys": { "count": "Quantidade", "configured": "Configurado", "enabled": "Ativado", "active": "Ativo", "ready": "Pronto", "connected": "Conectado", "assigned": "Atribuído", "hasName": "Tem nome", "hasRole": "Tem função", "hasAbout": "Tem descrição", "goals": "Objetivos", "audiences": "Públicos", "availableSources": "Fontes disponíveis", "unsupportedAssignments": "Atribuições incompatíveis", "chunks": "Fragmentos indexados", "published": "Publicadas", "services": "Serviços", "availabilitySlots": "Blocos de disponibilidade", "products": "Produtos", "existingOrders": "Pedidos existentes", "activeOffers": "Ofertas ativas", "records": "Registros", "activeHumans": "Pessoas ativas", "maxTokens": "Limite de tokens", "hasTone": "Tem tom", "hasFormality": "Tem formalidade", "minimumSample": "Amostra mínima", "unknown": "Evidência" },
+    "common": { "yes": "Sim", "no": "Não", "notAvailable": "Não disponível" },
+    "method": { "title": "Como interpretar este centro", "description": "É uma ajuda à decisão, não uma promessa de perfeição nem aprendizado automático. Combina configuração verificável, testes repetíveis e evidências de interações reais; bloqueios críticos prevalecem sobre médias." },
+    "banner": { "loading": "Revisando a qualidade do agente…", "unavailableTitle": "A análise de qualidade não está disponível", "unavailableDescription": "Abra o centro para tentar novamente e revisar a configuração.", "openCenter": "Ver qualidade", "blockers": "Há {count, plural, one {# bloqueio crítico} other {# bloqueios críticos}} a resolver.", "stale": "Os testes ficaram desatualizados após alterações no agente.", "evidence": "Evidência real: {current} de {minimum} interações mínimas.", "current": "A avaliação está atual; revise detalhes e tendências." }
   },
   "simulation": {
     "title": "Testar agente",

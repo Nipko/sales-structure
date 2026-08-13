@@ -25,15 +25,7 @@ When you log in you land on the **Dashboard**: your overview for the day. It ada
 
 ### The AI resolution rate
 
-On the **AI Resolution** tab you can see what percentage of conversations your AI agent resolved on its own, without a human having to step in, along with its trend over time and the breakdown by channel. As a reference:
-
-| Rate | What it means |
-|------|---------------|
-| Over 80% | Excellent: your agent and knowledge base are well tuned |
-| 60–80% | Good: review which questions go unanswered so you can improve |
-| Under 60% | Needs attention: you're probably missing FAQs, or your escalation rules are too sensitive |
-
-If the rate is low on a specific channel, look at the type of questions coming in there: perhaps that audience needs its own content in your knowledge base.
+On the **AI Resolution** tab you can see what percentage of conversations your AI agent resolved on its own, without a human having to step in, along with its trend over time and the breakdown by channel. This is an operational signal, not a quality grade: a high rate can coexist with incorrect answers, while a low rate can reflect safe handoffs. If it changes sharply by channel, review the questions, assigned agent, and knowledge gaps.
 
 ## How to review your agents' and channels' performance
 

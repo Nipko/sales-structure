@@ -7,6 +7,7 @@ import { QualityController } from './quality.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { AIModule } from '../ai/ai.module';
+import { AgentQualityService } from './agent-quality.service';
 
 @Module({
     imports: [
@@ -15,8 +16,8 @@ import { AIModule } from '../ai/ai.module';
         AIModule,
         BullModule.registerQueue({ name: QUALITY_QUEUE }),
     ],
-    providers: [QualityService, QualityListenerService, QualityProcessor],
+    providers: [QualityService, AgentQualityService, QualityListenerService, QualityProcessor],
     controllers: [QualityController],
-    exports: [QualityService],
+    exports: [QualityService, AgentQualityService],
 })
 export class QualityModule {}

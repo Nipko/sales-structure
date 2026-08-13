@@ -375,6 +375,20 @@ export class AgentConsoleService {
         const contentText = isMedia ? (caption || content || '') : content;
         const metadataJson = isMedia ? JSON.stringify({ mediaUrl, ...(caption || content ? { caption: caption || content } : {}), ...(filename ? { filename } : {}) }) : null;
 
+        // Any human-authored reply makes the transcript mixed. Mark it before
+        // persisting the message so quality/outcome scores do not credit a
+        // conversation that a person helped complete. The handoff itself stays
+        // attributable as an operational rate for the AI configuration.
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversations
+                SET was_handed_off = true,
+                    handoff_at = COALESCE(handoff_at, NOW()),
+                    updated_at = NOW()
+              WHERE id = $1::uuid`,
+            [conversationId],
+        );
+
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, metadata, created_at)
@@ -545,7 +559,11 @@ export class AgentConsoleService {
                     // para que la columna se lea como lo que es y nadie replique el
                     // patron en un WHERE, donde no hay operador y revienta con 42883.
                     `UPDATE conversations
-                        SET assigned_to = $2, status = 'with_human', updated_at = NOW()
+                        SET assigned_to = $2,
+                            status = 'with_human',
+                            was_handed_off = true,
+                            handoff_at = COALESCE(handoff_at, NOW()),
+                            updated_at = NOW()
                       WHERE id = $1::uuid
                         ${onlyIfUnassigned ? 'AND assigned_to IS NULL' : ''}
                       RETURNING contact_id`,

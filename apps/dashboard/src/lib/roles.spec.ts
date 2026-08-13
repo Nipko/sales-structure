@@ -59,6 +59,15 @@ describe("dashboard route access contract", () => {
         expect(canAccessPath("/admin/contacts/organizations", ROLE_KEYS.TENANT_SUPERVISOR, false)).toBe(true);
     });
 
+    it("exposes quality read-only to supervisors without exposing the editor", () => {
+        expect(canAccessPath("/admin/agent/quality", ROLE_KEYS.TENANT_ADMIN, false)).toBe(true);
+        expect(canAccessPath("/admin/agent/quality", ROLE_KEYS.TENANT_SUPERVISOR, false)).toBe(true);
+        expect(canAccessPath("/admin/agent/quality", ROLE_KEYS.TENANT_AGENT, false)).toBe(false);
+        expect(canAccessPath("/admin/agent/example-id", ROLE_KEYS.TENANT_SUPERVISOR, false)).toBe(false);
+        expect(canAccessPath("/admin/agent/quality", ROLE_KEYS.SUPER_ADMIN, false)).toBe(false);
+        expect(canAccessPath("/admin/agent/quality", ROLE_KEYS.SUPER_ADMIN, true)).toBe(true);
+    });
+
     it("gives the legacy viewer a safe personal-settings home", () => {
         expect(canAccessPath("/admin", ROLE_KEYS.TENANT_VIEWER, false)).toBe(false);
         expect(canAccessPath("/admin/settings", ROLE_KEYS.TENANT_VIEWER, false)).toBe(true);

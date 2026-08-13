@@ -179,7 +179,13 @@ export class MacrosService {
                     case 'assign':
                         await this.prisma.executeInTenantSchema(schema,
                             // assigned_to es VARCHAR, no UUID (ver agent-console.service).
-                            `UPDATE conversations SET assigned_to = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                            `UPDATE conversations
+                                SET assigned_to = $1,
+                                    status = 'with_human',
+                                    was_handed_off = true,
+                                    handoff_at = COALESCE(handoff_at, NOW()),
+                                    updated_at = NOW()
+                              WHERE id = $2::uuid`,
                             [action.value, conversationId],
                         );
                         break;
@@ -213,6 +219,13 @@ export class MacrosService {
                             [action.value],
                         );
                         if (canned.length) {
+                            await this.prisma.executeInTenantSchema(schema, `
+                                UPDATE conversations
+                                   SET was_handed_off = true,
+                                       handoff_at = COALESCE(handoff_at, NOW()),
+                                       updated_at = NOW()
+                                 WHERE id = $1::uuid
+                            `, [conversationId]);
                             // Store the message — actual sending is handled by the outbound queue
                             await this.prisma.executeInTenantSchema(schema, `
                                 INSERT INTO messages (conversation_id, content_text, direction, metadata)

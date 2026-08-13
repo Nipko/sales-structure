@@ -182,17 +182,12 @@ export class BillingService {
             });
         }
 
-        const requiresPaymentMethodAtSignup = plan.trialDays === 0 || plan.requiresCardForTrial;
-        if (requiresPaymentMethodAtSignup && !input.cardTokenId) {
-            throw new BadRequestException({
-                error: 'card_required_for_trial',
-                message: `The ${plan.slug} plan requires a payment method to start the trial.`,
-            });
-        }
-
         // Which provider bills this tenant is a runtime decision (kill switch →
         // country default → tenant override), not a hardcoded default. Changing
         // the operator for a country is a settings edit, not a deploy.
+        //
+        // Resolved BEFORE the payment-method check because what counts as "has a
+        // payment method" depends on the provider.
         const resolution = await this.routing.resolveForNewSubscription({
             tenantId: tenant.id,
             tenantProvider: tenant.paymentProvider,
@@ -205,6 +200,25 @@ export class BillingService {
             );
         }
         this.assertProviderConfigured(providerName);
+
+        const requiresPaymentMethodAtSignup = plan.trialDays === 0 || plan.requiresCardForTrial;
+        if (requiresPaymentMethodAtSignup) {
+            // A single-use card token is one way to have a payment method; a
+            // source already stored with the provider is another. Demanding the
+            // token regardless would refuse a tenant who just saved their card,
+            // for a plan they are entitled to start.
+            const hasStoredSource = this.capabilitiesFor(providerName).storedPaymentSources
+                && (await this.prisma.billingPaymentSource.count({
+                    where: { tenantId: input.tenantId, status: 'available' },
+                })) > 0;
+
+            if (!input.cardTokenId && !hasStoredSource) {
+                throw new BadRequestException({
+                    error: 'card_required_for_trial',
+                    message: `The ${plan.slug} plan requires a payment method to start the trial.`,
+                });
+            }
+        }
         const provider = this.providerFactory.getByName(providerName);
 
         // A local no-card trial may start before monthly provider synchronization,

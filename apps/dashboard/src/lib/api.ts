@@ -112,6 +112,65 @@ export type PaymentProvidersStatus = {
     };
 };
 
+/**
+ * GET /billing/public/config — the checkout contract resolved at REQUEST time.
+ *
+ * This is the only authority on which operator the browser must talk to and
+ * with which publishable key: `NEXT_PUBLIC_*` values are baked into the bundle
+ * at build time, so a form reading its key from env could never follow a
+ * runtime operator switch.
+ */
+export type BillingPublicConfig = {
+    provider: PaymentProviderName;
+    /** Country the routing actually resolved (never null — defaults to CO). */
+    country: string;
+    /** Publishable key only. Null when the operator has no credentials loaded. */
+    publicKey: string | null;
+    environment: 'sandbox' | 'production' | 'unconfigured' | null;
+    /** Enabled methods, named as in the switch flags: `card`, `nequi`, `bancolombiaTransfer`. */
+    methods: string[];
+    /** Charges settle asynchronously — the UI shows a pending state instead of assuming success. */
+    asyncSettlement: boolean;
+    requiresAcceptanceTokens: boolean;
+};
+
+export type PaymentSourceKind = 'card' | 'nequi' | 'bancolombia_transfer' | 'daviplata';
+
+export type PaymentSourceStatus = 'available' | 'pending_auth' | 'declined' | 'voided' | 'error';
+
+/** A reusable instrument stored by the API. Provider ids never reach the browser. */
+export type StoredPaymentSource = {
+    id: string;
+    kind: PaymentSourceKind;
+    status: PaymentSourceStatus;
+    brand?: string | null;
+    last4?: string | null;
+    expMonth?: number | null;
+    expYear?: number | null;
+    phoneMasked?: string | null;
+    isDefault: boolean;
+    createdAt: string;
+};
+
+/**
+ * Habeas data contracts (Colombian law) the checkout must display, with a
+ * checkbox each, before it may store any payment method. Only the permalinks
+ * travel to the browser; the acceptance tokens are re-fetched server-side.
+ */
+export type PaymentAcceptanceContracts = {
+    provider: PaymentProviderName;
+    endUserPolicy: { permalink: string; type: string };
+    personalDataAuth: { permalink: string; type: string } | null;
+};
+
+export type AddPaymentSourceResult = {
+    id: string;
+    status: PaymentSourceStatus;
+    /** Wallets are approved out of band (the customer taps accept in their bank app). */
+    requiresAuthorization: boolean;
+    authorizationUrl?: string;
+};
+
 export type ResourceRentalType = "vehicle_rental" | "pet_boarding";
 export type ResourceRentalStatus =
     | "reserved"
@@ -1245,6 +1304,25 @@ export const api = {
     getRestrictionStatus: (tenantId: string) => apiGet(`/billing/${tenantId}/restriction-status`),
     cancelPendingDowngrade: (tenantId: string) =>
         apiPost(`/billing/${tenantId}/subscription/cancel-pending-downgrade`, {}),
+
+    // --- Checkout: operator resolved at runtime + stored payment methods ---
+    getBillingPublicConfig: (country?: string) =>
+        apiGet<BillingPublicConfig>(`/billing/public/config${country ? `?country=${encodeURIComponent(country)}` : ""}`),
+    getPaymentAcceptance: (tenantId: string) =>
+        apiGet<PaymentAcceptanceContracts>(`/billing/payment-sources/${tenantId}/acceptance`),
+    listPaymentSources: (tenantId: string) =>
+        apiGet<StoredPaymentSource[]>(`/billing/payment-sources/${tenantId}`),
+    /** `token` is minted CLIENT-SIDE by the operator: raw card data never reaches our API. */
+    addPaymentSource: (
+        tenantId: string,
+        data: { kind: PaymentSourceKind; token: string; customerEmail?: string; makeDefault?: boolean },
+    ) => apiPost<AddPaymentSourceResult>(`/billing/payment-sources/${tenantId}`, data),
+    getPaymentSourceStatus: (tenantId: string, sourceId: string) =>
+        apiGet<{ status: PaymentSourceStatus }>(`/billing/payment-sources/${tenantId}/${sourceId}/status`),
+    setDefaultPaymentSource: (tenantId: string, sourceId: string) =>
+        apiPut(`/billing/payment-sources/${tenantId}/${sourceId}/default`, {}),
+    deletePaymentSource: (tenantId: string, sourceId: string) =>
+        apiDelete(`/billing/payment-sources/${tenantId}/${sourceId}`),
 
     // --- SMS credits (monetized notification packages) ---
     // ─── Cobros del tenant a SU cliente final (no confundir con billing, que

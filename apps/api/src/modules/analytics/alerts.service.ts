@@ -89,10 +89,14 @@ export class AlertsService {
                     (SELECT COUNT(*)::int FROM "${schemaName}".alert_history ah WHERE ah.rule_id = ar.id) as trigger_count,
                     (SELECT MAX(created_at) FROM "${schemaName}".alert_history ah WHERE ah.rule_id = ar.id) as last_alert_at
              FROM "${schemaName}".alert_rules ar
-             -- alert_rules.tenant_id es VARCHAR(255), no UUID: castear el
-             -- parametro a ::uuid pide un operador varchar = uuid que no
-             -- existe y tumba la consulta entera con 42883.
-             WHERE ar.tenant_id = $1
+             -- El tipo de alert_rules.tenant_id DEPENDE DEL TENANT: el schema
+             -- canónico la crea VARCHAR(255) y ensureAlertTables la crea UUID,
+             -- ambos con IF NOT EXISTS, y encima el ALTER de más arriba la pasa
+             -- a UUID cuando puede (dentro de un catch que se traga el fallo).
+             -- Comparar la COLUMNA como texto es lo único que funciona en los
+             -- dos casos: fijar un cast en el parámetro rompe la mitad de la
+             -- flota con 42883, que es exactamente lo que pasó.
+             WHERE ar.tenant_id::text = $1
              ORDER BY ar.created_at DESC`,
             tenantId,
         );
@@ -194,8 +198,10 @@ export class AlertsService {
     private async evaluateTenantAlerts(tenantId: string, schemaName: string): Promise<void> {
         await this.ensureAlertTables(schemaName);
         const rules: AlertRule[] = await this.prisma.$queryRawUnsafe(
-            // tenant_id es VARCHAR aca (ver arriba): sin cast.
-            `SELECT * FROM "${schemaName}".alert_rules WHERE tenant_id = $1 AND is_active = true`,
+            // La columna se compara como texto porque su tipo varía entre
+            // tenants (ver getRules). Este cron recorre TODA la flota, así que
+            // un cast fijo acá deja sin evaluar las alertas de medio mundo.
+            `SELECT * FROM "${schemaName}".alert_rules WHERE tenant_id::text = $1 AND is_active = true`,
             tenantId,
         );
 

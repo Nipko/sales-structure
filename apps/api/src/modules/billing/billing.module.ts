@@ -10,6 +10,7 @@ import {
 } from './recurring/renewal-scheduler.service';
 import { RenewalChargeProcessor } from './recurring/processors/renewal-charge.processor';
 import { ChargePollProcessor } from './recurring/processors/charge-poll.processor';
+import { DunningService } from './recurring/dunning.service';
 import { EmailModule } from '../email/email.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
@@ -79,12 +80,22 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         BillingReconciliationProcessor,
         SubscriptionEngineService,
         RenewalSchedulerService,
+        DunningService,
         RenewalChargeProcessor,
         ChargePollProcessor,
         InvoiceGeneratorService,
         SmsCheckoutService,
         BillingPlanCatalogService,
     ],
-    exports: [BillingService, CouponsService, InvoiceGeneratorService, PaymentRoutingService, PaymentProviderFactory],
+    exports: [
+        BillingService,
+        CouponsService,
+        InvoiceGeneratorService,
+        PaymentRoutingService,
+        PaymentProviderFactory,
+        // Offboarding asks this before cutting service to a tenant whose charge
+        // is still in flight.
+        DunningService,
+    ],
 })
 export class BillingModule {}

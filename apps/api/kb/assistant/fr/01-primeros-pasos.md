@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Premiers pas et configuration initiale"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["premiers pas", "commencer", "demarrer", "inscription", "s'inscrire", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter un canal", "connecter whatsapp", "tester l'agent", "checklist", "votre progression", "visite guidee", "essai gratuit", "trial", "nouvel utilisateur"]
+keywords: ["premiers pas", "mise en route", "commencer", "inscription", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter canal", "connecter whatsapp", "tester l'agent", "essentiels", "checklist", "votre progression", "8/9", "visite guidee", "trial", "nouvel utilisateur"]
 ---
 
 # Premiers pas et configuration initiale
@@ -67,15 +67,19 @@ En cliquant sur **Terminer la configuration**, le tableau de bord vous propose u
 
 Avancez avec **Suivant** et fermez avec **Terminé**. Si votre activité relève d'un secteur vertical, la visite vous présente également l'outil spécifique à votre domaine.
 
-## La checklist « Votre progression »
+## La carte « Mise en route »
 
-Sur le tableau de bord principal, vous verrez à droite la checklist **« Tu Progreso » (Votre progression)**, qui indique ce qu'il reste à faire pour activer votre compte :
+**Mise en route** apparaît sur l'**Accueil** tant que des étapes essentielles sont en
+attente et disponibles pour votre forfait, rôle et secteur :
 
-- **Essentiels** : créer le compte, configurer l'agent IA et connecter un canal de messagerie.
-- **Recommandés** : envoyer un message de test et ajouter du contenu à la base de connaissances.
-- **Avancé** : inviter votre équipe, connecter Instagram, créer des règles d'automatisation et personnaliser les modèles d'e-mail.
+- configurer l'agent IA ;
+- connecter au moins un canal conversationnel certifié disponible pour le compte ;
+- ajouter des connaissances utiles ou le catalogue opérationnel adapté à l'activité.
 
-Chaque point en attente dispose d'un bouton qui vous mène directement au bon écran. Vous pouvez la réduire avec le **X** : elle devient une pastille flottante affichant votre avancement et réapparaît en entier tant que votre premier canal n'est pas connecté.
+Chaque étape ouvre une route autorisée. La carte disparaît une fois tout terminé et
+ne devient pas une pastille flottante `8/9`. Si Parallly ne peut pas vérifier une
+source, elle affiche **Réessayer** au lieu d'affirmer que l'étape est incomplète. Les
+tâches avancées restent dans leurs modules et ne gonflent pas cette progression.
 
 ## Par quoi commencer : ordre recommandé
 
@@ -103,7 +107,7 @@ Oui, si votre compte dispose de la capacité nécessaire. Chaque connexion utili
 Le SMS n'est pas un canal de conversation : il sert à envoyer des notifications à vos clients à l'aide de crédits (1 crédit = 1 segment de message).
 
 **J'ai sauté l'assistant, comment le reprendre ?**
-Accédez directement à `/admin/setup-wizard`, ou configurez chaque élément séparément depuis les menus **Agent IA** et **Canaux**. La checklist **Votre progression** vous guide sur ce qu'il reste à faire.
+Accédez directement à `/admin/setup-wizard`, ou configurez chaque élément séparément depuis les menus **Agent IA** et **Canaux**. La carte **Mise en route** de l'Accueil montre les essentiels en attente.
 
 **Puis-je utiliser le tableau de bord dans une autre langue ?**
 Oui : espagnol, anglais, portugais et français. Changez la langue depuis le sélecteur en haut du tableau de bord.

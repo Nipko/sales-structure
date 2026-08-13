@@ -15,6 +15,15 @@ export class QualityListenerService {
     @OnEvent('conversation.resolved')
     async handleResolved(payload: { tenantId: string; conversationId: string }) {
         if (!payload?.tenantId || !payload?.conversationId) return;
-        await this.quality.enqueue(payload.tenantId, payload.conversationId);
+        try {
+            await this.quality.enqueue(payload.tenantId, payload.conversationId);
+        } catch (error: any) {
+            // EventEmitter listeners run in the request process. Queue outages
+            // must be observable, but must not turn a successfully resolved
+            // customer conversation into an HTTP/WS failure for the agent.
+            this.logger.error(
+                `Could not schedule quality scoring for ${payload.conversationId}: ${error?.message || error}`,
+            );
+        }
     }
 }

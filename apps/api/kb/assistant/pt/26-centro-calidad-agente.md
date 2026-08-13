@@ -1,17 +1,28 @@
 ---
 id: centro-calidad-agente
-title: "Centro de qualidade do agente"
-routes: ["/admin/agent/quality"]
+title: "Saúde dos agentes e Centro de qualidade"
+routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "pronto para piloto", "configuracao incompleta", "revisao necessaria", "recomendacoes", "pontos fracos do agente", "melhorar agente"]
+keywords: ["saude dos agentes", "centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "configuracao incompleta", "acoes criticas", "badge", "adiar", "Parallly Assist", "melhorar agente"]
 ---
 
-# Centro de qualidade do agente
+# Saúde dos agentes e Centro de qualidade
 
-O **Centro de qualidade** mostra o que ainda falta configurar, o que já foi testado e
-o que acontece em conversas reais para cada agente de IA. Ele fica em **Insights →
-Centro de qualidade**. Admin e Supervisor podem consultá-lo; somente Admin pode editar
+A **Saúde dos agentes** mostra o que ainda falta configurar, o que já foi testado e o
+que acontece em conversas reais para cada agente de IA. O detalhe fica em **Insights
+→ Saúde dos agentes**. Admin e Supervisor podem consultá-lo; somente Admin pode editar
 agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
+
+## Onde aparece e o que significa
+
+- O cartão **Saúde dos seus agentes** no Início sempre resume o pior estado e as
+  ações abertas para Admin/Supervisor.
+- O badge de **Insights → Saúde dos agentes** conta somente sinais **Críticos e Altos
+  abertos**. É um contador de atenção, não uma pontuação.
+- O aviso global aparece apenas para um sinal Crítico aberto ou o estado **Agente em
+  risco**. Você pode **Revisar**, **Perguntar ao Assist** ou **Adiar por 24 h**.
+- Adiar oculta esse sinal temporariamente; não o corrige. Esses avisos ficam no
+  dashboard e não enviam e-mail nem notificação push.
 
 ## As três camadas de evidência
 
@@ -46,6 +57,13 @@ resultados comerciais.
 
 ## O que melhorar primeiro
 
+O Parallly mantém snapshots do estado e sinais por agente, versão e causa. Mudanças no
+agente, resultados de QA, avaliações e simulações atualizam a evidência. Recorrências
+são agrupadas para evitar alertas duplicados, e uma passagem periódica limitada
+recupera eventos perdidos. Um sinal pode estar aberto, reconhecido, adiado, resolvido
+ou substituído. Reconhecer ou adiar administra a atenção; somente nova evidência
+resolve o sinal.
+
 Abra primeiro as recomendações Críticas e Altas. Cada uma identifica o pilar e a
 dimensão afetados e, quando disponível, quantos cenários ou interações originaram o
 sinal. Use-as para distinguir entre:
@@ -60,11 +78,24 @@ O Centro de qualidade não reescreve automaticamente prompts, políticas ou cont
 Admin faz a alteração, executa novamente os testes e verifica se novas evidências
 confirmam a melhoria; Supervisor pode revisar resultados e coordenar o acompanhamento.
 
+## Perguntar ao Parallly Assist
+
+No Início ou no aviso global, **Perguntar ao Assist** abre o chat sobre o agente e o
+sinal selecionados. O servidor valida tenant, papel, agente e sinal, e o Assist explica
+uma prioridade com o estado atual. Admin pode receber uma rota de correção; Supervisor
+recebe a rota de revisão sem ganhar permissão de edição.
+
+O contexto contém apenas estado, versão, marco, códigos de bloqueio, atualidade dos
+testes, amostra, gravidade, pilar, dimensão e contagens. Exclui transcrições, texto de
+clientes, IDs de conversa, prompts, consultas de recuperação, texto livre do avaliador
+e segredos. O Assist não aplica mudanças nem inicia comunicações externas.
+
 ## Perguntas frequentes
 
 **O checklist de configuração é igual ao Centro de qualidade?**
-Não. O checklist orienta a adoção inicial. O centro acrescenta testes repetíveis e
-evidência de produção atribuída.
+Não. O cartão **Primeiros passos** no Início mostra somente etapas essenciais
+disponíveis para seu plano, papel e setor e desaparece ao concluí-las. Ele substitui a
+antiga pílula flutuante `8/9`. Saúde dos agentes acrescenta testes e evidência real.
 
 **Uma boa pontuação de simulação basta para publicar?**
 Não. Ela ajuda a reduzir o risco, mas deve ser revisada junto com bloqueios críticos,

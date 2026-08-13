@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Getting started and initial setup"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["getting started", "get started", "start", "sign up", "signup", "register", "create account", "onboarding", "initial setup", "setup wizard", "setup", "wizard", "connect channel", "connect whatsapp", "test agent", "checklist", "your progress", "tour", "free trial", "trial", "new user"]
+keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user"]
 ---
 
 # Getting started and initial setup
@@ -67,15 +67,19 @@ When you click **Finish setup**, the dashboard shows a short **guided tour** hig
 
 Move forward with **Next** and close it with **Done**. If your business belongs to a vertical industry, the tour also shows you the tool specific to your sector.
 
-## The "Your Progress" checklist
+## The "Getting started" card
 
-On the main dashboard, you'll see the **Your Progress** checklist on the right, tracking what's left to activate your account:
+**Getting started** appears on **Home** while you have essential steps that are both
+pending and available for your plan, role, and industry:
 
-- **Essentials**: create your account, configure your AI agent, and connect a messaging channel.
-- **Recommended**: send a test message and add content to the knowledge base.
-- **Advanced**: invite your team, connect Instagram, create automation rules, and customize email templates.
+- configure the AI agent;
+- connect at least one certified conversational channel available to your account;
+- add useful knowledge or the operational catalog that applies to your business.
 
-Each pending item has a button that takes you straight to the right screen. You can minimize it with the **X**: it stays as a floating pill showing your progress and reappears in full until you connect your first channel.
+Each pending step opens an allowed route. The card disappears when all steps are done
+and does not turn into a floating `8/9` pill. If Parallly cannot verify a source, it
+shows **Retry** instead of claiming the step is incomplete. Advanced tasks stay in
+their own modules and do not inflate this essential progress.
 
 ## What to do first: recommended order
 
@@ -103,7 +107,7 @@ Yes, when your account has capacity available. Each connection uses its own agen
 SMS is not a conversation channel: it's used to send notifications to your customers using credits (1 credit = 1 message segment).
 
 **I skipped the wizard — how do I get back to it?**
-Go directly to `/admin/setup-wizard`, or configure each piece separately from the **AI Agent** and **Channels** menus. The **Your Progress** checklist guides you through what's missing.
+Go directly to `/admin/setup-wizard`, or configure each piece separately from the **AI Agent** and **Channels** menus. The **Getting started** card on Home shows pending essentials.
 
 **Can I use the dashboard in another language?**
 Yes: Spanish, English, Portuguese, and French. Change the language from the selector at the top of the dashboard.

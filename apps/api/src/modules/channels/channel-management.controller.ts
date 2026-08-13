@@ -14,6 +14,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { RedisService } from '../redis/redis.service';
 import { personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -31,6 +33,7 @@ export class ChannelManagementController {
         private smsAdapter: SmsAdapter,
         private throttle: TenantThrottleService,
         private redis: RedisService,
+        private events: EventEmitter2,
     ) {}
 
     /**
@@ -113,9 +116,14 @@ export class ChannelManagementController {
 
         const now = Date.now();
         const credentialHealth = (channelType: string) => {
-            // whatsapp credentials are the ones tracked in whatsapp_credentials;
-            // other channels report 'unknown' rather than a false 'ok'.
-            const c = credsByType.get('system_user_token') || credsByType.get(channelType);
+            const credentialTypeByChannel: Record<string, string> = {
+                whatsapp: 'system_user_token',
+                instagram: 'instagram_token',
+                messenger: 'messenger_token',
+                telegram: 'telegram_token',
+            };
+            const credentialType = credentialTypeByChannel[channelType];
+            const c = credentialType ? credsByType.get(credentialType) : undefined;
             if (!c) return { status: 'unknown' as const, expiresAt: null, daysToExpiry: null };
             if (c.rotationState === 'error') return { status: 'error' as const, expiresAt: c.expiresAt, daysToExpiry: null };
             if (c.rotationState === 'revoked') return { status: 'revoked' as const, expiresAt: c.expiresAt, daysToExpiry: null };
@@ -341,6 +349,7 @@ export class ChannelManagementController {
         await this.channelToken.invalidateCache('telegram', tenantId, accountId).catch(() => { /* no bloquear la conexión */ });
 
         this.logger.log(`Telegram bot @${accountId} connected for tenant ${tenantId}`);
+        this.emitQualityDependency(tenantId, 'channel_credential');
         return {
             success: true,
             message: `Bot @${accountId} conectado correctamente`,
@@ -734,6 +743,7 @@ export class ChannelManagementController {
         }
 
         this.logger.log(`Messenger OAuth: ${connected.length} page(s) connected for tenant ${tenantId}${skippedForQuota.length ? `, ${skippedForQuota.length} skipped (plan limit)` : ''}`);
+        this.emitQualityDependency(tenantId, 'channel_credential');
         return { success: true, data: { connected, total: pages.length, skippedForQuota } };
     }
 
@@ -1022,6 +1032,7 @@ export class ChannelManagementController {
         await this.channelToken.invalidateCache('instagram', tenantId, igScopedId);
 
         this.logger.log(`Instagram OAuth: ${displayName} connected for tenant ${tenantId}`);
+        this.emitQualityDependency(tenantId, 'channel_credential');
         return {
             success: true,
             data: {
@@ -1172,6 +1183,7 @@ export class ChannelManagementController {
         }
 
         this.logger.log(`SMS connected for tenant ${tenantId}: ${phoneNumber}`);
+        this.emitQualityDependency(tenantId, 'channel_credential');
 
         return {
             success: true,
@@ -1379,6 +1391,7 @@ export class ChannelManagementController {
         }
 
         this.logger.log(`Channel ${channelType} connected for tenant ${tenantId} (accountId=${accountId})`);
+        this.emitQualityDependency(tenantId, 'channel_credential');
         return { success: true, message: `${channelType} connected successfully` };
     }
 
@@ -1438,14 +1451,22 @@ export class ChannelManagementController {
         try {
             const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { schemaName: true } });
             if (tenant?.schemaName) {
-                await this.prisma.$executeRawUnsafe(
+                const affectedAgents = await this.prisma.$queryRawUnsafe(
                     `UPDATE "${tenant.schemaName}".agent_personas
                         SET channel_bindings = array_remove(channel_bindings, $1),
                             version = COALESCE(version, 0) + 1,
                             updated_at = NOW()
-                      WHERE $1 = ANY(channel_bindings)`,
+                      WHERE $1 = ANY(channel_bindings)
+                  RETURNING id`,
                     `${channelType}:${accountId}`,
-                );
+                ) as Array<{ id: string }>;
+                for (const agent of affectedAgents) {
+                    this.events.emit('agent.version.updated', {
+                        tenantId,
+                        agentId: String(agent.id),
+                        changed: 'channel_disconnected',
+                    });
+                }
                 if (channelType === 'whatsapp') {
                     await this.prisma.executeInTenantSchema(
                         tenant.schemaName,
@@ -1464,6 +1485,7 @@ export class ChannelManagementController {
         } catch { /* non-blocking — TTL remains the fallback */ }
 
         this.logger.log(`Channel ${channelType} account ${accountId} disconnected for tenant ${tenantId}`);
+        this.emitQualityDependency(tenantId, 'channel_connection');
         return { success: true, message: `Cuenta ${accountId} desconectada`, accountId };
     }
 
@@ -1551,7 +1573,15 @@ export class ChannelManagementController {
             await this.channelToken.invalidateCache(channelType, tenantId);
         } catch { /* non-blocking */ }
 
+        this.emitQualityDependency(tenantId, 'channel_connection');
         return { rowsTouched: rows.length };
+    }
+
+    private emitQualityDependency(
+        tenantId: string,
+        source: 'channel_connection' | 'channel_credential',
+    ): void {
+        this.events.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, { tenantId, source });
     }
 
     private buildDisconnectResponse(

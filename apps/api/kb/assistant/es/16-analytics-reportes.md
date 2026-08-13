@@ -14,7 +14,7 @@ Las analíticas son para administradores y supervisores. Los usuarios con rol ag
 
 ## El panel principal (Dashboard)
 
-Al iniciar sesión llegas al **Dashboard**: tu vista general del día. Se adapta a tu industria — un consultorio ve "Citas hoy" y "Pacientes nuevos"; un restaurante ve "Pedidos hoy" e "Ingresos día"; un negocio general ve "Conversaciones hoy", "Leads nuevos" y "Tasa de respuesta". Si tu cuenta es nueva, también verás un checklist con los pasos pendientes para activarla (conectar un canal, personalizar tu agente, etc.).
+Al iniciar sesión llegas al **Dashboard**: tu vista general del día. Se adapta a tu industria — un consultorio ve "Citas hoy" y "Pacientes nuevos"; un restaurante ve "Pedidos hoy" e "Ingresos día"; un negocio general ve "Conversaciones hoy", "Leads nuevos" y "Tasa de respuesta". Admin/Supervisor también ve **Salud de tus agentes**; si quedan esenciales pendientes, aparece la tarjeta temporal **Puesta en marcha**.
 
 ## Cómo ver las métricas generales del negocio
 

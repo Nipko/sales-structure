@@ -33,6 +33,8 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpPanel } from "@/components/ui/help-panel";
 import OnboardingMetricsCard from "./_components/OnboardingMetricsCard";
+import AgentHealthCard from "@/components/quality/AgentHealthCard";
+import InitialSetupCard from "@/components/InitialSetupCard";
 
 const ICON_MAP: Record<string, any> = {
     Calendar, UserPlus, UserX, MessageSquare, Flame, MapPin, Car,
@@ -54,15 +56,31 @@ const modelBarColors = [
     "bg-red-500",
 ];
 
+function formatTimeAgo(dateStr: string): string {
+    try {
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `${mins}m`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `${hours}h`;
+        return `${Math.floor(hours / 24)}d`;
+    } catch {
+        return '';
+    }
+}
+
 export default function AdminDashboard() {
     const { user, verticalConfig } = useAuth();
-    const { canAccess, canManageChannels } = useRole();
+    const { canAccess, canManageChannels, role, isSuperAdmin, impersonating } = useRole();
     const t = useTranslations("dashboard");
     const tSetup = useTranslations("setupWizard");
     const tVw = useTranslations("verticalWelcome");
     const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
     const locale = useLocale() as "es" | "en" | "pt" | "fr";
+    const canViewAgentHealth = role === "tenant_admin"
+        || role === "tenant_supervisor"
+        || (isSuperAdmin && impersonating);
 
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -287,17 +305,6 @@ export default function AdminDashboard() {
         } catch { return ''; }
     };
 
-    const formatTimeAgo = (dateStr: string) => {
-        try {
-            const diff = Date.now() - new Date(dateStr).getTime();
-            const mins = Math.floor(diff / 60000);
-            if (mins < 60) return `${mins}m`;
-            const hours = Math.floor(mins / 60);
-            if (hours < 24) return `${hours}h`;
-            return `${Math.floor(hours / 24)}d`;
-        } catch { return ''; }
-    };
-
     const appointmentStatusColors: Record<string, string> = {
         pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
         confirmed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -379,6 +386,9 @@ export default function AdminDashboard() {
                 tips={tHelp.raw("dashboard.tips") as string[]}
                 mediaKey="dashboard"
             />
+
+            {canViewAgentHealth && <AgentHealthCard />}
+            {canViewAgentHealth && <InitialSetupCard />}
 
             {/* Empty-state guiado (Fase 4) — tenant nuevo sin actividad todavía */}
             {isEmptyTenant && (

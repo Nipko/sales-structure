@@ -797,6 +797,7 @@ export class PersonaService {
         const verticalDefaults = await this.getVerticalDefaultsForNewAgent(tenantId);
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
+        const qualityRefreshAgentIds = new Set<string>();
 
         // Enforce plan's maxAgents at the server level. The UI already hides
         // the "add agent" button past the limit, but without this check a
@@ -861,6 +862,7 @@ export class PersonaService {
                         ch, conflicts[0].id,
                     );
                     this.logger.log(`Removed channel ${ch} from agent ${conflicts[0].name} (${conflicts[0].id})`);
+                    qualityRefreshAgentIds.add(String(conflicts[0].id));
                 }
             }
         }
@@ -868,14 +870,16 @@ export class PersonaService {
         // Enforce "one agent per connection": steal each binding from any other agent.
         if (data.channelBindings && data.channelBindings.length > 0) {
             for (const b of data.channelBindings) {
-                await this.prisma.$executeRawUnsafe(
+                const reassigned = await this.prisma.$queryRawUnsafe(
                     `UPDATE "${schemaName}".agent_personas
                         SET channel_bindings = array_remove(channel_bindings, $1),
                             version = COALESCE(version, 0) + 1,
                             updated_at = NOW()
-                      WHERE is_active = true AND $1 = ANY(channel_bindings)`,
+                      WHERE is_active = true AND $1 = ANY(channel_bindings)
+                  RETURNING id`,
                     b,
-                );
+                ) as Array<{ id: string }>;
+                reassigned.forEach((row) => qualityRefreshAgentIds.add(String(row.id)));
             }
         }
 
@@ -894,6 +898,16 @@ export class PersonaService {
 
         // Invalidate type-level + per-connection caches to prevent routing conflicts.
         await this.invalidatePersonaCaches(tenantId, data.channelBindings || []);
+
+        // Quality attention tracks every current agent version, not only
+        // behavior JSON edits. Emit for the new agent and any conflicting
+        // agents whose channel ownership/version changed above.
+        for (const conflictId of qualityRefreshAgentIds) {
+            this.eventEmitter.emit('agent.version.updated', { tenantId, agentId: conflictId, changed: 'agent_created_or_reassigned' });
+        }
+        if (rows[0]?.id) {
+            this.eventEmitter.emit('agent.version.updated', { tenantId, agentId: rows[0].id, changed: 'agent_created' });
+        }
 
         return rows[0];
     }
@@ -914,6 +928,7 @@ export class PersonaService {
         // (existing tenants may predate the multi-account column).
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
+        const qualityRefreshAgentIds = new Set<string>();
 
         // Capture prior bindings so we can invalidate their per-account caches too,
         // and the stored config so `tools` can be merged instead of replaced.
@@ -951,28 +966,32 @@ export class PersonaService {
         // Handle channel reassignment conflicts
         if (data.channels) {
             for (const ch of data.channels) {
-                await this.prisma.$executeRawUnsafe(
+                const reassigned = await this.prisma.$queryRawUnsafe(
                     `UPDATE "${schemaName}".agent_personas
                         SET channels = array_remove(channels, $1),
                             version = COALESCE(version, 0) + 1,
                             updated_at = NOW()
-                      WHERE id != $2::uuid AND $1 = ANY(channels)`,
+                      WHERE id != $2::uuid AND $1 = ANY(channels)
+                  RETURNING id`,
                     ch, agentId,
-                );
+                ) as Array<{ id: string }>;
+                reassigned.forEach((row) => qualityRefreshAgentIds.add(String(row.id)));
             }
         }
 
         // Handle per-connection binding reassignment ("one agent per connection").
         if (data.channelBindings) {
             for (const b of data.channelBindings) {
-                await this.prisma.$executeRawUnsafe(
+                const reassigned = await this.prisma.$queryRawUnsafe(
                     `UPDATE "${schemaName}".agent_personas
                         SET channel_bindings = array_remove(channel_bindings, $1),
                             version = COALESCE(version, 0) + 1,
                             updated_at = NOW()
-                      WHERE id != $2::uuid AND $1 = ANY(channel_bindings)`,
+                      WHERE id != $2::uuid AND $1 = ANY(channel_bindings)
+                  RETURNING id`,
                     b, agentId,
-                );
+                ) as Array<{ id: string }>;
+                reassigned.forEach((row) => qualityRefreshAgentIds.add(String(row.id)));
             }
         }
 
@@ -1006,11 +1025,19 @@ export class PersonaService {
         const affectedBindings = Array.from(new Set([...priorBindings, ...(data.channelBindings || [])]));
         await this.invalidatePersonaCaches(tenantId, affectedBindings);
 
+        // Quality signals must follow every version bump, including name,
+        // activation, assignment and schedule changes.
+        for (const affectedAgentId of qualityRefreshAgentIds) {
+            this.eventEmitter.emit('agent.version.updated', { tenantId, agentId: affectedAgentId, changed: 'assignment_reassigned' });
+        }
+
         // Auto-run the eval gate when the agent's BEHAVIOUR config changed — not on
         // trivial flips (isActive/isDefault/channels/scheduleMode/name). In-process,
         // best-effort emit; the listener debounces + enqueues.
         if (data.configJson !== undefined) {
             this.eventEmitter.emit('agent.config.updated', { tenantId, agentId, changed: 'config_json' });
+        } else {
+            this.eventEmitter.emit('agent.version.updated', { tenantId, agentId, changed: 'agent_updated' });
         }
 
         return agent;
@@ -1041,6 +1068,7 @@ export class PersonaService {
 
         // Invalidate type-level + per-connection caches (the agent's own bindings).
         await this.invalidatePersonaCaches(tenantId, (agent?.channel_bindings as string[]) || []);
+        this.eventEmitter.emit('agent.version.updated', { tenantId, agentId, changed: 'agent_deleted' });
     }
 
     /**

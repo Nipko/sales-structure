@@ -11,6 +11,7 @@ import { AppointmentsService } from './appointments.service';
 import { ServicesService } from './services.service';
 import { CalendarIntegrationService } from './calendar-integration.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 @ApiTags('appointments')
 @Controller('appointments')
@@ -264,6 +265,10 @@ export class AppointmentsController {
         // Use current user's ID if no userId specified (e.g., tenant admin configuring global schedule)
         const userId = body.userId || user.sub || user.id;
         const data = await this.service.saveAvailability(user.schemaName, userId, body.slots);
+        this.eventEmitter.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'services',
+        });
         return { success: true, data };
     }
 

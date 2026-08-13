@@ -1,10 +1,12 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AgentQualityService } from './agent-quality.service';
 import { QualityService } from './quality.service';
+import { AgentQualitySignalService } from './agent-quality-signal.service';
+import type { AgentQualitySignalState } from '@parallext/shared';
 
 @Controller('quality')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
@@ -12,6 +14,7 @@ export class QualityController {
     constructor(
         private readonly quality: QualityService,
         private readonly agentQuality: AgentQualityService,
+        private readonly qualitySignals: AgentQualitySignalService,
     ) {}
 
     private resolveRange(start?: string, end?: string): { startDate: string; endDate: string } {
@@ -35,6 +38,67 @@ export class QualityController {
         @Param('agentId') agentId: string,
     ) {
         const data = await this.agentQuality.getOverview(tenantId, agentId);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/attention-summary')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async getAttentionSummary(@Param('tenantId') tenantId: string) {
+        const data = await this.qualitySignals.getAttentionSummary(tenantId);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/reconcile')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async reconcileAttention(@Param('tenantId') tenantId: string) {
+        const data = await this.qualitySignals.reconcileTenantManual(tenantId);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/signals')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async getSignals(
+        @Param('tenantId') tenantId: string,
+        @Query('state') state?: AgentQualitySignalState,
+        @Query('limit') limit?: string,
+    ) {
+        const data = await this.qualitySignals.getSignals(
+            tenantId,
+            state || 'open',
+            parseInt(limit || '50', 10) || 50,
+        );
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/signals/:signalId/acknowledge')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async acknowledgeSignal(
+        @Param('tenantId') tenantId: string,
+        @Param('signalId') signalId: string,
+        @Req() req: any,
+    ) {
+        const data = await this.qualitySignals.acknowledgeSignal(
+            tenantId,
+            signalId,
+            req.user?.sub || req.user?.id,
+        );
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/signals/:signalId/snooze')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async snoozeSignal(
+        @Param('tenantId') tenantId: string,
+        @Param('signalId') signalId: string,
+        @Body() body: { until?: string; durationHours?: number },
+        @Req() req: any,
+    ) {
+        const data = await this.qualitySignals.snoozeSignal(
+            tenantId,
+            signalId,
+            req.user?.sub || req.user?.id,
+            body || {},
+        );
         return { success: true, data };
     }
 

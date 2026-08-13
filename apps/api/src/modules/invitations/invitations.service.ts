@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +8,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
 import { emsg } from '../email/email-i18n';
 import { validateEmailDomain } from '../../common/utils/email.util';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 const TOKEN_BYTES = 32;
 const DEFAULT_TTL_DAYS = 14;
@@ -20,6 +22,7 @@ export class InvitationsService {
         private readonly prisma: PrismaService,
         private readonly email: EmailService,
         private readonly throttle: TenantThrottleService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     // ── Admin operations (require auth + tenant ownership) ─────────
@@ -340,6 +343,11 @@ export class InvitationsService {
             html: welcomeTeamMemberEmail(input.firstName, tenant?.name || 'Parallly', this.roleLabel(invitation.role), lang),
         }).catch((err) => {
             this.logger.error(`[Invitations] Failed to send welcome email to ${invitation.email}: ${err.message}`);
+        });
+
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId: invitation.tenantId,
+            source: 'tenant_users',
         });
 
         return { userId: user.id, tenantId: invitation.tenantId, role: invitation.role };

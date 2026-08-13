@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 /**
  * Reconciles the STORED state of WhatsApp credentials against Meta's own view.
@@ -36,6 +38,7 @@ export class WhatsappTokenHealthService {
         private prisma: PrismaService,
         private crypto: WhatsappCryptoService,
         private config: ConfigService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     /** Daily at 5AM, before the monitor's alerting windows. */
@@ -93,6 +96,10 @@ export class WhatsappTokenHealthService {
                     await this.prisma.whatsappCredential.update({
                         where: { id: cred.id },
                         data: { rotationState: nextState, expiresAt: realExpiry },
+                    });
+                    this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+                        tenantId: cred.tenantId,
+                        source: 'channel_credential',
                     });
                     healed++;
                     this.logger.log(

@@ -218,6 +218,21 @@ async function bootstrapTenantAdmin(
       return;
     }
 
+    if (method === "GET" && path === `/quality/${TENANT_ID}/attention-summary`) {
+      await fulfillSuccess(route, {
+        generatedAt: "2026-08-13T12:00:00.000Z",
+        worstStatus: null,
+        agentsTotal: 0,
+        evaluatedAgents: 0,
+        agentsNeedingAttention: 0,
+        openCritical: 0,
+        openHigh: 0,
+        attentionCount: 0,
+        agents: [],
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/channels/overview") {
       await fulfillSuccess(route, []);
       return;

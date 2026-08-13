@@ -147,6 +147,14 @@ jobs:
           apps/api/src/modules/copilot/assistant-kb-contract.spec.ts
           apps/api/src/modules/copilot/copilot.controller.spec.ts
           apps/api/src/modules/copilot/copilot.service.context.spec.ts
+          apps/api/src/modules/quality/agent-quality-signal.service.spec.ts
+          apps/api/src/modules/quality/agent-quality.service.spec.ts
+          apps/api/src/modules/quality/agent-quality-dependency-events.spec.ts
+          apps/api/src/common/guards/internal-auth.guard.spec.ts
+          apps/api/src/modules/quality/quality-listener.service.spec.ts
+          apps/api/src/modules/quality/quality.agent-attribution.spec.ts
+          apps/api/src/modules/quality/quality.controller.spec.ts
+          apps/api/src/modules/simulation/completion-events.spec.ts
           apps/api/src/modules/push/web-push-isolation.spec.ts
           apps/api/src/modules/push/push.service.spec.ts
           apps/api/src/modules/push/push.service.expo-bounds.spec.ts
@@ -156,12 +164,19 @@ jobs:
       - name: Convert API focal evidence to JUnit
         if: always()
         run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/vertical-focal-jest.json artifacts/vertical-focal-jest.xml
+      - name: WhatsApp Agent Quality bridge regression
+        run: npm test --prefix apps/whatsapp -- --runInBand src/modules/onboarding/onboarding.service.spec.ts
       - name: Dashboard resolver
         run: >-
           npx jest --config apps/dashboard/jest.config.cjs --runInBand
           apps/dashboard/src/lib/vertical-dashboard-resolver.spec.ts
           apps/dashboard/src/lib/local-timestamp.spec.ts
           apps/dashboard/src/lib/help-assistant-contract.spec.ts
+          apps/dashboard/src/lib/quality-assistant-contract.spec.ts
+          apps/dashboard/src/lib/quality-health.spec.ts
+          apps/dashboard/src/lib/initial-setup.spec.ts
+          apps/dashboard/src/lib/navigation-contract.spec.ts
+          apps/dashboard/src/lib/roles.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts
           --json --outputFile artifacts/dashboard-vertical-jest.json
       - name: Mobile vertical regression

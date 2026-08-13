@@ -232,7 +232,7 @@
       "reportBuilder": "Reportes personalizados",
       "dripSequences": "Secuencias Drip",
       "automationTemplates": "Plantillas",
-      "agentQuality": "Centro de calidad",
+      "agentQuality": "Salud de agentes",
       "agentSimulation": "Probar agente",
       "procedures": "Procedimientos",
       "organizations": "Organizaciones",
@@ -7821,6 +7821,18 @@
         "leadScoring": "¿Cómo funciona el Lead Scoring?",
         "configureRag": "¿Cómo le doy más información a mi agente?",
         "syncCalendar": "¿Cómo sincronizo mi calendario?"
+      },
+      "quality": {
+        "explainPrompt": "Explícame la salud de mis agentes y qué debería mejorar primero.",
+        "selectedAgent": "Analiza la salud de {agent}.",
+        "firstPriority": "¿Qué debo corregir primero?",
+        "explainBlocker": "Explícame por qué este punto bloquea o pone en riesgo al agente.",
+        "contextTitle": "Contexto de salud del agente",
+        "contextDescription": "Assist usará únicamente el estado, la prioridad y la ruta segura; no recibirá conversaciones ni datos de clientes.",
+        "actions": {
+          "openCenter": "Abrir salud de agentes",
+          "resolvePriority": "Resolver prioridad"
+        }
       }
     },
     "faqs": {
@@ -9980,6 +9992,47 @@
     "enabled": "Habilitado",
     "disabled": "Deshabilitado",
     "lastSent": "Último envío: {date}"
+  },
+  "qualityHealth": {
+    "title": "Salud de tus agentes",
+    "description": "Ve qué necesita atención y actúa con evidencia, sin confundir configuración con desempeño real.",
+    "loading": "Revisando la salud de tus agentes…",
+    "unavailable": "No pudimos verificar la salud de los agentes en este momento.",
+    "retry": "Reintentar",
+    "openCenter": "Ver salud de agentes",
+    "currentState": "Estado más delicado",
+    "agents": "Cobertura",
+    "agentsCount": "{evaluated} de {total} evaluados",
+    "attention": "Acciones abiertas",
+    "attentionCount": "{count, plural, one {# acción crítica o alta} other {# acciones críticas o altas}}",
+    "severityCounts": "{critical} críticas · {high} altas",
+    "noPriorityActions": "Sin acciones críticas o altas",
+    "topAction": "Primero para {agent}",
+    "noOpenAction": "No hay una acción prioritaria abierta. Revisa el centro para consultar la evidencia completa.",
+    "evaluationPending": "Falta evaluar {count, plural, one {# agente} other {# agentes}}. La cobertura se completará de forma acotada.",
+    "noAgents": "Todavía no hay agentes para evaluar.",
+    "review": "Revisar",
+    "askAssist": "Preguntar a Assist",
+    "snooze24h": "Posponer 24 h",
+    "bannerCritical": "Hay una acción crítica que requiere atención.",
+    "bannerAtRisk": "Un agente está en riesgo.",
+    "bannerAgent": "Revisa primero a {agent}.",
+    "navBadge": "{count, plural, one {# acción crítica o alta abierta} other {# acciones críticas o altas abiertas}}",
+    "setup": {
+      "title": "Puesta en marcha",
+      "description": "Solo los pasos esenciales disponibles para tu plan, rol e industria. Esta guía desaparece al completarlos.",
+      "progress": "{completed}/{total} esenciales",
+      "loading": "Verificando la puesta en marcha…",
+      "unavailable": "No pudimos verificar estos pasos. No asumiremos que están incompletos.",
+      "retry": "Reintentar",
+      "continue": "Continuar",
+      "items": {
+        "agent": "Configurar el agente",
+        "channel": "Conectar un canal conversacional",
+        "knowledge": "Agregar conocimiento útil",
+        "catalog": "Configurar el catálogo operativo"
+      }
+    }
   },
   "agentQuality": {
     "title": "Centro de calidad del agente",

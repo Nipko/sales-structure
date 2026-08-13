@@ -1,25 +1,39 @@
-import { Controller, Post, Body, UseGuards, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  ForbiddenException,
+  Logger,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { NormalizedMessage } from '@parallext/shared';
 import { InternalAuthGuard } from '../../common/guards/internal-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { InboundQueueService } from '../inbound/inbound-queue.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 /**
- * Internal endpoints — callable by trusted internal microservices (via
- * x-internal-key) **or** by authenticated dashboard users (via JWT).
+ * Internal endpoints — callable only by trusted internal microservices via
+ * x-internal-key. Dashboard JWTs are rejected at the guard and asserted again
+ * at each handler as defense in depth.
  *
- * Protected by InternalAuthGuard (dual-auth: API key OR JWT).
+ * Protected by InternalAuthGuard (internal API key only).
  */
 @Controller('internal')
 @UseGuards(InternalAuthGuard)
 export class InternalController {
   private readonly logger = new Logger(InternalController.name);
+  private readonly tenantIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly throttle: TenantThrottleService,
     private readonly inboundQueue: InboundQueueService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -29,7 +43,24 @@ export class InternalController {
    * Called by: apps/whatsapp/src/modules/jobs/webhook.processor.ts
    */
   @Post('inbound-message')
-  async receiveInboundMessage(@Body() payload: NormalizedMessage) {
+  async receiveInboundMessage(
+    @Req() request: { user?: { isInternalService?: boolean } },
+    @Body() payload: NormalizedMessage,
+  ) {
+    this.assertInternalService(request);
+    this.assertTenantId(payload?.tenantId);
+    if (
+      payload?.direction !== 'inbound'
+      || typeof payload.id !== 'string'
+      || typeof payload.contactId !== 'string'
+      || typeof payload.conversationId !== 'string'
+      || typeof payload.channelAccountId !== 'string'
+      || !['whatsapp', 'instagram', 'messenger'].includes(payload.channelType)
+      || !payload.content
+      || typeof payload.content !== 'object'
+    ) {
+      throw new BadRequestException('Invalid normalized inbound message');
+    }
     this.logger.log(
       `[Internal] Received inbound message for tenant ${payload.tenantId} from ${payload.contactId}`,
     );
@@ -57,9 +88,18 @@ export class InternalController {
    */
   @Post('channel-account-quota-check')
   async channelAccountQuotaCheck(
+    @Req() request: { user?: { isInternalService?: boolean } },
     @Body() body: { tenantId: string; channelType: string; excludeAccountId?: string },
   ) {
+    this.assertInternalService(request);
     const { tenantId, channelType, excludeAccountId } = body;
+    this.assertTenantId(tenantId);
+    if (!['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'].includes(channelType)) {
+      throw new BadRequestException('Unsupported conversational channel type');
+    }
+    if (excludeAccountId !== undefined && (typeof excludeAccountId !== 'string' || excludeAccountId.length > 255)) {
+      throw new BadRequestException('Invalid excludeAccountId');
+    }
     const existingActive = await this.prisma.channelAccount.count({
       where: {
         tenantId,
@@ -71,5 +111,34 @@ export class InternalController {
     // Throws 403 plan_limit_reached when the additional account would exceed the plan.
     await this.throttle.enforceChannelAccountLimit(tenantId, channelType, existingActive);
     return { allowed: true };
+  }
+
+  /** Cross-process bridge used after WhatsApp Embedded Signup commits. */
+  @Post('agent-quality-channel-updated')
+  async agentQualityChannelUpdated(
+    @Req() request: { user?: { isInternalService?: boolean } },
+    @Body() body: { tenantId: string },
+  ) {
+    // Keep a handler-level assertion as defense in depth in case guard wiring
+    // changes in the future.
+    this.assertInternalService(request);
+    this.assertTenantId(body?.tenantId);
+    this.events.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+      tenantId: body.tenantId,
+      source: 'channel_credential',
+    });
+    return { accepted: true };
+  }
+
+  private assertInternalService(request: { user?: { isInternalService?: boolean } }): void {
+    if (request.user?.isInternalService !== true) {
+      throw new ForbiddenException('Internal service authentication required');
+    }
+  }
+
+  private assertTenantId(tenantId: unknown): asserts tenantId is string {
+    if (typeof tenantId !== 'string' || !this.tenantIdPattern.test(tenantId)) {
+      throw new BadRequestException('A valid tenantId is required');
+    }
   }
 }

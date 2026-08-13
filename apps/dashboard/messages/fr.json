@@ -232,7 +232,7 @@
       "reportBuilder": "Rapports personnalisés",
       "dripSequences": "Séquences Drip",
       "automationTemplates": "Modèles",
-      "agentQuality": "Centre de qualité",
+      "agentQuality": "Santé des agents",
       "agentSimulation": "Tester l'agent",
       "procedures": "Procédures",
       "organizations": "Organisations",
@@ -7821,6 +7821,18 @@
         "leadScoring": "Comment fonctionne le Lead Scoring ?",
         "configureRag": "Comment donner plus d'informations à mon agent ?",
         "syncCalendar": "Comment synchroniser mon calendrier ?"
+      },
+      "quality": {
+        "explainPrompt": "Expliquez la santé de mes agents et ce que je dois améliorer en premier.",
+        "selectedAgent": "Analysez la santé de {agent}.",
+        "firstPriority": "Que dois-je corriger en premier ?",
+        "explainBlocker": "Expliquez pourquoi ce point bloque ou met l'agent à risque.",
+        "contextTitle": "Contexte de santé de l'agent",
+        "contextDescription": "Assist utilisera uniquement l'état, la priorité et la route sûre ; il ne recevra ni conversations ni données client.",
+        "actions": {
+          "openCenter": "Ouvrir la santé des agents",
+          "resolvePriority": "Résoudre la priorité"
+        }
       }
     },
     "faqs": {
@@ -9980,6 +9992,47 @@
     "enabled": "Activé",
     "disabled": "Désactivé",
     "lastSent": "Dernier envoi : {date}"
+  },
+  "qualityHealth": {
+    "title": "Santé de vos agents",
+    "description": "Voyez ce qui exige votre attention et agissez sur des preuves, sans confondre configuration et performance réelle.",
+    "loading": "Vérification de la santé de vos agents…",
+    "unavailable": "Impossible de vérifier la santé des agents pour le moment.",
+    "retry": "Réessayer",
+    "openCenter": "Voir la santé des agents",
+    "currentState": "État le plus préoccupant",
+    "agents": "Couverture",
+    "agentsCount": "{evaluated} sur {total} évalués",
+    "attention": "Actions ouvertes",
+    "attentionCount": "{count, plural, one {# action critique ou haute} other {# actions critiques ou hautes}}",
+    "severityCounts": "{critical} critiques · {high} hautes",
+    "noPriorityActions": "Aucune action critique ou haute",
+    "topAction": "En priorité pour {agent}",
+    "noOpenAction": "Aucune action prioritaire n'est ouverte. Consultez le centre pour voir toutes les preuves.",
+    "evaluationPending": "{count, plural, one {# agent reste} other {# agents restent}} à évaluer. La couverture sera complétée par lots limités.",
+    "noAgents": "Il n'y a pas encore d'agent à évaluer.",
+    "review": "Examiner",
+    "askAssist": "Demander à Assist",
+    "snooze24h": "Reporter de 24 h",
+    "bannerCritical": "Une action critique nécessite votre attention.",
+    "bannerAtRisk": "Un agent est à risque.",
+    "bannerAgent": "Examinez d'abord {agent}.",
+    "navBadge": "{count, plural, one {# action critique ou haute ouverte} other {# actions critiques ou hautes ouvertes}}",
+    "setup": {
+      "title": "Mise en route",
+      "description": "Uniquement les étapes essentielles disponibles pour votre forfait, rôle et secteur. Ce guide disparaît une fois terminé.",
+      "progress": "{completed}/{total} essentielles",
+      "loading": "Vérification de la configuration…",
+      "unavailable": "Impossible de vérifier ces étapes. Nous ne les considérerons pas comme incomplètes.",
+      "retry": "Réessayer",
+      "continue": "Continuer",
+      "items": {
+        "agent": "Configurer l'agent",
+        "channel": "Connecter un canal conversationnel",
+        "knowledge": "Ajouter des connaissances utiles",
+        "catalog": "Configurer le catalogue opérationnel"
+      }
+    }
   },
   "agentQuality": {
     "title": "Centre de qualité de l'agent", "subtitle": "Identifiez ce qu'il reste à configurer, ce qui a été testé et ce qui se passe dans les conversations réelles.", "loading": "Analyse des preuves disponibles…", "statusLabel": "État actuel", "agentInactive": "Agent inactif",

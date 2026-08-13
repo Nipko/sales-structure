@@ -22,7 +22,7 @@ indicados abajo.
 | Acciones móviles por rol | `apps/mobile/src/lib/verticalOperationPolicy.ts` |
 | Límites y precios de planes | Filas activas de `billing_plans`; el seed solo es un valor inicial |
 | Ayuda de Parallly Assist | `apps/api/kb/assistant/{es,en,pt,fr}` cargada por la API |
-| Calidad de cada agente IA | `packages/shared/src/agent-quality-contract.ts`, endpoints `/quality/:tenantId/agents*` y ruta `/admin/agent/quality` |
+| Calidad de cada agente IA | `packages/shared/src/agent-quality-contract.ts`, endpoints `/quality/:tenantId/agents*`, `/attention-summary`, `/signals*` y ruta `/admin/agent/quality` |
 
 ## Superficies del producto
 
@@ -56,7 +56,7 @@ configuración de extremo a extremo.
 | Ver base de conocimiento | Sí | Sí | Sí, lectura |
 | Editar base de conocimiento y FAQs | Sí | Sí | No |
 | Automatización, campañas y analítica tenant | Sí | Sí | No |
-| Ver el Centro de calidad de cada agente IA | Sí | Sí | No |
+| Ver Salud de agentes, sus señales y el Centro de calidad | Sí | Sí | No |
 | Configurar etapas, scoring, macros, media y pre-chat | Sí | Sí | No |
 | Agentes IA, conexiones de canales, empresa e integraciones | Sí | No | No |
 | Usuarios, facturación, políticas, recall y API keys | Sí | No | No |
@@ -80,12 +80,23 @@ invitar o editar miembros.
 > producto y código unifiquen ese contrato, no se debe prometer al agente acceso a
 > esa página.
 
-El **Centro de calidad del agente** (`/admin/agent/quality`) es una superficie de
-lectura para Admin/Supervisor. Separa preparación, pruebas repetibles y evidencia de
-producción atribuida al agente y a su versión vigente. Sus estados y recomendaciones
-son señales de diagnóstico: no certifican perfección, no garantizan resultados y no
-modifican automáticamente el agente ni el conocimiento. El editor de agentes sigue
-siendo exclusivo de Admin.
+**Salud de agentes** hace visible el diagnóstico para Admin/Supervisor sin obligarlos
+a entrar primero al editor: Inicio mantiene una tarjeta de estado; Insights muestra
+el detalle en `/admin/agent/quality`; y su badge cuenta únicamente señales Críticas y
+Altas abiertas. El aviso global aparece solo ante una señal crítica abierta o un
+estado **En riesgo**, y permite revisar, preguntar a Assist o posponer 24 horas.
+
+El centro separa preparación, pruebas repetibles y producción atribuida al agente y
+a su versión. Sus snapshots y señales persisten para detectar recurrencia y cambios;
+posponer o reconocer una señal no la resuelve. Estos estados no certifican
+perfección, no garantizan resultados y no modifican automáticamente el agente ni el
+conocimiento. El editor sigue siendo exclusivo de Admin. Los avisos son internos del
+dashboard: no implican correo ni notificación push.
+
+Cuando Admin o Supervisor abre Parallly Assist desde una señal, el servidor deriva un
+contexto acotado y autorizado de calidad. No comparte transcripciones, texto de
+clientes, IDs de conversación, prompts, texto libre del juez ni secretos. Assist
+explica una prioridad y ofrece rutas permitidas; no ejecuta la corrección.
 
 ## Navegación web
 
@@ -96,7 +107,7 @@ El menú tenant prioriza el trabajo diario y agrupa los destinos en:
    Automatización y Campañas, según rol.
 3. **Operación**: destinos derivados de la vertical, subtipo y capacidades
    efectivas del tenant.
-4. **Insights**: analítica, rendimiento, Centro de calidad, atribución e informes.
+4. **Insights**: analítica, Salud de agentes, rendimiento, atribución e informes.
 5. **Administración**: canales, usuarios, cumplimiento, facturación y solicitudes.
 6. **Configuración**: zona estable al fondo, con retorno seguro a la página de origen.
 

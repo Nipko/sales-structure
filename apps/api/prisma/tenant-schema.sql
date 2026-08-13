@@ -3240,6 +3240,59 @@ CREATE INDEX IF NOT EXISTS idx_cqs_created ON "{{SCHEMA_NAME}}"."conversation_qu
 CREATE INDEX IF NOT EXISTS idx_cqs_agent_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_cqs_agent_version_conversation_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, agent_config_version, conversation_id, created_at DESC) WHERE agent_id IS NOT NULL;
 
+-- ---- Durable proactive Agent Quality attention ----
+-- Snapshots contain fixed numeric/coded fields only. Signals never persist
+-- transcripts, prompts, judge prose, KB queries or conversation identifiers.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_quality_snapshots" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL,
+    agent_config_version INTEGER NOT NULL,
+    status VARCHAR(40) NOT NULL,
+    next_milestone VARCHAR(50) NOT NULL,
+    preparation_status VARCHAR(40) NOT NULL,
+    preparation_score NUMERIC,
+    tested_status VARCHAR(40) NOT NULL,
+    tested_score NUMERIC,
+    production_status VARCHAR(40) NOT NULL,
+    production_score NUMERIC,
+    recommendation_count INTEGER NOT NULL DEFAULT 0,
+    critical_count INTEGER NOT NULL DEFAULT 0,
+    high_count INTEGER NOT NULL DEFAULT 0,
+    fingerprint VARCHAR(64) NOT NULL,
+    trigger VARCHAR(50) NOT NULL DEFAULT 'manual',
+    calculated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (agent_id, agent_config_version, fingerprint)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_quality_snapshots_latest
+    ON "{{SCHEMA_NAME}}"."agent_quality_snapshots"(agent_id, agent_config_version, calculated_at DESC);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_quality_signals" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL,
+    agent_config_version INTEGER NOT NULL,
+    code VARCHAR(120) NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    pillar VARCHAR(30) NOT NULL,
+    dimension VARCHAR(50) NOT NULL,
+    state VARCHAR(20) NOT NULL DEFAULT 'open',
+    href VARCHAR(300) NOT NULL,
+    evidence_count INTEGER NOT NULL DEFAULT 0,
+    fingerprint VARCHAR(64) NOT NULL UNIQUE,
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
+    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    acknowledged_at TIMESTAMPTZ,
+    acknowledged_by UUID,
+    snoozed_until TIMESTAMPTZ,
+    snoozed_by UUID,
+    resolved_at TIMESTAMPTZ,
+    superseded_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_agent_quality_signals_attention
+    ON "{{SCHEMA_NAME}}"."agent_quality_signals"(state, severity, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_quality_signals_agent_version
+    ON "{{SCHEMA_NAME}}"."agent_quality_signals"(agent_id, agent_config_version, state);
+
 -- ---- Simulation + eval gate ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."simulation_runs" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

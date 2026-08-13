@@ -14,7 +14,7 @@ Analytics are for administrators and supervisors. Users with the agent role cann
 
 ## The main dashboard
 
-When you log in you land on the **Dashboard**: your overview for the day. It adapts to your industry — a clinic sees "Appointments today" and "New patients"; a restaurant sees "Orders today" and "Daily revenue"; a general business sees "Conversations today", "New leads" and "Response rate". If your account is new, you'll also see a checklist with the steps still pending to activate it (connect a channel, customize your agent, and so on).
+When you log in you land on the **Dashboard**: your overview for the day. It adapts to your industry — a clinic sees "Appointments today" and "New patients"; a restaurant sees "Orders today" and "Daily revenue"; a general business sees "Conversations today", "New leads" and "Response rate". Admins and Supervisors also see **Your agents' health**; the temporary **Getting started** card appears while essential steps remain.
 
 ## How to see your general business metrics
 

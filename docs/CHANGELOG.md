@@ -1,14 +1,39 @@
 # 📋 Changelog — Parallext Engine
 
 > Registro de todos los cambios significativos del proyecto.
-> **Última actualización documental: 2026-08-11.** `v6.7.0` es el último release
+> **Última actualización documental: 2026-08-13.** `v6.7.0` es el último release
 > histórico enumerado abajo; no debe interpretarse como la versión runtime vigente.
 
 ---
 
+## Sin publicar — Ago 13, 2026 (Salud proactiva de agentes + Parallly Assist)
+
+- **Salud de tus agentes** queda visible para Admin/Supervisor en Inicio con peor
+  estado, cobertura, conteo de acciones Críticas/Altas y primera prioridad. En
+  **Insights → Salud de agentes**, el badge cuenta solo señales Críticas y Altas
+  abiertas; no es un score.
+- Un aviso global aparece únicamente cuando existe una señal crítica activa o el peor
+  estado es **En riesgo**. Permite revisar, preguntar a Assist o posponer 24 horas.
+  Posponer o reconocer administra la atención, pero no marca la causa como resuelta.
+- El motor conserva snapshots y señales por agente/versión/código, agrupa recurrencias,
+  escucha cambios de configuración, QA, evals y simulaciones, y ejecuta una
+  conciliación acotada cada seis horas para recuperar eventos perdidos.
+- **Parallly Assist** acepta para Admin/Supervisor un objetivo de calidad validado
+  server-side. Explica una prioridad con códigos y agregados vigentes y devuelve rutas
+  internas seguras; excluye transcripciones, texto de clientes, IDs de conversación,
+  prompts, consultas RAG, texto libre del juez y secretos. No edita ni confirma
+  cambios y no inicia comunicaciones externas.
+- Se retira el checklist flotante y la pastilla ambigua `8/9`. **Puesta en marcha**
+  permanece solo en Inicio mientras haya pasos esenciales disponibles para el plan,
+  rol e industria; falla cerrado cuando no puede verificar una fuente. Es adopción
+  inicial y no se confunde con Calidad.
+- Los avisos proactivos son internos del dashboard; esta entrega no promete correo ni
+  push. El manual web sube a v4.5; la referencia de producto/API/módulos y los 26
+  artículos runtime en los cuatro idiomas quedan alineados con estos límites.
 ## Sin publicar — Ago 11, 2026 (referencias de producto y ayuda)
 
-- Se incorpora **Insights → Centro de calidad del agente** para Admin/Supervisor.
+- Se incorpora el diagnóstico por agente para Admin/Supervisor (renombrado en la
+  iteración siguiente como **Insights → Salud de agentes**).
   La vista separa preparación, pruebas repetibles y producción atribuida al agente y
   a su versión; muestra estados y recomendaciones priorizadas sin presentarlas como
   certificación, garantía comercial ni autoedición de prompts o conocimiento.

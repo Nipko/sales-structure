@@ -6,7 +6,8 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
-import type { AgentQualityOverview } from "@parallext/shared";
+import type { AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal } from "@parallext/shared";
+import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -757,8 +758,9 @@ export const api = {
         page: string;
         locale: string;
         history: { role: "user" | "assistant"; content: string }[];
+        target?: QualityAssistantTarget;
     }) =>
-        apiPost<{ reply: string }>("/copilot/chat", data),
+        apiPost<{ reply: string; actions?: Array<{ code: "open_quality_center" | "open_quality_action"; labelKey: "openCenter" | "resolvePriority"; href: string }> }>("/copilot/chat", data),
 
     // Conversation copilot (inbox)
     getCopilotSuggestions: (conversationId: string) =>
@@ -977,6 +979,16 @@ export const api = {
         apiGet<Array<{ id: string; name: string; is_active: boolean; is_default: boolean }>>(`/quality/${tenantId}/agents`),
     getAgentQualityOverview: (tenantId: string, agentId: string) =>
         apiGet<AgentQualityOverview>(`/quality/${tenantId}/agents/${agentId}/overview`),
+    getAgentQualityAttentionSummary: (tenantId: string) =>
+        apiGet<AgentQualityAttentionSummary>(`/quality/${tenantId}/attention-summary`),
+    reconcileAgentQualityAttention: (tenantId: string) =>
+        apiPost<AgentQualityAttentionSummary>(`/quality/${tenantId}/reconcile`, {}),
+    listAgentQualitySignals: (tenantId: string, state = "open", limit = 50) =>
+        apiGet<AgentQualitySignal[]>(`/quality/${tenantId}/signals?state=${encodeURIComponent(state)}&limit=${limit}`),
+    acknowledgeAgentQualitySignal: (tenantId: string, signalId: string) =>
+        apiPost<AgentQualitySignal>(`/quality/${tenantId}/signals/${signalId}/acknowledge`, {}),
+    snoozeAgentQualitySignal: (tenantId: string, signalId: string, data: { until?: string; durationHours?: number }) =>
+        apiPost<AgentQualitySignal>(`/quality/${tenantId}/signals/${signalId}/snooze`, data),
 
     // Conversation trace (T1.7 — observability)
     getConversationTrace: (tenantId: string, conversationId: string) =>

@@ -1,7 +1,7 @@
 # 🗂️ Estructura de la API — Parallext Engine
 
 > Referencia rápida de los módulos y endpoints del backend.
-> Actualizado: Agosto 11, 2026
+> Actualizado: Agosto 13, 2026
 
 > **⚠️ Prefijo global obligatorio.** Toda ruta del API (puerto 3000) lleva el prefijo
 > `api/v1` — se aplica en `main.ts` (`app.setGlobalPrefix('api/v1')`, sin `exclude`).
@@ -59,7 +59,7 @@
 | SAML/SSO | `modules/auth/saml/` | 6 | Enterprise SSO via SAML 2.0 |
 | Widget | `modules/widget/` | 13 + WS | Web chat widget embebible + triggers + Socket.IO `/widget` |
 | Dashboard Analytics | `modules/dashboard-analytics/` | 1 | Estadísticas resolución IA |
-| Quality | `modules/quality/` | 4 | QA de conversaciones y Centro de calidad por agente |
+| Quality | `modules/quality/` | 9 | QA, Centro de calidad y señales proactivas por agente |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -175,17 +175,26 @@ Todos los endpoints de lectura requieren JWT + TenantGuard y rol
 
 ### Calidad por agente (`/api/v1/quality`)
 
-Los endpoints del Centro de calidad son de lectura y usan JWT, `TenantGuard` y roles
+Los endpoints de evidencia del Centro de calidad son de lectura; las únicas mutaciones
+de esta superficie reconocen o posponen una señal de atención, sin editar el agente ni
+marcar la causa como resuelta. Todos usan JWT, `TenantGuard` y roles
 Admin/Supervisor. El selector no expone la configuración del agente; el overview
 mantiene separados preparación, pruebas y producción atribuida a la versión vigente.
-`super_admin` solo los usa dentro de un tenant mediante el contexto autorizado de
-impersonación. Sus estados son evidencia operativa, no una certificación ni una orden
-de autoedición.
+El resumen de atención y las señales son contratos acotados: no incluyen
+transcripciones, texto del juez, prompts ni IDs de conversaciones.
+En el dashboard, `super_admin` entra al workspace mediante impersonación autorizada;
+por API puede aportar un `tenantId` explícito, validado y auditado por `TenantGuard`.
+Sus estados son evidencia operativa, no una certificación ni una orden de autoedición.
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
 | GET | `/quality/:tenantId/agents` | Super admin/Admin/Supervisor | Selector mínimo: id, nombre, activo y predeterminado |
 | GET | `/quality/:tenantId/agents/:agentId/overview` | Super admin/Admin/Supervisor | Estado, siguiente hito, tres pilares, dimensiones y recomendaciones del agente |
+| GET | `/quality/:tenantId/attention-summary` | Super admin/Admin/Supervisor | Peor estado y conteos abiertos Críticos/Altos para Inicio, badge y aviso global |
+| POST | `/quality/:tenantId/reconcile` | Super admin/Admin/Supervisor | Conciliación manual acotada y coalescida; actualiza snapshots/señales y devuelve el resumen fresco |
+| GET | `/quality/:tenantId/signals` | Super admin/Admin/Supervisor | Señales acotadas por estado (`open` por defecto; `limit` máximo 100) |
+| POST | `/quality/:tenantId/signals/:signalId/acknowledge` | Super admin/Admin/Supervisor | Reconocer una señal activa; no la marca resuelta |
+| POST | `/quality/:tenantId/signals/:signalId/snooze` | Super admin/Admin/Supervisor | Posponer con `durationHours` o `until` (máximo 720 h) |
 | GET | `/quality/:tenantId` | Super admin/Admin/Supervisor | Resumen QA del rango (`start`, `end`) |
 | GET | `/quality/:tenantId/flagged` | Super admin/Admin/Supervisor | Conversaciones QA marcadas (`start`, `end`, `limit`) |
 
@@ -221,7 +230,7 @@ contexto validado por TenantGuard.
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
-| POST | `/chat` | Tenant Admin/Supervisor/Agent | Parallly Assist general de la plataforma |
+| POST | `/chat` | Tenant Admin/Supervisor/Agent | Parallly Assist general; Admin/Supervisor pueden añadir un objetivo de calidad validado |
 | GET | `/:conversationId/suggestions` | Tenant Admin/Supervisor/Agent | Tres respuestas sugeridas |
 | GET | `/:conversationId/summary` | Tenant Admin/Supervisor/Agent | Resumen de la conversación |
 | GET | `/:conversationId/intent` | Tenant Admin/Supervisor/Agent | Intención detectada |
@@ -238,13 +247,20 @@ Body permitido para `POST /copilot/chat`:
   "history": [
     { "role": "user", "content": "Necesito configurar mi empresa" },
     { "role": "assistant", "content": "¿Qué parte deseas ajustar?" }
-  ]
+  ],
+  "target": {
+    "kind": "agent_quality",
+    "agentId": "00000000-0000-4000-8000-000000000001",
+    "signalId": "00000000-0000-4000-8000-000000000002"
+  }
 }
 ```
 
-Solo se aceptan `message`, `page`, `locale` e `history`; `page` debe ser una ruta
-interna `/admin`, el locale uno de `es/en/pt/fr` y el historial contiene únicamente
-roles `user`/`assistant` dentro de límites acotados.
+Solo se aceptan `message`, `page`, `locale`, `history` y el `target` opcional; `page`
+debe ser una ruta interna `/admin`, el locale uno de `es/en/pt/fr` y el historial
+contiene únicamente roles `user`/`assistant` dentro de límites acotados. `target`
+solo admite `kind: agent_quality`, `agentId` y un `signalId` opcional, todos validados;
+Tenant Agent no puede enviarlo.
 
 `/chat` aplica límites Redis por usuario y tenant (ventanas de minuto y día) y
 responde `429` con `Retry-After` al excederlos. Las identidades y el plan no se
@@ -253,7 +269,13 @@ aceptan del cliente; el contexto de plan detallado solo se expone al Tenant Admi
 **Diferencia de alcance:** Parallly Assist (`/chat`) responde sobre el uso de la
 plataforma con la KB localizada de `apps/api/kb/assistant` y contexto autorizado de
 tenant/rol/vertical; el detalle de plan se incorpora solo para Tenant Admin. Los
-endpoints por `conversationId` son el Copilot operativo del Inbox: trabajan sobre la
+objetivos de calidad se resuelven nuevamente dentro del tenant y solo entregan al
+modelo estado, versión, códigos y agregados necesarios. Se excluyen transcripciones,
+texto de clientes, IDs de conversación, prompts, consultas RAG, texto libre del juez
+y secretos. La respuesta puede incluir acciones con rutas internas seguras; no aplica
+cambios ni envía notificaciones externas.
+
+Los endpoints por `conversationId` son el Copilot operativo del Inbox: trabajan sobre la
 conversación autorizada y, en `ask`, pueden combinarla con conocimiento RAG del tenant.
 Los seis endpoints excluyen de forma explícita a `tenant_viewer` y a `super_admin` en
 modo plataforma.

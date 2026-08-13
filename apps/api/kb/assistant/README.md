@@ -3,8 +3,11 @@
 These Markdown files are the product-help source loaded by `CopilotService`. They are separate from tenant knowledge, FAQs, and policies, which answer each tenant's customers.
 
 The collection currently has 26 equivalent articles in each locale (`es`, `en`,
-`pt`, `fr`). `centro-calidad-agente` covers the read-only Agent quality center for
-Tenant Admin and Tenant Supervisor; agent editing remains Admin-only.
+`pt`, `fr`). `centro-calidad-agente` covers Agent health on Home and Insights, the
+read-only Quality center, proactive signals, and the privacy-bounded Parallly Assist
+coach for Tenant Admin and Tenant Supervisor; agent editing remains Admin-only.
+`primeros-pasos` documents the plan-aware essential Getting started card that
+replaced the retired floating `8/9` progress pill.
 
 ## Contract
 
@@ -15,6 +18,12 @@ Tenant Admin and Tenant Supervisor; agent editing remains Admin-only.
 - Describe menu locations using the current information architecture: Essentials, AI & Growth, Operations, Insights, Administration, and Settings.
 - Do not copy prices, trial durations, quotas, or plan matrices into articles. Direct users to **Administration → Plan & Billing**, whose account-specific values are authoritative.
 - Keep credentials, secrets, tenant content, customer FAQs, and customer policies out of this repository knowledge base.
+- Do not describe Agent health badges as a score: they count only open Critical and
+  High signals. The global banner is limited to an active Critical signal or an At
+  risk status; snoozing manages attention and does not resolve the cause.
+- Do not promise email, push, or automatic prompt/knowledge edits from Agent health
+  or Parallly Assist. Quality context must stay free of transcripts, customer text,
+  conversation IDs, prompts, judge prose, retrieval queries, and secrets.
 
 The API image copies `kb/assistant` at build time. Deploy a new API image (or restart a process with the updated files mounted) for changes to reach the in-process cache.
 

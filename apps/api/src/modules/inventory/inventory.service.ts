@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { normalizeCurrencyCode } from '../../common/utils/commercial-units.util';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 // ============================================
 // Types (exported for controller return type visibility)
@@ -70,6 +72,7 @@ export class InventoryService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        @Optional() private readonly events?: EventEmitter2,
     ) { }
 
     /**
@@ -166,6 +169,7 @@ export class InventoryService {
         );
 
         this.logger.log(`Product created: ${data.name} (${data.sku}) for tenant ${tenantId}`);
+        this.emitQualityDependency(tenantId);
         return { id: result?.[0]?.id || '' };
     }
 
@@ -202,6 +206,7 @@ export class InventoryService {
             `UPDATE products SET ${setClauses.join(', ')} WHERE id = $${paramIndex}::uuid`,
             values,
         );
+        this.emitQualityDependency(tenantId);
     }
 
     /**
@@ -368,6 +373,13 @@ export class InventoryService {
             products: [],
             recentMovements: [],
         };
+    }
+
+    private emitQualityDependency(tenantId: string): void {
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'catalog',
+        });
     }
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {

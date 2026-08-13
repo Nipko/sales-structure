@@ -36,6 +36,11 @@ type HarnessOptions = {
     tenantUpdatedAt?: string;
     channelRows?: any[];
     widgetRows?: any[];
+    whatsappCredential?: Record<string, any> | null;
+    credentialRows?: Record<string, any>[];
+    credentialLookupFails?: boolean;
+    legacyWhatsAppRows?: any[];
+    boundChannelBindings?: string[];
     activeHumans?: number;
     knowledgeChunks?: number;
     knowledgeUpdatedAt?: string | null;
@@ -99,7 +104,11 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('SELECT id, name, is_default, is_active')) {
             return options.listRows ?? [{ id: AGENT_ID, name: 'Luna', is_default: true, is_active: true }];
         }
+        if (query.includes('unnest(COALESCE(channel_bindings')) {
+            return (options.boundChannelBindings ?? []).map((binding) => ({ binding }));
+        }
         if (query.includes('FROM agent_personas')) return agent ? [agent] : [];
+        if (query.includes('FROM whatsapp_channels')) return options.legacyWhatsAppRows ?? [];
         if (query.includes('FROM companies')) {
             const company = options.company === null ? null : {
                 name: 'Parallly Demo',
@@ -161,6 +170,17 @@ function createHarness(options: HarnessOptions = {}) {
                 industry: 'saas',
                 updatedAt: options.tenantUpdatedAt ?? '2026-08-01T00:00:00.000Z',
             }),
+        },
+        whatsappCredential: {
+            findMany: jest.fn(() => options.credentialLookupFails
+                ? Promise.reject(new Error('credential lookup failed'))
+                : Promise.resolve(options.credentialRows
+                    ?? (options.whatsappCredential === null ? [] : [{
+                        credentialType: 'system_user_token',
+                        rotationState: 'active',
+                        expiresAt: null,
+                        ...(options.whatsappCredential || {}),
+                    }]))),
         },
         $queryRawUnsafe: jest.fn(async (query: string) => {
             if (query.includes('FROM channel_accounts')) return options.channelRows ?? [{ channel_type: 'whatsapp', account_id: 'wa-1' }];
@@ -281,6 +301,200 @@ describe('AgentQualityService', () => {
         expect(check(overview, 'channel_assignment').status).toBe('pass');
         expect(check(overview, 'operational_channel_scope').status).toBe('pass');
         expect(check(overview, 'channel_connection').status).toBe('pass');
+    });
+
+    it('accepts an active WhatsApp account when its latest system-user credential is healthy', async () => {
+        const { service, prisma } = createHarness({
+            whatsappCredential: {
+                rotationState: 'active',
+                expiresAt: '2026-09-01T00:00:00.000Z',
+                encryptedValue: 'must-not-leak',
+            },
+        });
+
+        const overview = await service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'pass',
+            evidence: {
+                assigned: 1,
+                connected: 1,
+                credentialAffectedAssignments: 0,
+                hasCredentialIssue: false,
+                credentialIssue: null,
+            },
+        });
+        expect(prisma.whatsappCredential.findMany).toHaveBeenCalledWith({
+            where: { tenantId: TENANT_ID, credentialType: { in: [
+                'system_user_token', 'instagram_token', 'messenger_token', 'telegram_token',
+            ] } },
+            orderBy: { createdAt: 'desc' },
+            select: { credentialType: true, rotationState: true, expiresAt: true },
+        });
+        expect(JSON.stringify(check(overview, 'channel_connection').evidence)).not.toContain('must-not-leak');
+    });
+
+    it.each(['error', 'revoked'] as const)(
+        'rejects an active WhatsApp account when its system-user credential is %s',
+        async (rotationState) => {
+            const overview = await createHarness({
+                whatsappCredential: { rotationState, expiresAt: null },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_connection')).toMatchObject({
+                status: 'fail',
+                evidence: {
+                    assigned: 1,
+                    connected: 0,
+                    credentialAffectedAssignments: 1,
+                    hasCredentialIssue: true,
+                    credentialIssue: rotationState,
+                },
+            });
+            expect(overview.preparation.criticalBlockers).toContain('channel_connection');
+        },
+    );
+
+    it('rejects an active WhatsApp account when its system-user credential is expired', async () => {
+        const overview = await createHarness({
+            whatsappCredential: { rotationState: 'active', expiresAt: '2026-08-11T11:59:59.000Z' },
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'fail',
+            evidence: {
+                assigned: 1,
+                connected: 0,
+                credentialAffectedAssignments: 1,
+                hasCredentialIssue: true,
+                credentialIssue: 'expired',
+            },
+        });
+    });
+
+    it.each([
+        ['instagram', 'instagram_token', 'revoked'],
+        ['messenger', 'messenger_token', 'error'],
+        ['telegram', 'telegram_token', 'expired'],
+    ] as const)('rejects an active %s account when its own credential is unhealthy', async (
+        channel,
+        credentialType,
+        issue,
+    ) => {
+        const overview = await createHarness({
+            agent: { channels: [channel] },
+            channelRows: [{ channel_type: channel, account_id: `${channel}-1` }],
+            credentialRows: [{
+                credentialType,
+                rotationState: issue === 'expired' ? 'active' : issue,
+                expiresAt: issue === 'expired' ? '2026-08-11T11:59:59.000Z' : null,
+            }],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'fail',
+            evidence: {
+                assigned: 1,
+                connected: 0,
+                credentialAffectedAssignments: 1,
+                hasCredentialIssue: true,
+                credentialIssue: issue,
+            },
+        });
+    });
+
+    it.each([
+        ['missing', { whatsappCredential: null }],
+        ['unknown', { credentialLookupFails: true }],
+    ] as const)('does not report healthy when a connected WhatsApp credential is %s', async (
+        issue,
+        harnessOptions,
+    ) => {
+        const overview = await createHarness(harnessOptions).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: issue === 'missing' ? 'fail' : 'warning',
+            evidence: {
+                hasCredentialIssue: true,
+                credentialIssue: issue,
+            },
+        });
+    });
+
+    it('evaluates Instagram credentials per account binding instead of one tenant-wide token', async () => {
+        const overview = await createHarness({
+            agent: { channels: [], channel_bindings: ['instagram:ig-a'] },
+            channelRows: [
+                {
+                    channel_type: 'instagram', account_id: 'ig-a', has_account_token: true,
+                    metadata: { tokenExpiresAt: '2026-08-11T11:59:59.000Z' },
+                },
+                {
+                    channel_type: 'instagram', account_id: 'ig-b', has_account_token: true,
+                    metadata: { tokenExpiresAt: '2026-09-01T00:00:00.000Z' },
+                },
+            ],
+            credentialRows: [{
+                credentialType: 'instagram_token', rotationState: 'active', expiresAt: '2026-09-01T00:00:00.000Z',
+            }],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'fail',
+            evidence: { connected: 0, credentialIssue: 'expired' },
+        });
+    });
+
+    it('fails a legacy type-level Instagram assignment when any unbound account is expired', async () => {
+        const overview = await createHarness({
+            agent: { channels: ['instagram'], channel_bindings: [] },
+            channelRows: [
+                {
+                    channel_type: 'instagram', account_id: 'ig-a', has_account_token: true,
+                    metadata: { tokenExpiresAt: '2026-08-11T11:59:59.000Z' },
+                },
+                {
+                    channel_type: 'instagram', account_id: 'ig-b', has_account_token: true,
+                    metadata: { tokenExpiresAt: '2026-09-01T00:00:00.000Z' },
+                },
+            ],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'fail',
+            evidence: { connected: 0, credentialIssue: 'expired' },
+        });
+    });
+
+    it('does not charge a legacy channel fallback for an unhealthy account bound to another agent', async () => {
+        const overview = await createHarness({
+            agent: { channels: ['instagram'], channel_bindings: [] },
+            boundChannelBindings: ['instagram:ig-a'],
+            channelRows: [
+                {
+                    channel_type: 'instagram', account_id: 'ig-a', has_account_token: true,
+                    metadata: { tokenExpiresAt: '2026-08-11T11:59:59.000Z' },
+                },
+                {
+                    channel_type: 'instagram', account_id: 'ig-b', has_account_token: true,
+                    metadata: { tokenExpiresAt: '2026-09-01T00:00:00.000Z' },
+                },
+            ],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'pass',
+            evidence: { connected: 1, hasCredentialIssue: false },
+        });
+    });
+
+    it('warns before a credential expires without claiming it is healthy', async () => {
+        const overview = await createHarness({
+            whatsappCredential: { rotationState: 'active', expiresAt: '2026-08-17T12:00:00.000Z' },
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'warning',
+            evidence: { connected: 1, credentialWarningAssignments: 1, credentialIssue: 'expiring' },
+        });
     });
 
     it('does not count Email or SMS as certified conversational assignments', async () => {

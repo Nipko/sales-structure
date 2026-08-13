@@ -1,10 +1,12 @@
-import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { BusinessIdentity, SocialLinks } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 /**
  * Business Identity service — owns the "who the business is" data that the
@@ -24,6 +26,7 @@ export class BusinessInfoService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         @Inject(forwardRef(() => TenantsService)) private readonly tenantsService: TenantsService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     /** Idempotent: ensure the companies extensions exist for older tenants. */
@@ -159,6 +162,10 @@ export class BusinessInfoService {
                 social,
             ) as any[];
             await this.invalidateCache(tenantId);
+            this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+                tenantId,
+                source: 'business_info',
+            });
             return this.rowToIdentity(tenantId, rows[0]);
         }
 
@@ -194,6 +201,10 @@ export class BusinessInfoService {
 
         await this.invalidateCache(tenantId);
         await this.syncToTenantSettings(tenantId, input);
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'business_info',
+        });
         return this.rowToIdentity(tenantId, rows[0]);
     }
 

@@ -1943,6 +1943,57 @@ Table tenant.conversation_quality_scores {
   indexes { conversation_id; created_at }
 }
 
+Table tenant.agent_quality_snapshots {
+  id uuid [pk]
+  agent_id uuid [not null]
+  agent_config_version int [not null]
+  status varchar(40) [not null]
+  next_milestone varchar(50) [not null]
+  preparation_status varchar(40) [not null]
+  preparation_score numeric
+  tested_status varchar(40) [not null]
+  tested_score numeric
+  production_status varchar(40) [not null]
+  production_score numeric
+  recommendation_count int [not null, default: 0]
+  critical_count int [not null, default: 0]
+  high_count int [not null, default: 0]
+  fingerprint varchar(64) [not null]
+  trigger varchar(50) [not null, default: 'manual']
+  calculated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (agent_id, agent_config_version, fingerprint) [unique]
+    (agent_id, agent_config_version, calculated_at)
+  }
+}
+
+Table tenant.agent_quality_signals {
+  id uuid [pk]
+  agent_id uuid [not null]
+  agent_config_version int [not null]
+  code varchar(120) [not null]
+  severity varchar(20) [not null]
+  pillar varchar(30) [not null]
+  dimension varchar(50) [not null]
+  state varchar(20) [not null, default: 'open']
+  href varchar(300) [not null]
+  evidence_count int [not null, default: 0]
+  fingerprint varchar(64) [not null, unique]
+  occurrence_count int [not null, default: 1]
+  first_seen_at timestamptz [not null, default: `now()`]
+  last_seen_at timestamptz [not null, default: `now()`]
+  acknowledged_at timestamptz
+  acknowledged_by uuid
+  snoozed_until timestamptz
+  snoozed_by uuid
+  resolved_at timestamptz
+  superseded_at timestamptz
+  indexes {
+    (state, severity, last_seen_at)
+    (agent_id, agent_config_version, state)
+  }
+}
+
 Table tenant.simulation_runs {
   id uuid [pk, note: 'simulación pre-deploy del agente (T2.13)']
   agent_id uuid

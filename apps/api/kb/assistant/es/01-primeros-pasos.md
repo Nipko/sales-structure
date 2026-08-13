@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Primeros pasos y configuración inicial"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["primeros pasos", "empezar", "comenzar", "registro", "registrarse", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "checklist", "tu progreso", "tour", "prueba gratis", "trial", "nuevo usuario"]
+keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "esenciales", "checklist", "tu progreso", "8/9", "tour", "trial", "nuevo usuario"]
 ---
 
 # Primeros pasos y configuración inicial
@@ -67,15 +67,19 @@ Al hacer clic en **Finalizar configuración**, el panel te muestra un breve **to
 
 Avanza con **Siguiente** y ciérralo con **Listo**. Si tu negocio es de una industria vertical, el tour también te muestra la herramienta específica de tu rubro.
 
-## El checklist "Tu Progreso"
+## La tarjeta "Puesta en marcha"
 
-En el panel principal verás a la derecha el checklist **Tu Progreso**, que marca lo que falta para activar tu cuenta:
+En **Inicio** aparece **Puesta en marcha** mientras tengas pasos esenciales pendientes
+y disponibles para tu plan, rol e industria:
 
-- **Esenciales**: crear cuenta, configurar agente IA y conectar un canal de mensajería.
-- **Recomendados**: enviar un mensaje de prueba y agregar contenido a la base de conocimiento.
-- **Avanzado**: invitar a tu equipo, conectar Instagram, crear reglas de automatización y personalizar plantillas de email.
+- configurar el agente IA;
+- conectar al menos un canal conversacional certificado disponible en tu cuenta;
+- agregar conocimiento útil o el catálogo operativo que corresponda a tu negocio.
 
-Cada punto pendiente tiene un botón que te lleva directo a la pantalla correcta. Puedes minimizarlo con la **X**: queda como una pastilla flotante con tu avance y reaparece completo hasta que conectes tu primer canal.
+Cada paso pendiente abre una ruta permitida. La tarjeta desaparece al completarlos y
+no se convierte en una pastilla flotante `8/9`. Si Parallly no puede verificar una
+fuente, muestra **Reintentar** en vez de afirmar que el paso está incompleto. Las tareas
+avanzadas se realizan desde su módulo y no inflan este progreso esencial.
 
 ## Qué hacer primero: orden recomendado
 
@@ -103,7 +107,7 @@ Sí, cuando tu cuenta tenga capacidad disponible. Cada conexión usa su propio a
 SMS no es un canal de conversación: sirve para enviar notificaciones a tus clientes mediante créditos (1 crédito = 1 segmento de mensaje).
 
 **Me salté el asistente, ¿cómo lo retomo?**
-Entra directo a `/admin/setup-wizard`, o configura cada pieza por separado desde los menús **Agente IA** y **Canales**. El checklist **Tu Progreso** te guía con lo que falta.
+Entra directo a `/admin/setup-wizard`, o configura cada pieza por separado desde los menús **Agente IA** y **Canales**. La tarjeta **Puesta en marcha** de Inicio muestra los esenciales pendientes.
 
 **¿Puedo usar el panel en otro idioma?**
 Sí: español, inglés, portugués y francés. Cambia el idioma desde el selector en la parte superior del panel.

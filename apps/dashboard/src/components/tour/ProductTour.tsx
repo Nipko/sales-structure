@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Component, useEffect, useRef } from "react";
+import React, { Component, useCallback, useEffect, useRef } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useOnborda } from "onborda";
 import type { CardComponentProps } from "onborda";
@@ -10,6 +10,7 @@ import { useRole } from "@/hooks/useRole";
 import { resolveNavigationDisplayLabel } from "@/lib/navigation-contract";
 import {
     PRODUCT_TOUR_PENDING_KEY,
+    PRODUCT_TOUR_CLOSED_EVENT,
     PRODUCT_TOUR_PREPARE_EVENT,
     PRODUCT_TOUR_RESTART_EVENT,
     PRODUCT_TOUR_TARGETS,
@@ -74,6 +75,10 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
     const cardRef = useRef<HTMLDivElement>(null);
     const titleRef = useRef<HTMLHeadingElement>(null);
     const restoreFocusRef = useRef<HTMLElement | null>(null);
+    const closeTour = useCallback(() => {
+        closeOnborda();
+        window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+    }, [closeOnborda]);
 
     // Onborda supplies the visual spotlight, while the custom card owns the
     // dialog semantics. Keep keyboard focus inside the tour and restore it to a
@@ -103,7 +108,7 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
         if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            closeOnborda();
+            closeTour();
             return;
         }
 
@@ -170,7 +175,7 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
                 >
                     {step.title}
                 </h3>
-                <button onClick={() => closeOnborda()} className="shrink-0 -mt-1 -mr-1 p-1 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={t("close")}>
+                <button onClick={closeTour} className="shrink-0 -mt-1 -mr-1 p-1 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={t("close")}>
                     <X size={16} />
                 </button>
             </div>
@@ -202,7 +207,7 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
                         </button>
                     )}
                     <button
-                        onClick={() => (isLast ? closeOnborda() : nextStep())}
+                        onClick={() => (isLast ? closeTour() : nextStep())}
                         className="px-4 py-2 rounded-lg text-[13px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
                     >
                         {isLast ? t("finish") : t("next")} {!isLast && <ArrowRight size={14} />}
@@ -236,7 +241,11 @@ export function TourLauncher() {
                 window.dispatchEvent(new Event(PRODUCT_TOUR_PREPARE_EVENT));
                 // React first reveals collapsed sections; Onborda then measures real targets.
                 timer = window.setTimeout(() => {
-                    try { startOnborda("main"); } catch { /* optional enhancement */ }
+                    try {
+                        startOnborda("main");
+                    } catch {
+                        window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+                    }
                 }, 350);
             } catch {
                 // The tour stays optional when storage is unavailable.
@@ -263,7 +272,11 @@ export function TourLauncher() {
             window.dispatchEvent(new Event(PRODUCT_TOUR_PREPARE_EVENT));
             if (timer !== null) window.clearTimeout(timer);
             timer = window.setTimeout(() => {
-                try { startOnborda("main"); } catch { /* optional enhancement */ }
+                try {
+                    startOnborda("main");
+                } catch {
+                    window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+                }
             }, 350);
         };
         window.addEventListener(TOUR_RESTART_EVENT, handler);

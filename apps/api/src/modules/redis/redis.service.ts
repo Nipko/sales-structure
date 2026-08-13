@@ -42,6 +42,11 @@ export class RedisService implements OnModuleDestroy {
         await this.client.del(key);
     }
 
+    /** Atomically consume a marker without a get/delete race. */
+    async getDel(key: string): Promise<string | null> {
+        return this.client.getdel(key);
+    }
+
     // ---- JSON Operations ----
 
     async getJson<T>(key: string): Promise<T | null> {

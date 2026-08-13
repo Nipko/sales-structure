@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
@@ -48,6 +49,9 @@ const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
 // table here ONLY after its writer honours evalMode.
 const VERIFIABLE_TABLES = new Set(['appointments']);
 
+export const AGENT_EVAL_COMPLETED_EVENT = 'agent.eval.completed';
+export const AGENT_EVAL_FAILED_EVENT = 'agent.eval.failed';
+
 /**
  * Evals as a deploy gate (#2). Runs a CURATED golden set of conversations through
  * the real prompt pipeline (AgentTestService, tools disabled — zero side effects)
@@ -69,6 +73,7 @@ export class EvalService {
         private readonly agentTest: AgentTestService,
         private readonly quality: QualityService,
         private readonly redis: RedisService,
+        private readonly eventEmitter: EventEmitter2,
     ) {}
 
     private async ensureTable(schema: string): Promise<void> {
@@ -156,22 +161,29 @@ export class EvalService {
     /** Run the golden set through the agent and gate on the average judge score. */
     async runGate(tenantId: string, agentId: string, threshold = DEFAULT_THRESHOLD): Promise<EvalGateResult> {
         if (!agentId) throw new BadRequestException('agentId is required');
-        const scenarios = await this.listScenarios(tenantId);
-        if (!scenarios.length) return { passed: true, avgScore: 0, threshold, total: 0, scenarios: [] };
-
-        const out: EvalGateResult['scenarios'] = [];
-        for (const sc of scenarios) {
-            try {
-                out.push(await this.runScenario(tenantId, agentId, sc));
-            } catch (e: any) {
-                this.logger.warn(`[Eval] scenario ${sc.key} failed: ${e.message}`);
-                out.push({ key: sc.key, title: sc.title, score: 0, resolved: false, error: e.message });
+        try {
+            const scenarios = await this.listScenarios(tenantId);
+            if (!scenarios.length) {
+                const result = { passed: true, avgScore: 0, threshold, total: 0, scenarios: [] };
+                this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
+                return result;
             }
+
+            const out: EvalGateResult['scenarios'] = [];
+            for (const sc of scenarios) {
+                // A judge/provider error is not evidence that the agent scored
+                // zero. Propagate it so the run fails observably.
+                out.push(await this.runScenario(tenantId, agentId, sc));
+            }
+            const avg = out.length ? out.reduce((s, r) => s + r.score, 0) / out.length : 0;
+            const avgScore = Math.round(avg * 100) / 100;
+            const result = { passed: avgScore >= threshold, avgScore, threshold, total: out.length, scenarios: out };
+            this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
+            return result;
+        } catch (e) {
+            this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed');
+            throw e;
         }
-        const scored = out.filter(r => !r.error);
-        const avg = scored.length ? scored.reduce((s, r) => s + r.score, 0) / scored.length : 0;
-        const avgScore = Math.round(avg * 100) / 100;
-        return { passed: avgScore >= threshold, avgScore, threshold, total: out.length, scenarios: out };
     }
 
     private async runScenario(tenantId: string, agentId: string, sc: any): Promise<EvalGateResult['scenarios'][number]> {
@@ -193,7 +205,7 @@ export class EvalService {
         return {
             key: sc.key,
             title: sc.title,
-            score: typeof judge.overall === 'number' ? judge.overall : 0,
+            score: judge.overall,
             resolved: !!judge.resolved,
             flags: judge.flags || [],
         };
@@ -235,24 +247,35 @@ export class EvalService {
 
             const out: any[] = [];
             for (const sc of scenarios) {
-                try {
-                    const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
-                    out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions));
-                } catch (e: any) {
-                    this.logger.warn(`[Eval] scenario ${sc.key} failed: ${e.message}`);
-                    out.push({ key: sc.key, title: sc.title, k, passes: 0, passed: false, score: 0, error: e.message });
-                }
+                const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
+                out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions));
             }
 
-            const scored = out.filter(r => !r.error);
-            const avgScore = scored.length ? Math.round((scored.reduce((s, r) => s + r.score, 0) / scored.length) * 100) / 100 : 0;
-            const passed = out.length > 0 && out.every(r => !r.error && r.passed);
+            const avgScore = out.length ? Math.round((out.reduce((s, r) => s + r.score, 0) / out.length) * 100) / 100 : 0;
+            const passed = out.length > 0 && out.every(r => r.passed);
             const evalActivable = passed && avgScore >= (opts?.activationThreshold ?? threshold);
             const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out, evalActivable };
             await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
+            this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
             return result;
+        } catch (e) {
+            this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed');
+            throw e;
         } finally {
             await this.redis.releaseLock(lockKey).catch(() => {});
+        }
+    }
+
+    private emitRunEvent(
+        event: typeof AGENT_EVAL_COMPLETED_EVENT | typeof AGENT_EVAL_FAILED_EVENT,
+        tenantId: string,
+        agentId: string,
+        status: 'completed' | 'failed',
+    ): void {
+        try {
+            this.eventEmitter.emit(event, { tenantId, agentId, runId: null, status });
+        } catch (e: any) {
+            this.logger.warn(`[Eval] could not emit ${event}: ${e.message}`);
         }
     }
 
@@ -293,7 +316,7 @@ export class EvalService {
         let transcript = lines.join('\n');
         if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
         const judge = await this.quality.judgeTranscript(tenantId, transcript);
-        const score = typeof judge.overall === 'number' ? judge.overall : 0;
+        const score = judge.overall;
 
         let actionsPassed = true;
         let actionChecks: any[] | undefined;

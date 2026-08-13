@@ -13,6 +13,9 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
 import { defaultLandingForRole } from "@/lib/roles";
+import { useQualityHealth } from "@/contexts/QualityHealthContext";
+import { getQualityAttentionCount } from "@/lib/quality-health";
+import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
 import {
   getNavigationRoute,
   isSegmentAwareNavigationMatch,
@@ -451,12 +454,14 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const currentNavigationLocation = useCurrentNavigationLocation();
   const { user, verticalConfig } = useAuth();
   const roleCtx = useRole();
+  const { summary: qualityHealthSummary } = useQualityHealth();
   const { favorites } = useNavigationPreferences();
   const tNav = useTranslations('nav');
   const tCommand = useTranslations('navigation.command');
   const tNavigation = useTranslations('navigation');
   const tRoles = useTranslations('roles');
   const tTopbar = useTranslations('topbar');
+  const tQualityHealth = useTranslations('qualityHealth');
   const locale = useLocale();
 
   // Decide which navigation tree to render. super_admin without
@@ -540,7 +545,8 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     };
 
     try {
-      if (localStorage.getItem("parallly:tour:pending") === "true") revealTourTargets();
+      if (canRunProductTourAtWidth(window.innerWidth)
+        && localStorage.getItem("parallly:tour:pending") === "true") revealTourTargets();
     } catch {
       // The tour remains optional when storage is unavailable.
     }
@@ -868,9 +874,13 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     const submenuId = `sidebar-${mode}-submenu-${item.labelKey}`;
     const tourId = mode === "desktop" ? `tour-${item.labelKey}` : `tour-mobile-${item.labelKey}`;
     const accordionLabel = `${accordionExpanded ? tNav("collapseSidebar") : tNav("expandSidebar")}: ${item.label}`;
+    const qualityBadgeCount = getQualityAttentionCount(qualityHealthSummary);
     const badgeCount = item.labelKey.startsWith("favorite-") || !item.href
       ? 0
-      : routeBadgeCounts[item.href] || 0;
+      : item.labelKey === "agentQuality"
+        ? qualityBadgeCount
+        : routeBadgeCounts[item.href] || 0;
+    const criticalQualityBadge = item.labelKey === "agentQuality" && (qualityHealthSummary?.openCritical || 0) > 0;
     const primaryClassName = cn(
       "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1",
       mode === "mobile" && "min-h-11",
@@ -897,7 +907,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
             <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
           )}
           {!expanded && badgeCount > 0 && (
-            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-background" />
+            <span className={cn("absolute -right-1 -top-1 h-2 w-2 rounded-full ring-2 ring-background", criticalQualityBadge ? "bg-red-500" : "bg-orange-500")} />
           )}
         </span>
         {expanded && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
@@ -908,8 +918,10 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         )}
         {expanded && badgeCount > 0 && (
           <span
-            aria-label={tNavigation("badge.unread", { count: badgeCount, label: item.label })}
-            className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+            aria-label={item.labelKey === "agentQuality"
+              ? tQualityHealth("navBadge", { count: badgeCount })
+              : tNavigation("badge.unread", { count: badgeCount, label: item.label })}
+            className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none text-white", criticalQualityBadge ? "bg-red-600" : item.labelKey === "agentQuality" ? "bg-orange-500" : "bg-indigo-600")}
           >
             {badgeCount > 99 ? "99+" : badgeCount}
           </span>
@@ -1118,6 +1130,11 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                 const sectionExpanded = !section.collapsible || Boolean(expandedSections[section.titleKey]);
                 const sectionContentId = `sidebar-${mode}-section-${section.titleKey}`;
                 const sectionLabel = getSectionLabel(section.titleKey);
+                const sectionQualityBadge = section.titleKey === "insights" && !sectionExpanded
+                  ? getQualityAttentionCount(qualityHealthSummary)
+                  : 0;
+                const sectionHasCriticalQuality = section.titleKey === "insights"
+                  && (qualityHealthSummary?.openCritical || 0) > 0;
 
                 return (
                   <section key={section.titleKey} aria-labelledby={expanded ? `${sectionContentId}-label` : undefined} className="mt-3 first:mt-0">
@@ -1130,10 +1147,21 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                         aria-controls={sectionContentId}
                         className="mb-1 flex min-h-7 w-full items-center justify-between rounded-md px-2 text-left text-[10px] font-bold uppercase tracking-wider text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-500 dark:hover:bg-neutral-900 dark:hover:text-neutral-300"
                       >
-                        <span className="truncate">{sectionLabel}</span>
+                        <span className="min-w-0 flex-1 truncate">{sectionLabel}</span>
+                        {sectionQualityBadge > 0 && (
+                          <span
+                            aria-label={tQualityHealth("navBadge", { count: sectionQualityBadge })}
+                            className={cn(
+                              "rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none text-white",
+                              sectionHasCriticalQuality ? "bg-red-600" : "bg-orange-500",
+                            )}
+                          >
+                            {sectionQualityBadge > 99 ? "99+" : sectionQualityBadge}
+                          </span>
+                        )}
                         {sectionExpanded
-                          ? <ChevronDown size={13} aria-hidden="true" />
-                          : <ChevronRight size={13} aria-hidden="true" />}
+                          ? <ChevronDown size={13} className="shrink-0" aria-hidden="true" />
+                          : <ChevronRight size={13} className="shrink-0" aria-hidden="true" />}
                       </button>
                     ) : (
                       <p id={`${sectionContentId}-label`} className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">

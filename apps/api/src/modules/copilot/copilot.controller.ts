@@ -25,9 +25,10 @@ interface CopilotChatClientRequest {
     history?: unknown;
     locale?: unknown;
     page?: unknown;
+    target?: unknown;
 }
 
-const CHAT_ALLOWED_FIELDS = new Set(['message', 'history', 'locale', 'page']);
+const CHAT_ALLOWED_FIELDS = new Set(['message', 'history', 'locale', 'page', 'target']);
 const CHAT_LOCALES = new Set(['es', 'en', 'pt', 'fr']);
 const MAX_CHAT_MESSAGE_LENGTH = 2_000;
 const MAX_CHAT_HISTORY_ITEMS = 20;
@@ -91,11 +92,13 @@ export class CopilotController {
         const page = this.readInternalAdminPage(body.page);
         const locale = this.readSupportedLocale(body.locale);
         const history = this.readChatHistory(body.history);
+        const target = this.readQualityTarget(body.target, user.role);
         const userName = this.authenticatedUserName(user, locale);
 
         return {
             message,
             history,
+            target,
             context: {
                 page,
                 tenantId,
@@ -103,6 +106,32 @@ export class CopilotController {
                 userRole: user.role,
                 locale,
             },
+        };
+    }
+
+    private readQualityTarget(value: unknown, role: string): CopilotChatRequest['target'] {
+        if (value === undefined) return undefined;
+        if (role !== 'super_admin' && role !== 'tenant_admin' && role !== 'tenant_supervisor') {
+            throw new ForbiddenException('Agent quality context requires an administrator or supervisor');
+        }
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            throw new BadRequestException('target is invalid');
+        }
+        const record = value as Record<string, unknown>;
+        const unexpectedFields = Object.keys(record).filter((key) => !['kind', 'agentId', 'signalId'].includes(key));
+        if (unexpectedFields.length > 0 || record.kind !== 'agent_quality') {
+            throw new BadRequestException('target is invalid');
+        }
+        if (typeof record.agentId !== 'string' || !UUID_PATTERN.test(record.agentId)) {
+            throw new BadRequestException('target.agentId must be a UUID');
+        }
+        if (record.signalId !== undefined && (typeof record.signalId !== 'string' || !UUID_PATTERN.test(record.signalId))) {
+            throw new BadRequestException('target.signalId must be a UUID');
+        }
+        return {
+            kind: 'agent_quality',
+            agentId: record.agentId,
+            signalId: typeof record.signalId === 'string' ? record.signalId : undefined,
         };
     }
 

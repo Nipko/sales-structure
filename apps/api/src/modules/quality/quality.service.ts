@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export const QUALITY_QUEUE = 'quality-scoring';
 
@@ -58,6 +59,7 @@ export class QualityService {
         private redis: RedisService,
         private llmRouter: LLMRouterService,
         @InjectQueue(QUALITY_QUEUE) private readonly queue: Queue<QualityJob>,
+        private readonly eventEmitter: EventEmitter2,
     ) {}
 
     /** Enqueue a conversation for QA scoring (called on conversation.resolved). */
@@ -76,6 +78,10 @@ export class QualityService {
             );
         } catch (err: any) {
             this.logger.warn(`Failed to enqueue quality job for ${conversationId}: ${err.message}`);
+            // Callers and telemetry must be able to observe a queue outage. The
+            // previous best-effort return made a resolved conversation look as if
+            // QA had been scheduled when no durable job existed.
+            throw err;
         }
     }
 
@@ -246,7 +252,9 @@ export class QualityService {
             judge = await this.judgeTranscript(tenantId, transcript);
         } catch (err: any) {
             this.logger.error(`[QA] LLM judge failed for ${conversationId}: ${err.message}`);
-            return;
+            // BullMQ retries technical judge/provider/parse failures. Returning
+            // here marked the job successful and permanently lost the evidence.
+            throw err;
         }
 
         const clamp = (n: any) => Math.max(0, Math.min(10, Math.round((Number(n) || 0) * 10) / 10));
@@ -292,6 +300,15 @@ export class QualityService {
                 `UPDATE conversations SET resolution_verified = $2 WHERE id = $1::uuid`,
                 [conversationId, resolutionVerified],
             );
+        }
+
+        if (agentId) {
+            this.eventEmitter.emit('quality.scored', {
+                tenantId,
+                agentId,
+                agentConfigVersion,
+                status: 'scored',
+            });
         }
 
         this.logger.log(
@@ -396,17 +413,36 @@ export class QualityService {
     }
 
     private parseJudge(raw: string): JudgeResult {
-        const fallback: JudgeResult = {
-            overall: 0, resolution: 0, tone: 0, accuracy: 0, empathy: 0,
-            flags: [], resolved: false, resolutionReason: '',
-        };
         try {
             const match = raw.match(/\{[\s\S]*\}/);
             const parsed = JSON.parse(match ? match[0] : raw);
-            return { ...fallback, ...parsed };
-        } catch {
-            this.logger.warn('[QA] Failed to parse judge JSON, using fallback');
-            return fallback;
+            const scores = ['overall', 'resolution', 'tone', 'accuracy', 'empathy'] as const;
+            for (const field of scores) {
+                if (!Number.isFinite(Number(parsed?.[field]))
+                    || Number(parsed[field]) < 0
+                    || Number(parsed[field]) > 10) {
+                    throw new Error(`Invalid QA judge field: ${field}`);
+                }
+            }
+            if (!Array.isArray(parsed?.flags)
+                || parsed.flags.some((flag: unknown) => typeof flag !== 'string')
+                || typeof parsed?.resolved !== 'boolean'
+                || typeof parsed?.resolutionReason !== 'string') {
+                throw new Error('Invalid QA judge response shape');
+            }
+            return {
+                overall: Number(parsed.overall),
+                resolution: Number(parsed.resolution),
+                tone: Number(parsed.tone),
+                accuracy: Number(parsed.accuracy),
+                empathy: Number(parsed.empathy),
+                flags: parsed.flags,
+                resolved: parsed.resolved,
+                resolutionReason: parsed.resolutionReason,
+            };
+        } catch (error: any) {
+            this.logger.warn(`[QA] Failed to parse judge JSON: ${error?.message || error}`);
+            throw new Error('QA judge returned an invalid response');
         }
     }
 }

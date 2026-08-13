@@ -1,9 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ChannelTokenService } from './channel-token.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 /**
  * Instagram long-lived tokens expire after 60 days.
@@ -27,6 +29,7 @@ export class InstagramTokenRefreshService {
         private cryptoService: WhatsappCryptoService,
         private channelToken: ChannelTokenService,
         private readonly cronLock: CronLockService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     /** Daily at 6AM — refresh IG tokens expiring within 30 days */
@@ -102,6 +105,10 @@ export class InstagramTokenRefreshService {
                     data: { encryptedValue: encrypted, expiresAt: newExpiresAt, rotationState: 'active', updatedAt: new Date() },
                 });
                 await this.channelToken.invalidateCache('instagram', acc.tenantId, acc.accountId).catch(() => {});
+                this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+                    tenantId: acc.tenantId,
+                    source: 'channel_credential',
+                });
 
                 refreshed++;
                 this.logger.log(`IG token refreshed for tenant ${acc.tenantId} account ${acc.accountId}, new expiry: ${newExpiresAt.toISOString()}`);

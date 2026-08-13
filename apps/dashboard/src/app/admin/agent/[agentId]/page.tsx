@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import { Badge } from "@/components/ui/badge";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
+import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
 
 import type { PersonaConfig } from "../_types";
 import { defaultConfig } from "../_types";
@@ -271,6 +272,10 @@ export default function AgentEditorPage() {
       if (res?.success) {
         setToast(t("savedSuccess"));
         setQualityRefreshKey((current) => current + 1);
+        // The API recalculates signals asynchronously after agent.config.updated.
+        // Refresh the global card/badge shortly after that reconciliation instead
+        // of leaving the previous health snapshot visible for up to five minutes.
+        window.setTimeout(requestQualityHealthRefresh, 1_500);
       } else {
         setToast((res as any)?.error || tc("errorSaving"));
       }

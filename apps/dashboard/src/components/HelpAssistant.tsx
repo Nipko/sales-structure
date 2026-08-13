@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -8,6 +9,7 @@ import {
   type CSSProperties,
 } from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { ChevronRight, Compass, Loader2, Send, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,7 +20,15 @@ import {
   canUseHelpAssistantChat,
   HELP_CHAT_MESSAGE_MAX_LENGTH,
 } from "@/lib/help-assistant-contract";
+import {
+  parseQualityAssistantDetail,
+  qualityAssistantTarget,
+  QUALITY_ASSIST_EVENT,
+  type QualityAssistantOpenDetail,
+  type QualityAssistantTarget,
+} from "@/lib/quality-assistant-contract";
 import { ParalllyAssistant } from "@/components/ParalllyAssistant";
+import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
 import {
   Sheet,
   SheetContent,
@@ -38,7 +48,12 @@ const INTRO_SPARKS = [
 ];
 
 type IntroPhase = "hidden" | "enter" | "talk" | "done";
-type ChatMessage = { role: "user" | "assistant"; content: string };
+type ChatAction = {
+  code: "open_quality_center" | "open_quality_action";
+  labelKey: "openCenter" | "resolvePriority";
+  href: string;
+};
+type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[] };
 
 const useIntroLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -52,7 +67,9 @@ export function HelpAssistant() {
 
   if (!canUseHelpAssistantChat(user)) return null;
 
-  return <TenantHelpAssistant />;
+  // Remount on tenant/session swaps so chat history and a quality target from
+  // one tenant can never be replayed under another tenant's JWT context.
+  return <TenantHelpAssistant key={user!.tenantId!} />;
 }
 
 function TenantHelpAssistant() {
@@ -75,10 +92,28 @@ function TenantHelpAssistant() {
   ]);
   const [chatInput, setChatInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [qualityTarget, setQualityTarget] = useState<QualityAssistantTarget>();
+  const [qualityDetail, setQualityDetail] = useState<QualityAssistantOpenDetail>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const requestEpochRef = useRef(0);
+
+  const resetToGenericContext = useCallback(() => {
+    requestEpochRef.current += 1;
+    setIsSending(false);
+    setMessages([{ role: "assistant", content: t("announce.body") }]);
+    setChatInput("");
+    setQualityTarget(undefined);
+    setQualityDetail(undefined);
+  }, [t]);
 
   const openAssistant = () => {
     setIntro("done");
+    if (qualityTarget) {
+      resetToGenericContext();
+    } else {
+      setQualityTarget(undefined);
+      setQualityDetail(undefined);
+    }
     setOpen(true);
   };
 
@@ -86,7 +121,8 @@ function TenantHelpAssistant() {
     const timers: ReturnType<typeof setTimeout>[] = [];
     try {
       if (typeof window === "undefined" || sessionStorage.getItem(ANNOUNCED_KEY)) return;
-      if (localStorage.getItem("parallly:tour:pending") === "true") return;
+      if (canRunProductTourAtWidth(window.innerWidth)
+        && localStorage.getItem("parallly:tour:pending") === "true") return;
     } catch {
       return;
     }
@@ -124,6 +160,7 @@ function TenantHelpAssistant() {
       if (localStorage.getItem("parallly:openCopilot")) {
         localStorage.removeItem("parallly:openCopilot");
         setIntro("done");
+        resetToGenericContext();
         setOpen(true);
       }
     } catch {
@@ -132,11 +169,31 @@ function TenantHelpAssistant() {
 
     const handler = () => {
       setIntro("done");
+      resetToGenericContext();
       setOpen(true);
     };
     window.addEventListener("parallly:open-copilot", handler);
     return () => window.removeEventListener("parallly:open-copilot", handler);
-  }, []);
+  }, [resetToGenericContext]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = parseQualityAssistantDetail((event as CustomEvent<unknown>).detail);
+      if (!detail) return;
+      requestEpochRef.current += 1;
+      setIsSending(false);
+      setIntro("done");
+      setMessages([{ role: "assistant", content: t("announce.body") }]);
+      setQualityDetail(detail);
+      setQualityTarget(qualityAssistantTarget(detail));
+      setChatInput(detail.prompt || (detail.agentName
+        ? t("chat.quality.selectedAgent", { agent: detail.agentName })
+        : t("chat.quality.explainPrompt")));
+      setOpen(true);
+    };
+    window.addEventListener(QUALITY_ASSIST_EVENT, handler);
+    return () => window.removeEventListener(QUALITY_ASSIST_EVENT, handler);
+  }, [t]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -147,6 +204,7 @@ function TenantHelpAssistant() {
     if (!text || isSending) return;
 
     const userMessage: ChatMessage = { role: "user", content: text };
+    const requestEpoch = requestEpochRef.current;
     setMessages((current) => [...current, userMessage]);
     setChatInput("");
     setIsSending(true);
@@ -157,20 +215,34 @@ function TenantHelpAssistant() {
         page: pathname,
         locale,
         history: buildHelpChatHistory(messages),
+        target: qualityTarget,
       });
+
+      if (requestEpoch !== requestEpochRef.current) return;
 
       const content = response?.success && response.data?.reply
         ? response.data.reply
         : response?.error || t("chat.invalidResponse");
-      setMessages((current) => [...current, { role: "assistant", content }]);
+      const actions = response?.success && Array.isArray(response.data?.actions)
+        ? response.data.actions.filter((action): action is ChatAction => (
+          (action?.code === "open_quality_center" || action?.code === "open_quality_action")
+          && (action?.labelKey === "openCenter" || action?.labelKey === "resolvePriority")
+          && typeof action?.href === "string"
+          && (action.href === "/admin" || action.href.startsWith("/admin/"))
+          && !action.href.startsWith("//")
+          && !action.href.includes("..")
+        )).slice(0, 2)
+        : undefined;
+      setMessages((current) => [...current, { role: "assistant", content, actions }]);
     } catch (error) {
+      if (requestEpoch !== requestEpochRef.current) return;
       console.error("Error calling copilotChat API:", error);
       setMessages((current) => [
         ...current,
         { role: "assistant", content: t("chat.invalidResponse") },
       ]);
     } finally {
-      setIsSending(false);
+      if (requestEpoch === requestEpochRef.current) setIsSending(false);
     }
   };
 
@@ -239,6 +311,8 @@ function TenantHelpAssistant() {
   });
 
   const chatSuggestions = [
+    qualityTarget ? t("chat.quality.firstPriority") : null,
+    qualityTarget ? t("chat.quality.explainBlocker") : null,
     canManageChannels ? t("chat.suggestions.connectWhatsApp") : null,
     canEditPipeline ? t("chat.suggestions.leadScoring") : null,
     canEditKnowledge ? t("chat.suggestions.configureRag") : null,
@@ -318,6 +392,12 @@ function TenantHelpAssistant() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50/10 dark:bg-neutral-950/10">
           <div className="flex flex-1 flex-col space-y-4 overflow-y-auto px-6 py-4 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
+            {qualityDetail && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100" role="status">
+                <p className="text-[11px] font-bold">{t("chat.quality.contextTitle")}</p>
+                <p className="mt-1 text-[11px] leading-relaxed">{t("chat.quality.contextDescription")}</p>
+              </div>
+            )}
             {messages.map((message, index) => (
               <div
                 key={index}
@@ -332,6 +412,20 @@ function TenantHelpAssistant() {
                 >
                   {message.role === "user" ? message.content : renderFormattedText(message.content)}
                 </div>
+                {message.role === "assistant" && message.actions && message.actions.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {message.actions.map((action) => (
+                      <Link
+                        key={`${index}-${action.code}-${action.href}`}
+                        href={action.href}
+                        onClick={() => setOpen(false)}
+                        className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
+                      >
+                        {t(`chat.quality.actions.${action.labelKey}`)} <ChevronRight className="size-2.5" />
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
 

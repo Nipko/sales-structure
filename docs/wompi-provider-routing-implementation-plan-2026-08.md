@@ -1,7 +1,9 @@
 # Wompi + operador conmutable + geo-routing — Plan de implementación (Ago 2026)
 
 **Fecha:** 12-ago-2026 · **Actualizado:** 13-ago-2026
-**Estado:** **F0 ✅** (§10) · **F1 ✅ verificada contra el sandbox real** (§11) · **F2 ✅** (§13) · **F3 en curso** · F4 = operación, sin código
+**Estado: PLAN DE CÓDIGO COMPLETO.** F0 ✅ (§10) · F1 ✅ *verificada contra el sandbox real* (§11) · F2 ✅ (§13) · F3 ✅ (§14) · F4 = operación (§15), sin código pendiente.
+**Rama:** `feat/wompi-provider-routing` sobre `main` — **sin mergear** (mergear = desplegar).
+**Verificación global:** `tsc` limpio en API y dashboard · **190 suites / 1.605 tests** · `test:bootstrap` PASSED · paridad exacta de i18n en 4 idiomas.
 **Base de diseño:** `docs/pasarela-wompi-research-2026-08.md` (905 líneas — el diseño técnico detallado del motor, el switch L0-L3 y el mapeo de Wompi vive ahí; este plan lo convierte en ejecución con las decisiones del dueño tomadas). Contexto de negocio: `docs/merchant-of-record-research-2026-08.md`.
 **Radiografía de código:** workflow 6 agentes (12-ago-2026), hallazgos archivo:línea citados abajo.
 
@@ -330,6 +332,43 @@ Corrida completa contra `sandbox.wompi.co` con las llaves reales. **Encontró un
 | **Guarda liberada** | `payment-routing.service.ts` | `INTERNAL_RECURRING_ENGINE_AVAILABLE = true`: los proveedores sin suscripciones nativas ya son ruteables. Siguen **apagados** por defecto |
 
 **Verificado:** `tsc` limpio · **243 tests / 18 suites** · `test:bootstrap` PASSED.
+
+## 14. F3 — Checkout (COMPLETA, 13-ago-2026)
+
+| Pieza | Archivo | Qué resuelve |
+|---|---|---|
+| Dispatcher | `components/billing/PaymentForm.tsx` **(nuevo)** | Resuelve proveedor y llave pública **en runtime** desde `GET /billing/public/config`. Cambiar de operador para un país ya no exige reconstruir el dashboard |
+| Formulario Wompi | `components/billing/WompiPaymentForm.tsx` **(nuevo)** | Tokeniza contra la pasarela **desde el navegador** — el número de tarjeta nunca llega a nuestro servidor. Selector de método según los flags activos; los **dos consentimientos de habeas data bloquean el botón** hasta aceptarlos (requisito legal, no cortesía); los medios que se autorizan fuera de la app muestran ese estado y consultan hasta resolverse |
+| Medios de pago | `app/admin/settings/billing/page.tsx` | Reemplaza el botón ciego de "cambiar tarjeta": se ve qué hay guardado, cuál cobra, y se puede cambiar o eliminar |
+| MercadoPago intacto | idem | Su formulario, su token y su script antifraude siguen igual — este último solo se carga cuando es el proveedor activo |
+| Hueco del alta cerrado | `billing.service.ts` | Exigía token de tarjeta aunque el tenant ya tuviera un medio guardado, porque el requisito se evaluaba antes de saber qué proveedor cobra |
+
+**Verificado:** `tsc` limpio en API y dashboard · **paridad exacta de 8.780 claves i18n en los 4 idiomas** · 77 tests de contrato del dashboard.
+
+## 15. F4 — Encendido (operación, sin código)
+
+Todo el código está. Lo que resta es una secuencia operativa, deliberadamente gradual.
+
+### Antes de encender nada
+1. **Mergear la rama a `main`** → dispara el deploy. Las migraciones son aditivas y **el motor nace apagado** (`engine='provider'` en todas las filas), así que desplegar no cambia el comportamiento de ninguna suscripción viva.
+2. **Configurar la URL de eventos** en el panel de Wompi, una por ambiente:
+   `https://api.parallly-chat.cloud/api/v1/billing/webhook/wompi`
+   Recién ahora: antes del deploy esa ruta responde 501 y Wompi solo reintenta 3 veces en 24h.
+3. **Verificar el tope por transacción** en el panel. Enterprise anual (~COP 18,3M) supera el tope Agregador PJ de $10M/tx: pedir ampliación por soporte, o dejar ese ciclo fuera de Wompi.
+
+### Encendido gradual
+4. `providersEnabled.wompi = true` **dejando `defaultByCountry.CO` en `mercadopago`**. Nadie se rutea todavía.
+5. Mover 2-3 tenants con el override por tenant (motivo obligatorio, queda auditado). **Observar dos semanas** con los chequeos del Ops Center: cobros colgados, renovaciones no agendadas, tasa de rechazo.
+6. Si está limpio: `defaultByCountry.CO = "wompi"`. Las altas colombianas nuevas van a Wompi; **todo lo existente sigue en MercadoPago**.
+7. **Revertir es la misma clave.** Las suscripciones nacidas en Wompi siguen ahí (el proveedor es de por vida), las nuevas vuelven a MP.
+
+### Criterio de "listo"
+20 renovaciones consecutivas sin intervención, aprobación ≥ la de MercadoPago, y cero incidentes de webhook abiertos durante 14 días.
+
+### Lo que sigue sin verificarse hasta que haya tráfico real
+- **El camino `DECLINED` en el cobro.** En sandbox la tarjeta inválida se rechaza al crear la fuente, no al cobrar; el caso real —tarjeta válida sin fondos— es el que dispara el dunning. La clasificación soft/hard hay que confirmarla con un rechazo real.
+- **La entrega del webhook** de punta a punta.
+- **La tasa de aprobación** de tarjetas colombianas con adquirencia local (el argumento central del informe de MoR).
 
 ## 12. Revisión adversarial de F0+F1 (12-ago-2026)
 

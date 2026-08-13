@@ -30,6 +30,32 @@
 - Los avisos proactivos son internos del dashboard; esta entrega no promete correo ni
   push. El manual web sube a v4.5; la referencia de producto/API/módulos y los 26
   artículos runtime en los cuatro idiomas quedan alineados con estos límites.
+## Sin publicar — Ago 13, 2026 (motor de cobros propio + checkout por proveedor)
+
+- **El cobro recurrente deja de depender de la pasarela.** Un motor propio agenda,
+  cobra, consulta el resultado, recupera los fallidos y concilia lo que quede
+  colgado. Nace apagado por suscripción: desplegarlo no cambia el comportamiento
+  de ninguna.
+- La garantía contra el doble cobro es la fila del intento, reclamada antes de que
+  se pueda mover un peso. Un cobro cuyo desenlace no se conoce se congela y se
+  escala en lugar de reintentarse.
+- **Recuperación de cobros fallidos**: el primer rechazo no suspende nada; un
+  rechazo definitivo deja de reintentarse y pide otro medio de pago; agregar un
+  medio nuevo cobra en el acto. El corte por falta de pago ahora pregunta antes si
+  hay un cobro en juego.
+- **Medios de pago guardados**: la tarjeta se tokeniza en el navegador y nunca
+  llega al servidor. Los dos consentimientos de habeas data son obligatorios en el
+  checkout. La sección de medios de pago reemplaza el botón ciego de "cambiar
+  tarjeta".
+- **El checkout resuelve el proveedor en tiempo de ejecución**, así que cambiar de
+  operador para un país no exige reconstruir el dashboard.
+- Un cambio de plan a mitad de período se prorratea sobre lo que el cliente pagó
+  —no sobre el precio de lista— y el plan cambia cuando el cobro liquida, no al
+  pedirlo. Una baja de plan genera crédito, nunca un reembolso.
+- Cinco chequeos nuevos del centro de operaciones vigilan que el motor esté vivo:
+  con la pasarela cobrando sola, que nuestro agendador se cayera no tenía
+  consecuencias; ahora significa que nadie cobra.
+
 ## Sin publicar — Ago 12, 2026 (operador de pago conmutable + adapter Wompi)
 
 Contexto: MercadoPago mantiene bloqueadas las suscripciones en Colombia

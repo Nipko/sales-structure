@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
-import { SUPPORTED_BILLING_COUNTRIES } from '../../common/utils/billing-country.util';
+import { SUPPORTED_BILLING_COUNTRIES, isSupportedBillingCountry } from '../../common/utils/billing-country.util';
 import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -192,8 +192,10 @@ export class FiscalController {
      */
     @Patch(':tenantId/billing-country')
     async setBillingCountry(@Param('tenantId') tenantId: string, @Body() body: { billingCountry?: string }) {
+        // Misma lista que valida el alta (complete-onboarding.dto.ts): los dos
+        // caminos que escriben `tenants.billing_country` comparten fuente de verdad.
         const code = (body?.billingCountry || '').trim().toUpperCase();
-        if (!SUPPORTED_BILLING_COUNTRIES.includes(code)) {
+        if (!isSupportedBillingCountry(code)) {
             throw new BadRequestException({ error: 'invalid_country', message: 'País de facturación no soportado.' });
         }
 

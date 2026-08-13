@@ -16,7 +16,10 @@ import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { StripeConfigService } from './adapters/stripe-config.service';
+import { WompiAdapter } from './adapters/wompi.adapter';
+import { WompiConfigService } from './adapters/wompi-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
+import { PaymentRoutingService } from './payment-routing.service';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
@@ -45,16 +48,19 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         CouponsService,
         CouponGovernanceService,
         PaymentProviderFactory,
+        PaymentRoutingService,
         MockPaymentProvider,
         MercadoPagoAdapter,
         MercadoPagoConfigService,
         StripeAdapter,
         StripeConfigService,
+        WompiAdapter,
+        WompiConfigService,
         BillingReconciliationProcessor,
         InvoiceGeneratorService,
         SmsCheckoutService,
         BillingPlanCatalogService,
     ],
-    exports: [BillingService, CouponsService, InvoiceGeneratorService],
+    exports: [BillingService, CouponsService, InvoiceGeneratorService, PaymentRoutingService, PaymentProviderFactory],
 })
 export class BillingModule {}

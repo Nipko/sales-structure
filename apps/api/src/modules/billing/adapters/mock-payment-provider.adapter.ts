@@ -15,6 +15,7 @@ import {
     ProviderPlan,
     ProviderSubscription,
 } from '../types/provider-types';
+import { MOCK_CAPABILITIES, ProviderCapabilities } from './provider-capabilities';
 
 /**
  * Deterministic in-memory payment provider for unit tests and local dev.
@@ -30,6 +31,7 @@ import {
 @Injectable()
 export class MockPaymentProvider implements IPaymentProvider {
     readonly name: PaymentProviderName = 'mock';
+    readonly capabilities: ProviderCapabilities = MOCK_CAPABILITIES;
     private readonly logger = new Logger(MockPaymentProvider.name);
 
     private readonly customers = new Map<string, ProviderCustomer>();

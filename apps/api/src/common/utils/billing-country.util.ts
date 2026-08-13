@@ -101,12 +101,31 @@ export const SPANISH_SPEAKING_COUNTRIES = new Set([
 ]);
 
 /**
- * Países válidos para facturar. Derivados del mapa de husos, así que el selector
- * del dashboard y la inferencia del alta no pueden discrepar sobre qué es válido.
+ * Países que la plataforma RECONOCE como país de facturación de un tenant.
+ * Derivados del mapa de husos, así que el selector del dashboard y la inferencia
+ * del alta no pueden discrepar sobre qué es válido.
+ *
+ * Fuente de verdad ÚNICA de "en qué países podemos facturar": el DTO del alta
+ * (`complete-onboarding.dto.ts`) y el PATCH fiscal (`fiscal.controller.ts`)
+ * validan contra esta misma lista. Antes divergían — el alta aceptaba 17 y el
+ * PATCH ~55 — así que un tenant podía terminar con un país que el otro camino
+ * consideraba inválido.
+ *
+ * Este es el nivel ANCHO. El nivel angosto —"países con moneda de cobro
+ * configurada"— vive en `billing/billing-country-config.ts`
+ * (`BILLING_CURRENCY_BY_COUNTRY` / `hasBillingCurrency`) y es el que decide
+ * precio local y cobro. Un país reconocido sin moneda configurada es un tenant
+ * válido: el catálogo lo cotiza en USD.
  */
 export const SUPPORTED_BILLING_COUNTRIES: string[] = Array.from(
     new Set(Object.values(TIMEZONE_COUNTRY)),
 ).sort();
+
+/** Nivel ancho: ¿reconocemos este país como país de facturación? */
+export function isSupportedBillingCountry(country?: string | null): boolean {
+    const code = country?.trim().toUpperCase();
+    return !!code && SUPPORTED_BILLING_COUNTRIES.includes(code);
+}
 
 /** País por defecto cuando no hay señal (mercado LatAm-first). */
 export const DEFAULT_BILLING_COUNTRY = 'CO';

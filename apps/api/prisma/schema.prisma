@@ -58,6 +58,7 @@ model Tenant {
   channelAccounts ChannelAccount[]
   subscription    BillingSubscription?
   invitations     TenantInvitation[]
+  paymentSources  BillingPaymentSource[]
 
   @@map("tenants")
   @@schema("public")
@@ -332,16 +333,198 @@ model BillingSubscription {
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
-  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan        BillingPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
-  pendingPlan BillingPlan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id], onDelete: SetNull)
-  payments    BillingPayment[]
-  events      BillingEvent[]
+  // ---- Internal recurring engine (phase F2) ----
+  // Providers without native subscriptions (Wompi) are billed by our own
+  // scheduler. `engine` is the per-subscription switch: rows stay on 'provider'
+  // until they are explicitly moved, so deploying the engine changes nothing
+  // until a subscription opts in.
+  engine               String    @default("provider") // provider|internal
+  /// When the next charge is due. Null for provider-driven subscriptions.
+  nextChargeAt         DateTime? @map("next_charge_at")
+  /// Original day-of-month (1..31). Kept separately so a February clamp does not
+  /// permanently drag the anniversary earlier for every later month.
+  billingAnchorDay     Int?      @map("billing_anchor_day")
+  billingTimezone      String?   @map("billing_timezone")
+  /// Amount frozen for the cycle. A price that floats between renewals changes
+  /// what the customer pays AND invalidates the provider's integrity signature.
+  chargeAmountCents    Int?      @map("charge_amount_cents")
+  chargeCurrency       String?   @map("charge_currency")
+  defaultPaymentSourceId String? @map("default_payment_source_id")
+  /// False when the stored method cannot be charged without the customer present
+  /// (PSE and similar): those fall back to link + reminder collection.
+  unattendedCapable    Boolean   @default(true) @map("unattended_capable")
+  dunningState         String    @default("none") @map("dunning_state") // none|retrying|grace|soft_lock|suspended|indeterminate
+  dunningStartedAt     DateTime? @map("dunning_started_at")
+  dunningAttempts      Int       @default(0) @map("dunning_attempts")
+  /// Cached sum of billing_credit_ledger. The ledger is the authoritative value.
+  creditBalanceCents   Int       @default(0) @map("credit_balance_cents")
+  /// Plan charged but not yet settled — the change applies once the charge lands.
+  pendingUpgradePlanId String?   @map("pending_upgrade_plan_id")
+
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan           BillingPlan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+  pendingPlan    BillingPlan?           @relation("PendingPlan", fields: [pendingPlanId], references: [id], onDelete: SetNull)
+  payments       BillingPayment[]
+  events         BillingEvent[]
+  chargeAttempts BillingChargeAttempt[]
+  creditEntries  BillingCreditLedger[]
 
   @@index([status])
   @@index([trialEndsAt])
   @@index([currentPeriodEnd])
+  @@index([engine, status, nextChargeAt])
   @@map("billing_subscriptions")
+  @@schema("public")
+}
+
+// ---- Billing Payment Sources ----
+// Reusable instruments the merchant can charge later (Wompi payment sources,
+// Stripe payment methods). Card data never reaches us — what is stored is the
+// provider's id plus presentation data.
+model BillingPaymentSource {
+  id               String  @id @default(uuid())
+  tenantId         String  @map("tenant_id")
+  provider         String
+  /// Stored as text even when the provider returns an integer.
+  providerSourceId String  @map("provider_source_id")
+  kind             String // card|nequi|daviplata|bancolombia_transfer|pse
+  status           String // pending_auth|available|declined|voided|expired|error
+  /// Governs whether renewals can be charged silently or need the customer.
+  supportsUnattended Boolean @default(false) @map("supports_unattended")
+  isDefault        Boolean @default(false) @map("is_default")
+
+  brand      String?
+  last4      String?
+  holderName String? @map("holder_name")
+  expMonth   Int?    @map("exp_month")
+  expYear    Int?    @map("exp_year")
+  phoneMasked String? @map("phone_masked")
+
+  /// Habeas data evidence — the token IDENTIFIERS and when/where consent was
+  /// given, never the JWTs themselves (they expire and are not proof).
+  acceptanceJti      String?   @map("acceptance_jti")
+  acceptanceFileHash String?   @map("acceptance_file_hash")
+  acceptedAt         DateTime? @map("accepted_at")
+  acceptedIp         String?   @map("accepted_ip")
+
+  /// Out-of-band authorization (wallet push, bank redirect).
+  authTokenId    String?   @map("auth_token_id")
+  authUrl        String?   @map("auth_url")
+  authExpiresAt  DateTime? @map("auth_expires_at")
+
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  lastSuccessAt       DateTime? @map("last_success_at")
+  lastFailureAt       DateTime? @map("last_failure_at")
+
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  voidedAt  DateTime? @map("voided_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSourceId])
+  @@index([tenantId, status])
+  @@index([status, expYear, expMonth])
+  @@map("billing_payment_sources")
+  @@schema("public")
+}
+
+// ---- Billing Charge Attempts ----
+// The ledger of charge attempts, and the AUTHORITATIVE idempotency guarantee of
+// the recurring engine — not the queue, not the cron lock.
+//
+// UNIQUE(cycle_key, attempt_number) is what makes a double charge impossible:
+// the row must be claimed before any money moves, so a duplicated cron, a
+// re-queued job or a racing worker all collide on the insert instead of
+// charging twice.
+model BillingChargeAttempt {
+  id             String @id @default(uuid())
+  subscriptionId String @map("subscription_id")
+  tenantId       String @map("tenant_id")
+
+  purpose String // initial|renewal|upgrade_proration|manual_link
+  /// {subscriptionId}.{periodStart:YYYYMMDD}.{purpose} — no ':' (BullMQ rejects it in job ids).
+  cycleKey      String @map("cycle_key")
+  attemptNumber Int    @default(1) @map("attempt_number")
+
+  status String // scheduled|in_flight|pending_provider|succeeded|failed|abandoned|superseded|stale
+
+  provider        String
+  paymentSourceId String? @map("payment_source_id")
+
+  /// Frozen at scheduling time; a later catalog price change must not alter a
+  /// charge already in flight.
+  amountCents  Int    @map("amount_cents")
+  currency     String
+  fxRate       Decimal? @map("fx_rate") @db.Decimal(18, 6)
+  amountUsdCents Int?   @map("amount_usd_cents")
+
+  /// What travels to the provider. Unique because it is the only handle we have
+  /// to recover an indeterminate charge.
+  reference      String  @unique
+  providerTxnId  String? @map("provider_txn_id")
+  providerStatus String? @map("provider_status")
+
+  failureCode  String? @map("failure_code")
+  /// soft (retry) | hard (stop retrying this source) | indeterminate (never retry)
+  failureClass String? @map("failure_class")
+
+  periodStart DateTime  @map("period_start")
+  periodEnd   DateTime  @map("period_end")
+  scheduledAt DateTime  @map("scheduled_at")
+  sentAt      DateTime? @map("sent_at")
+  settledAt   DateTime? @map("settled_at")
+  nextRetryAt DateTime? @map("next_retry_at")
+
+  /// Collection pattern for methods that cannot be charged unattended.
+  checkoutUrl       String?   @map("checkout_url")
+  checkoutExpiresAt DateTime? @map("checkout_expires_at")
+
+  /// One fiscal invoice per attempt.
+  paymentId String? @unique @map("payment_id")
+
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscription BillingSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([cycleKey, attemptNumber])
+  @@index([status, scheduledAt])
+  @@index([providerTxnId])
+  @@index([subscriptionId, periodStart])
+  @@index([status, sentAt])
+  @@map("billing_charge_attempts")
+  @@schema("public")
+}
+
+// ---- Billing Credit Ledger ----
+// Append-only. Money owed to a tenant that was not refunded in cash — proration
+// credit, an overpayment, a manual adjustment. The authoritative balance is
+// SUM(delta_cents); the column on the subscription is only a cache.
+model BillingCreditLedger {
+  id             String  @id @default(uuid())
+  tenantId       String  @map("tenant_id")
+  subscriptionId String? @map("subscription_id")
+
+  /// Signed: positive credits the tenant, negative consumes it.
+  deltaCents Int    @map("delta_cents")
+  currency   String
+
+  reason String // downgrade_proration|upgrade_credit_applied|overpayment|coupon|manual_adjustment
+  refAttemptId String? @map("ref_attempt_id")
+  refPaymentId String? @map("ref_payment_id")
+  createdBy    String? @map("created_by")
+  notes        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  subscription BillingSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([subscriptionId])
+  @@map("billing_credit_ledger")
   @@schema("public")
 }
 

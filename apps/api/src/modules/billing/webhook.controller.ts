@@ -54,14 +54,19 @@ export class BillingWebhookController {
         // true; exposing its public webhook route in production would let an
         // unauthenticated POST forge PAYMENT_SUCCEEDED events and activate a
         // subscription for free. Never allow it in production.
+        // Note: this allowlist is deliberately NOT gated on the runtime provider
+        // kill switch. Disabling a provider stops NEW acquisitions; subscriptions
+        // already living there keep charging, and refusing their webhooks would
+        // silently drop real payments.
         const allowed: PaymentProviderName[] =
             process.env.NODE_ENV === 'production'
-                ? ['mercadopago', 'stripe']
-                : ['mercadopago', 'stripe', 'mock'];
+                ? ['mercadopago', 'stripe', 'wompi']
+                : ['mercadopago', 'stripe', 'wompi', 'mock'];
         if (!allowed.includes(providerName as PaymentProviderName)) {
             throw new NotImplementedException({ error: 'unknown_provider', provider: providerName });
         }
-        const provider = this.providerFactory.getByName(providerName as PaymentProviderName);
+        const providerKey = providerName as PaymentProviderName;
+        const provider = this.providerFactory.getByName(providerKey);
 
         const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
         const queryDataId = req.query?.['data.id'];
@@ -75,7 +80,7 @@ export class BillingWebhookController {
         const verified = provider.verifyWebhookSignature(rawBody, headers, { dataId });
         if (!verified) {
             this.logger.warn(`[Webhook] ${providerName} signature rejected — request-id=${headers['x-request-id'] ?? 'n/a'}`);
-            await this.recordWebhookFailure('signature');
+            await this.recordWebhookFailure(providerKey, 'signature');
             throw new UnauthorizedException({ error: 'invalid_signature' });
         }
 
@@ -88,7 +93,7 @@ export class BillingWebhookController {
             // provider will retry and the daily reconciliation cron catches
             // any drift. Return 200 with a log.
             this.logger.error(`[Webhook] ${providerName} parseWebhookEvent failed: ${err?.message}`);
-            await this.recordWebhookFailure('parse');
+            await this.recordWebhookFailure(providerKey, 'parse');
             return { received: true, status: 'parse_error' };
         }
 
@@ -111,7 +116,7 @@ export class BillingWebhookController {
             // UNIQUE will catch genuine duplicates anyway.
             await this.redis.del(idemKey);
             this.logger.error(`[Webhook] ${providerName} handleBillingEvent failed: ${err?.message}`, err?.stack);
-            await this.recordWebhookFailure('dispatch');
+            await this.recordWebhookFailure(providerKey, 'dispatch');
             // Return 200 to stop provider retries — the reconciliation
             // cron will detect drift and replay the needed state.
             return { received: true, status: 'error', reason: err?.message };
@@ -120,17 +125,23 @@ export class BillingWebhookController {
 
     /**
      * Best-effort failure counter read by PlatformMonitorService.checkWebhookFailures().
-     * Per-day Redis key with a 3-day TTL — cheap, self-expiring, no new table.
+     * Per-provider, per-day Redis key with a 3-day TTL — cheap, self-expiring, no new table.
      *   'signature' — bad/forged signature (usually a secret mismatch after a
      *                 credential rotation → every billing event is being dropped)
      *   'parse'     — provider API hiccup while fetching the full resource
      *   'dispatch'  — handleBillingEvent threw
+     * The provider is part of the key: with several providers live, a rotation gone
+     * wrong in one would otherwise be diluted by the healthy traffic of the others
+     * and never cross the alert threshold.
      * Never throws: telemetry must not break webhook ingestion.
      */
-    private async recordWebhookFailure(kind: 'signature' | 'parse' | 'dispatch'): Promise<void> {
+    private async recordWebhookFailure(
+        provider: PaymentProviderName,
+        kind: 'signature' | 'parse' | 'dispatch',
+    ): Promise<void> {
         try {
             const day = new Date().toISOString().slice(0, 10);
-            const key = `billing:webhook:fail:${kind}:${day}`;
+            const key = `billing:webhook:fail:${provider}:${kind}:${day}`;
             const n = await this.redis.incr(key);
             if (n === 1) await this.redis.expire(key, 3 * 24 * 3600);
         } catch {

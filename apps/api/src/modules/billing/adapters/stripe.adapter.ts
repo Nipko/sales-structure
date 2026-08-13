@@ -15,10 +15,12 @@ import {
 } from '../types/provider-types';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
 import { BillingEventType } from '../types/billing-event.enum';
+import { ProviderCapabilities, STRIPE_CAPABILITIES } from './provider-capabilities';
 
 @Injectable()
 export class StripeAdapter implements IPaymentProvider {
     readonly name: PaymentProviderName = 'stripe';
+    readonly capabilities: ProviderCapabilities = STRIPE_CAPABILITIES;
     private readonly logger = new Logger(StripeAdapter.name);
 
     constructor(private readonly stripeConfig: StripeConfigService) {}

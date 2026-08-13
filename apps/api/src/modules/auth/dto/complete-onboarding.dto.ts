@@ -10,9 +10,19 @@ import {
     MaxLength,
     ValidateNested,
 } from 'class-validator';
-import { BILLING_CURRENCY_BY_COUNTRY } from '../../billing/billing-country-config';
+import { SUPPORTED_BILLING_COUNTRIES } from '../../../common/utils/billing-country.util';
 
-const BILLING_COUNTRIES = Object.keys(BILLING_CURRENCY_BY_COUNTRY);
+/**
+ * Same list the fiscal endpoint validates (PATCH /fiscal/:tenantId/billing-country):
+ * the countries we recognize as a tenant billing country. This used to be the
+ * narrower "has a charging currency" map (17 entries) while the fiscal PATCH
+ * accepted ~55, so the two write paths for the SAME column disagreed about what
+ * was valid — and timezone inference could already produce a country the DTO
+ * rejected. Charging currency is a separate, narrower question answered by
+ * `hasBillingCurrency` inside BillingService; a recognized country without one is
+ * quoted in USD by the plan catalog.
+ */
+const BILLING_COUNTRIES = SUPPORTED_BILLING_COUNTRIES;
 
 class SocialMediaDto {
     @IsOptional() @IsString() @MaxLength(500) instagram?: string;

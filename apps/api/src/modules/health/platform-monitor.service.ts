@@ -14,6 +14,7 @@ import { SmsAlertService } from './sms-alert.service';
 import { AlertConfigService } from './alert-config.service';
 import { SentryStatsService } from './sentry-stats.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from '../billing/types/provider-types';
 import * as os from 'os';
 import * as fs from 'fs';
 import { CronLockService } from '../redis/cron-lock.service';
@@ -642,12 +643,17 @@ export class PlatformMonitorService implements OnModuleInit {
     }
 
     /**
-     * Alerts when the payment-provider webhook starts failing. The webhook is the
+     * Alerts when a payment-provider webhook starts failing. The webhook is the
      * only automatic path for activations/renewals/cancellations, so a silent
      * failure means we keep charging (or stop charging) without reacting.
      * Counters are written by BillingWebhookController.recordWebhookFailure()
-     * as per-day Redis keys (billing:webhook:fail:{kind}:{YYYY-MM-DD}); we sum the
-     * last two days as a rolling ~24-48h window.
+     * as per-provider, per-day Redis keys
+     * (billing:webhook:fail:{provider}:{kind}:{YYYY-MM-DD}); we sum the last two
+     * days as a rolling ~24-48h window.
+     *
+     * Thresholds are evaluated PER PROVIDER: with several providers live, a broken
+     * secret in one would be diluted by the healthy traffic of the others and the
+     * alert would never fire (or would fire without saying where to look).
      */
     private async checkWebhookFailures() {
         try {
@@ -655,63 +661,95 @@ export class PlatformMonitorService implements OnModuleInit {
                 const d = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
                 return d.toISOString().slice(0, 10);
             });
-            const sumKind = async (kind: string): Promise<number> => {
+            const sumKind = async (provider: string, kind: string): Promise<number> => {
                 let total = 0;
                 for (const day of days) {
-                    const v = await this.redis.get(`billing:webhook:fail:${kind}:${day}`);
+                    const v = await this.redis.get(`billing:webhook:fail:${provider}:${kind}:${day}`);
                     total += Number(v || 0);
                 }
                 return total;
             };
-            const [sig, parseFail, dispatchFail] = await Promise.all([
-                sumKind('signature'),
-                sumKind('parse'),
-                sumKind('dispatch'),
-            ]);
-            const proc = parseFail + dispatchFail;
 
             // Signature rejections are the highest-signal failure: a persistent
-            // stream almost always means the webhook secret in MercadoPago/Stripe
-            // no longer matches ours (e.g. after rotating credentials or switching
-            // accounts), so EVERY billing event is being silently dropped. Alert
-            // on a low threshold. Processing errors (provider hiccups / dispatch
-            // bugs) get a higher threshold since the daily reconciliation recovers.
+            // stream almost always means the webhook secret at the provider no
+            // longer matches ours (e.g. after rotating credentials or switching
+            // accounts), so EVERY billing event of that provider is being silently
+            // dropped. Alert on a low threshold. Processing errors (provider
+            // hiccups / dispatch bugs) get a higher threshold since the daily
+            // reconciliation recovers.
             const SIG_THRESHOLD = 5;
             const PROC_THRESHOLD = 10;
 
-            if (sig >= SIG_THRESHOLD) {
-                await this.alert(
-                    'billing:webhook_signature',
-                    `${sig} webhooks de pago con firma rechazada`,
-                    `El webhook de pagos rechazó <b>${sig}</b> notificaciones por firma inválida en las últimas 24-48h.<br>
-                     <b>Causa más probable:</b> el secreto del webhook en el proveedor ya no coincide con el nuestro
-                     (<code>MERCADOPAGO_WEBHOOK_SECRET</code>), típicamente tras rotar credenciales o cambiar de cuenta.
-                     Mientras esté así <b>no se procesa ningún alta/baja/pago automáticamente</b> (la reconciliación diaria
-                     mitiga, no reemplaza).<br>
-                     <b>Solución:</b> revisa la firma/secreto del webhook en el panel del proveedor y en los GitHub Secrets.`,
-                    sig,
-                );
-            } else {
-                await this.incidents.resolveByKey('billing:webhook_signature');
-            }
+            // Incidents raised before the counters were split by provider used the
+            // bare keys; resolve them once so they don't stay open forever.
+            await this.incidents.resolveByKey('billing:webhook_signature');
+            await this.incidents.resolveByKey('billing:webhook_processing');
 
-            if (proc >= PROC_THRESHOLD) {
-                await this.alert(
-                    'billing:webhook_processing',
-                    `${proc} webhooks de pago con error de procesamiento`,
-                    `El webhook de pagos falló al procesar <b>${proc}</b> notificaciones en las últimas 24-48h
-                     (parseo: ${parseFail}, despacho: ${dispatchFail}).<br>
-                     <b>Qué revisar:</b> disponibilidad de la API del proveedor y errores en <code>handleBillingEvent</code>
-                     o en la cola de reconciliación. La reconciliación diaria recupera el estado, pero un volumen alto y
-                     sostenido indica un problema real que conviene atender.`,
-                    proc,
-                );
-            } else {
-                await this.incidents.resolveByKey('billing:webhook_processing');
+            for (const provider of PAYMENT_PROVIDER_NAMES) {
+                const [sig, parseFail, dispatchFail] = await Promise.all([
+                    sumKind(provider, 'signature'),
+                    sumKind(provider, 'parse'),
+                    sumKind(provider, 'dispatch'),
+                ]);
+                const proc = parseFail + dispatchFail;
+                const label = this.providerLabel(provider);
+                const secretHint = this.providerWebhookSecretEnv(provider);
+
+                if (sig >= SIG_THRESHOLD) {
+                    await this.alert(
+                        `billing:webhook_signature:${provider}`,
+                        `${sig} webhooks de ${label} con firma rechazada`,
+                        `El webhook de <b>${label}</b> rechazó <b>${sig}</b> notificaciones por firma inválida en las últimas 24-48h.<br>
+                         <b>Causa más probable:</b> el secreto del webhook en ${label} ya no coincide con el nuestro
+                         (<code>${secretHint}</code>), típicamente tras rotar credenciales o cambiar de cuenta.
+                         Mientras esté así <b>no se procesa ningún alta/baja/pago de ${label} automáticamente</b>
+                         (la reconciliación diaria mitiga, no reemplaza).<br>
+                         <b>Solución:</b> revisa la firma/secreto del webhook en el panel de ${label} y en los GitHub Secrets.`,
+                        sig,
+                    );
+                } else {
+                    await this.incidents.resolveByKey(`billing:webhook_signature:${provider}`);
+                }
+
+                if (proc >= PROC_THRESHOLD) {
+                    await this.alert(
+                        `billing:webhook_processing:${provider}`,
+                        `${proc} webhooks de ${label} con error de procesamiento`,
+                        `El webhook de <b>${label}</b> falló al procesar <b>${proc}</b> notificaciones en las últimas 24-48h
+                         (parseo: ${parseFail}, despacho: ${dispatchFail}).<br>
+                         <b>Qué revisar:</b> disponibilidad de la API de ${label} y errores en <code>handleBillingEvent</code>
+                         o en la cola de reconciliación. La reconciliación diaria recupera el estado, pero un volumen alto y
+                         sostenido indica un problema real que conviene atender.`,
+                        proc,
+                    );
+                } else {
+                    await this.incidents.resolveByKey(`billing:webhook_processing:${provider}`);
+                }
             }
         } catch (e: any) {
             this.logger.debug(`Webhook-failure check skipped: ${e.message}`);
         }
+    }
+
+    private providerLabel(provider: PaymentProviderName): string {
+        const labels: Record<PaymentProviderName, string> = {
+            mercadopago: 'MercadoPago',
+            stripe: 'Stripe',
+            wompi: 'Wompi',
+            mock: 'Mock',
+        };
+        return labels[provider];
+    }
+
+    /** Env var holding the webhook/events secret of each provider, for the alert text. */
+    private providerWebhookSecretEnv(provider: PaymentProviderName): string {
+        const envs: Record<PaymentProviderName, string> = {
+            mercadopago: 'MP_WEBHOOK_SECRET',
+            stripe: 'STRIPE_WEBHOOK_SECRET',
+            wompi: 'WOMPI_EVENTS_SECRET',
+            mock: 'n/a',
+        };
+        return envs[provider];
     }
 
     private async checkPaymentFailures() {

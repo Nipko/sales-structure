@@ -1,6 +1,15 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
+import { SubscriptionEngineService } from './recurring/subscription-engine.service';
+import {
+    CHARGE_POLL_QUEUE,
+    RENEWAL_QUEUE,
+    RenewalSchedulerService,
+} from './recurring/renewal-scheduler.service';
+import { RenewalChargeProcessor } from './recurring/processors/renewal-charge.processor';
+import { ChargePollProcessor } from './recurring/processors/charge-poll.processor';
 import { EmailModule } from '../email/email.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
@@ -40,7 +49,18 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
  * so it is consumable in BillingService without an explicit import here.
  */
 @Module({
-    imports: [PrismaModule, RedisModule, EmailModule, MediaProcessingModule, FiscalModule, SmsCreditsModule],
+    imports: [
+        PrismaModule,
+        RedisModule,
+        EmailModule,
+        MediaProcessingModule,
+        FiscalModule,
+        SmsCreditsModule,
+        // Queues for the internal recurring engine. Both are dormant until a
+        // subscription is switched to engine='internal'.
+        BullModule.registerQueue({ name: RENEWAL_QUEUE }),
+        BullModule.registerQueue({ name: CHARGE_POLL_QUEUE }),
+    ],
     controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, SmsCheckoutController],
     providers: [
         BillingService,
@@ -57,6 +77,10 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         WompiAdapter,
         WompiConfigService,
         BillingReconciliationProcessor,
+        SubscriptionEngineService,
+        RenewalSchedulerService,
+        RenewalChargeProcessor,
+        ChargePollProcessor,
         InvoiceGeneratorService,
         SmsCheckoutService,
         BillingPlanCatalogService,

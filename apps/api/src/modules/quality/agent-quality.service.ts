@@ -60,6 +60,12 @@ type TenantContext = {
 
 type CredentialHealth = 'ok' | 'expiring' | 'unknown' | 'missing' | 'error' | 'revoked' | 'expired';
 
+type CredentialHealthRow = {
+    credentialType: string;
+    rotationState: string;
+    expiresAt: Date | null;
+};
+
 type ReadinessFacts = {
     company: any | null;
     companyUpdatedAt: Date | string | null;
@@ -232,7 +238,9 @@ export class AgentQualityService {
                 where: { tenantId, credentialType: { in: Object.values(CREDENTIAL_TYPE_BY_CHANNEL) } },
                 orderBy: { createdAt: 'desc' },
                 select: { credentialType: true, rotationState: true, expiresAt: true },
-            }).then((rows) => ({ available: true, rows })).catch(() => ({ available: false, rows: [] as any[] })),
+            })
+                .then((rows: CredentialHealthRow[]) => ({ available: true, rows }))
+                .catch(() => ({ available: false, rows: [] as CredentialHealthRow[] })),
             this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT phone_number_id AS account_id,

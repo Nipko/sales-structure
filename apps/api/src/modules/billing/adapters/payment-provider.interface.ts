@@ -9,10 +9,15 @@ import {
     ProviderPlan,
     ProviderSubscription,
 } from '../types/provider-types';
+import { ProviderCapabilities } from './provider-capabilities';
 
 export interface WebhookSignatureContext {
     /** Provider resource id from the request URL/query, when the signature scheme includes it. */
     dataId?: string;
+    /** Verbatim request body. Schemes that hash the payload itself (Wompi) need it. */
+    rawBody?: string;
+    /** All request headers, for schemes that carry the checksum in a header. */
+    headers?: Record<string, string>;
 }
 
 /**
@@ -38,6 +43,14 @@ export interface WebhookSignatureContext {
 export interface IPaymentProvider {
     /** Which provider this adapter serves. Used by PaymentProviderFactory for routing. */
     readonly name: PaymentProviderName;
+
+    /**
+     * What this provider can do. Business code branches on these flags instead
+     * of on the provider name — a provider without nativeSubscriptions is driven
+     * by our own recurring engine, one without full refunds degrades the refund
+     * UI, and so on.
+     */
+    readonly capabilities: ProviderCapabilities;
 
     // --- Customer ---
 

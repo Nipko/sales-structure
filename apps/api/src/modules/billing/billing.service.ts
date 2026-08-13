@@ -17,10 +17,18 @@ import { billingCountryRequiresFiscalData, isFiscalDataComplete } from '../fisca
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 import {
     MERCADOPAGO_CURRENCY_BY_COUNTRY,
-    isBillingCountry,
+    hasBillingCurrency,
     normalizeBillingCountry,
 } from './billing-country-config';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
+import { INTERNAL_RECURRING_ENGINE_AVAILABLE, PaymentRoutingService } from './payment-routing.service';
+import { ProviderCapabilities } from './adapters/provider-capabilities';
+import { WompiConfigService } from './adapters/wompi-config.service';
+import { SubscriptionEngineService } from './recurring/subscription-engine.service';
+import { ProrationService } from './recurring/proration.service';
+import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -53,7 +61,17 @@ export class BillingService {
         private readonly fiscalConfig: FiscalConfigService,
         private readonly smsCredits: SmsCreditsService,
         private readonly mpConfig: MercadoPagoConfigService,
+        private readonly routing: PaymentRoutingService,
+        private readonly wompiConfig: WompiConfigService,
+        private readonly engine: SubscriptionEngineService,
+        private readonly proration: ProrationService,
+        @InjectQueue(RENEWAL_QUEUE) private readonly enginePendingCharges: Queue,
     ) {}
+
+    /** Capabilities of the provider a subscription is bound to. Business logic branches on these, never on the name. */
+    private capabilitiesFor(providerName: PaymentProviderName | string): ProviderCapabilities {
+        return this.providerFactory.capabilitiesOf(providerName);
+    }
 
     /**
      * Fiscal gate (top global pattern: collect tax identity before charging).
@@ -114,15 +132,28 @@ export class BillingService {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId: input.tenantId });
         const normalizedInputCountry = normalizeBillingCountry(input.billingCountry);
-        if (normalizedInputCountry && !isBillingCountry(normalizedInputCountry)) {
+        if (normalizedInputCountry && !hasBillingCurrency(normalizedInputCountry)) {
             throw new BadRequestException({
                 error: 'invalid_billing_country',
-                message: `Billing country ${normalizedInputCountry} is not supported.`,
+                message: `Billing country ${normalizedInputCountry} has no charging currency configured.`,
             });
         }
         const storedCountry = normalizeBillingCountry(tenant.billingCountry);
+        // 'CO' here is a LAST-RESORT FALLBACK, not a fact about the tenant. It is
+        // reached when the stored country is missing (the column was added nullable
+        // without backfill) or is recognized but has no charging currency. It gets
+        // written back to `tenants.billing_country` below, which also decides which
+        // fiscal document is issued — so a wrong fallback is not cosmetic. Logged
+        // loudly instead of silently swallowed; behaviour is unchanged.
+        const storedCountryUsable = !!storedCountry && hasBillingCurrency(storedCountry);
+        if (!normalizedInputCountry && !storedCountryUsable) {
+            this.logger.warn(
+                `[Billing] Tenant ${tenant.id} has no usable billing country `
+                + `(stored=${storedCountry ?? 'null'}) — falling back to 'CO' for charging and fiscal routing.`,
+            );
+        }
         const effectiveBillingCountry = normalizedInputCountry
-            || (storedCountry && isBillingCountry(storedCountry) ? storedCountry : 'CO');
+            || (storedCountryUsable ? storedCountry! : 'CO');
 
         const existing = await this.prisma.billingSubscription.findUnique({ where: { tenantId: input.tenantId } });
         if (existing) {
@@ -151,22 +182,52 @@ export class BillingService {
             });
         }
 
-        const requiresPaymentMethodAtSignup = plan.trialDays === 0 || plan.requiresCardForTrial;
-        if (requiresPaymentMethodAtSignup && !input.cardTokenId) {
-            throw new BadRequestException({
-                error: 'card_required_for_trial',
-                message: `The ${plan.slug} plan requires a payment method to start the trial.`,
-            });
+        // Which provider bills this tenant is a runtime decision (kill switch →
+        // country default → tenant override), not a hardcoded default. Changing
+        // the operator for a country is a settings edit, not a deploy.
+        //
+        // Resolved BEFORE the payment-method check because what counts as "has a
+        // payment method" depends on the provider.
+        const resolution = await this.routing.resolveForNewSubscription({
+            tenantId: tenant.id,
+            tenantProvider: tenant.paymentProvider,
+            billingCountry: effectiveBillingCountry,
+        });
+        const providerName = resolution.provider;
+        if (resolution.substituted) {
+            this.logger.warn(
+                `[Billing] Tenant ${tenant.id} (${effectiveBillingCountry}) routed to ${providerName} via ${resolution.level} — ${resolution.reason}`,
+            );
         }
-
-        const providerName = (tenant.paymentProvider || 'mercadopago') as PaymentProviderName;
         this.assertProviderConfigured(providerName);
+
+        const requiresPaymentMethodAtSignup = plan.trialDays === 0 || plan.requiresCardForTrial;
+        if (requiresPaymentMethodAtSignup) {
+            // A single-use card token is one way to have a payment method; a
+            // source already stored with the provider is another. Demanding the
+            // token regardless would refuse a tenant who just saved their card,
+            // for a plan they are entitled to start.
+            const hasStoredSource = this.capabilitiesFor(providerName).storedPaymentSources
+                && (await this.prisma.billingPaymentSource.count({
+                    where: { tenantId: input.tenantId, status: 'available' },
+                })) > 0;
+
+            if (!input.cardTokenId && !hasStoredSource) {
+                throw new BadRequestException({
+                    error: 'card_required_for_trial',
+                    message: `The ${plan.slug} plan requires a payment method to start the trial.`,
+                });
+            }
+        }
         const provider = this.providerFactory.getByName(providerName);
 
-        // A local no-card trial may start before monthly MP synchronization,
+        // A local no-card trial may start before monthly provider synchronization,
         // but an annual selection promises a specific yearly amount/cadence and
         // must already have a verified provider cycle even while trialing.
-        if (billingCycle === 'annual') {
+        // Only meaningful for providers with a remote plan catalog: one billed by
+        // our own engine has no id to verify — its frozen local amount IS the
+        // contract, and demanding an id here would reject every annual signup.
+        if (billingCycle === 'annual' && this.capabilitiesFor(providerName).planCatalog) {
             this.resolveProviderPlanId(
                 plan,
                 providerName,
@@ -296,7 +357,24 @@ export class BillingService {
         const targetCycle: BillingCycle = billingCycle ?? currentCycle;
         const sameTier = newPlan.id === sub.planId;
         const cycleChanged = targetCycle !== currentCycle;
-        if (sameTier && !cycleChanged) {
+
+        /**
+         * Trial conversion: the tenant is on a local trial (or already fell to
+         * past_due because it lapsed) with no provider subscription behind it,
+         * and is now handing us a payment method. Same tier is the NORMAL case
+         * here — "keep the plan I already have, start charging me".
+         *
+         * Without this, a tenant on a trial had no way to start paying: the same
+         * plan was rejected as `same_plan`, and a different one was rejected as
+         * `local_trial_plan_change_not_supported`. It simply lapsed.
+         */
+        const isTrialConversion = Boolean(
+            cardTokenId
+            && !sub.providerSubscriptionId
+            && (sub.status === SubscriptionStatus.TRIALING || sub.status === SubscriptionStatus.PAST_DUE),
+        );
+
+        if (sameTier && !cycleChanged && !isTrialConversion) {
             throw new BadRequestException({ error: 'same_plan', message: 'Tenant is already on this plan and billing cycle.' });
         }
 
@@ -322,7 +400,7 @@ export class BillingService {
         // nativo de MercadoPago). El tenant gana las features superiores durante lo
         // que le quedaba de regalo.
         const nowTs = new Date();
-        if (sub.trialEndsAt && sub.trialEndsAt > nowTs && !sub.providerSubscriptionId) {
+        if (!isTrialConversion && sub.trialEndsAt && sub.trialEndsAt > nowTs && !sub.providerSubscriptionId) {
             if (cardTokenId || newPlan.requiresCardForTrial || newPlan.trialDays === 0 || targetCycle === 'annual') {
                 throw new BadRequestException({
                     error: 'local_trial_plan_change_not_supported',
@@ -353,8 +431,9 @@ export class BillingService {
             return { ...sub, planId: newPlan.id };
         }
 
-        const providerName = sub.provider as PaymentProviderName;
+        const providerName = this.routing.resolveForSubscription(sub.provider);
         const provider = this.providerFactory.getByName(providerName);
+        const caps = this.capabilitiesFor(providerName);
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { id: true, name: true, billingCountry: true, billingEmail: true, paymentProviderCustomerId: true, settings: true },
@@ -368,14 +447,32 @@ export class BillingService {
         let currentPeriodEnd = sub.currentPeriodEnd;
         let newProviderSubscriptionId = sub.providerSubscriptionId;
 
-        if (sub.provider === 'mercadopago') {
+        if (!caps.nativeSubscriptions) {
+            // Providers without a subscription object are driven by our own
+            // engine: a plan change is a local recalculation plus a prorated
+            // charge, never a remote subscription edit.
+            return this.changePlanWithEngine(sub, newPlan, targetCycle, tenant);
+        }
+
+        if (caps.changePlanInPlace) {
+            // Stripe: swap the price on the live subscription, provider prorates.
+            if (!sub.providerSubscriptionId) {
+                throw new BadRequestException({ error: 'missing_provider_subscription', message: 'Subscription has no provider id — cannot upgrade via this provider.' });
+            }
+            const updated = await provider.changeSubscriptionPlan(sub.providerSubscriptionId, newProviderPlanId);
+            updatedStatus = updated.status;
+            currentPeriodStart = updated.currentPeriodStart || null;
+            currentPeriodEnd = updated.currentPeriodEnd || null;
+        } else {
+            // MercadoPago: no in-place plan change — create the new subscription,
+            // then cancel the old one.
             if (!cardTokenId) {
-                throw new BadRequestException({ error: 'card_token_required_for_upgrade', message: 'A new card token is required to upgrade a Mercado Pago subscription.' });
+                throw new BadRequestException({ error: 'card_token_required_for_upgrade', message: 'A new payment method is required to change plans with this provider.' });
             }
 
             const payerEmail = tenant?.billingEmail;
             if (!payerEmail) {
-                throw new BadRequestException({ error: 'mp_payer_email_required', message: 'Tenant billingEmail is required for MercadoPago. Set it in tenant settings.' });
+                throw new BadRequestException({ error: 'payer_email_required', message: 'Tenant billingEmail is required to bill this subscription. Set it in tenant settings.' });
             }
 
             // Ensure we have a provider customer ID (starter trials skip customer creation)
@@ -401,24 +498,68 @@ export class BillingService {
                 metadata: { email: payerEmail, billingEmail: payerEmail },
             });
 
-            // Cancel the old MP subscription if one existed
+            // Cancel the old subscription. If this fails we must NOT keep the new
+            // one: two live mandates would both charge the tenant every period and
+            // our DB can only point at one of them. Compensate by cancelling the
+            // subscription we just created and leave the tenant exactly as before.
             if (sub.providerSubscriptionId) {
-                await provider.cancelSubscription(sub.providerSubscriptionId, { immediate: true });
+                try {
+                    await provider.cancelSubscription(sub.providerSubscriptionId, { immediate: true });
+                } catch (cancelErr: any) {
+                    this.logger.error(
+                        `[Billing] Tenant ${tenantId}: failed to cancel previous subscription ${sub.providerSubscriptionId} after creating ${newProviderSub.providerSubscriptionId} — compensating`,
+                    );
+                    let compensated = false;
+                    try {
+                        await provider.cancelSubscription(newProviderSub.providerSubscriptionId, { immediate: true });
+                        compensated = true;
+                    } catch (compErr: any) {
+                        this.logger.error(
+                            `[Billing] Tenant ${tenantId}: COMPENSATION FAILED — subscriptions ${sub.providerSubscriptionId} and ${newProviderSub.providerSubscriptionId} may both be active at ${providerName}. Manual intervention required.`,
+                        );
+                    }
+                    // Cancelling the new subscription stops FUTURE renewals; it
+                    // does not reverse money already captured. Providers that
+                    // charge on creation (MercadoPago authorizes and bills the
+                    // first period immediately) leave a real charge behind, and
+                    // its payment id only arrives later by webhook — so the
+                    // refund cannot be issued here. Flag it for Billing Ops
+                    // instead of telling the tenant there were no charges.
+                    const chargeMayNeedRefund = !caps.changePlanInPlace;
+                    await this.prisma.auditLog.create({
+                        data: {
+                            tenantId,
+                            action: 'subscription_upgrade_rollback',
+                            resource: `billing_subscriptions/${sub.id}`,
+                            details: {
+                                providerName,
+                                oldProviderSubscriptionId: sub.providerSubscriptionId,
+                                newProviderSubscriptionId: newProviderSub.providerSubscriptionId,
+                                cancelError: String(cancelErr?.message ?? cancelErr),
+                                compensated,
+                                chargeMayNeedRefund,
+                                actionRequired: chargeMayNeedRefund
+                                    ? 'The new subscription may have captured its first charge. Reconcile it and refund from Billing Ops if a payment landed.'
+                                    : undefined,
+                            },
+                        },
+                    }).catch((auditErr: any) => {
+                        this.logger.error(`[Billing] Failed to audit upgrade rollback for ${sub.id}: ${auditErr?.message}`);
+                    });
+                    throw new BadRequestException({
+                        error: 'upgrade_rollback',
+                        message: compensated
+                            ? 'No pudimos completar el cambio de plan, así que lo revertimos: seguís en tu plan actual. Si llegó a generarse un cobro del plan nuevo, lo detectamos y te lo devolvemos. Podés intentar de nuevo en unos minutos.'
+                            : 'No pudimos completar el cambio de plan y quedó una inconsistencia con la pasarela. Ya avisamos al equipo — no reintentes hasta que te confirmemos.',
+                        compensated,
+                    });
+                }
             }
 
             updatedStatus = newProviderSub.status;
             currentPeriodStart = newProviderSub.currentPeriodStart || null;
             currentPeriodEnd = newProviderSub.currentPeriodEnd || null;
             newProviderSubscriptionId = newProviderSub.providerSubscriptionId;
-        } else {
-            // Stripe or Mock — requires an existing provider subscription
-            if (!sub.providerSubscriptionId) {
-                throw new BadRequestException({ error: 'missing_provider_subscription', message: 'Subscription has no provider id — cannot upgrade via this provider.' });
-            }
-            const updated = await provider.changeSubscriptionPlan(sub.providerSubscriptionId, newProviderPlanId);
-            updatedStatus = updated.status;
-            currentPeriodStart = updated.currentPeriodStart || null;
-            currentPeriodEnd = updated.currentPeriodEnd || null;
         }
 
         await this.prisma.billingSubscription.update({
@@ -583,7 +724,9 @@ export class BillingService {
                     throw new NotFoundException({ error: 'tenant_not_found', tenantId: sub.tenantId });
                 }
 
-                if (sub.providerSubscriptionId) {
+                // Providers driven by our own engine have nothing to push: the
+                // scheduled plan simply becomes the amount the next charge uses.
+                if (sub.providerSubscriptionId && this.capabilitiesFor(sub.provider).nativeSubscriptions) {
                     phase = 'provider';
                     await this.syncDowngradeToProvider(
                         sub,
@@ -1052,12 +1195,33 @@ export class BillingService {
                 },
             });
         } else {
+            // A comp subscription never reaches a provider (providerSubscriptionId
+            // stays null), but the row still has to name one. Use whichever
+            // operator currently serves the tenant's country so the record stays
+            // consistent if the tenant later converts to a paid plan.
+            // If no provider can serve this country the comp still has to be
+            // granted (it never charges), but the row must not silently claim a
+            // provider that cannot bill there — that would freeze the wrong
+            // provider for a later conversion to paid. Record it and log.
+            const compProvider = await this.routing
+                .resolveForNewSubscription({
+                    tenantId: input.tenantId,
+                    tenantProvider: tenant.paymentProvider,
+                    billingCountry: tenant.billingCountry,
+                })
+                .then((r) => r.provider)
+                .catch((err: any) => {
+                    this.logger.warn(
+                        `[Billing] Comp plan for tenant ${input.tenantId} (${tenant.billingCountry ?? 'unknown country'}): no routable provider (${err?.response?.error ?? err?.message}). Recording 'mercadopago'; converting this tenant to paid will need an explicit provider.`,
+                    );
+                    return 'mercadopago' as PaymentProviderName;
+                });
             await this.prisma.billingSubscription.create({
                 data: {
                     tenantId: input.tenantId,
                     planId: plan.id,
                     status: SubscriptionStatus.ACTIVE,
-                    provider: 'mercadopago',
+                    provider: compProvider,
                     providerCustomerId: `comp_${input.tenantId}`,
                     providerSubscriptionId: null,
                     currentPeriodStart: now,
@@ -1138,6 +1302,26 @@ export class BillingService {
                     ? this.creditSmsPackageOrder(order, event)
                     : this.reverseSmsPackageOrder(order, event);
             }
+        }
+
+        // A charge our own engine fired. The webhook and the engine's polling are
+        // peers racing to report the same outcome, so both are funnelled into the
+        // same settlement — whichever arrives second is a no-op. Applying the
+        // generic subscription patch here instead would double-count the payment
+        // and issue a second DIAN invoice.
+        const engineSettled = await this.settleEngineChargeIfAny(event);
+        if (engineSettled) {
+            await this.prisma.billingEvent.create({
+                data: {
+                    tenantId: engineSettled.tenantId,
+                    subscriptionId: engineSettled.subscriptionId,
+                    provider: event.provider,
+                    providerEventId: event.providerEventId,
+                    eventType: event.type,
+                    payload: event.rawPayload as any,
+                },
+            }).catch(() => undefined);
+            return { processed: true, reason: 'engine_settled' };
         }
 
         // Resolve the subscription this event concerns (if any)
@@ -1416,8 +1600,23 @@ export class BillingService {
             }
         } else if (providerName === 'stripe') {
             id = plan.stripePlanId;
-        } else {
+        } else if (providerName === 'mock') {
             id = 'mock-plan';
+        } else {
+            // No silent fallback. A provider without a remote plan catalog (Wompi)
+            // has no id to bind — its price is frozen locally and the recurring
+            // engine charges that amount. Returning a placeholder here would
+            // create subscriptions pointing at a plan that does not exist.
+            const caps = this.capabilitiesFor(providerName);
+            throw new BadRequestException({
+                error: caps.planCatalog ? 'provider_plan_not_configured' : 'provider_has_no_plan_catalog',
+                message: caps.planCatalog
+                    ? `This plan is not registered with ${providerName} yet.`
+                    : `${providerName} has no remote plan catalog — resolve the frozen local price instead of a provider plan id.`,
+                providerName,
+                billingCountry,
+                cycle,
+            });
         }
 
         if (!id) {
@@ -1438,6 +1637,15 @@ export class BillingService {
      * initialized provider client, including local no-card trial acquisition.
      */
     private assertProviderConfigured(providerName: PaymentProviderName): void {
+        // 'mock' bypasses signature verification entirely — routing to it in
+        // production would hand out paid plans for free.
+        if (providerName === 'mock' && process.env.NODE_ENV === 'production') {
+            throw new BadRequestException({
+                error: 'provider_not_configured',
+                message: 'The mock payment provider cannot be used in production.',
+                providerName,
+            });
+        }
         if (providerName === 'mercadopago' && !this.mpConfig.isConfigured()) {
             throw new BadRequestException({
                 error: 'provider_not_configured',
@@ -1445,6 +1653,228 @@ export class BillingService {
                 providerName,
             });
         }
+        if (providerName === 'wompi' && !this.wompiConfig.isConfigured()) {
+            throw new BadRequestException({
+                error: 'provider_not_configured',
+                message: 'Wompi is not configured for self-service acquisition.',
+                providerName,
+            });
+        }
+        // A provider that can only bill through the internal recurring engine
+        // must not take acquisitions before that engine exists: the trial would
+        // start and then no path to pay would work.
+        if (!this.capabilitiesFor(providerName).nativeSubscriptions && !INTERNAL_RECURRING_ENGINE_AVAILABLE) {
+            throw new BadRequestException({
+                error: 'recurring_engine_unavailable',
+                message: `${providerName} can only bill through the internal recurring engine, which is not available yet.`,
+                providerName,
+            });
+        }
+    }
+
+    /**
+     * Change plan on a subscription billed by our own engine.
+     *
+     * The plan does NOT change here. It changes when the prorated charge settles
+     * — everything is asynchronous with these providers, so granting the new
+     * plan on the promise of a charge would hand out a tier that may never be
+     * paid for. Until then the tenant keeps what they already paid for, which is
+     * also what they would expect if the charge fails.
+     */
+    private async changePlanWithEngine(
+        sub: any,
+        newPlan: any,
+        targetCycle: BillingCycle,
+        tenant: { billingCountry?: string | null } | null,
+    ) {
+        const country = normalizeBillingCountry(tenant?.billingCountry) || 'CO';
+        const pricing = this.resolveEnginePricing(newPlan, country, targetCycle);
+
+        const lastPaid = await this.prisma.billingChargeAttempt.findFirst({
+            where: { subscriptionId: sub.id, status: 'succeeded' },
+            orderBy: { settledAt: 'desc' },
+        });
+
+        const now = new Date();
+        const timezone = sub.billingTimezone || 'America/Bogota';
+        const proration = this.proration.computeUpgrade({
+            now,
+            currentPeriodStart: sub.currentPeriodStart ?? now,
+            currentPeriodEnd: sub.currentPeriodEnd ?? now,
+            // What was actually charged, so coupons and country overrides are
+            // honoured instead of the list price.
+            paidCents: lastPaid?.amountCents ?? sub.chargeAmountCents ?? 0,
+            newAmountCents: pricing.amountCents,
+            targetCycle,
+            anchorDay: sub.billingAnchorDay ?? now.getUTCDate(),
+            timezone,
+            creditBalanceCents: sub.creditBalanceCents ?? 0,
+        });
+
+        // Nothing to collect: the change can be applied immediately.
+        if (proration.chargeCents === 0) {
+            await this.prisma.billingSubscription.update({
+                where: { id: sub.id },
+                data: {
+                    planId: newPlan.id,
+                    chargeAmountCents: pricing.amountCents,
+                    chargeCurrency: pricing.currency,
+                    currentPeriodStart: proration.periodStart,
+                    currentPeriodEnd: proration.periodEnd,
+                    nextChargeAt: proration.periodEnd,
+                    metadata: { ...(sub.metadata ?? {}), billingCycle: targetCycle } as any,
+                },
+            });
+            if (proration.creditGeneratedCents > 0) {
+                await this.proration.recordCredit({
+                    tenantId: sub.tenantId,
+                    subscriptionId: sub.id,
+                    deltaCents: proration.creditGeneratedCents,
+                    currency: pricing.currency,
+                    reason: 'upgrade_credit_applied',
+                });
+            }
+            await this.prisma.tenant.update({ where: { id: sub.tenantId }, data: { plan: newPlan.slug } });
+            await this.invalidateTenantCaches(sub.tenantId);
+            this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, sub.tenantId, sub.id, {
+                fromPlan: sub.planId, toPlan: newPlan.id, prorated: true, charged: 0,
+            });
+            return { ...sub, planId: newPlan.id };
+        }
+
+        const claim = await this.engine.claimAttempt({
+            subscriptionId: sub.id,
+            tenantId: sub.tenantId,
+            provider: sub.provider as PaymentProviderName,
+            purpose: 'upgrade_proration',
+            periodStart: proration.periodStart,
+            periodEnd: proration.periodEnd,
+            amountCents: proration.chargeCents,
+            currency: pricing.currency,
+            scheduledAt: new Date(),
+            paymentSourceId: sub.defaultPaymentSourceId,
+        });
+        if (!claim) {
+            throw new ConflictException({
+                error: 'plan_change_in_progress',
+                message: 'A plan change for this period is already being processed.',
+            });
+        }
+
+        // The target plan is recorded as PENDING: settleApproved promotes it
+        // once the money lands, and a failed charge leaves the tenant untouched.
+        await this.prisma.billingSubscription.update({
+            where: { id: sub.id },
+            data: {
+                pendingUpgradePlanId: newPlan.id,
+                chargeAmountCents: pricing.amountCents,
+                chargeCurrency: pricing.currency,
+                metadata: { ...(sub.metadata ?? {}), billingCycle: targetCycle } as any,
+            },
+        });
+
+        await this.enginePendingCharges.add(
+            'charge',
+            { attemptId: claim.id },
+            { jobId: claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
+        );
+
+        this.logger.log(
+            `[Billing] Tenant ${sub.tenantId} plan change to ${newPlan.slug}: charging ${proration.chargeCents} ${pricing.currency} (${proration.reason})`,
+        );
+        return { ...sub, pendingUpgradePlanId: newPlan.id, prorationCents: proration.chargeCents };
+    }
+
+    /**
+     * Frozen local price for a provider with no remote catalog. The amount IS
+     * the contract here — there is no provider-side plan to bind to.
+     */
+    private resolveEnginePricing(
+        plan: { priceLocalOverrides: any; priceUsdCents: number },
+        country: string,
+        cycle: BillingCycle,
+    ): { amountCents: number; currency: string } {
+        const overrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object')
+            ? plan.priceLocalOverrides
+            : {};
+        const countryEntry = Object.entries(overrides).find(([key]) =>
+            normalizeBillingCountry(key) === country)?.[1] as any;
+        const entry = cycle === 'annual' ? countryEntry?.annual : countryEntry;
+
+        if (!entry || !Number.isSafeInteger(entry.amountCents) || entry.amountCents <= 0 || !entry.currency) {
+            throw new BadRequestException({
+                error: 'plan_price_not_configured',
+                message: `No local price is configured for this plan in ${country} (${cycle}).`,
+                billingCountry: country,
+                cycle,
+            });
+        }
+        return { amountCents: entry.amountCents, currency: String(entry.currency).toUpperCase() };
+    }
+
+    private async invalidateTenantCaches(tenantId: string): Promise<void> {
+        await Promise.allSettled([
+            this.redis.del(`tenant_plan:${tenantId}`),
+            this.redis.del(`sub_status:${tenantId}`),
+            this.redis.del(`plan_features:${tenantId}`),
+        ]);
+    }
+
+    /**
+     * If this event reports the outcome of a charge OUR engine fired, settle it
+     * through the engine and tell the caller we are done.
+     *
+     * Matching is by provider transaction id first and by our own reference
+     * second: with an asynchronous provider the webhook can arrive before we
+     * have stored the transaction id, and the reference is the only handle that
+     * always exists.
+     */
+    private async settleEngineChargeIfAny(
+        event: NormalizedBillingEvent,
+    ): Promise<{ tenantId: string; subscriptionId: string } | null> {
+        const relevant = event.type === BillingEventType.PAYMENT_SUCCEEDED
+            || event.type === BillingEventType.PAYMENT_FAILED
+            || event.type === BillingEventType.PAYMENT_REFUNDED;
+        if (!relevant) return null;
+
+        const providerTxnId = event.providerPaymentId;
+        const reference = (event.rawPayload as any)?.data?.transaction?.reference;
+        if (!providerTxnId && !reference) return null;
+
+        const attempt = await this.prisma.billingChargeAttempt.findFirst({
+            where: {
+                OR: [
+                    ...(providerTxnId ? [{ providerTxnId }] : []),
+                    ...(reference ? [{ reference: String(reference) }] : []),
+                ],
+            },
+        });
+        if (!attempt) return null;
+
+        const charge = {
+            providerChargeId: providerTxnId ?? attempt.providerTxnId ?? '',
+            status: 'approved' as const,
+            reference: attempt.reference,
+            amountCents: attempt.amountCents,
+            currency: attempt.currency,
+            settledAt: event.occurredAt,
+        };
+
+        if (event.type === BillingEventType.PAYMENT_SUCCEEDED) {
+            await this.engine.settleApproved(attempt.id, charge);
+        } else if (event.type === BillingEventType.PAYMENT_FAILED) {
+            const failure = { ...charge, status: 'declined' as const, statusMessage: event.payment?.failureReason };
+            await this.engine.settleFailed(attempt.id, failure, this.engine.classifyFailure(failure));
+        } else {
+            // A void/refund on a charge we made: record it, do not advance the period.
+            await this.engine.settleFailed(
+                attempt.id,
+                { ...charge, status: 'voided' as const, statusMessage: 'voided at the provider' },
+                'hard',
+            );
+        }
+
+        return { tenantId: attempt.tenantId, subscriptionId: attempt.subscriptionId };
     }
 
     /** Read the billing cycle a subscription runs on (persisted in metadata). Defaults to monthly. */

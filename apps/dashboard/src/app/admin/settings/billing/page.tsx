@@ -5,14 +5,20 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/lib/api";
+import {
+    api,
+    type BillingPublicConfig,
+    type PaymentSourceStatus,
+    type StoredPaymentSource,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
     Mic, Eye, ArrowUpRight, BookOpen, FileText, MessageSquare,
+    Plus, Trash2, Smartphone,
 } from "lucide-react";
-import MpCardForm from "@/components/billing/MpCardForm";
+import PaymentForm, { usesStoredPaymentSources } from "@/components/billing/PaymentForm";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { FiscalGateModal } from "@/components/FiscalGateModal";
 
@@ -197,12 +203,18 @@ export default function BillingPage() {
     // gate off it doesn't block checkout.
     const [fiscalRequired, setFiscalRequired] = useState(false);
     const [billingCountry, setBillingCountry] = useState<string | null>(null);
+    // Which operator bills this tenant, resolved at runtime — the dashboard never
+    // infers it from build-time env vars, or the operator switch would not be one.
+    const [publicConfig, setPublicConfig] = useState<BillingPublicConfig | null>(null);
+    const [paymentSources, setPaymentSources] = useState<StoredPaymentSource[]>([]);
+    const [sourceBusy, setSourceBusy] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
 
     // Modal state — "upgrade" when user is about to subscribe/change to a paid plan
-    // that needs a card; "change-card" when rotating the card on an existing sub.
-    const [modal, setModal] = useState<null | { kind: "upgrade"; planSlug: string } | { kind: "change-card" }>(null);
+    // that needs a payment method; "change-card" when rotating the card on an
+    // existing sub; "add-method" when storing an extra reusable method.
+    const [modal, setModal] = useState<null | { kind: "upgrade"; planSlug: string } | { kind: "change-card" } | { kind: "add-method" }>(null);
     const [fiscalGate, setFiscalGate] = useState(false);
     // Plan the tenant was about to pay when the fiscal gate fired — carried into
     // the modal so, after they save their tax profile, billing resumes THAT checkout.
@@ -219,15 +231,19 @@ export default function BillingPage() {
             const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
-            const [plansRes, usageRes, kbRes, fiscalRes, smsBalRes, smsPkgRes] = await Promise.all([
+            const [plansRes, usageRes, kbRes, fiscalRes, smsBalRes, smsPkgRes, configRes, sourcesRes] = await Promise.all([
                 api.getBillingPlans(country || undefined),
                 api.getBillingUsage(activeTenantId),
                 api.fetch(`/knowledge/usage/${activeTenantId}`).catch(() => null),
                 api.getFiscalData(activeTenantId).catch(() => null),
                 api.getSmsBalance(activeTenantId).catch(() => null),
                 api.getSmsPackages().catch(() => null),
+                api.getBillingPublicConfig(country || undefined).catch(() => null),
+                api.listPaymentSources(activeTenantId).catch(() => null),
             ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
+            if (configRes?.success && configRes.data) setPublicConfig(configRes.data);
+            if (sourcesRes?.success) setPaymentSources(sourcesRes.data ?? []);
             if (smsBalRes?.success) setSmsBalance((smsBalRes.data as any) ?? null);
             if (smsPkgRes?.success) setSmsPackages((smsPkgRes.data as any[]) ?? []);
             if (fiscalRes?.success) {
@@ -309,8 +325,33 @@ export default function BillingPage() {
         }
     }, [annualCycleAvailable, billingCycle]);
 
-    const handleUpgrade = async (planSlug: string, cardTokenId?: string) => {
+    const storedSourceCheckout = usesStoredPaymentSources(publicConfig?.provider);
+    const hasChargeableSource = useMemo(
+        () => paymentSources.some((source) => source.status === "available"),
+        [paymentSources],
+    );
+
+    const refreshPaymentSources = useCallback(async () => {
         if (!activeTenantId) return;
+        const res = await api.listPaymentSources(activeTenantId).catch(() => null);
+        if (res?.success) setPaymentSources(res.data ?? []);
+    }, [activeTenantId]);
+
+    const describeSource = (source: StoredPaymentSource): string => {
+        const kindLabel = t(`methodKind.${source.kind}`);
+        if (source.kind === "card") {
+            const brand = source.brand ? source.brand.toUpperCase() : kindLabel;
+            return source.last4 ? `${brand} •••• ${source.last4}` : brand;
+        }
+        return source.phoneMasked ? `${kindLabel} ${source.phoneMasked}` : kindLabel;
+    };
+
+    const handleUpgrade = async (
+        planSlug: string,
+        opts?: { cardTokenId?: string; methodReady?: boolean },
+    ) => {
+        if (!activeTenantId) return;
+        const cardTokenId = opts?.cardTokenId;
         setAction("upgrade");
         setTargetPlan(planSlug);
         try {
@@ -320,9 +361,16 @@ export default function BillingPage() {
                 && !!subscription.trialEndsAt
                 && new Date(subscription.trialEndsAt).getTime() > Date.now()
                 && !subscription.providerBacked;
-            const needsCard = !subscription
+            const requiresMethod = !subscription
                 ? plan?.requiresPaymentMethodAtSignup
                 : !localTrial;
+            // An operator billed by our own engine charges the method already on
+            // file, so a stored source satisfies the requirement; MercadoPago mints
+            // a token per mandate and always needs a fresh one.
+            const methodMissing = storedSourceCheckout
+                ? !(hasChargeableSource || opts?.methodReady)
+                : !cardTokenId;
+            const needsCard = requiresMethod && methodMissing;
             // A same-cycle DOWNGRADE is a no-charge scheduled change (backend
             // early-returns before the fiscal gate), so the fiscal precheck must not
             // fire on it — otherwise we'd force a tax profile to LOWER the plan.
@@ -336,16 +384,16 @@ export default function BillingPage() {
             // checkout resumes cleanly after saving. Keyed off the backend's
             // `required` (gate enabled AND DIAN country) — NOT country alone — so
             // with the gate off this is a no-op, matching assertFiscalDataReady.
-            if (needsCard && !cardTokenId && fiscalRequired && !fiscalComplete && !isPureDowngrade) {
+            if (needsCard && fiscalRequired && !fiscalComplete && !isPureDowngrade) {
                 setFiscalGatePlan(planSlug);
                 setFiscalGate(true);
                 setAction(null);
                 setTargetPlan(null);
                 return;
             }
-            if (needsCard && !cardTokenId) {
-                // Open the card modal; the modal's submit will call back into
-                // handleUpgrade with the token.
+            if (needsCard) {
+                // Open the payment modal; its submit calls back into handleUpgrade
+                // with the token (MercadoPago) or with the stored method (Wompi).
                 setModal({ kind: "upgrade", planSlug });
                 setAction(null);
                 setTargetPlan(null);
@@ -408,6 +456,53 @@ export default function BillingPage() {
             setError(err?.message || t("actionFailed"));
         } finally {
             setModalSubmitting(false);
+        }
+    };
+
+    /**
+     * A reusable method was stored by the API (Wompi path). When the tenant was
+     * mid-checkout we resume that checkout — but only once the method is actually
+     * chargeable: a wallet still waiting for its owner's approval cannot pay.
+     */
+    const handleSourceSaved = async (source: { id: string; status: PaymentSourceStatus }) => {
+        await refreshPaymentSources();
+        const pending = modal;
+        setModal(null);
+        if (pending?.kind === "upgrade" && source.status === "available") {
+            await handleUpgrade(pending.planSlug, { methodReady: true });
+            return;
+        }
+        setToast(t("paymentMethodSaved"));
+    };
+
+    const handleMakeDefault = async (sourceId: string) => {
+        if (!activeTenantId) return;
+        setSourceBusy(sourceId);
+        try {
+            const res = await api.setDefaultPaymentSource(activeTenantId, sourceId);
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            await refreshPaymentSources();
+            setToast(t("methodDefaultUpdated"));
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        } finally {
+            setSourceBusy(null);
+        }
+    };
+
+    const handleRemoveSource = async (sourceId: string) => {
+        if (!activeTenantId) return;
+        if (!window.confirm(t("confirmRemoveMethod"))) return;
+        setSourceBusy(sourceId);
+        try {
+            const res = await api.deletePaymentSource(activeTenantId, sourceId);
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            await refreshPaymentSources();
+            setToast(t("methodRemoved"));
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        } finally {
+            setSourceBusy(null);
         }
     };
 
@@ -572,7 +667,9 @@ export default function BillingPage() {
 
     return (
         <div className="max-w-4xl space-y-6">
-            <MpSecurityScript />
+            {/* MercadoPago's device fingerprint script: pointless (and a third-party
+                request) for a tenant billed by another operator. */}
+            {publicConfig?.provider === "mercadopago" && <MpSecurityScript />}
             <header>
                 <h1 className="text-2xl font-semibold flex items-center gap-2">
                     <CreditCard size={22} />
@@ -675,15 +772,6 @@ export default function BillingPage() {
                                 )}
 
                                 <div className="mt-5 flex flex-wrap gap-2">
-                                    {(subscription.status === "active" || subscription.status === "trialing" || subscription.status === "past_due") && (
-                                        <button
-                                            onClick={() => setModal({ kind: "change-card" })}
-                                            className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900"
-                                        >
-                                            {t("changeCard")}
-                                        </button>
-                                    )}
-
                                     {/* Past-due (and not paused): "retry now" force-syncs from MP */}
                                     {subscription.status === "past_due" && !isPaused && (
                                         <button
@@ -741,6 +829,90 @@ export default function BillingPage() {
                 <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/20 p-6 text-sm text-indigo-800 dark:text-indigo-300">
                     <p className="font-medium">{t("noSubscription")}</p>
                     <p className="mt-1 text-indigo-700 dark:text-indigo-400">{t("noSubscriptionHint")}</p>
+                </section>
+            )}
+
+            {/* Payment methods on file. Replaces the old blind "change card" button:
+                the tenant sees which instrument will actually be charged, can promote
+                another one, and can remove one. */}
+            {subscription && (
+                <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+                                <CreditCard size={15} className="text-indigo-500" /> {t("paymentMethodsTitle")}
+                            </h2>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("paymentMethodsHint")}</p>
+                        </div>
+                        <button
+                            onClick={() => setModal({ kind: storedSourceCheckout ? "add-method" : "change-card" })}
+                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900"
+                        >
+                            <Plus size={14} /> {storedSourceCheckout ? t("addPaymentMethod") : t("changeCard")}
+                        </button>
+                    </div>
+
+                    {paymentSources.length > 0 ? (
+                        <ul className="mt-4 divide-y divide-neutral-200 dark:divide-neutral-800">
+                            {paymentSources.map((source) => (
+                                <li key={source.id} className="flex items-center justify-between gap-3 py-3 flex-wrap">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                                            {source.kind === "card" ? <CreditCard size={16} /> : <Smartphone size={16} />}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                                                {describeSource(source)}
+                                            </p>
+                                            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                                                {source.kind === "card" && source.expMonth && source.expYear
+                                                    ? t("methodExpires", {
+                                                        month: String(source.expMonth).padStart(2, "0"),
+                                                        year: String(source.expYear).slice(-2),
+                                                    })
+                                                    : t("methodAdded", { date: formatDate(source.createdAt, locale) })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        {source.status === "pending_auth" && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                                                <Clock size={11} /> {t("methodPendingAuth")}
+                                            </span>
+                                        )}
+                                        {source.isDefault ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                                <CheckCircle2 size={11} /> {t("methodDefault")}
+                                            </span>
+                                        ) : source.status === "available" ? (
+                                            <button
+                                                onClick={() => handleMakeDefault(source.id)}
+                                                disabled={sourceBusy !== null}
+                                                className="text-[11px] font-medium px-2 py-1 rounded-md text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-50"
+                                            >
+                                                {sourceBusy === source.id ? <Loader2 size={12} className="animate-spin" /> : t("methodMakeDefault")}
+                                            </button>
+                                        ) : null}
+                                        <button
+                                            onClick={() => handleRemoveSource(source.id)}
+                                            disabled={sourceBusy !== null}
+                                            aria-label={t("methodRemove")}
+                                            title={t("methodRemove")}
+                                            className="p-1.5 rounded-md text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">
+                            {storedSourceCheckout
+                                ? t("paymentMethodsEmpty")
+                                : t("paymentMethodsProviderManaged", { provider: subscription.provider })}
+                        </p>
+                    )}
                 </section>
             )}
 
@@ -1359,7 +1531,11 @@ export default function BillingPage() {
                     <div className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-semibold">
-                                {modal.kind === "upgrade" ? t("modalUpgradeTitle") : t("modalChangeCardTitle")}
+                                {modal.kind === "upgrade"
+                                    ? t("modalUpgradeTitle")
+                                    : modal.kind === "add-method"
+                                        ? t("modalAddMethodTitle")
+                                        : t("modalChangeCardTitle")}
                             </h3>
                             <button onClick={() => !modalSubmitting && setModal(null)} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded">
                                 <X size={16} />
@@ -1372,13 +1548,23 @@ export default function BillingPage() {
                             </p>
                         )}
 
-                        <MpCardForm
+                        <PaymentForm
+                            tenantId={activeTenantId!}
+                            country={billingCountry ?? undefined}
+                            config={publicConfig}
                             onToken={(token) => {
-                                if (modal.kind === "upgrade") handleUpgrade(modal.planSlug, token);
+                                if (modal.kind === "upgrade") handleUpgrade(modal.planSlug, { cardTokenId: token });
                                 else handleChangeCard(token);
                             }}
+                            onSourceSaved={handleSourceSaved}
                             submitting={modalSubmitting || action !== null}
-                            submitLabel={modal.kind === "upgrade" ? t("modalUpgradeSubmit") : t("modalChangeCardSubmit")}
+                            submitLabel={
+                                modal.kind === "upgrade"
+                                    ? t("modalUpgradeSubmit")
+                                    : modal.kind === "add-method"
+                                        ? t("modalAddMethodSubmit")
+                                        : t("modalChangeCardSubmit")
+                            }
                         />
                     </div>
                 </div>

@@ -5,9 +5,13 @@ import { useLocale, useTranslations } from "next-intl";
 import { api, type MercadoPagoProviderStatus } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
-    RefreshCw, Users, ToggleLeft, ToggleRight,
+    RefreshCw, Users, ToggleLeft, ToggleRight, CreditCard,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { TabNav } from "@/components/ui/tab-nav";
+import { ProvidersTab } from "./_components/ProvidersTab";
+
+type TabId = "plans" | "providers";
 
 type PriceCycle = {
     currency?: string;
@@ -195,6 +199,7 @@ export default function PlansPage() {
     const tHelp = useTranslations("help");
     const locale = useLocale();
 
+    const [activeTab, setActiveTab] = useState<TabId>("plans");
     const [plans, setPlans] = useState<Plan[]>([]);
     const [registry, setRegistry] = useState<FeatureDef[]>([]);
     const [loading, setLoading] = useState(true);
@@ -520,6 +525,31 @@ export default function PlansPage() {
                 </button>
             </div>
 
+            <TabNav
+                tabs={[
+                    { id: "plans", label: t("tabs.plans"), icon: Layers },
+                    { id: "providers", label: t("tabs.providers"), icon: CreditCard },
+                ]}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as TabId)}
+            />
+
+            {toast && (
+                <div className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm ${
+                    toast.type === "success"
+                        ? "border border-green-200 bg-green-50 text-green-600 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400"
+                        : "border border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400"
+                }`}>
+                    {toast.type === "success" ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+                    {toast.msg}
+                </div>
+            )}
+
+            {/* Runtime operator switch (L0 kill switch + L1 provider per country). */}
+            {activeTab === "providers" && <ProvidersTab onToast={setToast} />}
+
+            {activeTab === "plans" && (<>
+
             <HelpPanel
                 title={tHelp("plans.title")}
                 description={tHelp("plans.description")}
@@ -563,17 +593,6 @@ export default function PlansPage() {
                     </div>
                 </div>
             </div>
-
-            {toast && (
-                <div className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm ${
-                    toast.type === "success"
-                        ? "border border-green-200 bg-green-50 text-green-600 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-400"
-                        : "border border-red-200 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400"
-                }`}>
-                    {toast.type === "success" ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                    {toast.msg}
-                </div>
-            )}
 
             <div className={`${sectionCls} overflow-x-auto`}>
                 <table className="w-full min-w-[800px]">
@@ -975,6 +994,8 @@ export default function PlansPage() {
                     ))}
                 </div>
             </div>
+
+            </>)}
         </div>
     );
 }

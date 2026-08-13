@@ -25,6 +25,15 @@ export enum BillingEventType {
     PAYMENT_FAILED = 'billing.payment.failed',
     PAYMENT_REFUNDED = 'billing.payment.refunded',
 
+    // --- Stored payment method events ---
+    // Wallet instruments (Nequi, Bancolombia transfer) are authorized out of
+    // band: the customer approves in their bank app and the provider reports the
+    // outcome later. Until then the subscription has no chargeable method.
+    /** A stored payment source finished authorization and can now be charged. */
+    PAYMENT_METHOD_AUTHORIZED = 'billing.payment_method.authorized',
+    /** Authorization was rejected — the tenant must provide another method. */
+    PAYMENT_METHOD_DECLINED = 'billing.payment_method.declined',
+
     // --- Trial events ---
     TRIAL_STARTED = 'billing.trial.started',
     /** Synthetic event emitted by a cron 3 days before trial end — not from a provider webhook. */

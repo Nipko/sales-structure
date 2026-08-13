@@ -16,6 +16,7 @@ import {
     ProviderPlan,
     ProviderSubscription,
 } from '../types/provider-types';
+import { MERCADOPAGO_CAPABILITIES, ProviderCapabilities } from './provider-capabilities';
 
 /**
  * MercadoPago IPaymentProvider adapter.
@@ -37,6 +38,7 @@ import {
 @Injectable()
 export class MercadoPagoAdapter implements IPaymentProvider {
     readonly name: PaymentProviderName = 'mercadopago';
+    readonly capabilities: ProviderCapabilities = MERCADOPAGO_CAPABILITIES;
     private readonly logger = new Logger(MercadoPagoAdapter.name);
 
     constructor(private readonly mpConfig: MercadoPagoConfigService) {}

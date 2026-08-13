@@ -3,10 +3,26 @@ import { SubscriptionStatus } from './subscription-status.enum';
 
 /**
  * Supported payment providers. New providers are added here and must implement
- * IPaymentProvider. The active provider per tenant is stored in
- * `Tenant.paymentProvider` and routed by PaymentProviderFactory.
+ * IPaymentProvider. Which one runs for a given charge is decided by
+ * PaymentRoutingService (kill switch → country default → tenant override →
+ * the provider frozen on the subscription) and resolved by PaymentProviderFactory.
+ *
+ * Providers without native subscriptions (wompi) additionally implement
+ * IChargingProvider and are driven by our own recurring engine.
  */
-export type PaymentProviderName = 'mercadopago' | 'stripe' | 'mock';
+export type PaymentProviderName = 'mercadopago' | 'stripe' | 'wompi' | 'mock';
+
+/** Every provider name that exists, for validation of runtime-configured routing. */
+export const PAYMENT_PROVIDER_NAMES: readonly PaymentProviderName[] = [
+    'mercadopago',
+    'stripe',
+    'wompi',
+    'mock',
+] as const;
+
+export function isPaymentProviderName(value: unknown): value is PaymentProviderName {
+    return typeof value === 'string' && (PAYMENT_PROVIDER_NAMES as readonly string[]).includes(value);
+}
 
 /**
  * Billing cycle chosen for a subscription. Stored on billing_subscriptions

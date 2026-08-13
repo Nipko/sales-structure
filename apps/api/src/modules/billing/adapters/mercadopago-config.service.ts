@@ -116,6 +116,15 @@ export class MercadoPagoConfigService implements OnModuleInit {
         return this._webhookSecret;
     }
 
+    /**
+     * Publishable key for the browser SDK (card tokenization). Safe to expose:
+     * it can only create single-use tokens. Served at runtime through
+     * GET /billing/public/config so switching operators never needs a rebuild.
+     */
+    get publicKey(): string | undefined {
+        return process.env.MP_PUBLIC_KEY || undefined;
+    }
+
     private requireConfigured(): void {
         if (!this.isConfigured()) {
             throw new Error(

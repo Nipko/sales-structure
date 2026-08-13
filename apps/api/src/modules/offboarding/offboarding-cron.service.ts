@@ -7,6 +7,7 @@ import { RedisService } from '../redis/redis.service';
 import { OffboardingService } from './offboarding.service';
 import { BillingEventType } from '../billing/types/billing-event.enum';
 import { CronLockService } from '../redis/cron-lock.service';
+import { DunningService } from '../billing/recurring/dunning.service';
 
 @Injectable()
 export class OffboardingCronService {
@@ -18,6 +19,7 @@ export class OffboardingCronService {
         private offboardingService: OffboardingService,
         private eventEmitter: EventEmitter2,
         private readonly cronLock: CronLockService,
+        private readonly dunning: DunningService,
     ) {}
 
     /**
@@ -127,6 +129,23 @@ export class OffboardingCronService {
                     }
 
                     const daysSincePastDue = (Date.now() - new Date(pastDueSince).getTime()) / (1000 * 60 * 60 * 24);
+
+                    // Never cut off a tenant whose charge is still in play. With
+                    // the internal engine a renewal can be queued, in flight, or
+                    // waiting on an asynchronous provider — and an unresolved
+                    // charge may already have taken the money. Expiring here
+                    // would revoke access to someone who just paid.
+                    const subscription = await this.prisma.billingSubscription.findUnique({
+                        where: { tenantId: tenant.id },
+                        select: { id: true, engine: true },
+                    });
+                    if (subscription?.engine === 'internal'
+                        && await this.dunning.hasLiveAttempt(subscription.id)) {
+                        this.logger.log(
+                            `Tenant ${tenant.id} past_due ${Math.floor(daysSincePastDue)}d but a charge is still in play — not expiring`,
+                        );
+                        continue;
+                    }
 
                     if (daysSincePastDue >= 7) {
                         this.logger.log(`Tenant ${tenant.id} (${tenant.name}) past_due ${Math.floor(daysSincePastDue)}d → expired`);

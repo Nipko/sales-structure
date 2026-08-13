@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Logger, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, MaxLength, Min } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -24,6 +24,9 @@ import {
     MERCADOPAGO_CURRENCY_BY_COUNTRY,
     normalizeBillingCountry,
 } from './billing-country-config';
+import { PaymentRoutingService } from './payment-routing.service';
+import { PaymentProviderFactory } from './payment-provider.factory';
+import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from './types/provider-types';
 
 class RefundPaymentDto {
     @IsOptional()
@@ -88,10 +91,38 @@ class ReconcileDto {
     @IsOptional() @IsIn(['full', 'past_due']) scope?: 'full' | 'past_due';
 }
 
+class UpdateProviderRoutingDto {
+    /** L0 kill switch: { "mercadopago": true, "wompi": false, ... } */
+    @IsOptional() @IsObject() providersEnabled?: Record<string, boolean>;
+    /** L1 country defaults: { "CO": "wompi", "*": "mercadopago" } */
+    @IsOptional() @IsObject() defaultByCountry?: Record<string, string>;
+    /** Which Wompi payment methods the checkout may offer. */
+    @IsOptional() @IsObject() wompiMethods?: Record<string, boolean>;
+}
+
+class SetTenantProviderDto {
+    @IsIn(PAYMENT_PROVIDER_NAMES as unknown as string[])
+    provider!: PaymentProviderName;
+
+    /** Mandatory: a per-tenant billing override must always say why. */
+    @IsString()
+    @MaxLength(500)
+    reason!: string;
+
+    /**
+     * Reassigning a tenant with a live subscription does NOT migrate the payment
+     * mandate — the card/token stays at the old provider and the tenant has to
+     * re-authorize. Requires an explicit force.
+     */
+    @IsOptional() @IsBoolean() force?: boolean;
+}
+
 @Controller('billing-admin')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('super_admin')
 export class BillingAdminController {
+    private readonly logger = new Logger(BillingAdminController.name);
+
     constructor(
         private readonly billingService: BillingService,
         private readonly prisma: PrismaService,
@@ -99,6 +130,8 @@ export class BillingAdminController {
         private readonly mp: MercadoPagoAdapter,
         private readonly mpConfig: MercadoPagoConfigService,
         private readonly reconciliation: BillingReconciliationProcessor,
+        private readonly routing: PaymentRoutingService,
+        private readonly providerFactory: PaymentProviderFactory,
     ) {}
 
     // ── Plan Management ─────────────────────────────────────────
@@ -280,17 +313,193 @@ export class BillingAdminController {
     // no provider call: environment is inferred locally and collector/KYC must
     // be validated by the MercadoPago preflight.
     @Get('provider-status')
-    providerStatus() {
+    async providerStatus() {
+        const routing = await this.routing.getConfig();
+        const mercadopago = {
+            environment: this.mpConfig.environment(),
+            credentialModeInferred: this.mpConfig.credentialModeInferred(),
+            collectorValidation: 'not_checked' as const,
+            configured: this.mpConfig.isConfigured(),
+            webhookConfigured: Boolean(this.mpConfig.webhookSecret),
+            enabled: routing.providersEnabled.mercadopago,
+            registered: this.providerFactory.isRegistered('mercadopago'),
+        };
         return {
             success: true,
             data: {
-                mercadopago: {
-                    environment: this.mpConfig.environment(),
-                    credentialModeInferred: this.mpConfig.credentialModeInferred(),
-                    collectorValidation: 'not_checked' as const,
-                    configured: this.mpConfig.isConfigured(),
-                    webhookConfigured: Boolean(this.mpConfig.webhookSecret),
+                // Kept at the top level for one deploy: /admin/plans still reads
+                // `data.mercadopago`. New consumers should read `providers`.
+                mercadopago,
+                providers: PAYMENT_PROVIDER_NAMES.reduce((acc, name) => {
+                    const caps = this.providerFactory.capabilitiesOf(name);
+                    acc[name] = {
+                        enabled: routing.providersEnabled[name],
+                        registered: this.providerFactory.isRegistered(name),
+                        countries: caps.countries,
+                        currencies: caps.currencies,
+                        nativeSubscriptions: caps.nativeSubscriptions,
+                        refunds: caps.refunds,
+                        ...(name === 'mercadopago'
+                            ? {
+                                  environment: mercadopago.environment,
+                                  configured: mercadopago.configured,
+                                  webhookConfigured: mercadopago.webhookConfigured,
+                              }
+                            : {}),
+                    };
+                    return acc;
+                }, {} as Record<string, any>),
+                routing: {
+                    defaultByCountry: routing.defaultByCountry,
+                    wompiMethods: routing.wompiMethods,
                 },
+            },
+        };
+    }
+
+    // ── Provider routing (the operator switch) ──────────────────
+    // Which provider bills which country is runtime configuration, not code.
+    // Flipping a country back to MercadoPago (or forward to Wompi) is a settings
+    // write — no deploy, no rebuild. Scope is NEW acquisitions only: live
+    // subscriptions keep the provider they were created with, and their webhooks
+    // and reconciliation keep running even for a disabled provider.
+
+    @Get('providers')
+    async getProviderRouting() {
+        const config = await this.routing.getConfig();
+        return {
+            success: true,
+            data: {
+                ...config,
+                available: PAYMENT_PROVIDER_NAMES.map((name) => ({
+                    name,
+                    registered: this.providerFactory.isRegistered(name),
+                    capabilities: this.providerFactory.capabilitiesOf(name),
+                })),
+            },
+        };
+    }
+
+    @Put('providers')
+    async updateProviderRouting(@Body() body: UpdateProviderRoutingDto, @Req() req: any) {
+        const before = await this.routing.getConfig();
+        const updated = await this.routing.updateConfig({
+            providersEnabled: body.providersEnabled as any,
+            defaultByCountry: body.defaultByCountry as any,
+            wompiMethods: body.wompiMethods as any,
+        });
+
+        // auditActor takes the USER, not the request: passing `req` records an
+        // undefined actor and never detects impersonation.
+        const actor = auditActor(req?.user);
+        await this.prisma.auditLog.create({
+            data: {
+                userId: actor.userId,
+                tenantId: null,
+                action: 'billing.provider_routing_changed',
+                resource: 'platform_settings/billing',
+                details: { before, after: updated, ...(actor.delegation ?? {}) } as any,
+            },
+        }).catch((err: any) => {
+            // Changing who bills a whole country must never be silently unlogged.
+            this.logger.error(`[Billing] Failed to audit provider routing change: ${err?.message}`);
+        });
+
+        // Same shape as GET so the caller can render straight from the response
+        // instead of issuing a second request.
+        return {
+            success: true,
+            data: {
+                ...updated,
+                available: PAYMENT_PROVIDER_NAMES.map((name) => ({
+                    name,
+                    registered: this.providerFactory.isRegistered(name),
+                    capabilities: this.providerFactory.capabilitiesOf(name),
+                })),
+            },
+        };
+    }
+
+    /**
+     * Per-tenant provider override (L2). Deliberately guarded: switching a tenant
+     * that already has a live subscription does not carry the payment mandate
+     * across — card tokens live inside the old provider's PCI scope and cannot be
+     * exported. The tenant WILL have to re-authorize, so this needs `force`.
+     */
+    @Put('tenants/:tenantId/payment-provider')
+    async setTenantPaymentProvider(
+        @Param('tenantId') tenantId: string,
+        @Body() body: SetTenantProviderDto,
+        @Req() req: any,
+    ) {
+        const reason = (body.reason || '').trim();
+        if (!reason) {
+            throw new BadRequestException({
+                error: 'reason_required',
+                message: 'A reason is required to override the payment provider of a tenant.',
+            });
+        }
+
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { id: true, name: true, billingCountry: true, paymentProvider: true },
+        });
+        if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId });
+
+        if (!this.providerFactory.isRegistered(body.provider)) {
+            throw new BadRequestException({
+                error: 'provider_not_registered',
+                message: `No adapter is registered for '${body.provider}' yet.`,
+            });
+        }
+        await this.routing.assertUsableForNewSubscription(body.provider, tenant.billingCountry);
+
+        const liveSub = await this.prisma.billingSubscription.findFirst({
+            where: { tenantId, status: { in: ['active', 'trialing', 'past_due'] } },
+            select: { id: true, provider: true, status: true, providerSubscriptionId: true },
+        });
+        if (liveSub && liveSub.provider !== body.provider && !body.force) {
+            throw new BadRequestException({
+                error: 'live_subscription_conflict',
+                message: `Tenant has a ${liveSub.status} subscription on ${liveSub.provider}. Changing providers does not migrate the payment mandate — the tenant must re-authorize. Pass force=true to proceed.`,
+                subscriptionId: liveSub.id,
+                currentProvider: liveSub.provider,
+                status: liveSub.status,
+            });
+        }
+
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { paymentProvider: body.provider },
+        });
+
+        const overrideActor = auditActor(req?.user);
+        await this.prisma.auditLog.create({
+            data: {
+                userId: overrideActor.userId,
+                tenantId,
+                action: 'billing.tenant_provider_overridden',
+                resource: `tenants/${tenantId}`,
+                details: {
+                    from: tenant.paymentProvider ?? null,
+                    to: body.provider,
+                    reason,
+                    forced: Boolean(body.force),
+                    liveSubscriptionId: liveSub?.id ?? null,
+                    ...(overrideActor.delegation ?? {}),
+                } as any,
+            },
+        }).catch((err: any) => {
+            this.logger.error(`[Billing] Failed to audit tenant provider override: ${err?.message}`);
+        });
+
+        return {
+            success: true,
+            data: {
+                tenantId,
+                paymentProvider: body.provider,
+                // The existing subscription keeps billing where it was created.
+                affectsExistingSubscription: false,
             },
         };
     }

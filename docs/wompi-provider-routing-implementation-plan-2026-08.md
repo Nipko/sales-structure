@@ -1,6 +1,7 @@
 # Wompi + operador conmutable + geo-routing — Plan de implementación (Ago 2026)
 
-**Fecha:** 12-ago-2026 · **Estado:** **F0 COMPLETA** (§10) · **F1 CÓDIGO COMPLETO** (§11, falta validar en sandbox con credenciales) · F2-F4 pendientes
+**Fecha:** 12-ago-2026 · **Actualizado:** 13-ago-2026
+**Estado:** **F0 ✅** (§10) · **F1 ✅ verificada contra el sandbox real** (§11) · **F2 ✅** (§13) · **F3 en curso** · F4 = operación, sin código
 **Base de diseño:** `docs/pasarela-wompi-research-2026-08.md` (905 líneas — el diseño técnico detallado del motor, el switch L0-L3 y el mapeo de Wompi vive ahí; este plan lo convierte en ejecución con las decisiones del dueño tomadas). Contexto de negocio: `docs/merchant-of-record-research-2026-08.md`.
 **Radiografía de código:** workflow 6 agentes (12-ago-2026), hallazgos archivo:línea citados abajo.
 
@@ -310,7 +311,25 @@ Corrida completa contra `sandbox.wompi.co` con las llaves reales. **Encontró un
 
 **Nota sobre el paso 7 (afecta el diseño del dunning):** en sandbox una tarjeta inválida se rechaza al tokenizar/crear la fuente, así que **el camino `DECLINED` en el cobro no pudo ejercitarse**. En producción el caso frecuente es otro — una tarjeta válida que falla por fondos o por el emisor —, y ese es justamente el que dispara el dunning. La clasificación soft/hard de F2 debe validarse con un rechazo real, no con este script.
 
-**Pendiente de F2** (el 80% del trabajo restante): `renewal-scheduler.service.ts` (cron que solo AGENDA, con `CronLockService`), `processors/renewal-charge.processor.ts` (reserva optimista + revalidación + guarda de tardanza + regla del indeterminado), `processors/charge-poll.processor.ts`, `dunning.service.ts` (D+0/D+1/D+3/D+7/D+10 con clasificación soft/hard/indeterminate), `proration.service.ts`, reconciliación por intento, `PENDING_AUTH → ACTIVE` desde evento, y los 5 chequeos nuevos del Ops Center.
+### F2 COMPLETA (13-ago-2026)
+
+| Pieza | Archivo | Qué resuelve |
+|---|---|---|
+| Motor | `recurring/subscription-engine.service.ts` + spec (25 casos) | Reclamo del intento **antes** de mover plata (la unicidad por ciclo hace imposible el segundo reclamo), revalidación al cobrar, liquidación transaccional con el evento fiscal emitido **después** del commit, y la regla del indeterminado |
+| Agendado | `recurring/renewal-scheduler.service.ts` | Cron cada 10 min que **solo agenda**; jitter por aniversario; reserva contra el tope diario antes de agendar (si se pasa, difiere); barrido que reencola intentos cuyo job se perdió — la cola no es la fuente de verdad |
+| Cobro | `recurring/processors/renewal-charge.processor.ts` | Posesión exclusiva → revalidación → guarda de atraso (36h) → cobro **sin reintento de red** (el POST no es idempotente) |
+| Consulta | `recurring/processors/charge-poll.processor.ts` | Backoff 10s→2h; **par** del webhook, no respaldo (el proveedor reintenta 3 veces en 24h sin garantía) |
+| Recuperación | `recurring/dunning.service.ts` + spec (12 casos) | Escalera D+1/D+3/D+7/D+10; el primer rechazo **no** suspende; hard = deja de reintentar y pide otro medio; indeterminado = congela sin cortar; medio nuevo = cobra en el acto |
+| Medios de pago | `recurring/payment-source.service.ts` + controller | Alta con token de un solo uso (la tarjeta nunca toca el backend), evidencia de habeas data sin guardar los JWT, activación con precio congelado |
+| Prorrateo | `recurring/proration.service.ts` + spec (11 casos) | Valor del tiempo sin usar sobre lo **pagado** (respeta cupones); mínimo cobrable; baja de plan = crédito, **nunca** reembolso (no hay API) |
+| Convergencia | `billing.service.ts` `settleEngineChargeIfAny` | Webhook y consulta desembocan en la misma liquidación; el segundo no hace nada. Antes el webhook habría contado el pago dos veces y emitido una segunda factura DIAN |
+| Conciliación | `processors/reconciliation.processor.ts` | Barrido cada 20 min por **intento** (la existente pregunta por un objeto de suscripción que estos proveedores no tienen: los saltea a todos) |
+| Cambio de plan | `billing.service.ts` `changePlanWithEngine` | El plan cambia cuando el cobro liquida, no al pedirlo |
+| No cortar a quien pagó | `offboarding-cron.service.ts` | El corte pregunta antes si hay un cobro en juego |
+| Monitoreo | `health/platform-monitor.service.ts` | 5 chequeos: cobros colgados, renovaciones no agendadas (crítico: con motor propio, si el scheduler se cae **nadie cobra**), tope diario, tarjetas por vencer, tasa de rechazo por método |
+| **Guarda liberada** | `payment-routing.service.ts` | `INTERNAL_RECURRING_ENGINE_AVAILABLE = true`: los proveedores sin suscripciones nativas ya son ruteables. Siguen **apagados** por defecto |
+
+**Verificado:** `tsc` limpio · **243 tests / 18 suites** · `test:bootstrap` PASSED.
 
 ## 12. Revisión adversarial de F0+F1 (12-ago-2026)
 

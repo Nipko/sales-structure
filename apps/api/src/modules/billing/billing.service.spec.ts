@@ -12,6 +12,9 @@ import { PROVIDER_CAPABILITIES } from './adapters/provider-capabilities';
 import { PaymentRoutingService } from './payment-routing.service';
 import { WompiConfigService } from './adapters/wompi-config.service';
 import { SubscriptionEngineService } from './recurring/subscription-engine.service';
+import { ProrationService } from './recurring/proration.service';
+import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
+import { getQueueToken } from '@nestjs/bullmq';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
@@ -85,7 +88,19 @@ describe('BillingService', () => {
                         settleApproved: jest.fn(),
                         settleFailed: jest.fn(),
                         classifyFailure: jest.fn().mockReturnValue('soft'),
+                        claimAttempt: jest.fn(),
                     },
+                },
+                {
+                    provide: ProrationService,
+                    useValue: {
+                        computeUpgrade: jest.fn(),
+                        recordCredit: jest.fn(),
+                    },
+                },
+                {
+                    provide: getQueueToken(RENEWAL_QUEUE),
+                    useValue: { add: jest.fn() },
                 },
                 {
                     // Routing resolves to MercadoPago, matching the previous

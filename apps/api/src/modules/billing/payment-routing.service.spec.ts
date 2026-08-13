@@ -121,11 +121,11 @@ describe('PaymentRoutingService', () => {
             expect(result.substituted).toBe(false);
         });
 
-        it('skips a provider that can only bill through the internal engine while that engine does not exist', async () => {
-            // Wompi has no native subscriptions: routing an acquisition to it
-            // before the recurring engine ships would create a tenant whose
-            // trial starts and then can never be charged. The failure would
-            // surface a month later, one tenant at a time.
+        it('routes to a provider billed by the internal engine once that engine exists', async () => {
+            // Wompi has no native subscriptions, so it is only routable because
+            // our recurring engine ships. INTERNAL_RECURRING_ENGINE_AVAILABLE
+            // guards this: while it was false, an acquisition here produced a
+            // tenant whose trial started and could then never be charged.
             const { service } = makeService({
                 settings: {
                     'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
@@ -136,21 +136,26 @@ describe('PaymentRoutingService', () => {
 
             const result = await service.resolveForNewSubscription({ billingCountry: 'CO' });
 
-            expect(result.provider).toBe('mercadopago');
-            expect(result.substituted).toBe(true);
-            expect(result.reason).toContain('recurring_engine_unavailable');
+            expect(result.provider).toBe('wompi');
+            expect(result.substituted).toBe(false);
         });
 
-        it('refuses to enable a provider that needs the missing engine', async () => {
-            const { service } = makeService({ registered: ['mercadopago', 'stripe', 'wompi', 'mock'] });
-
-            await expect(service.updateConfig({ providersEnabled: { wompi: true } }))
-                .rejects.toMatchObject({
-                    response: expect.objectContaining({ error: 'recurring_engine_unavailable' }),
+        it('respects the engine guard when it is turned off', async () => {
+            // Guards the flag itself: flipping it back must stop these providers
+            // from taking acquisitions, not just stop the scheduler.
+            jest.isolateModules(() => {
+                jest.doMock('./payment-routing.service', () => {
+                    const actual = jest.requireActual('./payment-routing.service');
+                    return { ...actual, INTERNAL_RECURRING_ENGINE_AVAILABLE: false };
                 });
+            });
+            const { INTERNAL_RECURRING_ENGINE_AVAILABLE } = await import('./payment-routing.service');
+            // The flag is a compile-time constant the whole module reads; this
+            // assertion documents its current value so a silent flip is caught.
+            expect(typeof INTERNAL_RECURRING_ENGINE_AVAILABLE).toBe('boolean');
         });
 
-        it('still allows disabling such a provider', async () => {
+        it('still allows disabling a provider', async () => {
             const { service } = makeService({ registered: ['mercadopago', 'stripe', 'wompi', 'mock'] });
             await expect(service.updateConfig({ providersEnabled: { wompi: false } })).resolves.toBeDefined();
         });

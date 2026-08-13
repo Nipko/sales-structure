@@ -25,6 +25,10 @@ import { INTERNAL_RECURRING_ENGINE_AVAILABLE, PaymentRoutingService } from './pa
 import { ProviderCapabilities } from './adapters/provider-capabilities';
 import { WompiConfigService } from './adapters/wompi-config.service';
 import { SubscriptionEngineService } from './recurring/subscription-engine.service';
+import { ProrationService } from './recurring/proration.service';
+import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -60,6 +64,8 @@ export class BillingService {
         private readonly routing: PaymentRoutingService,
         private readonly wompiConfig: WompiConfigService,
         private readonly engine: SubscriptionEngineService,
+        private readonly proration: ProrationService,
+        @InjectQueue(RENEWAL_QUEUE) private readonly enginePendingCharges: Queue,
     ) {}
 
     /** Capabilities of the provider a subscription is bound to. Business logic branches on these, never on the name. */
@@ -428,16 +434,10 @@ export class BillingService {
         let newProviderSubscriptionId = sub.providerSubscriptionId;
 
         if (!caps.nativeSubscriptions) {
-            // Providers without a subscription object (Wompi) are driven by our
-            // own recurring engine: a plan change is a local recalculation plus a
-            // prorated charge, never a remote subscription edit. The engine lands
-            // in phase F2 — until then this path must refuse loudly rather than
-            // pretend the change was applied.
-            throw new BadRequestException({
-                error: 'engine_plan_change_unavailable',
-                message: 'Plan changes for this payment provider are handled by the internal billing engine, which is not enabled yet.',
-                providerName,
-            });
+            // Providers without a subscription object are driven by our own
+            // engine: a plan change is a local recalculation plus a prorated
+            // charge, never a remote subscription edit.
+            return this.changePlanWithEngine(sub, newPlan, targetCycle, tenant);
         }
 
         if (caps.changePlanInPlace) {
@@ -1656,6 +1656,154 @@ export class BillingService {
                 providerName,
             });
         }
+    }
+
+    /**
+     * Change plan on a subscription billed by our own engine.
+     *
+     * The plan does NOT change here. It changes when the prorated charge settles
+     * — everything is asynchronous with these providers, so granting the new
+     * plan on the promise of a charge would hand out a tier that may never be
+     * paid for. Until then the tenant keeps what they already paid for, which is
+     * also what they would expect if the charge fails.
+     */
+    private async changePlanWithEngine(
+        sub: any,
+        newPlan: any,
+        targetCycle: BillingCycle,
+        tenant: { billingCountry?: string | null } | null,
+    ) {
+        const country = normalizeBillingCountry(tenant?.billingCountry) || 'CO';
+        const pricing = this.resolveEnginePricing(newPlan, country, targetCycle);
+
+        const lastPaid = await this.prisma.billingChargeAttempt.findFirst({
+            where: { subscriptionId: sub.id, status: 'succeeded' },
+            orderBy: { settledAt: 'desc' },
+        });
+
+        const now = new Date();
+        const timezone = sub.billingTimezone || 'America/Bogota';
+        const proration = this.proration.computeUpgrade({
+            now,
+            currentPeriodStart: sub.currentPeriodStart ?? now,
+            currentPeriodEnd: sub.currentPeriodEnd ?? now,
+            // What was actually charged, so coupons and country overrides are
+            // honoured instead of the list price.
+            paidCents: lastPaid?.amountCents ?? sub.chargeAmountCents ?? 0,
+            newAmountCents: pricing.amountCents,
+            targetCycle,
+            anchorDay: sub.billingAnchorDay ?? now.getUTCDate(),
+            timezone,
+            creditBalanceCents: sub.creditBalanceCents ?? 0,
+        });
+
+        // Nothing to collect: the change can be applied immediately.
+        if (proration.chargeCents === 0) {
+            await this.prisma.billingSubscription.update({
+                where: { id: sub.id },
+                data: {
+                    planId: newPlan.id,
+                    chargeAmountCents: pricing.amountCents,
+                    chargeCurrency: pricing.currency,
+                    currentPeriodStart: proration.periodStart,
+                    currentPeriodEnd: proration.periodEnd,
+                    nextChargeAt: proration.periodEnd,
+                    metadata: { ...(sub.metadata ?? {}), billingCycle: targetCycle } as any,
+                },
+            });
+            if (proration.creditGeneratedCents > 0) {
+                await this.proration.recordCredit({
+                    tenantId: sub.tenantId,
+                    subscriptionId: sub.id,
+                    deltaCents: proration.creditGeneratedCents,
+                    currency: pricing.currency,
+                    reason: 'upgrade_credit_applied',
+                });
+            }
+            await this.prisma.tenant.update({ where: { id: sub.tenantId }, data: { plan: newPlan.slug } });
+            await this.invalidateTenantCaches(sub.tenantId);
+            this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, sub.tenantId, sub.id, {
+                fromPlan: sub.planId, toPlan: newPlan.id, prorated: true, charged: 0,
+            });
+            return { ...sub, planId: newPlan.id };
+        }
+
+        const claim = await this.engine.claimAttempt({
+            subscriptionId: sub.id,
+            tenantId: sub.tenantId,
+            provider: sub.provider as PaymentProviderName,
+            purpose: 'upgrade_proration',
+            periodStart: proration.periodStart,
+            periodEnd: proration.periodEnd,
+            amountCents: proration.chargeCents,
+            currency: pricing.currency,
+            scheduledAt: new Date(),
+            paymentSourceId: sub.defaultPaymentSourceId,
+        });
+        if (!claim) {
+            throw new ConflictException({
+                error: 'plan_change_in_progress',
+                message: 'A plan change for this period is already being processed.',
+            });
+        }
+
+        // The target plan is recorded as PENDING: settleApproved promotes it
+        // once the money lands, and a failed charge leaves the tenant untouched.
+        await this.prisma.billingSubscription.update({
+            where: { id: sub.id },
+            data: {
+                pendingUpgradePlanId: newPlan.id,
+                chargeAmountCents: pricing.amountCents,
+                chargeCurrency: pricing.currency,
+                metadata: { ...(sub.metadata ?? {}), billingCycle: targetCycle } as any,
+            },
+        });
+
+        await this.enginePendingCharges.add(
+            'charge',
+            { attemptId: claim.id },
+            { jobId: claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
+        );
+
+        this.logger.log(
+            `[Billing] Tenant ${sub.tenantId} plan change to ${newPlan.slug}: charging ${proration.chargeCents} ${pricing.currency} (${proration.reason})`,
+        );
+        return { ...sub, pendingUpgradePlanId: newPlan.id, prorationCents: proration.chargeCents };
+    }
+
+    /**
+     * Frozen local price for a provider with no remote catalog. The amount IS
+     * the contract here — there is no provider-side plan to bind to.
+     */
+    private resolveEnginePricing(
+        plan: { priceLocalOverrides: any; priceUsdCents: number },
+        country: string,
+        cycle: BillingCycle,
+    ): { amountCents: number; currency: string } {
+        const overrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object')
+            ? plan.priceLocalOverrides
+            : {};
+        const countryEntry = Object.entries(overrides).find(([key]) =>
+            normalizeBillingCountry(key) === country)?.[1] as any;
+        const entry = cycle === 'annual' ? countryEntry?.annual : countryEntry;
+
+        if (!entry || !Number.isSafeInteger(entry.amountCents) || entry.amountCents <= 0 || !entry.currency) {
+            throw new BadRequestException({
+                error: 'plan_price_not_configured',
+                message: `No local price is configured for this plan in ${country} (${cycle}).`,
+                billingCountry: country,
+                cycle,
+            });
+        }
+        return { amountCents: entry.amountCents, currency: String(entry.currency).toUpperCase() };
+    }
+
+    private async invalidateTenantCaches(tenantId: string): Promise<void> {
+        await Promise.allSettled([
+            this.redis.del(`tenant_plan:${tenantId}`),
+            this.redis.del(`sub_status:${tenantId}`),
+            this.redis.del(`plan_features:${tenantId}`),
+        ]);
     }
 
     /**

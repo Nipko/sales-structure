@@ -44,16 +44,17 @@ const SETTING_WOMPI_METHODS = 'billing.wompi_methods_enabled';
 /**
  * Whether OUR recurring billing engine (scheduler + retries + dunning) exists.
  *
- * Providers without native subscriptions can only bill through that engine. Until
- * it ships (phase F2), routing an acquisition to one of them produces a tenant
- * that can never be charged: the trial starts fine, then every path to pay
- * refuses — and the failure surfaces a month later, tenant by tenant, instead of
- * at signup.
+ * Providers without native subscriptions can only bill through that engine, so
+ * while it did not exist, routing an acquisition to one of them produced a
+ * tenant that could never be charged: the trial started fine and then every path
+ * to pay refused, surfacing a month later one tenant at a time.
  *
- * So the switch refuses to enable such a provider at all. Flip this to `true` in
- * the same change that lands the engine.
+ * The engine now ships complete — scheduling, charging, polling, dunning,
+ * reconciliation, stored payment methods and proration — so the switch accepts
+ * these providers. They still stay OFF until an operator enables them: the kill
+ * switch defaults to disabled for everything except MercadoPago.
  */
-export const INTERNAL_RECURRING_ENGINE_AVAILABLE = false;
+export const INTERNAL_RECURRING_ENGINE_AVAILABLE = true;
 
 /**
  * Fail polarity is deliberately ASYMMETRIC.

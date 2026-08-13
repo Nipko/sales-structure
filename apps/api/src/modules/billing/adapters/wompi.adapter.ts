@@ -293,6 +293,16 @@ export class WompiAdapter implements IPaymentProvider, IChargingProvider {
         if (input.acceptance?.personalDataAuth?.token) {
             body.accept_personal_auth = input.acceptance.personalDataAuth.token;
         }
+        // Card charges MUST carry the instalment count even when the amount comes
+        // from a stored payment source: Wompi answers 422
+        // "No se especificó el número de cuotas" otherwise. The docs describe
+        // payment_method as optional when payment_source_id is present, which is
+        // only true for the non-card methods — verified against the sandbox.
+        const sourceKind = input.sourceKind ?? 'card';
+        if (sourceKind === 'card') {
+            body.payment_method = { installments: input.installments ?? 1 };
+        }
+
         if (input.customerData) {
             body.customer_data = {
                 full_name: input.customerData.fullName,

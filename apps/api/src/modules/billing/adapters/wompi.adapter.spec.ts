@@ -278,6 +278,57 @@ describe('WompiAdapter', () => {
             await expect(adapter.cancelSubscription('x')).rejects.toThrow();
         });
 
+        it('sends installments on a card charge', async () => {
+            // Verified against the sandbox: Wompi answers 422 "No se especificó
+            // el número de cuotas" when a CARD source is charged without
+            // payment_method, even though the docs describe it as optional once
+            // payment_source_id is present. This would have failed the very
+            // first real renewal.
+            const adapter = makeAdapter();
+            const fetchSpy = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+                ok: true,
+                status: 201,
+                statusText: 'Created',
+                text: async () => JSON.stringify({ data: { id: 'txn-1', status: 'PENDING', reference: 'r', amount_in_cents: 200_000, currency: 'COP' } }),
+            } as any);
+
+            try {
+                await adapter.charge({
+                    reference: 'r', amountCents: 200_000, currency: 'COP',
+                    customerEmail: 'a@b.co', providerSourceId: '42', recurrent: true,
+                });
+                const body = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+                expect(body.payment_method).toEqual({ installments: 1 });
+                expect(body.payment_source_id).toBe(42);
+            } finally {
+                fetchSpy.mockRestore();
+            }
+        });
+
+        it('omits installments for a wallet source', async () => {
+            // Nequi and bank-transfer sources take no instalment count; sending
+            // one is a card-only field.
+            const adapter = makeAdapter();
+            const fetchSpy = jest.spyOn(global, 'fetch' as any).mockResolvedValue({
+                ok: true,
+                status: 201,
+                statusText: 'Created',
+                text: async () => JSON.stringify({ data: { id: 'txn-2', status: 'PENDING', reference: 'r', amount_in_cents: 200_000, currency: 'COP' } }),
+            } as any);
+
+            try {
+                await adapter.charge({
+                    reference: 'r', amountCents: 200_000, currency: 'COP',
+                    customerEmail: 'a@b.co', providerSourceId: '43', recurrent: true,
+                    sourceKind: 'nequi',
+                });
+                const body = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+                expect(body.payment_method).toBeUndefined();
+            } finally {
+                fetchSpy.mockRestore();
+            }
+        });
+
         it('refuses a non-COP charge', async () => {
             const adapter = makeAdapter();
             await expect(adapter.charge({

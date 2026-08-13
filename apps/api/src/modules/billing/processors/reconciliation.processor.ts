@@ -9,6 +9,7 @@ import { BillingEventType } from '../types/billing-event.enum';
 import { PaymentProviderName } from '../types/provider-types';
 import { CronLockService } from '../../redis/cron-lock.service';
 import { SmsCheckoutService } from '../sms-checkout.service';
+import { SubscriptionEngineService } from '../recurring/subscription-engine.service';
 
 /**
  * Billing reconciliation.
@@ -42,6 +43,7 @@ export class BillingReconciliationProcessor {
         private readonly eventEmitter: EventEmitter2,
         private readonly cronLock: CronLockService,
         private readonly smsCheckout: SmsCheckoutService,
+        private readonly engine: SubscriptionEngineService,
     ) {}
 
     /**
@@ -104,6 +106,76 @@ export class BillingReconciliationProcessor {
             }
         }
         return { scanned: pastDue.length, repaired, errors };
+    }
+
+    /**
+     * Every 20 minutes: close charges the provider accepted but never resolved.
+     *
+     * The subscription-level reconciliation below cannot see these at all — it
+     * asks the provider about a subscription object, and providers billed by our
+     * own engine have none. Their unit of truth is the charge attempt, so
+     * without this sweep a payment that really happened could stay `pending`
+     * forever: the customer is charged and the subscription still expires.
+     */
+    @Cron('*/20 * * * *')
+    async reconcileEngineChargesCron() {
+        await this.cronLock.runExclusive('reconciliation.engineCharges', 600, () => this.reconcileEngineCharges());
+    }
+
+    async reconcileEngineCharges(): Promise<{ scanned: number; resolved: number; errors: number }> {
+        const pending = await this.engine.findUnresolvedAttempts(15, 200);
+        let resolved = 0;
+        let errors = 0;
+
+        for (const attempt of pending) {
+            try {
+                const charging = this.providerFactory.getCharging(attempt.provider as PaymentProviderName);
+
+                // No transaction id means the request timed out before we learned
+                // it. The reference is the only handle left — and looking it up
+                // is the difference between recovering the charge and either
+                // losing the money or charging the customer twice.
+                const charge = attempt.providerTxnId
+                    ? await charging.getCharge(attempt.providerTxnId)
+                    : await charging.getChargeByReference(attempt.reference);
+
+                if (!charge) {
+                    // The provider never received it: safe to release for retry.
+                    if (attempt.failureClass === 'indeterminate') {
+                        await this.engine.settleFailed(
+                            attempt.id,
+                            { status: 'error', statusMessage: 'never reached the provider' },
+                            'soft',
+                        );
+                        this.logger.warn(
+                            `[Reconcile][Engine] Attempt ${attempt.id} never reached the provider — released for retry`,
+                        );
+                        resolved++;
+                    }
+                    continue;
+                }
+
+                if (charge.status === 'approved') {
+                    await this.engine.settleApproved(attempt.id, charge);
+                    this.logger.warn(
+                        `[Reconcile][Engine] Attempt ${attempt.id} was APPROVED and had not been recorded — settled`,
+                    );
+                    resolved++;
+                } else if (charge.status === 'declined' || charge.status === 'error' || charge.status === 'voided') {
+                    await this.engine.settleFailed(attempt.id, charge, this.engine.classifyFailure(charge));
+                    resolved++;
+                }
+                // Still pending at the provider: leave it for the next sweep.
+            } catch (err: any) {
+                errors++;
+                this.logger.error(`[Reconcile][Engine] Could not resolve attempt ${attempt.id}: ${err?.message}`);
+            }
+        }
+
+        if (resolved || errors) {
+            this.logger.log(`[Reconcile][Engine] scanned=${pending.length} resolved=${resolved} errors=${errors}`);
+        }
+        return { scanned: pending.length, resolved, errors };
     }
 
     /**

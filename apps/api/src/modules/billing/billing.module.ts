@@ -11,6 +11,9 @@ import {
 import { RenewalChargeProcessor } from './recurring/processors/renewal-charge.processor';
 import { ChargePollProcessor } from './recurring/processors/charge-poll.processor';
 import { DunningService } from './recurring/dunning.service';
+import { PaymentSourceService } from './recurring/payment-source.service';
+import { ProrationService } from './recurring/proration.service';
+import { PaymentSourceController } from './recurring/payment-source.controller';
 import { EmailModule } from '../email/email.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
@@ -62,7 +65,7 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         BullModule.registerQueue({ name: RENEWAL_QUEUE }),
         BullModule.registerQueue({ name: CHARGE_POLL_QUEUE }),
     ],
-    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, SmsCheckoutController],
+    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, SmsCheckoutController, PaymentSourceController],
     providers: [
         BillingService,
         BillingEmailService,
@@ -81,6 +84,8 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         SubscriptionEngineService,
         RenewalSchedulerService,
         DunningService,
+        PaymentSourceService,
+        ProrationService,
         RenewalChargeProcessor,
         ChargePollProcessor,
         InvoiceGeneratorService,

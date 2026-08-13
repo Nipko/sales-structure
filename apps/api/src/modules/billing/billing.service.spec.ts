@@ -11,6 +11,7 @@ import { NormalizedBillingEvent, PaymentProviderName } from './types/provider-ty
 import { PROVIDER_CAPABILITIES } from './adapters/provider-capabilities';
 import { PaymentRoutingService } from './payment-routing.service';
 import { WompiConfigService } from './adapters/wompi-config.service';
+import { SubscriptionEngineService } from './recurring/subscription-engine.service';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
@@ -30,6 +31,7 @@ describe('BillingService', () => {
     let redisMock: any;
     let mpConfigMock: { isConfigured: jest.Mock };
     let eventEmitter: EventEmitter2;
+    let module: TestingModule;
 
     beforeEach(async () => {
         prismaMock = {
@@ -47,7 +49,7 @@ describe('BillingService', () => {
         redisMock = { del: jest.fn() };
         mpConfigMock = { isConfigured: jest.fn().mockReturnValue(true) };
 
-        const module: TestingModule = await Test.createTestingModule({
+        module = await Test.createTestingModule({
             providers: [
                 BillingService,
                 PaymentProviderFactory,
@@ -74,6 +76,16 @@ describe('BillingService', () => {
                 {
                     provide: WompiConfigService,
                     useValue: { isConfigured: jest.fn().mockReturnValue(false) },
+                },
+                {
+                    // These tests exercise the provider-native path, where no
+                    // engine charge attempt exists.
+                    provide: SubscriptionEngineService,
+                    useValue: {
+                        settleApproved: jest.fn(),
+                        settleFailed: jest.fn(),
+                        classifyFailure: jest.fn().mockReturnValue('soft'),
+                    },
                 },
                 {
                     // Routing resolves to MercadoPago, matching the previous
@@ -124,6 +136,59 @@ describe('BillingService', () => {
     // -------------------------------------------------------------------------
     // State machine — deriveSubscriptionPatch (private, accessed via any-cast)
     // -------------------------------------------------------------------------
+
+    describe('engine charge convergence', () => {
+        it('routes a webhook about an engine charge to the engine, not the generic patch', async () => {
+            // The webhook and the engine's own polling race to report the same
+            // outcome. Applying the generic subscription patch here as well
+            // would count the payment twice — and issue a second DIAN invoice.
+            const engine = module.get(SubscriptionEngineService) as any;
+            prismaMock.billingEvent.findUnique.mockResolvedValue(null);
+            prismaMock.billingChargeAttempt = {
+                findFirst: jest.fn().mockResolvedValue({
+                    id: 'a1', tenantId: 't1', subscriptionId: 'sub-1',
+                    reference: 'sub_x_20260410_1', providerTxnId: 'txn-1',
+                    amountCents: 2_769_000, currency: 'COP',
+                }),
+            };
+            prismaMock.billingEvent.create.mockResolvedValue({});
+
+            const result = await service.handleBillingEvent({
+                type: BillingEventType.PAYMENT_SUCCEEDED,
+                provider: 'wompi',
+                providerEventId: 'transaction.updated.txn-1.APPROVED',
+                providerPaymentId: 'txn-1',
+                occurredAt: new Date(),
+                rawPayload: { data: { transaction: { reference: 'sub_x_20260410_1' } } },
+            } as any);
+
+            expect(engine.settleApproved).toHaveBeenCalledWith('a1', expect.objectContaining({
+                providerChargeId: 'txn-1',
+            }));
+            expect(result).toEqual({ processed: true, reason: 'engine_settled' });
+            // The generic path must not also touch the subscription.
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+        });
+
+        it('leaves provider-native events alone', async () => {
+            const engine = module.get(SubscriptionEngineService) as any;
+            prismaMock.billingEvent.findUnique.mockResolvedValue(null);
+            prismaMock.billingChargeAttempt = { findFirst: jest.fn().mockResolvedValue(null) };
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(null);
+            prismaMock.billingEvent.create.mockResolvedValue({});
+
+            await service.handleBillingEvent({
+                type: BillingEventType.PAYMENT_SUCCEEDED,
+                provider: 'mercadopago',
+                providerEventId: 'mp-1',
+                providerPaymentId: 'mp-payment-1',
+                occurredAt: new Date(),
+                rawPayload: {},
+            } as any);
+
+            expect(engine.settleApproved).not.toHaveBeenCalled();
+        });
+    });
 
     describe('state machine (deriveSubscriptionPatch)', () => {
         const derive = (type: BillingEventType, currentStatus: SubscriptionStatus) => {

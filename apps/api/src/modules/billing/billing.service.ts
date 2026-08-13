@@ -24,6 +24,7 @@ import { MercadoPagoConfigService } from './adapters/mercadopago-config.service'
 import { INTERNAL_RECURRING_ENGINE_AVAILABLE, PaymentRoutingService } from './payment-routing.service';
 import { ProviderCapabilities } from './adapters/provider-capabilities';
 import { WompiConfigService } from './adapters/wompi-config.service';
+import { SubscriptionEngineService } from './recurring/subscription-engine.service';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -58,6 +59,7 @@ export class BillingService {
         private readonly mpConfig: MercadoPagoConfigService,
         private readonly routing: PaymentRoutingService,
         private readonly wompiConfig: WompiConfigService,
+        private readonly engine: SubscriptionEngineService,
     ) {}
 
     /** Capabilities of the provider a subscription is bound to. Business logic branches on these, never on the name. */
@@ -1288,6 +1290,26 @@ export class BillingService {
             }
         }
 
+        // A charge our own engine fired. The webhook and the engine's polling are
+        // peers racing to report the same outcome, so both are funnelled into the
+        // same settlement — whichever arrives second is a no-op. Applying the
+        // generic subscription patch here instead would double-count the payment
+        // and issue a second DIAN invoice.
+        const engineSettled = await this.settleEngineChargeIfAny(event);
+        if (engineSettled) {
+            await this.prisma.billingEvent.create({
+                data: {
+                    tenantId: engineSettled.tenantId,
+                    subscriptionId: engineSettled.subscriptionId,
+                    provider: event.provider,
+                    providerEventId: event.providerEventId,
+                    eventType: event.type,
+                    payload: event.rawPayload as any,
+                },
+            }).catch(() => undefined);
+            return { processed: true, reason: 'engine_settled' };
+        }
+
         // Resolve the subscription this event concerns (if any)
         let sub = event.providerSubscriptionId
             ? await this.prisma.billingSubscription.findUnique({ where: { providerSubscriptionId: event.providerSubscriptionId } })
@@ -1634,6 +1656,63 @@ export class BillingService {
                 providerName,
             });
         }
+    }
+
+    /**
+     * If this event reports the outcome of a charge OUR engine fired, settle it
+     * through the engine and tell the caller we are done.
+     *
+     * Matching is by provider transaction id first and by our own reference
+     * second: with an asynchronous provider the webhook can arrive before we
+     * have stored the transaction id, and the reference is the only handle that
+     * always exists.
+     */
+    private async settleEngineChargeIfAny(
+        event: NormalizedBillingEvent,
+    ): Promise<{ tenantId: string; subscriptionId: string } | null> {
+        const relevant = event.type === BillingEventType.PAYMENT_SUCCEEDED
+            || event.type === BillingEventType.PAYMENT_FAILED
+            || event.type === BillingEventType.PAYMENT_REFUNDED;
+        if (!relevant) return null;
+
+        const providerTxnId = event.providerPaymentId;
+        const reference = (event.rawPayload as any)?.data?.transaction?.reference;
+        if (!providerTxnId && !reference) return null;
+
+        const attempt = await this.prisma.billingChargeAttempt.findFirst({
+            where: {
+                OR: [
+                    ...(providerTxnId ? [{ providerTxnId }] : []),
+                    ...(reference ? [{ reference: String(reference) }] : []),
+                ],
+            },
+        });
+        if (!attempt) return null;
+
+        const charge = {
+            providerChargeId: providerTxnId ?? attempt.providerTxnId ?? '',
+            status: 'approved' as const,
+            reference: attempt.reference,
+            amountCents: attempt.amountCents,
+            currency: attempt.currency,
+            settledAt: event.occurredAt,
+        };
+
+        if (event.type === BillingEventType.PAYMENT_SUCCEEDED) {
+            await this.engine.settleApproved(attempt.id, charge);
+        } else if (event.type === BillingEventType.PAYMENT_FAILED) {
+            const failure = { ...charge, status: 'declined' as const, statusMessage: event.payment?.failureReason };
+            await this.engine.settleFailed(attempt.id, failure, this.engine.classifyFailure(failure));
+        } else {
+            // A void/refund on a charge we made: record it, do not advance the period.
+            await this.engine.settleFailed(
+                attempt.id,
+                { ...charge, status: 'voided' as const, statusMessage: 'voided at the provider' },
+                'hard',
+            );
+        }
+
+        return { tenantId: attempt.tenantId, subscriptionId: attempt.subscriptionId };
     }
 
     /** Read the billing cycle a subscription runs on (persisted in metadata). Defaults to monthly. */

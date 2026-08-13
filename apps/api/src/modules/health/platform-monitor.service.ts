@@ -15,6 +15,7 @@ import { AlertConfigService } from './alert-config.service';
 import { SentryStatsService } from './sentry-stats.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from '../billing/types/provider-types';
+import { SubscriptionStatus } from '../billing/types/subscription-status.enum';
 import * as os from 'os';
 import * as fs from 'fs';
 import { CronLockService } from '../redis/cron-lock.service';
@@ -25,6 +26,28 @@ interface AlertState {
 }
 
 const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between repeat alerts
+
+// ── Internal recurring billing engine thresholds ──
+
+/** A charge the provider accepted but never resolved after this long is stuck money. */
+const STUCK_CHARGE_MINUTES = 30;
+/** Grace after the due time before a missing attempt means the scheduler stopped scheduling. */
+const RENEWAL_OVERDUE_HOURS = 2;
+/** Must match the accumulator RenewalSchedulerService writes (`billing:renewal:cop:{day}`). */
+const DAILY_CAP_ENV = 'WOMPI_DAILY_CAP_COP_CENTS';
+const DEFAULT_DAILY_CAP_COP_CENTS = 8_000_000_00;
+const DAILY_CAP_WARN_RATIO = 0.7;
+/**
+ * The scheduler gives back the room it could not use, so the accumulator never
+ * actually exceeds the cap: pinned this close to the ceiling IS the "exceeded"
+ * signal, and every remaining renewal of the day is being deferred.
+ */
+const DAILY_CAP_CRIT_RATIO = 0.98;
+const CARD_EXPIRY_WARN_DAYS = 30;
+const DECLINE_RATE_THRESHOLD = 0.4;
+/** Below this many settled attempts a "rate" is noise, not a signal. */
+const DECLINE_MIN_ATTEMPTS = 10;
+const PAYMENT_SOURCE_KINDS = ['card', 'nequi', 'daviplata', 'bancolombia_transfer', 'pse', 'unknown'];
 
 @Injectable()
 export class PlatformMonitorService implements OnModuleInit {
@@ -638,6 +661,10 @@ export class PlatformMonitorService implements OnModuleInit {
     async checkRiskSignals() {
         await this.checkPaymentFailures();
         await this.checkWebhookFailures();
+        // Ambos son señales de tendencia sobre ventanas de 24h/30d: correrlos con
+        // el resto de los crons del motor (cada 15 min) sería ruido sin novedad.
+        await this.checkExpiringPaymentSources();
+        await this.checkDeclineRateByMethod();
         await this.checkLlmBudgets();
         await this.checkBackupHeartbeat();
     }
@@ -793,6 +820,370 @@ export class PlatformMonitorService implements OnModuleInit {
         } catch (e: any) {
             this.logger.debug(`Payment-failure check skipped: ${e.message}`);
         }
+    }
+
+    // ── Internal recurring billing engine — every 15 min ──
+    //
+    // Con MercadoPago el proveedor cobraba solo: si nuestro scheduler moría, no
+    // pasaba nada. Con el motor propio (Wompi) NADIE cobra en su lugar y la
+    // señal llega recién cuando un cliente reclama. Estos chequeos son esa señal.
+
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
+    @Cron('4,19,34,49 * * * *')
+    async checkRecurringEngineCron() {
+        await this.cronLock.runExclusive('platform-monitor.checkRecurringEngine', 450, () => this.checkRecurringEngine());
+    }
+
+    async checkRecurringEngine() {
+        await this.checkStuckCharges();
+        await this.checkUnscheduledRenewals();
+        await this.checkDailyChargeCap();
+    }
+
+    /**
+     * Charges the provider accepted and never resolved.
+     *
+     * An `indeterminate` one is the dangerous case: the money may already have
+     * moved, so the engine freezes it by design and never spawns another attempt
+     * for that cycle. Nothing recovers on its own — it needs a human resolving it
+     * by `reference` against the provider, which is why the references travel in
+     * the alert body.
+     */
+    private async checkStuckCharges() {
+        try {
+            const cutoff = new Date(Date.now() - STUCK_CHARGE_MINUTES * 60_000);
+            const stuckStatuses = ['pending_provider', 'in_flight'];
+
+            const [total, indeterminate] = await Promise.all([
+                this.prisma.billingChargeAttempt.count({
+                    where: { status: { in: stuckStatuses }, sentAt: { lt: cutoff } },
+                }),
+                this.prisma.billingChargeAttempt.count({
+                    where: { status: { in: stuckStatuses }, sentAt: { lt: cutoff }, failureClass: 'indeterminate' },
+                }),
+            ]);
+
+            if (total === 0) {
+                await this.incidents.resolveByKey('billing:engine:stuck_charges:critical');
+                await this.incidents.resolveByKey('billing:engine:stuck_charges:warning');
+                return;
+            }
+
+            const sample = await this.prisma.billingChargeAttempt.findMany({
+                where: {
+                    status: { in: stuckStatuses },
+                    sentAt: { lt: cutoff },
+                    ...(indeterminate > 0 ? { failureClass: 'indeterminate' } : {}),
+                },
+                select: {
+                    reference: true, tenantId: true, amountCents: true,
+                    currency: true, sentAt: true, failureClass: true,
+                },
+                orderBy: { sentAt: 'asc' },
+                take: 3,
+            }) as Array<{
+                reference: string; tenantId: string; amountCents: number;
+                currency: string; sentAt: Date | null; failureClass: string | null;
+            }>;
+
+            const names = await this.tenantNames(sample.map((a) => a.tenantId));
+            const list = sample
+                .map((a) => {
+                    const mins = a.sentAt ? Math.round((Date.now() - a.sentAt.getTime()) / 60_000) : '?';
+                    const flag = a.failureClass === 'indeterminate' ? ' — <b>indeterminado</b>' : '';
+                    return `<li><code>${this.escapeHtml(a.reference)}</code> — <b>${this.escapeHtml(names.get(a.tenantId) || a.tenantId)}</b>
+                            — ${this.money(a.amountCents, a.currency)} — ${mins} min sin resolver${flag}</li>`;
+                })
+                .join('');
+
+            if (indeterminate > 0) {
+                await this.alert(
+                    'billing:engine:stuck_charges:critical',
+                    `${indeterminate} cobro(s) INDETERMINADOS sin resolver`,
+                    `Hay <b>${total}</b> cobro(s) enviados al proveedor sin resolver hace más de ${STUCK_CHARGE_MINUTES} min,
+                     de los cuales <b>${indeterminate}</b> quedaron en estado <b>indeterminado</b>: no sabemos si el dinero
+                     se movió, y por eso el motor NO los reintenta ni genera otro intento para ese ciclo.<br>
+                     <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
+                     <b>Solución (manual):</b> buscá cada <code>reference</code> en el proveedor
+                     (<code>GET /v1/transactions?reference=...</code> en Wompi). Si la transacción existe y está aprobada,
+                     conciliá el intento; si no existe, recién ahí puede reintentarse el ciclo.`,
+                    indeterminate,
+                );
+                await this.incidents.resolveByKey('billing:engine:stuck_charges:warning');
+            } else {
+                await this.alert(
+                    'billing:engine:stuck_charges:warning',
+                    `${total} cobro(s) colgados en el proveedor`,
+                    `Hay <b>${total}</b> intento(s) de cobro en <code>in_flight</code>/<code>pending_provider</code>
+                     con más de ${STUCK_CHARGE_MINUTES} min sin resolver:<br>
+                     <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
+                     <b>Qué revisar:</b> el webhook del proveedor y la cola de polling de cobros. Ambos convergen en el
+                     mismo resolver; si ninguno llega, el intento se queda colgado y la suscripción no avanza de período.`,
+                    total,
+                );
+                await this.incidents.resolveByKey('billing:engine:stuck_charges:critical');
+            }
+        } catch (e: any) {
+            this.logger.debug(`Stuck-charge check skipped: ${e.message}`);
+        }
+    }
+
+    /**
+     * Subscriptions whose charge was due and for which no attempt was ever
+     * claimed. With the internal engine this means nobody is charging: the
+     * provider does not renew on its own, so silence here is lost revenue that
+     * only surfaces when a customer complains.
+     */
+    private async checkUnscheduledRenewals() {
+        try {
+            const chargeable = [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING, SubscriptionStatus.PAST_DUE]
+                .map((s) => `'${s}'`)
+                .join(',');
+
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT s.tenant_id, s.next_charge_at, s.charge_amount_cents, s.charge_currency
+                   FROM billing_subscriptions s
+                  WHERE s.engine = 'internal'
+                    AND s.status IN (${chargeable})
+                    AND s.cancel_at_period_end = false
+                    AND s.next_charge_at IS NOT NULL
+                    AND s.next_charge_at < NOW() - interval '${RENEWAL_OVERDUE_HOURS} hours'
+                    -- El scheduler reclama el intento hasta 15 min antes del vencimiento:
+                    -- si no hay NINGUNA fila cerca de esa fecha, no es que el cobro falló,
+                    -- es que nunca se agendó.
+                    AND NOT EXISTS (
+                        SELECT 1 FROM billing_charge_attempts a
+                         WHERE a.subscription_id = s.id
+                           AND a.created_at >= s.next_charge_at - interval '1 hour'
+                    )
+                  ORDER BY s.next_charge_at ASC
+                  LIMIT 100`,
+            ) as Array<{
+                tenant_id: string; next_charge_at: Date;
+                charge_amount_cents: number | null; charge_currency: string | null;
+            }>;
+
+            if (rows.length === 0) {
+                await this.incidents.resolveByKey('billing:engine:charges_not_running');
+                return;
+            }
+
+            const names = await this.tenantNames(rows.map((r) => r.tenant_id));
+            const list = rows
+                .slice(0, 15)
+                .map((r) => {
+                    const hours = Math.round((Date.now() - new Date(r.next_charge_at).getTime()) / 3_600_000);
+                    return `<li><b>${this.escapeHtml(names.get(r.tenant_id) || r.tenant_id)}</b> — vencía hace ${hours}h
+                            (${new Date(r.next_charge_at).toISOString().slice(0, 16).replace('T', ' ')} UTC)
+                            — ${this.money(r.charge_amount_cents, r.charge_currency)}</li>`;
+                })
+                .join('');
+            const pending = rows.reduce((acc, r) => acc + Number(r.charge_amount_cents || 0), 0);
+
+            await this.alert(
+                'billing:engine:charges_not_running',
+                `${rows.length} cobro(s) del motor propio sin ejecutar`,
+                `Hay <b>${rows.length}</b> suscripción(es) con <code>engine=internal</code> cuyo cobro venció hace más de
+                 ${RENEWAL_OVERDUE_HOURS}h y para las que <b>no se creó ningún intento</b> (~${this.money(pending)} sin cobrar):<br>
+                 <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
+                 Con el motor propio <b>ningún proveedor cobra por nosotros</b>: esto significa que el scheduler dejó de
+                 agendar.<br>
+                 <b>Qué revisar:</b> que el cron <code>billing.renewalScheduler</code> esté corriendo (API y worker vivos),
+                 la cola <code>billing-renewals</code>, y que las suscripciones tengan monto/moneda congelados y una fuente
+                 de pago por defecto.`,
+                rows.length,
+            );
+        } catch (e: any) {
+            this.logger.debug(`Unscheduled-renewal check skipped: ${e.message}`);
+        }
+    }
+
+    /**
+     * Daily merchant ceiling. Once it is hit the provider refuses everything left
+     * in the day, so the scheduler stops short and defers renewals to tomorrow —
+     * which quietly pushes every affected customer's charge off its anniversary.
+     */
+    private async checkDailyChargeCap() {
+        try {
+            const cap = Number(this.config.get<string>(DAILY_CAP_ENV) || DEFAULT_DAILY_CAP_COP_CENTS);
+            if (!Number.isFinite(cap) || cap <= 0) return;
+
+            // Fecha en UTC igual que el escritor del acumulador: usar la fecha
+            // local leería otro bucket durante parte del día.
+            const key = `billing:renewal:cop:${new Date().toISOString().slice(0, 10)}`;
+            const raw = await this.redis.get(key);
+            const used = Number(raw || 0);
+            if (!Number.isFinite(used) || used <= 0) {
+                await this.incidents.resolveByKey('billing:engine:daily_cap:critical');
+                await this.incidents.resolveByKey('billing:engine:daily_cap:warning');
+                return;
+            }
+
+            const pct = Math.round((used / cap) * 100);
+            const detail = `Se reservaron <b>${this.money(used, 'COP')}</b> de un tope diario de
+                            <b>${this.money(cap, 'COP')}</b> (${pct}%).`;
+
+            if (used >= cap * DAILY_CAP_CRIT_RATIO) {
+                await this.alert(
+                    'billing:engine:daily_cap:critical',
+                    `Tope diario de cobros al ${pct}% — CRITICO`,
+                    `${detail}<br><br>
+                     El tope está agotado: <b>las renovaciones restantes del día se difieren a mañana</b> y se corren de su
+                     fecha de aniversario. Al día siguiente el volumen diferido se suma al normal, así que puede repetirse.<br>
+                     <b>Solución:</b> pedir al proveedor una ampliación del límite diario o subir <code>${DAILY_CAP_ENV}</code>
+                     si el tope real es mayor que el configurado.`,
+                    pct,
+                );
+                await this.incidents.resolveByKey('billing:engine:daily_cap:warning');
+            } else if (used >= cap * DAILY_CAP_WARN_RATIO) {
+                await this.alert(
+                    'billing:engine:daily_cap:warning',
+                    `Tope diario de cobros al ${pct}%`,
+                    `${detail}<br>
+                     Al llegar al tope las renovaciones restantes del día se difieren. Si esto se repite, el volumen ya no
+                     entra en un día y conviene ampliar el límite con el proveedor.`,
+                    pct,
+                );
+                await this.incidents.resolveByKey('billing:engine:daily_cap:critical');
+            } else {
+                await this.incidents.resolveByKey('billing:engine:daily_cap:critical');
+                await this.incidents.resolveByKey('billing:engine:daily_cap:warning');
+            }
+        } catch (e: any) {
+            this.logger.debug(`Daily-cap check skipped: ${e.message}`);
+        }
+    }
+
+    /**
+     * Cards about to expire. Not an outage — a work list: an expired card fails
+     * every retry of the dunning ladder and ends in churn the tenant never saw
+     * coming, so it has to be chased BEFORE the charge.
+     */
+    private async checkExpiringPaymentSources() {
+        try {
+            const rows = await this.prisma.$queryRawUnsafe(
+                // exp_year llega a veces de 2 dígitos desde el tokenizador; normalizarlo
+                // acá evita que una tarjeta '26' se lea como el año 26 y nunca venza.
+                `WITH cards AS (
+                     SELECT tenant_id,
+                            make_date(CASE WHEN exp_year < 100 THEN 2000 + exp_year ELSE exp_year END, exp_month, 1)
+                                + interval '1 month' AS expires_at
+                       FROM billing_payment_sources
+                      WHERE kind = 'card'
+                        AND status = 'available'
+                        AND exp_year IS NOT NULL AND exp_year >= 0
+                        AND exp_month BETWEEN 1 AND 12
+                 )
+                 SELECT tenant_id,
+                        COUNT(*)::int AS n,
+                        COUNT(*) FILTER (WHERE expires_at <= NOW())::int AS expired
+                   FROM cards
+                  WHERE expires_at <= NOW() + interval '${CARD_EXPIRY_WARN_DAYS} days'
+                  GROUP BY tenant_id
+                  ORDER BY n DESC
+                  LIMIT 100`,
+            ) as Array<{ tenant_id: string; n: number; expired: number }>;
+
+            if (rows.length === 0) {
+                await this.incidents.resolveByKey('billing:engine:cards_expiring');
+                return;
+            }
+
+            const total = rows.reduce((acc, r) => acc + Number(r.n), 0);
+            const expired = rows.reduce((acc, r) => acc + Number(r.expired), 0);
+            const names = await this.tenantNames(rows.map((r) => r.tenant_id));
+            const list = rows
+                .slice(0, 15)
+                .map((r) => `<li><b>${this.escapeHtml(names.get(r.tenant_id) || r.tenant_id)}</b> — ${r.n} tarjeta(s)${
+                    Number(r.expired) > 0 ? ` (${r.expired} ya vencida(s))` : ''
+                }</li>`)
+                .join('');
+
+            await this.alert(
+                'billing:engine:cards_expiring',
+                `${total} tarjeta(s) por vencer en ${CARD_EXPIRY_WARN_DAYS} días`,
+                `<b>${total}</b> tarjeta(s) activas de <b>${rows.length}</b> tenant(s) vencen dentro de
+                 ${CARD_EXPIRY_WARN_DAYS} días${expired > 0 ? ` (<b>${expired}</b> ya vencida(s))` : ''}:<br>
+                 <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
+                 No es una caída: es una lista de trabajo. Una tarjeta vencida rechaza todos los reintentos del dunning
+                 y termina en churn silencioso.<br>
+                 <b>Acción:</b> confirmá que el aviso automático de tarjeta por vencer salió, y contactá a los tenants
+                 que ya tienen la tarjeta vencida para que carguen un medio nuevo.`,
+                total,
+            );
+        } catch (e: any) {
+            this.logger.debug(`Expiring payment-source check skipped: ${e.message}`);
+        }
+    }
+
+    /**
+     * Decline rate per payment method over 24h.
+     *
+     * A single customer's card failing is normal; a whole method degrading is
+     * ours to fix — a bad provider configuration, a disabled method or an outage
+     * on their side. Grouping by method is what separates the two.
+     */
+    private async checkDeclineRateByMethod() {
+        try {
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT COALESCE(ps.kind, 'unknown') AS kind,
+                        COUNT(*)::int AS total,
+                        COUNT(*) FILTER (WHERE a.status = 'failed')::int AS failed
+                   FROM billing_charge_attempts a
+                   LEFT JOIN billing_payment_sources ps ON ps.id = a.payment_source_id
+                  WHERE a.status IN ('succeeded', 'failed')
+                    AND a.settled_at >= NOW() - interval '24 hours'
+                  GROUP BY 1`,
+            ) as Array<{ kind: string; total: number; failed: number }>;
+
+            const byKind = new Map(rows.map((r) => [r.kind, r]));
+            for (const kind of PAYMENT_SOURCE_KINDS) {
+                const row = byKind.get(kind);
+                const total = Number(row?.total || 0);
+                const failed = Number(row?.failed || 0);
+                const rate = total > 0 ? failed / total : 0;
+
+                if (total >= DECLINE_MIN_ATTEMPTS && rate > DECLINE_RATE_THRESHOLD) {
+                    const pct = Math.round(rate * 100);
+                    await this.alert(
+                        `billing:engine:decline_rate:${kind}`,
+                        `${this.sourceKindLabel(kind)}: ${pct}% de cobros rechazados en 24h`,
+                        `El método <b>${this.sourceKindLabel(kind)}</b> rechazó <b>${failed}</b> de <b>${total}</b> cobros
+                         resueltos en las últimas 24h (<b>${pct}%</b>, umbral: ${Math.round(DECLINE_RATE_THRESHOLD * 100)}%).<br>
+                         Una tasa así no es "clientes sin fondos": apunta a un problema del proveedor o de configuración
+                         de ese método.<br>
+                         <b>Qué revisar:</b> el estado del método en el panel del proveedor, las credenciales del ambiente
+                         en uso, y los <code>failure_code</code> de los intentos fallidos (si todos repiten el mismo código,
+                         ahí está la causa).`,
+                        pct,
+                    );
+                } else {
+                    await this.incidents.resolveByKey(`billing:engine:decline_rate:${kind}`);
+                }
+            }
+        } catch (e: any) {
+            this.logger.debug(`Decline-rate check skipped: ${e.message}`);
+        }
+    }
+
+    private sourceKindLabel(kind: string): string {
+        const map: Record<string, string> = {
+            card: 'Tarjeta',
+            nequi: 'Nequi',
+            daviplata: 'Daviplata',
+            bancolombia_transfer: 'Bancolombia (transferencia)',
+            pse: 'PSE',
+            unknown: 'Sin fuente asociada',
+        };
+        return map[kind] || kind;
+    }
+
+    /** Cents → short human amount for alert bodies. */
+    private money(cents: number | null | undefined, currency?: string | null): string {
+        const value = Number(cents || 0) / 100;
+        return `$${value.toLocaleString('es-CO', { maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ''}`;
     }
 
     private escapeHtml(s: string): string {
@@ -1020,7 +1411,12 @@ export class PlatformMonitorService implements OnModuleInit {
 
     /** Map an alert key to an incident severity. */
     private severityFromKey(key: string): IncidentSeverity {
-        const CRITICAL_KEYS = ['llm:none_configured', 'llm:unhealthy', 'tokens:error', 'backup:stale'];
+        const CRITICAL_KEYS = [
+            'llm:none_configured', 'llm:unhealthy', 'tokens:error', 'backup:stale',
+            // Con el motor propio nadie cobra en nuestro lugar: un cobro que no se
+            // agendó no se recupera solo.
+            'billing:engine:charges_not_running',
+        ];
         if (key.endsWith(':critical') || CRITICAL_KEYS.includes(key)) {
             return 'critical';
         }
@@ -1133,6 +1529,7 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkStorage();
         await this.checkRiskSignals();
         await this.checkSlaBreaches();
+        await this.checkRecurringEngine();
     }
 
     // ── Manual status (for /health/detailed or admin API) ──

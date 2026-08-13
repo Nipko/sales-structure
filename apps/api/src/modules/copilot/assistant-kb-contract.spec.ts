@@ -236,6 +236,75 @@ describe('Parallly Assist knowledge-base contract', () => {
       'tenant_supervisor',
       'tenant_agent',
     ]);
+    expect(articles.get('centro-calidad-agente')?.roles).toEqual([
+      'tenant_admin',
+      'tenant_supervisor',
+    ]);
+  });
+
+  it.each(LOCALES)('%s keeps proactive Agent health bounded and the retired progress pill retired', (locale) => {
+    const articles = new Map(byLocale[locale].map((article) => [article.id, article]));
+    const quality = articles.get('centro-calidad-agente');
+    const setup = articles.get('primeros-pasos');
+    expect(quality).toBeDefined();
+    expect(setup).toBeDefined();
+
+    const markers: Record<(typeof LOCALES)[number], {
+      badge: RegExp;
+      banner: RegExp;
+      snooze: RegExp;
+      privacy: RegExp;
+      noExternal: RegExp;
+      noAutoEdit: RegExp;
+      setupRetired: RegExp;
+    }> = {
+      es: {
+        badge: /señales\s+\*\*Críticas y\s+Altas abiertas\*\*/i,
+        banner: /señal crítica abierta[\s\S]{0,100}\*\*Agente en\s+riesgo\*\*/i,
+        snooze: /Posponer[\s\S]{0,140}no la corrige/i,
+        privacy: /No incluye transcripciones,[\s\S]{0,180}IDs de conversación/i,
+        noExternal: /no envían correo ni notificación push/i,
+        noAutoEdit: /Assist no aplica cambios ni inicia comunicaciones/i,
+        setupRetired: /no se convierte en una\s+pastilla flotante `8\/9`/i,
+      },
+      en: {
+        badge: /open\s+\*\*Critical and High\*\*\s+signals/i,
+        banner: /open Critical signal[\s\S]{0,100}\*\*Agent at risk\*\*/i,
+        snooze: /Snoozing[\s\S]{0,140}does not fix it/i,
+        privacy: /excludes transcripts,[\s\S]{0,180}conversation IDs/i,
+        noExternal: /do not send email or push notifications/i,
+        noAutoEdit: /Assist does not apply changes or start external communications/i,
+        setupRetired: /does not turn into a\s+floating `8\/9` pill/i,
+      },
+      pt: {
+        badge: /sinais\s+\*\*Críticos e Altos\s+abertos\*\*/i,
+        banner: /sinal Crítico aberto[\s\S]{0,100}\*\*Agente em\s+risco\*\*/i,
+        snooze: /Adiar[\s\S]{0,140}não o corrige/i,
+        privacy: /Exclui transcrições,[\s\S]{0,180}IDs de conversa/i,
+        noExternal: /não enviam e-mail nem notificação push/i,
+        noAutoEdit: /Assist não aplica mudanças nem inicia comunicações externas/i,
+        setupRetired: /não vira uma pílula\s+flutuante `8\/9`/i,
+      },
+      fr: {
+        badge: /signaux\s+\*\*Critiques\s+et Élevés ouverts\*\*/i,
+        banner: /signal Critique ouvert[\s\S]{0,100}\*\*Agent à risque\*\*/i,
+        snooze: /Reporter[\s\S]{0,140}sans le corriger/i,
+        privacy: /exclut transcriptions,[\s\S]{0,180}IDs de conversation/i,
+        noExternal: /n'envoient ni e-mail ni notification push/i,
+        noAutoEdit: /Assist n'applique pas\s+de changement et ne lance aucune communication externe/i,
+        setupRetired: /ne devient pas une pastille\s+flottante `8\/9`/i,
+      },
+    };
+
+    const expected = markers[locale];
+    expect(quality!.body).toMatch(expected.badge);
+    expect(quality!.body).toMatch(expected.banner);
+    expect(quality!.body).toMatch(expected.snooze);
+    expect(quality!.body).toMatch(expected.privacy);
+    expect(quality!.body).toMatch(expected.noExternal);
+    expect(quality!.body).toMatch(expected.noAutoEdit);
+    expect(quality!.body).toContain('Parallly Assist');
+    expect(setup!.body).toMatch(expected.setupRetired);
   });
 
   it.each(LOCALES)('%s keeps Inbox and mobile references on canonical web routes', (locale) => {

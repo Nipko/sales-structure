@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -18,6 +19,7 @@ import {
     VerticalStageDefinition,
 } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import {
@@ -387,6 +389,7 @@ export class VerticalsService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly throttle: TenantThrottleService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     /** Read-only operational contract consumed by API and dashboard clients. */
@@ -690,6 +693,10 @@ export class VerticalsService {
             // transaction leaves all previously published cache entries valid.
             await this.invalidateRuntimeCaches(tenantId).catch((error: any) =>
                 this.logger.warn(`Post-commit vertical cache invalidation failed: ${error.message}`));
+            this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+                tenantId,
+                source: 'vertical',
+            });
             if (alreadyComplete) {
                 this.logger.log(`Vertical provisioning already complete and verified for tenant ${tenantId}`);
                 return;

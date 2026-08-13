@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { randomUUID } from 'crypto';
@@ -8,6 +9,7 @@ import {
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
 import { assertActiveTenantUser } from './tenant-user-scope.util';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 export type DurationType = 'fixed' | 'flexible' | 'open';
 
@@ -38,6 +40,7 @@ export class ServicesService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     async list(schemaName: string, activeOnly = false): Promise<BookableService[]> {
@@ -99,7 +102,10 @@ export class ServicesService {
             throw e;
         }
         // Invalidate booking services cache so next conversation gets fresh list
-        if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+        if (tenantId) {
+            await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+            this.emitQualityDependency(tenantId);
+        }
         return this.getById(schemaName, id);
     }
 
@@ -167,7 +173,10 @@ export class ServicesService {
             `UPDATE services SET ${sets.join(', ')} WHERE id = $${idx}::uuid`, params,
         );
         // Invalidate booking services cache
-        if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+        if (tenantId) {
+            await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+            this.emitQualityDependency(tenantId);
+        }
         return this.getById(schemaName, serviceId);
     }
 
@@ -176,7 +185,10 @@ export class ServicesService {
             `DELETE FROM services WHERE id = $1::uuid`, [serviceId],
         );
         // Invalidate booking services cache
-        if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+        if (tenantId) {
+            await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+            this.emitQualityDependency(tenantId);
+        }
     }
 
     // ── Service-Staff Assignment ────────────────────────────────
@@ -255,5 +267,12 @@ export class ServicesService {
             rebookAfterDays: row.rebook_after_days ?? null,
             requiredFields: row.required_fields || [],
         };
+    }
+
+    private emitQualityDependency(tenantId: string): void {
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'services',
+        });
     }
 }

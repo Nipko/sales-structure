@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Versión 4.4 — Agosto 2026
+  Versión 4.5 — Agosto 2026
 </p>
 
 <p align="center">
@@ -301,16 +301,24 @@ Para algunas industrias el dashboard muestra una vista contextualizada:
 - **Restaurantes**: pedidos en cocina + reservas
 - **Otras**: actividad reciente
 
-### Checklist de configuración
+### Puesta en marcha y Salud de agentes
 
-Banner con pasos pendientes para activar tu cuenta:
-- Conectar al menos un canal
-- Personalizar tu agente IA
-- Crear un servicio/producto
-- Cargar tu logo
+Inicio presenta dos ayudas distintas para Admin/Supervisor:
 
-Este checklist indica adopción y configuración inicial. No certifica la calidad del
-agente ni sustituye sus pruebas o la evidencia de conversaciones reales.
+- **Salud de tus agentes** permanece visible y resume el estado más delicado, cuántos
+  agentes abarca y cuántas acciones Críticas o Altas siguen abiertas. Desde
+  la prioridad principal puedes ir a la corrección permitida, abrir el Centro de
+  calidad o pedir una explicación a Parallly Assist.
+- **Puesta en marcha** aparece solo mientras existan pasos esenciales pendientes y
+  disponibles para el plan, rol e industria: configurar el agente, conectar un canal
+  conversacional certificado y agregar conocimiento o el catálogo operativo que
+  corresponda. Desaparece al completar sus pasos.
+
+Puesta en marcha reemplaza el antiguo checklist flotante y su pastilla `8/9`; no
+incluye tareas avanzadas ni persigue al usuario entre secciones. Si una fuente no se
+puede verificar, muestra un estado de reintento en vez de inventar una tarea
+pendiente. Esta guía indica adopción inicial: no certifica la calidad del agente ni
+sustituye pruebas o evidencia real.
 
 ---
 
@@ -342,7 +350,7 @@ orden no cambia entre páginas ni sesiones:
 ### INSIGHTS
 - **Análisis**, analítica CRM, atribución e informes (admin/supervisor)
 - **Rendimiento del equipo** (admin/supervisor)
-- **Centro de calidad** por agente (admin/supervisor, lectura y diagnóstico)
+- **Salud de agentes** y Centro de calidad (admin/supervisor, lectura y diagnóstico)
 
 ### ADMINISTRACIÓN
 - Canales, usuarios, cumplimiento, facturación y solicitudes de funciones según rol
@@ -656,7 +664,7 @@ segmentos y campos personalizados dentro del embudo activo.
 
 Supervisor y Agent pueden trabajar con conversaciones atendidas por la IA desde el
 Inbox, pero no acceden al listado ni al editor de agentes. El Supervisor sí puede
-consultar la evidencia de cada agente desde **Insights → Centro de calidad**.
+consultar la evidencia de cada agente desde **Insights → Salud de agentes**.
 
 ## 8.1 Lista de agentes
 
@@ -766,7 +774,7 @@ versión del agente.
 
 ## 8.5 Centro de calidad del agente
 
-**Ruta:** Insights → Centro de calidad (`/admin/agent/quality`)
+**Ruta:** Insights → Salud de agentes (`/admin/agent/quality`)
 **Roles:** Tenant Admin / Tenant Supervisor
 
 Esta vista responde tres preguntas sin mezclarlas en un porcentaje decorativo:
@@ -784,6 +792,18 @@ evidencia de pruebas, el tamaño de la muestra real y las mejoras prioritarias. 
 capacidad deshabilitada que no forma parte del alcance puede aparecer como **No
 aplica**; no reduce el resultado. Cuando falta volumen real aparece **Evidencia
 insuficiente**, no un cero.
+
+### Dónde aparece la atención prioritaria
+
+- En **Inicio**, la tarjeta Salud de tus agentes siempre ofrece el resumen.
+- En **Insights → Salud de agentes**, el badge suma solo señales **Críticas + Altas
+  abiertas**. El número no es un puntaje ni incluye prioridades medias o bajas.
+- El aviso global aparece únicamente si existe una señal crítica abierta o el peor
+  estado es **Agente en riesgo**. Puedes revisar, preguntar a Assist o **Posponer 24
+  h**. Posponer oculta temporalmente esa señal; no afirma que fue corregida.
+
+Los avisos de Salud de agentes viven dentro del dashboard. Esta función no envía por
+sí sola correos ni notificaciones push.
 
 ### Estados que puedes ver
 
@@ -812,6 +832,13 @@ una persona debe revisar los casos relevantes.
   de un cambio, vuelve a probar la versión y verifica si producción confirma la mejora.
 - La evidencia histórica sin una atribución inequívoca no se asigna retroactivamente a
   un agente. Por eso un agente recién instrumentado puede necesitar nuevas interacciones.
+
+Las recomendaciones mantienen snapshots y señales por agente y versión. Cambios de
+configuración, resultados de QA, evaluaciones y simulaciones actualizan el diagnóstico;
+un proceso acotado periódico recupera eventos que se hayan perdido. Las recurrencias
+se agrupan para evitar avisos duplicados. **Posponer** administra la atención visible;
+el backend conserva además estados de reconocimiento y reemplazo para integraciones
+autorizadas. Solo evidencia nueva puede resolver la causa.
 
 ---
 
@@ -1333,7 +1360,7 @@ reflejar handoffs seguros y deliberados. Si cambia mucho por canal, revisa el ti
 consultas, el agente asignado y las brechas de conocimiento.
 
 Para decidir si un agente está preparado, probado y funcionando bien con evidencia
-atribuida a su versión, consulta **Insights → Centro de calidad** (sección 8.5). Allí
+atribuida a su versión, consulta **Insights → Salud de agentes** (sección 8.5). Allí
 la resolución verificada, la calidad conversacional observada, los fallos de
 herramientas, los handoffs y los vacíos de conocimiento se muestran por separado.
 
@@ -2366,6 +2393,19 @@ con la base de ayuda versionada y el contexto autorizado de página, rol, plan y
 vertical. También ofrece sugerencias rápidas y, para los roles habilitados, puede
 reiniciar el tour. Sus respuestas siguen los permisos del usuario: conocer una
 función no concede acceso a su pantalla.
+
+Desde **Salud de tus agentes** o un aviso crítico, Admin/Supervisor también puede
+elegir **Preguntar a Assist**. El chat recibe un objetivo de calidad validado por el
+servidor y explica una sola prioridad usando el estado vigente del agente. Admin puede
+recibir una ruta de reparación; Supervisor recibe una ruta de revisión sin obtener
+permisos de edición.
+
+Ese contexto contiene solo códigos y agregados necesarios —estado, versión, hito,
+bloqueadores, vigencia de pruebas, tamaño de muestra, gravedad, pilar, dimensión y
+conteo—. No entrega al modelo transcripciones, texto de clientes, IDs de conversación,
+prompts, consultas de recuperación, texto libre del evaluador ni secretos. Parallly
+Assist no edita prompts, políticas o conocimiento, no confirma cambios que no hizo y
+no envía comunicaciones externas.
 
 > La fuente runtime de Parallly Assist es
 > `apps/api/kb/assistant/{es,en,pt,fr}`. Este manual no se carga automáticamente en

@@ -3,7 +3,7 @@
 Technical inventory for 88 API module declaration files, 144 dashboard pages
 (131 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
 
-**Last updated:** ago 2026 — Navigation IA, role alignment, 18-vertical capability manifest and mobile operational workspaces
+**Last updated:** 13 ago 2026 — Salud proactiva de agentes, Parallly Assist contextual, navegación IA y alineación de roles
 
 > Counts are a filesystem snapshot, not a product contract. Recalculate with
 > `rg --files apps/api/src/modules -g '*.module.ts'` and
@@ -377,8 +377,13 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 - **Roles:** all six routes explicitly allow `tenant_admin`, `tenant_supervisor` and
   `tenant_agent`; `tenant_viewer` and platform-mode `super_admin` are excluded
 - **Endpoints:**
-  - `POST /copilot/chat` — Tenant guidance; client sends only
-    `{message,page,locale,history}`, identity/role/tenant come from JWT + TenantGuard
+  - `POST /copilot/chat` — Tenant guidance; client sends
+    `{message,page,locale,history,target?}`, identity/role/tenant come from JWT +
+    TenantGuard. `target:{kind:'agent_quality',agentId,signalId?}` is restricted to
+    Admin/Supervisor, resolved again inside the tenant and exposes only bounded codes
+    and aggregates. It excludes transcripts, customer text, conversation IDs,
+    prompts, judge prose and secrets; returned actions are safe internal routes and
+    do not apply changes.
   - `GET /copilot/:conversationId/suggestions` — Reply suggestions
   - `GET /copilot/:conversationId/summary` — Conversation summary
   - `GET /copilot/:conversationId/intent` — Intent analysis
@@ -1566,10 +1571,29 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 - **Cron:** `45 4 * * 0` — pruneOldTurnTraces: poda de trazas antiguas
 
 #### 76. quality
-- **Purpose:** **QA scoring** de conversaciones resueltas (T1.6) con LLM-judge y **Centro de calidad por agente**. El centro separa preparación determinista, pruebas vigentes y producción atribuida a la versión del agente; no emite una certificación ni edita la configuración.
-- **Services:** `quality.service.ts`, `agent-quality.service.ts`, `quality-listener.service.ts` (@OnEvent resolución → encola), `quality.processor.ts`
+- **Purpose:** **QA scoring** de conversaciones resueltas (T1.6), Centro de calidad
+  por agente y atención proactiva durable. El centro separa preparación determinista,
+  pruebas vigentes y producción atribuida a la versión; no certifica ni edita.
+- **Services:** `quality.service.ts`, `agent-quality.service.ts`,
+  `agent-quality-signal.service.ts`, `quality-listener.service.ts` (@OnEvent resolución
+  → encola), `quality.processor.ts`
 - **Controller:** `quality.controller.ts` (`/quality`)
-- **Endpoints:** `GET /quality/:tenantId` (resumen/puntajes), `GET /quality/:tenantId/flagged`, `GET /quality/:tenantId/agents` (selector mínimo) y `GET /quality/:tenantId/agents/:agentId/overview` (tres pilares, estado y recomendaciones). Todos requieren Admin/Supervisor; `super_admin` necesita contexto tenant autorizado.
+- **Endpoints:** `GET /quality/:tenantId` (resumen/puntajes), `GET
+  /quality/:tenantId/flagged`, `GET /quality/:tenantId/agents` (selector), `GET
+  /quality/:tenantId/agents/:agentId/overview` (tres pilares), `GET
+  /quality/:tenantId/attention-summary` (peor estado y conteos Críticos/Altos), `POST
+  /quality/:tenantId/reconcile` (conciliación manual acotada/coalescida), `GET
+  /quality/:tenantId/signals`, `POST .../signals/:signalId/acknowledge` y `POST
+  .../signals/:signalId/snooze`. Todos requieren Admin/Supervisor; `super_admin`
+  necesita contexto tenant autorizado.
+- **Persistencia:** crea en cada schema tenant `agent_quality_snapshots` y
+  `agent_quality_signals`. Las señales usan fingerprint por agente+versión+código,
+  estados `open/acknowledged/snoozed/resolved/superseded` y rutas internas
+  allowlisted. El contrato no expone transcript, texto del juez, prompt ni IDs de
+  conversación.
+- **Actualización:** escucha cambios de agente, QA, evals y simulaciones; QA repetido
+  tiene debounce de 60 s. Una conciliación acotada cada seis horas recupera eventos
+  perdidos. Reconocer o posponer conserva la señal; solo evidencia nueva la resuelve.
 - **BullMQ:** `quality-scoring` (concurrency 5; registrada sin adaptador BullBoard)
 
 #### 77. kb-health
@@ -1614,7 +1638,7 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 
 ---
 
-## Cron Jobs (46 total)
+## Cron Jobs (47 total)
 
 | Schedule | Module | Method | Purpose |
 |----------|--------|--------|---------|
@@ -1640,6 +1664,7 @@ Technical inventory for 88 API module declaration files, 144 dashboard pages
 | `0 */2 * * *` | automation | checkStaleConversationsAllTenants | Stale conversation detection |
 | `30 */2 * * *` | automation | checkAbandonedBookingsAllTenants | Detección de reservas abandonadas |
 | `0 */6 * * *` | automation | autoResolveStale | Auto-resolve stale nurturing (72h) |
+| `17 */6 * * *` | quality | reconcileAgentAttention | Conciliar snapshots y señales de calidad en lotes acotados |
 | `0 */6 * * *` | crm-b2b | detectRotting | Flag stale open opportunities (per-tenant rottingDays) |
 | `30 */6 * * *` | reviews | syncAll | Sync GBP reviews + auto-reply |
 | `0 */12 * * *` | appointments | renewWatchChannels | Renew Google Calendar push channels |

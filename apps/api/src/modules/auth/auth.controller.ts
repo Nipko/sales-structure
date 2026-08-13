@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException, ForbiddenException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,7 @@ import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
 import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
 import { auditActor } from '../../common/utils/audit-actor.util';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 class LoginDto {
     @IsEmail()
@@ -100,6 +102,7 @@ export class AuthController {
         private authService: AuthService,
         private microsoftAuth: MicrosoftAuthService,
         private configService: ConfigService,
+        @Optional() private readonly events?: EventEmitter2,
     ) { }
 
     @Post('exchange-code')
@@ -447,6 +450,13 @@ export class AuthController {
             },
         });
 
+        if (body.role !== undefined || body.isActive !== undefined) {
+            this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+                tenantId: targetUser.tenantId,
+                source: 'tenant_users',
+            });
+        }
+
         return { success: true, data: updated };
     }
 
@@ -496,6 +506,11 @@ export class AuthController {
                 resource: `users/${userId}`,
                 details: { status: 'deactivated', ...deactivateActor.delegation },
             },
+        });
+
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId: targetUser.tenantId,
+            source: 'tenant_users',
         });
 
         return { success: true, message: 'User deactivated successfully' };

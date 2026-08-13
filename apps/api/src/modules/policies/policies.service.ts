@@ -1,10 +1,12 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { Policy, PolicyType } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 const VALID_TYPES: PolicyType[] = ['shipping', 'return', 'warranty', 'cancellation', 'terms', 'privacy'];
 
@@ -24,6 +26,7 @@ export class PoliciesService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly tenantsService: TenantsService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     private async ensureSchema(tenantId: string): Promise<string> {
@@ -150,6 +153,7 @@ export class PoliciesService {
         ) as any[];
 
         await this.redis.del(`policy:${tenantId}:${input.type}:active`);
+        this.emitQualityDependency(tenantId);
         return this.rowToPolicy(rows[0]);
     }
 
@@ -161,6 +165,7 @@ export class PoliciesService {
         ) as any[];
         if (rows.length === 0) throw new NotFoundException('Policy not found');
         await this.redis.del(`policy:${tenantId}:${rows[0].type}:active`);
+        this.emitQualityDependency(tenantId);
     }
 
     async getPublicBySlug(slug: string, type: PolicyType): Promise<Policy | null> {
@@ -182,6 +187,13 @@ export class PoliciesService {
             createdAt: r.created_at,
             updatedAt: r.updated_at,
         };
+    }
+
+    private emitQualityDependency(tenantId: string): void {
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'knowledge',
+        });
     }
 }
 

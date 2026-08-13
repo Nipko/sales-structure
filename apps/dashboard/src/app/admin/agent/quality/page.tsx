@@ -24,6 +24,8 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
+import { safeQualityHref } from "@/lib/quality-health";
 
 interface AgentOption { id: string; name: string; is_default: boolean; is_active: boolean }
 
@@ -47,7 +49,7 @@ const CHECK_ICON: Record<AgentQualityCheckStatus, typeof CheckCircle2> = { pass:
 const CHECK_TONE: Record<AgentQualityCheckStatus, string> = { pass: "text-emerald-600 dark:text-emerald-400", warning: "text-amber-600 dark:text-amber-400", fail: "text-red-600 dark:text-red-400", unknown: "text-neutral-500", not_applicable: "text-neutral-400" };
 const SEVERITY_TONE: Record<AgentQualitySeverity, string> = { critical: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300", high: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300", medium: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300", low: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" };
 
-function safeAdminHref(href?: string | null) { return href?.startsWith("/admin") && !href.startsWith("//") ? href : "/admin/agent/quality"; }
+function safeAdminHref(href?: string | null) { return safeQualityHref(href); }
 
 export default function AgentQualityPage() {
   const t = useTranslations("agentQuality");
@@ -138,6 +140,10 @@ export default function AgentQualityPage() {
 
   useEffect(() => { void loadAgents(); }, [loadAgents]);
   useEffect(() => { void loadOverview(); }, [loadOverview]);
+  const refreshOverviewAndAttention = useCallback(async () => {
+    await loadOverview();
+    requestQualityHealthRefresh();
+  }, [loadOverview]);
   const selectedAgent = agents.find((agent) => agent.id === agentId);
   const lastEvidenceDate = useMemo(() => {
     if (!overview) return null;
@@ -146,7 +152,7 @@ export default function AgentQualityPage() {
   }, [overview]);
 
   return <div className="space-y-6 pb-8">
-    <PageHeader icon={Gauge} title={t("title")} subtitle={t("subtitle")} action={overview ? <button type="button" onClick={() => void loadOverview()} disabled={loadingOverview} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200"><RefreshCw size={15} className={cn(loadingOverview && "animate-spin")} aria-hidden="true" />{t("actions.refresh")}</button> : undefined} />
+    <PageHeader icon={Gauge} title={t("title")} subtitle={t("subtitle")} action={overview ? <button type="button" onClick={() => void refreshOverviewAndAttention()} disabled={loadingOverview} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200"><RefreshCw size={15} className={cn(loadingOverview && "animate-spin")} aria-hidden="true" />{t("actions.refresh")}</button> : undefined} />
 
     <section className={cn(CARD, "p-4 sm:p-5")} aria-labelledby="quality-agent-label"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div className="w-full sm:max-w-md"><label id="quality-agent-label" htmlFor="quality-agent" className="mb-1.5 block text-sm font-medium text-foreground">{t("agentSelector.label")}</label><select id="quality-agent" value={agentId} onChange={(event) => { overviewRequest.current += 1; setOverview(null); setAgentId(event.target.value); }} disabled={loadingAgents || agents.length === 0} className="min-h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60 dark:border-white/10 dark:bg-neutral-900">{agents.length === 0 && <option value="">{t("agentSelector.empty")}</option>}{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.is_default ? ` — ${t("agentSelector.default")}` : ""}</option>)}</select></div>{selectedAgent && canAccess(`/admin/agent/${selectedAgent.id}`) && <Link href={`/admin/agent/${selectedAgent.id}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300">{t("actions.editAgent")}<ArrowRight size={15} aria-hidden="true" /></Link>}</div></section>
 

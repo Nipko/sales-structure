@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -9,6 +10,8 @@ import { QualityService, JudgeResult } from '../quality/quality.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 
 export const SIMULATION_QUEUE = 'agent-simulation';
+export const AGENT_SIMULATION_COMPLETED_EVENT = 'agent.simulation.completed';
+export const AGENT_SIMULATION_FAILED_EVENT = 'agent.simulation.failed';
 
 export interface SimulationJob {
     tenantId: string;
@@ -44,10 +47,16 @@ interface ScenarioDef {
 
 interface ScenarioResult extends ScenarioDef {
     transcript: Array<{ role: 'customer' | 'agent'; content: string }>;
-    judge: JudgeResult;
+    judge: JudgeResult | null;
     turns: number;
     latencyMs: number;
     error?: string;
+}
+
+type ScoredScenarioResult = ScenarioResult & { judge: JudgeResult; error?: undefined };
+
+function isScoredScenario(result: ScenarioResult): result is ScoredScenarioResult {
+    return !result.error && result.judge !== null;
 }
 
 const MAX_TURNS = 6; // synthetic: customer/agent exchanges per scenario
@@ -68,6 +77,7 @@ export class SimulationService {
         private readonly qualityService: QualityService,
         private readonly agentTest: AgentTestService,
         @InjectQueue(SIMULATION_QUEUE) private readonly queue: Queue<SimulationJob>,
+        private readonly eventEmitter: EventEmitter2,
     ) {}
 
     // ---------------------------------------------------------------------
@@ -235,6 +245,7 @@ export class SimulationService {
                     requestedCount || 50,
                 );
             }
+            if (!scenarios.length) throw new Error('Simulation produced no scenarios');
 
             await this.prisma.executeInTenantSchema(
                 schemaName,
@@ -246,13 +257,14 @@ export class SimulationService {
 
             // 2. Run scenarios with bounded concurrency.
             const results = await this.runScenariosConcurrently(tenantId, agentId, channelType, scenarios);
+            const scored = results.filter(isScoredScenario);
+            if (!scored.length) throw new Error('Simulation produced no scorable scenarios');
 
             // 3. Aggregate + regression diff.
             const summary = await this.buildSummary(schemaName, results, baselineRunId);
 
-            const scored = results.filter((r) => !r.error);
             const avgScore = scored.length
-                ? Math.round((scored.reduce((s, r) => s + (r.judge?.overall || 0), 0) / scored.length) * 100) / 100
+                ? Math.round((scored.reduce((s, r) => s + r.judge.overall, 0) / scored.length) * 100) / 100
                 : 0;
             const resolvedRate = scored.length
                 ? Math.round((scored.filter((r) => r.judge?.resolved).length / scored.length) * 10000) / 100
@@ -270,6 +282,7 @@ export class SimulationService {
             this.logger.log(
                 `[Sim] Run ${runId} completed: ${scored.length}/${results.length} scored, avg=${avgScore}, resolved=${resolvedRate}%`,
             );
+            this.emitRunEvent(AGENT_SIMULATION_COMPLETED_EVENT, tenantId, agentId, runId, 'completed');
         } catch (err: any) {
             this.logger.error(`[Sim] Run ${runId} failed: ${err.message}`);
             await this.prisma.executeInTenantSchema(
@@ -277,6 +290,22 @@ export class SimulationService {
                 `UPDATE simulation_runs SET status = 'failed', error = $2, completed_at = NOW() WHERE id = $1::uuid`,
                 [runId, String(err.message || err).slice(0, 1000)],
             );
+            this.emitRunEvent(AGENT_SIMULATION_FAILED_EVENT, tenantId, run.agent_id, runId, 'failed');
+            throw err;
+        }
+    }
+
+    private emitRunEvent(
+        event: typeof AGENT_SIMULATION_COMPLETED_EVENT | typeof AGENT_SIMULATION_FAILED_EVENT,
+        tenantId: string,
+        agentId: string,
+        runId: string,
+        status: 'completed' | 'failed',
+    ): void {
+        try {
+            this.eventEmitter.emit(event, { tenantId, agentId, runId, status });
+        } catch (e: any) {
+            this.logger.warn(`[Sim] could not emit ${event}: ${e.message}`);
         }
     }
 
@@ -434,7 +463,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                         transcript: [],
                         turns: 0,
                         latencyMs: 0,
-                        judge: this.emptyJudge(),
+                        judge: null,
                         error: String(err.message || err).slice(0, 500),
                     };
                 }
@@ -490,13 +519,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             .map((t) => `${t.role === 'customer' ? 'Cliente' : 'Agente'}: ${t.content}`)
             .join('\n');
 
-        let judge: JudgeResult;
-        try {
-            judge = await this.qualityService.judgeTranscript(tenantId, transcriptText);
-        } catch (err: any) {
-            this.logger.warn(`[Sim] Judge failed for scenario ${scenario.key}: ${err.message}`);
-            judge = this.emptyJudge();
-        }
+        const judge = await this.qualityService.judgeTranscript(tenantId, transcriptText);
 
         return {
             ...scenario,
@@ -559,13 +582,13 @@ Reglas:
         results: ScenarioResult[],
         baselineRunId: string | null,
     ): Promise<any> {
-        const scored = results.filter((r) => !r.error);
+        const scored = results.filter(isScoredScenario);
         const byDifficulty: Record<string, { count: number; avg: number }> = {};
         for (const r of scored) {
             const d = r.difficulty || 'medium';
             if (!byDifficulty[d]) byDifficulty[d] = { count: 0, avg: 0 };
             byDifficulty[d].count++;
-            byDifficulty[d].avg += r.judge.overall || 0;
+            byDifficulty[d].avg += r.judge.overall;
         }
         for (const d of Object.keys(byDifficulty)) {
             byDifficulty[d].avg = Math.round((byDifficulty[d].avg / byDifficulty[d].count) * 100) / 100;
@@ -573,7 +596,7 @@ Reglas:
 
         // Worst scenarios (lowest overall, or with flags) for drill-down.
         const worst = [...scored]
-            .sort((a, b) => (a.judge.overall || 0) - (b.judge.overall || 0))
+            .sort((a, b) => a.judge.overall - b.judge.overall)
             .slice(0, 10)
             .map((r) => ({
                 key: r.key,
@@ -612,9 +635,9 @@ Reglas:
             const improvements: any[] = [];
             for (const r of scored) {
                 const b = baseByKey.get(r.key);
-                if (!b || b.error) continue;
-                const before = b.judge?.overall || 0;
-                const after = r.judge.overall || 0;
+                if (!b || b.error || !b.judge) continue;
+                const before = b.judge.overall;
+                const after = r.judge.overall;
                 const delta = Math.round((after - before) * 100) / 100;
                 if (after <= before - REGRESSION_THRESHOLD) {
                     regressions.push({ key: r.key, title: r.title, before, after, delta });
@@ -623,7 +646,7 @@ Reglas:
                 }
             }
             const curAvg = scored.length
-                ? scored.reduce((s, r) => s + (r.judge.overall || 0), 0) / scored.length
+                ? scored.reduce((s, r) => s + r.judge.overall, 0) / scored.length
                 : 0;
             summary.baseline = {
                 runId: baselineRunId,
@@ -674,13 +697,9 @@ Reglas:
         };
     }
 
-    private avg(rows: ScenarioResult[], pick: (r: ScenarioResult) => number): number {
+    private avg(rows: ScoredScenarioResult[], pick: (r: ScoredScenarioResult) => number): number {
         if (!rows.length) return 0;
         return Math.round((rows.reduce((s, r) => s + (pick(r) || 0), 0) / rows.length) * 100) / 100;
-    }
-
-    private emptyJudge(): JudgeResult {
-        return { overall: 0, resolution: 0, tone: 0, accuracy: 0, empathy: 0, flags: [], resolved: false, resolutionReason: '' };
     }
 
     private safeJsonArray(raw: string): any[] {

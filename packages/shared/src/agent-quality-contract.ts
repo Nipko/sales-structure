@@ -163,3 +163,71 @@ export interface AgentQualityOverview {
     production: AgentQualityProductionPillar;
     recommendations: AgentQualityRecommendation[];
 }
+
+/**
+ * Durable, bounded attention signals derived from an AgentQualityOverview.
+ *
+ * This contract deliberately excludes transcripts, judge prose, prompts,
+ * retrieval queries and conversation identifiers. Those details stay behind
+ * their purpose-built, tenant-authorized surfaces.
+ */
+export type AgentQualitySignalState =
+    | 'open'
+    | 'acknowledged'
+    | 'snoozed'
+    | 'resolved'
+    | 'superseded';
+
+export interface AgentQualitySignal {
+    id: string;
+    agent: {
+        id: string;
+        name: string;
+        version: number;
+    };
+    code: string;
+    severity: AgentQualitySeverity;
+    pillar: AgentQualityPillar;
+    dimension: AgentQualityDimension;
+    state: AgentQualitySignalState;
+    href: string;
+    evidenceCount: number;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    occurrenceCount: number;
+    acknowledgedAt?: string;
+    snoozedUntil?: string;
+}
+
+export interface AgentQualityAttentionAgent {
+    id: string;
+    name: string;
+    version: number;
+    status: AgentQualityStatus;
+    criticalCount: number;
+    highCount: number;
+    topSignalCode?: string;
+}
+
+export interface AgentQualityAttentionSummary {
+    generatedAt: string;
+    worstStatus: AgentQualityStatus | null;
+    agentsTotal: number;
+    /** Active agents with at least one snapshot for their current config version. */
+    evaluatedAgents: number;
+    agentsNeedingAttention: number;
+    openCritical: number;
+    openHigh: number;
+    /** Number used by global badges: open critical + high signals only. */
+    attentionCount: number;
+    topAction?: {
+        signalId: string;
+        agentId: string;
+        agentName: string;
+        code: string;
+        severity: AgentQualitySeverity;
+        href: string;
+        evidenceCount: number;
+    };
+    agents: AgentQualityAttentionAgent[];
+}

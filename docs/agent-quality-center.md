@@ -10,17 +10,34 @@ El Centro de calidad responde, con evidencia, tres preguntas distintas:
 
 Estas respuestas no se mezclan en un porcentaje decorativo. Un campo diligenciado no demuestra calidad y una conversación abandonada no demuestra resolución. Los fallos críticos de seguridad, conocimiento, herramientas o escalamiento bloquean el estado aunque otras dimensiones estén bien.
 
-El checklist de onboarding sigue siendo una guía de adopción inicial. No es una certificación del agente.
+La tarjeta **Puesta en marcha esencial** de Inicio sigue siendo una guía de adopción
+inicial. No es una certificación del agente y reemplaza el antiguo checklist flotante
+con progreso `8/9`.
 
 ## Superficie y acceso
 
-- **Interfaz:** **Insights → Centro de calidad**, ruta `/admin/agent/quality`.
-- **Lectura:** `tenant_admin` y `tenant_supervisor`. Un `super_admin` solo entra al contexto del tenant mediante impersonación autorizada.
+- **Detalle:** **Insights → Salud de agentes**, ruta `/admin/agent/quality`.
+- **Inicio:** la tarjeta **Salud de agentes** siempre resume el peor estado, los
+  agentes evaluados y las acciones abiertas para los roles autorizados.
+- **Navegación:** el badge de **Salud de agentes** cuenta exclusivamente señales
+  **Críticas + Altas** que continúan abiertas; no representa un puntaje.
+- **Aviso global:** solo aparece ante una señal crítica abierta o un estado global
+  **En riesgo**. Permite revisar, preguntar a Parallly Assist o posponer la señal 24 h.
+- **Lectura en el dashboard:** `tenant_admin` y `tenant_supervisor`; un `super_admin`
+  entra al workspace mediante impersonación autorizada. En API, `super_admin` puede usar
+  un `tenantId` explícito, validado y auditado por `TenantGuard`.
 - **Edición:** el centro es una vista de diagnóstico. Editar el agente, sus conexiones o su configuración continúa reservado al administrador en `/admin/agent`.
-- **API:** `GET /api/v1/quality/:tenantId/agents` entrega el selector mínimo de agentes y `GET /api/v1/quality/:tenantId/agents/:agentId/overview` entrega la evidencia del agente elegido.
+- **API:** `GET /api/v1/quality/:tenantId/agents` entrega el selector mínimo de
+  agentes; `GET /api/v1/quality/:tenantId/agents/:agentId/overview`, la evidencia del
+  agente elegido; y `GET /api/v1/quality/:tenantId/attention-summary`, el agregado
+  acotado que consumen Inicio, navegación y el aviso global.
 - **Contrato:** `packages/shared/src/agent-quality-contract.ts` define estados, pilares, dimensiones, métricas y recomendaciones que comparten API y dashboard.
 
 Los endpoints y la interfaz no editan prompts, políticas ni conocimiento. Las recomendaciones dirigen a una persona hacia la superficie adecuada y conservan la revisión humana antes de cualquier cambio.
+
+Los avisos de esta iteración son internos del dashboard. No se envían por correo ni
+como notificación push y no debe prometerse que posponer o reconocer una señal la
+resuelve.
 
 ## Estados globales
 
@@ -110,16 +127,63 @@ Las señales reales pueden producir recomendaciones como:
 
 El sistema diagnostica y orienta. No debe editar automáticamente prompts, políticas o conocimiento sin revisión humana.
 
+## Señales proactivas, snapshots y enfriamiento
+
+La proactividad usa evidencia durable y no depende de que una persona tenga abierto
+el Centro de calidad:
+
+- cada cálculo relevante conserva un **snapshot** por agente y versión, con estado,
+  hito, pilares y conteos acotados;
+- cada recomendación genera una **señal** estable por agente, versión y código, con
+  gravedad, pilar, dimensión, destino seguro, primera/última detección y recurrencia;
+- una señal puede estar `open`, `acknowledged`, `snoozed`, `resolved` o
+  `superseded`; solo `open` Crítica/Alta alimenta el badge;
+- al desaparecer la causa, la siguiente conciliación la marca resuelta. Una versión
+  nueva reemplaza las señales accionables de la versión anterior;
+- cambios de configuración, resultados de QA, evaluaciones y simulaciones solicitan
+  una conciliación. Los eventos repetidos de QA se agrupan durante 60 segundos y un
+  barrido acotado cada seis horas recupera eventos perdidos;
+- el resumen de atención usa una caché corta. **Posponer 24 h** oculta temporalmente
+  esa señal del aviso y del conteo; si vence el plazo o la gravedad empeora, puede
+  volver a abrirse.
+
+Reconocer o posponer son decisiones de atención, no pruebas de reparación. Solo un
+cambio real en la evidencia y una nueva validación resuelven el diagnóstico.
+
+## Parallly Assist como coach contextual
+
+Desde la tarjeta de Inicio o el aviso global, **Preguntar a Assist** abre el chat con
+el agente y la señal seleccionados. El servidor valida tenant, rol, agente y señal;
+el contexto derivado del estado vigente prevalece sobre una explicación genérica de
+la KB. Assist explica una prioridad y devuelve rutas internas permitidas:
+
+- Admin puede recibir el enlace de reparación y el enlace al Centro de calidad.
+- Supervisor recibe el Centro de calidad y coordinación de seguimiento, sin acceso
+  implícito al editor.
+- Agent no recibe contexto de Salud de agentes.
+
+El contexto enviado al modelo está deliberadamente limitado a códigos y agregados:
+estado, versión, hito, bloqueadores codificados, vigencia de pruebas, tamaño mínimo y
+actual de muestra, gravedad, pilar, dimensión y conteo de evidencia. Excluye
+transcripciones, texto de clientes, IDs de conversación, texto libre del juez,
+prompts, consultas de recuperación, secretos y actores que reconocieron o pospusieron
+la señal. El nombre configurable del agente permanece en la interfaz, no se usa como
+instrucción del modelo.
+
+Assist puede explicar y dirigir; no confirma que un cambio fue aplicado, no edita el
+agente ni el conocimiento y no inicia comunicaciones externas.
+
 ### Bucle de mejora desde interacciones
 
 Las interacciones reales cierran el ciclo sin convertir al agente en un sistema que se modifica solo:
 
 1. Una conversación atribuida termina o produce una señal verificable.
 2. QA, recuperación de conocimiento, herramientas y handoff registran evidencia.
-3. El agregador agrupa recurrencias por causa, intención y dimensión.
+3. El agregador agrupa recurrencias por agente, versión, código y dimensión.
 4. La interfaz muestra el impacto y las conversaciones fuente.
 5. Un administrador corrige configuración, contenido o integración.
-6. El fallo se añade, con revisión, como escenario de regresión.
+6. Cuando corresponde, el administrador convierte manualmente el fallo en un escenario
+   de regresión revisado; esta entrega no lo crea por sí sola.
 7. La evidencia previa vence y la nueva versión debe superar las pruebas.
 8. Producción confirma si la mejora se sostiene.
 
@@ -145,14 +209,20 @@ La evidencia de pruebas queda obsoleta, como mínimo, después de actualizar el 
 - Los resultados deben poder rastrearse a escenarios, conversaciones y señales concretas.
 - Nunca se almacenan secretos, tokens, prompts completos ni datos innecesarios dentro del resumen de calidad.
 
-## Evolución prevista
+## Estado actual y evolución pendiente
 
-1. Atribución por agente y versión para conversaciones nuevas.
-2. Resumen integrado de preparación, evals, simulaciones y producción.
-3. Taxonomía estable de problemas y recomendaciones por impacto.
-4. Conversión asistida de fallos reales en casos de regresión revisables.
-5. Historial de snapshots con hash de configuración, suite y fuentes.
-6. Comparación antes/después e intervalos de confianza con suficiente volumen.
+Ya están operativos la atribución por agente/versión para conversaciones nuevas, el
+overview integrado de los tres pilares, la taxonomía acotada de recomendaciones y los
+snapshots/señales durables que alimentan Inicio, Insights, el aviso y Assist.
+
+Quedan como evolución explícita —no como capacidad prometida en esta entrega—:
+
+1. conversión asistida y revisable de fallos reales en casos de regresión;
+2. hash canónico adicional de configuración, suite y fuentes para una vigencia más
+   fina que la versión del agente;
+3. comparación antes/después e intervalos de confianza cuando exista volumen;
+4. cualquier canal de aviso externo, sujeto a preferencias, cooldown y política de
+   notificación propios.
 
 ## Referencias de diseño
 

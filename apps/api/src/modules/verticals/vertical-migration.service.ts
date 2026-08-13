@@ -3,7 +3,9 @@ import {
     ConflictException,
     Injectable,
     NotFoundException,
+    Optional,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomUUID } from 'crypto';
 import {
     resolveVerticalCapabilityManifest,
@@ -15,6 +17,7 @@ import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
 import { resolveVerticalAgendaSeedContract } from './verticals.service';
 import { withResolvedVerticalPipeline } from './vertical-pipeline-contract';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import {
     InvalidVerticalSelectionError,
     resolveVerticalSelection,
@@ -100,6 +103,7 @@ export class VerticalMigrationService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     async preview(
@@ -380,6 +384,10 @@ export class VerticalMigrationService {
         });
 
         await this.invalidateTenantCache(tenantId);
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'vertical',
+        });
         return {
             migrationId,
             status: 'applied',
@@ -451,6 +459,10 @@ export class VerticalMigrationService {
         });
 
         await this.invalidateTenantCache(tenantId);
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'vertical',
+        });
         return { migrationId, status: 'rolled_back' };
     }
 

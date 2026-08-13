@@ -464,6 +464,10 @@ export class OnboardingService {
         },
       });
 
+      // Agent Quality lives in the API process. Notify it only after routing,
+      // credentials and the onboarding terminal state are durably committed.
+      await this.notifyAgentQualityChannelUpdated(tenantId);
+
       this.logger.log(`[Onboarding][${onboardingId}] ${finalStatus} for tenant=${tenantId}${warnings.length ? ' (warnings: ' + warnings.join('; ') + ')' : ''}`);
 
       return this.formatOnboardingResponse(
@@ -1024,6 +1028,27 @@ export class OnboardingService {
         if (b?.message) msg = b.message;
       } catch { /* keep default message */ }
       throw new BadRequestException({ code: 'PLAN_LIMIT_REACHED', userMessage: msg });
+    }
+  }
+
+  private async notifyAgentQualityChannelUpdated(tenantId: string): Promise<void> {
+    const apiUrl = this.config.get<string>('API_INTERNAL_URL') || 'http://api:3000/api/v1';
+    const internalKey =
+      this.config.get<string>('INTERNAL_API_KEY') || this.config.get<string>('INTERNAL_JWT_SECRET');
+    const fetchFn: any = (globalThis as any).fetch;
+    if (!internalKey || !fetchFn) return;
+    try {
+      const response = await fetchFn(`${apiUrl}/internal/agent-quality-channel-updated`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey },
+        body: JSON.stringify({ tenantId }),
+      });
+      if (!response.ok) {
+        this.logger.warn(`Agent Quality channel notification returned ${response.status}`);
+      }
+    } catch (error: any) {
+      // The connection is already complete; the API cron remains the fallback.
+      this.logger.warn(`Agent Quality channel notification unavailable (${error?.message})`);
     }
   }
 

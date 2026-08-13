@@ -1,17 +1,28 @@
 ---
 id: centro-calidad-agente
-title: "Centro de calidad del agente"
-routes: ["/admin/agent/quality"]
+title: "Salud de agentes y Centro de calidad"
+routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "listo para piloto", "configuracion incompleta", "revision requerida", "recomendaciones", "debilidades del agente", "mejorar agente"]
+keywords: ["salud de agentes", "centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "configuracion incompleta", "acciones criticas", "badge", "posponer", "Parallly Assist", "mejorar agente"]
 ---
 
-# Centro de calidad del agente
+# Salud de agentes y Centro de calidad
 
-El **Centro de calidad** muestra qué falta configurar, qué se ha probado y qué ocurre
-en conversaciones reales para cada agente IA. Está en **Insights → Centro de
-calidad**. Admin y Supervisor pueden consultarlo; solo Admin puede editar agentes,
+**Salud de agentes** muestra qué falta configurar, qué se ha probado y qué ocurre en
+conversaciones reales para cada agente IA. El detalle está en **Insights → Salud de
+agentes**. Admin y Supervisor pueden consultarlo; solo Admin puede editar agentes,
 conexiones o configuración desde **IA y crecimiento → Agente IA**.
+
+## Dónde aparece y qué significa
+
+- La tarjeta **Salud de tus agentes** de Inicio siempre resume el peor estado y las
+  acciones abiertas para Admin/Supervisor.
+- El badge de **Insights → Salud de agentes** suma solamente señales **Críticas y
+  Altas abiertas**. Es un conteo de atención, no un puntaje.
+- El aviso global aparece solo ante una señal crítica abierta o un estado **Agente en
+  riesgo**. Puedes **Revisar**, **Preguntar a Assist** o **Posponer 24 h**.
+- Posponer oculta esa señal temporalmente; no la corrige. Estos avisos viven en el
+  dashboard y no envían correo ni notificación push.
 
 ## Las tres capas de evidencia
 
@@ -47,6 +58,13 @@ garantiza resultados comerciales.
 
 ## Qué mejorar primero
 
+Parallly conserva snapshots del estado y señales por agente, versión y causa. Cambios
+de configuración, resultados de QA, evaluaciones y simulaciones actualizan la
+evidencia; las recurrencias se agrupan para evitar avisos duplicados y una revisión
+periódica acotada recupera eventos perdidos. Una señal puede estar abierta,
+reconocida, pospuesta, resuelta o reemplazada. Reconocer o posponer administra la
+atención; solo evidencia nueva la resuelve.
+
 Abre las recomendaciones críticas y altas. Cada una indica el pilar y la dimensión
 afectados y, cuando existe el dato, cuántos escenarios o interacciones la originaron.
 Úsalas para distinguir entre:
@@ -61,11 +79,24 @@ El Centro de calidad no reescribe automáticamente prompts, políticas ni conten
 Admin realiza el cambio, vuelve a ejecutar las pruebas y revisa si la evidencia nueva
 confirma la mejora; Supervisor puede revisar resultados y coordinar el seguimiento.
 
+## Preguntar a Parallly Assist
+
+Desde Inicio o el aviso global, **Preguntar a Assist** abre el chat sobre el agente y
+la señal seleccionados. El servidor valida tenant, rol, agente y señal, y Assist
+explica una prioridad con el estado vigente. Admin puede recibir una ruta de
+corrección; Supervisor recibe la ruta de revisión, sin permisos de edición.
+
+El contexto incluye solo estado, versión, hito, códigos de bloqueo, vigencia de
+pruebas, muestra, gravedad, pilar, dimensión y conteos. No incluye transcripciones,
+texto de clientes, IDs de conversación, prompts, consultas de recuperación, texto
+libre del evaluador ni secretos. Assist no aplica cambios ni inicia comunicaciones.
+
 ## Preguntas frecuentes
 
 **¿El checklist de configuración es lo mismo que el Centro de calidad?**
-No. El checklist orienta la adopción inicial. El centro añade pruebas repetibles y
-evidencia atribuida de producción.
+No. La tarjeta **Puesta en marcha** de Inicio muestra solo pasos esenciales disponibles
+para tu plan, rol e industria y desaparece al completarlos. Reemplaza la antigua
+pastilla flotante `8/9`. Salud de agentes añade pruebas y evidencia de producción.
 
 **¿Un buen puntaje de simulación basta para publicar?**
 No. Ayuda a reducir riesgo, pero debe revisarse junto con bloqueos críticos, vigencia

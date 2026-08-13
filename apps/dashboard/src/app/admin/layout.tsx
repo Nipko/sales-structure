@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
-import OnboardingChecklist from "@/components/OnboardingChecklist";
 import TrialCountdownBanner from "@/components/TrialCountdownBanner";
 import SuspendedScreen from "@/components/SuspendedScreen";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -28,6 +27,8 @@ import { ShieldAlert, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import NavigationCommandPalette from "@/components/layout/NavigationCommandPalette";
 import { NavigationPageProvider } from "@/contexts/NavigationPageContext";
+import { QualityHealthProvider } from "@/contexts/QualityHealthContext";
+import QualityAttentionBanner from "@/components/quality/QualityAttentionBanner";
 
 export type RestrictionLevel = "none" | "warning" | "soft_lock" | "hard_lock";
 
@@ -46,7 +47,7 @@ export default function AdminLayout({
   const { isAuthenticated, isLoading, user, verticalConfig, isVerticalConfigLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const { role, impersonating, canManageChannels } = useRole();
+  const { role, impersonating } = useRole();
   const tNavigation = useTranslations("navigation");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accessNotice, setAccessNotice] = useState(false);
@@ -156,6 +157,7 @@ export default function AdminLayout({
 
   const content = (
     <TenantProvider>
+      <QualityHealthProvider>
       <NavigationPageProvider>
       <div className="flex h-screen bg-white dark:bg-neutral-950">
         <a
@@ -175,15 +177,9 @@ export default function AdminLayout({
           <TrialCountdownBanner restriction={restriction} />
           <EmailVerificationBanner />
           <FiscalBanner />
+          <QualityAttentionBanner />
           <div className="flex-1 flex overflow-hidden">
             <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
-            {/* Solo a quien puede EJECUTAR los pasos. 6 de los 9 apuntan a
-                /admin/agent, /admin/channels/* y /admin/users, que roles.ts
-                restringe a tenant_admin: un agente o supervisor veia una guia
-                con botones que lo rebotaban al inbox sin explicacion, y como
-                los items nunca se completaban desde su sesion, el checklist
-                tampoco desaparecia nunca. */}
-            {canManageChannels && <OnboardingChecklist />}
           </div>
         </div>
       </div>
@@ -212,6 +208,7 @@ export default function AdminLayout({
       <NavigationCommandPalette />
       <HelpAssistant />
       </NavigationPageProvider>
+      </QualityHealthProvider>
     </TenantProvider>
   );
 

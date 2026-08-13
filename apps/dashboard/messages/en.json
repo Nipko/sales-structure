@@ -232,7 +232,7 @@
       "reportBuilder": "Custom Reports",
       "dripSequences": "Drip Sequences",
       "automationTemplates": "Templates",
-      "agentQuality": "Quality center",
+      "agentQuality": "Agent health",
       "agentSimulation": "Test agent",
       "procedures": "Procedures",
       "organizations": "Organizations",
@@ -7821,6 +7821,18 @@
         "leadScoring": "How does Lead Scoring work?",
         "configureRag": "How do I give my agent more information?",
         "syncCalendar": "How do I sync my calendar?"
+      },
+      "quality": {
+        "explainPrompt": "Explain my agents' health and what I should improve first.",
+        "selectedAgent": "Analyze {agent}'s health.",
+        "firstPriority": "What should I fix first?",
+        "explainBlocker": "Explain why this issue blocks or puts the agent at risk.",
+        "contextTitle": "Agent health context",
+        "contextDescription": "Assist will only use the state, priority, and safe route; it will not receive conversations or customer data.",
+        "actions": {
+          "openCenter": "Open agent health",
+          "resolvePriority": "Resolve priority"
+        }
       }
     },
     "faqs": {
@@ -9980,6 +9992,47 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "lastSent": "Last sent: {date}"
+  },
+  "qualityHealth": {
+    "title": "Your agents' health",
+    "description": "See what needs attention and act on evidence without confusing setup with real performance.",
+    "loading": "Checking your agents' health…",
+    "unavailable": "We couldn't verify agent health right now.",
+    "retry": "Try again",
+    "openCenter": "View agent health",
+    "currentState": "Most concerning state",
+    "agents": "Coverage",
+    "agentsCount": "{evaluated} of {total} evaluated",
+    "attention": "Open actions",
+    "attentionCount": "{count, plural, one {# critical or high action} other {# critical or high actions}}",
+    "severityCounts": "{critical} critical · {high} high",
+    "noPriorityActions": "No critical or high actions",
+    "topAction": "First for {agent}",
+    "noOpenAction": "There is no open priority action. Open the center to review all evidence.",
+    "evaluationPending": "{count, plural, one {# agent still needs} other {# agents still need}} evaluation. Coverage will complete in bounded batches.",
+    "noAgents": "There are no agents to evaluate yet.",
+    "review": "Review",
+    "askAssist": "Ask Assist",
+    "snooze24h": "Snooze 24h",
+    "bannerCritical": "A critical action requires attention.",
+    "bannerAtRisk": "An agent is at risk.",
+    "bannerAgent": "Review {agent} first.",
+    "navBadge": "{count, plural, one {# open critical or high action} other {# open critical or high actions}}",
+    "setup": {
+      "title": "Getting started",
+      "description": "Only essential steps available for your plan, role, and industry. This guide disappears when completed.",
+      "progress": "{completed}/{total} essentials",
+      "loading": "Checking your setup…",
+      "unavailable": "We couldn't verify these steps. We won't assume they are incomplete.",
+      "retry": "Try again",
+      "continue": "Continue",
+      "items": {
+        "agent": "Configure the agent",
+        "channel": "Connect a conversational channel",
+        "knowledge": "Add useful knowledge",
+        "catalog": "Configure the operational catalog"
+      }
+    }
   },
   "agentQuality": {
     "title": "Agent quality center", "subtitle": "See what still needs configuration, what has been tested, and what is happening in real conversations.", "loading": "Analyzing available evidence…", "statusLabel": "Current status", "agentInactive": "Inactive agent",

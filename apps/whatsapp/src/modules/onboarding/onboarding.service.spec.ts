@@ -53,10 +53,11 @@ describe('OnboardingService Business Portfolio resolution', () => {
       getBusinessVerificationStatus: jest.fn().mockResolvedValue('verified'),
     };
     const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const config = { get: jest.fn() };
     const service = new OnboardingService(
       prisma as any,
       metaGraph as any,
-      { get: jest.fn() } as any,
+      config as any,
       audit as any,
     );
 
@@ -78,7 +79,7 @@ describe('OnboardingService Business Portfolio resolution', () => {
       },
     );
 
-    return { service, prisma, metaGraph, audit, continueOnboarding };
+    return { service, prisma, metaGraph, audit, config, continueOnboarding };
   }
 
   function getAssetUpdate(prisma: any) {
@@ -216,5 +217,32 @@ describe('OnboardingService Business Portfolio resolution', () => {
       phone.verifiedName,
       phone.qualityRating,
     ]);
+  });
+
+  it('notifies the API quality bridge after Embedded Signup completes', async () => {
+    const harness = createHarness();
+    harness.config.get.mockImplementation((key: string) => {
+      if (key === 'API_INTERNAL_URL') return 'http://api:3000/api/v1';
+      if (key === 'INTERNAL_API_KEY') return 'internal-secret';
+      return undefined;
+    });
+    const originalFetch = globalThis.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    (globalThis as any).fetch = fetchMock;
+
+    try {
+      await (harness.service as any).notifyAgentQualityChannelUpdated(tenantId);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api:3000/api/v1/internal/agent-quality-channel-updated',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'x-internal-key': 'internal-secret' }),
+        body: JSON.stringify({ tenantId }),
+      }),
+    );
   });
 });

@@ -42,7 +42,7 @@ interface ScenarioResult {
     judge: {
         overall: number; resolution: number; tone: number; accuracy: number; empathy: number;
         flags: string[]; resolved: boolean; resolutionReason: string;
-    };
+    } | null;
     turns: number;
     error?: string;
 }
@@ -409,16 +409,16 @@ function RunResults({ run, loading, onOpenScenario, t }: {
                                 >
                                     <td className="py-2.5 px-3 text-text-secondary max-w-[280px] truncate">{r.title}</td>
                                     <td className="py-2.5 px-3 text-center">
-                                        {r.error ? <span className="text-red-400 text-xs">{t("error")}</span>
+                                        {r.error || !r.judge ? <span className="text-red-400 text-xs">{t("error")}</span>
                                             : <span className={cn("font-semibold", scoreColor(r.judge.overall))}>{r.judge.overall}/10</span>}
                                     </td>
                                     <td className="py-2.5 px-3 text-center">
-                                        {r.error ? "—" : r.judge.resolved
+                                        {r.error || !r.judge ? "—" : r.judge.resolved
                                             ? <CheckCircle2 size={15} className="text-emerald-500 inline" />
                                             : <XCircle size={15} className="text-red-400 inline" />}
                                     </td>
                                     <td className="py-2.5 px-3 text-text-secondary max-w-[220px] truncate text-xs">
-                                        {r.judge.flags?.length ? r.judge.flags.join("; ") : "—"}
+                                        {r.judge?.flags?.length ? r.judge.flags.join("; ") : "—"}
                                     </td>
                                     <td className="py-2.5 px-3"><ChevronRight size={14} className="text-muted-foreground" /></td>
                                 </tr>
@@ -444,6 +444,7 @@ function Kpi({ label, value, color }: { label: string; value: string | number; c
 function ScenarioDrawer({ scenario, onClose, t }: {
     scenario: ScenarioResult; onClose: () => void; t: ReturnType<typeof useTranslations>;
 }) {
+    const judge = scenario.judge;
     return (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" onClick={onClose}>
             <div
@@ -460,24 +461,24 @@ function ScenarioDrawer({ scenario, onClose, t }: {
 
                 <div className="p-5 space-y-5">
                     {/* Judge scores */}
-                    {!scenario.error && (
+                    {!scenario.error && judge && (
                         <div className="grid grid-cols-5 gap-2 text-center">
                             {(["overall", "resolution", "tone", "accuracy", "empathy"] as const).map((k) => (
                                 <div key={k} className="rounded-lg bg-neutral-50 dark:bg-white/[0.03] p-2">
-                                    <div className={cn("text-sm font-semibold", scoreColor(scenario.judge[k]))}>{scenario.judge[k]}</div>
+                                    <div className={cn("text-sm font-semibold", scoreColor(judge[k]))}>{judge[k]}</div>
                                     <div className="text-[10px] text-muted-foreground mt-0.5">{t(k)}</div>
                                 </div>
                             ))}
                         </div>
                     )}
 
-                    {scenario.judge?.resolutionReason && (
-                        <p className="text-xs text-text-secondary italic border-l-2 border-accent/40 pl-3">{scenario.judge.resolutionReason}</p>
+                    {judge?.resolutionReason && (
+                        <p className="text-xs text-text-secondary italic border-l-2 border-accent/40 pl-3">{judge.resolutionReason}</p>
                     )}
 
-                    {scenario.judge?.flags?.length > 0 && (
+                    {judge && judge.flags.length > 0 && (
                         <div className="space-y-1">
-                            {scenario.judge.flags.map((f, i) => (
+                            {judge.flags.map((f, i) => (
                                 <div key={i} className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400">
                                     <AlertTriangle size={12} className="mt-0.5 shrink-0" />{f}
                                 </div>

@@ -22,6 +22,12 @@ const HEALTHY_VERIFIED_RESOLUTION_RATE = 70;
 const CRITICAL_VERIFIED_RESOLUTION_RATE = 50;
 const RECURRING_ISSUE_COUNT = 3;
 const OPERATIONAL_CHANNELS = new Set(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);
+const CREDENTIAL_TYPE_BY_CHANNEL: Record<string, string> = {
+    whatsapp: 'system_user_token',
+    instagram: 'instagram_token',
+    messenger: 'messenger_token',
+    telegram: 'telegram_token',
+};
 const DIMENSION_WEIGHTS: Record<AgentQualityDimension, number> = {
     business_scope: 15,
     knowledge_grounding: 20,
@@ -49,6 +55,15 @@ type TenantContext = {
     activeChannelTypes: Set<string>;
     activeAccountBindings: Set<string>;
     activeHumanCount: number;
+    channelCredentialHealth: Map<string, CredentialHealth>;
+};
+
+type CredentialHealth = 'ok' | 'expiring' | 'unknown' | 'missing' | 'error' | 'revoked' | 'expired';
+
+type CredentialHealthRow = {
+    credentialType: string;
+    rotationState: string;
+    expiresAt: Date | null;
 };
 
 type ReadinessFacts = {
@@ -129,7 +144,7 @@ export class AgentQualityService {
 
         const [agent, tenantContext] = await Promise.all([
             this.loadAgent(schemaName, agentId),
-            this.loadTenantContext(tenantId),
+            this.loadTenantContext(tenantId, schemaName),
         ]);
         if (!agent) throw new NotFoundException('Agent not found');
 
@@ -190,14 +205,17 @@ export class AgentQualityService {
         return rows?.[0] || null;
     }
 
-    private async loadTenantContext(tenantId: string): Promise<TenantContext> {
-        const [tenant, channels, widgets, humans] = await Promise.all([
+    private async loadTenantContext(tenantId: string, schemaName: string): Promise<TenantContext> {
+        const [tenant, channels, widgets, humans, credentialLookup, legacyWhatsAppRows, boundBindingRows] = await Promise.all([
             this.prisma.tenant.findUnique({
                 where: { id: tenantId },
                 select: { settings: true, industry: true, updatedAt: true },
             }),
             this.prisma.$queryRawUnsafe(
-                `SELECT channel_type, account_id
+                `SELECT channel_type, account_id, metadata,
+                        CASE WHEN access_token IS NOT NULL
+                                   AND access_token NOT IN ('', 'encrypted_ref', 'credential_ref')
+                             THEN true ELSE false END AS has_account_token
                    FROM channel_accounts
                   WHERE tenant_id = $1::uuid AND is_active = true`,
                 tenantId,
@@ -216,12 +234,82 @@ export class AgentQualityService {
                     AND role IN ('tenant_admin', 'tenant_supervisor', 'tenant_agent')`,
                 tenantId,
             ).catch(() => [{ count: 0 }]),
+            this.prisma.whatsappCredential.findMany({
+                where: { tenantId, credentialType: { in: Object.values(CREDENTIAL_TYPE_BY_CHANNEL) } },
+                orderBy: { createdAt: 'desc' },
+                select: { credentialType: true, rotationState: true, expiresAt: true },
+            })
+                .then((rows: CredentialHealthRow[]) => ({ available: true, rows }))
+                .catch(() => ({ available: false, rows: [] as CredentialHealthRow[] })),
+            this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT phone_number_id AS account_id,
+                        CASE WHEN access_token_ref IS NOT NULL
+                                   AND access_token_ref NOT IN ('', 'credential_ref')
+                             THEN true ELSE false END AS has_legacy_credential
+                   FROM whatsapp_channels`,
+                [],
+            ).catch(() => []),
+            this.prisma.executeInTenantSchema<Array<{ binding: string }>>(
+                schemaName,
+                `SELECT DISTINCT binding
+                   FROM agent_personas
+                  CROSS JOIN LATERAL unnest(COALESCE(channel_bindings, '{}'::text[])) AS binding
+                  WHERE is_active = true`,
+                [],
+            ).catch(() => []),
         ]);
         const channelRows = [
             ...(Array.isArray(channels) ? channels as any[] : []),
             ...(Array.isArray(widgets) ? widgets as any[] : []),
         ];
         const humanRows = Array.isArray(humans) ? humans as any[] : [];
+        const healthByAssignment = new Map<string, CredentialHealth>();
+        const latestByType = new Map<string, any>();
+        for (const credential of credentialLookup.rows) {
+            if (!latestByType.has(String(credential.credentialType))) {
+                latestByType.set(String(credential.credentialType), credential);
+            }
+        }
+        const legacyWhatsAppAccounts = new Set((legacyWhatsAppRows || [])
+            .filter((row) => row.has_legacy_credential === true)
+            .map((row) => String(row.account_id)));
+        const explicitlyBoundAccounts = new Set((boundBindingRows || []).map((row) => String(row.binding)));
+        const channelGroups = new Map<string, CredentialHealth[]>();
+        for (const row of channelRows) {
+            const channel = String(row.channel_type);
+            const accountId = String(row.account_id);
+            const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+            let health: CredentialHealth = 'ok';
+            if (channel === 'whatsapp') {
+                health = this.credentialHealth(
+                    latestByType.get(CREDENTIAL_TYPE_BY_CHANNEL.whatsapp) || null,
+                    credentialLookup.available,
+                );
+                if ((health === 'missing' || health === 'unknown') && legacyWhatsAppAccounts.has(accountId)) {
+                    health = 'ok';
+                }
+            } else if (channel === 'instagram' && row.has_account_token === true) {
+                health = this.expiryHealth((metadata as any).tokenExpiresAt);
+            } else if (channel !== 'web_widget' && row.has_account_token !== true) {
+                const credentialType = CREDENTIAL_TYPE_BY_CHANNEL[channel];
+                health = credentialType
+                    ? this.credentialHealth(latestByType.get(credentialType) || null, credentialLookup.available)
+                    : 'unknown';
+            }
+            healthByAssignment.set(`${channel}:${accountId}`, health);
+            // A type-level assignment is the fallback for accounts without an
+            // exact binding. Evaluate every account it can actually receive;
+            // one expired account must not be hidden by another healthy one.
+            if (!explicitlyBoundAccounts.has(`${channel}:${accountId}`)) {
+                const group = channelGroups.get(channel) || [];
+                group.push(health);
+                channelGroups.set(channel, group);
+            }
+        }
+        for (const [channel, health] of channelGroups) {
+            healthByAssignment.set(channel, this.worstCredentialHealth(health));
+        }
         return {
             settings: (tenant?.settings as Record<string, any>) || {},
             industry: tenant?.industry || null,
@@ -229,7 +317,37 @@ export class AgentQualityService {
             activeChannelTypes: new Set(channelRows.map((row) => String(row.channel_type))),
             activeAccountBindings: new Set(channelRows.map((row) => `${row.channel_type}:${row.account_id}`)),
             activeHumanCount: Number(humanRows[0]?.count) || 0,
+            channelCredentialHealth: healthByAssignment,
         };
+    }
+
+    private credentialHealth(
+        credential: { rotationState?: string | null; expiresAt?: Date | string | null } | null,
+        lookupAvailable: boolean,
+    ): CredentialHealth {
+        if (!lookupAvailable) return 'unknown';
+        if (!credential) return 'missing';
+        if (credential.rotationState === 'error') return 'error';
+        if (credential.rotationState === 'revoked') return 'revoked';
+        if (credential.rotationState && credential.rotationState !== 'active') return 'unknown';
+        return credential.expiresAt ? this.expiryHealth(credential.expiresAt) : 'ok';
+    }
+
+    private expiryHealth(value: Date | string | null | undefined): CredentialHealth {
+        if (!value) return 'unknown';
+        const expiresAt = new Date(value).getTime();
+        if (!Number.isFinite(expiresAt)) return 'unknown';
+        const remaining = expiresAt - Date.now();
+        if (remaining < 0) return 'expired';
+        if (remaining <= 7 * 86_400_000) return 'expiring';
+        return 'ok';
+    }
+
+    private worstCredentialHealth(values: CredentialHealth[]): CredentialHealth {
+        const rank: Record<CredentialHealth, number> = {
+            ok: 0, expiring: 1, unknown: 2, missing: 3, error: 4, revoked: 5, expired: 6,
+        };
+        return [...values].sort((left, right) => rank[right] - rank[left])[0] || 'missing';
     }
 
     private async loadReadinessFacts(schemaName: string): Promise<ReadinessFacts> {
@@ -539,8 +657,31 @@ export class AgentQualityService {
         const operationalBindings = bindings.filter((binding) => OPERATIONAL_CHANNELS.has(binding.split(':', 1)[0]));
         const assignedCount = operationalChannels.length + operationalBindings.length;
         const unsupportedCount = channels.length + bindings.length - assignedCount;
-        const connectedAssignments = operationalChannels.filter((channel) => tenant.activeChannelTypes.has(channel)).length
-            + operationalBindings.filter((binding) => tenant.activeAccountBindings.has(binding)).length;
+        const isCredentialFailure = (health: CredentialHealth) =>
+            health === 'missing' || health === 'error' || health === 'revoked' || health === 'expired';
+        const isCredentialWarning = (health: CredentialHealth) => health === 'unknown' || health === 'expiring';
+        const assignmentHealth: Array<{ connected: boolean; health: CredentialHealth }> = [
+            ...operationalChannels.map((channel) => ({
+                connected: tenant.activeChannelTypes.has(channel),
+                health: tenant.channelCredentialHealth.get(channel) || (channel === 'web_widget' ? 'ok' : 'missing'),
+            })),
+            ...operationalBindings.map((binding) => ({
+                connected: tenant.activeAccountBindings.has(binding),
+                health: tenant.channelCredentialHealth.get(binding) || 'missing',
+            })),
+        ];
+        const connectedAssignments = assignmentHealth
+            .filter(({ connected, health }) => connected && !isCredentialFailure(health)).length;
+        const credentialAffectedAssignments = assignmentHealth
+            .filter(({ connected, health }) => connected && isCredentialFailure(health)).length;
+        const credentialWarningAssignments = assignmentHealth
+            .filter(({ connected, health }) => connected && isCredentialWarning(health)).length;
+        const credentialIssueCodes = [...new Set(assignmentHealth
+            .filter(({ connected, health }) => connected && health !== 'ok')
+            .map(({ health }) => health))];
+        const credentialIssue = credentialIssueCodes.length === 0
+            ? null
+            : credentialIssueCodes.length === 1 ? credentialIssueCodes[0] : 'multiple';
 
         const checks: AgentQualityCheck[] = [];
         const add = (check: CheckInput) => checks.push(check);
@@ -581,7 +722,24 @@ export class AgentQualityService {
 
         add({ code: 'channel_assignment', dimension: 'actions_outcomes', status: status(assignedCount > 0), critical: true, weight: 5, href: `/admin/agent/${agent.id}`, evidence: { assigned: assignedCount } });
         add({ code: 'operational_channel_scope', dimension: 'actions_outcomes', status: unsupportedCount > 0 ? 'fail' : 'pass', critical: true, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { unsupportedAssignments: unsupportedCount } });
-        add({ code: 'channel_connection', dimension: 'actions_outcomes', status: assignedCount > 0 ? status(connectedAssignments === assignedCount) : 'fail', critical: true, weight: 5, href: '/admin/channels', evidence: { assigned: assignedCount, connected: connectedAssignments } });
+        add({
+            code: 'channel_connection',
+            dimension: 'actions_outcomes',
+            status: assignedCount === 0 || connectedAssignments < assignedCount
+                ? 'fail'
+                : credentialWarningAssignments > 0 ? 'warning' : 'pass',
+            critical: true,
+            weight: 5,
+            href: '/admin/channels',
+            evidence: {
+                assigned: assignedCount,
+                connected: connectedAssignments,
+                credentialAffectedAssignments,
+                credentialWarningAssignments,
+                hasCredentialIssue: credentialAffectedAssignments + credentialWarningAssignments > 0,
+                credentialIssue,
+            },
+        });
         add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: '/admin/appointments', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
         add({ code: 'tool_catalog', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.catalog, facts.products > 0), critical: tools.catalog?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.catalog?.enabled === true, products: facts.products } });
         add({ code: 'tool_ecommerce', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.ecommerce, facts.products > 0), critical: tools.ecommerce?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.ecommerce?.enabled === true, products: facts.products } });

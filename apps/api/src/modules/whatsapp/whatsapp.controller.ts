@@ -15,7 +15,9 @@ import {
   UnauthorizedException,
   RawBodyRequest,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { WhatsappConnectionService } from './services/whatsapp-connection.service';
@@ -30,6 +32,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Request as ExpressRequest } from 'express';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 @ApiTags('whatsapp')
 @Controller('channels/whatsapp')
@@ -44,6 +47,7 @@ export class WhatsappController {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly channelToken: ChannelTokenService,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   private async resolveSchema(req: any): Promise<string | null> {
@@ -215,6 +219,11 @@ export class WhatsappController {
         this.logger.warn(`Failed to revoke whatsapp_credentials for tenant ${tenantId}: ${e?.message}`);
       }
     }
+
+    this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+      tenantId,
+      source: 'channel_connection',
+    });
 
     // Audit row so this disconnect is traceable later.
     try {

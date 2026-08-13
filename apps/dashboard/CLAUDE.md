@@ -110,7 +110,8 @@ src/
     SessionTimeoutModal.tsx / SessionConflictModal.tsx — Timeout de sesión 60min + conflicto de sesión
     TwoFactorVerification.tsx — Verificación 2FA (TOTP/email/backup)
     SuspendedScreen.tsx     — Full-page block for suspended tenants (only action: logout)
-    OnboardingChecklist.tsx — Progress checklist (generic "connect channel" step)
+    InitialSetupCard.tsx    — Essential setup tasks, plan/role/vertical-aware and fail-closed
+    quality/                — Global Agent Health card, banner and safe quality status UI
     SetupBanner.tsx / AgentReadinessBanner.tsx — Prompts de personalización/readiness del agente
     CopilotWidget.tsx / HelpAssistant.tsx — Copiloto y asistente de ayuda
     tour/ProductTour.tsx    — Tour guiado del producto
@@ -183,7 +184,8 @@ components/
   ui/breadcrumbs.tsx     — Detail page navigation
   ui/skeleton-loader.tsx — Skeleton, SkeletonKPIs, SkeletonTable, SkeletonCards, SkeletonPage
   SetupBanner.tsx        — Persistent amber banner for unconfigured agents
-  OnboardingChecklist.tsx — Progress steps with channel/agent checks
+  InitialSetupCard.tsx    — Essential setup tasks; optional adoption does not affect quality
+  quality/                — Agent Health card and global attention banner
 ```
 
 ## CSS Variables

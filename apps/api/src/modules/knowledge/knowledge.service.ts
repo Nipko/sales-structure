@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -16,6 +17,7 @@ import {
 } from '../../common/utils/safe-outbound-url.util';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 // pdf-parse y mammoth son CommonJS sin tipos ESM utilizables: se cargan con
 // require a propósito. El disable apunta a `no-require-imports` porque
 // typescript-eslint 8 fusionó ahí la vieja `no-var-requires`.
@@ -46,6 +48,7 @@ export class KnowledgeService {
         private readonly throttle: TenantThrottleService,
         private readonly llmKeys: LlmKeyService,
         private readonly llmRouter: LLMRouterService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     /**
@@ -141,6 +144,7 @@ export class KnowledgeService {
             );
 
             await this.invalidateHasKnowledgeCache(tenantId);
+            this.emitQualityDependency(tenantId);
 
             this.logger.log(`Document "${file.name}" ingested: ${chunks.length} chunks`);
             return { ...document, status: 'ready', chunk_count: chunks.length };
@@ -349,6 +353,7 @@ export class KnowledgeService {
                  slug, excerpt, newVersion, detectedLang]);
 
             await this.invalidateHasKnowledgeCache(tenantId);
+            this.emitQualityDependency(tenantId);
             this.logger.log(`Document ${documentId} updated to v${newVersion}: ${chunks.length} chunks re-embedded`);
             return { documentId, chunkCount: chunks.length, status: 'ready', version: newVersion };
         } catch (error: any) {
@@ -990,6 +995,7 @@ export class KnowledgeService {
             [documentId],
         );
         await this.invalidateHasKnowledgeCache(tenantId);
+        this.emitQualityDependency(tenantId);
         this.logger.log(`Deleted document ${documentId} for tenant ${tenantId}`);
     }
 
@@ -1018,6 +1024,7 @@ export class KnowledgeService {
         await this.prisma.executeInTenantSchema(schema,
             `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1::uuid`, params);
 
+        this.emitQualityDependency(tenantId);
         return { success: true };
     }
 
@@ -1059,6 +1066,13 @@ export class KnowledgeService {
 
     private async invalidateHasKnowledgeCache(tenantId: string) {
         await this.redis.del(this.redis.tenantKey(tenantId, 'has_knowledge'));
+    }
+
+    private emitQualityDependency(tenantId: string): void {
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'knowledge',
+        });
     }
 
     // ─── Usage Stats ──────────────────────────────────────────────────────────

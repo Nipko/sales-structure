@@ -1,8 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappCryptoService } from './whatsapp-crypto.service';
 import { TenantThrottleService } from '../../throttle/tenant-throttle.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../../quality/agent-quality-events';
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -21,6 +23,7 @@ export class WhatsappConnectionService {
     private readonly cryptoService: WhatsappCryptoService,
     private readonly configService: ConfigService,
     private readonly throttle: TenantThrottleService,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   /**
@@ -167,6 +170,10 @@ export class WhatsappConnectionService {
     }
 
     this.logger.log(`WhatsApp channel connected for schema ${schemaName}`);
+    this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+      tenantId,
+      source: 'channel_credential',
+    });
     return { success: true, channelId: rows[0].id };
   }
 

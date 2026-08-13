@@ -78,6 +78,39 @@ describe('CopilotController chat boundary', () => {
         expect(chat).not.toHaveBeenCalled();
     });
 
+    it('accepts a bounded agent-quality target for an authenticated administrator', async () => {
+        await controller.chat({
+            ...validBody(),
+            target: {
+                kind: 'agent_quality',
+                agentId: '22222222-2222-4222-8222-222222222222',
+                signalId: '33333333-3333-4333-8333-333333333333',
+            },
+        }, { user: validUser() }, TENANT_ID);
+
+        expect(chat).toHaveBeenLastCalledWith(expect.objectContaining({
+            target: {
+                kind: 'agent_quality',
+                agentId: '22222222-2222-4222-8222-222222222222',
+                signalId: '33333333-3333-4333-8333-333333333333',
+            },
+        }));
+    });
+
+    it('rejects quality targets for tenant agents and invalid identifiers', async () => {
+        await expect(controller.chat({
+            ...validBody(),
+            target: { kind: 'agent_quality', agentId: '22222222-2222-4222-8222-222222222222' },
+        }, { user: { ...validUser(), role: 'tenant_agent' } }, TENANT_ID))
+            .rejects.toBeInstanceOf(ForbiddenException);
+
+        await expect(controller.chat({
+            ...validBody(),
+            target: { kind: 'agent_quality', agentId: 'not-a-uuid' },
+        }, { user: validUser() }, TENANT_ID))
+            .rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it.each([
         ['empty message', { message: '   ' }],
         ['oversized message', { message: 'x'.repeat(2_001) }],

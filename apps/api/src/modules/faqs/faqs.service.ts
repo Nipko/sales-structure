@@ -1,10 +1,12 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { FAQ } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -40,6 +42,7 @@ export class FaqsService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly tenantsService: TenantsService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     private async ensureSchema(tenantId: string): Promise<string> {
@@ -125,6 +128,7 @@ export class FaqsService {
             throw e;
         }
         await this.invalidateCache(tenantId);
+        this.emitQualityDependency(tenantId);
         return this.rowToFaq(rows[0]);
     }
 
@@ -151,6 +155,7 @@ export class FaqsService {
         ) as any[];
         if (rows.length === 0) throw new NotFoundException('FAQ not found');
         await this.invalidateCache(tenantId);
+        this.emitQualityDependency(tenantId);
         return this.rowToFaq(rows[0]);
     }
 
@@ -161,6 +166,7 @@ export class FaqsService {
             id,
         );
         await this.invalidateCache(tenantId);
+        this.emitQualityDependency(tenantId);
     }
 
     /**
@@ -214,6 +220,13 @@ export class FaqsService {
 
     private async invalidateCache(tenantId: string): Promise<void> {
         await this.redis.del(`faqs:${tenantId}:list`);
+    }
+
+    private emitQualityDependency(tenantId: string): void {
+        this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+            tenantId,
+            source: 'knowledge',
+        });
     }
 
     private rowToFaq(r: any): FAQ {

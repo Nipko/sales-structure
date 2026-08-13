@@ -8,7 +8,9 @@ import {
     InternalServerErrorException,
     Logger,
     NotFoundException,
+    Optional,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
@@ -34,6 +36,7 @@ import {
     tenantPurgingFenceKey,
 } from '../../common/utils/tenant-lifecycle.util';
 import { TenantDetailResponseDto } from './dto/tenant-detail-response.dto';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 export const TENANT_PLAN_SLUGS = ['emprendedor', 'starter', 'pro', 'enterprise', 'custom'] as const;
 export type TenantPlanSlug = typeof TENANT_PLAN_SLUGS[number];
@@ -85,6 +88,7 @@ export class TenantsService {
         @InjectQueue('automation-jobs') private automationQueue: Queue,
         @InjectQueue('nurturing') private nurturingQueue: Queue,
         @InjectQueue('conversation-snooze') private snoozeQueue: Queue,
+        @Optional() private readonly events?: EventEmitter2,
     ) { }
 
     /**
@@ -936,6 +940,18 @@ export class TenantsService {
         await this.redis.del(tenantDetailCacheKey(id));
         await this.redis.del(legacyTenantConfigCacheKey(id));
         await this.redis.del(`tenant:${id}:schema`);
+
+        const qualitySettingsChanged = requestedSettings && [
+            'businessHours',
+            'chatReasons',
+            'customerTypes',
+        ].some((key) => Object.prototype.hasOwnProperty.call(requestedSettings, key));
+        if (qualitySettingsChanged) {
+            this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
+                tenantId: id,
+                source: 'tenant_settings',
+            });
+        }
 
         return tenant;
     }

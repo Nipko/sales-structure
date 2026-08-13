@@ -9,11 +9,26 @@ import { VerticalsService } from '../verticals/verticals.service';
 import * as path from 'path';
 import * as fs from 'fs';
 import { CopilotRateLimitService } from './copilot-rate-limit.service';
+import { AgentQualityService } from '../quality/agent-quality.service';
+import { AgentQualitySignalService } from '../quality/agent-quality-signal.service';
+
+export interface CopilotQualityTarget {
+    kind: 'agent_quality';
+    agentId: string;
+    signalId?: string;
+}
+
+export interface CopilotChatAction {
+    code: 'open_quality_center' | 'open_quality_action';
+    labelKey: 'openCenter' | 'resolvePriority';
+    href: string;
+}
 
 // ─── Existing interfaces (platform copilot chat) ────────────────────────────
 
 export interface CopilotChatRequest {
     message: string;
+    target?: CopilotQualityTarget;
     context: {
         page: string;
         tenantId: string;
@@ -40,6 +55,7 @@ export interface CopilotChatResponse {
     reply: string;
     model?: string;
     tokensUsed?: number;
+    actions?: CopilotChatAction[];
 }
 
 // ─── New interfaces (conversation copilot) ──────────────────────────────────
@@ -82,6 +98,8 @@ export class CopilotService {
         private throttle: TenantThrottleService,
         private verticals: VerticalsService,
         private rateLimiter: CopilotRateLimitService = null as any,
+        private agentQuality: AgentQualityService = null as any,
+        private qualitySignals: AgentQualitySignalService = null as any,
     ) {}
 
     // ─── Per-plan capability context ────────────────────────────────────────
@@ -415,6 +433,99 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
             this.logger.warn(`buildVerticalContext failed: ${error.message}`);
             return '';
         }
+    }
+
+    private safeAdminHref(value: unknown): string | null {
+        if (typeof value !== 'string'
+            || !(value === '/admin' || value.startsWith('/admin/'))
+            || value.startsWith('//')
+            || value.includes('..')) return null;
+        return value.slice(0, 512);
+    }
+
+    /** Bounded, server-derived quality context. It intentionally excludes
+     * transcripts, judge text, prompts, issue labels and conversation IDs. */
+    private async buildAgentQualityContext(
+        tenantId: string,
+        target: CopilotQualityTarget | undefined,
+        userRole: string,
+    ): Promise<{ prompt: string; actions: CopilotChatAction[] }> {
+        if (!target || !['super_admin', 'tenant_admin', 'tenant_supervisor'].includes(userRole)) {
+            return { prompt: '', actions: [] };
+        }
+        if (!this.agentQuality) return { prompt: '', actions: [] };
+
+        const overview = await this.agentQuality.getOverview(tenantId, target.agentId);
+        let requestedSignal = null;
+        if (target.signalId && this.qualitySignals) {
+            try {
+                requestedSignal = await this.qualitySignals.getSignalForAssistant(
+                    tenantId,
+                    target.signalId,
+                    target.agentId,
+                );
+            } catch (error: any) {
+                // A signal can be resolved or superseded between rendering the
+                // dashboard and opening Assist. The current overview remains
+                // authoritative; never turn that normal race into a broken chat.
+                this.logger.debug(`Quality signal is no longer active: ${error?.message || error}`);
+            }
+        }
+        const canOpenRepairActions = userRole === 'tenant_admin' || userRole === 'super_admin';
+        const recommendations = overview.recommendations.slice(0, 5).map((item) => ({
+            code: item.code,
+            pillar: item.pillar,
+            dimension: item.dimension,
+            severity: item.severity,
+            href: canOpenRepairActions ? this.safeAdminHref(item.href) : null,
+            evidenceCount: typeof item.evidenceCount === 'number' ? item.evidenceCount : null,
+        }));
+        const qualityContext = {
+            // Agent names are tenant-controlled free text. Keep them in the UI,
+            // but never place them in the system prompt where they could act as
+            // instructions. The authenticated target is represented by version.
+            agent: { version: overview.agent.version },
+            status: overview.status,
+            nextMilestone: overview.nextMilestone,
+            preparation: {
+                status: overview.preparation.status,
+                criticalBlockers: overview.preparation.criticalBlockers.slice(0, 10),
+            },
+            tested: { status: overview.tested.status, stale: overview.tested.stale },
+            production: {
+                status: overview.production.status,
+                sampleSize: overview.production.sampleSize,
+                minimumSample: overview.production.minimumSample,
+            },
+            selectedSignal: requestedSignal ? {
+                code: requestedSignal.code,
+                severity: requestedSignal.severity,
+                pillar: requestedSignal.pillar,
+                dimension: requestedSignal.dimension,
+                evidenceCount: requestedSignal.evidenceCount,
+                href: canOpenRepairActions ? this.safeAdminHref(requestedSignal.href) : null,
+            } : null,
+            recommendations,
+            generatedAt: overview.generatedAt,
+        };
+        const centerHref = `/admin/agent/quality?agent=${encodeURIComponent(overview.agent.id)}`;
+        const preferredHref = canOpenRepairActions
+            ? this.safeAdminHref(requestedSignal?.href) || recommendations.find((item) => item.href)?.href || centerHref
+            : centerHref;
+        const actions: CopilotChatAction[] = [
+            {
+                code: 'open_quality_center',
+                labelKey: 'openCenter',
+                href: centerHref,
+            },
+        ];
+        if (preferredHref && preferredHref !== actions[0].href) {
+            actions.unshift({ code: 'open_quality_action', labelKey: 'resolvePriority', href: preferredHref });
+        }
+        return {
+            prompt: `## ESTADO REAL DEL AGENTE (autoritativo, derivado del tenant autenticado)\n${JSON.stringify(qualityContext)}\nREGLA: explica este estado y prioriza una sola acción. No inventes evidencia, puntajes, causas ni enlaces. No afirmes que un cambio fue aplicado.`,
+            actions,
+        };
     }
 
     // ─── Conversation Copilot Methods ───────────────────────────────────────
@@ -805,11 +916,20 @@ Reglas estrictas:
 
         // The user's live plan + per-plan capability matrix, so "can I do X on my
         // plan?" is answered accurately and personally.
-        const [planContext, verticalContext] = await Promise.all([
+        const [planContext, verticalContext, qualityContext] = await Promise.all([
             request.context.userRole === 'tenant_admin'
                 ? this.buildPlanContext(tenantId)
                 : Promise.resolve(''),
             this.buildVerticalContext(tenantId),
+            this.buildAgentQualityContext(tenantId, request.target, request.context.userRole).catch((error: any) => {
+                this.logger.warn(`Agent quality context unavailable: ${error?.message || error}`);
+                if (!request.target) return { prompt: '', actions: [] };
+                const href = `/admin/agent/quality?agent=${encodeURIComponent(request.target.agentId)}`;
+                return {
+                    prompt: '## ESTADO REAL DEL AGENTE\nEl análisis de calidad no está disponible en este momento. No infieras su estado ni sus causas; indica que se debe reintentar desde el Centro de calidad.',
+                    actions: [{ code: 'open_quality_center' as const, labelKey: 'openCenter' as const, href }],
+                };
+            }),
         ]);
 
         const systemPrompt = `Eres **Parallly Assist**, el asistente oficial de ayuda de la plataforma Parallly.
@@ -819,6 +939,7 @@ Tu única misión: ayudar a los usuarios (administradores, supervisores y agente
 ${kbContext}
 ${planContext ? '\n' + planContext + '\n' : ''}
 ${verticalContext ? '\n' + verticalContext + '\n' : ''}
+${qualityContext.prompt ? '\n' + qualityContext.prompt + '\n' : ''}
 
 ## REGLAS CRÍTICAS:
 1. **RESPONDE SOLO DESDE LA BASE DE CONOCIMIENTO.** Toda afirmación sobre la plataforma (menús, funciones, límites, precios, pasos) debe salir de los artículos de arriba. Si la información no está ahí, dilo con honestidad: "No tengo esa información con certeza" y sugiere escribir a soporte (https://parallly-chat.cloud/support). NUNCA inventes menús, funciones, precios ni límites.
@@ -829,6 +950,7 @@ ${verticalContext ? '\n' + verticalContext + '\n' : ''}
 6. **FORMATO:** Markdown limpio: pasos numerados, viñetas, **negritas** para nombres de menús y botones. Respuestas concisas; máximo ~10 líneas salvo que pidan detalle.
 7. **CONSCIENCIA DE PLAN:** si hay un bloque "PLAN DEL USUARIO", úsalo para responder con precisión qué puede o no hacer el usuario según SU plan; para límites/disponibilidad por plan, ese bloque manda sobre cualquier cifra de los artículos. Si algo no está en su plan, indícalo y menciona desde qué plan se obtiene. Si NO hay bloque de plan, no reveles ni infieras el plan, las cuotas o la facturación del tenant; indica que esa información corresponde al administrador.
 8. **CONTEXTO VERTICAL:** si existe el bloque de contexto vertical, úsalo para priorizar ejemplos relevantes. No anuncies herramientas o flujos verticales que no aparezcan en effectiveCapabilities.
+9. **CALIDAD DEL AGENTE:** si existe el bloque de estado real, ese bloque manda sobre explicaciones genéricas de la KB. Explica evidencia y prioridad sin revelar identificadores internos, transcripciones ni texto de clientes. Los cambios siempre requieren revisión humana.
 
 ## Contexto de la consulta:
 - Rol autenticado: ${request.context.userRole}
@@ -862,11 +984,13 @@ ${verticalContext ? '\n' + verticalContext + '\n' : ''}
                 reply: response.content || this.getFallbackResponse(locale),
                 model: response.routingDecision?.selectedModel?.id,
                 tokensUsed: response.usage?.totalTokens,
+                actions: qualityContext.actions,
             };
         } catch (error: any) {
             this.logger.error('Copilot chat error, returning fallback:', error);
             return {
-                reply: this.getFallbackResponse(locale)
+                reply: this.getFallbackResponse(locale),
+                actions: qualityContext.actions,
             };
         }
     }

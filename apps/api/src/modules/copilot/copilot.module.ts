@@ -7,9 +7,10 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { VerticalsModule } from '../verticals/verticals.module';
 import { CopilotChatRateLimitGuard } from './copilot-chat-rate-limit.guard';
 import { CopilotRateLimitService } from './copilot-rate-limit.service';
+import { QualityModule } from '../quality/quality.module';
 
 @Module({
-    imports: [ConfigModule, AIModule, KnowledgeModule, VerticalsModule],
+    imports: [ConfigModule, AIModule, KnowledgeModule, VerticalsModule, QualityModule],
     controllers: [CopilotController],
     providers: [CopilotService, CopilotChatRateLimitGuard, CopilotRateLimitService],
     exports: [CopilotService],

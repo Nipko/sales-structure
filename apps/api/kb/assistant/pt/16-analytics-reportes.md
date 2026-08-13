@@ -14,7 +14,7 @@ As análises são para administradores e supervisores. Usuários com papel de ag
 
 ## O painel principal (Dashboard)
 
-Ao fazer login, você chega ao **Dashboard**: sua visão geral do dia. Ele se adapta ao seu setor — um consultório vê "Agendamentos hoje" e "Pacientes novos"; um restaurante vê "Pedidos hoje" e "Receita do dia"; um negócio geral vê "Conversas hoje", "Leads novos" e "Taxa de resposta". Se a sua conta for nova, você também verá um checklist com os passos pendentes para ativá-la (conectar um canal, personalizar seu agente etc.).
+Ao fazer login, você chega ao **Dashboard**: sua visão geral do dia. Ele se adapta ao seu setor — um consultório vê "Agendamentos hoje" e "Pacientes novos"; um restaurante vê "Pedidos hoje" e "Receita do dia"; um negócio geral vê "Conversas hoje", "Leads novos" e "Taxa de resposta". Admin/Supervisor também vê **Saúde dos seus agentes**; o cartão temporário **Primeiros passos** aparece enquanto houver etapas essenciais.
 
 ## Como ver as métricas gerais do negócio
 

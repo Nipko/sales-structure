@@ -1,18 +1,30 @@
 ---
 id: centro-calidad-agente
-title: "Centre de qualité de l'agent"
-routes: ["/admin/agent/quality"]
+title: "Santé des agents et Centre de qualité"
+routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "pret pour pilote", "configuration incomplete", "revision requise", "recommandations", "faiblesses de l agent", "ameliorer agent"]
+keywords: ["sante des agents", "centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "configuration incomplete", "actions critiques", "badge", "reporter", "Parallly Assist", "ameliorer agent"]
 ---
 
-# Centre de qualité de l'agent
+# Santé des agents et Centre de qualité
 
-Le **Centre de qualité** indique ce qu'il reste à configurer, ce qui a été testé et ce
-qui se passe dans les conversations réelles pour chaque agent IA. Il se trouve dans
-**Insights → Centre de qualité**. Admin et Supervisor peuvent le consulter ; seul
+La **Santé des agents** indique ce qu'il reste à configurer, ce qui a été testé et ce
+qui se passe dans les conversations réelles pour chaque agent IA. Le détail se trouve
+dans **Insights → Santé des agents**. Admin et Supervisor peuvent le consulter ; seul
 Admin peut modifier les agents, connexions ou paramètres dans **IA et croissance →
 Agent IA**.
+
+## Où elle apparaît et ce qu'elle signifie
+
+- La carte **Santé de vos agents** de l'Accueil résume toujours le pire état et les
+  actions ouvertes pour Admin/Supervisor.
+- Le badge **Insights → Santé des agents** compte uniquement les signaux **Critiques
+  et Élevés ouverts**. C'est un compteur d'attention, pas un score.
+- La bannière globale apparaît seulement pour un signal Critique ouvert ou un état
+  **Agent à risque**. Vous pouvez **Examiner**, **Demander à Assist** ou **Reporter de
+  24 h**.
+- Reporter masque temporairement ce signal, sans le corriger. Ces alertes restent dans
+  le dashboard et n'envoient ni e-mail ni notification push.
 
 ## Les trois niveaux de preuve
 
@@ -50,6 +62,13 @@ garantit des résultats commerciaux.
 
 ## Ce qu'il faut améliorer en premier
 
+Parallly conserve des snapshots d'état et des signaux par agent, version et cause. Les
+modifications de l'agent, résultats QA, évaluations et simulations actualisent les
+preuves. Les récurrences sont regroupées pour éviter les doublons, et un passage
+périodique limité récupère les événements manqués. Un signal peut être ouvert,
+reconnu, reporté, résolu ou remplacé. Reconnaître ou reporter gère l'attention ; seules
+de nouvelles preuves résolvent le signal.
+
 Ouvrez d'abord les recommandations Critiques et Élevées. Chacune identifie le niveau
 et la dimension concernés et, lorsque l'information existe, le nombre de scénarios ou
 d'interactions à l'origine du signal. Utilisez-les pour distinguer :
@@ -65,11 +84,26 @@ contenus. Admin effectue la modification, relance les tests et vérifie si de no
 preuves confirment l'amélioration ; Supervisor peut examiner les résultats et
 coordonner le suivi.
 
+## Demander à Parallly Assist
+
+Depuis l'Accueil ou la bannière globale, **Demander à Assist** ouvre le chat sur
+l'agent et le signal choisis. Le serveur valide tenant, rôle, agent et signal, puis
+Assist explique une priorité selon l'état actuel. Admin peut recevoir une route de
+correction ; Supervisor reçoit la route d'examen sans obtenir de droit de modification.
+
+Le contexte contient seulement l'état, la version, le jalon, les codes de blocage, la
+fraîcheur des tests, l'échantillon, la gravité, le pilier, la dimension et les
+compteurs. Il exclut transcriptions, texte des clients, IDs de conversation, prompts,
+requêtes de recherche, texte libre de l'évaluateur et secrets. Assist n'applique pas
+de changement et ne lance aucune communication externe.
+
 ## Questions fréquentes
 
 **La checklist de configuration est-elle identique au Centre de qualité ?**
-Non. La checklist guide l'adoption initiale. Le centre ajoute des tests reproductibles
-et des preuves de production attribuées.
+Non. La carte **Mise en route** de l'Accueil affiche uniquement les étapes essentielles
+disponibles pour votre forfait, rôle et secteur, puis disparaît une fois terminée.
+Elle remplace l'ancienne pastille flottante `8/9`. La Santé des agents ajoute tests et
+preuves réelles.
 
 **Un bon score de simulation suffit-il pour publier ?**
 Non. Il réduit le risque, mais doit être examiné avec les blocages critiques, la

@@ -30,7 +30,7 @@ del dashboard por sí solo no lo publica.
 | Configuración | `_settings-config.ts` |
 | Plan vigente del tenant | Contexto de plan inyectado desde `billing_plans` |
 | Vertical y herramientas | Manifest v2 y capacidades efectivas del tenant |
-| Centro de calidad del agente | `agent-quality-contract.ts`, guards de `/quality/:tenantId/agents*` y `/admin/agent/quality` |
+| Salud y calidad del agente | `agent-quality-contract.ts`, guards de `/quality/:tenantId/agents*`, `/attention-summary`, `/signals*` y `/admin/agent/quality` |
 | Manual narrativo tenant | `docs/user-manual.md` como apoyo editorial, no como fuente runtime |
 | App móvil | `docs/mobile-user-manual.md` contrastado con `apps/mobile/src` |
 
@@ -58,14 +58,28 @@ Son dos usos del mismo módulo, con fuentes y objetivos diferentes:
 - **Parallly Assist** llama `POST /api/v1/copilot/chat`. Orienta sobre la plataforma
   usando la KB localizada y contexto tenant/rol/vertical; el detalle de plan se
   agrega solo para Tenant Admin.
+- **Coach contextual de calidad** usa el mismo `/copilot/chat` con un `target`
+  opcional `agent_quality`, únicamente para Admin/Supervisor. El servidor vuelve a
+  validar agente y señal dentro del tenant y construye un resumen acotado del estado
+  vigente; no confía en datos de calidad escritos en el mensaje.
 - **Copilot de conversación** usa
   `/copilot/:conversationId/suggestions`, `/summary`, `/intent`, `/rewrite` y `/ask`.
   Ayuda a operar un hilo autorizado; `ask` puede combinar conversación y RAG tenant.
   Los cinco endpoints tienen la misma lista explícita de roles tenant que `/chat`.
 
-El body de `/chat` solo acepta `{message, page, locale, history}`. Nombre, rol y tenant
-se derivan server-side del JWT y TenantGuard; el asistente no debe confiar en una
-identidad o rol declarados dentro del mensaje.
+El body de `/chat` acepta `{message, page, locale, history,target?}`. `target`, cuando
+existe, solo admite `{kind:"agent_quality",agentId,signalId?}` con UUIDs válidos y no
+está disponible para Tenant Agent. Nombre, rol y tenant se derivan server-side del JWT
+y TenantGuard; el asistente no debe confiar en una identidad, rol o evidencia de
+calidad declarados dentro del mensaje.
+
+El contexto de calidad inyectado al modelo contiene códigos y agregados: versión,
+estado, siguiente hito, bloqueadores codificados, vigencia de pruebas, muestra actual
+y mínima, gravedad, pilar, dimensión y conteos. Excluye nombre del agente como
+instrucción, transcripciones, texto de clientes, IDs de conversación, prompts, texto
+libre del juez, consultas de recuperación, fingerprints, actores y secretos. La
+respuesta solo puede explicar una prioridad y devolver rutas internas validadas;
+nunca confirma una edición ni ejecuta el cambio.
 
 ## Cobertura obligatoria
 
@@ -78,9 +92,14 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
 4. Las 18 verticales, diferenciando con claridad las que aún no tienen certificación
    funcional integral.
 5. App móvil y límites frente a la web.
-6. Tour de configuración, incluido su comportamiento por rol y en móvil.
-7. Centro de calidad por agente: tres pilares, estados, atribución por versión,
-   evidencia insuficiente y diferencia entre lectura Supervisor y edición Admin.
+6. Tour de configuración y la tarjeta Puesta en marcha esencial que reemplaza la
+   antigua pastilla flotante de progreso, incluido su comportamiento por rol y plan.
+7. Salud y Centro de calidad por agente: visibilidad en Inicio/Insights, badge solo
+   Críticas+Altas abiertas, aviso global crítico/En riesgo con posposición, tres
+   pilares, estados, atribución por versión, evidencia insuficiente y diferencia entre
+   lectura Supervisor y edición Admin.
+8. Coach contextual de calidad: contexto server-side acotado, privacidad, revisión
+   humana y ausencia de autoedición o comunicaciones externas.
 
 ## Reglas editoriales
 
@@ -95,6 +114,13 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
 - No presentar un estado o puntaje del Centro de calidad como certificación, garantía
   comercial o permiso para publicar sin revisión; tampoco prometer autoedición de
   prompts, políticas o conocimiento.
+- No describir el badge como un score: cuenta solo señales Críticas y Altas abiertas.
+  Posponer o reconocer administra la atención, no resuelve la causa.
+- No prometer correo ni push para Salud de agentes. La superficie proactiva vigente es
+  interna del dashboard.
+- No incluir transcripciones, datos de clientes, IDs de conversación, prompts, texto
+  libre del juez, consultas RAG, secretos ni actores de una señal en el contexto de
+  Parallly Assist.
 - No prometer como operativo un control que la KB marca `no certificado`; las
   limitaciones de pipeline, campañas, calendario, drip, CSAT, Email y triggers deben
   mantenerse coherentes en todos los artículos que las mencionen.

@@ -14,7 +14,7 @@ Les analyses sont réservées aux administrateurs et aux superviseurs. Les utili
 
 ## Le tableau de bord principal (Dashboard)
 
-Dès votre connexion, vous arrivez sur le **Dashboard** : votre vue d'ensemble de la journée. Il s'adapte à votre secteur — un cabinet médical voit « Rendez-vous du jour » et « Nouveaux patients » ; un restaurant voit « Commandes du jour » et « Revenus du jour » ; une activité générale voit « Conversations du jour », « Nouveaux leads » et « Taux de réponse ». Si votre compte est récent, vous verrez aussi une liste de contrôle avec les étapes qu'il reste à accomplir pour l'activer (connecter un canal, personnaliser votre agent, etc.).
+Dès votre connexion, vous arrivez sur le **Dashboard** : votre vue d'ensemble de la journée. Il s'adapte à votre secteur — un cabinet médical voit « Rendez-vous du jour » et « Nouveaux patients » ; un restaurant voit « Commandes du jour » et « Revenus du jour » ; une activité générale voit « Conversations du jour », « Nouveaux leads » et « Taux de réponse ». Admin/Supervisor voit aussi **Santé de vos agents** ; la carte temporaire **Mise en route** apparaît tant que des étapes essentielles restent à faire.
 
 ## Comment consulter les métriques générales de l'entreprise
 

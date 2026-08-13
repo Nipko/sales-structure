@@ -75,10 +75,14 @@ describe('ensurePrimaryPipeline', () => {
     });
 
     it('remapea el historial dentro del cleanup atómico del template antes de borrar', () => {
+        // Los saltos se normalizan a LF: el .sql se versiona con LF pero un
+        // checkout en Windows lo materializa con CRLF, y las búsquedas de abajo
+        // incluyen el salto de línea. Sin esto la prueba falla sólo en Windows,
+        // por el final de línea y no por el SQL.
         const tenantSchema = readFileSync(
             resolve(__dirname, '../../../prisma/tenant-schema.sql'),
             'utf8',
-        );
+        ).replace(/\r\n/g, '\n');
         const blockStart = tenantSchema.indexOf('DO $pipeline_stage_cleanup$');
         const lock = tenantSchema.indexOf('"stage_transitions"\n        IN SHARE ROW EXCLUSIVE MODE', blockStart);
         const historyUpdate = tenantSchema.indexOf('UPDATE "{{SCHEMA_NAME}}"."stage_transitions" history', blockStart);

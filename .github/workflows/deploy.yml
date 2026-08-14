@@ -311,6 +311,14 @@ jobs:
       - name: TypeScript check (WhatsApp)
         run: cd apps/whatsapp && npx tsc --noEmit
 
+      # La pantalla de login muestra esto al público. El SHA del commit no le
+      # dice nada a un cliente y a un atacante le regala la revisión exacta que
+      # está corriendo; la versión del producto informa lo mismo que necesita
+      # soporte sin señalar una línea de código.
+      - name: Resolve app version
+        id: appversion
+        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -412,7 +420,7 @@ jobs:
             NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID=${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
             NEXT_PUBLIC_INSTAGRAM_APP_ID=1472258884595741
             NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback
-            NEXT_PUBLIC_APP_VERSION=${{ github.sha }}
+            NEXT_PUBLIC_APP_VERSION=${{ steps.appversion.outputs.value }}
             NEXT_PUBLIC_MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}
             NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
           cache-from: type=gha,scope=billing-v2

@@ -311,13 +311,17 @@ export default function LoginPage() {
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                 {t('email')}
                             </label>
+                            {/* El ejemplo del campo es genérico a propósito: el
+                                anterior nombraba el dominio real de la empresa y
+                                sugería que existe una cuenta `admin@` ahí — media
+                                credencial servida en la pantalla de login. */}
                             <div className="relative">
                                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
                                     type="email"
                                     value={email}
                                     onChange={e => setEmail(e.target.value)}
-                                    placeholder="admin@parallext.com"
+                                    placeholder={t('emailPlaceholder')}
                                     required
                                     className="w-full py-3 px-3.5 pl-11 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                 />
@@ -382,21 +386,29 @@ export default function LoginPage() {
                     </>)}
                 </div>
 
-                {/* Signup Link */}
-                <div className="text-center mt-5">
+                {/* Crear cuenta — es la acción del visitante que TODAVÍA no es
+                    cliente, así que no puede ser el renglón más chico de la
+                    pantalla. Va como botón secundario: visible, sin competir con
+                    el de iniciar sesión. */}
+                <div className="mt-5 text-center">
+                    <p className="text-[13px] text-muted-foreground">{t('noAccount')}</p>
                     <Link
                         href="/signup"
-                        className="text-muted-foreground text-[13px] no-underline hover:text-indigo-500 transition-colors"
+                        className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-950/30 px-4 py-2.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300 no-underline transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
                     >
-                        {t('noAccount')} <span className="font-semibold">{t('createFreeAccount')} →</span>
+                        {t('createFreeAccount')} →
                     </Link>
                 </div>
 
                 {/* Footer */}
                 <p className="text-center text-xs text-neutral-400 mt-6">
                     {t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a>
+                    {/* Versión del producto, no el commit. El SHA no le dice nada
+                        a un cliente y a un atacante le regala la revisión exacta
+                        que corre, que es media pista para buscar un fallo
+                        conocido. */}
                     {process.env.NEXT_PUBLIC_APP_VERSION && (
-                        <span className="ml-2 opacity-60">· build {process.env.NEXT_PUBLIC_APP_VERSION.slice(0, 7)}</span>
+                        <span className="ml-2 opacity-60">· v{process.env.NEXT_PUBLIC_APP_VERSION}</span>
                     )}
                 </p>
             </div>

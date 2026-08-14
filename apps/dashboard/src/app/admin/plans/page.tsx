@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { api, type MercadoPagoProviderStatus, type PaymentProvidersStatus } from "@/lib/api";
+import { api, type MercadoPagoProviderStatus, type PaymentProvidersStatus, type PaymentProviderName } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
     RefreshCw, Users, ToggleLeft, ToggleRight, CreditCard,
@@ -74,6 +74,28 @@ function countryDisplayName(country: BillingCountry, locale: string): string {
     } catch {
         return country;
     }
+}
+
+/**
+ * Los precios se editan en UNIDADES de la moneda, con separadores de miles.
+ *
+ * Antes el campo mostraba los centavos crudos (`12570000` para 125.700 COP) y
+ * parseaba con `parseInt(valor) || 0`. Dos formas de perder plata sin aviso:
+ * escribir `1.282.140` guardaba **1** —parseInt corta en el primer punto— y
+ * cualquier símbolo daba NaN, o sea **0**. Y leer siete dígitos sin separación
+ * invita a equivocarse en un cero.
+ */
+function amountInputValue(amountCents: number | undefined, locale: string): string {
+    if (!Number.isSafeInteger(amountCents) || amountCents === undefined) return "";
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(amountCents / 100);
+}
+
+/** Cualquier cosa que el usuario escriba o pegue → centavos. */
+function parseAmountInput(raw: string): number {
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) return 0;
+    const units = Number(digits);
+    return Number.isSafeInteger(units) ? units * 100 : 0;
 }
 
 function formatLocalPrice(amountCents: number | undefined, currency: string, locale: string): string {
@@ -209,19 +231,29 @@ export default function PlansPage() {
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
     const [providerStatus, setProviderStatus] = useState<MercadoPagoProviderStatus | null>(null);
     const [routing, setRouting] = useState<PaymentProvidersStatus["routing"] | null>(null);
+    // Operador que el backend resuelve para el país elegido, failover incluido.
+    const [effectiveProvider, setEffectiveProvider] = useState<PaymentProviderName | null>(null);
     const [syncing, setSyncing] = useState<string | null>(null);
     const [reconciling, setReconciling] = useState(false);
     const [selectedCountry, setSelectedCountry] = useState<BillingCountry>("CO");
 
     const selectedCurrency = BILLING_CURRENCY_BY_COUNTRY[selectedCountry];
 
-    // Quién cobra en el país elegido. Media pantalla —sincronizar planes, ids de
-    // plan remoto, estado del colector— sólo significa algo bajo MercadoPago: es
-    // el único operador con catálogo remoto. Mostrarlo cuando el país cobra por
-    // otro no es sólo ruido, sugiere un trabajo pendiente que no existe.
-    const countryProvider = routing
-        ? (routing.defaultByCountry[selectedCountry] ?? routing.defaultByCountry["*"] ?? null)
-        : null;
+    // Quién cobra REALMENTE en el país elegido. Media pantalla —sincronizar
+    // planes, ids de plan remoto, estado del colector— sólo significa algo bajo
+    // MercadoPago: es el único operador con catálogo remoto. Mostrarlo cuando el
+    // país cobra por otro no es sólo ruido, sugiere un trabajo pendiente que no
+    // existe.
+    //
+    // Se pregunta por el operador EFECTIVO, no por la tabla de ruteo: cuando el
+    // preferido no puede tomar el país, el router hace failover a otro y sigue
+    // cobrando. Leer sólo `defaultByCountry` mostraba la marca del que figura en
+    // la configuración mientras el dinero pasa por otro — exactamente el caso de
+    // un `'*': 'mercadopago'` sin credenciales que termina cobrando por Wompi.
+    const countryProvider = effectiveProvider
+        ?? (routing
+            ? (routing.defaultByCountry[selectedCountry] ?? routing.defaultByCountry["*"] ?? null)
+            : null);
     // Si el ruteo no cargó se muestra todo, como antes: esconder herramientas por
     // una lectura fallida es peor que mostrar una de más.
     const countryBilledByMp = !routing || countryProvider === "mercadopago";
@@ -246,6 +278,20 @@ export default function PlansPage() {
     }, []);
 
     useEffect(() => { load(); }, [load]);
+
+    // El operador efectivo depende del país elegido, así que se re-resuelve al
+    // cambiarlo. Si la consulta falla se deja en null y la pantalla cae a la
+    // tabla de ruteo: peor información, pero nunca una pantalla vacía.
+    useEffect(() => {
+        let cancelled = false;
+        api.getBillingPublicConfig(selectedCountry)
+            .then((res) => {
+                if (cancelled) return;
+                setEffectiveProvider(res.success && res.data?.provider ? res.data.provider : null);
+            })
+            .catch(() => { if (!cancelled) setEffectiveProvider(null); });
+        return () => { cancelled = true; };
+    }, [selectedCountry]);
 
     useEffect(() => {
         if (toast) {
@@ -720,12 +766,12 @@ export default function PlansPage() {
                                 return (
                                     <td key={p.slug} className={tdCls}>
                                         <input
-                                            type="number"
-                                            min={p.slug === "custom" ? 0 : 1}
-                                            className={inputCls}
-                                            value={amountCents ?? ""}
+                                            type="text"
+                                            inputMode="numeric"
+                                            className={`${inputCls} text-right font-mono`}
+                                            value={amountInputValue(amountCents, locale)}
                                             onChange={e => {
-                                                const val = parseInt(e.target.value) || 0;
+                                                const val = parseAmountInput(e.target.value);
                                                 const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
                                                 setEditBuffer({
                                                     ...editBuffer,
@@ -770,12 +816,12 @@ export default function PlansPage() {
                                 return (
                                     <td key={p.slug} className={tdCls}>
                                         <input
-                                            type="number"
-                                            min={1}
-                                            className={inputCls}
-                                            value={annualCents ?? ""}
+                                            type="text"
+                                            inputMode="numeric"
+                                            className={`${inputCls} text-right font-mono`}
+                                            value={amountInputValue(annualCents, locale)}
                                             onChange={e => {
-                                                const val = parseInt(e.target.value) || 0;
+                                                const val = parseAmountInput(e.target.value);
                                                 const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
                                                 setEditBuffer({
                                                     ...editBuffer,
@@ -1021,7 +1067,11 @@ export default function PlansPage() {
 
             {/* Cache invalidation buttons */}
             <div className={`${sectionCls} p-4`}>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">{t("invalidateCache")}</h3>
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("invalidateCache")}</h3>
+                {/* Guardar un plan ya invalida su caché. Esto queda para el caso
+                    raro en que un tenant siga viendo límites viejos — sin decirlo,
+                    parece un paso obligatorio del flujo y no lo es. */}
+                <p className="mt-1 mb-3 text-xs text-neutral-500 dark:text-neutral-400">{t("invalidateCacheHint")}</p>
                 <div className="flex flex-wrap gap-2">
                     {plans.map(p => (
                         <button

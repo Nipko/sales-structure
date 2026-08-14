@@ -361,9 +361,13 @@ export default function BillingPage() {
                 && !!subscription.trialEndsAt
                 && new Date(subscription.trialEndsAt).getTime() > Date.now()
                 && !subscription.providerBacked;
+            // Un trial local no exige medio de pago para MOVERSE entre planes
+            // gratuitos, pero sí para saltar a uno que se cobra al vencer: sin
+            // esto el botón llamaba al upgrade, el backend lo rechazaba por no
+            // tener con qué cobrar y desde afuera parecía que no pasaba nada.
             const requiresMethod = !subscription
                 ? plan?.requiresPaymentMethodAtSignup
-                : !localTrial;
+                : (!localTrial || !!plan?.requiresPaymentMethodAtSignup);
             // An operator billed by our own engine charges the method already on
             // file, so a stored source satisfies the requirement; MercadoPago mints
             // a token per mandate and always needs a fresh one.
@@ -413,7 +417,24 @@ export default function BillingPage() {
                     if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
                     throw new Error((res as any)?.error || t("actionFailed"));
                 }
-                setToast(t("planChanged"));
+                // Cambiar de plan DURANTE un trial no cobra nada todavía, y la
+                // pantalla sigue diciendo "prueba" — con razón. Sin explicarlo, el
+                // cambio se siente como que no pasó nada: el mensaje tiene que
+                // decir qué se contrató, hasta cuándo sigue la prueba y qué se
+                // cobrará ese día.
+                const trialEnd = subscription?.trialEndsAt ? new Date(subscription.trialEndsAt) : null;
+                if (localTrial && trialEnd && plan) {
+                    const amount = billingCycle === "annual" && plan.displayPriceAnnualCents
+                        ? plan.displayPriceAnnualCents
+                        : (plan.displayPriceCents ?? plan.priceUsdCents);
+                    setToast(t("planChangedDuringTrial", {
+                        plan: plan.name,
+                        date: trialEnd.toLocaleDateString(locale, { day: "numeric", month: "long" }),
+                        amount: formatMoney(amount, plan.displayCurrency ?? "USD", locale),
+                    }));
+                } else {
+                    setToast(t("planChanged"));
+                }
             }
             setModal(null);
             await load();

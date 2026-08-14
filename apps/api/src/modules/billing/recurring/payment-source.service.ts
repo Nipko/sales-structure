@@ -13,6 +13,7 @@ import { SubscriptionStatus } from '../types/subscription-status.enum';
 import { SubscriptionEngineService } from './subscription-engine.service';
 import { RENEWAL_QUEUE } from './renewal-scheduler.service';
 import { anchorDayOf, chargeTimeFor } from './period.util';
+import { resolveLocalPlanPrice } from '../plan-local-price.util';
 
 /** Methods that can be charged without the customer present. */
 const UNATTENDED_KINDS: PaymentSourceKind[] = ['card', 'nequi', 'bancolombia_transfer', 'daviplata'];
@@ -176,13 +177,38 @@ export class PaymentSourceService {
             if (capabilities.nativeSubscriptions) return; // lo cobra el proveedor
 
             if (![SubscriptionStatus.TRIALING, SubscriptionStatus.PENDING_AUTH].includes(sub.status as any)) return;
-            if (!sub.chargeAmountCents || !sub.chargeCurrency) {
-                // Sin precio congelado el motor no puede cobrar, y adivinarlo acá
-                // sería inventar plata: se registra y se deja para intervención.
-                this.logger.warn(
-                    `[PaymentSource] Subscription ${sub.id} has a payment method but no frozen price — engine not armed.`,
-                );
-                return;
+
+            // Precio congelado. Una suscripción nacida ANTES del motor no lo
+            // tiene, y dejarla sin armar la condenaba a vencer sin un solo
+            // intento de cobro. Derivarlo del plan y el país del tenant no es
+            // inventar plata: es exactamente el precio que el catálogo le mostró
+            // al contratar, el mismo que usa el alta.
+            let amountCents = sub.chargeAmountCents;
+            let currency = sub.chargeCurrency;
+
+            if (!amountCents || !currency) {
+                const [plan, tenant] = await Promise.all([
+                    this.prisma.billingPlan.findUnique({ where: { id: sub.planId } }),
+                    this.prisma.tenant.findUnique({
+                        where: { id: tenantId },
+                        select: { billingCountry: true },
+                    }),
+                ]);
+                const cycle = (sub.metadata as any)?.billingCycle === 'annual' ? 'annual' : 'monthly';
+                const derived = plan
+                    ? resolveLocalPlanPrice(plan.priceLocalOverrides, tenant?.billingCountry, cycle)
+                    : null;
+                if (!derived) {
+                    // Sin precio configurado para ese país no hay nada honesto que
+                    // cobrar. Queda registrado para que el Ops Center lo vea.
+                    this.logger.warn(
+                        `[PaymentSource] Subscription ${sub.id} has a payment method but no price configured `
+                        + `for its plan/country — engine not armed.`,
+                    );
+                    return;
+                }
+                amountCents = derived.amountCents;
+                currency = derived.currency;
             }
 
             const source = await this.prisma.billingPaymentSource.findFirst({
@@ -199,6 +225,11 @@ export class PaymentSourceService {
                 where: { id: sub.id },
                 data: {
                     engine: 'internal',
+                    // El precio queda congelado acá si la suscripción no lo traía:
+                    // el cobro del vencimiento será por el importe que el catálogo
+                    // mostró, no por el que haya ese día.
+                    chargeAmountCents: amountCents,
+                    chargeCurrency: currency,
                     defaultPaymentSourceId: source.id,
                     unattendedCapable: source.supportsUnattended,
                     billingAnchorDay: sub.billingAnchorDay ?? anchorDayOf(chargeAt),

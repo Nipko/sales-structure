@@ -96,7 +96,7 @@ See `.env.example`. Critical:
 - `META_APP_ID/SECRET/CONFIG_ID/VERIFY_TOKEN`, `SYSTEM_USER_ID`
 - LLM keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY` (≥1 required)
 - `SENTRY_DSN`, `GOOGLE_OAUTH_CLIENT_ID`, `SMTP_HOST/USER/PASS`, `MEDIA_STORAGE_PATH`
-- `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`
+- `WOMPI_PUBLIC_KEY`, `WOMPI_PRIVATE_KEY`, `WOMPI_EVENTS_SECRET`, `WOMPI_INTEGRITY_SECRET` — único riel de suscripciones (Colombia/COP, cobrado por el motor propio). **MercadoPago fue RETIRADO como PSP de plataforma (ago 2026)**: no hay credenciales MP a nivel plataforma. El tenant que cobra a SUS clientes con su propia cuenta MP la configura desde el panel y ese token vive cifrado por-tenant en la base (`modules/tenant-payments`)
 - `OWNER_COUPON_PIN` — PIN del dueño para emitir cupones de alto impacto (lotes/emisiones grandes o que superan la cuota mensual). Vive en Secrets, NO en la DB (para que ningún super_admin pueda resetearlo). Si no se setea, los cupones de rutina funcionan igual pero los de alto impacto se bloquean. Gobernanza en `billing/coupon-governance.service.ts` (cuota mensual + motivo + PIN, config editable en `platform_settings` key `coupons.governance`)
 - `NEXT_PUBLIC_INSTAGRAM_APP_ID`, `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI`, `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID`
 
@@ -143,7 +143,8 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Appointments manual** | `docs/appointments-manual.md` |
 | **Analytics manual** | `docs/analytics-manual.md` |
 | **Centro de calidad del agente: preparación, pruebas, producción atribuida por versión y bucle de mejora seguro** | `docs/agent-quality-center.md` |
-| **Billing setup + runbook** | `docs/billing-mp-setup.md`, `docs/billing-runbook.md` |
+| **⭐ Retiro de MercadoPago como PSP de plataforma (Ago 2026) — qué se eliminó, qué sobrevive como legado de solo lectura, la cohorte varada y su rescate, y los 5 defectos que encontró el barrido (cupones que cobraban dos veces, refund que marcaba sin devolver, baja imposible)** | `docs/mercadopago-retirement-2026-08.md` |
+| **Billing setup + runbook** | `docs/billing-runbook.md` (setup de MercadoPago archivado: `docs/archive/billing-mp-setup.md`) |
 | **Offboarding manual** | `docs/offboarding-manual.md` |
 | **API reference** | `docs/API_REFERENCE.md` |
 | **Data dictionary** | `docs/data-dictionary.md` |
@@ -163,7 +164,7 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Pasarela Wompi (Ago 2026) — investigación técnica profunda: qué hace y qué NO hace Wompi (sin suscripciones nativas, PSE no tokenizable, sin refund por API, todo asíncrono), diseño del motor de cobros propio (billing_charge_attempts, scheduler, dunning, prorrateo), switch L0-L3, mapeo de webhooks, migración de cohortes MP y las trampas (defaults silenciosos, checksum dinámico, doc EN vs ES)** | `docs/pasarela-wompi-research-2026-08.md` |
 | **⭐ PLAN DE EJECUCIÓN Wompi + operador conmutable + geo-routing (Ago 2026): decisiones del dueño tomadas (solo self-service, switch runtime por país, motor propio, Agregador), alcance v1 (CARD núcleo + Nequi flag; sin Daviplata/3DS), matriz fiscal DIAN (CO=FEV Factus sin cambios; exterior=exportación o recibo LLC/MoR), fases F0-F4 file-by-file con gates + Fase EXT dormida; verificaciones empíricas que reemplazan las 9 preguntas a Wompi; tope $10M/tx vs Enterprise anual** | `docs/wompi-provider-routing-implementation-plan-2026-08.md` |
 | **Notificaciones por SMS (Jul 2026): plan de implementación por fases (alertas super admin → handoff → OTP/2FA → suscriptores); WhatsApp‑first + SMS fallback; operador Twilio + Verify; planos plataforma vs tenant; gating por plan + cuotas; deuda del canal SMS a cerrar** | `docs/sms-notifications-implementation-plan-2026-07.md` |
-| **SMS monetizado por paquetes (Jul 2026, IMPLEMENTADO F0-F3): modelo reseller — tenants compran créditos (1=1 segmento) para notificar one-way a sus clientes vía Twilio de plataforma; balance/ledger atómico, envío medido (broadcast + cola), compra MercadoPago pago único, UI tenant + super admin (tiers editables); canal conversacional descartado** | `docs/sms-monetization-packages-2026-07.md` |
+| **SMS monetizado por paquetes (Jul 2026, IMPLEMENTADO F0-F3): modelo reseller — tenants compran créditos (1=1 segmento) para notificar one-way a sus clientes vía Twilio de plataforma; balance/ledger atómico, envío medido (broadcast + cola), compra por pago único, UI tenant + super admin (tiers editables); canal conversacional descartado. **Checkout NEUTRALIZADO ago 2026**: cobraba con MercadoPago, que salió de la plataforma, y SMS está apagado** | `docs/sms-monetization-packages-2026-07.md` |
 | **Multi-cuenta por tipo de canal (Jul 2026): N conexiones del mismo tipo (2 números WhatsApp, 2 IG…) gateado por plan×canal (`features.maxChannelAccounts`, default 1) + override por tenant; tokens por-cuenta vía `channel_accounts.access_token` (sin migración global); agente por conexión (`agent_personas.channel_bindings`); anti-conflación de conversaciones; UI editor adaptativa + overview con contador/límite + disconnect por-cuenta. Fases 1-5 codificadas. Contratos + checklist + limitaciones v1** | `docs/multi-channel-per-type-implementation-2026-07.md` |
 | **WhatsApp coexistence manual** | `docs/coexistence-manual.md` |
 | **Operations runbook + Ops Center (platform-monitor: disk/RAM/Redis/PgBouncer/queues/Sentry/LLM/SLA/backup/tokens/webhooks)** | `docs/operations-runbook.md` |
@@ -171,7 +172,7 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Deploy hardening runbook (SSH key-only, throttling por IP real CF-Connecting-IP, backup pre-migración)** | `docs/deploy-hardening-runbook.md` |
 | **Security specification (threat model, controles)** | `docs/security-specification.md` |
 | **Super_admin governance & impersonación (platform mode, roles.ts deny-by-default, sesión emparejada, actor real en auditoría)** | `docs/superadmin-governance.md` |
-| **Billing: ciclo anual/mensual, sync a MercadoPago, billing-ops cross-tenant, refund inline, reconciliación** | `docs/billing-annual-cycle.md` |
+| **Billing: ciclo anual/mensual, billing-ops cross-tenant, refund inline, reconciliación** (el sync a MercadoPago que describe ya no existe: MP retirado ago 2026) | `docs/billing-annual-cycle.md` |
 | **Pricing / rentabilidad (precios COP por país, márgenes)** | `docs/plan-profitability-2026-07.md` |
 | **App móvil (`apps/mobile`, React Native/Expo): manual vigente, plan, EAS build, Sentry sourcemaps, GATE 0, Play Store y audit** | `docs/mobile-user-manual.md`, `apps/mobile/README.md`, `docs/mobile-app-plan.md`, `docs/mobile-eas-build.md`, `docs/mobile-sentry-sourcemaps.md`, `docs/mobile-gate0-checklist.md`, `docs/play-store-publish-checklist.md`, `docs/mobile-app-audit-2026-q2.md`, `docs/mobile-functional-test-2026-08.md` |
 | **Onboarding audit (Jun 2026, estado fases 0-4)** | `docs/onboarding-audit-2026-06.md` |

@@ -83,7 +83,7 @@ src/
       health/            — Platform health (uptime, dependencias)
       storage/           — Per-tenant storage monitoring + quota enforcement
       plans/             — Editor de planes/tiers (billing_plans) cross-tenant
-      billing-ops/       — Billing Ops: subs/pagos/eventos cross-tenant, refund inline, sync + reconciliación con MercadoPago, auditoría de precios
+      billing-ops/       — Billing Ops: subs/pagos/eventos cross-tenant, refund inline, reconciliación, auditoría de precios
       sms-packages/      — SMS reseller: tiers de créditos editables, kill-switch, uso
       fiscal/            — Fiscal DIAN cross-tenant (FiscalInvoice, reintentos Factus)
       managed/           — Done-for-you tier: tracking de garantías (target vs verified)
@@ -147,10 +147,10 @@ src/
 
 ## New Features (Jun-Jul 2026)
 - **Multi-canal por tipo**: N conexiones del mismo tipo (2 números WhatsApp, 2 IG…) gateado por `features.maxChannelAccounts` (default 1) + override por tenant. Tokens por-cuenta (`channel_accounts.access_token`), disconnect por-cuenta, un agente por conexión (`channel_bindings`). UI: overview con contador/límite, editor de agente que enlaza cuentas, selector de número emisor en broadcast/plantillas
-- **Billing anual + Billing Ops**: planes con ciclo mensual/anual (~15% desc anual) sincronizados a MercadoPago. `/admin/billing-ops` — vistas cross-tenant de subs/pagos/eventos, refund inline, reconciliación on-demand, downgrade que sincroniza con MP, auditoría de cambios de precio. `/admin/plans` edita tiers (`billing_plans`). Landing `/precios` es data-driven contra los planes
+- **Billing anual + Billing Ops**: planes con ciclo mensual/anual (~15% desc anual). El precio local congelado ES el contrato — **MercadoPago fue retirado (ago 2026)** y Wompi no tiene catálogo remoto que sincronizar. `/admin/billing-ops` — vistas cross-tenant de subs/pagos/eventos, refund inline, reconciliación on-demand, downgrade, auditoría de cambios de precio. `/admin/plans` edita tiers (`billing_plans`). Landing `/precios` es data-driven contra los planes
 - **Fiscal DIAN (Colombia)**: facturación electrónica vía Factus (`IFiscalInvoiceProvider`, modelo `FiscalInvoice`). Gate collect-before-pay (NIT/cédula) **OFF por defecto** → `FiscalBanner` + `FiscalGateModal`. `/admin/fiscal` cross-tenant; `settings/fiscal/` por tenant
 - **Ops Center (super_admin)**: `/admin/ops` (platform-monitor) — salud de contenedores/backup, alertas; incluye `/admin/storage` (monitoreo + quota por tenant), `/admin/health`, `/admin/incidents`. Alerta si el heartbeat `backup:last_success` supera ~26h
-- **SMS reseller monetizado**: SMS conversacional **descartado**; SMS = notificación one-way por créditos (1 crédito = 1 segmento) vía Twilio de plataforma. `/admin/sms-packages` (tiers editables + kill-switch OFF por defecto); tenant compra créditos con MercadoPago (pago único); ledger atómico + firma de webhook Twilio
+- **SMS reseller monetizado**: SMS conversacional **descartado**; SMS = notificación one-way por créditos (1 crédito = 1 segmento) vía Twilio de plataforma. `/admin/sms-packages` (tiers editables + kill-switch OFF por defecto); el checkout de compra quedó neutralizado al retirar MercadoPago; ledger atómico + firma de webhook Twilio
 
 ## New Features (May 2026)
 - **Visual Automation Builder**: React Flow canvas (@xyflow/react), toggleable with existing 4-step wizard, same data format. Trigger, condition, action, delay node types

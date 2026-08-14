@@ -1411,9 +1411,18 @@ export default function BillingPage() {
                             const selectedCycleAvailable = billingCycle === "annual"
                                 ? plan.annualAvailable
                                 : plan.monthlyAvailable;
+                            // Estando en un trial local, la regla vieja sólo dejaba
+                            // elegir planes que NO piden medio de pago, y sólo el
+                            // ciclo mensual. Era correcta cuando la pasarela no sabía
+                            // retener una tarjeta: ofrecer un plan con cobro
+                            // automático habría sido una promesa incumplible. Con un
+                            // operador que guarda instrumentos —lo que el catálogo ya
+                            // resuelve en `signupAvailable`— eso deja al cliente en
+                            // trial sin poder subir de plan, que es justo lo que uno
+                            // quiere que pueda hacer.
                             const cycleActionAvailable = subscription
                                 ? (subscription.status === "trialing" && !subscription.providerBacked
-                                    ? billingCycle === "monthly" && !plan.requiresPaymentMethodAtSignup
+                                    ? selectedCycleAvailable && plan.signupAvailable
                                     : selectedCycleAvailable)
                                 : plan.signupAvailable && (
                                     selectedCycleAvailable

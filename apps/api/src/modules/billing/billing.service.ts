@@ -492,16 +492,58 @@ export class BillingService {
         // que le quedaba de regalo.
         const nowTs = new Date();
         if (!isTrialConversion && sub.trialEndsAt && sub.trialEndsAt > nowTs && !sub.providerSubscriptionId) {
-            if (cardTokenId || newPlan.requiresCardForTrial || newPlan.trialDays === 0 || targetCycle === 'annual') {
+            // ¿El tenant ya tiene con qué pagar cuando el trial venza?
+            //
+            // El rechazo de abajo se escribió cuando la única pasarela no sabía
+            // retener un medio de pago: ofrecer un plan que exige tarjeta habría
+            // sido una promesa que nadie podía cumplir. Con instrumentos
+            // guardados la promesa se sostiene, y bloquearlo deja al cliente en
+            // trial sin forma de subir de plan — que es justo lo que se busca.
+            const engineCapable = this.capabilitiesFor(
+                this.routing.resolveForSubscription(sub.provider),
+            ).storedPaymentSources;
+            const storedSource = engineCapable
+                ? await this.prisma.billingPaymentSource.findFirst({
+                    where: { tenantId, status: 'available' },
+                    orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+                })
+                : null;
+
+            if (!storedSource && (cardTokenId || newPlan.requiresCardForTrial || newPlan.trialDays === 0 || targetCycle === 'annual')) {
                 throw new BadRequestException({
                     error: 'local_trial_plan_change_not_supported',
                     message: 'A local trial cannot accept or retain a payment token during a plan/cycle change. Activate billing from the supported provider flow first.',
                 });
             }
+
+            // El cobro sigue difiriéndose al final del trial: el cliente tiene
+            // días prometidos y subir de plan no se los quita. Lo que cambia es
+            // el precio CONGELADO con el que se cobrará ese día — si no se
+            // actualizara acá, el tenant estrenaría el plan nuevo y al vencer se
+            // le cobraría el viejo.
+            const trialPricing = storedSource
+                ? this.resolveEnginePricing(
+                    newPlan,
+                    normalizeBillingCountry((await this.prisma.tenant.findUnique({
+                        where: { id: tenantId }, select: { billingCountry: true },
+                    }))?.billingCountry) || 'CO',
+                    targetCycle,
+                )
+                : null;
+
             await this.prisma.billingSubscription.update({
                 where: { id: sub.id },
                 data: {
                     planId: newPlan.id,
+                    ...(trialPricing ? {
+                        engine: 'internal',
+                        chargeAmountCents: trialPricing.amountCents,
+                        chargeCurrency: trialPricing.currency,
+                        defaultPaymentSourceId: storedSource!.id,
+                        unattendedCapable: storedSource!.supportsUnattended,
+                        billingTimezone: sub.billingTimezone || 'America/Bogota',
+                        nextChargeAt: sub.trialEndsAt,
+                    } : {}),
                     metadata: {
                         ...(sub.metadata && typeof sub.metadata === 'object' ? (sub.metadata as any) : {}),
                         billingCycle: targetCycle,

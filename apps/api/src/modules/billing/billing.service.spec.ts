@@ -42,6 +42,8 @@ describe('BillingService', () => {
             billingPlan: { findUnique: jest.fn() },
             billingSubscription: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
             billingEvent: { findUnique: jest.fn(), create: jest.fn() },
+            billingPaymentSource: { findFirst: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
+            billingChargeAttempt: { findFirst: jest.fn().mockResolvedValue(null) },
             billingPayment: { create: jest.fn() },
             auditLog: { create: jest.fn() },
             // $transaction receives a callback and invokes it with a tx object.
@@ -787,6 +789,61 @@ describe('BillingService', () => {
             await expect(service.pauseSubscription('tenant-w')).rejects.toMatchObject({
                 response: expect.objectContaining({ error: 'pause_unsupported' }),
             });
+        });
+    });
+
+    describe('subir de plan estando en un trial local', () => {
+        const trialEndsAt = new Date(Date.now() + 8 * 86_400_000);
+        const trialSub = {
+            id: 'sub-t', tenantId: 'tenant-t', planId: 'plan-starter',
+            provider: 'wompi', providerSubscriptionId: null,
+            status: 'trialing', engine: 'provider',
+            trialEndsAt, metadata: { billingCycle: 'monthly' },
+            billingTimezone: null, billingAnchorDay: null,
+        };
+        const proPlan = {
+            id: 'plan-pro', slug: 'pro', isActive: true,
+            priceUsdCents: 9_900, trialDays: 15, requiresCardForTrial: true,
+            features: {}, priceLocalOverrides: { CO: { currency: 'COP', amountCents: 75_770_000 } },
+        };
+
+        beforeEach(() => {
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(trialSub);
+            prismaMock.billingPlan.findUnique.mockImplementation(async ({ where }: any) =>
+                where.slug === 'pro' ? proPlan : { id: 'plan-starter', slug: 'starter', priceUsdCents: 4_900, features: {} });
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 'tenant-t', billingCountry: 'CO' });
+            prismaMock.billingSubscription.update.mockResolvedValue({});
+            prismaMock.tenant.update.mockResolvedValue({});
+        });
+
+        it('lo rechaza si no hay con qué cobrar cuando el trial venza', async () => {
+            prismaMock.billingPaymentSource.findFirst.mockResolvedValue(null);
+
+            await expect(service.upgradeSubscription('tenant-t', 'pro')).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'local_trial_plan_change_not_supported' }),
+            });
+        });
+
+        it('con una tarjeta guardada sube el plan y difiere el cobro al fin del trial', async () => {
+            // El bloqueo venía de que la única pasarela no sabía retener un medio
+            // de pago. Con instrumentos guardados la promesa se sostiene, y sin
+            // esto el cliente queda en trial sin forma de subir de plan.
+            prismaMock.billingPaymentSource.findFirst.mockResolvedValue({
+                id: 'src-1', supportsUnattended: true, status: 'available',
+            });
+
+            await service.upgradeSubscription('tenant-t', 'pro');
+
+            const data = prismaMock.billingSubscription.update.mock.calls[0][0].data;
+            expect(data.planId).toBe('plan-pro');
+            expect(data.engine).toBe('internal');
+            // El precio se congela con el del plan NUEVO: sin esto el tenant
+            // estrena el plan superior y al vencer se le cobra el viejo.
+            expect(data.chargeAmountCents).toBe(75_770_000);
+            expect(data.chargeCurrency).toBe('COP');
+            expect(data.defaultPaymentSourceId).toBe('src-1');
+            // No se le quitan los días prometidos.
+            expect(data.nextChargeAt).toEqual(trialEndsAt);
         });
     });
 });

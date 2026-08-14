@@ -178,9 +178,9 @@ Endpoint: `DELETE /api/v1/offboarding/:tenantId/purge` (`super_admin`). Botón "
 1. **Detach de proveedores** + flag de `channel_accounts` (reusa `disconnectAllChannels`).
 2. Captura los `userIds` antes de borrarlos (para limpiar sus refresh tokens luego).
 3. `drainTenantQueues` (nada in-flight debe tocar el schema durante el drop).
-4. **`billing.cancelSubscription(tenantId, {immediate:true, reason:'tenant_purge'})`** — cancela la suscripción en el PSP (MercadoPago/Stripe) para no dejar una suscripción activa huérfana. Best-effort (trials y ya-canceladas lanzan y se ignoran).
+4. **`billing.cancelSubscription(tenantId, {immediate:true, reason:'tenant_purge'})`** — para no dejar un cobro vivo huérfano. Con Wompi no hay mandato remoto que cancelar. Lo que frena al motor propio es el estado: el barrido de `renewal-scheduler` solo toma `ACTIVE|TRIALING|PAST_DUE` con `cancelAtPeriodEnd=false`, así que tanto la baja inmediata (`CANCELLED`) como la diferida quedan fuera. `nextChargeAt` se deja como estaba —es historia, no una orden de cobro—. Best-effort (trials y ya-canceladas lanzan y se ignoran). MercadoPago fue retirado en ago 2026, ver `docs/mercadopago-retirement-2026-08.md`.
 5. **`revokeExternalOAuth`** — revoca Google Calendar (por-tenant schema) + Google Business Profile (`tenant.settings`). Microsoft solo expira. **Debe correr antes del DROP SCHEMA.**
-6. **Borrado de filas del schema public** en orden FK-safe: `billing_events` → `billing_payments` → `billing_subscriptions` → `billing_coupon_redemptions` → `audit_logs` → `channel_accounts` → `whatsapp_onboardings` → `whatsapp_credentials` → `tenant_financial_snapshots` → `crm_connections` → `api_keys` → `feature_request_votes` → `feature_request_comments` → `feature_request_subscribers` (por `userId`) → `feature_requests` (por `authorTenantId`) → `users`.
+6. **Borrado de filas del schema public** en orden FK-safe. La lista autoritativa es `TENANT_PUBLIC_PURGE_ORDER` en `prisma.service.ts` (hijos primero); no se repite acá porque se desactualiza sola. Antes de tocar nada, `preflightTenantPublicPurge()` cruza las tablas públicas que tienen `tenant_id` contra esa clasificación y **rechaza con 409 `tenant_purge_unclassified_public_data`** si aparece una sin política de purga.<br>⚠ Ese gate corre **antes de todo lo destructivo**, así que una tabla global nueva sin registrar no degrada el borrado: **lo bloquea para todos los tenants**, no solo para el que usa la tabla. Pasó en ago 2026 con las tres del motor de recurrencia. Lo previene la prueba de deriva de `prisma.service.spec.ts`, que escanea las tres vías por las que nace una tabla global (modelo Prisma, migración SQL, `CREATE TABLE ... public.x` en runtime).
 7. **`DROP SCHEMA "tenant_x" CASCADE`** (nombre sanitizado con `[^a-zA-Z0-9_]`). Borra contactos, conversaciones, mensajes, propiedades, listings, media_files del schema, etc.
 8. **Wipe de disco**: `mediaService.deleteAllTenantFiles(tenantId)` → `/data/media/{tenantId}/`.
 9. **RETENIDO a propósito**: `fiscal_invoices` (+ artefactos XML/PDF en el volumen `parallext-fiscal-data`, `/data/invoices/{tenantId}/`). Retención legal DIAN (~5 años). Antes de borrar la fila del tenant, se estampa en `fiscal_invoices.metadata`: `tenantPurgedAt`, `tenantNameSnapshot`, `tenantSchemaSnapshot` (porque `tenant_id` queda como referencia colgante).
@@ -190,7 +190,7 @@ Endpoint: `DELETE /api/v1/offboarding/:tenantId/purge` (`super_admin`). Botón "
 
 Devuelve un resumen (`channelsDisconnected`, `publicRowsDeleted`, `schemaDropped`, `mediaFilesRemoved`, `usersRevoked`) que el panel muestra.
 
-> **⚠ Gap conocido**: `purgeTenant` **no** borra `sms_credit_balances` ni `sms_credit_ledger` (tablas globales keyed por `tenant_id`). Tras el purge quedan **créditos SMS huérfanos** con `tenant_id` colgante. Ver §7.
+El resumen que devuelve incluye una entrada por tabla, así que `publicRowsDeleted` es la evidencia de qué se borró realmente.
 
 ---
 
@@ -230,8 +230,11 @@ No hay export a ZIP ni cold storage por fases (día 37/97): eso no existe en el 
 ### Se elimina (en purge / drop schema)
 - Conversaciones, mensajes, contactos, leads/oportunidades, media (`/data/media/{tenantId}/`), credenciales encriptadas, configuración de agentes, y todo el schema del tenant.
 
-### Gap: créditos SMS
-`sms_credit_balances` y `sms_credit_ledger` (tablas globales del modelo reseller, keyed por `tenant_id`) **no** las limpia `purgeTenant`. Tras el purge quedan huérfanas. Si se resuelve el saldo antes de eliminar, hacerlo manualmente hasta cerrar este gap en el servicio de purge.
+### Créditos SMS — gap cerrado
+`sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` **sí** los borra `purgeTenant`: están en `TENANT_PUBLIC_PURGE_ORDER` y el gate de clasificación no dejaría purgar si no lo estuvieran. El saldo pendiente se resuelve antes de eliminar por criterio comercial, no por una limitación técnica.
+
+### Rescate manual
+`infra/scripts/delete-tenant.sql` es el fallback si el endpoint no está disponible. Cubre menos tablas que el purge del servicio y se apoya en los `ON DELETE CASCADE` hacia `tenants` para el resto; las que no tienen esa FK necesitan su `DELETE` explícito o quedan huérfanas (es lo que pasaba con `billing_credit_ledger`, cuya única FK es a la suscripción y es `SET NULL`). Preferir siempre el endpoint.
 
 > **Nota de scripts de infra**: `backup.sh` y demás scripts deben quedar `100755` en git — el `git reset --hard` del deploy borra el bit +x si no está commiteado como ejecutable.
 

@@ -582,7 +582,10 @@ export class BillingService {
         let updatedStatus = sub.status;
         let currentPeriodStart = sub.currentPeriodStart;
         let currentPeriodEnd = sub.currentPeriodEnd;
-        let newProviderSubscriptionId = sub.providerSubscriptionId;
+        // El id del proveedor ya no cambia en un upgrade: el único camino que
+        // lo reemplazaba era el cancel+recreate de MercadoPago, y ese proveedor
+        // salió. Stripe cambia el plan sobre la misma suscripción.
+        const newProviderSubscriptionId = sub.providerSubscriptionId;
 
         if (!caps.nativeSubscriptions) {
             // Providers without a subscription object are driven by our own

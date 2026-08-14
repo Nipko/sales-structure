@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { PrismaService } from './prisma.service';
 
@@ -220,27 +220,70 @@ describe('PrismaService tenant schema lifecycle', () => {
          * Drift guard. The two tests above prove the gate reacts to an unknown
          * table; neither compares the classification against the schema we
          * actually ship. A new global table therefore used to reach production
-         * unclassified and block the purge of EVERY tenant — which is how
-         * billing_charge_attempts / billing_credit_ledger / billing_payment_sources
-         * shipped in Aug 2026. The migration tier is not a safety net here: the
-         * PR gate never applies migrations, so only a static check catches it.
+         * unclassified — and because this gate runs before anything destructive,
+         * it then blocks the purge of EVERY tenant, not just the one using the
+         * table. That is how billing_charge_attempts / billing_credit_ledger /
+         * billing_payment_sources broke tenant deletion in Aug 2026.
          *
-         * Global tables are always declared in schema.prisma (raw SQL is for
-         * tenant schemas), so the declared models are the authoritative list.
+         * The migration tier is no safety net here: the PR gate never applies
+         * migrations, so only a static check catches this before production.
+         *
+         * A global table can be born three ways, and all three are scanned —
+         * covering one of them would leave the same hole open.
          */
-        it('classifies every global table that schema.prisma gives a tenant_id', async () => {
-            const schema = readFileSync(
-                join(__dirname, '..', '..', '..', 'prisma', 'schema.prisma'),
-                'utf8',
-            );
-            const declared = [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)]
+        const publicTenantTables = (): string[] => {
+            const apiRoot = join(__dirname, '..', '..', '..');
+            const hasTenantIdColumn = (columns: string) => /(?:^|[\s,(])"?tenant_id"?\s+\w/i.test(columns);
+            const tables: string[] = [];
+
+            // 1. Declared Prisma models.
+            const schema = readFileSync(join(apiRoot, 'prisma', 'schema.prisma'), 'utf8');
+            const models = [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)]
                 .filter(([, , body]) => /@map\("tenant_id"\)/.test(body) || /^\s*tenant_id\s/m.test(body))
                 .map(([, name, body]) => body.match(/@@map\("([^"]+)"\)/)?.[1] ?? name);
 
-            // Sanity-check the parser itself: a silent zero would pass forever.
-            expect(declared.length).toBeGreaterThan(20);
+            // 2. Hand-written SQL migrations. The column guard matters: without
+            //    it, feature_requests.author_tenant_id reads as a false hit.
+            const migrationsDir = join(apiRoot, 'prisma', 'migrations');
+            const migrated: string[] = [];
+            for (const dir of readdirSync(migrationsDir)) {
+                const file = join(migrationsDir, dir, 'migration.sql');
+                if (!existsSync(file)) continue;
+                for (const [, table, columns] of readFileSync(file, 'utf8')
+                    .matchAll(/CREATE TABLE (?:IF NOT EXISTS )?"?(\w+)"?\s*\(([\s\S]*?)\n\)/g)) {
+                    if (hasTenantIdColumn(columns)) migrated.push(table);
+                }
+            }
 
-            const h = makePreflightService(declared);
+            // 3. Created lazily at runtime by service code. These have no Prisma
+            //    model at all; the explicit `public.` prefix is what separates
+            //    them from the tenant-schema tables built the same way.
+            const lazy: string[] = [];
+            const walk = (dir: string): void => {
+                for (const entry of readdirSync(dir, { withFileTypes: true })) {
+                    const full = join(dir, entry.name);
+                    if (entry.isDirectory()) { walk(full); continue; }
+                    if (!entry.name.endsWith('.ts') || entry.name.endsWith('.spec.ts')) continue;
+                    for (const [, table, columns] of readFileSync(full, 'utf8')
+                        .matchAll(/CREATE TABLE (?:IF NOT EXISTS )?public\.(\w+)\s*\(([\s\S]*?)\n\s*\)/g)) {
+                        if (hasTenantIdColumn(columns)) lazy.push(table);
+                    }
+                }
+            };
+            walk(join(apiRoot, 'src'));
+
+            // Per-source floors. A regex that silently stops matching would
+            // otherwise turn this whole guard green forever.
+            expect(models.length).toBeGreaterThanOrEqual(20);
+            expect(migrated.length).toBeGreaterThanOrEqual(5);
+            expect(lazy.length).toBeGreaterThanOrEqual(5);
+
+            tables.push(...models, ...migrated, ...lazy);
+            return [...new Set(tables)];
+        };
+
+        it('classifies every public table that carries a tenant_id, however it was created', async () => {
+            const h = makePreflightService(publicTenantTables());
 
             await expect(h.service.preflightTenantPublicPurge()).resolves.toBeUndefined();
         });

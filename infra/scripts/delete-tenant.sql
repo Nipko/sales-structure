@@ -68,6 +68,21 @@ BEGIN
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  billing_payments: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  billing_payments: skipped (%)', SQLERRM; END;
 
+    -- Motor de recurrencia. Van antes de billing_subscriptions: attempts cuelga
+    -- de ella con CASCADE, pero el ledger es SET NULL y sin este DELETE las
+    -- filas sobreviven al borrado del tenant (no tiene FK a tenants).
+    BEGIN DELETE FROM billing_charge_attempts WHERE tenant_id = tid;
+        GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  billing_charge_attempts: %', deleted_rows;
+    EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  billing_charge_attempts: skipped (%)', SQLERRM; END;
+
+    BEGIN DELETE FROM billing_credit_ledger WHERE tenant_id = tid;
+        GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  billing_credit_ledger: %', deleted_rows;
+    EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  billing_credit_ledger: skipped (%)', SQLERRM; END;
+
+    BEGIN DELETE FROM billing_payment_sources WHERE tenant_id = tid;
+        GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  billing_payment_sources: %', deleted_rows;
+    EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  billing_payment_sources: skipped (%)', SQLERRM; END;
+
     BEGIN DELETE FROM billing_subscriptions WHERE tenant_id = tid;
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  billing_subscriptions: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  billing_subscriptions: skipped (%)', SQLERRM; END;

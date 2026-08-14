@@ -6,8 +6,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
-import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
-import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 import {
     PLAN_FEATURE_REGISTRY,
@@ -20,11 +18,9 @@ import {
     PriceOverrideValidationError,
     reconcilePlanPriceSync,
 } from './billing-plan-price-sync.util';
-import {
-    MERCADOPAGO_CURRENCY_BY_COUNTRY,
-    normalizeBillingCountry,
-} from './billing-country-config';
+import { normalizeBillingCountry } from './billing-country-config';
 import { PaymentRoutingService } from './payment-routing.service';
+import { WompiConfigService } from './adapters/wompi-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from './types/provider-types';
 
@@ -74,27 +70,14 @@ class UpdatePlanDto {
     @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
-class SyncMpPlanDto {
-    @IsOptional() @IsString() country?: string;
-    // Only used when the plan has no fixed local price for the country yet.
-    @IsOptional() @IsNumber() @IsPositive() fx?: number;
-    // Recreate the preapproval_plan in MP even if one already exists (e.g. after
-    // a price change). MP cannot delete plans, so this orphans the old one.
-    @IsOptional() @IsBoolean() force?: boolean;
-    // Which billing cycle to register in MP. 'month' (default) creates the monthly
-    // preapproval_plan; 'year' creates a SEPARATE annual one (frequency 12 months)
-    // and stores its id under priceLocalOverrides[country].annual.mpPlanId.
-    @IsOptional() @IsIn(['month', 'year']) cycle?: 'month' | 'year';
-}
-
 class ReconcileDto {
     @IsOptional() @IsIn(['full', 'past_due']) scope?: 'full' | 'past_due';
 }
 
 class UpdateProviderRoutingDto {
-    /** L0 kill switch: { "mercadopago": true, "wompi": false, ... } */
+    /** L0 kill switch: { "wompi": true, "stripe": false, ... } */
     @IsOptional() @IsObject() providersEnabled?: Record<string, boolean>;
-    /** L1 country defaults: { "CO": "wompi", "*": "mercadopago" } */
+    /** L1 country defaults: { "CO": "wompi", "*": "wompi" } */
     @IsOptional() @IsObject() defaultByCountry?: Record<string, string>;
     /** Which Wompi payment methods the checkout may offer. */
     @IsOptional() @IsObject() wompiMethods?: Record<string, boolean>;
@@ -132,8 +115,7 @@ export class BillingAdminController {
         private readonly billingService: BillingService,
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
-        private readonly mp: MercadoPagoAdapter,
-        private readonly mpConfig: MercadoPagoConfigService,
+        private readonly wompiConfig: WompiConfigService,
         private readonly reconciliation: BillingReconciliationProcessor,
         private readonly routing: PaymentRoutingService,
         private readonly providerFactory: PaymentProviderFactory,
@@ -313,28 +295,17 @@ export class BillingAdminController {
         return { success: true, invalidatedCount: count };
     }
 
-    // ── MercadoPago provider status ─────────────────────────────
-    // Powers the credential-mode badge in /admin/plans. This endpoint performs
-    // no provider call: environment is inferred locally and collector/KYC must
-    // be validated by the MercadoPago preflight.
+    // ── Provider status ─────────────────────────────────────────
+    // Powers the credential chips in /admin/plans → Proveedores. No provider
+    // calls: environment is inferred locally from the loaded keys. MercadoPago
+    // ya no aparece — está retirado y no es ruteable; sus filas históricas se
+    // leen igual, pero no hay credenciales de plataforma que reportar.
     @Get('provider-status')
     async providerStatus() {
         const routing = await this.routing.getConfig();
-        const mercadopago = {
-            environment: this.mpConfig.environment(),
-            credentialModeInferred: this.mpConfig.credentialModeInferred(),
-            collectorValidation: 'not_checked' as const,
-            configured: this.mpConfig.isConfigured(),
-            webhookConfigured: Boolean(this.mpConfig.webhookSecret),
-            enabled: routing.providersEnabled.mercadopago,
-            registered: this.providerFactory.isRegistered('mercadopago'),
-        };
         return {
             success: true,
             data: {
-                // Kept at the top level for one deploy: /admin/plans still reads
-                // `data.mercadopago`. New consumers should read `providers`.
-                mercadopago,
                 providers: PAYMENT_PROVIDER_NAMES.reduce((acc, name) => {
                     const caps = this.providerFactory.capabilitiesOf(name);
                     acc[name] = {
@@ -344,11 +315,11 @@ export class BillingAdminController {
                         currencies: caps.currencies,
                         nativeSubscriptions: caps.nativeSubscriptions,
                         refunds: caps.refunds,
-                        ...(name === 'mercadopago'
+                        ...(name === 'wompi'
                             ? {
-                                  environment: mercadopago.environment,
-                                  configured: mercadopago.configured,
-                                  webhookConfigured: mercadopago.webhookConfigured,
+                                  environment: this.wompiConfig.environment(),
+                                  configured: this.wompiConfig.isConfigured(),
+                                  webhookConfigured: Boolean(this.wompiConfig.eventsSecret),
                               }
                             : {}),
                     };
@@ -527,147 +498,6 @@ export class BillingAdminController {
         };
     }
 
-    // ── Sync a plan to MercadoPago (register/recreate preapproval_plan) ──
-    // Replaces the SSH-only scripts/sync-mp-plans.js for a single plan+country.
-    // The DB price (edited via PUT plans/:slug) is only what we SHOW; MP charges
-    // the amount frozen in the preapproval_plan, so a price change is not live
-    // until this runs. Existing plans are skipped unless force=true.
-    @Post('plans/:slug/sync-mp')
-    @HttpCode(HttpStatus.OK)
-    async syncPlanToMp(
-        @Param('slug') slug: string,
-        @Body() body: SyncMpPlanDto,
-        @Req() req: any,
-    ) {
-        if (slug === 'custom') {
-            throw new BadRequestException({ error: 'custom_not_syncable', message: 'El plan Custom es sales-led y no se sincroniza con MercadoPago.' });
-        }
-        const plan = await this.prisma.billingPlan.findUnique({ where: { slug } });
-        if (!plan) throw new NotFoundException('Plan not found');
-
-        const country = normalizeBillingCountry(body.country) || 'CO';
-        const currency = MERCADOPAGO_CURRENCY_BY_COUNTRY[
-            country as keyof typeof MERCADOPAGO_CURRENCY_BY_COUNTRY
-        ];
-        if (!currency) {
-            throw new BadRequestException({
-                error: 'unsupported_country',
-                message: `País ${country} no soportado. Soportados: ${Object.keys(MERCADOPAGO_CURRENCY_BY_COUNTRY).join(', ')}.`,
-            });
-        }
-        if (!this.mpConfig.isConfigured()) {
-            throw new BadRequestException({ error: 'mp_not_configured', message: 'MercadoPago no está configurado (falta MP_ACCESS_TOKEN).' });
-        }
-
-        // Fold any legacy lowercase aliases before reading/writing so a sync can
-        // never create parallel `co` + `CO` entries.
-        const overrides: Record<string, any> = reconcilePlanPriceSync({
-            planSlug: plan.slug,
-            existingOverrides: plan.priceLocalOverrides,
-            existingUsdPriceCents: plan.priceUsdCents,
-            nextUsdPriceCents: plan.priceUsdCents,
-            existingLegacyMpPlanId: plan.mpPlanId,
-        }).priceLocalOverrides;
-        const existing = overrides[country];
-        const isAnnual = body.cycle === 'year';
-
-        // Idempotency is per cycle and requires the server-owned amount/currency
-        // fingerprint. A historical id without that proof is recreated by this
-        // explicit sync action instead of being treated as current.
-        const existingCycleId = isAnnual ? existing?.annual?.mpPlanId : existing?.mpPlanId;
-
-        // Amount source. Monthly: local override or priceUsdCents×fx. Annual: the
-        // stored annual override only — the yearly total has no USD/FX source, so
-        // set it via the plan editor or the seed (priceLocalOverrides[CO].annual).
-        let amountCents: number;
-        if (isAnnual) {
-            if (existing?.annual?.amountCents) {
-                amountCents = existing.annual.amountCents;
-            } else {
-                throw new BadRequestException({
-                    error: 'no_annual_price',
-                    message: `No hay precio ANUAL local para ${country}. Definí priceLocalOverrides.${country}.annual.amountCents (total del año en centavos) antes de sincronizar el ciclo anual.`,
-                });
-            }
-        } else if (existing?.amountCents) {
-            amountCents = existing.amountCents;
-        } else if (body.fx) {
-            amountCents = Math.round(plan.priceUsdCents * body.fx);
-        } else {
-            throw new BadRequestException({
-                error: 'no_local_price',
-                message: `No hay precio local para ${country} ni se pasó un tipo de cambio. Definí el precio local del plan o pasá fx.`,
-            });
-        }
-
-        const existingCycle = isAnnual ? existing?.annual : existing;
-        const fingerprintMatches = existingCycle?.syncedAmountCents === amountCents
-            && String(existingCycle?.syncedCurrency || '').trim().toUpperCase() === currency;
-        if (existingCycleId && fingerprintMatches && !body.force) {
-            return {
-                success: true,
-                data: {
-                    slug,
-                    country,
-                    currency,
-                    cycle: isAnnual ? 'year' : 'month',
-                    mpPlanId: existingCycleId,
-                    amountCents,
-                    skipped: true,
-                },
-            };
-        }
-
-        const providerPlan = await this.mp.createPlan({
-            slug: plan.slug,
-            name: `${plan.name} — Parallly ${country}${isAnnual ? ' (Anual)' : ''}`,
-            amountCents,
-            currency,
-            billingInterval: isAnnual ? 'year' : 'month',
-            trialDays: 0,
-        });
-
-        // Merge into the SAME country object so the other cycle's id is preserved.
-        if (isAnnual) {
-            overrides[country] = {
-                ...(existing ?? {}),
-                annual: {
-                    ...(existing?.annual ?? {}),
-                    currency,
-                    amountCents,
-                    mpPlanId: providerPlan.providerPlanId,
-                    syncedAmountCents: amountCents,
-                    syncedCurrency: currency,
-                },
-            };
-        } else {
-            overrides[country] = {
-                ...(existing ?? {}),
-                currency,
-                amountCents,
-                mpPlanId: providerPlan.providerPlanId,
-                syncedAmountCents: amountCents,
-                syncedCurrency: currency,
-            };
-        }
-        const data: any = { priceLocalOverrides: overrides };
-        // Keep the legacy top-level column in sync for CO MONTHLY (resolveProviderPlanId fallback).
-        // Annual has no legacy column — its id lives only in the override.
-        if (country === 'CO' && !isAnnual) data.mpPlanId = providerPlan.providerPlanId;
-        await this.prisma.billingPlan.update({ where: { slug }, data });
-
-        await this.prisma.auditLog.create({
-            data: {
-                tenantId: null,
-                userId: auditActor(req.user).userId,
-                action: 'billing_plan_synced_mp',
-                resource: `billing-plans/${slug}`,
-                details: { country, currency, cycle: isAnnual ? 'year' : 'month', amountCents, mpPlanId: providerPlan.providerPlanId, force: !!body.force },
-            },
-        });
-
-        return { success: true, data: { slug, country, currency, cycle: isAnnual ? 'year' : 'month', amountCents, mpPlanId: providerPlan.providerPlanId, skipped: false } };
-    }
 
     // ── Reconciliation on-demand ────────────────────────────────
     // Force a provider poll instead of waiting for the hourly/daily crons —

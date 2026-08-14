@@ -11,21 +11,12 @@ import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
-export type MercadoPagoProviderStatus = {
-    /** Backwards-compatible label inferred locally from the access-token prefix. */
-    environment: 'sandbox' | 'production' | 'unconfigured';
-    credentialModeInferred: 'test' | 'app_usr' | 'unknown' | 'unconfigured';
-    /** provider-status is intentionally read-only/local; preflight validates the collector. */
-    collectorValidation: 'not_checked';
-    configured: boolean;
-    webhookConfigured: boolean;
-    /** L0 kill switch state (added with the provider routing switch). */
-    enabled?: boolean;
-    /** Whether an adapter is wired for this provider in the running API. */
-    registered?: boolean;
-};
-
-/** Payment operators the routing layer knows about. Mirrors PAYMENT_PROVIDER_NAMES in the API. */
+/**
+ * Payment operators the platform can NAME. 'mercadopago' sobrevive como valor
+ * LEGADO de solo lectura (historial de pagos/suscripciones viejas y el
+ * enlace-de-pago del tenant): esta RETIRADO como PSP de plataforma y el ruteo
+ * jamas lo devuelve para un cobro nuevo.
+ */
 export type PaymentProviderName = 'mercadopago' | 'stripe' | 'wompi' | 'mock';
 
 export type PaymentProviderRefunds = 'full' | 'void_only' | 'none';
@@ -93,18 +84,14 @@ export type PaymentProviderStatusEntry = {
     currencies: string[];
     nativeSubscriptions: boolean;
     refunds: PaymentProviderRefunds;
-    /** MercadoPago only — credential/environment state. */
-    environment?: MercadoPagoProviderStatus['environment'];
+    /** Credential/environment state — hoy solo Wompi lo reporta. */
+    environment?: 'sandbox' | 'production' | 'unconfigured';
     configured?: boolean;
     webhookConfigured?: boolean;
 };
 
-/**
- * GET /billing-admin/provider-status. `mercadopago` stays at the top level for
- * backwards compatibility; new consumers should read `providers`.
- */
+/** GET /billing-admin/provider-status. */
 export type PaymentProvidersStatus = {
-    mercadopago: MercadoPagoProviderStatus;
     providers: Partial<Record<PaymentProviderName, PaymentProviderStatusEntry>>;
     routing: {
         defaultByCountry: Record<string, PaymentProviderName>;
@@ -1518,7 +1505,7 @@ export const api = {
     getFeatureRegistry: () => apiGet('/billing-admin/feature-registry'),
     updateAdminPlan: (slug: string, data: any) => apiPut(`/billing-admin/plans/${slug}`, data),
     invalidatePlanCache: (slug: string) => apiPost(`/billing-admin/plans/${slug}/invalidate-cache`, {}),
-    getMpProviderStatus: () =>
+    getPaymentProviderStatus: () =>
         apiGet<PaymentProvidersStatus>(
             '/billing-admin/provider-status',
         ),
@@ -1549,11 +1536,6 @@ export const api = {
         }>(
             `/billing-admin/tenants/${tenantId}/payment-provider`,
             body,
-        ),
-    syncPlanToMp: (slug: string, body?: { country?: string; fx?: number; force?: boolean; cycle?: 'month' | 'year' }) =>
-        apiPost<{ slug: string; country: string; currency: string; cycle?: 'month' | 'year'; amountCents: number | null; mpPlanId: string; skipped: boolean }>(
-            `/billing-admin/plans/${slug}/sync-mp`,
-            body || {},
         ),
     reconcileBilling: (scope?: 'full' | 'past_due') =>
         apiPost<{ scope: string; scanned: number; drift?: number; repaired: number; errors: number }>(

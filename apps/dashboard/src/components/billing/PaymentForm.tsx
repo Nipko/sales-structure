@@ -5,7 +5,6 @@ import { useTranslations } from "next-intl";
 import { AlertTriangle } from "lucide-react";
 import { api, type BillingPublicConfig, type PaymentProviderName, type PaymentSourceStatus } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton-loader";
-import MpCardForm from "./MpCardForm";
 import WompiPaymentForm from "./WompiPaymentForm";
 
 /**
@@ -96,10 +95,8 @@ export default function PaymentForm({
         );
     }
 
-    if (config.provider === "mercadopago") {
-        return <MpCardForm onToken={onToken} submitting={submitting} submitLabel={submitLabel} />;
-    }
-
+    // MercadoPago fue retirado como PSP de plataforma: el ruteo jamas lo
+    // devuelve, asi que aca no hay rama que lo renderice.
     if (config.provider === "wompi") {
         return (
             <WompiPaymentForm

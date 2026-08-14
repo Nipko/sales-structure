@@ -6,6 +6,7 @@ import {
     PAYMENT_PROVIDER_NAMES,
     PaymentProviderName,
     isPaymentProviderName,
+    isLegacyPaymentProviderName,
 } from './types/provider-types';
 import { providerSupportsCountry } from './adapters/provider-capabilities';
 import { normalizeBillingCountry } from './billing-country-config';
@@ -60,19 +61,33 @@ export const INTERNAL_RECURRING_ENGINE_AVAILABLE = true;
  * Fail polarity is deliberately ASYMMETRIC.
  *
  * A new provider must never turn itself on because a setting was missing or a
- * JSON blob failed to parse, so everything defaults to OFF. MercadoPago is the
- * exception and defaults to ON: it is the only revenue path that works today,
- * and a Redis hiccup must not stop every tenant from paying.
+ * JSON blob failed to parse, so everything defaults to OFF. Wompi is the
+ * exception and defaults to ON: it is the only revenue path that exists — a
+ * Redis hiccup must not stop every Colombian tenant from paying. These defaults
+ * are the posture the system takes when it cannot read its configuration, so
+ * they must always describe the desired steady state.
+ *
+ * MercadoPago no aparece: está RETIRADO como PSP de plataforma (decisión del
+ * dueño, ago 2026 — el collector nunca salió de non_compliant). No es ruteable
+ * ni habilitable; el literal sobrevive solo para leer filas históricas. La
+ * cuenta MP del TENANT (enlaces de pago a sus clientes) vive en
+ * modules/tenant-payments y no pasa por este switch.
  */
 const DEFAULT_PROVIDERS_ENABLED: Record<PaymentProviderName, boolean> = {
-    mercadopago: true,
+    mercadopago: false,
     stripe: false,
-    wompi: false,
+    wompi: true,
     mock: false,
 };
 
+/**
+ * CO explícito y el catch-all al único riel vivo. Un país que Wompi no factura
+ * (todo lo no-CO) cae en no_payment_provider_available — fail-closed a
+ * sabiendas hasta que Stripe despierte como riel internacional.
+ */
 const DEFAULT_BY_COUNTRY: Record<string, PaymentProviderName> = {
-    '*': 'mercadopago',
+    CO: 'wompi',
+    '*': 'wompi',
 };
 
 /**
@@ -180,6 +195,11 @@ export class PaymentRoutingService {
         return config;
     }
 
+    // Ambos parsers iteran SOLO los nombres ruteables: una fila guardada antes
+    // del retiro de MercadoPago ('mercadopago':true, '*':'mercadopago') se
+    // ignora al leer y cae al default. Así el retiro no depende de que la
+    // migración de datos haya corrido — la config vieja simplemente deja de
+    // poder nombrar al proveedor retirado.
     private parseProvidersEnabled(raw?: string): Record<PaymentProviderName, boolean> {
         const result = { ...DEFAULT_PROVIDERS_ENABLED };
         if (!raw || !raw.trim()) return result;
@@ -312,7 +332,10 @@ export class PaymentRoutingService {
                 }
                 merged[country] = value;
             }
-            if (!merged['*']) merged['*'] = 'mercadopago';
+            // El catch-all nunca puede faltar (ningún país sin regla), y apunta
+            // al único riel vivo. Antes reinyectaba 'mercadopago' acá — cada
+            // guardado del panel resucitaba al proveedor retirado.
+            if (!merged['*']) merged['*'] = 'wompi';
             updates[SETTING_DEFAULT_BY_COUNTRY] = JSON.stringify(merged);
         }
 
@@ -350,7 +373,10 @@ export class PaymentRoutingService {
      * that provider. The kill switch does not apply here on purpose.
      */
     resolveForSubscription(subscriptionProvider: string | null | undefined): PaymentProviderName {
-        if (!isPaymentProviderName(subscriptionProvider)) {
+        // Se valida contra los nombres LEGADOS, no contra los ruteables: una
+        // suscripción vieja de un proveedor retirado no es un dato corrupto, y
+        // sus lecturas (estado, historial, cancelación) tienen que funcionar.
+        if (!isLegacyPaymentProviderName(subscriptionProvider)) {
             throw new BadRequestException({
                 error: 'unknown_payment_provider',
                 message: `Subscription references unknown provider '${subscriptionProvider ?? '(none)'}'.`,

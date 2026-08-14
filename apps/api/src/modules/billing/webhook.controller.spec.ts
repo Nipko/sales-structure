@@ -1,7 +1,7 @@
 import { BillingWebhookController } from './webhook.controller';
 
 describe('BillingWebhookController', () => {
-    it('passes Mercado Pago data.id from the query string into signature verification', async () => {
+    it('passes the data.id query string into signature verification', async () => {
         const rawBody = JSON.stringify({
             id: 123,
             type: 'payment',
@@ -12,7 +12,7 @@ describe('BillingWebhookController', () => {
             'x-request-id': 'request-123',
         };
         const normalized = {
-            provider: 'mercadopago',
+            provider: 'stripe',
             providerEventId: 'event-123',
         };
         const provider = {
@@ -35,7 +35,7 @@ describe('BillingWebhookController', () => {
             redis as any,
         );
 
-        const result = await controller.receive('mercadopago', headers, {
+        const result = await controller.receive('stripe', headers, {
             rawBody: Buffer.from(rawBody),
             body: JSON.parse(rawBody),
             query: { 'data.id': 'AbC-123' },
@@ -64,7 +64,7 @@ describe('BillingWebhookController', () => {
             { incr: jest.fn().mockResolvedValue(1), expire: jest.fn() } as any,
         );
 
-        await expect(controller.receive('mercadopago', {}, {
+        await expect(controller.receive('stripe', {}, {
             body: {},
             query: { 'data.id': { nested: 'invalid' } },
         } as any)).rejects.toMatchObject({ status: 401 });

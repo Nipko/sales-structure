@@ -8,7 +8,7 @@ import { PaymentProviderFactory } from '../payment-provider.factory';
 import { PaymentRoutingService } from '../payment-routing.service';
 import { PaymentSourceKind } from '../adapters/provider-capabilities';
 import { AcceptanceContracts } from '../adapters/charging-provider.interface';
-import { PaymentProviderName } from '../types/provider-types';
+import { PaymentProviderName, isPaymentProviderName } from '../types/provider-types';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
 import { SubscriptionEngineService } from './subscription-engine.service';
 import { RENEWAL_QUEUE } from './renewal-scheduler.service';
@@ -417,8 +417,17 @@ export class PaymentSourceService {
 
     private async resolveProvider(tenantId: string): Promise<PaymentProviderName> {
         const sub = await this.subscriptionOf(tenantId);
-        // A live subscription keeps the provider it was created with.
-        if (sub?.provider) return this.routing.resolveForSubscription(sub.provider);
+        // Una suscripción viva conserva su proveedor — CON UNA EXCEPCIÓN: si el
+        // nombre congelado quedó retirado (mercadopago) y no hay ningún mandato
+        // del otro lado (providerSubscriptionId nulo = trial local, nada que
+        // esos ids signifiquen), congelarlo por el nombre dejaba al tenant
+        // varado: el checkout le mostraba Wompi y esta resolución le devolvía
+        // un proveedor sin adapter que no puede guardar instrumentos. En ese
+        // caso, y solo en ese, se re-resuelve como alta nueva.
+        if (sub?.provider) {
+            const frozen = this.routing.resolveForSubscription(sub.provider);
+            if (sub.providerSubscriptionId || isPaymentProviderName(frozen)) return frozen;
+        }
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },

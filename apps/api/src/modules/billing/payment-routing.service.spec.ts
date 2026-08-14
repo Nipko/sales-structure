@@ -8,8 +8,8 @@ import { PaymentProviderName } from './types/provider-types';
  *
  * The two properties worth protecting here:
  *  1. Fail polarity is asymmetric — a broken/missing setting must never turn a
- *     new provider ON, and must never turn MercadoPago (the only live revenue
- *     path) OFF.
+ *     new provider ON, and must never turn Wompi (the only live revenue path)
+ *     OFF. MercadoPago esta RETIRADO: no es ruteable ni con la config a favor.
  *  2. There is no silent default. Charging through the wrong provider is worse
  *     than refusing the acquisition.
  */
@@ -20,7 +20,7 @@ describe('PaymentRoutingService', () => {
         dbThrows?: boolean;
         cacheThrows?: boolean;
     } = {}) {
-        const registered = opts.registered ?? ['mercadopago', 'stripe', 'mock'];
+        const registered = opts.registered ?? ['stripe', 'wompi', 'mock'];
         const rows = Object.entries(opts.settings ?? {}).map(([key, value]) => ({ key, value }));
 
         const prisma = {
@@ -55,17 +55,34 @@ describe('PaymentRoutingService', () => {
     }
 
     describe('config defaults and fail polarity', () => {
-        it('defaults to MercadoPago enabled and every other provider disabled', async () => {
+        it('defaults to Wompi enabled and every other provider disabled — MercadoPago retired', async () => {
             const { service } = makeService();
             const config = await service.getConfig();
 
             expect(config.providersEnabled).toEqual({
-                mercadopago: true,
+                mercadopago: false,
                 stripe: false,
-                wompi: false,
+                wompi: true,
                 mock: false,
             });
-            expect(config.defaultByCountry).toEqual({ '*': 'mercadopago' });
+            expect(config.defaultByCountry).toEqual({ CO: 'wompi', '*': 'wompi' });
+        });
+
+        it('ignores a stored row that still names the retired provider', async () => {
+            // Defensa en profundidad: aunque la migracion de datos no haya
+            // corrido, una fila vieja con mercadopago habilitado o como
+            // catch-all no puede resucitarlo — el parser solo copia nombres
+            // ruteables.
+            const { service } = makeService({
+                settings: {
+                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ '*': 'mercadopago' }),
+                },
+            });
+            const config = await service.getConfig();
+
+            expect(config.providersEnabled.mercadopago).toBe(false);
+            expect(config.defaultByCountry['*']).toBe('wompi');
         });
 
         it('keeps the safe defaults when the stored JSON is corrupt', async () => {
@@ -75,27 +92,27 @@ describe('PaymentRoutingService', () => {
             const config = await service.getConfig();
 
             // Unreadable config must never switch a new provider on.
-            expect(config.providersEnabled.wompi).toBe(false);
+            expect(config.providersEnabled.stripe).toBe(false);
             // ...nor take the only working revenue path down.
-            expect(config.providersEnabled.mercadopago).toBe(true);
+            expect(config.providersEnabled.wompi).toBe(true);
         });
 
         it('falls back to safe defaults, without caching them, when the database is unreachable', async () => {
             const { service, redis } = makeService({ dbThrows: true });
             const config = await service.getConfig();
 
-            expect(config.providersEnabled.mercadopago).toBe(true);
-            expect(config.providersEnabled.wompi).toBe(false);
+            expect(config.providersEnabled.wompi).toBe(true);
+            expect(config.providersEnabled.mercadopago).toBe(false);
             expect(redis.setJson).not.toHaveBeenCalled();
         });
 
         it('reads the stored routing when it is valid', async () => {
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ co: 'wompi', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ co: 'wompi', '*': 'wompi' }),
                 },
-                registered: ['mercadopago', 'stripe', 'wompi', 'mock'],
+                registered: ['stripe', 'wompi', 'mock'],
             });
             const config = await service.getConfig();
 
@@ -109,8 +126,8 @@ describe('PaymentRoutingService', () => {
         it('routes a country to its configured provider', async () => {
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, stripe: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ BR: 'stripe', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true, stripe: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ BR: 'stripe', '*': 'wompi' }),
                 },
             });
 
@@ -128,10 +145,10 @@ describe('PaymentRoutingService', () => {
             // tenant whose trial started and could then never be charged.
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'wompi' }),
                 },
-                registered: ['mercadopago', 'stripe', 'wompi', 'mock'],
+                registered: ['stripe', 'wompi', 'mock'],
             });
 
             const result = await service.resolveForNewSubscription({ billingCountry: 'CO' });
@@ -156,7 +173,7 @@ describe('PaymentRoutingService', () => {
         });
 
         it('still allows disabling a provider', async () => {
-            const { service } = makeService({ registered: ['mercadopago', 'stripe', 'wompi', 'mock'] });
+            const { service } = makeService({ registered: ['stripe', 'wompi', 'mock'] });
             await expect(service.updateConfig({ providersEnabled: { wompi: false } })).resolves.toBeDefined();
         });
 
@@ -169,29 +186,33 @@ describe('PaymentRoutingService', () => {
             expect(prisma.$executeRaw).not.toHaveBeenCalled();
         });
 
-        it('uses the catch-all for countries with no explicit default', async () => {
+        it('fails closed for a country the only live rail cannot bill', async () => {
+            // El catch-all apunta a Wompi, que factura solo CO. Un alta de MX no
+            // cae a ningun proveedor fantasma: se rechaza con nombre, a
+            // sabiendas, hasta que Stripe despierte como riel internacional.
             const { service } = makeService();
-            const result = await service.resolveForNewSubscription({ billingCountry: 'MX' });
 
-            expect(result.provider).toBe('mercadopago');
-            expect(result.level).toBe('fallback');
+            await expect(service.resolveForNewSubscription({ billingCountry: 'MX' }))
+                .rejects.toMatchObject({
+                    response: expect.objectContaining({ error: 'no_payment_provider_available' }),
+                });
         });
 
         it('prefers the per-tenant override over the country default', async () => {
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true, mock: true }),
                     'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi' }),
                 },
-                registered: ['mercadopago', 'stripe', 'wompi', 'mock'],
+                registered: ['stripe', 'wompi', 'mock'],
             });
 
             const result = await service.resolveForNewSubscription({
                 billingCountry: 'CO',
-                tenantOverride: 'mercadopago',
+                tenantOverride: 'mock',
             });
 
-            expect(result.provider).toBe('mercadopago');
+            expect(result.provider).toBe('mock');
             expect(result.level).toBe('tenant');
         });
 
@@ -204,10 +225,10 @@ describe('PaymentRoutingService', () => {
             // may outrank the country, and having been billed is not one.
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'wompi' }),
                 },
-                registered: ['mercadopago', 'stripe', 'wompi', 'mock'],
+                registered: ['stripe', 'wompi', 'mock'],
             });
 
             const result = await service.resolveForNewSubscription({
@@ -224,10 +245,10 @@ describe('PaymentRoutingService', () => {
             // country default instead of failing the signup.
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'wompi' }),
                 },
-                registered: ['mercadopago', 'wompi', 'mock'],
+                registered: ['wompi', 'mock'],
             });
 
             const result = await service.resolveForNewSubscription({
@@ -240,36 +261,36 @@ describe('PaymentRoutingService', () => {
             expect(result.substituted).toBe(true);
         });
 
-        it('skips a provider whose adapter is not registered yet', async () => {
-            // Wompi is switched on in settings but its adapter ships in a later
-            // phase: routing to it would hit a factory that throws.
+        it('never routes to an enabled provider whose adapter is not registered', async () => {
+            // Wompi encendido en settings pero sin adapter cargado: rutear ahi
+            // reventaria en la factory. Sin otro riel que pueda facturar CO, el
+            // resultado correcto es rechazar, no adivinar.
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'wompi' }),
                 },
-                registered: ['mercadopago', 'stripe', 'mock'],
+                registered: ['stripe', 'mock'],
             });
 
-            const result = await service.resolveForNewSubscription({ billingCountry: 'CO' });
-
-            expect(result.provider).toBe('mercadopago');
-            expect(result.substituted).toBe(true);
-            expect(result.reason).toContain('adapter_not_registered');
+            await expect(service.resolveForNewSubscription({ billingCountry: 'CO' }))
+                .rejects.toMatchObject({
+                    response: expect.objectContaining({ error: 'no_payment_provider_available' }),
+                });
         });
 
         it('skips a provider that cannot bill in the country', async () => {
-            // Stripe does not operate in Colombia.
+            // Stripe does not operate in Colombia — the catch-all rescues.
             const { service } = makeService({
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, stripe: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ CO: 'stripe', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ stripe: true, wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'stripe', '*': 'wompi' }),
                 },
             });
 
             const result = await service.resolveForNewSubscription({ billingCountry: 'CO' });
 
-            expect(result.provider).toBe('mercadopago');
+            expect(result.provider).toBe('wompi');
             expect(result.substituted).toBe(true);
             expect(result.reason).toContain('country_unsupported');
         });
@@ -322,9 +343,9 @@ describe('PaymentRoutingService', () => {
 
         it('always keeps a catch-all so no country is left unrouted', async () => {
             const { service, prisma } = makeService({
-                registered: ['mercadopago', 'stripe', 'wompi', 'mock'],
+                registered: ['stripe', 'wompi', 'mock'],
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true }),
                 },
             });
 
@@ -339,15 +360,15 @@ describe('PaymentRoutingService', () => {
                 .find(Boolean);
             expect(written.length).toBeGreaterThan(0);
             expect(payload).toBeDefined();
-            expect(JSON.parse(payload as string)['*']).toBe('mercadopago');
+            expect(JSON.parse(payload as string)['*']).toBe('wompi');
         });
 
         it('deletes a country rule when the value is null', async () => {
             const { service, prisma } = makeService({
-                registered: ['mercadopago', 'stripe', 'wompi', 'mock'],
+                registered: ['stripe', 'wompi', 'mock'],
                 settings: {
-                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
-                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', MX: 'mercadopago', '*': 'mercadopago' }),
+                    'billing.providers_enabled': JSON.stringify({ wompi: true, stripe: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', MX: 'stripe', '*': 'wompi' }),
                 },
             });
 
@@ -360,7 +381,7 @@ describe('PaymentRoutingService', () => {
             expect(written.MX).toBeUndefined();
             // Deleting one rule must not disturb the others.
             expect(written.CO).toBe('wompi');
-            expect(written['*']).toBe('mercadopago');
+            expect(written['*']).toBe('wompi');
         });
 
         it('refuses to delete the catch-all', async () => {

@@ -58,10 +58,15 @@ export class BillingWebhookController {
         // kill switch. Disabling a provider stops NEW acquisitions; subscriptions
         // already living there keep charging, and refusing their webhooks would
         // silently drop real payments.
+        // MercadoPago fue retirado como PSP de plataforma: su ruta de webhook
+        // sale del allowlist. Como nunca llegó a cobrar una suscripción
+        // (collector_non_compliant), no existen eventos legados que perder; los
+        // webhooks del enlace-de-pago del TENANT llegan a su propia ruta
+        // (/tenant-payments/webhook/:tenantId) y no pasan por acá.
         const allowed: PaymentProviderName[] =
             process.env.NODE_ENV === 'production'
-                ? ['mercadopago', 'stripe', 'wompi']
-                : ['mercadopago', 'stripe', 'wompi', 'mock'];
+                ? ['stripe', 'wompi']
+                : ['stripe', 'wompi', 'mock'];
         if (!allowed.includes(providerName as PaymentProviderName)) {
             throw new NotImplementedException({ error: 'unknown_provider', provider: providerName });
         }

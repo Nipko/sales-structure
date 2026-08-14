@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { IPaymentProvider } from './adapters/payment-provider.interface';
 import { IChargingProvider } from './adapters/charging-provider.interface';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
-import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { WompiAdapter } from './adapters/wompi.adapter';
 import { PaymentProviderName } from './types/provider-types';
@@ -14,7 +13,6 @@ export class PaymentProviderFactory {
 
     constructor(
         private readonly mockProvider: MockPaymentProvider,
-        private readonly mercadoPagoAdapter: MercadoPagoAdapter,
         private readonly stripeAdapter: StripeAdapter,
         private readonly wompiAdapter: WompiAdapter,
     ) {}
@@ -31,8 +29,9 @@ export class PaymentProviderFactory {
         switch (providerName) {
             case 'stripe':
                 return this.stripeAdapter;
-            case 'mercadopago':
-                return this.mercadoPagoAdapter;
+            // 'mercadopago' cae al default a propósito: el adapter fue RETIRADO
+            // (ago 2026) y sus filas legadas solo se leen — cualquier camino que
+            // intente OPERAR contra MP debe fallar acá, fuerte y con nombre.
             case 'wompi':
                 return this.wompiAdapter;
             case 'mock':
@@ -83,7 +82,6 @@ export class PaymentProviderFactory {
     /** True when an adapter is registered for this name (does not validate credentials). */
     isRegistered(providerName: PaymentProviderName | string | null | undefined): boolean {
         return providerName === 'stripe'
-            || providerName === 'mercadopago'
             || providerName === 'wompi'
             || providerName === 'mock';
     }

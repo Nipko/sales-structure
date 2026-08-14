@@ -548,10 +548,15 @@ export class CouponsService {
         const coupon = validation.coupon;
 
         // Guarda dura contra el doble cobro. Extender la fecha local no cancela ni
-        // pausa el preapproval de MercadoPago: si hay suscripción viva en el
-        // proveedor, el tenant vería "1 mes gratis" y le seguirían cobrando. Además
-        // pisar el estado a `trialing` haría que el cron de trial vencido lo tirara a
+        // pausa el mandato del PROVEEDOR: si hay suscripción viva del otro lado,
+        // el tenant vería "1 mes gratis" y le seguirían cobrando. Además pisar el
+        // estado a `trialing` haría que el cron de trial vencido lo tirara a
         // past_due un mes después, aunque nunca hubiera dejado de pagar.
+        //
+        // Con el motor INTERNO no hace falta rechazar: el cobro es nuestro
+        // (`nextChargeAt`), así que el regalo se aplica corriendo esa fecha —
+        // más abajo, en la misma transacción. Rechazarlo habría dejado a todo
+        // tenant con tarjeta guardada sin poder canjear un cupón jamás.
         if (sub.providerSubscriptionId) {
             throw new BadRequestException({
                 error: 'active_provider_subscription',
@@ -559,6 +564,7 @@ export class CouponsService {
                     'This tenant has a live provider subscription. Cancel or pause it before applying a free-months coupon.',
             });
         }
+        const engineArmed = (sub as any).engine === 'internal' && (sub as any).nextChargeAt;
 
         const months: number = coupon.freeMonths;
 
@@ -622,6 +628,7 @@ export class CouponsService {
                             freeMonths: months,
                             previousTrialEndsAt: sub.trialEndsAt?.toISOString() ?? null,
                             previousCurrentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+                            previousNextChargeAt: (sub as any).nextChargeAt?.toISOString() ?? null,
                             previousStatus: sub.status,
                             newTrialEndsAt: newTrialEnd.toISOString(),
                             redeemedByUserId: input.actorUserId ?? null,
@@ -643,6 +650,12 @@ export class CouponsService {
                     trialEndsAt: newTrialEnd,
                     currentPeriodEnd: newPeriodEnd,
                     status: SubscriptionStatus.TRIALING,
+                    // El regalo también corre el cobro del motor. Sin esto, un
+                    // tenant con tarjeta guardada canjeaba "1 mes gratis" y el
+                    // scheduler le cobraba igual en la fecha vieja — el mismo
+                    // doble cobro que la guarda del proveedor previene, por la
+                    // puerta interna.
+                    ...(engineArmed ? { nextChargeAt: newTrialEnd } : {}),
                 },
             });
             await tx.tenant.update({
@@ -795,6 +808,10 @@ export class CouponsService {
         const restoredStatus = typeof meta.previousStatus === 'string'
             ? meta.previousStatus
             : SubscriptionStatus.TRIALING;
+        // Simétrico al canje: si el regalo corrió el cobro del motor, revocarlo
+        // lo devuelve a la fecha original. Canjes viejos sin el dato no se tocan.
+        const restoredNextCharge = meta.previousNextChargeAt ? new Date(meta.previousNextChargeAt) : null;
+        const engineArmed = (sub as any)?.engine === 'internal' && (sub as any)?.nextChargeAt;
 
         await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             if (sub) {
@@ -804,6 +821,7 @@ export class CouponsService {
                         trialEndsAt: restoredTrialEnd,
                         currentPeriodEnd: restoredPeriodEnd,
                         status: restoredStatus,
+                        ...(engineArmed && restoredNextCharge ? { nextChargeAt: restoredNextCharge } : {}),
                     },
                 });
                 await tx.tenant.update({

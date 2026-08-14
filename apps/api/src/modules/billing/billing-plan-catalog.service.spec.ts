@@ -20,22 +20,30 @@ describe('BillingPlanCatalogService', () => {
             billingPlan: { findMany: jest.fn().mockResolvedValue(plans) },
             exchangeRate: { findFirst: jest.fn().mockResolvedValue(fx) },
         };
-        // Routing resolves to MercadoPago so these cases keep exercising the
-        // remote-plan-catalog rules (synced id + fingerprint required).
+        // Routing resolves to a REMOTE-CATALOG provider (Stripe by name) so
+        // these cases keep exercising the synced-id + fingerprint rules. Las
+        // capacidades del mock siguen siendo las del catálogo remoto clásico
+        // (países LatAm incluidos) — el nombre solo importa para el gate de
+        // credenciales, y 'mercadopago' está retirado: jamás configurado.
         const routing = {
-            resolveForNewSubscription: jest.fn().mockResolvedValue({ provider: 'mercadopago', level: 'country', substituted: false }),
+            resolveForNewSubscription: jest.fn().mockResolvedValue({ provider: 'stripe', level: 'country', substituted: false }),
         };
         const providerFactory = {
             capabilitiesOf: () => MERCADOPAGO_CAPABILITIES,
-            isRegistered: () => true,
+            // Stripe no tiene servicio de credenciales propio: su gate de
+            // "configurado" es isRegistered, así que el flag del harness entra
+            // por acá.
+            isRegistered: () => providerConfigured,
         };
         return {
             service: new BillingPlanCatalogService(
                 prisma as any,
-                { isConfigured: () => providerConfigured } as any,
                 routing as any,
                 providerFactory as any,
-                { isConfigured: () => false } as any, // WompiConfigService — unused, routing resolves to MercadoPago
+                // WompiConfigService — routing in these cases resolves to a
+                // remote-catalog provider, so Wompi credentials are irrelevant;
+                // `providerConfigured` gates via isRegistered for stripe/mock.
+                { isConfigured: () => providerConfigured } as any,
             ),
             prisma,
         };
@@ -345,7 +353,6 @@ describe('BillingPlanCatalogService', () => {
             };
             return new BillingPlanCatalogService(
                 prisma as any,
-                { isConfigured: () => false } as any, // MercadoPago sin credenciales
                 routing as any,
                 providerFactory as any,
                 { isConfigured: () => true } as any, // Wompi configurado

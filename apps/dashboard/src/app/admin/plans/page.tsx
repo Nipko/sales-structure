@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { api, type MercadoPagoProviderStatus, type PaymentProvidersStatus, type PaymentProviderName } from "@/lib/api";
+import { api, type PaymentProvidersStatus, type PaymentProviderName } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
     RefreshCw, Users, ToggleLeft, ToggleRight, CreditCard,
@@ -16,7 +16,6 @@ type TabId = "plans" | "providers";
 type PriceCycle = {
     currency?: string;
     amountCents?: number;
-    mpPlanId?: string;
     syncedAmountCents?: number;
     syncedCurrency?: string;
 };
@@ -63,10 +62,6 @@ const BILLING_CURRENCY_BY_COUNTRY = {
 } as const;
 
 type BillingCountry = keyof typeof BILLING_CURRENCY_BY_COUNTRY;
-
-const MERCADOPAGO_COUNTRIES = new Set<BillingCountry>([
-    "CO", "AR", "MX", "CL", "PE", "UY", "BR",
-]);
 
 function countryDisplayName(country: BillingCountry, locale: string): string {
     try {
@@ -159,23 +154,6 @@ function editablePriceOverrides(overrides: Plan["priceLocalOverrides"]): Record<
     return editable;
 }
 
-function hasMatchingSyncFingerprint(
-    cycle: {
-        currency?: string;
-        amountCents?: number;
-        mpPlanId?: string;
-        syncedAmountCents?: number;
-        syncedCurrency?: string;
-    } | undefined,
-): boolean {
-    return Boolean(
-        cycle?.mpPlanId
-        && Number.isSafeInteger(cycle.amountCents)
-        && cycle.syncedAmountCents === cycle.amountCents
-        && cycle.syncedCurrency?.trim().toUpperCase() === cycle.currency?.trim().toUpperCase(),
-    );
-}
-
 type FeatureType = "boolean" | "number" | "string" | "array" | "object";
 type FeatureDef = { key: string; type: FeatureType; category: string };
 
@@ -243,35 +221,21 @@ export default function PlansPage() {
     const [editBuffer, setEditBuffer] = useState<Plan | null>(null);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-    const [providerStatus, setProviderStatus] = useState<MercadoPagoProviderStatus | null>(null);
     const [routing, setRouting] = useState<PaymentProvidersStatus["routing"] | null>(null);
     // Operador que el backend resuelve para el país elegido, failover incluido.
     const [effectiveProvider, setEffectiveProvider] = useState<PaymentProviderName | null>(null);
-    const [syncing, setSyncing] = useState<string | null>(null);
     const [reconciling, setReconciling] = useState(false);
     const [selectedCountry, setSelectedCountry] = useState<BillingCountry>("CO");
 
     const selectedCurrency = BILLING_CURRENCY_BY_COUNTRY[selectedCountry];
 
-    // Quién cobra REALMENTE en el país elegido. Media pantalla —sincronizar
-    // planes, ids de plan remoto, estado del colector— sólo significa algo bajo
-    // MercadoPago: es el único operador con catálogo remoto. Mostrarlo cuando el
-    // país cobra por otro no es sólo ruido, sugiere un trabajo pendiente que no
-    // existe.
-    //
-    // Se pregunta por el operador EFECTIVO, no por la tabla de ruteo: cuando el
-    // preferido no puede tomar el país, el router hace failover a otro y sigue
-    // cobrando. Leer sólo `defaultByCountry` mostraba la marca del que figura en
-    // la configuración mientras el dinero pasa por otro — exactamente el caso de
-    // un `'*': 'mercadopago'` sin credenciales que termina cobrando por Wompi.
+    // Quién cobra REALMENTE en el país elegido: el operador EFECTIVO que
+    // resuelve el backend (failover incluido), con la tabla de ruteo como
+    // respaldo si esa consulta no cargó.
     const countryProvider = effectiveProvider
         ?? (routing
             ? (routing.defaultByCountry[selectedCountry] ?? routing.defaultByCountry["*"] ?? null)
             : null);
-    // Si el ruteo no cargó se muestra todo, como antes: esconder herramientas por
-    // una lectura fallida es peor que mostrar una de más.
-    const countryBilledByMp = !routing || countryProvider === "mercadopago";
-    const selectedCountrySupportsMp = MERCADOPAGO_COUNTRIES.has(selectedCountry) && countryBilledByMp;
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -279,12 +243,11 @@ export default function PlansPage() {
             const [plansRes, regRes, provRes] = await Promise.all([
                 api.getAdminPlans(),
                 api.getFeatureRegistry(),
-                api.getMpProviderStatus(),
+                api.getPaymentProviderStatus(),
             ]);
             if (plansRes.success) setPlans(plansRes.data);
             if (regRes.success) setRegistry(regRes.data);
             if (provRes.success && provRes.data) {
-                setProviderStatus(provRes.data.mercadopago);
                 setRouting(provRes.data.routing ?? null);
             }
         } catch { /* ignore */ }
@@ -353,30 +316,6 @@ export default function PlansPage() {
             setToast({ type: "error", msg: "Connection error" });
         }
         setSaving(false);
-    };
-
-    const handleSync = async (slug: string, force: boolean, cycle: "month" | "year" = "month") => {
-        if (!selectedCountrySupportsMp) return;
-        const country = selectedCountry;
-        const syncKey = `${country}:${slug}:${cycle}`;
-        setSyncing(syncKey);
-        try {
-            const res = await api.syncPlanToMp(slug, { country, force, cycle });
-            if (res.success) {
-                setToast({
-                    type: "success",
-                    msg: res.data?.skipped
-                        ? t("syncMpSkippedCountry", { country, currency: selectedCurrency })
-                        : t("syncMpDoneCountry", { country, currency: selectedCurrency }),
-                });
-                load();
-            } else {
-                setToast({ type: "error", msg: res.error || "Error" });
-            }
-        } catch {
-            setToast({ type: "error", msg: "Connection error" });
-        }
-        setSyncing(null);
     };
 
     const handleReconcile = async () => {
@@ -582,25 +521,9 @@ export default function PlansPage() {
                     <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                         <Layers size={20} className="text-indigo-600 dark:text-indigo-400" />
                         {t("title")}
-                        {/* Qué operador cobra en el país elegido. El ambiente sólo
-                            se agrega bajo MercadoPago, que es de donde viene ese
-                            dato; anteponer "MP:" siempre hacía leer sandbox o
-                            producción de MercadoPago como si fuera del operador
-                            que realmente está cobrando. */}
-                        {countryBilledByMp && providerStatus ? (
-                            <span
-                                title={`${t("providerStatus")}${providerStatus.webhookConfigured ? "" : " · webhook ⚠"}`}
-                                className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                    providerStatus.environment === "production"
-                                        ? "bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300"
-                                        : providerStatus.environment === "sandbox"
-                                        ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300"
-                                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
-                                }`}
-                            >
-                                MP: {t(providerStatus.environment)}
-                            </span>
-                        ) : countryProvider ? (
+                        {/* Qué operador cobra en el país elegido. El detalle de
+                            credenciales/ambiente vive en la pestaña Proveedores. */}
+                        {countryProvider ? (
                             <span
                                 title={t("routedByHint", { country: selectedCountry })}
                                 className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
@@ -610,12 +533,6 @@ export default function PlansPage() {
                         ) : null}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
-                    {countryBilledByMp && providerStatus?.credentialModeInferred === "app_usr"
-                        && providerStatus.collectorValidation === "not_checked" && (
-                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                            {t("mpCollectorPreflightPending")}
-                        </p>
-                    )}
                 </div>
                 <button
                     onClick={handleReconcile}
@@ -674,7 +591,7 @@ export default function PlansPage() {
                         <select
                             id="pricing-country"
                             value={selectedCountry}
-                            disabled={Boolean(editSlug || syncing)}
+                            disabled={Boolean(editSlug)}
                             onChange={(event) => setSelectedCountry(event.target.value as BillingCountry)}
                             className="h-9 min-w-[260px] rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
                         >
@@ -684,23 +601,11 @@ export default function PlansPage() {
                                 </option>
                             ))}
                         </select>
-                        {/* Tres estados, no dos: MercadoPago cobra acá; MercadoPago
-                            cobraría pero el país eligió otro operador; o el país
-                            está fuera del alcance de MercadoPago. El ámbar del
-                            medio decía "no disponible" y se leía como una falla. */}
-                        <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-[11px] font-medium ${
-                            selectedCountrySupportsMp
-                                ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
-                                : !countryBilledByMp
-                                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
-                                : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
-                        }`}>
-                            {selectedCountrySupportsMp
-                                ? t("mpSyncAvailable", { country: selectedCountry, currency: selectedCurrency })
-                                : !countryBilledByMp
-                                ? t("countryBilledByOther", { country: selectedCountry, provider: countryProvider ?? "—" })
-                                : t("mpSyncUnavailable", { country: selectedCountry, currency: selectedCurrency })}
-                        </span>
+                        {countryProvider && (
+                            <span className="inline-flex w-fit items-center rounded-full px-2 py-1 text-[11px] font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                                {t("countryBilledByOther", { country: selectedCountry, provider: countryProvider })}
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
@@ -876,71 +781,6 @@ export default function PlansPage() {
                                 );
                             })}
                         </tr>
-                        {/* Los ids de plan remoto sólo existen bajo MercadoPago. */}
-                        <tr className={`border-b border-neutral-100 dark:border-neutral-800 ${countryBilledByMp ? "" : "hidden"}`}>
-                            <td className={`${tdCls} font-medium`}>{t("mpPlanId")}</td>
-                            {plans.map(p => {
-                                const cycle = p.priceLocalOverrides?.[selectedCountry];
-                                const mpId = cycle?.mpPlanId;
-                                const synchronized = hasMatchingSyncFingerprint(cycle);
-                                if (p.slug === "custom") {
-                                    return <td key={p.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
-                                }
-                                if (!selectedCountrySupportsMp) {
-                                    return (
-                                        <td key={p.slug} className={tdCls}>
-                                            <span className="text-[11px] text-neutral-400">{t("mpNotAvailable")}</span>
-                                        </td>
-                                    );
-                                }
-                                return (
-                                    <td key={p.slug} className={tdCls}>
-                                        {synchronized ? (
-                                            <span className="inline-flex items-center gap-1.5" title={mpId}>
-                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
-                                                <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{String(mpId).slice(0, 14)}…</span>
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
-                                                <AlertCircle size={11} /> {t("notSynced")}
-                                            </span>
-                                        )}
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                        <tr className={`border-b border-neutral-100 dark:border-neutral-800 ${countryBilledByMp ? "" : "hidden"}`}>
-                            <td className={`${tdCls} font-medium`}>{t("mpPlanIdAnnual")}</td>
-                            {plans.map(p => {
-                                const cycle = p.priceLocalOverrides?.[selectedCountry]?.annual;
-                                const mpId = cycle?.mpPlanId;
-                                const synchronized = hasMatchingSyncFingerprint(cycle);
-                                if (p.slug === "custom") {
-                                    return <td key={p.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
-                                }
-                                if (!selectedCountrySupportsMp) {
-                                    return (
-                                        <td key={p.slug} className={tdCls}>
-                                            <span className="text-[11px] text-neutral-400">{t("mpNotAvailable")}</span>
-                                        </td>
-                                    );
-                                }
-                                return (
-                                    <td key={p.slug} className={tdCls}>
-                                        {synchronized ? (
-                                            <span className="inline-flex items-center gap-1.5" title={mpId}>
-                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
-                                                <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{String(mpId).slice(0, 14)}…</span>
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
-                                                <AlertCircle size={11} /> {t("notSynced")}
-                                            </span>
-                                        )}
-                                    </td>
-                                );
-                            })}
-                        </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("trialDays")}</td>
                             {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "trialDays")}</td>)}
@@ -1023,75 +863,6 @@ export default function PlansPage() {
                         })}
                     </tbody>
                 </table>
-            </div>
-
-            {/* Sync plans to MercadoPago */}
-            <div className={`${sectionCls} p-4`}>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                    {t("syncMpTitleCountry", { country: selectedCountry, currency: selectedCurrency })}
-                </h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("syncMpDesc")}</p>
-                {!countryBilledByMp ? (
-                    // No es un impedimento a resolver: el operador de este país no
-                    // tiene catálogo remoto de planes. El precio que cobra sale de
-                    // la fila de precios, no de un plan registrado en el proveedor,
-                    // así que acá no hay nada que sincronizar.
-                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300">
-                        {t("syncNotNeededForProvider", { country: selectedCountry, provider: countryProvider ?? "—" })}
-                    </div>
-                ) : !selectedCountrySupportsMp ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-                        {t("syncMpUnavailableCountry", { country: selectedCountry, currency: selectedCurrency })}
-                    </div>
-                ) : (
-                    <div className="flex flex-wrap gap-2">
-                        {plans.filter(p => p.slug !== "custom" && p.features?.salesLed !== true).map(p => {
-                            const countryPrice = p.priceLocalOverrides?.[selectedCountry];
-                            const syncedM = hasMatchingSyncFingerprint(countryPrice);
-                            const syncedA = hasMatchingSyncFingerprint(countryPrice?.annual);
-                            const hasMonthlyPrice = Number.isSafeInteger(countryPrice?.amountCents)
-                                && Number(countryPrice?.amountCents) > 0;
-                            const hasAnnualPrice = Number.isSafeInteger(countryPrice?.annual?.amountCents)
-                                && Number(countryPrice?.annual?.amountCents) > 0;
-                            const busyM = syncing === `${selectedCountry}:${p.slug}:month`;
-                            const busyA = syncing === `${selectedCountry}:${p.slug}:year`;
-                            const btnCls = "inline-flex items-center gap-1 px-2 py-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-[11px] font-medium text-neutral-700 dark:text-neutral-300 hover:border-indigo-400 transition-colors disabled:opacity-50";
-                            return (
-                                <div key={p.slug} className="inline-flex flex-col gap-1 rounded-lg border border-neutral-200 dark:border-neutral-700 p-1.5">
-                                    <span className="px-1 text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">{p.name}</span>
-                                    <div className="flex gap-1">
-                                        <button
-                                            disabled={busyM || !hasMonthlyPrice}
-                                            title={!hasMonthlyPrice ? t("monthlyPriceMissing") : undefined}
-                                            onClick={() => {
-                                                if (syncedM && !window.confirm(t("syncMpConfirmCountry", { country: selectedCountry, currency: selectedCurrency }))) return;
-                                                handleSync(p.slug, syncedM, "month");
-                                            }}
-                                            className={btnCls}
-                                        >
-                                            {busyM ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                            {t("cycleMonthly")}
-                                            {syncedM && <span className="text-[9px] text-amber-600 dark:text-amber-400">· {t("resync")}</span>}
-                                        </button>
-                                        <button
-                                            disabled={busyA || !hasAnnualPrice}
-                                            title={!hasAnnualPrice ? t("annualPriceMissing") : undefined}
-                                            onClick={() => {
-                                                if (syncedA && !window.confirm(t("syncMpConfirmCountry", { country: selectedCountry, currency: selectedCurrency }))) return;
-                                                handleSync(p.slug, syncedA, "year");
-                                            }}
-                                            className={btnCls}
-                                        >
-                                            {busyA ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                            {t("cycleAnnual")}
-                                            {syncedA && <span className="text-[9px] text-amber-600 dark:text-amber-400">· {t("resync")}</span>}
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
             </div>
 
             {/* Cache invalidation buttons */}

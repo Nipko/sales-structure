@@ -1,7 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { BillingPlanCatalogService } from './billing-plan-catalog.service';
 import { PaymentRoutingService } from './payment-routing.service';
-import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import { WompiConfigService } from './adapters/wompi-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { normalizeBillingCountry } from './billing-country-config';
@@ -12,7 +11,6 @@ export class BillingPublicController {
     constructor(
         private readonly planCatalog: BillingPlanCatalogService,
         private readonly routing: PaymentRoutingService,
-        private readonly mpConfig: MercadoPagoConfigService,
         private readonly wompiConfig: WompiConfigService,
         private readonly providerFactory: PaymentProviderFactory,
     ) {}
@@ -46,10 +44,7 @@ export class BillingPublicController {
 
         let publicKey: string | null = null;
         let environment: string | null = null;
-        if (provider === 'mercadopago') {
-            publicKey = this.mpConfig.publicKey || null;
-            environment = this.mpConfig.environment();
-        } else if (provider === 'wompi') {
+        if (provider === 'wompi') {
             publicKey = this.wompiConfig.publicKey || null;
             environment = this.wompiConfig.environment();
         }

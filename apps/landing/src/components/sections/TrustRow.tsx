@@ -36,8 +36,10 @@ export function TrustRow() {
       key: "mp",
       titleKey: "mpTitle",
       descKey: "mpDesc",
-      logo: "/logos/mercadopago.svg",
-      logoAlt: "MercadoPago",
+      // Sin logo: el procesamiento de suscripciones es de Wompi (Grupo
+      // Bancolombia) y no hay activo de marca en el repo; el texto lo nombra.
+      logo: null,
+      logoAlt: "",
       badge: t("mpBadge"),
       bg: "bg-[#00B1EA]/5",
       ring: "ring-[#00B1EA]/20",
@@ -84,7 +86,6 @@ export function TrustRow() {
         <img src="/logos/messenger.svg" alt="Messenger" className="h-7 w-auto" />
         <span className="w-px h-7 bg-border" aria-hidden />
         <img src="/logos/meta.svg" alt="Meta" className="h-6 w-auto" />
-        <img src="/logos/mercadopago.svg" alt="MercadoPago" className="h-9 w-auto" />
       </div>
 
       {/* Trust cards */}

@@ -86,12 +86,12 @@ export function ProvidersTab({
         try {
             const [routingRes, statusRes] = await Promise.all([
                 api.getProviderRouting(),
-                api.getMpProviderStatus(),
+                api.getPaymentProviderStatus(),
             ]);
             if (routingRes.success && routingRes.data) {
                 setConfig(routingRes.data);
                 setDraft(toDraft(routingRes.data));
-                const firstRegistered = routingRes.data.available.find(p => p.registered)?.name;
+                const firstRegistered = routingRes.data.available.find((p: { registered: boolean; name: string }) => p.registered)?.name;
                 if (firstRegistered) setNewProvider(firstRegistered);
             } else {
                 setError({ key: "loadError", detail: routingRes.error });

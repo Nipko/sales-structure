@@ -17,7 +17,6 @@ import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
-import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 
 /**
  * Unit tests for BillingService.
@@ -32,7 +31,6 @@ describe('BillingService', () => {
     let mockProvider: MockPaymentProvider;
     let prismaMock: any;
     let redisMock: any;
-    let mpConfigMock: { isConfigured: jest.Mock };
     let eventEmitter: EventEmitter2;
     let module: TestingModule;
 
@@ -52,17 +50,12 @@ describe('BillingService', () => {
             $transaction: jest.fn(async (cb: any) => cb(prismaMock)),
         };
         redisMock = { del: jest.fn() };
-        mpConfigMock = { isConfigured: jest.fn().mockReturnValue(true) };
 
         module = await Test.createTestingModule({
             providers: [
                 BillingService,
                 PaymentProviderFactory,
                 MockPaymentProvider,
-                // MercadoPagoAdapter would be pulled in by the factory but we
-                // stub it here so the test module doesn't need its @Injectable
-                // graph resolved.
-                { provide: 'MercadoPagoAdapter', useValue: {} },
                 EventEmitter2,
                 { provide: PrismaService, useValue: prismaMock },
                 { provide: RedisService, useValue: redisMock },
@@ -73,10 +66,6 @@ describe('BillingService', () => {
                 {
                     provide: SmsCreditsService,
                     useValue: { addCredits: jest.fn(), adjust: jest.fn() },
-                },
-                {
-                    provide: MercadoPagoConfigService,
-                    useValue: mpConfigMock,
                 },
                 {
                     provide: WompiConfigService,
@@ -105,29 +94,29 @@ describe('BillingService', () => {
                     useValue: { add: jest.fn() },
                 },
                 {
-                    // Routing resolves to MercadoPago, matching the previous
-                    // hardcoded default these tests were written against.
+                    // Routing resolves to 'mock' — the lab provider with every
+                    // capability — so the tests exercise real branches without
+                    // depending on the retired MercadoPago rail.
                     provide: PaymentRoutingService,
                     useValue: {
                         resolveForNewSubscription: jest.fn().mockResolvedValue({
-                            provider: 'mercadopago',
+                            provider: 'mock',
                             level: 'country',
                             substituted: false,
                         }),
                         resolveForSubscription: (p: string) => p,
                         getConfig: jest.fn().mockResolvedValue({
-                            providersEnabled: { mercadopago: true, stripe: false, wompi: false, mock: false },
-                            defaultByCountry: { '*': 'mercadopago' },
+                            providersEnabled: { mercadopago: false, stripe: false, wompi: true, mock: true },
+                            defaultByCountry: { CO: 'wompi', '*': 'wompi' },
                             wompiMethods: { card: true, nequi: false, bancolombiaTransfer: false },
                         }),
                     },
                 },
             ],
         })
-            // Override the factory to always return the mock provider so we
-            // don't need a real MercadoPagoAdapter instance in this test.
-            // Capabilities stay REAL per provider name so the service takes the
-            // same branch it would in production.
+            // Override the factory to always return the mock provider so no
+            // real adapter graph is needed. Capabilities stay REAL per provider
+            // name so the service takes the same branch it would in production.
             .overrideProvider(PaymentProviderFactory)
             .useFactory({
                 factory: (mp: MockPaymentProvider) => ({
@@ -351,26 +340,36 @@ describe('BillingService', () => {
             );
         });
 
-        it.each([undefined, 'short-lived-card-token'])('rejects card-backed local trials before discarding token %s', async (cardTokenId) => {
+        it.each([undefined, 'short-lived-card-token'])('rejects card-backed local trials when the provider cannot retain the method (token %s)', async (cardTokenId) => {
+            // La regla es por CAPACIDAD: un trial con tarjeta promete cobro
+            // automatico al vencer, y sin instrumentos guardados la promesa es
+            // falsa. Se simula un proveedor sin retencion parcheando las
+            // capabilities del factory.
             prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
             prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
                 id: 'plan_pro', slug: 'pro', requiresCardForTrial: true,
                 trialDays: 15, isActive: true, mpPlanId: 'mp_plan_pro', features: {},
             });
-
-            await expectErrorCode(
-                () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'pro', cardTokenId }),
-                'card_trial_not_supported',
-            );
+            const factory = module.get<PaymentProviderFactory>(PaymentProviderFactory) as any;
+            const originalCaps = factory.capabilitiesOf;
+            factory.capabilitiesOf = (n: string) => ({ ...originalCaps(n), storedPaymentSources: false });
+            try {
+                await expectErrorCode(
+                    () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'pro', cardTokenId }),
+                    'card_trial_not_supported',
+                );
+            } finally {
+                factory.capabilitiesOf = originalCaps;
+            }
         });
 
         it('never silently discards a payment token during a local trial plan change', async () => {
             // A token during a local trial means "start charging me". It must
             // never be dropped: either the conversion goes through, or the call
-            // fails loudly. Here the target plan is not synchronized with the
-            // provider, so the conversion is refused instead of silently
-            // downgrading to a local-only plan swap.
+            // fails loudly. La conversion por token era el flujo de MercadoPago
+            // (cancel+recreate) y MercadoPago esta retirado: una fila legada
+            // que llegue aca falla con nombre, sin tragarse el token.
             const future = new Date(Date.now() + 20 * 86_400_000);
             prismaMock.billingSubscription.findUnique.mockResolvedValue({
                 id: 'sub-1', tenantId: 'tenant-1', planId: 'plan-emp',
@@ -391,17 +390,19 @@ describe('BillingService', () => {
             const createSpy = jest.spyOn(mockProvider, 'createSubscription');
 
             await expect(service.upgradeSubscription('tenant-1', 'pro', 'card-token')).rejects.toMatchObject({
-                response: expect.objectContaining({ error: 'provider_plan_not_synchronized' }),
+                response: expect.objectContaining({ error: 'provider_retired' }),
             });
             expect(createSpy).not.toHaveBeenCalled();
             expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
         });
 
-        it('converts a local trial into a paid subscription on the SAME plan', async () => {
-            // The most common conversion: "keep my plan, start charging me".
-            // This used to be impossible — same plan was rejected as `same_plan`
-            // and any other plan as `local_trial_plan_change_not_supported`, so a
-            // trial could only lapse.
+        it('rejects the retired token-based conversion of a legacy MP trial with a clear name', async () => {
+            // "Keep my plan, start charging me" via token era el flujo de
+            // MercadoPago. Bajo Wompi la conversion vive en addPaymentSource →
+            // armEngineForNewSource (probado en payment-source-engine-arming):
+            // guardar la tarjeta arma el motor y el cobro cae al vencer. Una
+            // fila legada MP que intente el camino viejo falla con nombre —
+            // el backfill de la migracion la re-apunta a Wompi.
             const future = new Date(Date.now() + 3 * 86_400_000);
             prismaMock.billingSubscription.findUnique.mockResolvedValue({
                 id: 'sub-1', tenantId: 'tenant-1', planId: 'plan-starter',
@@ -430,15 +431,11 @@ describe('BillingService', () => {
             });
             const createSpy = jest.spyOn(mockProvider, 'createSubscription');
 
-            await service.upgradeSubscription('tenant-1', 'starter', 'card-token');
-
-            expect(createSpy).toHaveBeenCalledTimes(1);
-            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { id: 'sub-1' },
-                    data: expect.objectContaining({ planId: 'plan-starter' }),
-                }),
-            );
+            await expect(service.upgradeSubscription('tenant-1', 'starter', 'card-token'))
+                .rejects.toMatchObject({
+                    response: expect.objectContaining({ error: 'provider_retired' }),
+                });
+            expect(createSpy).not.toHaveBeenCalled();
         });
 
         it('still rejects the same plan when there is no payment method to convert with', async () => {
@@ -482,17 +479,24 @@ describe('BillingService', () => {
                 trialDays: 7, isActive: true, features: {}, mpPlanId: 'legacy-id',
                 stripePlanId: null, priceLocalOverrides: {},
             });
+            // Stripe: proveedor con catalogo remoto. El anual exige un id de
+            // plan verificado del lado del proveedor incluso durante el trial.
+            const routing = module.get<PaymentRoutingService>(PaymentRoutingService) as any;
+            routing.resolveForNewSubscription.mockResolvedValueOnce({
+                provider: 'stripe', level: 'country', substituted: false,
+            });
 
             await expectErrorCode(
                 () => service.createTrialSubscription({
                     tenantId: 't1', planSlug: 'starter', billingCycle: 'annual',
                 }),
-                'provider_plan_not_synchronized',
+                'provider_plan_not_configured',
             );
         });
 
-        it('fails closed for a local no-card Mercado Pago trial when the provider is not configured', async () => {
-            mpConfigMock.isConfigured.mockReturnValueOnce(false);
+        it('fails closed if anything still resolves the retired provider for an acquisition', async () => {
+            // Inalcanzable via ruteo (mercadopago no es ruteable); la guarda
+            // ataja un uso directo con el nombre legado.
             prismaMock.tenant.findUnique.mockResolvedValueOnce({
                 id: 't1', name: 'T1', paymentProvider: 'mercadopago', billingCountry: 'CO',
             });
@@ -501,10 +505,14 @@ describe('BillingService', () => {
                 id: 'plan_starter', slug: 'starter', requiresCardForTrial: false,
                 trialDays: 7, isActive: true, features: {},
             });
+            const routing = module.get<PaymentRoutingService>(PaymentRoutingService) as any;
+            routing.resolveForNewSubscription.mockResolvedValueOnce({
+                provider: 'mercadopago', level: 'country', substituted: false,
+            });
 
             await expectErrorCode(
                 () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'starter' }),
-                'provider_not_configured',
+                'provider_retired',
             );
             expect(prismaMock.billingSubscription.create).not.toHaveBeenCalled();
         });
@@ -565,31 +573,31 @@ describe('BillingService', () => {
             },
         };
 
-        const dueDowngrade = (providerSubscriptionId: string | null = 'mp-sub-1') => ({
+        const dueDowngrade = (providerSubscriptionId: string | null = 'mock-sub-1') => ({
             id: 'sub-downgrade',
             tenantId: 'tenant-1',
             planId: 'plan-pro',
             pendingPlanId: 'plan-starter',
             pendingPlanChangeAt: new Date(Date.now() - 60_000),
-            provider: 'mercadopago',
+            // 'mock': proveedor con suscripciones nativas y catalogo remoto.
+            // La maquinaria de downgrade programado es generica; el que la
+            // estrenaba (MercadoPago) esta retirado.
+            provider: 'mock',
             providerSubscriptionId,
             metadata: { billingCycle: 'monthly' },
         });
 
-        it('does not schedule a provider-backed downgrade when the target fingerprint is stale', async () => {
-            const sub = dueDowngrade();
+        it('does not schedule a provider-backed downgrade when the target has no provider plan', async () => {
+            // Proveedor con catalogo remoto (Stripe) y un plan destino sin id
+            // registrado del otro lado: programar el downgrade seria prometer
+            // un cambio que el proveedor no puede ejecutar.
+            const sub = { ...dueDowngrade('stripe-sub-1'), provider: 'stripe' };
             prismaMock.billingSubscription.findUnique.mockResolvedValue(sub);
             prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) => {
                 if (where.slug === 'starter') {
                     return Promise.resolve({
                         ...synchronizedTargetPlan,
-                        priceLocalOverrides: {
-                            CO: {
-                                currency: 'COP', amountCents: 8_900_000,
-                                mpPlanId: 'stale-id', syncedAmountCents: 8_000_000,
-                                syncedCurrency: 'COP',
-                            },
-                        },
+                        stripePlanId: null,
                     });
                 }
                 if (where.id === 'plan-pro') return Promise.resolve({ id: 'plan-pro', priceUsdCents: 12_900 });
@@ -598,7 +606,7 @@ describe('BillingService', () => {
             prismaMock.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', billingCountry: 'CO' });
 
             await expect(service.upgradeSubscription('tenant-1', 'starter')).rejects.toMatchObject({
-                response: expect.objectContaining({ error: 'provider_plan_not_synchronized' }),
+                response: expect.objectContaining({ error: 'provider_plan_not_configured' }),
             });
             expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
             expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
@@ -615,7 +623,7 @@ describe('BillingService', () => {
             const result = await service.applyPendingPlanChanges();
 
             expect(result).toEqual({ applied: 0 });
-            expect(providerChange).toHaveBeenCalledWith('mp-sub-1', 'mp-starter-co');
+            expect(providerChange).toHaveBeenCalledWith('mock-sub-1', 'mock-plan');
             expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
             expect(prismaMock.tenant.update).not.toHaveBeenCalled();
             expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
@@ -637,7 +645,7 @@ describe('BillingService', () => {
             const result = await service.applyPendingPlanChanges();
 
             expect(result).toEqual({ applied: 1 });
-            expect(providerChange).toHaveBeenCalledWith('mp-sub-1', 'mp-starter-co');
+            expect(providerChange).toHaveBeenCalledWith('mock-sub-1', 'mock-plan');
             expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith({
                 where: { id: 'sub-downgrade' },
                 data: expect.objectContaining({
@@ -677,65 +685,26 @@ describe('BillingService', () => {
         });
     });
 
-    describe('Mercado Pago provider-plan fingerprint', () => {
-        const resolve = (plan: any, country: string, cycle: 'monthly' | 'annual' = 'monthly') =>
-            (service as any).resolveProviderPlanId(plan, 'mercadopago', country, cycle);
+    describe('retired provider plan resolution', () => {
+        it('rejects any plan resolution against the retired provider with a clear name', () => {
+            // Aca vivia la validacion de fingerprints de MercadoPago (id +
+            // monto + moneda verificados por el servidor). La rama se retiro
+            // completa con el proveedor: cualquier resolucion contra el nombre
+            // legado falla con provider_retired, sin importar el estado del
+            // plan. La higiene de fingerprints del catalogo remoto vigente
+            // sigue cubierta por billing-plan-price-sync.util.spec.
+            const resolve = (plan: any, country: string, cycle: 'monthly' | 'annual' = 'monthly') =>
+                (service as any).resolveProviderPlanId(plan, 'mercadopago', country, cycle);
 
-        it('accepts only a country cycle whose id, amount and currency fingerprint match', () => {
-            const plan = {
-                mpPlanId: 'legacy-id',
-                stripePlanId: null,
-                priceLocalOverrides: {
-                    co: {
-                        currency: 'COP',
-                        amountCents: 27_690_000,
-                        mpPlanId: 'verified-id',
-                        syncedAmountCents: 27_690_000,
-                        syncedCurrency: 'cop',
-                    },
-                },
-            };
-
-            expect(resolve(plan, ' co ')).toBe('verified-id');
-        });
-
-        it('rejects an unknown billing country before persisting a local trial', async () => {
-            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', billingCountry: null });
-
-            await expect(service.createTrialSubscription({
-                tenantId: 't1', planSlug: 'starter', billingCountry: 'zz',
-            })).rejects.toMatchObject({
-                response: expect.objectContaining({ error: 'invalid_billing_country' }),
-            });
-            expect(prismaMock.billingSubscription.create).not.toHaveBeenCalled();
-        });
-
-        it.each([
-            ['historical id without fingerprint', {
-                CO: { currency: 'COP', amountCents: 100, mpPlanId: 'historical-id' },
-            }, 'monthly'],
-            ['legacy top-level id without country proof', {}, 'monthly'],
-            ['annual fingerprint with stale amount', {
-                CO: {
-                    currency: 'COP', amountCents: 100,
-                    annual: {
-                        currency: 'COP', amountCents: 1_000, mpPlanId: 'annual-id',
-                        syncedAmountCents: 900, syncedCurrency: 'COP',
-                    },
-                },
-            }, 'annual'],
-            ['country with unsupported Mercado Pago currency', {
-                US: {
-                    currency: 'USD', amountCents: 100, mpPlanId: 'us-id',
-                    syncedAmountCents: 100, syncedCurrency: 'USD',
-                },
-            }, 'monthly'],
-        ])('fails closed for %s', (_label, priceLocalOverrides, cycle) => {
-            try {
-                resolve({ mpPlanId: 'legacy-id', stripePlanId: null, priceLocalOverrides }, 'US' in priceLocalOverrides ? 'US' : 'CO', cycle as any);
-                throw new Error('expected provider sync error');
-            } catch (error: any) {
-                expect(error.getResponse?.()?.error ?? error.response?.error).toBe('provider_plan_not_synchronized');
+            for (const cycle of ['monthly', 'annual'] as const) {
+                try {
+                    resolve({ mpPlanId: 'legacy-id', stripePlanId: null, priceLocalOverrides: {
+                        CO: { currency: 'COP', amountCents: 100, mpPlanId: 'x', syncedAmountCents: 100, syncedCurrency: 'COP' },
+                    } }, 'CO', cycle);
+                    throw new Error('expected provider_retired');
+                } catch (error: any) {
+                    expect(error.getResponse?.()?.error ?? error.response?.error).toBe('provider_retired');
+                }
             }
         });
     });

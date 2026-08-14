@@ -139,20 +139,6 @@ const KNOWN_COUPON_ERRORS = [
     "already_covered",
 ];
 
-function MpSecurityScript() {
-    const loaded = useRef(false);
-    useEffect(() => {
-        if (loaded.current) return;
-        loaded.current = true;
-        const s = document.createElement("script");
-        s.src = "https://www.mercadopago.com/v2/security.js";
-        s.setAttribute("view", "checkout");
-        s.async = true;
-        document.head.appendChild(s);
-    }, []);
-    return null;
-}
-
 export default function BillingPage() {
     const t = useTranslations("billingPage");
     const tHelp = useTranslations("help");
@@ -369,8 +355,8 @@ export default function BillingPage() {
                 ? plan?.requiresPaymentMethodAtSignup
                 : (!localTrial || !!plan?.requiresPaymentMethodAtSignup);
             // An operator billed by our own engine charges the method already on
-            // file, so a stored source satisfies the requirement; MercadoPago mints
-            // a token per mandate and always needs a fresh one.
+            // file, so a stored source satisfies the requirement; a provider
+            // without stored sources would need a fresh single-use token.
             const methodMissing = storedSourceCheckout
                 ? !(hasChargeableSource || opts?.methodReady)
                 : !cardTokenId;
@@ -397,7 +383,8 @@ export default function BillingPage() {
             }
             if (needsCard) {
                 // Open the payment modal; its submit calls back into handleUpgrade
-                // with the token (MercadoPago) or with the stored method (Wompi).
+                // with the stored method (Wompi) — token-based providers would
+                // pass the token instead.
                 setModal({ kind: "upgrade", planSlug });
                 setAction(null);
                 setTargetPlan(null);
@@ -692,9 +679,6 @@ export default function BillingPage() {
 
     return (
         <div className="max-w-4xl space-y-6">
-            {/* MercadoPago's device fingerprint script: pointless (and a third-party
-                request) for a tenant billed by another operator. */}
-            {publicConfig?.provider === "mercadopago" && <MpSecurityScript />}
             <header>
                 <h1 className="text-2xl font-semibold flex items-center gap-2">
                     <CreditCard size={22} />

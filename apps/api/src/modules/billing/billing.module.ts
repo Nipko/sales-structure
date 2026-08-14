@@ -25,8 +25,6 @@ import { CouponGovernanceService } from './coupon-governance.service';
 import { CouponsController } from './coupons.controller';
 import { BillingEmailService } from './billing-email.service';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
-import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
-import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { StripeConfigService } from './adapters/stripe-config.service';
 import { WompiAdapter } from './adapters/wompi.adapter';
@@ -77,8 +75,6 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         PaymentProviderFactory,
         PaymentRoutingService,
         MockPaymentProvider,
-        MercadoPagoAdapter,
-        MercadoPagoConfigService,
         StripeAdapter,
         StripeConfigService,
         WompiAdapter,

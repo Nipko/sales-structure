@@ -16,11 +16,9 @@ import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { billingCountryRequiresFiscalData, isFiscalDataComplete } from '../fiscal/fiscal-data.util';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 import {
-    MERCADOPAGO_CURRENCY_BY_COUNTRY,
     hasBillingCurrency,
     normalizeBillingCountry,
 } from './billing-country-config';
-import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import { INTERNAL_RECURRING_ENGINE_AVAILABLE, PaymentRoutingService } from './payment-routing.service';
 import { ProviderCapabilities } from './adapters/provider-capabilities';
 import { WompiConfigService } from './adapters/wompi-config.service';
@@ -61,7 +59,6 @@ export class BillingService {
         private readonly providerFactory: PaymentProviderFactory,
         private readonly fiscalConfig: FiscalConfigService,
         private readonly smsCredits: SmsCreditsService,
-        private readonly mpConfig: MercadoPagoConfigService,
         private readonly routing: PaymentRoutingService,
         private readonly wompiConfig: WompiConfigService,
         private readonly engine: SubscriptionEngineService,
@@ -176,13 +173,6 @@ export class BillingService {
             });
         }
 
-        if (plan.requiresCardForTrial && plan.trialDays > 0) {
-            throw new BadRequestException({
-                error: 'card_trial_not_supported',
-                message: 'Card-backed trials are not available until the provider-backed trial lifecycle can retain the payment method.',
-            });
-        }
-
         // Which provider bills this tenant is a runtime decision (kill switch →
         // country default → tenant override), not a hardcoded default. Changing
         // the operator for a country is a settings edit, not a deploy.
@@ -201,6 +191,20 @@ export class BillingService {
             );
         }
         this.assertProviderConfigured(providerName);
+
+        // Un trial con tarjeta promete cobro automático al vencer. La promesa
+        // solo se sostiene si el operador RETIENE el instrumento; con tokens de
+        // un solo uso sería mentira y el plan no puede ofrecerse. Es la misma
+        // regla que el catálogo publica como `card_trial_not_supported` — antes
+        // vivía acá como rechazo incondicional heredado de MercadoPago, y
+        // cerraba el alta directa a pro/enterprise incluso bajo Wompi.
+        if (plan.requiresCardForTrial && plan.trialDays > 0
+            && !this.capabilitiesFor(providerName).storedPaymentSources) {
+            throw new BadRequestException({
+                error: 'card_trial_not_supported',
+                message: `${providerName} cannot retain a payment method, so a card-backed trial cannot promise its own conversion.`,
+            });
+        }
 
         const requiresPaymentMethodAtSignup = plan.trialDays === 0 || plan.requiresCardForTrial;
         if (requiresPaymentMethodAtSignup) {
@@ -597,102 +601,17 @@ export class BillingService {
             currentPeriodStart = updated.currentPeriodStart || null;
             currentPeriodEnd = updated.currentPeriodEnd || null;
         } else {
-            // MercadoPago: no in-place plan change — create the new subscription,
-            // then cancel the old one.
-            if (!cardTokenId) {
-                throw new BadRequestException({ error: 'card_token_required_for_upgrade', message: 'A new payment method is required to change plans with this provider.' });
-            }
-
-            const payerEmail = tenant?.billingEmail;
-            if (!payerEmail) {
-                throw new BadRequestException({ error: 'payer_email_required', message: 'Tenant billingEmail is required to bill this subscription. Set it in tenant settings.' });
-            }
-
-            // Ensure we have a provider customer ID (starter trials skip customer creation)
-            let custId = sub.providerCustomerId || tenant?.paymentProviderCustomerId;
-            if (!custId) {
-                const customer = await provider.createCustomer({
-                    tenantId,
-                    email: payerEmail,
-                    name: tenant?.name || '',
-                    country: tenant?.billingCountry || undefined,
-                });
-                custId = customer.providerCustomerId;
-                await this.prisma.tenant.update({ where: { id: tenantId }, data: { paymentProviderCustomerId: custId } });
-            }
-
-            // Create the new subscription
-            const newProviderSub = await provider.createSubscription({
-                tenantId,
-                providerCustomerId: custId,
-                providerPlanId: newProviderPlanId,
-                cardTokenId,
-                billingInterval: targetCycle === 'annual' ? 'year' : 'month',
-                metadata: { email: payerEmail, billingEmail: payerEmail },
+            // Acá vivía el cancel+recreate de MercadoPago (~100 líneas con su
+            // compensación de doble mandato). Con MP retirado, ningún proveedor
+            // ruteable tiene esta forma: Stripe cambia el plan in-place y Wompi
+            // va por el motor interno (rama de arriba). Llegar acá significa una
+            // fila legada de un proveedor retirado — mejor un error claro que
+            // una coreografía de compensación contra un adapter que no existe.
+            throw new BadRequestException({
+                error: 'provider_retired',
+                message: `${providerName} no longer takes platform subscriptions. This subscription must be re-pointed to an active provider before changing plans.`,
+                providerName,
             });
-
-            // Cancel the old subscription. If this fails we must NOT keep the new
-            // one: two live mandates would both charge the tenant every period and
-            // our DB can only point at one of them. Compensate by cancelling the
-            // subscription we just created and leave the tenant exactly as before.
-            if (sub.providerSubscriptionId) {
-                try {
-                    await provider.cancelSubscription(sub.providerSubscriptionId, { immediate: true });
-                } catch (cancelErr: any) {
-                    this.logger.error(
-                        `[Billing] Tenant ${tenantId}: failed to cancel previous subscription ${sub.providerSubscriptionId} after creating ${newProviderSub.providerSubscriptionId} — compensating`,
-                    );
-                    let compensated = false;
-                    try {
-                        await provider.cancelSubscription(newProviderSub.providerSubscriptionId, { immediate: true });
-                        compensated = true;
-                    } catch (compErr: any) {
-                        this.logger.error(
-                            `[Billing] Tenant ${tenantId}: COMPENSATION FAILED — subscriptions ${sub.providerSubscriptionId} and ${newProviderSub.providerSubscriptionId} may both be active at ${providerName}. Manual intervention required.`,
-                        );
-                    }
-                    // Cancelling the new subscription stops FUTURE renewals; it
-                    // does not reverse money already captured. Providers that
-                    // charge on creation (MercadoPago authorizes and bills the
-                    // first period immediately) leave a real charge behind, and
-                    // its payment id only arrives later by webhook — so the
-                    // refund cannot be issued here. Flag it for Billing Ops
-                    // instead of telling the tenant there were no charges.
-                    const chargeMayNeedRefund = !caps.changePlanInPlace;
-                    await this.prisma.auditLog.create({
-                        data: {
-                            tenantId,
-                            action: 'subscription_upgrade_rollback',
-                            resource: `billing_subscriptions/${sub.id}`,
-                            details: {
-                                providerName,
-                                oldProviderSubscriptionId: sub.providerSubscriptionId,
-                                newProviderSubscriptionId: newProviderSub.providerSubscriptionId,
-                                cancelError: String(cancelErr?.message ?? cancelErr),
-                                compensated,
-                                chargeMayNeedRefund,
-                                actionRequired: chargeMayNeedRefund
-                                    ? 'The new subscription may have captured its first charge. Reconcile it and refund from Billing Ops if a payment landed.'
-                                    : undefined,
-                            },
-                        },
-                    }).catch((auditErr: any) => {
-                        this.logger.error(`[Billing] Failed to audit upgrade rollback for ${sub.id}: ${auditErr?.message}`);
-                    });
-                    throw new BadRequestException({
-                        error: 'upgrade_rollback',
-                        message: compensated
-                            ? 'No pudimos completar el cambio de plan, así que lo revertimos: seguís en tu plan actual. Si llegó a generarse un cobro del plan nuevo, lo detectamos y te lo devolvemos. Podés intentar de nuevo en unos minutos.'
-                            : 'No pudimos completar el cambio de plan y quedó una inconsistencia con la pasarela. Ya avisamos al equipo — no reintentes hasta que te confirmemos.',
-                        compensated,
-                    });
-                }
-            }
-
-            updatedStatus = newProviderSub.status;
-            currentPeriodStart = newProviderSub.currentPeriodStart || null;
-            currentPeriodEnd = newProviderSub.currentPeriodEnd || null;
-            newProviderSubscriptionId = newProviderSub.providerSubscriptionId;
         }
 
         await this.prisma.billingSubscription.update({
@@ -964,7 +883,6 @@ export class BillingService {
 
     async cancelSubscription(tenantId: string, opts: CancelSubscriptionOptions = {}) {
         const sub = await this.requireSubscription(tenantId);
-        const provider = this.providerFactory.getByName(sub.provider);
 
         // Cuando el calendario de cobro es NUESTRO no hay nada que cancelar del
         // otro lado: no existe una suscripción en el proveedor. Cancelar es dejar
@@ -973,18 +891,30 @@ export class BillingService {
         // Exigir un `providerSubscriptionId` acá dejaba al cliente sin poder
         // darse de baja —400 `missing_provider_subscription` contra un operador
         // que jamás va a tener ese id—, y ese es el peor lugar donde faltar.
+        //
+        // Y darse de baja tampoco puede depender de que el ADAPTER exista: una
+        // fila legada de un proveedor retirado (mercadopago) sin mandato del
+        // otro lado se cancela localmente y punto. El adapter se resuelve
+        // recién cuando de verdad hay algo que cancelar allá.
         const providerOwnsCalendar = this.capabilitiesFor(sub.provider as PaymentProviderName).nativeSubscriptions;
+        const providerRegistered = this.providerFactory.isRegistered(sub.provider as PaymentProviderName);
 
-        if (providerOwnsCalendar) {
-            if (!sub.providerSubscriptionId) {
-                throw new BadRequestException({ error: 'missing_provider_subscription' });
+        if (providerOwnsCalendar && sub.providerSubscriptionId) {
+            if (!providerRegistered) {
+                // Mandato vivo en un proveedor sin adapter: cancelar solo lo
+                // local mentiría (el proveedor seguiría cobrando). Intervención
+                // manual, con el error diciendo exactamente eso.
+                throw new BadRequestException({
+                    error: 'provider_retired',
+                    message: `${sub.provider} still holds mandate ${sub.providerSubscriptionId} but its adapter was retired. Cancel it at the provider manually, then retry.`,
+                });
             }
-            await provider.cancelSubscription(sub.providerSubscriptionId, opts);
-        } else if (sub.providerSubscriptionId) {
+            await this.providerFactory.getByName(sub.provider).cancelSubscription(sub.providerSubscriptionId, opts);
+        } else if (sub.providerSubscriptionId && providerRegistered) {
             // Cohorte migrada: nació en un proveedor con suscripciones y hoy la
             // cobra el motor. Se cancela igual del lado del proveedor para que no
             // quede un mandato vivo cobrando en paralelo.
-            await provider.cancelSubscription(sub.providerSubscriptionId, opts).catch((err: any) => {
+            await this.providerFactory.getByName(sub.provider).cancelSubscription(sub.providerSubscriptionId, opts).catch((err: any) => {
                 this.logger.warn(`[Billing] Provider-side cancel failed for ${sub.id}: ${err?.message}`);
             });
         }
@@ -1254,6 +1184,12 @@ export class BillingService {
             });
         }
 
+        // El adapter se resuelve ANTES de reservar: un pago de un proveedor
+        // retirado (filas legadas 'mercadopago') debe fallar limpio acá. Con el
+        // orden invertido, el throw de getByName dejaba la fila ya marcada como
+        // reembolsada sin que el proveedor devolviera un peso.
+        const provider = this.providerFactory.getByName(payment.provider);
+
         // Reserva optimista: sólo avanza si el acumulado sigue siendo el que
         // leímos. Dos clics simultáneos: uno actualiza 1 fila, el otro 0.
         const newTotal = alreadyRefunded + requested;
@@ -1272,7 +1208,6 @@ export class BillingService {
             throw new BadRequestException({ error: 'refund_conflict', message: 'El pago cambió mientras se procesaba el reembolso. Volvé a intentarlo.' });
         }
 
-        const provider = this.providerFactory.getByName(payment.provider);
         try {
             await provider.refundPayment(payment.providerPaymentId, input.amountCents);
         } catch (e) {
@@ -1372,10 +1307,14 @@ export class BillingService {
                 })
                 .then((r) => r.provider)
                 .catch((err: any) => {
+                    // El fallback graba el riel vivo, nunca uno retirado: acá se
+                    // fabricaban filas 'mercadopago' nuevas después del retiro,
+                    // varando al tenant en un proveedor sin adapter el día que
+                    // quisiera convertir a pago.
                     this.logger.warn(
-                        `[Billing] Comp plan for tenant ${input.tenantId} (${tenant.billingCountry ?? 'unknown country'}): no routable provider (${err?.response?.error ?? err?.message}). Recording 'mercadopago'; converting this tenant to paid will need an explicit provider.`,
+                        `[Billing] Comp plan for tenant ${input.tenantId} (${tenant.billingCountry ?? 'unknown country'}): no routable provider (${err?.response?.error ?? err?.message}). Recording 'wompi'; converting this tenant to paid will need an explicit provider.`,
                     );
-                    return 'mercadopago' as PaymentProviderName;
+                    return 'wompi' as PaymentProviderName;
                 });
             await this.prisma.billingSubscription.create({
                 data: {
@@ -1726,39 +1665,18 @@ export class BillingService {
     ): string {
         let id: string | null | undefined;
         if (providerName === 'mercadopago') {
-            this.assertProviderConfigured(providerName);
-            const overrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object') ? plan.priceLocalOverrides : {};
-            const country = normalizeBillingCountry(billingCountry) || 'CO';
-            const countryEntry = Object.entries(overrides).find(([key]) =>
-                normalizeBillingCountry(key) === country)?.[1] as any;
-            const cycleEntry = cycle === 'annual' ? countryEntry?.annual : countryEntry;
-            const expectedCurrency = MERCADOPAGO_CURRENCY_BY_COUNTRY[
-                country as keyof typeof MERCADOPAGO_CURRENCY_BY_COUNTRY
-            ];
-            const configuredCurrency = typeof cycleEntry?.currency === 'string'
-                ? cycleEntry.currency.trim().toUpperCase()
-                : '';
-            const fingerprintCurrency = typeof cycleEntry?.syncedCurrency === 'string'
-                ? cycleEntry.syncedCurrency.trim().toUpperCase()
-                : '';
-            const fingerprintMatches = expectedCurrency
-                && configuredCurrency === expectedCurrency
-                && Number.isSafeInteger(cycleEntry?.amountCents)
-                && cycleEntry.amountCents > 0
-                && cycleEntry.syncedAmountCents === cycleEntry.amountCents
-                && fingerprintCurrency === configuredCurrency;
-
-            if (fingerprintMatches && typeof cycleEntry?.mpPlanId === 'string' && cycleEntry.mpPlanId.trim()) {
-                id = cycleEntry.mpPlanId.trim();
-            } else {
-                throw new BadRequestException({
-                    error: 'provider_plan_not_synchronized',
-                    message: `This plan is not synchronized with ${providerName} for country ${country} (${cycle}) at the configured amount and currency.`,
-                    providerName,
-                    billingCountry: country,
-                    cycle,
-                });
-            }
+            // Proveedor RETIRADO: no hay adapter, no hay catálogo remoto y no
+            // puede recibir suscripciones nuevas. Si este error aparece, una
+            // fila legada 'mercadopago' llegó a un flujo de escritura sin pasar
+            // por el backfill — el arreglo es re-apuntar esa suscripción, no
+            // revivir la rama de preapproval_plan que vivía acá.
+            throw new BadRequestException({
+                error: 'provider_retired',
+                message: 'MercadoPago was retired as a platform subscription provider. This subscription must be re-pointed to an active provider.',
+                providerName,
+                billingCountry,
+                cycle,
+            });
         } else if (providerName === 'stripe') {
             id = plan.stripePlanId;
         } else if (providerName === 'mock') {
@@ -1807,10 +1725,13 @@ export class BillingService {
                 providerName,
             });
         }
-        if (providerName === 'mercadopago' && !this.mpConfig.isConfigured()) {
+        if (providerName === 'mercadopago') {
+            // Retirado: sin credenciales de plataforma ni adapter. Inalcanzable
+            // desde el ruteo (no es ruteable), esta guarda solo ataja un uso
+            // directo con una fila legada.
             throw new BadRequestException({
-                error: 'provider_not_configured',
-                message: 'Mercado Pago is not configured for self-service acquisition.',
+                error: 'provider_retired',
+                message: 'MercadoPago was retired as a platform subscription provider.',
                 providerName,
             });
         }

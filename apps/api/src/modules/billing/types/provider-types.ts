@@ -2,26 +2,52 @@ import { BillingEventType } from './billing-event.enum';
 import { SubscriptionStatus } from './subscription-status.enum';
 
 /**
- * Supported payment providers. New providers are added here and must implement
- * IPaymentProvider. Which one runs for a given charge is decided by
- * PaymentRoutingService (kill switch → country default → tenant override →
- * the provider frozen on the subscription) and resolved by PaymentProviderFactory.
+ * Payment provider names the system can NAME. Which one runs for a given charge
+ * is decided by PaymentRoutingService (kill switch → country default → tenant
+ * override → the provider frozen on the subscription) and resolved by
+ * PaymentProviderFactory.
+ *
+ * 'mercadopago' sigue en el union como VALOR LEGADO DE SOLO LECTURA: hay filas
+ * históricas que lo nombran (billing_subscriptions viejas, billing_payments,
+ * billing_events, tenants.payment_provider) y borrar el literal haría tirar a
+ * cualquier lectura de ese historial. Como PSP de plataforma está RETIRADO por
+ * decisión del dueño (ago 2026, collector_non_compliant nunca resuelto): no es
+ * ruteable, no se puede habilitar y no tiene adapter. La cuenta de MercadoPago
+ * del TENANT para cobrar a sus propios clientes vive en modules/tenant-payments
+ * y no pasa por acá.
  *
  * Providers without native subscriptions (wompi) additionally implement
  * IChargingProvider and are driven by our own recurring engine.
  */
 export type PaymentProviderName = 'mercadopago' | 'stripe' | 'wompi' | 'mock';
 
-/** Every provider name that exists, for validation of runtime-configured routing. */
+/**
+ * Providers que el RUTEO puede elegir para cobros nuevos. La lista gobierna el
+ * barrido de failover, la validación de settings y el listado del panel: lo que
+ * no está acá no puede recibir un cobro nuevo jamás, aunque el union lo nombre.
+ */
 export const PAYMENT_PROVIDER_NAMES: readonly PaymentProviderName[] = [
-    'mercadopago',
     'stripe',
     'wompi',
     'mock',
 ] as const;
 
+/** Ruteable hoy: válido para settings, override por tenant y altas nuevas. */
 export function isPaymentProviderName(value: unknown): value is PaymentProviderName {
     return typeof value === 'string' && (PAYMENT_PROVIDER_NAMES as readonly string[]).includes(value);
+}
+
+/**
+ * Nombres válidos al LEER datos existentes (suscripciones, pagos, eventos).
+ * Incluye los retirados: una fila vieja no es un dato corrupto.
+ */
+export const LEGACY_PAYMENT_PROVIDER_NAMES: readonly PaymentProviderName[] = [
+    ...PAYMENT_PROVIDER_NAMES,
+    'mercadopago',
+] as const;
+
+export function isLegacyPaymentProviderName(value: unknown): value is PaymentProviderName {
+    return typeof value === 'string' && (LEGACY_PAYMENT_PROVIDER_NAMES as readonly string[]).includes(value);
 }
 
 /**

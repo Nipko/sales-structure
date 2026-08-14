@@ -236,16 +236,10 @@ jobs:
       - name: Lint (API)
         run: cd apps/api && npx eslint "src/**/*.ts"
 
-      # El gate de MercadoPago salió del deploy (ago 2026). MP rechazó al collector
-      # (`rejected_by_regulations_collector_non_compliant`), así que la integración no
-      # es viable por ahora y no tiene sentido que un deploy de cualquier parte del
-      # producto dependa de sus tests de contrato. Los specs de MP siguen en el repo
-      # —`mercadopago-config.service.spec.ts`, `mercadopago.adapter.spec.ts`,
-      # `diagnose-mp-collector.spec.ts` y `scripts/__tests__/sync-mp-plans.test.js`—
-      # y se corren a mano cuando se retome la pasarela (ver
-      # `docs/pasarela-wompi-research-2026-08.md` para la alternativa en evaluación).
-      # Los contratos de billing que NO dependen de MP sí siguen bloqueando el deploy.
-      - name: Billing contract tests (sin MercadoPago)
+      # MercadoPago fue RETIRADO como PSP de plataforma (ago 2026): su adapter,
+      # su config service, sus scripts y sus specs salieron del repo. El riel
+      # vivo es Wompi, cobrado por el motor de recurrencia propio.
+      - name: Billing contract tests
         run: |
           cd apps/api
           npm test -- --runInBand \
@@ -421,7 +415,6 @@ jobs:
             NEXT_PUBLIC_INSTAGRAM_APP_ID=1472258884595741
             NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback
             NEXT_PUBLIC_APP_VERSION=${{ steps.appversion.outputs.value }}
-            NEXT_PUBLIC_MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}
             NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
           cache-from: type=gha,scope=billing-v2
           cache-to: type=gha,mode=max,scope=billing-v2
@@ -620,10 +613,6 @@ jobs:
           PROD_MS_AUTH_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
           PROD_MS_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
           PROD_MS_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
-          # MercadoPago (TEST in sandbox; APP_USR from the verified MCO merchant in production)
-          PROD_MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
-          PROD_MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
-          PROD_MP_PUBLIC_KEY: ${{ secrets.MP_PUBLIC_KEY }}
           # Wompi (Bancolombia). Absent secrets are harmless: the adapter logs a
           # warning and the provider simply stays unroutable — it is off by
           # default in the runtime routing config anyway.
@@ -636,7 +625,6 @@ jobs:
           PROD_OWNER_COUPON_PIN: ${{ secrets.OWNER_COUPON_PIN }}
           # Optional but strongly recommended: numeric User/collector ID shown
           # by the verified MCO merchant. The preflight compares without logging it.
-          PROD_MP_EXPECTED_COLLECTOR_ID: ${{ secrets.MP_EXPECTED_COLLECTOR_ID }}
           # Factus (DIAN electronic invoicing — Colombia). Credentials from the
           # Factus admin. FACTUS_BASE_URL = https://api-sandbox.factus.com.co
           # until production go-live.
@@ -646,13 +634,6 @@ jobs:
           PROD_FACTUS_USERNAME: ${{ secrets.FACTUS_USERNAME }}
           PROD_FACTUS_PASSWORD: ${{ secrets.FACTUS_PASSWORD }}
           # Per-country USD→local FX rates. Override via secrets when prices drift.
-          PROD_MP_FX_CO: ${{ secrets.MP_FX_CO }}
-          PROD_MP_FX_AR: ${{ secrets.MP_FX_AR }}
-          PROD_MP_FX_MX: ${{ secrets.MP_FX_MX }}
-          PROD_MP_FX_CL: ${{ secrets.MP_FX_CL }}
-          PROD_MP_FX_PE: ${{ secrets.MP_FX_PE }}
-          PROD_MP_FX_UY: ${{ secrets.MP_FX_UY }}
-          PROD_MP_FX_BR: ${{ secrets.MP_FX_BR }}
           # External CRM integrations
           PROD_HUBSPOT_CLIENT_ID: ${{ secrets.HUBSPOT_CLIENT_ID }}
           PROD_HUBSPOT_CLIENT_SECRET: ${{ secrets.HUBSPOT_CLIENT_SECRET }}
@@ -696,10 +677,9 @@ jobs:
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
-            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,PROD_MP_EXPECTED_COLLECTOR_ID,PROD_OWNER_COUPON_PIN,
+            PROD_OWNER_COUPON_PIN,
             PROD_WOMPI_PUBLIC_KEY,PROD_WOMPI_PRIVATE_KEY,PROD_WOMPI_EVENTS_SECRET,PROD_WOMPI_INTEGRITY_SECRET,
             PROD_FACTUS_BASE_URL,PROD_FACTUS_CLIENT_ID,PROD_FACTUS_CLIENT_SECRET,PROD_FACTUS_USERNAME,PROD_FACTUS_PASSWORD,
-            PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
             PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET,
             PROD_VAPID_PUBLIC_KEY,PROD_VAPID_PRIVATE_KEY,
@@ -822,12 +802,9 @@ jobs:
             echo "MS_CLIENT_SECRET=${PROD_MS_CLIENT_SECRET}" >> .env
             echo "MS_TENANT_ID=common" >> .env
             echo "MS_CALENDAR_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/calendar/microsoft/callback" >> .env
-            echo "# MercadoPago (Billing)" >> .env
-            echo "MP_ACCESS_TOKEN=${PROD_MP_ACCESS_TOKEN}" >> .env
-            echo "MP_WEBHOOK_SECRET=${PROD_MP_WEBHOOK_SECRET}" >> .env
-            echo "MP_PUBLIC_KEY=${PROD_MP_PUBLIC_KEY}" >> .env
-            echo "MP_EXPECTED_COLLECTOR_ID=${PROD_MP_EXPECTED_COLLECTOR_ID}" >> .env
-            echo "MP_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago" >> .env
+            # MercadoPago fue RETIRADO como PSP de plataforma (ago 2026): sus
+            # credenciales ya no se escriben al .env. El enlace-de-pago del
+            # TENANT usa el token cifrado por-tenant en la base, no estas vars.
             echo "# Wompi (Bancolombia — Colombian rail). Empty until the secrets exist;" >> .env
             echo "# the adapter warns and the provider stays unroutable instead of failing boot." >> .env
             echo "WOMPI_PUBLIC_KEY=${PROD_WOMPI_PUBLIC_KEY}" >> .env
@@ -1014,29 +991,12 @@ jobs:
             echo "===> [4/4] Ensuring tunnel is running..."
             $DC up -d tunnel
 
-            # ── Aprovisionamiento en MercadoPago: RETIRADO del deploy (ago 2026) ──
-            #
-            # Acá corrían, después del rolling-restart, el preflight del collector
-            # (`diagnose-mp-collector.js --expected-site=MCO`) y cinco `sync-mp-plans.js`
-            # —dry-run mensual y anual, la sonda de un plan, y los sync mensual y anual
-            # reales—, cada uno con `exit 1`. El propio comentario lo asumía: "if Mercado
-            # Pago rejects a plan, the workflow stays red".
-            #
-            # Eso dejó de ser un supuesto: MP rechazó al collector con
-            # `rejected_by_regulations_collector_non_compliant`, así que el preflight
-            # fallaba SIEMPRE y todo deploy —de cualquier parte del producto— terminaba
-            # en rojo aunque el runtime hubiera quedado sano y actualizado. Un pipeline
-            # que siempre falla no informa nada y entrena a ignorarlo.
-            #
-            # Los scripts siguen en el repo y se corren a mano contra producción cuando
-            # la pasarela vuelva a ser viable:
-            #   docker compose run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO
-            #   docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --fx=4200
-            # Alternativa en evaluación: docs/pasarela-wompi-research-2026-08.md
-            #
-            # Al reponerlo, que NO sea bloqueante del deploy: el aprovisionamiento del
-            # proveedor es una tarea de operación, no una condición para publicar código.
-            echo "===> Runtime SHA ${GIT_SHA} activo. Sync de planes a MercadoPago: omitido (integración en pausa)."
+            # Wompi no tiene catálogo remoto de planes: el precio local congelado
+            # ES el contrato, así que no hay nada que aprovisionar del lado del
+            # proveedor después de un deploy. (Acá vivía el preflight del collector
+            # de MercadoPago y cinco `sync-mp-plans.js`, cada uno con `exit 1`, que
+            # dejaban en rojo TODO deploy aunque el runtime quedara sano.)
+            echo "===> Runtime SHA ${GIT_SHA} activo."
 
             # ── Post-deploy cleanup: remove old images ──
             echo "===> Pruning old Docker images..."

@@ -18,7 +18,6 @@ import {
 } from "@/lib/vertical-catalog";
 import { TIMEZONE_GROUPS, TIMEZONE_VALUES, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
 import AnimatedLogo from "@/components/AnimatedLogo";
-import MpCardForm from "@/components/billing/MpCardForm";
 
 // Ruta crítica: empresa → audiencia → objetivos → plan. El catálogo del último
 // paso viene del backend; ningún slug, precio o requisito de tarjeta vive acá.
@@ -448,7 +447,6 @@ export default function OnboardingPage() {
     const [planCatalogReloadKey, setPlanCatalogReloadKey] = useState(0);
     const [pricingIntentLoaded, setPricingIntentLoaded] = useState(false);
     const [pricingIntentAdjusted, setPricingIntentAdjusted] = useState(false);
-    const [cardTokenId, setCardTokenId] = useState<string | null>(null);
 
     // Protected
     useEffect(() => {
@@ -549,10 +547,6 @@ export default function OnboardingPage() {
         };
         try { sessionStorage.setItem(PRICING_INTENT_KEY, JSON.stringify(pricingIntent)); } catch { /* noop */ }
     }, [billingCountry, billingCycle, planSlug, pricingIntentLoaded]);
-
-    useEffect(() => {
-        setCardTokenId(null);
-    }, [billingCountry, billingCycle, planSlug]);
 
     // The API registry is the only source of truth for industries/subtypes.
     // Administrative creation consumes the same endpoint, preventing the two
@@ -716,7 +710,12 @@ export default function OnboardingPage() {
                 return planCatalogIsCurrent
                     && !!selectedPlan
                     && isCycleAvailable(selectedPlan, billingCycle)
-                    && (!selectedPlan.requiresPaymentMethodAtSignup || !!cardTokenId);
+                    // Un plan que exige medio de pago al alta no puede
+                    // completarse desde aca: la fuente de pago de Wompi
+                    // pertenece al TENANT, que todavia no existe. Ese plan se
+                    // activa desde Configuracion → Facturacion tras crear la
+                    // cuenta (el aviso de abajo lo explica).
+                    && !selectedPlan.requiresPaymentMethodAtSignup;
             default:
                 return false;
         }
@@ -770,7 +769,6 @@ export default function OnboardingPage() {
             plan: selectedPlan.slug,
             billingCountry,
             billingCycle,
-            cardTokenId: selectedPlan.requiresPaymentMethodAtSignup ? cardTokenId : undefined,
             couponCode: couponCode.trim() || undefined,
         };
 
@@ -1446,33 +1444,15 @@ export default function OnboardingPage() {
                                 </p>
                             )}
 
-                            {/* Inline card form driven exclusively by the selected plan. */}
-                            {selectedPlan?.signupAvailable
-                                && selectedPlan.requiresPaymentMethodAtSignup
-                                && isCycleAvailable(selectedPlan, billingCycle)
-                                && !cardTokenId && (
-                                <div className="mt-5 p-4 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900">
-                                    <h3 className="text-sm font-semibold mb-3">{t('cardSectionTitle')}</h3>
-                                    <MpCardForm
-                                        onToken={(token) => setCardTokenId(token)}
-                                        submitLabel={t('saveCard')}
-                                    />
-                                </div>
-                            )}
-
-                            {selectedPlan?.signupAvailable
-                                && selectedPlan.requiresPaymentMethodAtSignup
-                                && isCycleAvailable(selectedPlan, billingCycle)
-                                && cardTokenId && (
-                                <div className="mt-5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-sm text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
-                                    <span>✓ {t('cardReady')}</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setCardTokenId(null)}
-                                        className="text-xs underline hover:no-underline"
-                                    >
-                                        {t('changeCard')}
-                                    </button>
+                            {/* La tarjeta no se pide aca. La fuente de pago del
+                                operador (Wompi) pertenece al tenant, y el tenant
+                                nace al completar este formulario: el plan con
+                                cobro se activa desde Configuracion → Facturacion,
+                                donde la tarjeta queda guardada y el cobro se
+                                agenda al vencer la prueba. */}
+                            {selectedPlan?.requiresPaymentMethodAtSignup && (
+                                <div className="mt-5 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 text-sm text-indigo-800 dark:text-indigo-300">
+                                    {t('paidPlanAfterSignup', { plan: selectedPlan.name })}
                                 </div>
                             )}
 

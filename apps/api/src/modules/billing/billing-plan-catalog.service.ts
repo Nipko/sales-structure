@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveAnnualPlanDisplay } from './billing-plan-display.util';
-import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import {
     BILLING_CURRENCY_BY_COUNTRY,
     isBillingCountry,
@@ -80,7 +79,6 @@ function publicFeatures(value: unknown): JsonRecord {
 export class BillingPlanCatalogService {
     constructor(
         private readonly prisma: PrismaService,
-        private readonly mpConfig: MercadoPagoConfigService,
         private readonly routing: PaymentRoutingService,
         private readonly providerFactory: PaymentProviderFactory,
         private readonly wompiConfig: WompiConfigService,
@@ -91,7 +89,7 @@ export class BillingPlanCatalogService {
      * Each adapter with its own credential service registers here.
      */
     private isProviderConfigured(provider: PaymentProviderName): boolean {
-        if (provider === 'mercadopago') return this.mpConfig.isConfigured();
+        if (provider === 'mercadopago') return false; // retirado: jamás cobrable
         if (provider === 'wompi') return this.wompiConfig.isConfigured();
         // Adapters without a dedicated credential service count as configured
         // once registered.
@@ -120,7 +118,7 @@ export class BillingPlanCatalogService {
             // itself unavailable: falling back to MercadoPago's capabilities here
             // would advertise a buy button whose POST is guaranteed to 400 —
             // the kill switch would be invisible to the storefront.
-            providerName = 'mercadopago';
+            providerName = 'wompi';
             noProviderAvailable = true;
         }
         const capabilities = this.providerFactory.capabilitiesOf(providerName);

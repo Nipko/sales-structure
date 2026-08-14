@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { PrismaService } from './prisma.service';
 
 describe('PrismaService tenant schema lifecycle', () => {
@@ -212,6 +214,35 @@ describe('PrismaService tenant schema lifecycle', () => {
             await expect(h.service.preflightTenantPublicPurge()).rejects.toMatchObject({
                 response: { error: 'tenant_purge_incomplete_feature_request_schema' },
             });
+        });
+
+        /**
+         * Drift guard. The two tests above prove the gate reacts to an unknown
+         * table; neither compares the classification against the schema we
+         * actually ship. A new global table therefore used to reach production
+         * unclassified and block the purge of EVERY tenant — which is how
+         * billing_charge_attempts / billing_credit_ledger / billing_payment_sources
+         * shipped in Aug 2026. The migration tier is not a safety net here: the
+         * PR gate never applies migrations, so only a static check catches it.
+         *
+         * Global tables are always declared in schema.prisma (raw SQL is for
+         * tenant schemas), so the declared models are the authoritative list.
+         */
+        it('classifies every global table that schema.prisma gives a tenant_id', async () => {
+            const schema = readFileSync(
+                join(__dirname, '..', '..', '..', 'prisma', 'schema.prisma'),
+                'utf8',
+            );
+            const declared = [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)]
+                .filter(([, , body]) => /@map\("tenant_id"\)/.test(body) || /^\s*tenant_id\s/m.test(body))
+                .map(([, name, body]) => body.match(/@@map\("([^"]+)"\)/)?.[1] ?? name);
+
+            // Sanity-check the parser itself: a silent zero would pass forever.
+            expect(declared.length).toBeGreaterThan(20);
+
+            const h = makePreflightService(declared);
+
+            await expect(h.service.preflightTenantPublicPurge()).resolves.toBeUndefined();
         });
     });
 });

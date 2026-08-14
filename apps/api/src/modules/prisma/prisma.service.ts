@@ -7,7 +7,11 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     'push_subscriptions', 'feature_request_subscribers', 'feature_request_comments',
     'feature_request_votes', 'feature_requests', 'webhook_subscriptions',
     'email_channel_configs', 'widget_sessions', 'widget_configs', 'billing_events',
-    'billing_payments', 'billing_coupon_redemptions', 'billing_subscriptions',
+    'billing_payments', 'billing_coupon_redemptions',
+    // Recurring engine. Attempts and ledger hang off billing_subscriptions, so
+    // they are deleted before it; payment sources only reference the tenant.
+    'billing_charge_attempts', 'billing_credit_ledger', 'billing_payment_sources',
+    'billing_subscriptions',
     'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
     'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
     'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',

@@ -2233,12 +2233,18 @@ async function apiGetBlob(endpoint: string): Promise<Blob | null> {
     }
 }
 
-async function apiDelete<T = any>(endpoint: string): Promise<{ success: boolean; data?: T; error?: string }> {
+// A diferencia de los otros cuatro, este descartaba `json.error`. Los guards de
+// purga rechazan con `{ error: 'tenant_purge_...' }` y SIN `message`, así que el
+// panel mostraba "Error 409" y el motivo real solo existía en los logs del API.
+async function apiDelete<T = any>(endpoint: string): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
     try {
         const res = await authFetch(endpoint, { method: "DELETE" });
         if (res.status === 204) return { success: true };
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}` };
+        if (!res.ok) {
+            const code = typeof json.error === "string" ? json.error : undefined;
+            return { success: false, error: json.message || code || `Error ${res.status}`, errorCode: code };
+        }
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };

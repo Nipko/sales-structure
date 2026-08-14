@@ -5550,6 +5550,7 @@
     "pciNote": "Los datos de tu tarjeta son procesados directamente por MercadoPago — Parallly nunca los ve."
   },
   "trialBanner": {
+    "convertsOn": "Tu prueba termina el {date}: ese día se activa tu plan y se cobrarán {amount}.",
     "endsToday": "Tu prueba gratuita termina hoy.",
     "endsTomorrow": "Tu prueba gratuita termina manana.",
     "endsIn": "Tu prueba gratuita termina en {days} dias.",

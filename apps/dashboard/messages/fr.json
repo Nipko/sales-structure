@@ -5550,6 +5550,7 @@
     "pciNote": "Les donnees de la carte sont traitees directement par MercadoPago — Parallly ne les voit jamais."
   },
   "trialBanner": {
+    "convertsOn": "Votre essai se termine le {date} : ce jour-là votre plan s'active et {amount} seront prélevés.",
     "endsToday": "Votre essai gratuit se termine aujourd'hui.",
     "endsTomorrow": "Votre essai gratuit se termine demain.",
     "endsIn": "Votre essai gratuit se termine dans {days} jours.",

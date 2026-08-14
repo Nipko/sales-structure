@@ -5550,6 +5550,7 @@
     "pciNote": "Your card data is processed directly by MercadoPago — Parallly never sees it."
   },
   "trialBanner": {
+    "convertsOn": "Your trial ends on {date}: that day your plan activates and we will charge {amount}.",
     "endsToday": "Your free trial ends today.",
     "endsTomorrow": "Your free trial ends tomorrow.",
     "endsIn": "Your free trial ends in {days} days.",

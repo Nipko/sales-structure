@@ -172,6 +172,27 @@ export class BillingController {
                 pendingPlanId: (sub as any).pendingPlanId ?? null,
                 pendingPlanChangeAt: (sub as any).pendingPlanChangeAt ?? null,
                 pendingPlan,
+                /**
+                 * El cobro que ya está agendado, si lo hay.
+                 *
+                 * Sin esto la pantalla no tenía con qué distinguir un trial que
+                 * va a convertirse —medio de pago guardado, importe congelado y
+                 * fecha puesta— de uno que va a expirar sin más, así que le
+                 * mostraba a todos el mismo "se te acaba la prueba". El cliente
+                 * que acababa de poner la tarjeta y subir de plan seguía viendo
+                 * el mismo apuro que antes de hacerlo.
+                 *
+                 * Es `null` cuando el proveedor cobra por su cuenta (ahí la
+                 * fecha la manda él) o cuando todavía no hay nada agendado.
+                 */
+                nextCharge: (sub as any).engine === 'internal' && (sub as any).nextChargeAt
+                    && (sub as any).chargeAmountCents
+                    ? {
+                        at: (sub as any).nextChargeAt,
+                        amountCents: (sub as any).chargeAmountCents,
+                        currency: (sub as any).chargeCurrency,
+                    }
+                    : null,
                 payments: recentPayments,
             },
             billingCountry: tenant?.billingCountry ?? null,

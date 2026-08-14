@@ -663,9 +663,13 @@ export default function BillingPage() {
         }
     };
 
+    // El aviso de un cambio de plan trae plan, fecha y monto: a 3 segundos
+    // desaparecía antes de poder leerlo, y el cambio se sentía como que no pasó
+    // nada. El tiempo se estima por largo, con un piso cómodo.
     useEffect(() => {
         if (!toast) return;
-        const tm = setTimeout(() => setToast(null), 3000);
+        const ms = Math.min(15_000, Math.max(6_000, toast.length * 90));
+        const tm = setTimeout(() => setToast(null), ms);
         return () => clearTimeout(tm);
     }, [toast]);
 

@@ -923,11 +923,29 @@ export class BillingService {
     async cancelSubscription(tenantId: string, opts: CancelSubscriptionOptions = {}) {
         const sub = await this.requireSubscription(tenantId);
         const provider = this.providerFactory.getByName(sub.provider);
-        if (!sub.providerSubscriptionId) {
-            throw new BadRequestException({ error: 'missing_provider_subscription' });
-        }
 
-        await provider.cancelSubscription(sub.providerSubscriptionId, opts);
+        // Cuando el calendario de cobro es NUESTRO no hay nada que cancelar del
+        // otro lado: no existe una suscripción en el proveedor. Cancelar es dejar
+        // de agendar, y el barrido ya excluye `cancelAtPeriodEnd`.
+        //
+        // Exigir un `providerSubscriptionId` acá dejaba al cliente sin poder
+        // darse de baja —400 `missing_provider_subscription` contra un operador
+        // que jamás va a tener ese id—, y ese es el peor lugar donde faltar.
+        const providerOwnsCalendar = this.capabilitiesFor(sub.provider as PaymentProviderName).nativeSubscriptions;
+
+        if (providerOwnsCalendar) {
+            if (!sub.providerSubscriptionId) {
+                throw new BadRequestException({ error: 'missing_provider_subscription' });
+            }
+            await provider.cancelSubscription(sub.providerSubscriptionId, opts);
+        } else if (sub.providerSubscriptionId) {
+            // Cohorte migrada: nació en un proveedor con suscripciones y hoy la
+            // cobra el motor. Se cancela igual del lado del proveedor para que no
+            // quede un mandato vivo cobrando en paralelo.
+            await provider.cancelSubscription(sub.providerSubscriptionId, opts).catch((err: any) => {
+                this.logger.warn(`[Billing] Provider-side cancel failed for ${sub.id}: ${err?.message}`);
+            });
+        }
 
         const newStatus = opts.immediate ? SubscriptionStatus.CANCELLED : sub.status;
         const cancelAtPeriodEnd = !opts.immediate;
@@ -969,6 +987,16 @@ export class BillingService {
                 error: 'cannot_pause',
                 message: 'Solo se pueden pausar suscripciones activas o en trial.',
                 currentStatus: sub.status,
+            });
+        }
+        // La capacidad se pregunta ANTES que el id. Al revés, un operador que
+        // simplemente no sabe pausar contestaba `missing_provider_subscription`
+        // —un id que nunca va a existir— y mandaba a buscar un dato inexistente
+        // en vez de decir que la función no está.
+        if (!this.capabilitiesFor(sub.provider as PaymentProviderName).pauseResume) {
+            throw new BadRequestException({
+                error: 'pause_unsupported',
+                message: `${sub.provider} does not support pausing a subscription.`,
             });
         }
         if (!sub.providerSubscriptionId) {

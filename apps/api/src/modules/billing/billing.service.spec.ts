@@ -737,4 +737,56 @@ describe('BillingService', () => {
             }
         });
     });
+
+    describe('cancelar bajo un operador sin suscripciones nativas', () => {
+        const wompiSub = {
+            id: 'sub-w', tenantId: 'tenant-w', provider: 'wompi',
+            // Wompi NUNCA tiene este id: no existe el objeto suscripción.
+            providerSubscriptionId: null,
+            status: 'active', engine: 'internal',
+        };
+
+        it('deja cancelar aunque no exista una suscripción del proveedor', async () => {
+            // Antes: 400 `missing_provider_subscription` contra un operador que
+            // jamás va a tener ese id — el cliente no podía darse de baja.
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(wompiSub);
+            prismaMock.billingSubscription.update.mockResolvedValue({ ...wompiSub, cancelAtPeriodEnd: true });
+            prismaMock.tenant.update.mockResolvedValue({});
+
+            await expect(service.cancelSubscription('tenant-w')).resolves.toBeUndefined();
+
+            // Frenar el cobro ES la cancelación: el barrido excluye
+            // `cancelAtPeriodEnd`, así que nadie vuelve a agendar.
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({ cancelAtPeriodEnd: true }),
+                }),
+            );
+        });
+
+        it('cancela de inmediato cuando se pide', async () => {
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(wompiSub);
+            prismaMock.billingSubscription.update.mockResolvedValue({});
+            prismaMock.tenant.update.mockResolvedValue({});
+
+            await service.cancelSubscription('tenant-w', { immediate: true });
+
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        status: 'cancelled',
+                        cancelAtPeriodEnd: false,
+                    }),
+                }),
+            );
+        });
+
+        it('dice que no sabe pausar, en vez de pedir un id que no existe', async () => {
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(wompiSub);
+
+            await expect(service.pauseSubscription('tenant-w')).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'pause_unsupported' }),
+            });
+        });
+    });
 });

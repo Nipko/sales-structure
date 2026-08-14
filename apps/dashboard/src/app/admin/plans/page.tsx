@@ -90,6 +90,20 @@ function amountInputValue(amountCents: number | undefined, locale: string): stri
     return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(amountCents / 100);
 }
 
+/** El precio de referencia se edita en DÓLARES, con decimales. */
+function usdInputValue(cents: number | undefined): string {
+    if (!Number.isSafeInteger(cents) || cents === undefined) return "";
+    return (cents / 100).toFixed(2);
+}
+
+/** "21", "21.00", "21,00", "$21" → 2100 centavos. */
+function parseUsdInput(raw: string): number {
+    const cleaned = raw.replace(/[^\d.,]/g, "").replace(",", ".");
+    const value = Number.parseFloat(cleaned);
+    if (!Number.isFinite(value) || value < 0) return 0;
+    return Math.round(value * 100);
+}
+
 /** Cualquier cosa que el usuario escriba o pegue → centavos. */
 function parseAmountInput(raw: string): number {
     const digits = raw.replace(/\D/g, "");
@@ -535,6 +549,21 @@ export default function PlansPage() {
         const val = isEditing ? editBuffer[key] : plan[key];
         if (!isEditing) {
             return <span className="font-mono text-xs">{key === "priceUsdCents" ? fmtPrice(val as number) : fmtNum(val as number)}</span>;
+        }
+        // El precio USD se edita en DÓLARES. El campo mostraba los centavos
+        // crudos (`2100` por 21 USD), así que escribir `21` —lo natural— dejaba
+        // el plan en 21 centavos. No es cosmético: fuera de Colombia ese importe
+        // es el precio de venta.
+        if (key === "priceUsdCents") {
+            return (
+                <input
+                    type="text"
+                    inputMode="decimal"
+                    className={`${inputCls} text-right font-mono`}
+                    value={usdInputValue(val as number)}
+                    onChange={e => updateTopLevel(key, parseUsdInput(e.target.value))}
+                />
+            );
         }
         return (
             <input

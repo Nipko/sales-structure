@@ -137,6 +137,7 @@ export class PaymentSourceService {
                 subscriptionId: (await this.subscriptionOf(input.tenantId))?.id,
                 paymentSourceId: stored.id,
             });
+            await this.armEngineForNewSource(input.tenantId, stored.id);
         }
 
         return {
@@ -147,6 +148,73 @@ export class PaymentSourceService {
             requiresAuthorization: source.status === 'pending_auth',
             authorizationUrl: source.authorizationUrl,
         };
+    }
+
+    /**
+     * Poner una suscripción bajo nuestro motor en cuanto tiene con qué cobrarse.
+     *
+     * Es el eslabón que faltaba del ciclo. Con un operador sin suscripciones
+     * nativas, NADIE cobra si el motor no está encendido: el trial vencía en
+     * silencio, con la tarjeta del cliente guardada y sin un solo intento de
+     * cobro. El scheduler ya sabía qué hacer; nunca veía estas suscripciones
+     * porque seguían en `engine='provider'`.
+     *
+     * Cuándo se cobra:
+     *   · trial vigente → al vencer. El cliente tiene días prometidos y cargarle
+     *     por adelantado por haber guardado la tarjeta rompería el trato.
+     *   · sin trial (o vencido) → en el próximo barrido.
+     *
+     * No toca una suscripción que ya tiene motor: de esos reintentos se ocupa
+     * el dunning, que sabe en qué escalón va.
+     */
+    private async armEngineForNewSource(tenantId: string, sourceId: string): Promise<void> {
+        try {
+            const sub = await this.subscriptionOf(tenantId);
+            if (!sub || sub.engine === 'internal') return;
+
+            const capabilities = this.providerFactory.capabilitiesOf(sub.provider as PaymentProviderName);
+            if (capabilities.nativeSubscriptions) return; // lo cobra el proveedor
+
+            if (![SubscriptionStatus.TRIALING, SubscriptionStatus.PENDING_AUTH].includes(sub.status as any)) return;
+            if (!sub.chargeAmountCents || !sub.chargeCurrency) {
+                // Sin precio congelado el motor no puede cobrar, y adivinarlo acá
+                // sería inventar plata: se registra y se deja para intervención.
+                this.logger.warn(
+                    `[PaymentSource] Subscription ${sub.id} has a payment method but no frozen price — engine not armed.`,
+                );
+                return;
+            }
+
+            const source = await this.prisma.billingPaymentSource.findFirst({
+                where: { id: sourceId, tenantId, status: 'available' },
+            });
+            if (!source) return;
+
+            const now = new Date();
+            const trialAlive = sub.trialEndsAt && sub.trialEndsAt.getTime() > now.getTime();
+            const timezone = sub.billingTimezone || 'America/Bogota';
+            const chargeAt = trialAlive ? sub.trialEndsAt! : now;
+
+            await this.prisma.billingSubscription.update({
+                where: { id: sub.id },
+                data: {
+                    engine: 'internal',
+                    defaultPaymentSourceId: source.id,
+                    unattendedCapable: source.supportsUnattended,
+                    billingAnchorDay: sub.billingAnchorDay ?? anchorDayOf(chargeAt),
+                    billingTimezone: timezone,
+                    nextChargeAt: chargeAt,
+                },
+            });
+
+            this.logger.log(
+                `[PaymentSource] Subscription ${sub.id} armed on the internal engine — first charge ${chargeAt.toISOString()}`,
+            );
+        } catch (err: any) {
+            // Nunca tumbar el alta del método de pago por esto: la tarjeta quedó
+            // guardada, y el barrido de reconciliación puede recuperarlo.
+            this.logger.error(`[PaymentSource] Could not arm the engine for tenant ${tenantId}: ${err?.message}`);
+        }
     }
 
     /** Re-read a source whose authorization was still pending. */
@@ -169,6 +237,7 @@ export class PaymentSourceService {
                     subscriptionId: (await this.subscriptionOf(tenantId))?.id,
                     paymentSourceId: stored.id,
                 });
+                await this.armEngineForNewSource(tenantId, stored.id);
             }
         }
         return { status: fresh.status };

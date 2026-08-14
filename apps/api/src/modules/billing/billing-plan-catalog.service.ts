@@ -191,9 +191,18 @@ export class BillingPlanCatalogService {
             const annualDisplay = resolveAnnualPlanDisplay(countryOverride, displayPriceCents, {
                 requiresProviderPlanId,
             });
+            // La moneda del ciclo anual se HEREDA del país cuando la fila anual no
+            // la repite, que es como la deja el seed (`CO: { currency, amountCents,
+            // annual: { amountCents } }`). Antes se exigía dentro de `annual`, y el
+            // único que la escribía ahí era el sync a MercadoPago: sin ese sync el
+            // anual quedaba bloqueado, y bajo un operador sin catálogo remoto —que
+            // no tiene nada que sincronizar— habría quedado bloqueado para siempre.
+            // Un año facturado en otra moneda que el mes no es un caso real; que
+            // difieran sólo significa que alguien la escribió a mano.
             const annualCurrency = isRecord(countryOverride?.annual)
-                ? String(countryOverride.annual.currency || '').trim().toUpperCase()
-                : '';
+                && String(countryOverride.annual.currency || '').trim()
+                ? String(countryOverride.annual.currency).trim().toUpperCase()
+                : String(countryOverride?.currency || '').trim().toUpperCase();
             const annualCurrencyReady = expectedCurrency !== null
                 && annualCurrency === expectedCurrency;
             const features: JsonRecord = isRecord(plan.features) ? plan.features : {};
@@ -226,11 +235,18 @@ export class BillingPlanCatalogService {
                 && annualDisplay.displayPriceAnnualCents !== null
                 && (!requiresProviderPlanId || (annualFingerprintReady && annualDisplay.mpPlanIdAnnual !== null));
 
-            // Mercado Pago card tokens are short-lived and the current local
-            // trial flow does not attach/persist them. Until a provider-backed
-            // card trial is implemented, acquisition must not collect a card and
-            // imply that automatic conversion is ready.
-            const cardTrialNotSupported = plan.trialDays > 0 && plan.requiresCardForTrial;
+            // Un trial con tarjeta promete que al vencer se cobra solo. Eso exige
+            // que el método quede GUARDADO y sea cobrable después: los tokens de
+            // MercadoPago son de un solo uso y mueren en minutos, así que ahí la
+            // promesa sería falsa y el plan no puede ofrecerse.
+            //
+            // Con un operador que guarda instrumentos (Wompi) sí se sostiene: la
+            // fuente queda tokenizada al alta y nuestro motor cobra el 'initial'
+            // cuando llega `nextChargeAt`. Se pregunta por la CAPACIDAD, no por el
+            // nombre del proveedor.
+            const cardTrialNotSupported = plan.trialDays > 0
+                && plan.requiresCardForTrial
+                && !capabilities.storedPaymentSources;
             const requiresPaymentMethodAtSignup = !salesLed
                 && (plan.trialDays === 0 || plan.requiresCardForTrial);
             const trialAvailable = !salesLed

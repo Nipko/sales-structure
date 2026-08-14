@@ -1,5 +1,5 @@
 import { BillingPlanCatalogService, normalizeBillingCountry } from './billing-plan-catalog.service';
-import { MERCADOPAGO_CAPABILITIES } from './adapters/provider-capabilities';
+import { MERCADOPAGO_CAPABILITIES, WOMPI_CAPABILITIES } from './adapters/provider-capabilities';
 
 describe('BillingPlanCatalogService', () => {
     const basePlan = {
@@ -326,5 +326,108 @@ describe('BillingPlanCatalogService', () => {
         expect(plan.features).not.toHaveProperty('rateLimits');
         expect(plan.features).not.toHaveProperty('llmBudgetCents');
         expect(plan.features.mediaProcessing).not.toHaveProperty('dailyBudgetCentsUsd');
+    });
+
+    describe('bajo un operador sin catálogo remoto', () => {
+        function wompiService(plans: any[]) {
+            const prisma = {
+                billingPlan: { findMany: jest.fn().mockResolvedValue(plans) },
+                exchangeRate: { findFirst: jest.fn().mockResolvedValue(null) },
+            };
+            const routing = {
+                resolveForNewSubscription: jest.fn().mockResolvedValue({
+                    provider: 'wompi', level: 'country', substituted: false,
+                }),
+            };
+            const providerFactory = {
+                capabilitiesOf: () => WOMPI_CAPABILITIES,
+                isRegistered: () => true,
+            };
+            return new BillingPlanCatalogService(
+                prisma as any,
+                { isConfigured: () => false } as any, // MercadoPago sin credenciales
+                routing as any,
+                providerFactory as any,
+                { isConfigured: () => true } as any, // Wompi configurado
+            );
+        }
+
+        it('vende el ciclo anual sin haber sincronizado nada con MercadoPago', async () => {
+            // La moneda del año se hereda del país. Exigirla DENTRO de `annual`
+            // ataba el ciclo anual al sync de MercadoPago —el único que la
+            // escribía ahí—, así que bajo un operador que no tiene catálogo que
+            // sincronizar el anual quedaba bloqueado para siempre. Así lo deja
+            // el seed: `currency` arriba, `annual` sólo con el importe.
+            const service = wompiService([{
+                ...basePlan,
+                priceLocalOverrides: {
+                    CO: {
+                        currency: 'COP',
+                        amountCents: 27_690_000,
+                        annual: { amountCents: 282_438_000 },
+                    },
+                },
+            }]);
+
+            const [plan] = await service.listActivePlans('CO');
+
+            expect(plan).toMatchObject({
+                annualAvailable: true,
+                displayPriceAnnualCents: 282_438_000,
+                annualUnavailableReason: null,
+                monthlyAvailable: true,
+                checkoutMode: 'self_serve',
+            });
+            // −15% frente a 12 mensualidades.
+            expect(plan.annualDiscountPct).toBe(15);
+        });
+
+        it('ofrece el trial con tarjeta porque el instrumento queda guardado', async () => {
+            // El bloqueo era de MercadoPago: sus tokens son de un solo uso y
+            // mueren en minutos, así que prometer cobro automático al vencer era
+            // mentira. Con fuentes guardadas la promesa se sostiene.
+            const service = wompiService([{
+                ...basePlan,
+                slug: 'pro',
+                trialDays: 15,
+                requiresCardForTrial: true,
+                priceLocalOverrides: {
+                    CO: { currency: 'COP', amountCents: 75_770_000 },
+                },
+            }]);
+
+            const [plan] = await service.listActivePlans('CO');
+
+            expect(plan).toMatchObject({
+                signupAvailable: true,
+                signupUnavailableReason: null,
+                requiresPaymentMethodAtSignup: true,
+                // Trial con tarjeta: no es un trial libre, exige método al alta.
+                trialAvailable: false,
+            });
+        });
+
+        it('sigue bloqueando el trial con tarjeta si el operador no guarda instrumentos', async () => {
+            const { service } = serviceWith([{
+                ...basePlan,
+                slug: 'pro',
+                trialDays: 15,
+                requiresCardForTrial: true,
+                priceLocalOverrides: {
+                    CO: {
+                        currency: 'COP',
+                        amountCents: 75_770_000,
+                        mpPlanId: 'month-id',
+                        syncedAmountCents: 75_770_000,
+                        syncedCurrency: 'COP',
+                    },
+                },
+            }]);
+
+            const [plan] = await service.listActivePlans('CO');
+
+            expect(plan.signupAvailable).toBe(false);
+            expect(plan.signupUnavailableReason).toBe('card_trial_not_supported');
+        });
     });
 });

@@ -27,6 +27,7 @@ import { WompiConfigService } from './adapters/wompi-config.service';
 import { SubscriptionEngineService } from './recurring/subscription-engine.service';
 import { ProrationService } from './recurring/proration.service';
 import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
+import { anchorDayOf, nextPeriodEnd } from './recurring/period.util';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
@@ -241,7 +242,13 @@ export class BillingService {
         // second trial. During the trial we keep the subscription local in
         // 'trialing' state; when the trial ends the reconciliation cron or
         // the upgrade flow creates the provider subscription and charges.
-        const skipProviderCreate = plan.trialDays > 0;
+        //
+        // Un operador sin suscripciones nativas tampoco tiene nada que crear en
+        // un plan sin trial: no existe el objeto suscripción del lado del
+        // proveedor. Pedírselo tira `unsupported` y el alta muere; lo que
+        // corresponde es nacer local y que nuestro motor cobre el primer período.
+        const skipProviderCreate = plan.trialDays > 0
+            || !this.capabilitiesFor(providerName).nativeSubscriptions;
 
         // Fiscal gate: only block CHARGE-bearing flows (paid plan, or a card-backed
         // trial that auto-converts). A free trial with no card has no charge yet, so
@@ -264,13 +271,26 @@ export class BillingService {
             providerCustomerId = customer.providerCustomerId;
         }
 
+        // Sin trial y sin suscripción del proveedor, la suscripción NO nace
+        // activa: nace pendiente de autorización y sólo el cobro liquidado la
+        // activa. Nacer TRIALING con un trial de cero días daría acceso al plan
+        // sin que se haya movido un peso.
+        const engineFirstCharge = skipProviderCreate && plan.trialDays === 0;
+        const localPeriodEnd = engineFirstCharge
+            ? nextPeriodEnd(new Date(), billingCycle, anchorDayOf(new Date()))
+            : new Date(Date.now() + plan.trialDays * 86_400_000);
+
         const providerSub = skipProviderCreate
             ? {
                   providerSubscriptionId: null as string | null,
-                  status: SubscriptionStatus.TRIALING,
-                  trialEndsAt: new Date(Date.now() + plan.trialDays * 86_400_000),
+                  status: engineFirstCharge
+                      ? SubscriptionStatus.PENDING_AUTH
+                      : SubscriptionStatus.TRIALING,
+                  trialEndsAt: plan.trialDays > 0
+                      ? new Date(Date.now() + plan.trialDays * 86_400_000)
+                      : undefined,
                   currentPeriodStart: new Date(),
-                  currentPeriodEnd: new Date(Date.now() + plan.trialDays * 86_400_000),
+                  currentPeriodEnd: localPeriodEnd,
                   cancelAtPeriodEnd: false,
               }
             : await provider.createSubscription({
@@ -290,6 +310,50 @@ export class BillingService {
         const trialEndsAt = providerSub.trialEndsAt
             ?? (plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86_400_000) : undefined);
 
+        // Un trial con tarjeta sobre un operador que guarda instrumentos se
+        // ARMA acá para que se cobre solo al vencer: sin esto la suscripción
+        // nace con el motor apagado, el scheduler nunca la ve y el trial expira
+        // en silencio con la tarjeta del cliente guardada y sin cobrar.
+        //
+        // El scheduler ya sabe qué hacer con una suscripción TRIALING que tenga
+        // motor interno: cobra `purpose: 'initial'` cuando llega nextChargeAt.
+        // Lo único que hacía falta era dejarla en ese estado.
+        // Dos altas necesitan el motor encendido desde el minuto cero, y por la
+        // misma razón: del otro lado no hay nadie que cobre.
+        //   · trial con tarjeta  → se cobra al vencer (nextChargeAt = fin del trial)
+        //   · plan sin trial     → se cobra ya (nextChargeAt = ahora)
+        const engineDriven = this.capabilitiesFor(providerName).storedPaymentSources
+            && ((plan.requiresCardForTrial && plan.trialDays > 0 && !!trialEndsAt) || engineFirstCharge);
+
+        const engineSource = engineDriven
+            ? await this.prisma.billingPaymentSource.findFirst({
+                where: { tenantId: tenant.id, status: 'available' },
+                orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+            })
+            : null;
+
+        // Fail-closed: si el alta promete un cobro y no hay precio local, tiene
+        // que fallar acá y no parir una suscripción que nadie podrá convertir.
+        const enginePricing = engineDriven && engineSource
+            ? this.resolveEnginePricing(plan, effectiveBillingCountry, billingCycle)
+            : null;
+
+        const firstChargeAt = engineFirstCharge ? new Date() : trialEndsAt;
+        const engineData = enginePricing && engineSource && firstChargeAt
+            ? {
+                engine: 'internal',
+                // El precio se CONGELA acá: se cobra el importe que el cliente
+                // aceptó al contratar, no el que tenga el catálogo ese día.
+                chargeAmountCents: enginePricing.amountCents,
+                chargeCurrency: enginePricing.currency,
+                defaultPaymentSourceId: engineSource.id,
+                unattendedCapable: engineSource.supportsUnattended,
+                billingAnchorDay: anchorDayOf(firstChargeAt),
+                billingTimezone: 'America/Bogota',
+                nextChargeAt: firstChargeAt,
+            }
+            : {};
+
         const subscription = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const created = await tx.billingSubscription.create({
                 data: {
@@ -301,6 +365,7 @@ export class BillingService {
                     providerCustomerId,
                     trialStartedAt: plan.trialDays > 0 ? new Date() : null,
                     trialEndsAt: trialEndsAt ?? null,
+                    ...engineData,
                     currentPeriodStart: providerSub.currentPeriodStart ?? null,
                     currentPeriodEnd: providerSub.currentPeriodEnd ?? null,
                     cancelAtPeriodEnd: providerSub.cancelAtPeriodEnd,
@@ -334,7 +399,33 @@ export class BillingService {
         this.emit(BillingEventType.SUBSCRIPTION_CREATED, tenant.id, subscription.id);
         if (plan.trialDays > 0) this.emit(BillingEventType.TRIAL_STARTED, tenant.id, subscription.id);
 
-        this.logger.log(`[Billing] Trial subscription created for tenant ${tenant.id} on plan ${plan.slug} (${plan.trialDays}d trial)`);
+        // Alta sin trial contra nuestro motor: el primer cobro se dispara ahora y
+        // no se espera al barrido. El intento se reclama ANTES de encolar, así que
+        // si el scheduler pasa entre medio choca contra el índice único en vez de
+        // cobrar dos veces. El plan queda PENDING_AUTH hasta que el cobro liquide.
+        if (engineFirstCharge && engineData.engine && enginePricing && engineSource) {
+            const claim = await this.engine.claimAttempt({
+                subscriptionId: subscription.id,
+                tenantId: tenant.id,
+                provider: providerName,
+                purpose: 'initial',
+                periodStart: new Date(),
+                periodEnd: localPeriodEnd,
+                amountCents: enginePricing.amountCents,
+                currency: enginePricing.currency,
+                scheduledAt: new Date(),
+                paymentSourceId: engineSource.id,
+            });
+            if (claim) {
+                await this.enginePendingCharges.add(
+                    'charge',
+                    { attemptId: claim.id },
+                    { jobId: claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
+                );
+            }
+        }
+
+        this.logger.log(`[Billing] Subscription created for tenant ${tenant.id} on plan ${plan.slug} (${plan.trialDays}d trial, engine=${engineData.engine ?? 'provider'})`);
         return subscription;
     }
 
@@ -1800,8 +1891,12 @@ export class BillingService {
         const countryEntry = Object.entries(overrides).find(([key]) =>
             normalizeBillingCountry(key) === country)?.[1] as any;
         const entry = cycle === 'annual' ? countryEntry?.annual : countryEntry;
+        // La fila anual hereda la moneda del país cuando no la repite — que es
+        // como la deja el seed. Exigirla dentro de `annual` ataba el ciclo anual
+        // a haber sincronizado con MercadoPago, el único que la escribía ahí.
+        const currency = String(entry?.currency || countryEntry?.currency || '').trim().toUpperCase();
 
-        if (!entry || !Number.isSafeInteger(entry.amountCents) || entry.amountCents <= 0 || !entry.currency) {
+        if (!entry || !Number.isSafeInteger(entry.amountCents) || entry.amountCents <= 0 || !currency) {
             throw new BadRequestException({
                 error: 'plan_price_not_configured',
                 message: `No local price is configured for this plan in ${country} (${cycle}).`,
@@ -1809,7 +1904,7 @@ export class BillingService {
                 cycle,
             });
         }
-        return { amountCents: entry.amountCents, currency: String(entry.currency).toUpperCase() };
+        return { amountCents: entry.amountCents, currency };
     }
 
     private async invalidateTenantCaches(tenantId: string): Promise<void> {

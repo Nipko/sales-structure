@@ -345,6 +345,97 @@ Corrida completa contra `sandbox.wompi.co` con las llaves reales. **Encontró un
 
 **Verificado:** `tsc` limpio en API y dashboard · **paridad exacta de 8.780 claves i18n en los 4 idiomas** · 77 tests de contrato del dashboard.
 
+## 15-bis. Lo que estaba parado y no se veía (14-ago-2026)
+
+Con el ruteo YA en Wompi (`provider: wompi` en `/billing/public/config?country=CO`)
+la venta seguía sin poder completarse. Cinco bloqueos, todos por haberse escrito
+cuando MercadoPago era el único operador posible. Los tres primeros se
+descubrieron leyendo el catálogo real de producción, que publica el motivo de
+cada bloqueo; los dos últimos, revisando caminos que un cliente sí usa.
+
+| # | Qué estaba roto | Por qué | Estado |
+|---|---|---|---|
+| 1 | **Ciclo anual, los 4 planes** | La disponibilidad exigía `annual.currency`, y el ÚNICO que escribía ese campo era el sync a MercadoPago. El seed deja la moneda un nivel más arriba. Sin sync no había anual, y bajo un operador sin catálogo remoto —que no tiene nada que sincronizar— habría quedado bloqueado para siempre. El mismo defecto estaba duplicado en `resolveEnginePricing` | Código corregido: la fila anual **hereda la moneda del país** |
+| 2 | **Alta de pro y enterprise** (`card_trial_not_supported`) | Limitación real de MercadoPago —tokens de un solo uso, expiran en minutos, así que prometer cobro automático al vencer sería mentira— aplicada a TODOS los operadores | El gate pregunta por `storedPaymentSources`, no por el nombre |
+| 3 | **Nadie podía llegar a pagar nunca** | El motor estaba entero (scheduler, dunning, prorrateo, poll) pero **desconectado**: `activateWithEngine` no tenía un solo llamador y ninguna suscripción llegaba a `engine='internal'`. El trial vencía en silencio, con la tarjeta guardada y sin un intento de cobro | Ciclo cerrado por los 3 caminos (abajo) |
+| 4 | **Alta de plan sin trial** | Pedía `provider.createSubscription`, que en un operador sin suscripciones nativas tira `unsupported` y mata el alta | Nace local + cobra el primer período |
+| 5 | **Cancelar** | Exigía `providerSubscriptionId` antes de nada; Wompi nunca tiene ese id → 400 `missing_provider_subscription`. **El cliente no podía darse de baja** | Cuando el calendario es nuestro, cancelar es dejar de agendar |
+
+**Los tres caminos por los que alguien empieza a pagar**, todos con el precio
+congelado al contratar:
+
+| Camino | Cuándo se cobra |
+|---|---|
+| Alta con trial y tarjeta | al vencer el trial (`nextChargeAt = trialEndsAt`) |
+| Alta de plan sin trial | ya — el intento se reclama ANTES de encolar, así el barrido no puede duplicar. Nace `PENDING_AUTH`: nunca activa sin que se haya movido un peso |
+| Tarjeta agregada durante un trial | al **vencer** el trial, no al guardarla: el cliente tiene días prometidos |
+
+**Lo que NO era código: el precio anual nunca llegó a producción.** El bootstrap
+del deploy es *create-only* y salta los planes existentes, así que los precios
+anuales del seed jamás se escribieron en los planes creados antes. Se completa
+con `scripts/backfill-annual-prices.js` (simulacro por defecto), que deriva el
+anual del mensual REAL de cada plan menos el descuento — no reimpone los del
+seed, y nunca pisa un anual existente. Correr el seed con `--force` también lo
+arreglaría, pero restauraría valores de fábrica de nombre, features y límites,
+pisando lo editado desde el panel.
+
+### Guía de prueba en sandbox — ANTES de las llaves de producción
+
+Precondición: `/billing/public/config?country=CO` debe responder
+`provider: wompi` y `environment: sandbox`.
+
+**0. Preparar**
+
+```bash
+docker exec parallext-api node scripts/backfill-annual-prices.js          # simulacro
+docker exec parallext-api node scripts/backfill-annual-prices.js --apply
+```
+
+En `/admin/plans → Proveedores`, **dejar sólo `card`**. Nequi y transferencia
+Bancolombia están hoy encendidos en producción y ninguno completa: Nequi exige
+además habilitar recurrencia en el portal de Nequi Negocios del comercio, y la
+transferencia no tiene flujo de autorización implementado (§ transferencias).
+
+**1. El contrato con el proveedor** — prueba el protocolo, no nuestro flujo:
+
+```bash
+docker exec parallext-api node scripts/verify-wompi-sandbox.js
+```
+
+**2. El ciclo completo** — lo que va encima, que es donde estuvo el problema:
+
+```bash
+docker exec parallext-api node scripts/verify-wompi-flow.js
+docker exec parallext-api node scripts/verify-wompi-flow.js --tenant <uuid>
+```
+
+Detecta el defecto #3 aunque desde afuera todo se vea bien: suscripción viva,
+método de pago guardado y motor apagado. También avisa de intentos colgados
++6h, que en un proveedor asincrónico significa que el webhook no llega.
+
+**3. A mano, con un tenant de prueba** (tarjeta sandbox `4242 4242 4242 4242`):
+
+| Paso | Qué debe pasar |
+|---|---|
+| Alta de un plan con trial | suscripción `trialing`; sin tarjeta el motor NO se arma (correcto) |
+| Agregar tarjeta en Configuración → Facturación | `verify-wompi-flow` la muestra armada, cobrando al **vencer** el trial |
+| Alta de pro o enterprise | pide tarjeta al alta y agenda el cobro al vencer |
+| Cancelar | responde OK (antes: 400) y el barrido deja de agendar |
+| Tarjeta `4111 1111 1111 1111` | rechazo: alimenta el dunning |
+
+**4. Recién entonces**, cambiar las cuatro llaves a producción, redeployar
+(`.env` se regenera en cada deploy) y repetir el paso 2 con un cobro real de
+monto mínimo.
+
+### Lo que sigue sin poder verificarse en sandbox
+
+- **El rechazo real.** En sandbox la tarjeta inválida se rechaza al CREAR la
+  fuente, no al cobrar; el caso que dispara el dunning es "tarjeta válida sin
+  fondos", y ése sólo aparece con tráfico real.
+- **La entrega del webhook** de punta a punta.
+- **La tasa de aprobación** con adquirencia local — el argumento central a favor
+  de Wompi frente a un MoR.
+
 ## 15. F4 — Encendido (operación, sin código)
 
 Todo el código está. Lo que resta es una secuencia operativa, deliberadamente gradual.

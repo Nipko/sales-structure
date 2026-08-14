@@ -45,9 +45,12 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
 /**
  * Billing module — provider-agnostic subscription billing.
  *
- * Each adapter (MockPaymentProvider, MercadoPagoAdapter, …future StripeAdapter)
- * is registered as a provider here. PaymentProviderFactory (Sprint 2) selects
- * the active adapter per request based on Tenant.paymentProvider.
+ * Each adapter (MockPaymentProvider, MercadoPagoAdapter, WompiAdapter, …future
+ * StripeAdapter) is registered as a provider here. Which one runs is decided by
+ * PaymentRoutingService, not by a column: an existing subscription keeps the
+ * provider it was born with, and a new one resolves through the super admin's
+ * per-tenant override → the country default → the '*' rule. `Tenant.
+ * paymentProvider` only records where the last subscription was created.
  *
  * EventEmitter2 is provided globally by app.module via @nestjs/event-emitter
  * so it is consumable in BillingService without an explicit import here.

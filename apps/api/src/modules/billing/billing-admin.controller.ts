@@ -101,8 +101,13 @@ class UpdateProviderRoutingDto {
 }
 
 class SetTenantProviderDto {
-    @IsIn(PAYMENT_PROVIDER_NAMES as unknown as string[])
-    provider!: PaymentProviderName;
+    /**
+     * `auto` CLEARS the pin and puts the tenant back under its country's default.
+     * Without it a tenant pinned by mistake would stay pinned forever, which is
+     * the trap the pin/override split exists to remove.
+     */
+    @IsIn([...(PAYMENT_PROVIDER_NAMES as unknown as string[]), 'auto'])
+    provider!: PaymentProviderName | 'auto';
 
     /** Mandatory: a per-tenant billing override must always say why. */
     @IsString()
@@ -442,23 +447,34 @@ export class BillingAdminController {
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { id: true, name: true, billingCountry: true, paymentProvider: true },
+            select: {
+                id: true, name: true, billingCountry: true,
+                paymentProvider: true, paymentProviderOverride: true,
+            },
         });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId });
 
-        if (!this.providerFactory.isRegistered(body.provider)) {
-            throw new BadRequestException({
-                error: 'provider_not_registered',
-                message: `No adapter is registered for '${body.provider}' yet.`,
-            });
+        // `auto` releases the tenant back to its country default. Nothing to
+        // validate: the router re-resolves at the next acquisition, and whatever
+        // is enabled for that country then is what applies.
+        const clearing = body.provider === 'auto';
+        const nextOverride = clearing ? null : (body.provider as PaymentProviderName);
+
+        if (nextOverride) {
+            if (!this.providerFactory.isRegistered(nextOverride)) {
+                throw new BadRequestException({
+                    error: 'provider_not_registered',
+                    message: `No adapter is registered for '${nextOverride}' yet.`,
+                });
+            }
+            await this.routing.assertUsableForNewSubscription(nextOverride, tenant.billingCountry);
         }
-        await this.routing.assertUsableForNewSubscription(body.provider, tenant.billingCountry);
 
         const liveSub = await this.prisma.billingSubscription.findFirst({
             where: { tenantId, status: { in: ['active', 'trialing', 'past_due'] } },
             select: { id: true, provider: true, status: true, providerSubscriptionId: true },
         });
-        if (liveSub && liveSub.provider !== body.provider && !body.force) {
+        if (liveSub && nextOverride && liveSub.provider !== nextOverride && !body.force) {
             throw new BadRequestException({
                 error: 'live_subscription_conflict',
                 message: `Tenant has a ${liveSub.status} subscription on ${liveSub.provider}. Changing providers does not migrate the payment mandate — the tenant must re-authorize. Pass force=true to proceed.`,
@@ -468,9 +484,12 @@ export class BillingAdminController {
             });
         }
 
+        // Only the override moves. `payment_provider` is the record of where the
+        // last subscription was created and belongs to BillingService alone —
+        // rewriting it here would forge history and re-pin the tenant.
         await this.prisma.tenant.update({
             where: { id: tenantId },
-            data: { paymentProvider: body.provider },
+            data: { paymentProviderOverride: nextOverride },
         });
 
         const overrideActor = auditActor(req?.user);
@@ -478,11 +497,14 @@ export class BillingAdminController {
             data: {
                 userId: overrideActor.userId,
                 tenantId,
-                action: 'billing.tenant_provider_overridden',
+                action: clearing ? 'billing.tenant_provider_override_cleared' : 'billing.tenant_provider_overridden',
                 resource: `tenants/${tenantId}`,
                 details: {
-                    from: tenant.paymentProvider ?? null,
-                    to: body.provider,
+                    from: tenant.paymentProviderOverride ?? null,
+                    to: nextOverride,
+                    // What actually charged this tenant last, for context: it is
+                    // no longer what decides, so the audit has to name both.
+                    lastBilledBy: tenant.paymentProvider ?? null,
                     reason,
                     forced: Boolean(body.force),
                     liveSubscriptionId: liveSub?.id ?? null,
@@ -497,7 +519,8 @@ export class BillingAdminController {
             success: true,
             data: {
                 tenantId,
-                paymentProvider: body.provider,
+                paymentProviderOverride: nextOverride,
+                lastBilledBy: tenant.paymentProvider ?? null,
                 // The existing subscription keeps billing where it was created.
                 affectsExistingSubscription: false,
             },

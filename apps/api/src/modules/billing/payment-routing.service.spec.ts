@@ -188,11 +188,56 @@ describe('PaymentRoutingService', () => {
 
             const result = await service.resolveForNewSubscription({
                 billingCountry: 'CO',
-                tenantProvider: 'mercadopago',
+                tenantOverride: 'mercadopago',
             });
 
             expect(result.provider).toBe('mercadopago');
             expect(result.level).toBe('tenant');
+        });
+
+        it('carries a tenant with no override when the country changes operator', async () => {
+            // The regression that made switching Colombia to Wompi a no-op: the
+            // caller used to pass `tenants.payment_provider`, which BillingService
+            // stamps on every subscription. Every tenant that had ever been
+            // billed therefore arrived here pinned to whoever charged them last
+            // and never followed the country again. Only a DELIBERATE override
+            // may outrank the country, and having been billed is not one.
+            const { service } = makeService({
+                settings: {
+                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'mercadopago' }),
+                },
+                registered: ['mercadopago', 'stripe', 'wompi', 'mock'],
+            });
+
+            const result = await service.resolveForNewSubscription({
+                billingCountry: 'CO',
+                tenantOverride: null,
+            });
+
+            expect(result.provider).toBe('wompi');
+            expect(result.level).toBe('country');
+        });
+
+        it('ignores an override that names a provider the country cannot use', async () => {
+            // A stale pin must not strand an acquisition: it degrades to the
+            // country default instead of failing the signup.
+            const { service } = makeService({
+                settings: {
+                    'billing.providers_enabled': JSON.stringify({ mercadopago: true, wompi: true }),
+                    'billing.default_provider_by_country': JSON.stringify({ CO: 'wompi', '*': 'mercadopago' }),
+                },
+                registered: ['mercadopago', 'wompi', 'mock'],
+            });
+
+            const result = await service.resolveForNewSubscription({
+                billingCountry: 'CO',
+                tenantOverride: 'stripe',
+            });
+
+            expect(result.provider).toBe('wompi');
+            expect(result.level).toBe('country');
+            expect(result.substituted).toBe(true);
         });
 
         it('skips a provider whose adapter is not registered yet', async () => {

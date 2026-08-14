@@ -322,11 +322,11 @@ export class PaymentSourceService {
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { billingCountry: true, paymentProvider: true },
+            select: { billingCountry: true, paymentProviderOverride: true },
         });
         const resolution = await this.routing.resolveForNewSubscription({
             tenantId,
-            tenantProvider: tenant?.paymentProvider,
+            tenantOverride: tenant?.paymentProviderOverride,
             billingCountry: tenant?.billingCountry,
         });
         return resolution.provider;

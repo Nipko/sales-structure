@@ -190,7 +190,7 @@ export class BillingService {
         // payment method" depends on the provider.
         const resolution = await this.routing.resolveForNewSubscription({
             tenantId: tenant.id,
-            tenantProvider: tenant.paymentProvider,
+            tenantOverride: tenant.paymentProviderOverride,
             billingCountry: effectiveBillingCountry,
         });
         const providerName = resolution.provider;
@@ -1206,7 +1206,7 @@ export class BillingService {
             const compProvider = await this.routing
                 .resolveForNewSubscription({
                     tenantId: input.tenantId,
-                    tenantProvider: tenant.paymentProvider,
+                    tenantOverride: tenant.paymentProviderOverride,
                     billingCountry: tenant.billingCountry,
                 })
                 .then((r) => r.provider)

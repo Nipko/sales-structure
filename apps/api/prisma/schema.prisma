@@ -42,8 +42,16 @@ model Tenant {
   subscriptionStatus        String?   @map("subscription_status") // pending_auth|trialing|active|past_due|cancelled|expired
   trialEndsAt               DateTime? @map("trial_ends_at")
   currentPeriodEnd          DateTime? @map("current_period_end")
-  paymentProvider           String?   @map("payment_provider") // mercadopago|stripe|mock
+  /// Where this tenant's subscription was LAST created. Written automatically by
+  /// BillingService on every subscription, so it is a record of what happened —
+  /// never an instruction about what should happen next. Do not route with it.
+  paymentProvider           String?   @map("payment_provider") // mercadopago|stripe|wompi|mock
   paymentProviderCustomerId String?   @map("payment_provider_customer_id")
+  /// Deliberate per-tenant pin set by a super admin (L2), with an audited reason.
+  /// This is what the router honours above the country default. NULL — the normal
+  /// case — means "follow the country", so switching an operator for a country
+  /// carries every tenant that was never pinned by hand.
+  paymentProviderOverride   String?   @map("payment_provider_override")
 
   // Onboarding funnel tracking — used by /admin/funnel cohort analysis
   onboardingCompletedAt    DateTime? @map("onboarding_completed_at")

@@ -91,8 +91,16 @@ const DEFAULT_WOMPI_METHODS: WompiMethodFlags = {
 export interface ResolveProviderInput {
     /** Provider frozen on an existing subscription (L3). When present it wins outright. */
     subscriptionProvider?: string | null;
-    /** Per-tenant override set by a super admin (L2). */
-    tenantProvider?: string | null;
+    /**
+     * Deliberate per-tenant pin set by a super admin (L2) — `tenants.
+     * payment_provider_override`, never `tenants.payment_provider`.
+     *
+     * That distinction is the whole point: `payment_provider` is written on
+     * every subscription as a record of where it was created, so feeding it
+     * back in here pinned every tenant to whatever charged them last and made
+     * changing a country's operator a no-op for the existing base.
+     */
+    tenantOverride?: string | null;
     /** Tenant billing country, used for the L1 default and to reject providers that cannot bill there. */
     billingCountry?: string | null;
     /** Set for diagnostics only. */
@@ -373,8 +381,8 @@ export class PaymentRoutingService {
 
         const candidates: Array<{ name: PaymentProviderName; level: ProviderResolution['level'] }> = [];
 
-        if (isPaymentProviderName(input.tenantProvider)) {
-            candidates.push({ name: input.tenantProvider, level: 'tenant' });
+        if (isPaymentProviderName(input.tenantOverride)) {
+            candidates.push({ name: input.tenantOverride, level: 'tenant' });
         }
         if (country && isPaymentProviderName(config.defaultByCountry[country])) {
             candidates.push({ name: config.defaultByCountry[country], level: 'country' });

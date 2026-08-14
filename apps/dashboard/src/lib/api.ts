@@ -1529,12 +1529,24 @@ export const api = {
         apiGet<ProviderRoutingConfig>('/billing-admin/providers'),
     updateProviderRouting: (body: ProviderRoutingPatch) =>
         apiPut<ProviderRoutingConfig>('/billing-admin/providers', body),
-    /** L2 per-tenant override. `reason` is mandatory; `force` is required when a live subscription exists. */
+    /**
+     * L2 per-tenant pin, the only thing that outranks the country default.
+     * `reason` is mandatory; `force` is required when a live subscription exists.
+     *
+     * `provider: 'auto'` CLEARS the pin and returns the tenant to its country's
+     * operator. It answers `paymentProviderOverride: null`, and `lastBilledBy`
+     * reports who charged the tenant last — a record, not a routing input.
+     */
     setTenantPaymentProvider: (
         tenantId: string,
-        body: { provider: PaymentProviderName; reason: string; force?: boolean },
+        body: { provider: PaymentProviderName | 'auto'; reason: string; force?: boolean },
     ) =>
-        apiPut<{ tenantId: string; paymentProvider: PaymentProviderName; affectsExistingSubscription: boolean }>(
+        apiPut<{
+            tenantId: string;
+            paymentProviderOverride: PaymentProviderName | null;
+            lastBilledBy: PaymentProviderName | null;
+            affectsExistingSubscription: boolean;
+        }>(
             `/billing-admin/tenants/${tenantId}/payment-provider`,
             body,
         ),

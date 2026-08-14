@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { api, type MercadoPagoProviderStatus } from "@/lib/api";
+import { api, type MercadoPagoProviderStatus, type PaymentProvidersStatus } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
     RefreshCw, Users, ToggleLeft, ToggleRight, CreditCard,
@@ -208,12 +208,24 @@ export default function PlansPage() {
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
     const [providerStatus, setProviderStatus] = useState<MercadoPagoProviderStatus | null>(null);
+    const [routing, setRouting] = useState<PaymentProvidersStatus["routing"] | null>(null);
     const [syncing, setSyncing] = useState<string | null>(null);
     const [reconciling, setReconciling] = useState(false);
     const [selectedCountry, setSelectedCountry] = useState<BillingCountry>("CO");
 
     const selectedCurrency = BILLING_CURRENCY_BY_COUNTRY[selectedCountry];
-    const selectedCountrySupportsMp = MERCADOPAGO_COUNTRIES.has(selectedCountry);
+
+    // Quién cobra en el país elegido. Media pantalla —sincronizar planes, ids de
+    // plan remoto, estado del colector— sólo significa algo bajo MercadoPago: es
+    // el único operador con catálogo remoto. Mostrarlo cuando el país cobra por
+    // otro no es sólo ruido, sugiere un trabajo pendiente que no existe.
+    const countryProvider = routing
+        ? (routing.defaultByCountry[selectedCountry] ?? routing.defaultByCountry["*"] ?? null)
+        : null;
+    // Si el ruteo no cargó se muestra todo, como antes: esconder herramientas por
+    // una lectura fallida es peor que mostrar una de más.
+    const countryBilledByMp = !routing || countryProvider === "mercadopago";
+    const selectedCountrySupportsMp = MERCADOPAGO_COUNTRIES.has(selectedCountry) && countryBilledByMp;
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -225,7 +237,10 @@ export default function PlansPage() {
             ]);
             if (plansRes.success) setPlans(plansRes.data);
             if (regRes.success) setRegistry(regRes.data);
-            if (provRes.success && provRes.data) setProviderStatus(provRes.data.mercadopago);
+            if (provRes.success && provRes.data) {
+                setProviderStatus(provRes.data.mercadopago);
+                setRouting(provRes.data.routing ?? null);
+            }
         } catch { /* ignore */ }
         setLoading(false);
     }, []);
@@ -492,7 +507,12 @@ export default function PlansPage() {
                     <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                         <Layers size={20} className="text-indigo-600 dark:text-indigo-400" />
                         {t("title")}
-                        {providerStatus && (
+                        {/* Qué operador cobra en el país elegido. El ambiente sólo
+                            se agrega bajo MercadoPago, que es de donde viene ese
+                            dato; anteponer "MP:" siempre hacía leer sandbox o
+                            producción de MercadoPago como si fuera del operador
+                            que realmente está cobrando. */}
+                        {countryBilledByMp && providerStatus ? (
                             <span
                                 title={`${t("providerStatus")}${providerStatus.webhookConfigured ? "" : " · webhook ⚠"}`}
                                 className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
@@ -505,10 +525,18 @@ export default function PlansPage() {
                             >
                                 MP: {t(providerStatus.environment)}
                             </span>
-                        )}
+                        ) : countryProvider ? (
+                            <span
+                                title={t("routedByHint", { country: selectedCountry })}
+                                className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
+                            >
+                                {t("routedBy", { country: selectedCountry, provider: countryProvider })}
+                            </span>
+                        ) : null}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
-                    {providerStatus?.credentialModeInferred === "app_usr" && providerStatus.collectorValidation === "not_checked" && (
+                    {countryBilledByMp && providerStatus?.credentialModeInferred === "app_usr"
+                        && providerStatus.collectorValidation === "not_checked" && (
                         <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                             {t("mpCollectorPreflightPending")}
                         </p>
@@ -581,13 +609,21 @@ export default function PlansPage() {
                                 </option>
                             ))}
                         </select>
+                        {/* Tres estados, no dos: MercadoPago cobra acá; MercadoPago
+                            cobraría pero el país eligió otro operador; o el país
+                            está fuera del alcance de MercadoPago. El ámbar del
+                            medio decía "no disponible" y se leía como una falla. */}
                         <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-[11px] font-medium ${
                             selectedCountrySupportsMp
                                 ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                                : !countryBilledByMp
+                                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
                                 : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
                         }`}>
                             {selectedCountrySupportsMp
                                 ? t("mpSyncAvailable", { country: selectedCountry, currency: selectedCurrency })
+                                : !countryBilledByMp
+                                ? t("countryBilledByOther", { country: selectedCountry, provider: countryProvider ?? "—" })
                                 : t("mpSyncUnavailable", { country: selectedCountry, currency: selectedCurrency })}
                         </span>
                     </div>
@@ -765,7 +801,8 @@ export default function PlansPage() {
                                 );
                             })}
                         </tr>
-                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                        {/* Los ids de plan remoto sólo existen bajo MercadoPago. */}
+                        <tr className={`border-b border-neutral-100 dark:border-neutral-800 ${countryBilledByMp ? "" : "hidden"}`}>
                             <td className={`${tdCls} font-medium`}>{t("mpPlanId")}</td>
                             {plans.map(p => {
                                 const cycle = p.priceLocalOverrides?.[selectedCountry];
@@ -797,7 +834,7 @@ export default function PlansPage() {
                                 );
                             })}
                         </tr>
-                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                        <tr className={`border-b border-neutral-100 dark:border-neutral-800 ${countryBilledByMp ? "" : "hidden"}`}>
                             <td className={`${tdCls} font-medium`}>{t("mpPlanIdAnnual")}</td>
                             {plans.map(p => {
                                 const cycle = p.priceLocalOverrides?.[selectedCountry]?.annual;
@@ -919,7 +956,15 @@ export default function PlansPage() {
                     {t("syncMpTitleCountry", { country: selectedCountry, currency: selectedCurrency })}
                 </h3>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("syncMpDesc")}</p>
-                {!selectedCountrySupportsMp ? (
+                {!countryBilledByMp ? (
+                    // No es un impedimento a resolver: el operador de este país no
+                    // tiene catálogo remoto de planes. El precio que cobra sale de
+                    // la fila de precios, no de un plan registrado en el proveedor,
+                    // así que acá no hay nada que sincronizar.
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/30 dark:text-indigo-300">
+                        {t("syncNotNeededForProvider", { country: selectedCountry, provider: countryProvider ?? "—" })}
+                    </div>
+                ) : !selectedCountrySupportsMp ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
                         {t("syncMpUnavailableCountry", { country: selectedCountry, currency: selectedCurrency })}
                     </div>

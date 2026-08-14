@@ -89,6 +89,11 @@ async function main() {
         bad('el catálogo público no devolvió planes');
     }
 
+    // Mensual y alta cerrados SÍ son un problema: no se puede vender. El anual
+    // sin precio cargado es una tarea de configuración, no una falla — mezclarlos
+    // hacía que un catálogo sano reportara "4 problemas" y el reporte se volviera
+    // ruido.
+    let annualPending = 0;
     for (const p of plans) {
         if (p.slug === 'custom') continue; // sales-led por diseño
         const bits = [];
@@ -96,8 +101,14 @@ async function main() {
         bits.push(p.annualAvailable ? 'anual ✓' : `anual ✗ (${p.annualUnavailableReason})`);
         bits.push(p.signupAvailable ? 'alta ✓' : `alta ✗ (${p.signupUnavailableReason})`);
         const line = `${p.slug.padEnd(13)} ${money(p.displayPriceCents, p.displayCurrency).padEnd(18)} ${bits.join('  ')}`;
-        if (p.monthlyAvailable && p.annualAvailable && p.signupAvailable) ok(line);
-        else bad(line);
+
+        if (!p.monthlyAvailable || !p.signupAvailable) bad(line);
+        else if (!p.annualAvailable) { annualPending++; console.log(`  \x1b[36m·\x1b[0m ${line}`); }
+        else ok(line);
+    }
+    if (annualPending) {
+        warn(`${annualPending} plan(es) sin precio anual cargado — se venden mensual, no anual`);
+        info('cargalo en /admin/plans (fila "precio local anual") o con scripts/backfill-annual-prices.js');
     }
 
     // ---------------------------------------------------------------------

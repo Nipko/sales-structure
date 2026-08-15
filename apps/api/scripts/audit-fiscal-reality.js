@@ -71,11 +71,24 @@ async function main() {
     console.log(`\n=== MOTOR ARMADO: ${armed.length} suscripciones con próximo cobro ===`);
     for (const s of armed) {
         const t = tenants.get(s.tenantId);
-        const flag = t?.isInternal ? '  ← tenant propio, NO se facturará' : '';
+        // Sin fuente utilizable el cobro falla solo con `no_payment_source`.
+        // Con fuente, el día que las llaves sean de producción se cobra de
+        // verdad. Es la diferencia entre "hay que decidir" y "no urge".
+        const source = await prisma.billingPaymentSource.findFirst({
+            where: { tenantId: s.tenantId, status: 'available' },
+            select: { kind: true, last4: true },
+        });
+        const flags = [
+            t?.isInternal ? 'tenant propio, NO se facturará' : null,
+            source
+                ? `VA A COBRAR: ${source.kind}${source.last4 ? ` ••••${source.last4}` : ''}`
+                : 'sin medio de pago → el cobro falla solo',
+        ].filter(Boolean);
         console.log(
             `  ${String(s.nextChargeAt?.toISOString().slice(0, 10))}  `
             + `${(t?.name ?? s.tenantId).padEnd(28)} ${s.status.padEnd(9)} `
-            + `${s.chargeAmountCents ? money(s.chargeAmountCents, s.chargeCurrency || '') : '(sin precio)'}${flag}`,
+            + `${s.chargeAmountCents ? money(s.chargeAmountCents, s.chargeCurrency || '') : '(sin precio)'}`
+            + `\n           ${flags.join(' · ')}`,
         );
     }
 

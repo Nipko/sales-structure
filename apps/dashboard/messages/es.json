@@ -4108,6 +4108,64 @@
       "aiConfig": "Config IA"
     },
     "engagement": {
+      "lastLogin": "Último acceso del equipo",
+      "lastMessage": "Última interacción con clientes",
+      "never": "Nunca",
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "daysAgo": "Hace {days} días",
+      "howToHelp": "Por qué está parado y cómo ayudarlo",
+      "nothingToFix": "Sin señales de que esté trabado. Canal conectado, agente enlazado y actividad reciente.",
+      "stall": {
+        "channel_never_connected": {
+          "what": "Nunca conectó un canal, lleva {days} días registrado",
+          "do": "Sin canal el producto no puede recibir nada. Acompañar la conexión de WhatsApp: es el paso donde más gente se cae."
+        },
+        "channel_lost": {
+          "what": "Tenía un canal conectado y hoy no tiene ninguno",
+          "do": "Revisar por qué se desconectó (token vencido, permisos de Meta revocados) y ofrecer reconectar: probablemente no se dieron cuenta."
+        },
+        "channel_without_agent": {
+          "what": "{count} canal(es) conectado(s) sin ningún agente enlazado",
+          "do": "Peor que no tener canal: entran mensajes y nadie los responde. Enlazar un agente hoy mismo."
+        },
+        "no_agent": {
+          "what": "No tiene ningún agente de IA creado",
+          "do": "Crear uno desde una plantilla de su vertical; sin agente no hay respuesta automática."
+        },
+        "onboarding_incomplete": {
+          "what": "Nunca terminó la configuración inicial, lleva {days} días",
+          "do": "Ver en qué paso quedó y terminarlo con el cliente en una llamada corta."
+        },
+        "handoffs_waiting": {
+          "what": "{count} conversación(es) esperando respuesta humana",
+          "do": "Hay clientes finales esperando ahora. Avisar al equipo del tenant."
+        },
+        "never_received_a_message": {
+          "what": "Tiene canal pero nunca recibió un mensaje, {days} días",
+          "do": "El canal quedó conectado y nadie lo usa. Verificar que el número esté publicado donde sus clientes lo vean."
+        },
+        "dormant": {
+          "what": "Sin actividad hace {days} días",
+          "do": "Contactar para entender qué cambió. A esta altura la cuenta está de hecho abandonada."
+        },
+        "cooling_down": {
+          "what": "Se está apagando: {messages30d} mensajes en el mes, ninguno esta semana",
+          "do": "Momento de intervenir, antes de que quede inactivo del todo."
+        },
+        "team_absent": {
+          "what": "Nadie del equipo entra hace {days} días",
+          "do": "Aunque el agente responda solo, sin nadie mirando el inbox los casos escalados se pierden."
+        },
+        "never_logged_in": {
+          "what": "Nadie entró nunca a la cuenta, {days} días desde el registro",
+          "do": "Se registró y no volvió. Contacto temprano: todavía se puede recuperar."
+        },
+        "no_knowledge_base": {
+          "what": "Sin base de conocimiento cargada",
+          "do": "El agente responde con lo genérico. Cargar sus FAQs mejora mucho la calidad percibida."
+        }
+      },
       "healthScore": "Salud",
       "messages7d": "Mensajes (7d)",
       "messages30d": "Mensajes (30d)",

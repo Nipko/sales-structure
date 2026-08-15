@@ -57,8 +57,20 @@ interface ChannelAccount {
   createdAt: string;
 }
 
+interface StallFinding {
+  code: string;
+  severity: "blocker" | "warning" | "info";
+  context?: Record<string, number | string>;
+}
+
 interface EngagementData {
   healthScore: number;
+  /** Última vez que entró alguien del equipo del tenant. */
+  lastLoginAt?: string | null;
+  /** Última vez que hubo un mensaje en cualquier conversación. */
+  lastMessageAt?: string | null;
+  /** Causas concretas de que esté parado, ya ordenadas por severidad. */
+  stallFindings?: StallFinding[];
   messages7d: number;
   messages30d: number;
   activeConversations: number;
@@ -117,6 +129,17 @@ const channelColors: Record<string, string> = {
   telegram: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
   sms: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400",
 };
+
+/**
+ * "hace 3 días" en vez de una fecha ISO. Lo que importa mirando esta pantalla
+ * es cuánto hace, no el día exacto.
+ */
+function relativeDays(iso: string, t: (k: string, v?: Record<string, string | number | Date>) => string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return t("engagement.today");
+  if (days === 1) return t("engagement.yesterday");
+  return t("engagement.daysAgo", { days });
+}
 
 export default function TenantDetailPage() {
   const params = useParams();
@@ -531,6 +554,52 @@ export default function TenantDetailPage() {
           )}
           {!engagementLoading && engagement && (
             <>
+              {/* ¿Sigue vivo, y si no, por qué? El score dice cuán completo
+                  está; esto dice cuándo fue la última señal de vida y qué
+                  hacer al respecto. */}
+              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("engagement.lastLogin")}</p>
+                    <p className="text-sm font-medium mt-0.5">
+                      {engagement.lastLoginAt ? relativeDays(engagement.lastLoginAt, t) : t("engagement.never")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("engagement.lastMessage")}</p>
+                    <p className="text-sm font-medium mt-0.5">
+                      {engagement.lastMessageAt ? relativeDays(engagement.lastMessageAt, t) : t("engagement.never")}
+                    </p>
+                  </div>
+                </div>
+
+                {engagement.stallFindings && engagement.stallFindings.length > 0 ? (
+                  <div className="space-y-2 border-t border-neutral-200 dark:border-neutral-800 pt-4">
+                    <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                      {t("engagement.howToHelp")}
+                    </p>
+                    {engagement.stallFindings.map((f) => (
+                      <div
+                        key={f.code}
+                        className={cn(
+                          "p-3 rounded-lg border text-sm",
+                          f.severity === "blocker" && "border-red-500/20 bg-red-500/10 text-red-800 dark:text-red-200",
+                          f.severity === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+                          f.severity === "info" && "border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900",
+                        )}
+                      >
+                        <p className="font-medium">{t(`engagement.stall.${f.code}.what`, { ...(f.context ?? {}) })}</p>
+                        <p className="text-xs mt-0.5 opacity-90">{t(`engagement.stall.${f.code}.do`)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400 border-t border-neutral-200 dark:border-neutral-800 pt-4">
+                    {t("engagement.nothingToFix")}
+                  </p>
+                )}
+              </div>
+
               {/* Health Score + Industry */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 flex flex-col items-center justify-center">

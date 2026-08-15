@@ -36,6 +36,7 @@ import {
     tenantPurgingFenceKey,
 } from '../../common/utils/tenant-lifecycle.util';
 import { TenantDetailResponseDto } from './dto/tenant-detail-response.dto';
+import { diagnoseTenantStall } from './tenant-stall-diagnosis.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 
 export const TENANT_PLAN_SLUGS = ['emprendedor', 'starter', 'pro', 'enterprise', 'custom'] as const;
@@ -1304,7 +1305,10 @@ export class TenantsService {
     async getTenantEngagement(tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { id: true, schemaName: true, settings: true },
+            select: {
+                id: true, schemaName: true, settings: true, createdAt: true,
+                onboardingCompletedAt: true, firstChannelConnectedAt: true, firstMessageAt: true,
+            },
         });
         if (!tenant) {
             throw new NotFoundException(`Tenant ${tenantId} not found`);
@@ -1455,6 +1459,29 @@ export class TenantsService {
         const vertical: string | null = settings.verticalConfig?.industry || null;
         const subType: string | null = settings.verticalConfig?.subType || null;
 
+        // ¿Sigue vivo? El score dice "qué tan completo está", no "cuándo fue la
+        // última vez". Para saber si un tenant se apagó hace falta una fecha.
+        let lastMessageAt: Date | null = null;
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT MAX(created_at) AS last_at FROM messages`,
+                [],
+            );
+            lastMessageAt = rows[0]?.last_at ? new Date(rows[0].last_at) : null;
+        } catch (e) {
+            this.logger.warn(`Engagement: lastMessageAt query failed for ${tenantId}: ${e.message}`);
+        }
+
+        const lastLogin = await this.prisma.user.aggregate({
+            where: { tenantId },
+            _max: { lastLoginAt: true },
+        }).catch(() => null);
+        const lastLoginAt = lastLogin?._max?.lastLoginAt ?? null;
+
+        // Un canal conectado sin agente enlazado recibe mensajes que nadie
+        // responde — peor que no tenerlo, porque el cliente cree que anda.
+        const channelsWithoutAgent = Math.max(0, channelsConnected - agents.length);
+
         // Health score calculation
         const channelBonus = channelsConnected > 0 ? 20 : 0;
         const agentBonus = agentsCount > 0 ? 20 : 0;
@@ -1481,6 +1508,27 @@ export class TenantsService {
             healthScore,
             agents,
             pipelineStages,
+            lastLoginAt,
+            lastMessageAt,
+            createdAt: tenant.createdAt,
+            onboardingCompletedAt: tenant.onboardingCompletedAt,
+            // Las causas concretas, ya ordenadas por severidad. El score dice
+            // cuán completo está; esto dice qué hacer al respecto.
+            stallFindings: diagnoseTenantStall({
+                onboardingCompletedAt: tenant.onboardingCompletedAt,
+                firstChannelConnectedAt: tenant.firstChannelConnectedAt,
+                firstMessageAt: tenant.firstMessageAt,
+                lastLoginAt,
+                lastMessageAt,
+                channelsConnected,
+                agentsCount,
+                channelsWithoutAgent,
+                faqsCount,
+                messages7d,
+                messages30d,
+                handoffsPending,
+                createdAt: tenant.createdAt,
+            }),
         };
     }
 

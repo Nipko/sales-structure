@@ -4108,6 +4108,64 @@
       "aiConfig": "AI Config"
     },
     "engagement": {
+      "lastLogin": "Team's last sign-in",
+      "lastMessage": "Last customer interaction",
+      "never": "Never",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "daysAgo": "{days} days ago",
+      "howToHelp": "Why it stalled and how to help",
+      "nothingToFix": "No signs of being stuck. Channel connected, agent linked and recent activity.",
+      "stall": {
+        "channel_never_connected": {
+          "what": "Never connected a channel, registered {days} days ago",
+          "do": "Without a channel nothing can come in. Walk them through connecting WhatsApp: that is where most people drop off."
+        },
+        "channel_lost": {
+          "what": "Had a connected channel and now has none",
+          "do": "Find out why it disconnected (expired token, revoked Meta permissions) and offer to reconnect: they probably did not notice."
+        },
+        "channel_without_agent": {
+          "what": "{count} connected channel(s) with no agent linked",
+          "do": "Worse than having no channel: messages arrive and nobody answers. Link an agent today."
+        },
+        "no_agent": {
+          "what": "No AI agent created",
+          "do": "Create one from a template for their vertical; without an agent there is no automatic reply."
+        },
+        "onboarding_incomplete": {
+          "what": "Never finished the initial setup, {days} days",
+          "do": "Check which step they stopped at and finish it together on a short call."
+        },
+        "handoffs_waiting": {
+          "what": "{count} conversation(s) waiting for a human",
+          "do": "End customers are waiting right now. Alert the tenant's team."
+        },
+        "never_received_a_message": {
+          "what": "Has a channel but never received a message, {days} days",
+          "do": "The channel is connected and unused. Check the number is published where their customers can see it."
+        },
+        "dormant": {
+          "what": "No activity for {days} days",
+          "do": "Reach out to understand what changed. At this point the account is effectively abandoned."
+        },
+        "cooling_down": {
+          "what": "Cooling down: {messages30d} messages this month, none this week",
+          "do": "Time to step in, before it goes fully inactive."
+        },
+        "team_absent": {
+          "what": "Nobody from the team has signed in for {days} days",
+          "do": "Even if the agent replies on its own, with nobody watching the inbox escalated cases are lost."
+        },
+        "never_logged_in": {
+          "what": "Nobody ever signed in, {days} days since sign-up",
+          "do": "They registered and never came back. Early contact: still recoverable."
+        },
+        "no_knowledge_base": {
+          "what": "No knowledge base loaded",
+          "do": "The agent answers generically. Loading their FAQs greatly improves perceived quality."
+        }
+      },
       "healthScore": "Health",
       "messages7d": "Messages (7d)",
       "messages30d": "Messages (30d)",

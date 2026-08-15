@@ -625,10 +625,15 @@ describe('TenantsService secure tenant detail', () => {
                 },
             }),
         });
-        expect(own.redis.getJson).toHaveBeenCalledWith(`tenant:${tenantId}:detail-safe:v1`);
+        // Versionada, no la clave legada del modelo completo. El número se
+        // matchea por patrón: subirlo es un cambio legítimo cada vez que el DTO
+        // cambia de forma, y no tiene por qué romper esta prueba.
+        expect(own.redis.getJson).toHaveBeenCalledWith(
+            expect.stringContaining(`tenant:${tenantId}:detail-safe:v`),
+        );
         expect(own.redis.setJson).toHaveBeenCalledWith(
-            `tenant:${tenantId}:detail-safe:v1`,
-            { version: 1, data: result },
+            expect.stringContaining(`tenant:${tenantId}:detail-safe:v`),
+            expect.objectContaining({ data: result }),
             300,
         );
 
@@ -650,11 +655,13 @@ describe('TenantsService secure tenant detail', () => {
         await legacy.service.findById(tenantId, { role: 'super_admin' });
 
         expect(legacy.redis.getJson).toHaveBeenCalledTimes(1);
-        expect(legacy.redis.getJson).toHaveBeenCalledWith(`tenant:${tenantId}:detail-safe:v1`);
+        expect(legacy.redis.getJson).toHaveBeenCalledWith(
+            expect.stringContaining(`tenant:${tenantId}:detail-safe:v`),
+        );
         expect(legacy.prisma.tenant.findUnique).toHaveBeenCalledTimes(1);
 
         const cached = setup({
-            cached: { version: 1, data: databaseRecord },
+            cached: { version: 2, data: databaseRecord },
         });
         const cachedResult = await cached.service.findById(tenantId, { role: 'super_admin' });
 

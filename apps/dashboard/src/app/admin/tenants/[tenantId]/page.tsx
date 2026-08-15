@@ -34,6 +34,8 @@ interface TenantDetail {
   trialEndsAt?: string | null;
   /** Tenant nuestro: sin factura DIAN y fuera de las métricas de ingresos. */
   isInternal?: boolean;
+  /** Plan que se le COBRA. `plan` son los límites, y pueden diferir. */
+  billedPlan?: string | null;
 }
 
 interface TenantUser {
@@ -121,6 +123,7 @@ export default function TenantDetailPage() {
   const tenantId = params.tenantId as string;
   const t = useTranslations("tenants");
   const tc = useTranslations("common");
+  const tAdmin = useTranslations("tenantAdminActions");
 
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("info");
@@ -168,6 +171,7 @@ export default function TenantDetailPage() {
           currentPeriodEnd: d.currentPeriodEnd || null,
           trialEndsAt: d.trialEndsAt || null,
           isInternal: d.isInternal === true,
+          billedPlan: d.billedPlan ?? null,
         });
         // Extract channels from tenant data if available
         if (d.channelAccounts) {
@@ -282,6 +286,16 @@ export default function TenantDetailPage() {
           ) : undefined
         }
       />
+
+      {tenant?.billedPlan && tenant.billedPlan !== tenant.plan && (
+        <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-sm text-amber-800 dark:text-amber-200">
+          {tAdmin("planDriftHint", {
+            tenant: tenant.name,
+            entitlement: tenant.plan,
+            billed: tenant.billedPlan,
+          })}
+        </div>
+      )}
 
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as TabId)} />
 

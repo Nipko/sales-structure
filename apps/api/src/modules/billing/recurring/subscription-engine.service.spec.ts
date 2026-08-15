@@ -21,6 +21,7 @@ describe('SubscriptionEngineService', () => {
             billingSubscription: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
             billingPayment: { create: jest.fn().mockResolvedValue({ id: 'pay-1' }) },
             billingEvent: { create: jest.fn().mockResolvedValue({}) },
+            billingPlan: { findUnique: jest.fn().mockResolvedValue({ slug: 'pro' }) },
             tenant: { findUnique: jest.fn().mockResolvedValue({ isActive: true }), update: jest.fn().mockResolvedValue({}) },
             $queryRaw: jest.fn(),
             $transaction: jest.fn(async (cb: any) => cb(prisma)),
@@ -204,6 +205,37 @@ describe('SubscriptionEngineService', () => {
                 BillingEventType.PAYMENT_SUCCEEDED,
                 expect.objectContaining({ providerPaymentId: 'txn-1', tenantId: 't1' }),
             );
+        });
+
+        it('espeja el plan en tenants al cobrarse una mejora: de ahí salen los límites', async () => {
+            // `tenants.plan` es el campo desnormalizado que leen el rate limiter
+            // y las features. Sin este espejo el cliente pagaba el upgrade y
+            // seguía capado en el plan viejo.
+            const { service, prisma } = makeService();
+            prisma.billingChargeAttempt.findUnique.mockResolvedValue({
+                ...attempt,
+                subscription: { ...attempt.subscription, pendingUpgradePlanId: 'plan-pro' },
+            });
+
+            await service.settleApproved('a1', charge);
+
+            expect(prisma.billingSubscription.update.mock.calls[0][0].data).toMatchObject({
+                planId: 'plan-pro', pendingUpgradePlanId: null,
+            });
+            expect(prisma.tenant.update).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ plan: 'pro' }),
+            }));
+        });
+
+        it('no toca el plan del tenant en una renovación normal', async () => {
+            const { service, prisma } = makeService();
+            prisma.billingChargeAttempt.findUnique.mockResolvedValue(attempt);
+
+            await service.settleApproved('a1', charge);
+
+            const patch = prisma.tenant.update.mock.calls[0][0].data;
+            expect(patch.plan).toBeUndefined();
+            expect(prisma.billingPlan.findUnique).not.toHaveBeenCalled();
         });
 
         it('advances the subscription to the next period and clears any dunning', async () => {

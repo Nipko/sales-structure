@@ -23,7 +23,10 @@ export class TenantDetailResponseDto {
     isActive!: boolean;
     /** Tenant nuestro: sin factura DIAN y fuera de las métricas de ingresos. */
     isInternal!: boolean;
+    /** Límites vigentes (rate limiter y features leen de acá). */
     plan!: string;
+    /** Plan que se le cobra. Puede diferir de `plan`: ver override de permisos. */
+    billedPlan!: string | null;
     settings!: unknown;
     operatingCurrency!: string | null;
     operatingCurrencyLockedAt!: Date | string | null;

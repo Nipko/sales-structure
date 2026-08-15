@@ -325,11 +325,24 @@ export class SubscriptionEngineService {
                 },
             });
 
+            // `tenants.plan` es el campo desnormalizado del que salen los
+            // LÍMITES (rate limiter y features leen de ahí, no de la
+            // suscripción). Sin espejarlo, el cliente pagaba la mejora y seguía
+            // capado en el plan viejo, y las dos pantallas se contradecían para
+            // siempre. El slug se resuelve dentro de la misma transacción.
+            const upgradedPlan = sub.pendingUpgradePlanId
+                ? await tx.billingPlan.findUnique({
+                    where: { id: sub.pendingUpgradePlanId },
+                    select: { slug: true },
+                })
+                : null;
+
             await tx.tenant.update({
                 where: { id: attempt.tenantId },
                 data: {
                     subscriptionStatus: SubscriptionStatus.ACTIVE,
                     currentPeriodEnd: attempt.periodEnd,
+                    ...(upgradedPlan ? { plan: upgradedPlan.slug } : {}),
                 },
             });
 

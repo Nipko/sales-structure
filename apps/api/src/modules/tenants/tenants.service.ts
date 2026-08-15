@@ -63,11 +63,11 @@ export interface TenantReadPrincipal {
 }
 
 interface TenantDetailCacheEntry {
-    version: 1;
+    version: typeof TENANT_DETAIL_CACHE_VERSION;
     data: TenantDetailResponseDto;
 }
 
-const TENANT_DETAIL_CACHE_VERSION = 1 as const;
+const TENANT_DETAIL_CACHE_VERSION = 2 as const;
 const tenantDetailCacheKey = (tenantId: string) => `tenant:${tenantId}:detail-safe:v${TENANT_DETAIL_CACHE_VERSION}`;
 const legacyTenantConfigCacheKey = (tenantId: string) => `tenant:${tenantId}:config`;
 
@@ -732,6 +732,12 @@ export class TenantsService {
                         updatedAt: true,
                     },
                 },
+                // El plan COBRADO, que puede diferir del de `plan` (límites):
+                // `PUT /billing-admin/tenants/:id/plan` es un override
+                // deliberado de permisos que no toca la suscripción.
+                subscription: {
+                    select: { status: true, plan: { select: { slug: true } } },
+                },
                 _count: {
                     select: { users: true },
                 },
@@ -770,6 +776,7 @@ export class TenantsService {
             isActive: source.isActive,
             isInternal: source.isInternal === true,
             plan: source.plan,
+            billedPlan: source.subscription?.plan?.slug ?? null,
             settings: source.settings,
             operatingCurrency: source.operatingCurrency ?? null,
             operatingCurrencyLockedAt: source.operatingCurrencyLockedAt ?? null,

@@ -187,6 +187,19 @@ export class FiscalAdminController {
                 message: 'La factura ya fue validada por la DIAN (CUFE) y es inmutable: no se puede re-emitir.',
             });
         }
+        // El guard de `requeue` no alcanza acá: más abajo esto resetea la fila a
+        // 'pending' ANTES de llamarlo, así que llegaría con el estado limpio y
+        // pasaría. Re-emitir una anulada u omitida gastaría justamente el
+        // consecutivo que se decidió no gastar — y en una fila anulada era la
+        // única acción que ofrecía el panel.
+        if (['cancelled', 'skipped'].includes(inv.status)) {
+            throw new BadRequestException({
+                error: 'deliberately_not_issued',
+                message: inv.status === 'cancelled'
+                    ? 'Esta factura fue anulada a propósito antes de emitirse: re-emitirla consumiría un consecutivo DIAN por un cobro que se decidió no documentar.'
+                    : 'Este cobro no era una venta y por eso no se facturó. Re-emitir consumiría un consecutivo DIAN.',
+            });
+        }
         // Free the reference at Factus (only works while unvalidated) so the fresh
         // issue doesn't 409 on the existing bill.
         if (inv.provider === 'factus') {

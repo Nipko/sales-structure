@@ -372,7 +372,11 @@ export default function FiscalAdminPage() {
                                                             )}
                                                         </>
                                                     )}
-                                                    {inv.provider === "factus" && !inv.cufe && (
+                                                    {/* Una anulada/omitida no ofrece re-emitir: era la única
+                                                        acción visible en esas filas y gastaba el consecutivo
+                                                        que se acababa de decidir no gastar. */}
+                                                    {inv.provider === "factus" && !inv.cufe
+                                                        && inv.status !== "cancelled" && inv.status !== "skipped" && (
                                                         <button title={t("reissueHint")} disabled={busy} onClick={() => reissue(inv)} className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"><RefreshCw size={14} /> {t("reissue")}</button>
                                                     )}
                                                 </div>

@@ -10414,6 +10414,8 @@
     "bannerDismiss": "Fermer"
   },
   "fiscalAdmin": {
+    "cancelHint": "Annuler sans émettre : ne consomme aucun consécutif DIAN",
+    "cancelReasonPrompt": "Motif pour annuler cette facture sans l'émettre (ex. prélèvement de test, pas une vente) :",
     "title": "Facturation électronique (Plateforme)",
     "subtitle": "Configuration fiscale globale, factures de tous les clients et connexion Factus.",
     "tabs": {

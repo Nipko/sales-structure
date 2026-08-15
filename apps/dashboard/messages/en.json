@@ -10414,6 +10414,8 @@
     "bannerDismiss": "Dismiss"
   },
   "fiscalAdmin": {
+    "cancelHint": "Cancel without issuing: consumes no DIAN consecutive",
+    "cancelReasonPrompt": "Reason to cancel this invoice without issuing it (e.g. test charge, not a sale):",
     "title": "Electronic invoicing (Platform)",
     "subtitle": "Global fiscal configuration, all customers' invoices, and Factus connection.",
     "tabs": {

@@ -1469,6 +1469,9 @@ export const api = {
         return apiGet(`/fiscal-admin/invoices${q ? `?${q}` : ""}`);
     },
     retryFiscalInvoice: (id: string) => apiPost(`/fiscal-admin/invoices/${id}/retry`, {}),
+    /** Anula una factura que todavía NO consumió consecutivo DIAN. */
+    cancelFiscalInvoice: (id: string, reason: string) =>
+        apiPost(`/fiscal-admin/invoices/${id}/cancel`, { reason }),
     reissueFiscalInvoice: (id: string) => apiPost(`/fiscal-admin/invoices/${id}/reissue`, {}),
     getFactusHealth: () => apiGet(`/fiscal-admin/factus/health`),
     getFactusNumberingRanges: () => apiGet(`/fiscal-admin/factus/numbering-ranges`),

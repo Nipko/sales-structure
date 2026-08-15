@@ -134,7 +134,38 @@ export class FiscalAdminController {
     async retryInvoice(@Param('id') id: string) {
         const ok = await this.fiscalService.requeue(id);
         if (!ok) {
-            throw new BadRequestException({ error: 'cannot_retry', message: 'La factura no existe o ya está emitida.' });
+            throw new BadRequestException({
+                error: 'cannot_retry',
+                message: 'La factura no existe, ya está emitida, o fue anulada/omitida a propósito.',
+            });
+        }
+        return { success: true };
+    }
+
+    /**
+     * Anular una factura antes de que consuma consecutivo (super admin).
+     *
+     * Existe para el caso real: un cobro que no era una venta dejó una factura
+     * en 'pending', y sin esto la única salida era emitirla. Se exige motivo
+     * porque decidir NO documentar un cobro es una decisión, no un descarte.
+     */
+    @Post('invoices/:id/cancel')
+    async cancelInvoice(@Param('id') id: string, @Body() body: { reason?: string }) {
+        const reason = (body?.reason || '').trim();
+        if (reason.length < 3) {
+            throw new BadRequestException({
+                error: 'reason_required',
+                message: 'Anular una factura pendiente requiere un motivo.',
+            });
+        }
+        const result = await this.fiscalService.cancelPending(id, reason);
+        if (!result.ok) {
+            throw new BadRequestException({
+                error: result.error,
+                message: result.error === 'not_found'
+                    ? 'Factura no encontrada.'
+                    : 'La factura ya consumió un consecutivo DIAN: anularla requiere nota crédito, no un cambio de estado.',
+            });
         }
         return { success: true };
     }

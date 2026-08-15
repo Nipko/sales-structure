@@ -218,7 +218,10 @@ export class FiscalInvoiceService {
     /** Re-enqueue a failed/pending invoice for another issuance attempt (super admin retry). */
     async requeue(fiscalInvoiceId: string): Promise<boolean> {
         const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id: fiscalInvoiceId } });
-        if (!inv || inv.status === 'issued') return false;
+        // 'cancelled' y 'skipped' son decisiones tomadas: reintentar tiene que
+        // ser incapaz de resucitarlas y gastar un consecutivo que ya se decidió
+        // no gastar. 'issued' ya consumió el suyo.
+        if (!inv || ['issued', 'cancelled', 'skipped'].includes(inv.status)) return false;
         const updated = await this.withTenantPurgeGate(inv.tenantId, (tx) =>
             tx.fiscalInvoice.update({
                 where: { id: fiscalInvoiceId },
@@ -228,6 +231,37 @@ export class FiscalInvoiceService {
         await this.enqueue({ fiscalInvoiceId, kind: inv.type === 'credit_note' ? 'credit_note' : 'issue' });
         this.logger.log(`[Fiscal] Re-queued ${inv.type} ${fiscalInvoiceId} for retry`);
         return true;
+    }
+
+    /**
+     * Anular una factura que TODAVÍA no consumió consecutivo.
+     *
+     * Es el contrapeso de `requeue`: una factura creada por un cobro que no
+     * era una venta quedaba en 'pending' esperando que alguien tocara
+     * "Reintentar", y no había forma de bajarla. Sólo aplica antes de la DIAN —
+     * si ya tiene CUFE o número, el documento existe y anularlo es una nota
+     * crédito, no un cambio de estado.
+     */
+    async cancelPending(fiscalInvoiceId: string, reason: string): Promise<
+        { ok: true } | { ok: false; error: 'not_found' | 'already_issued' }
+    > {
+        const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id: fiscalInvoiceId } });
+        if (!inv) return { ok: false, error: 'not_found' };
+        if (inv.cufe || inv.invoiceNumber || inv.status === 'issued') {
+            return { ok: false, error: 'already_issued' };
+        }
+        await this.prisma.fiscalInvoice.update({
+            where: { id: fiscalInvoiceId },
+            data: {
+                status: 'cancelled',
+                metadata: { ...(inv.metadata as any ?? {}), cancelReason: reason } as any,
+            },
+        });
+        this.logger.warn(
+            `[Fiscal] Invoice ${fiscalInvoiceId} (tenant=${inv.tenantId}) cancelled before issuance — ${reason}. `
+            + 'No DIAN consecutive was consumed.',
+        );
+        return { ok: true };
     }
 
     private async enqueue(data: FiscalJobData): Promise<void> {

@@ -10414,6 +10414,8 @@
     "bannerDismiss": "Fechar"
   },
   "fiscalAdmin": {
+    "cancelHint": "Anular sem emitir: não consome consecutivo DIAN",
+    "cancelReasonPrompt": "Motivo para anular esta nota sem emiti-la (ex: cobrança de teste, não foi uma venda):",
     "title": "Faturação eletrônica (Plataforma)",
     "subtitle": "Configuração fiscal global, faturas de todos os clientes e conexão com a Factus.",
     "tabs": {

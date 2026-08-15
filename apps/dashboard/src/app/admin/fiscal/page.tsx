@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     Receipt, Save, CheckCircle, AlertCircle, AlertTriangle, RefreshCw, FileText, FileCode,
-    PlugZap, CheckCircle2, XCircle, RotateCw,
+    PlugZap, CheckCircle2, XCircle, RotateCw, Ban,
 } from "lucide-react";
 
 type FiscalConfig = {
@@ -102,6 +102,18 @@ export default function FiscalAdminPage() {
         setBusy(true);
         const res = await api.retryFiscalInvoice(id);
         if (!res.success) setError(res.error || tc("errorSaving"));
+        await loadInvoices();
+        setBusy(false);
+    };
+
+    // Anular antes de que consuma consecutivo. Es lo contrario de reintentar:
+    // la factura existe por un cobro que no era una venta.
+    const cancel = async (inv: AdminInvoice) => {
+        const reason = window.prompt(t("cancelReasonPrompt"));
+        if (!reason || reason.trim().length < 3) return;
+        setBusy(true); setError("");
+        const res = await api.cancelFiscalInvoice(inv.id, reason.trim());
+        if (!res.success) setError((res as any).error || tc("errorSaving"));
         await loadInvoices();
         setBusy(false);
     };
@@ -353,7 +365,12 @@ export default function FiscalAdminPage() {
                                                         </>
                                                     )}
                                                     {(inv.status === "failed" || inv.status === "pending") && (
-                                                        <button title={t("retry")} disabled={busy} onClick={() => retry(inv.id)} className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"><RotateCw size={14} /> {t("retry")}</button>
+                                                        <>
+                                                            <button title={t("retry")} disabled={busy} onClick={() => retry(inv.id)} className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"><RotateCw size={14} /> {t("retry")}</button>
+                                                            {!inv.cufe && !inv.invoiceNumber && (
+                                                                <button title={t("cancelHint")} disabled={busy} onClick={() => cancel(inv)} className="flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-700 disabled:opacity-50"><Ban size={14} /> {tc("cancel")}</button>
+                                                            )}
+                                                        </>
                                                     )}
                                                     {inv.provider === "factus" && !inv.cufe && (
                                                         <button title={t("reissueHint")} disabled={busy} onClick={() => reissue(inv)} className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"><RefreshCw size={14} /> {t("reissue")}</button>

@@ -17,9 +17,12 @@
  * se vería igual que una desincronización.
  */
 const { PrismaClient } = require('@prisma/client');
+const Redis = require('ioredis');
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes('--apply');
+// Sólo se conecta cuando de verdad se va a escribir.
+const redis = APPLY && process.env.REDIS_URL ? new Redis(process.env.REDIS_URL) : null;
 
 async function main() {
     const subs = await prisma.billingSubscription.findMany({
@@ -44,13 +47,23 @@ async function main() {
         console.log(`      se le cobra : ${s.plan.slug}   (${s.status})`);
         if (APPLY) {
             await prisma.tenant.update({ where: { id: s.tenant.id }, data: { plan: s.plan.slug } });
-            console.log(`      → alineado a ${s.plan.slug}`);
+            // Los límites se sirven de Redis. Escribir la columna sin limpiar
+            // estas llaves alinea la base y deja al tenant capado igual — que es
+            // justo el síntoma que veníamos a resolver.
+            if (redis) {
+                await redis.del(`plan_features:${s.tenant.id}`);
+                await redis.del(`tenant_plan:${s.tenant.id}`);
+                await redis.del(`tenant:${s.tenant.id}:detail-safe:v2`);
+            }
+            console.log(`      → alineado a ${s.plan.slug}${redis ? ' (caché limpiada)' : ''}`);
         }
     }
 
     if (APPLY) {
-        console.log('\n⚠ Las cachés de plan viven en Redis. Reiniciá el API, o esperá el TTL,');
-        console.log('  para que los nuevos límites apliquen de inmediato.');
+        if (!redis) {
+            console.log('\n⚠ Sin REDIS_URL no se pudieron limpiar las cachés de plan, así que');
+            console.log('  los límites viejos siguen sirviéndose. Reiniciá el API.');
+        }
         console.log(`\n✓ ${drifted.length} tenants alineados.\n`);
     } else {
         console.log('\n(LISTADO — no se escribió nada.)');
@@ -62,4 +75,7 @@ async function main() {
 
 main()
     .catch((err) => { console.error(err); process.exitCode = 1; })
-    .finally(() => prisma.$disconnect());
+    .finally(async () => {
+        await prisma.$disconnect();
+        if (redis) redis.disconnect();
+    });

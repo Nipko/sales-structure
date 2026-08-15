@@ -32,6 +32,8 @@ interface TenantDetail {
   subscriptionStatus?: string;
   currentPeriodEnd?: string | null;
   trialEndsAt?: string | null;
+  /** Tenant nuestro: sin factura DIAN y fuera de las métricas de ingresos. */
+  isInternal?: boolean;
 }
 
 interface TenantUser {
@@ -165,6 +167,7 @@ export default function TenantDetailPage() {
           subscriptionStatus: d.subscriptionStatus || (d.isActive ? "active" : "cancelled"),
           currentPeriodEnd: d.currentPeriodEnd || null,
           trialEndsAt: d.trialEndsAt || null,
+          isInternal: d.isInternal === true,
         });
         // Extract channels from tenant data if available
         if (d.channelAccounts) {
@@ -330,6 +333,7 @@ export default function TenantDetailPage() {
               isActive: tenant.isActive,
               subscriptionStatus: tenant.subscriptionStatus,
               plan: tenant.plan,
+              isInternal: tenant.isInternal,
             }}
             onChange={() => {
               // Refetch tenant detail after status change

@@ -18,7 +18,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle, Gift, ArrowLeftRight, Eye,
+    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle, Gift, ArrowLeftRight, Eye, Building2,
 } from "lucide-react";
 import ImpersonateModal from "./ImpersonateModal";
 import { startImpersonation } from "@/lib/impersonation";
@@ -30,6 +30,8 @@ interface TenantSummary {
     isActive: boolean;
     subscriptionStatus?: string;
     plan?: string;
+    /** Tenant nuestro: sin factura DIAN y fuera de las métricas de ingresos. */
+    isInternal?: boolean;
 }
 
 export interface StrandedMandate {
@@ -59,6 +61,7 @@ export default function TenantAdminActions({ tenant, onChange, onPurged }: Props
     const [impersonateBusy, setImpersonateBusy] = useState(false);
     const [impersonateError, setImpersonateError] = useState<string | null>(null);
     const [showCompPlan, setShowCompPlan] = useState(false);
+    const [showInternal, setShowInternal] = useState(false);
     const [showChangePlan, setShowChangePlan] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<ActionResult>(null);
@@ -201,6 +204,15 @@ export default function TenantAdminActions({ tenant, onChange, onPurged }: Props
                         <ArrowLeftRight className="h-4 w-4" /> {t("changePlan")}
                     </button>
 
+                    {/* Tenant propio — suprime factura DIAN y lo saca de MRR */}
+                    <button
+                        onClick={() => setShowInternal(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-500/10 hover:bg-slate-500/20 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-medium transition"
+                    >
+                        <Building2 className="h-4 w-4" />
+                        {tenant.isInternal ? t("unmarkInternal") : t("markInternal")}
+                    </button>
+
                     {/* Impersonate — the only audited way into the tenant's workspace */}
                     <button
                         onClick={() => { setImpersonateError(null); setShowImpersonate(true); }}
@@ -274,6 +286,21 @@ export default function TenantAdminActions({ tenant, onChange, onPurged }: Props
                         // and onChange reloads the window outright).
                         if (onPurged) onPurged(summary.strandedMandate ?? null);
                         else onChange?.();
+                    }}
+                />
+            )}
+
+            {showInternal && (
+                <InternalTenantModal
+                    tenant={tenant}
+                    onClose={() => setShowInternal(false)}
+                    onSuccess={(isInternal) => {
+                        setShowInternal(false);
+                        setFeedback({
+                            type: isInternal ? "warning" : "success",
+                            text: t(isInternal ? "markedInternal" : "unmarkedInternal"),
+                        });
+                        onChange?.();
                     }}
                 />
             )}
@@ -477,6 +504,85 @@ function PurgeTenantModal({
                     >
                         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
                         {t("purgeConfirm")}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Tenant propio — suprime la factura DIAN y lo saca de las métricas
+// ──────────────────────────────────────────────────────────────────────
+
+function InternalTenantModal({
+    tenant, onClose, onSuccess,
+}: { tenant: TenantSummary; onClose: () => void; onSuccess: (isInternal: boolean) => void }) {
+    const t = useTranslations("tenantAdminActions");
+    const tc = useTranslations("common");
+    const [reason, setReason] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const next = !tenant.isInternal;
+
+    async function handleSubmit() {
+        if (reason.trim().length < 3) {
+            setError(t("internalReasonRequired"));
+            return;
+        }
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api.setTenantInternal(tenant.id, { isInternal: next, reason: reason.trim() });
+            if (res.success) onSuccess(next);
+            else setError((res as any).error || tc("connectionError"));
+        } catch (e: any) {
+            setError(e?.message || tc("connectionError"));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-border">
+                    <div>
+                        <h3 className="text-base font-semibold flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-slate-500" />
+                            {t(next ? "internalTitle" : "internalTitleRemove")}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">{tenant.name}</p>
+                    </div>
+                    <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted cursor-pointer bg-transparent border-none">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                <div className="p-5 space-y-4">
+                    <p className="text-sm text-muted-foreground">{t(next ? "internalExplain" : "internalExplainRemove")}</p>
+                    <div>
+                        <label className="text-xs font-medium block mb-1.5">{t("internalReason")}</label>
+                        <input
+                            value={reason}
+                            onChange={e => setReason(e.target.value)}
+                            placeholder={t("internalReasonPlaceholder")}
+                            className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm"
+                        />
+                    </div>
+                    {error && <p className="text-xs text-red-500">{error}</p>}
+                    <p className="text-xs text-muted-foreground">{t("internalNoRetroactive")}</p>
+                </div>
+                <div className="flex justify-end gap-2 p-5 border-t border-border">
+                    <button onClick={onClose} className="px-3 py-2 rounded-lg text-sm bg-muted cursor-pointer border-none">
+                        {tc("cancel")}
+                    </button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={busy}
+                        className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-600 hover:bg-slate-700 text-white disabled:opacity-50 cursor-pointer border-none flex items-center gap-2"
+                    >
+                        {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {t(next ? "internalConfirm" : "internalConfirmRemove")}
                     </button>
                 </div>
             </div>

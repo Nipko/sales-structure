@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Put, Delete, Param, Body, Query, UseGuards, ForbiddenException, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Delete, Param, Body, Query, UseGuards, ForbiddenException, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { TENANT_LANGUAGE_TAGS, TENANT_PLAN_SLUGS, TenantsService } from './tenants.service';
@@ -444,5 +444,46 @@ export class TenantsController {
     ) {
         const result = await this.throttleService.setQuotaOverrides(id, body, user?.email || user?.sub);
         return { success: true, data: result };
+    }
+
+    /**
+     * Marcar un tenant como propio (demo, pruebas, uso interno).
+     *
+     * Suprimir una factura de venta no es una preferencia de UI: se exige un
+     * motivo y queda en auditoría, porque la marca afirma que NO hubo venta.
+     * No toca documentos ya emitidos — anular una factura entregada a la DIAN
+     * es una nota crédito, y esa es una decisión contable, no un botón.
+     */
+    @Put(':id/internal')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Mark/unmark a tenant as internal (no fiscal invoice, excluded from revenue metrics)' })
+    async setInternal(
+        @Param('id') id: string,
+        @Body() body: { isInternal: boolean; reason?: string },
+        @CurrentUser() user: any,
+    ) {
+        const reason = (body?.reason || '').trim();
+        if (!reason) {
+            throw new BadRequestException({
+                error: 'reason_required',
+                message: 'Marcar un tenant como propio suprime su factura electrónica: el motivo es obligatorio.',
+            });
+        }
+        const isInternal = body.isInternal === true;
+        const tenant = await this.prisma.tenant.update({
+            where: { id },
+            data: { isInternal },
+            select: { id: true, name: true, isInternal: true },
+        });
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId: id,
+                userId: user?.sub ?? null,
+                action: isInternal ? 'tenant.marked_internal' : 'tenant.unmarked_internal',
+                resource: 'tenants',
+                details: { reason, actor: user?.email ?? null },
+            },
+        });
+        return { success: true, data: tenant };
     }
 }

@@ -8,7 +8,7 @@ import { SubscriptionStatus } from '../types/subscription-status.enum';
  * corresponds to a way real money goes wrong.
  */
 describe('SubscriptionEngineService', () => {
-    function makeService(overrides: { prisma?: any; emitter?: any } = {}) {
+    function makeService(overrides: { prisma?: any; emitter?: any; wompiConfig?: any } = {}) {
         // Explicitly `any`: $transaction references `prisma` inside its own
         // initializer, which TypeScript cannot infer (TS7022).
         const prisma: any = {
@@ -29,8 +29,11 @@ describe('SubscriptionEngineService', () => {
         const redis = { del: jest.fn().mockResolvedValue(undefined) };
         const emitter = overrides.emitter ?? { emit: jest.fn() };
         const providerFactory = { getCharging: jest.fn(), capabilitiesOf: jest.fn() };
+        // Sandbox por defecto, que es como corre el riel hoy: el pago queda
+        // sellado como de prueba y la capa fiscal no gasta un consecutivo real.
+        const wompiConfig = overrides.wompiConfig ?? { environment: () => 'sandbox' };
         return {
-            service: new SubscriptionEngineService(prisma as any, redis as any, emitter as any, providerFactory as any),
+            service: new SubscriptionEngineService(prisma as any, redis as any, emitter as any, providerFactory as any, wompiConfig as any),
             prisma,
             emitter,
             redis,

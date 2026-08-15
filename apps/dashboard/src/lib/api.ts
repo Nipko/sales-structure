@@ -1424,6 +1424,10 @@ export const api = {
     grantCompPlan: (tenantId: string, data: { planSlug: string; durationDays: number; reason: string }) =>
         apiPost(`/billing-admin/tenants/${tenantId}/comp-plan`, data),
 
+    /** Marca/desmarca un tenant como propio: sin factura DIAN y fuera de MRR. */
+    setTenantInternal: (tenantId: string, data: { isInternal: boolean; reason: string }) =>
+        apiPut(`/tenants/${tenantId}/internal`, data),
+
     // --- Fiscal (DIAN electronic invoicing — Colombia) ---
     getFiscalData: (tenantId: string) => apiGet(`/fiscal/${tenantId}/data`),
     updateFiscalData: (tenantId: string, data: Record<string, any>) =>

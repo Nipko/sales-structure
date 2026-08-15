@@ -67,6 +67,23 @@ export class BillingService {
         @InjectQueue(RENEWAL_QUEUE) private readonly enginePendingCharges: Queue,
     ) {}
 
+    /**
+     * Entorno del riel de cobro, tal como estaba al momento de cobrar.
+     *
+     * Sólo se afirma 'sandbox' o 'production' cuando se puede saber de verdad.
+     * Lo que consume este dato (la emisión fiscal) frena únicamente ante un
+     * 'sandbox' explícito: negarse ante lo desconocido dejaría sin factura a un
+     * cobro real el día que despierte otro proveedor.
+     */
+    railEnvironment(provider: string): 'sandbox' | 'production' | 'unknown' {
+        if (provider !== 'wompi') return 'unknown';
+        try {
+            return this.wompiConfig.environment() === 'production' ? 'production' : 'sandbox';
+        } catch {
+            return 'unknown';
+        }
+    }
+
     /** Capabilities of the provider a subscription is bound to. Business logic branches on these, never on the name. */
     private capabilitiesFor(providerName: PaymentProviderName | string): ProviderCapabilities {
         return this.providerFactory.capabilitiesOf(providerName);
@@ -1343,6 +1360,14 @@ export class BillingService {
                     cancelAtPeriodEnd: false,
                     cancelledAt: null,
                     cancellationReason: `comp: ${input.reason}`,
+                    // Una cortesía tiene que DEJAR DE COBRAR, y el estado que
+                    // dejábamos acá es exactamente el que busca el barrido:
+                    // ACTIVE + cancelAtPeriodEnd=false + engine interno con
+                    // `nextChargeAt` vencido. Al tenant se le regalaba el plan y
+                    // se le seguía pasando la tarjeta — y cada cobro fabricaba
+                    // un pago, una factura electrónica y MRR que no existe.
+                    // Una suscripción de cortesía no tiene próximo cobro.
+                    nextChargeAt: null,
                 },
             });
         } else {
@@ -1532,6 +1557,13 @@ export class BillingService {
                             provider: event.provider,
                             providerPaymentId: event.payment.providerPaymentId,
                             paidAt: event.payment.paidAt ?? new Date(),
+                            // Sello del riel con el que se cobró. Un pago de
+                            // sandbox no puede convertirse en una factura DIAN
+                            // real, y el dato tiene que ser HISTÓRICO: si mañana
+                            // pasamos a producción, los pagos viejos siguen
+                            // siendo de prueba. Por eso viaja en la fila y no se
+                            // consulta la config al momento de facturar.
+                            metadata: { railEnvironment: this.railEnvironment(event.provider) } as any,
                         },
                     });
                 } else if (event.type === BillingEventType.PAYMENT_FAILED && event.payment) {

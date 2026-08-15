@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { COMMERCIAL_SUBSCRIPTIONS } from './commercial-scope.util';
 
 @Injectable()
 export class FinancialsService {
@@ -15,7 +16,7 @@ export class FinancialsService {
     async getOverview() {
         // MRR: sum of active subscription plan prices
         const activeSubs = await this.prisma.billingSubscription.findMany({
-            where: { status: 'active' },
+            where: { status: 'active', ...COMMERCIAL_SUBSCRIPTIONS },
             include: { plan: true },
         });
         const mrrCents = activeSubs.reduce((sum: number, s: any) => sum + (s.plan?.priceUsdCents || 0), 0);
@@ -44,7 +45,7 @@ export class FinancialsService {
 
         // Trial metrics
         const trialingSubs = await this.prisma.billingSubscription.count({
-            where: { status: 'trialing' },
+            where: { status: 'trialing', ...COMMERCIAL_SUBSCRIPTIONS },
         });
 
         return {
@@ -182,7 +183,7 @@ export class FinancialsService {
     // GET /financials/trial-metrics
     async getTrialMetrics() {
         const trialingSubs = await this.prisma.billingSubscription.findMany({
-            where: { status: 'trialing' },
+            where: { status: 'trialing', ...COMMERCIAL_SUBSCRIPTIONS },
             include: { tenant: { select: { name: true } } },
         });
         const trialsEndingSoon = trialingSubs.filter((s: any) => {

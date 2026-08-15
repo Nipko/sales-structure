@@ -29,6 +29,11 @@ model Tenant {
   isActive   Boolean @default(true) @map("is_active")
   plan       String  @default("starter")
   settings   Json    @default("{}")
+
+  /// Tenant nuestro (demo, pruebas, uso interno): no es una venta. Suprime la
+  /// factura electrónica —no gastar consecutivos DIAN en algo que no vendimos—
+  /// y lo excluye de MRR/ARPU/churn. El motivo del cambio queda en audit_logs.
+  isInternal Boolean @default(false) @map("is_internal")
   operatingCurrency         String?   @map("operating_currency") @db.VarChar(3)
   operatingCurrencyLockedAt DateTime? @map("operating_currency_locked_at")
 

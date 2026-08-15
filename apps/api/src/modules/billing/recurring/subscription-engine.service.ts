@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { PaymentProviderFactory } from '../payment-provider.factory';
+import { WompiConfigService } from '../adapters/wompi-config.service';
 import { BillingEventType } from '../types/billing-event.enum';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
 import { BillingCycle, PaymentProviderName } from '../types/provider-types';
@@ -55,7 +56,18 @@ export class SubscriptionEngineService {
         private readonly redis: RedisService,
         private readonly eventEmitter: EventEmitter2,
         private readonly providerFactory: PaymentProviderFactory,
+        private readonly wompiConfig: WompiConfigService,
     ) {}
+
+    /** Igual que `BillingService.railEnvironment`, para el cobro desatendido. */
+    private railEnvironment(provider: string): 'sandbox' | 'production' | 'unknown' {
+        if (provider !== 'wompi') return 'unknown';
+        try {
+            return this.wompiConfig.environment() === 'production' ? 'production' : 'sandbox';
+        } catch {
+            return 'unknown';
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Scheduling
@@ -264,6 +276,10 @@ export class SubscriptionEngineService {
                     provider: attempt.provider,
                     providerPaymentId: charge.providerChargeId,
                     paidAt: charge.settledAt ?? new Date(),
+                    // Ver `BillingService.railEnvironment`: un cobro de sandbox
+                    // queda marcado como tal para siempre, así no termina
+                    // gastando un consecutivo DIAN real.
+                    metadata: { railEnvironment: this.railEnvironment(attempt.provider) } as any,
                 },
             });
 

@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { COMMERCIAL_PAYMENTS, COMMERCIAL_SUBSCRIPTIONS } from './commercial-scope.util';
 
 @Injectable()
 export class FinancialSnapshotService {
@@ -41,7 +42,7 @@ export class FinancialSnapshotService {
 
         // Active subscriptions at end of month
         const activeSubs = await this.prisma.billingSubscription.findMany({
-            where: { status: { in: ['active', 'trialing'] } },
+            where: { status: { in: ['active', 'trialing'] }, ...COMMERCIAL_SUBSCRIPTIONS },
             include: {
                 plan: true,
                 tenant: {
@@ -75,12 +76,13 @@ export class FinancialSnapshotService {
             where: {
                 status: { in: ['cancelled', 'expired'] },
                 cancelledAt: { gte: monthStart, lte: monthEnd },
+                ...COMMERCIAL_SUBSCRIPTIONS,
             },
         });
 
         // Payments
         const payments = await this.prisma.billingPayment.findMany({
-            where: { createdAt: { gte: monthStart, lte: monthEnd } },
+            where: { createdAt: { gte: monthStart, lte: monthEnd }, ...COMMERCIAL_PAYMENTS },
         });
         const succeeded = payments.filter((p: any) => p.status === 'succeeded');
         const failed = payments.filter((p: any) => p.status === 'failed');

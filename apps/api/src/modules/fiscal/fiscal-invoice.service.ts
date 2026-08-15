@@ -80,7 +80,7 @@ export class FiscalInvoiceService {
             const cfg = await this.config.getConfig();
             const tenant = await this.prisma.tenant.findUnique({
                 where: { id: tenantId },
-                select: { billingCountry: true, settings: true },
+                select: { billingCountry: true, settings: true, isInternal: true },
             });
             if (!tenant) return;
 
@@ -90,18 +90,9 @@ export class FiscalInvoiceService {
                 return;
             }
 
-            // Phased rollout: stay dormant until the provider is actually
-            // configured (Factus creds + numbering range). This makes deploying
-            // the fiscal layer before go-live a no-op instead of generating
-            // doomed-to-fail invoices + Sentry noise on real payments.
-            if (!this.isProviderReady(provider.name, cfg)) {
-                this.logger.warn(`[Fiscal] ${provider.name} not configured yet — skipping issuance for tenant ${tenantId}`);
-                return;
-            }
-
             const payment = await this.prisma.billingPayment.findUnique({
                 where: { providerPaymentId: charge.providerPaymentId },
-                select: { id: true, amountCents: true, currency: true },
+                select: { id: true, amountCents: true, currency: true, metadata: true },
             });
             if (!payment) {
                 this.logger.warn(`[Fiscal] BillingPayment ${charge.providerPaymentId} not found — cannot link invoice`);
@@ -112,6 +103,40 @@ export class FiscalInvoiceService {
             const existing = await this.prisma.fiscalInvoice.findUnique({ where: { paymentId: payment.id } });
             if (existing) {
                 this.logger.debug(`[Fiscal] Invoice already exists for payment ${payment.id} — skipping`);
+                return;
+            }
+
+            // A DIAN consecutive is a finite, paid resource, and an invoice
+            // asserts a SALE. These two cases are not sales, so they get a
+            // recorded decision instead of a document: the row keeps the
+            // one-per-payment invariant (nothing is issued twice, nothing is
+            // silently missing) and shows up in /admin/fiscal as skipped.
+            // El riel de cobro y el fiscal se configuran por separado, y ya se
+            // cruzaron una vez: pagos de prueba de Wompi en sandbox emitiendo
+            // facturas DIAN reales contra plata que no existió. Sólo frena ante
+            // un 'sandbox' EXPLÍCITO — negarse ante lo desconocido dejaría sin
+            // factura a un cobro real de otro proveedor.
+            const railEnvironment = (payment.metadata as any)?.railEnvironment;
+            const skipReason = tenant.isInternal
+                ? 'tenant_internal_use'
+                : railEnvironment === 'sandbox'
+                    ? 'test_mode_payment'
+                    : payment.amountCents <= 0
+                        ? 'no_consideration'
+                        : null;
+            if (skipReason) {
+                await this.recordSkippedIssuance(tenantId, payment, provider.name, skipReason);
+                return;
+            }
+
+            // Phased rollout: stay dormant until the provider is actually
+            // configured (Factus creds + numbering range). This makes deploying
+            // the fiscal layer before go-live a no-op instead of generating
+            // doomed-to-fail invoices + Sentry noise on real payments.
+            // Deliberately AFTER the skip decisions and without a row: this one
+            // is a transient config gap, not a ruling on the payment.
+            if (!this.isProviderReady(provider.name, cfg)) {
+                this.logger.warn(`[Fiscal] ${provider.name} not configured yet — skipping issuance for tenant ${tenantId}`);
                 return;
             }
 
@@ -226,6 +251,40 @@ export class FiscalInvoiceService {
             return creds && !!cfg.factusNumberingRangeId;
         }
         return true;
+    }
+
+    /**
+     * Record that a payment was deliberately NOT invoiced.
+     *
+     * Written as a `fiscal_invoices` row rather than only a log line so the
+     * decision is queryable next to the documents it replaces, and so the
+     * UNIQUE(payment_id) still holds: a payment can never end up with both a
+     * skip and an invoice, and a later replay cannot quietly issue one.
+     */
+    private async recordSkippedIssuance(
+        tenantId: string,
+        payment: { id: string; amountCents: number; currency: string },
+        providerName: string,
+        reason: 'tenant_internal_use' | 'test_mode_payment' | 'no_consideration',
+    ): Promise<void> {
+        const row = await this.withTenantPurgeGate(tenantId, (tx) =>
+            tx.fiscalInvoice.create({
+                data: {
+                    tenantId,
+                    paymentId: payment.id,
+                    type: 'invoice',
+                    status: 'skipped',
+                    provider: providerName,
+                    amountCents: payment.amountCents,
+                    currency: payment.currency,
+                    metadata: { skipReason: reason } as any,
+                },
+            }));
+        if (!row) return;
+        this.logger.log(
+            `[Fiscal] Payment ${payment.id} (tenant=${tenantId}) not invoiced — ${reason}. `
+            + 'No DIAN consecutive was consumed.',
+        );
     }
 
     /** Map Tenant.settings.fiscalData (JSONB) into a FiscalAcquirer, or null if absent. */

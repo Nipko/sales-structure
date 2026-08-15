@@ -21,6 +21,8 @@ export class TenantDetailResponseDto {
     industry!: string;
     language!: string;
     isActive!: boolean;
+    /** Tenant nuestro: sin factura DIAN y fuera de las métricas de ingresos. */
+    isInternal!: boolean;
     plan!: string;
     settings!: unknown;
     operatingCurrency!: string | null;

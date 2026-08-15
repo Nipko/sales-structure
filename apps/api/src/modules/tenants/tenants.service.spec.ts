@@ -543,7 +543,11 @@ describe('TenantsService secure tenant detail', () => {
                 findUnique: jest.fn(async () => options?.record === undefined
                     ? databaseRecord
                     : options.record),
+                update: jest.fn(async ({ data }: any) => ({
+                    id: tenantId, name: 'Clínica Norte', isInternal: data.isInternal,
+                })),
             },
+            auditLog: { create: jest.fn(async () => ({})) },
         };
         const redis: any = {
             getJson: jest.fn(async () => options?.cached ?? null),
@@ -567,6 +571,29 @@ describe('TenantsService secure tenant detail', () => {
         );
         return { service, prisma, redis };
     }
+
+    it('invalida la ficha cacheada al marcar un tenant como propio', async () => {
+        // La ficha se sirve de una caché de 5 minutos. Sin este del(), el panel
+        // seguía mostrando el estado anterior y el operador marcaba sin ver
+        // ningún cambio — que es exactamente como se reportó.
+        const { service, redis } = setup();
+
+        await service.setInternal(tenantId, true, { userId: 'u1', email: 'admin@x.com' }, 'cuenta de demo');
+
+        expect(redis.del).toHaveBeenCalledWith(expect.stringContaining(`tenant:${tenantId}:detail-safe:v`));
+    });
+
+    it('deja el motivo y el actor en auditoría al marcar', async () => {
+        const { service, prisma } = setup();
+
+        await service.setInternal(tenantId, true, { userId: 'u1', email: 'admin@x.com' }, 'cuenta de demo');
+
+        const [[call]] = prisma.auditLog.create.mock.calls;
+        expect(call.data).toMatchObject({
+            action: 'tenant.marked_internal',
+            details: { reason: 'cuenta de demo', actor: 'admin@x.com' },
+        });
+    });
 
     it('rejects cross-tenant reads before touching Redis or Prisma', async () => {
         const { service, prisma, redis } = setup();

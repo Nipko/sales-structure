@@ -766,6 +766,44 @@ export class TenantsService {
         throw new ForbiddenException('Cannot access another tenant');
     }
 
+    /**
+     * Marcar/desmarcar un tenant como propio de la empresa.
+     *
+     * Vive acá y no en el controller porque la ficha se sirve de una caché de
+     * 5 minutos: escribir la columna sin invalidarla dejaba al panel mostrando
+     * el estado viejo, y el operador marcaba sin ver ningún cambio.
+     */
+    async setInternal(
+        id: string,
+        isInternal: boolean,
+        actor: { userId?: string | null; email?: string | null },
+        reason: string,
+    ): Promise<{ id: string; name: string; isInternal: boolean }> {
+        const tenant = await this.prisma.tenant.update({
+            where: { id },
+            data: { isInternal },
+            select: { id: true, name: true, isInternal: true },
+        });
+
+        await this.redis.del(tenantDetailCacheKey(id));
+        await this.redis.del(legacyTenantConfigCacheKey(id));
+
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId: id,
+                userId: actor.userId ?? null,
+                action: isInternal ? 'tenant.marked_internal' : 'tenant.unmarked_internal',
+                resource: 'tenants',
+                details: { reason, actor: actor.email ?? null },
+            },
+        });
+        this.logger.log(
+            `[Tenants] ${tenant.name} ${isInternal ? 'marcado' : 'desmarcado'} como propio por `
+            + `${actor.email ?? actor.userId ?? 'desconocido'} — ${reason}`,
+        );
+        return tenant;
+    }
+
     private toTenantDetailResponse(source: any): TenantDetailResponseDto {
         return {
             id: source.id,

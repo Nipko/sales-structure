@@ -469,21 +469,12 @@ export class TenantsController {
                 message: 'Marcar un tenant como propio suprime su factura electrónica: el motivo es obligatorio.',
             });
         }
-        const isInternal = body.isInternal === true;
-        const tenant = await this.prisma.tenant.update({
-            where: { id },
-            data: { isInternal },
-            select: { id: true, name: true, isInternal: true },
-        });
-        await this.prisma.auditLog.create({
-            data: {
-                tenantId: id,
-                userId: user?.sub ?? null,
-                action: isInternal ? 'tenant.marked_internal' : 'tenant.unmarked_internal',
-                resource: 'tenants',
-                details: { reason, actor: user?.email ?? null },
-            },
-        });
+        const tenant = await this.tenantsService.setInternal(
+            id,
+            body.isInternal === true,
+            { userId: user?.sub ?? null, email: user?.email ?? null },
+            reason,
+        );
         return { success: true, data: tenant };
     }
 }

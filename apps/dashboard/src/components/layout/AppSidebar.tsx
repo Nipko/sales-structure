@@ -1094,11 +1094,15 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                     ? (user?.tenantName || user?.firstName || "Parallly")
                     : tNav("platformConsole")}
                 </span>
-                <span className="block truncate text-[10px] font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                  {useTenantTree
-                    ? ((user as { plan?: string } | null)?.plan || "starter")
-                    : tNav("superAdminMode")}
-                </span>
+                {/* Sin plan no se inventa uno: el `|| "starter"` que había acá
+                    le mostraba STARTER a todo el mundo, porque el campo nunca
+                    venía en la sesión. Una sesión vieja no lo trae hasta el
+                    próximo login, y ahí es mejor no decir nada que mentir. */}
+                {(!useTenantTree || user?.plan) && (
+                  <span className="block truncate text-[10px] font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                    {useTenantTree ? user?.plan : tNav("superAdminMode")}
+                  </span>
+                )}
               </span>
             </Link>
           </motion.div>

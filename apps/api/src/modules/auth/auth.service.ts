@@ -526,6 +526,10 @@ export class AuthService {
                 role: user.role,
                 tenantId: readyTenantId,
                 tenantName: readyTenantId ? user.tenant?.name : undefined,
+                // El panel muestra el plan bajo el nombre del tenant. Sin este
+                // campo el sidebar caía en un `|| "starter"` y le mostraba
+                // STARTER a todo el mundo, cobrara lo que cobrara.
+                plan: readyTenantId ? user.tenant?.plan : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
@@ -880,6 +884,10 @@ export class AuthService {
                 role: user.role,
                 tenantId: readyTenantId,
                 tenantName: readyTenantId ? user.tenant?.name : undefined,
+                // El panel muestra el plan bajo el nombre del tenant. Sin este
+                // campo el sidebar caía en un `|| "starter"` y le mostraba
+                // STARTER a todo el mundo, cobrara lo que cobrara.
+                plan: readyTenantId ? user.tenant?.plan : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
@@ -983,6 +991,10 @@ export class AuthService {
                 firstName: user.firstName, lastName: user.lastName,
                 role: user.role, tenantId: readyTenantId,
                 tenantName: readyTenantId ? user.tenant?.name : undefined,
+                // El panel muestra el plan bajo el nombre del tenant. Sin este
+                // campo el sidebar caía en un `|| "starter"` y le mostraba
+                // STARTER a todo el mundo, cobrara lo que cobrara.
+                plan: readyTenantId ? user.tenant?.plan : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
@@ -1433,6 +1445,10 @@ export class AuthService {
                 role: user.role,
                 tenantId: readyTenantId,
                 tenantName: readyTenantId ? user.tenant?.name : undefined,
+                // El panel muestra el plan bajo el nombre del tenant. Sin este
+                // campo el sidebar caía en un `|| "starter"` y le mostraba
+                // STARTER a todo el mundo, cobrara lo que cobrara.
+                plan: readyTenantId ? user.tenant?.plan : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,

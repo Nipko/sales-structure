@@ -33,6 +33,8 @@ interface User {
     role: string;
     tenantId?: string;
     tenantName?: string;
+    /** Plan del tenant, para mostrarlo bajo su nombre. Ausente en sesiones viejas. */
+    plan?: string;
     picture?: string;
     hasPassword?: boolean;
     emailVerified?: boolean;

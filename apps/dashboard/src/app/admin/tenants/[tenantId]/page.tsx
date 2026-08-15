@@ -244,7 +244,7 @@ export default function TenantDetailPage() {
   return (
     <div className="max-w-[1200px] mx-auto space-y-6">
       <PageHeader
-        title={tenant?.name || tc("loading")}
+        title={tenant?.name || (notFound ? t("detail.notFoundTitle") : tc("loading"))}
         subtitle={tenant?.slug}
         icon={Building2}
         breadcrumbs={
@@ -253,7 +253,9 @@ export default function TenantDetailPage() {
               {t("title")}
             </Link>
             <ChevronRight size={14} />
-            <span className="text-neutral-900 dark:text-neutral-100">{tenant?.name || "..."}</span>
+            <span className="text-neutral-900 dark:text-neutral-100">
+              {tenant?.name || (notFound ? t("detail.notFoundTitle") : "...")}
+            </span>
           </nav>
         }
         badge={
@@ -333,10 +335,22 @@ export default function TenantDetailPage() {
               // Refetch tenant detail after status change
               if (typeof window !== "undefined") window.location.reload();
             }}
-            onPurged={() => {
+            onPurged={(stranded) => {
               // The tenant no longer exists — reloading this page would 404 and
               // hang on "Cargando…". Go back to the list, which shows the toast.
-              try { sessionStorage.setItem("tenantPurged", tenant.name); } catch { /* noop */ }
+              try {
+                sessionStorage.setItem("tenantPurged", tenant.name);
+                // A mandate we could not cancel outlives the tenant, so the
+                // notice has to outlive this page too. The list renders it as a
+                // banner that stays put — a toast would vanish before the id
+                // could be copied, and the id is the whole point.
+                if (stranded) {
+                  sessionStorage.setItem(
+                    "tenantPurgedStrandedMandate",
+                    JSON.stringify({ ...stranded, tenantName: tenant.name }),
+                  );
+                }
+              } catch { /* noop */ }
               router.push("/admin/tenants");
             }}
           />

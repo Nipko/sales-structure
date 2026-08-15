@@ -32,10 +32,18 @@ interface TenantSummary {
     plan?: string;
 }
 
+export interface StrandedMandate {
+    provider: string;
+    mandateId: string;
+}
+
 interface Props {
     tenant: TenantSummary;
     onChange?: () => void;  // refetch after successful action
-    onPurged?: () => void;  // tenant deleted — caller should navigate away (page would 404)
+    // Tenant deleted — caller should navigate away (page would 404). Receives the
+    // mandate that survived the purge, if any: it has to be carried OUT of this
+    // page, because nothing rendered here lives long enough to be read.
+    onPurged?: (stranded?: StrandedMandate | null) => void;
 }
 
 type ActionResult = { type: "success" | "error" | "warning"; text: string } | null;
@@ -251,21 +259,6 @@ export default function TenantAdminActions({ tenant, onChange, onPurged }: Props
                     onClose={() => setShowPurge(false)}
                     onSuccess={(summary) => {
                         setShowPurge(false);
-                        const stranded = summary.strandedMandate;
-                        if (stranded) {
-                            // Se borró igual, pero queda un mandato que solo se
-                            // cancela en el proveedor. No navegamos: si nos
-                            // vamos de la página, el operador nunca lo lee.
-                            setFeedback({
-                                type: "warning",
-                                text: t("purgeStrandedMandate", {
-                                    provider: stranded.provider,
-                                    mandateId: stranded.mandateId,
-                                }),
-                            });
-                            onChange?.();
-                            return;
-                        }
                         setFeedback({
                             type: "success",
                             text: t("purgeSuccess", {
@@ -275,7 +268,11 @@ export default function TenantAdminActions({ tenant, onChange, onPurged }: Props
                         });
                         // The tenant is gone. Prefer navigating away (onPurged);
                         // fall back to the generic refetch only if no handler.
-                        if (onPurged) onPurged();
+                        // The stranded mandate travels WITH that navigation: it
+                        // cannot be shown here, because either handler tears this
+                        // page down (the refetch 404s into the not-found state,
+                        // and onChange reloads the window outright).
+                        if (onPurged) onPurged(summary.strandedMandate ?? null);
                         else onChange?.();
                     }}
                 />

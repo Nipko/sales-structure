@@ -8,7 +8,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import {
   Building2, Plus, LayoutGrid, UserPlus, UserMinus,
-  CreditCard, BarChart3, Server, CheckCircle,
+  CreditCard, BarChart3, Server, CheckCircle, AlertTriangle, X,
 } from "lucide-react";
 import TenantsOverviewTab from "./_components/TenantsOverviewTab";
 import OnboardingTab from "./_components/OnboardingTab";
@@ -40,6 +40,9 @@ export default function TenantsPage() {
   const tHelp = useTranslations("help");
 
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [strandedMandate, setStrandedMandate] = useState<
+    { provider: string; mandateId: string; tenantName: string } | null
+  >(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<PlatformStats | null>(null);
@@ -141,6 +144,13 @@ export default function TenantsPage() {
       if (purged) {
         sessionStorage.removeItem("tenantPurged");
         showToast(t("purgedToast", { name: purged }));
+      }
+      // Deliberately NOT a toast: this one carries an id the operator has to
+      // copy and act on outside the platform, so it stays until dismissed.
+      const stranded = sessionStorage.getItem("tenantPurgedStrandedMandate");
+      if (stranded) {
+        sessionStorage.removeItem("tenantPurgedStrandedMandate");
+        setStrandedMandate(JSON.parse(stranded));
       }
     } catch { /* noop */ }
   }, [showToast, t]);
@@ -249,6 +259,30 @@ export default function TenantsPage() {
           </button>
         }
       />
+
+      {strandedMandate && (
+        <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              {t("strandedMandate", {
+                tenant: strandedMandate.tenantName,
+                provider: strandedMandate.provider,
+              })}
+            </p>
+            <code className="mt-2 inline-block px-2 py-1 rounded bg-amber-500/15 text-amber-900 dark:text-amber-100 text-xs font-mono break-all select-all">
+              {strandedMandate.mandateId}
+            </code>
+          </div>
+          <button
+            onClick={() => setStrandedMandate(null)}
+            aria-label={tc("close")}
+            className="p-1 rounded cursor-pointer bg-transparent border-none text-amber-700 dark:text-amber-300 hover:opacity-70"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       <HelpPanel
         title={tHelp("tenants.title")}

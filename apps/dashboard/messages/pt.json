@@ -4301,7 +4301,8 @@
         "other": "Outro (especificar)"
       }
     },
-    "purgedToast": "{name} foi excluído definitivamente"
+    "purgedToast": "{name} foi excluído definitivamente",
+    "strandedMandate": "{tenant} foi excluído, mas {provider} mantém um mandato de cobrança que não podemos cancelar daqui. Cancele manualmente no provedor ou o cliente pode continuar sendo cobrado. Fica registrado na auditoria da plataforma."
   },
   "onboarding": {
     "paidPlanAfterSignup": "O plano {plan} exige um meio de pagamento. Crie sua conta agora e ative-o em Configuracoes → Faturamento: seu cartao fica salvo com seguranca e a cobranca e agendada para o fim do teste.",
@@ -8841,7 +8842,6 @@
     "purgeTypePrompt": "Para confirmar, digite o slug do tenant: {slug}",
     "purgeConfirm": "Excluir permanentemente",
     "purgeSuccess": "Tenant excluído: {channels} canais desconectados, {files} arquivos removidos",
-    "purgeStrandedMandate": "Tenant excluído, mas {provider} mantém o mandato {mandateId} e sua integração foi retirada: não podemos cancelá-lo daqui. Cancele no provedor manualmente ou o cliente pode continuar sendo cobrado. Fica registrado na auditoria da plataforma.",
     "compPlan": "Presentear plano",
     "compPlanTitle": "Presentear plano grátis",
     "compPlanHint": "Concede um plano sem cobrar. Não conecta com MercadoPago — a assinatura do provedor segue seu curso. Útil para contas cortesia e demos.",

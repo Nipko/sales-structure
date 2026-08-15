@@ -8841,6 +8841,7 @@
     "purgeTypePrompt": "Pour confirmer, tapez le slug du tenant : {slug}",
     "purgeConfirm": "Supprimer définitivement",
     "purgeSuccess": "Tenant supprimé : {channels} canaux déconnectés, {files} fichiers supprimés",
+    "purgeStrandedMandate": "Tenant supprimé, mais {provider} conserve le mandat {mandateId} et son intégration a été retirée : nous ne pouvons pas l'annuler d'ici. Annulez-le chez le fournisseur manuellement, sinon le client peut continuer à être débité. Ceci est consigné dans l'audit de la plateforme.",
     "compPlan": "Offrir un plan",
     "compPlanTitle": "Offrir un plan gratuit",
     "compPlanHint": "Accorde un plan sans facturer. Ne touche pas MercadoPago — l'abonnement du fournisseur suit son cours. Utile pour les comptes de courtoisie et démos.",

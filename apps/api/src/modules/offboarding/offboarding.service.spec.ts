@@ -60,7 +60,12 @@ describe('OffboardingService purge saga', () => {
             }),
         };
         const billing = {
-            cancelSubscription: jest.fn().mockImplementation(async () => { order.push('billing'); }),
+            cancelSubscription: jest.fn().mockImplementation(async () => {
+                order.push('billing');
+                // Devuelve el mandato varado, si lo hay: la purga lo propaga al
+                // resumen para que el operador lo vea antes de irse de la página.
+                return { strandedMandate: null };
+            }),
         };
         const queue = {} as any;
         const service = new OffboardingService(

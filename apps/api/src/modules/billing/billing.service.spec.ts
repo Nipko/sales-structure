@@ -123,7 +123,10 @@ describe('BillingService', () => {
                     getByName: (_n: string) => mp,
                     capabilitiesOf: (n: string) =>
                         PROVIDER_CAPABILITIES[n as PaymentProviderName] ?? PROVIDER_CAPABILITIES.mock,
-                    isRegistered: () => true,
+                    // Espeja producción igual que las capabilities de arriba: el
+                    // proveedor retirado NO tiene adapter. Con `() => true` la
+                    // rama del mandato varado era inalcanzable en las pruebas.
+                    isRegistered: (n: string) => n === 'stripe' || n === 'wompi' || n === 'mock',
                 }),
                 inject: [MockPaymentProvider],
             })
@@ -724,7 +727,7 @@ describe('BillingService', () => {
             prismaMock.billingSubscription.update.mockResolvedValue({ ...wompiSub, cancelAtPeriodEnd: true });
             prismaMock.tenant.update.mockResolvedValue({});
 
-            await expect(service.cancelSubscription('tenant-w')).resolves.toBeUndefined();
+            await expect(service.cancelSubscription('tenant-w')).resolves.toEqual({ strandedMandate: null });
 
             // Frenar el cobro ES la cancelación: el barrido excluye
             // `cancelAtPeriodEnd`, así que nadie vuelve a agendar.
@@ -758,6 +761,76 @@ describe('BillingService', () => {
             await expect(service.pauseSubscription('tenant-w')).rejects.toMatchObject({
                 response: expect.objectContaining({ error: 'pause_unsupported' }),
             });
+        });
+    });
+
+    describe('mandato varado en un proveedor retirado', () => {
+        const legacySub = {
+            id: 'sub-mp', tenantId: 'tenant-mp', provider: 'mercadopago',
+            providerSubscriptionId: '2c93808493e2b1d40193e30f5d3a0a1c',
+            status: 'trialing', engine: 'provider',
+        };
+
+        beforeEach(() => {
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(legacySub);
+            prismaMock.billingSubscription.update.mockResolvedValue({});
+            prismaMock.tenant.update.mockResolvedValue({});
+            prismaMock.auditLog.create.mockResolvedValue({});
+        });
+
+        it('sigue rechazando la baja normal: decir "cancelado" sería mentira', async () => {
+            await expect(service.cancelSubscription('tenant-mp', { immediate: true }))
+                .rejects.toMatchObject({
+                    response: expect.objectContaining({ error: 'provider_retired' }),
+                });
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+        });
+
+        it('deja pasar la purga y devuelve el mandato para mostrarlo', async () => {
+            // Sin esto el tenant era IMPOSIBLE de borrar: el error pedía
+            // cancelar en el proveedor, pero eso no cambia ninguna de las tres
+            // condiciones del guard, y el único camino a dejar la suscripción
+            // terminal pasa por este mismo método.
+            const result = await service.cancelSubscription('tenant-mp', {
+                immediate: true,
+                reason: 'tenant_purge',
+                allowStrandedMandate: true,
+            });
+
+            expect(result.strandedMandate).toEqual({
+                provider: 'mercadopago',
+                mandateId: '2c93808493e2b1d40193e30f5d3a0a1c',
+            });
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(
+                expect.objectContaining({ data: expect.objectContaining({ status: 'cancelled' }) }),
+            );
+        });
+
+        it('deja la constancia SIN tenantId, que es lo que la salva del borrado', async () => {
+            await service.cancelSubscription('tenant-mp', { immediate: true, allowStrandedMandate: true });
+
+            const [[call]] = prismaMock.auditLog.create.mock.calls;
+            expect(call.data.action).toBe('billing.stranded_provider_mandate');
+            // La purga borra audit_logs POR tenant. Con la columna puesta, el
+            // aviso desaparecería junto con lo que documenta.
+            expect(call.data.tenantId).toBeUndefined();
+            expect(call.data.details).toMatchObject({
+                tenantId: 'tenant-mp',
+                mandateId: '2c93808493e2b1d40193e30f5d3a0a1c',
+            });
+        });
+
+        it('no inventa un mandato varado cuando el proveedor sí tiene adapter', async () => {
+            prismaMock.billingSubscription.findUnique.mockResolvedValue({
+                ...legacySub, provider: 'wompi', providerSubscriptionId: null,
+            });
+
+            const result = await service.cancelSubscription('tenant-mp', {
+                immediate: true, allowStrandedMandate: true,
+            });
+
+            expect(result.strandedMandate).toBeNull();
+            expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
         });
     });
 

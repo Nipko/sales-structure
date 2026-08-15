@@ -1300,6 +1300,8 @@ export class OffboardingService {
         schemaDropped: boolean;
         mediaFilesRemoved: number;
         usersRevoked: number;
+        /** Mandato que sobrevive al borrado y hay que cancelar a mano en el proveedor. */
+        strandedMandate: { provider: string; mandateId: string } | null;
     }> {
         const lockKey = tenantLifecycleLockKey(tenantId);
         const lockTtlSeconds = TENANT_LIFECYCLE_LOCK_TTL_SECONDS;
@@ -1388,6 +1390,7 @@ export class OffboardingService {
             let queueFenceReleaseError: any = null;
             let publicRowsDeleted: Record<string, number>;
             let mediaResult: { removed: number; tenantDir: string; archiveDir?: string };
+            let strandedMandate: { provider: string; mandateId: string } | null = null;
             try {
                 await lease.assertOwned();
                 releaseQueueFence = await this.fenceQueuesForPurge(tenantId);
@@ -1432,7 +1435,16 @@ export class OffboardingService {
                     const subscription = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
                     if (subscription?.providerSubscriptionId && !['cancelled', 'expired'].includes(subscription.status)) {
                         await lease.assertOwned();
-                        await this.billing.cancelSubscription(tenantId, { immediate: true, reason: 'tenant_purge' });
+                        // `allowStrandedMandate`: un proveedor retirado no se
+                        // puede cancelar desde acá NUNCA, y negarse a borrar no
+                        // frena su cobro. Se acepta y se deja constancia; el
+                        // resumen lo devuelve para que el operador lo vea.
+                        const cancelled = await this.billing.cancelSubscription(tenantId, {
+                            immediate: true,
+                            reason: 'tenant_purge',
+                            allowStrandedMandate: true,
+                        });
+                        strandedMandate = cancelled.strandedMandate;
                     }
                     await lease.assertOwned();
                     await this.prisma.$executeRawUnsafe(
@@ -1502,6 +1514,7 @@ export class OffboardingService {
                 schemaDropped: true,
                 mediaFilesRemoved: mediaResult.removed,
                 usersRevoked: userIds.length,
+                strandedMandate,
             };
         } finally {
             lease.stop();

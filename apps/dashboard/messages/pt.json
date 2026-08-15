@@ -8841,6 +8841,7 @@
     "purgeTypePrompt": "Para confirmar, digite o slug do tenant: {slug}",
     "purgeConfirm": "Excluir permanentemente",
     "purgeSuccess": "Tenant excluído: {channels} canais desconectados, {files} arquivos removidos",
+    "purgeStrandedMandate": "Tenant excluído, mas {provider} mantém o mandato {mandateId} e sua integração foi retirada: não podemos cancelá-lo daqui. Cancele no provedor manualmente ou o cliente pode continuar sendo cobrado. Fica registrado na auditoria da plataforma.",
     "compPlan": "Presentear plano",
     "compPlanTitle": "Presentear plano grátis",
     "compPlanHint": "Concede um plano sem cobrar. Não conecta com MercadoPago — a assinatura do provedor segue seu curso. Útil para contas cortesia e demos.",

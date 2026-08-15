@@ -9,6 +9,7 @@ import { SubscriptionStatus } from './types/subscription-status.enum';
 import {
     BillingCycle,
     CancelSubscriptionOptions,
+    CancelSubscriptionServiceOptions,
     NormalizedBillingEvent,
     PaymentProviderName,
 } from './types/provider-types';
@@ -884,7 +885,10 @@ export class BillingService {
     // Cancel
     // -------------------------------------------------------------------------
 
-    async cancelSubscription(tenantId: string, opts: CancelSubscriptionOptions = {}) {
+    async cancelSubscription(
+        tenantId: string,
+        opts: CancelSubscriptionServiceOptions = {},
+    ): Promise<{ strandedMandate: { provider: string; mandateId: string } | null }> {
         const sub = await this.requireSubscription(tenantId);
 
         // Cuando el calendario de cobro es NUESTRO no hay nada que cancelar del
@@ -902,17 +906,32 @@ export class BillingService {
         const providerOwnsCalendar = this.capabilitiesFor(sub.provider as PaymentProviderName).nativeSubscriptions;
         const providerRegistered = this.providerFactory.isRegistered(sub.provider as PaymentProviderName);
 
+        let strandedMandate: { provider: string; mandateId: string } | null = null;
+
         if (providerOwnsCalendar && sub.providerSubscriptionId) {
             if (!providerRegistered) {
                 // Mandato vivo en un proveedor sin adapter: cancelar solo lo
                 // local mentiría (el proveedor seguiría cobrando). Intervención
                 // manual, con el error diciendo exactamente eso.
-                throw new BadRequestException({
-                    error: 'provider_retired',
-                    message: `${sub.provider} still holds mandate ${sub.providerSubscriptionId} but its adapter was retired. Cancel it at the provider manually, then retry.`,
-                });
+                if (!opts.allowStrandedMandate) {
+                    throw new BadRequestException({
+                        error: 'provider_retired',
+                        message: `${sub.provider} still holds mandate ${sub.providerSubscriptionId} but its adapter was retired. Cancel it at the provider manually, then retry.`,
+                    });
+                }
+                // La purga es la excepción, y no por comodidad: el remedio que
+                // pide ese error es INALCANZABLE desde acá. Cancelar en el
+                // proveedor no cambia ninguna de las tres condiciones, así que
+                // reintentar falla igual para siempre; y como el único camino a
+                // dejar la suscripción terminal pasa por este mismo método, el
+                // tenant queda imposible de borrar. Bloquear tampoco evita el
+                // cobro remoto: lo evita cancelar allá, que no podemos. Lo
+                // único que aporta valor es dejar constancia.
+                strandedMandate = { provider: sub.provider, mandateId: sub.providerSubscriptionId };
+                await this.recordStrandedMandate(tenantId, strandedMandate);
+            } else {
+                await this.providerFactory.getByName(sub.provider).cancelSubscription(sub.providerSubscriptionId, opts);
             }
-            await this.providerFactory.getByName(sub.provider).cancelSubscription(sub.providerSubscriptionId, opts);
         } else if (sub.providerSubscriptionId && providerRegistered) {
             // Cohorte migrada: nació en un proveedor con suscripciones y hoy la
             // cobra el motor. Se cancela igual del lado del proveedor para que no
@@ -943,6 +962,39 @@ export class BillingService {
 
         this.emit(BillingEventType.SUBSCRIPTION_CANCELLED, tenantId, sub.id, { immediate: !!opts.immediate, reason: opts.reason });
         this.logger.log(`[Billing] Tenant ${tenantId} cancelled subscription (immediate=${!!opts.immediate})`);
+        return { strandedMandate };
+    }
+
+    /**
+     * Leave a trace of a mandate we can no longer cancel, because the caller is
+     * about to delete every other record of it.
+     *
+     * Written WITHOUT tenantId on purpose: the purge deletes `audit_logs` by
+     * tenant, and this row exists precisely to outlive that. The identifiers go
+     * in `details` instead. Not swallowed either — if the note cannot be
+     * written, the purge should fail rather than erase the mandate silently;
+     * the saga is retryable and this runs before the public commit.
+     */
+    private async recordStrandedMandate(
+        tenantId: string,
+        mandate: { provider: string; mandateId: string },
+    ): Promise<void> {
+        this.logger.warn(
+            `[Billing] Tenant ${tenantId} is being purged while ${mandate.provider} still holds mandate `
+            + `${mandate.mandateId}. It cannot be cancelled from here — do it at the provider by hand.`,
+        );
+        await this.prisma.auditLog.create({
+            data: {
+                action: 'billing.stranded_provider_mandate',
+                resource: 'billing_subscriptions',
+                details: {
+                    tenantId,
+                    provider: mandate.provider,
+                    mandateId: mandate.mandateId,
+                    reason: 'tenant purged; provider adapter retired',
+                },
+            },
+        });
     }
 
     // -------------------------------------------------------------------------

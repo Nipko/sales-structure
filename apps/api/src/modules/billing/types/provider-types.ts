@@ -163,6 +163,19 @@ export interface CancelSubscriptionOptions {
     reason?: string;
 }
 
+/** Options only the billing SERVICE understands; adapters never see these. */
+export interface CancelSubscriptionServiceOptions extends CancelSubscriptionOptions {
+    /**
+     * Proceed even when a retired provider still holds the mandate, recording
+     * it instead of refusing. Only the tenant purge sets this: there, refusing
+     * protects nobody — we have no credentials to cancel remotely, ever, and
+     * blocking the delete does not stop a remote charge. It only keeps our own
+     * rows around. Every other caller must keep failing loudly, because telling
+     * a tenant "you are cancelled" while the provider still charges is a lie.
+     */
+    allowStrandedMandate?: boolean;
+}
+
 // -----------------------------------------------------------------------------
 // Payment (for webhooks and history)
 // -----------------------------------------------------------------------------

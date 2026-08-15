@@ -8841,6 +8841,7 @@
     "purgeTypePrompt": "To confirm, type the tenant slug: {slug}",
     "purgeConfirm": "Delete permanently",
     "purgeSuccess": "Tenant deleted: {channels} channels disconnected, {files} files removed",
+    "purgeStrandedMandate": "Tenant deleted, but {provider} still holds mandate {mandateId} and its integration was retired: we cannot cancel it from here. Cancel it at the provider by hand or the customer may keep being charged. It is recorded in the platform audit log.",
     "compPlan": "Gift plan",
     "compPlanTitle": "Gift a free plan",
     "compPlanHint": "Grant a plan without charging. Doesn't touch MercadoPago — the provider subscription keeps its own course. Useful for comp accounts and demos.",

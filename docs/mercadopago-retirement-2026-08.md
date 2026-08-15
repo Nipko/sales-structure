@@ -91,6 +91,28 @@ Dos patas, ambas necesarias:
 Un varado **fuera de Colombia** no se backfillea: Wompi factura sólo CO. Queda
 bloqueado a sabiendas hasta que Stripe despierte.
 
+### El varado con mandato vivo tampoco se podía BORRAR (corregido)
+
+La guarda `provider_retired` de `cancelSubscription` pedía *"cancelá en el
+proveedor a mano y reintentá"*. **Ese remedio era inalcanzable**: la guarda mira
+tres cosas —que MP declare suscripciones nativas, que la fila tenga
+`providerSubscriptionId`, y que no haya adapter— y cancelar en MP no cambia
+ninguna. Reintentar fallaba idéntico para siempre. Como el purge de tenants
+llama a ese mismo método, **un tenant con mandato de MP era imposible de
+eliminar**, y el único camino a dejar la suscripción en estado terminal pasaba
+también por ahí: círculo cerrado.
+
+El purge ahora pasa `allowStrandedMandate: true`. No es aflojar la guarda:
+bloquear no evitaba ningún cobro —eso sólo lo evita cancelar allá, que sin
+credenciales no podemos hacer nunca— y lo único que lograba era impedir limpiar
+lo nuestro. Lo que sí aporta es constancia, así que se escribe un `audit_logs`
+con `action='billing.stranded_provider_mandate'` **sin `tenant_id`**, porque el
+purge borra la auditoría POR tenant y el aviso tiene que sobrevivir justamente a
+eso; los identificadores van en `details`. El resumen del purge devuelve
+`strandedMandate` y el panel lo muestra en ámbar sin navegar, para que el
+operador lo lea. La baja normal sigue rechazando: ahí decir "cancelado" cuando
+el proveedor puede seguir cobrando sí sería mentira.
+
 ## Hallazgos del barrido que no estaban en el pedido
 
 | Dónde | Qué |

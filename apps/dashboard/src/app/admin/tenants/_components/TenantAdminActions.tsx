@@ -251,6 +251,21 @@ export default function TenantAdminActions({ tenant, onChange, onPurged }: Props
                     onClose={() => setShowPurge(false)}
                     onSuccess={(summary) => {
                         setShowPurge(false);
+                        const stranded = summary.strandedMandate;
+                        if (stranded) {
+                            // Se borró igual, pero queda un mandato que solo se
+                            // cancela en el proveedor. No navegamos: si nos
+                            // vamos de la página, el operador nunca lo lee.
+                            setFeedback({
+                                type: "warning",
+                                text: t("purgeStrandedMandate", {
+                                    provider: stranded.provider,
+                                    mandateId: stranded.mandateId,
+                                }),
+                            });
+                            onChange?.();
+                            return;
+                        }
                         setFeedback({
                             type: "success",
                             text: t("purgeSuccess", {

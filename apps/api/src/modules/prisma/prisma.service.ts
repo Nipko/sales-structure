@@ -516,11 +516,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     continue;
                 }
                 if (table === 'audit_logs' && observed.has(table)) {
+                    // audit_logs.user_id is TEXT while users.id is UUID, so the
+                    // subquery is cast, not the column: user_id is free text and
+                    // may hold a non-UUID actor, which ::uuid would blow up on.
                     deleted.audit_logs = await tx.$executeRawUnsafe(
                         `DELETE FROM public.audit_logs
                           WHERE tenant_id::text = $1::uuid::text
                              OR user_id IN (
-                                    SELECT id FROM public.users
+                                    SELECT id::text FROM public.users
                                      WHERE tenant_id::text = $1::uuid::text
                                 )`,
                         tenantId,

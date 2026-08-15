@@ -172,6 +172,59 @@ describe('PrismaService tenant schema lifecycle', () => {
             expect(String(h.queryRaw.mock.calls[0][0])).toContain('FOR UPDATE');
             expect(String(h.queryRaw.mock.calls[1][0])).toContain('information_schema.columns');
         });
+
+        /**
+         * The purge deletes rows owned by a tenant indirectly, via subqueries
+         * like `user_id IN (SELECT id FROM public.users ...)`. Global id columns
+         * are NOT uniformly typed — audit_logs.user_id/tenant_id are TEXT while
+         * users.id is UUID — so an uncast subquery dies at runtime with 42883
+         * "operator does not exist: text = uuid". It did, in Aug 2026, after the
+         * saga had already dropped the schema and torn down the providers.
+         *
+         * Mocked SQL cannot catch this (no engine parses it) and the pg tier
+         * cannot either: the statements are hardcoded against `public`, so they
+         * cannot be rehearsed inside a throwaway schema. Comparing declared
+         * types statically is what is left.
+         */
+        it('never compares a global id column against a differently typed one', () => {
+            const apiRoot = join(__dirname, '..', '..', '..');
+
+            const columnTypes: Record<string, Record<string, string>> = {};
+            const migrationsDir = join(apiRoot, 'prisma', 'migrations');
+            for (const dir of readdirSync(migrationsDir)) {
+                const file = join(migrationsDir, dir, 'migration.sql');
+                if (!existsSync(file)) continue;
+                for (const [, table, columns] of readFileSync(file, 'utf8')
+                    .matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(?:"?public"?\.)?"?(\w+)"?\s*\(([\s\S]*?)\n\);/g)) {
+                    columnTypes[table] = columnTypes[table] || {};
+                    for (const line of columns.split('\n')) {
+                        const column = /^\s*"(\w+)"\s+([A-Za-z][A-Za-z0-9]*)/.exec(line);
+                        if (column) columnTypes[table][column[1]] = column[2].toUpperCase();
+                    }
+                }
+            }
+            expect(columnTypes.audit_logs?.user_id).toBe('TEXT');
+            expect(columnTypes.users?.id).toBe('UUID');
+
+            const service = readFileSync(join(__dirname, 'prisma.service.ts'), 'utf8');
+            const mismatches: string[] = [];
+            let comparisons = 0;
+            for (const [, table, body] of service.matchAll(/DELETE FROM public\.(\w+)([\s\S]*?)`/g)) {
+                for (const [, column, selected, from] of body
+                    .matchAll(/(\w+) IN \(\s*SELECT ([\w:]+) FROM public\.(\w+)/g)) {
+                    comparisons++;
+                    if (selected.includes('::')) continue; // cast is the fix, not a smell
+                    const left = columnTypes[table]?.[column];
+                    const right = columnTypes[from]?.[selected];
+                    if (left && right && left !== right) {
+                        mismatches.push(`${table}.${column} (${left}) IN ${from}.${selected} (${right})`);
+                    }
+                }
+            }
+
+            expect(comparisons).toBeGreaterThanOrEqual(5);
+            expect(mismatches).toEqual([]);
+        });
     });
 
     describe('read-only public purge preflight', () => {

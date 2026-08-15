@@ -4081,6 +4081,8 @@
     }
   },
   "tenants": {
+    "internalBadge": "INTERNE",
+    "internalBadgeHint": "Compte interne de l'entreprise : sans facture électronique et exclu des indicateurs de revenus.",
     "title": "Tenants",
     "newTenant": "Nouveau tenant",
     "coupon": {
@@ -5629,6 +5631,7 @@
     "loading": "Chargement...",
     "loadError": "Impossible de charger votre abonnement. Reessayez.",
     "fiscalSectionTitle": "Facturation électronique (DIAN)",
+    "fiscalStatusInternalHint": "Ceci est un compte interne de l'entreprise : aucune facture électronique de vente n'est émise, car il n'y a pas de vente à documenter.",
     "fiscalStatusCompleteHint": "Vos factures de vente sont émises au nom de {name}.",
     "fiscalStatusConsumidorFinalHint": "Vos factures sont émises au consommateur final (NIT 222222222222). Ajoutez votre NIT si vous voulez des factures à votre nom.",
     "fiscalStatusPendingHint": "Complétez vos données fiscales. Sinon, vos factures électroniques seront émises au nom de «Consommateur final» (222222222222) et ne seront pas valables pour les déductions fiscales.",

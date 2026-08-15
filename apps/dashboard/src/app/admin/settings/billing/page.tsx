@@ -189,6 +189,8 @@ export default function BillingPage() {
     // gate off it doesn't block checkout.
     const [fiscalRequired, setFiscalRequired] = useState(false);
     const [billingCountry, setBillingCountry] = useState<string | null>(null);
+    // Cuenta propia de la empresa: no se le emiten facturas electrónicas.
+    const [isInternalAccount, setIsInternalAccount] = useState(false);
     // Which operator bills this tenant, resolved at runtime — the dashboard never
     // infers it from build-time env vars, or the operator switch would not be one.
     const [publicConfig, setPublicConfig] = useState<BillingPublicConfig | null>(null);
@@ -217,6 +219,7 @@ export default function BillingPage() {
             const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
+            setIsInternalAccount((subRes as any)?.isInternal === true);
             const [plansRes, usageRes, kbRes, fiscalRes, smsBalRes, smsPkgRes, configRes, sourcesRes] = await Promise.all([
                 api.getBillingPlans(country || undefined),
                 api.getBillingUsage(activeTenantId),
@@ -956,7 +959,11 @@ export default function BillingPage() {
                                 <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                                     {t("fiscalSectionTitle")}
                                 </h2>
-                                {fiscalStatus === "complete" && (
+                                {isInternalAccount ? (
+                                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 max-w-xl">
+                                        {t("fiscalStatusInternalHint")}
+                                    </p>
+                                ) : fiscalStatus === "complete" && (
                                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                                         {t("fiscalStatusCompleteHint", { name: fiscalData?.businessName || fiscalData?.names || "—" })}
                                     </p>

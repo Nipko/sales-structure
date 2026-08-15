@@ -251,6 +251,15 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
                                     {tenant.coupon.code || t("coupon.badge")}
                                   </span>
                                 )}
+                                {tenant.isInternal && (
+                                  <span
+                                    title={t("internalBadgeHint")}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-500/10 text-slate-600 dark:text-slate-300"
+                                  >
+                                    <Building2 size={10} />
+                                    {t("internalBadge")}
+                                  </span>
+                                )}
                               </div>
                               <div className="text-xs text-neutral-500 dark:text-neutral-400">{tenant.slug}</div>
                             </div>

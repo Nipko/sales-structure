@@ -17,6 +17,8 @@ export interface Tenant {
   onboardingCompleted?: boolean;
   suspendedAt?: string | null;
   suspendReason?: string | null;
+  /** Tenant nuestro: sin factura DIAN y fuera de las métricas de ingresos. */
+  isInternal?: boolean;
   /** Canje de cupón más reciente de esta cuenta, o null si entró por la vía normal. */
   coupon?: {
     code: string | null;

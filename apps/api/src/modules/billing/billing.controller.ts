@@ -123,7 +123,7 @@ export class BillingController {
     async getCurrentSubscription(@Param('tenantId') tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { billingCountry: true, billingEmail: true },
+            select: { billingCountry: true, billingEmail: true, isInternal: true },
         });
         const sub = await this.billingService.getActiveSubscription(tenantId);
 
@@ -196,6 +196,10 @@ export class BillingController {
                 payments: recentPayments,
             },
             billingCountry: tenant?.billingCountry ?? null,
+            // Cuenta propia de la empresa: la pantalla explica por qué no llega
+            // factura, en vez de dejar al usuario esperando un documento que
+            // nunca se va a emitir.
+            isInternal: tenant?.isInternal === true,
         };
     }
 

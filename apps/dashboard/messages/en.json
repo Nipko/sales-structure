@@ -4081,6 +4081,8 @@
     }
   },
   "tenants": {
+    "internalBadge": "INTERNAL",
+    "internalBadgeHint": "Company-owned account: no electronic invoice and excluded from revenue metrics.",
     "title": "Tenants",
     "newTenant": "New tenant",
     "coupon": {
@@ -5629,6 +5631,7 @@
     "loading": "Loading...",
     "loadError": "We couldn't load your subscription. Please try again.",
     "fiscalSectionTitle": "Electronic invoicing (DIAN)",
+    "fiscalStatusInternalHint": "This is a company-owned account: no electronic sales invoices are issued, because there is no sale to document.",
     "fiscalStatusCompleteHint": "Your sales invoices are issued to {name}.",
     "fiscalStatusConsumidorFinalHint": "Your invoices are issued to final consumer (tax ID 222222222222). Add your tax ID if you want invoices in your name.",
     "fiscalStatusPendingHint": "Complete your tax details. If you don't, your electronic invoices will be issued to “Final Consumer” (222222222222) and won't be valid for tax deductions.",

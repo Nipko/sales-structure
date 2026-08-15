@@ -4081,6 +4081,8 @@
     }
   },
   "tenants": {
+    "internalBadge": "PROPIO",
+    "internalBadgeHint": "Cuenta propia de la empresa: sin factura electrónica y fuera de las métricas de ingresos.",
     "title": "Tenants",
     "newTenant": "Nuevo tenant",
     "coupon": {
@@ -5629,6 +5631,7 @@
     "loading": "Cargando...",
     "loadError": "No pudimos cargar tu suscripción. Intenta de nuevo.",
     "fiscalSectionTitle": "Facturación electrónica (DIAN)",
+    "fiscalStatusInternalHint": "Esta es una cuenta propia de la empresa: no se emiten facturas electrónicas de venta, porque no hay una venta que documentar.",
     "fiscalStatusCompleteHint": "Tus facturas electrónicas de venta se emiten a nombre de {name}.",
     "fiscalStatusConsumidorFinalHint": "Tus facturas se emiten como consumidor final (NIT 222222222222). Agrega tu NIT si quieres facturas a tu nombre.",
     "fiscalStatusPendingHint": "Completa tus datos fiscales. Si no lo haces, tus facturas electrónicas se emitirán a nombre de «Consumidor Final» (222222222222) y no te servirán para deducción de impuestos.",

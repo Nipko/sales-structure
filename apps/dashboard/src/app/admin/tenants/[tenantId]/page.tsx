@@ -270,6 +270,14 @@ export default function TenantDetailPage() {
               <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", planColor[tenant.plan] || planColor.starter)}>
                 {tenant.plan}
               </span>
+              {tenant.isInternal && (
+                <span
+                  title={t("internalBadgeHint")}
+                  className="px-2 py-0.5 rounded-md text-xs font-medium bg-slate-500/10 text-slate-600 dark:text-slate-300"
+                >
+                  {t("internalBadge")}
+                </span>
+              )}
             </div>
           ) : undefined
         }

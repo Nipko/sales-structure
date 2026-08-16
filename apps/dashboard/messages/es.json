@@ -6443,6 +6443,7 @@
     "feedForceCleanup": "Verifiqué en la OTA: liberar ahora",
     "syncResult": "{imported} importados · {deleted} liberados",
     "feedHoldWarning": "{source} pidió liberar de golpe casi todos los bloqueos de este calendario. Puede ser real o una falla de su exportación, así que se retiene ~90 min por seguridad. Si ya verificaste en {source} que las fechas están libres, liberalas ahora.",
+    "feedNoCoverageWarning": "{source} responde bien pero no está exportando ninguna reserva de los próximos 90 días, y nosotros sostenemos bloqueos suyos en ese período. Casi siempre es el enlace: regeneralo en la OTA y pegá el nuevo acá. Mientras tanto, esas fechas pueden liberarse solas.",
     "confirmForceCleanup": "Esto libera de inmediato todos los bloqueos que este calendario dejó de reportar, sin deshacer. Si alguna reserva sigue viva en la OTA, la fecha queda expuesta a doble venta. ¿Verificaste en la OTA que están libres?",
     "syncResultHeld": "Calendario casi vacío: {pending} bloqueo(s) retenidos por seguridad, se liberan solos en ~{minutes} min."
   },

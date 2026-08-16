@@ -6443,6 +6443,7 @@
     "feedForceCleanup": "J’ai vérifié sur l’OTA : libérer maintenant",
     "syncResult": "{imported} importés · {deleted} libérés",
     "feedHoldWarning": "{source} a demandé de libérer d’un coup presque tous les blocages de ce calendrier. Cela peut être réel ou un export cassé, donc c’est retenu ~90 min par sécurité. Si vous avez déjà vérifié sur {source} que les dates sont libres, libérez-les maintenant.",
+    "feedNoCoverageWarning": "{source} répond correctement mais n'exporte aucune réservation pour les 90 prochains jours, alors que nous conservons des blocages de sa part sur cette période. C'est presque toujours le lien : régénérez-le chez l'OTA et collez le nouveau ici. En attendant, ces dates peuvent se libérer d'elles-mêmes.",
     "confirmForceCleanup": "Ceci libère immédiatement tous les blocages que ce calendrier a cessé de signaler, sans annulation possible. Si une réservation est encore active sur l’OTA, la date est exposée à une double réservation. Avez-vous vérifié sur l’OTA qu’elles sont libres ?",
     "syncResultHeld": "Calendrier presque vide : {pending} blocage(s) retenus par sécurité, libérés automatiquement dans ~{minutes} min."
   },

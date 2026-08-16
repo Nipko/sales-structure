@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import * as ical from 'node-ical';
 import ICalGenerator, { ICalCalendarMethod, ICalEventStatus } from 'ical-generator';
 import axios from 'axios';
+import { assessFeedCoverage, COVERAGE_HORIZON_DAYS } from './feed-coverage.util';
 import {
     type PinnedHttpsTarget,
     prepareSafeHttpsTarget,
@@ -96,6 +97,14 @@ export class IcalSyncService {
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `ALTER TABLE ical_feeds ADD COLUMN IF NOT EXISTS sweep_hold_since TIMESTAMP`,
+            );
+            // Un feed puede responder 200, traer un iCal perfectamente válido y
+            // aun así no servir para nada: Booking.com llegó a exportar SOLO un
+            // bloqueo manual de 2028 mientras tenía tres reservas ese mes. El
+            // estado 'OK' mentía. Esto guarda el diagnóstico del último sync.
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE ical_feeds ADD COLUMN IF NOT EXISTS last_sync_anomaly TEXT`,
             );
             this.ensuredSchemas.add(schemaName);
             return true;
@@ -213,6 +222,7 @@ export class IcalSyncService {
             const now = new Date();
             let imported = 0;
             const seenUids = new Set<string>();
+            const feedRanges: Array<{ checkIn: string; checkOut: string }> = [];
 
             for (const event of Object.values(events)) {
                 if ((event as any).type !== 'VEVENT') continue;
@@ -223,6 +233,7 @@ export class IcalSyncService {
                 seenUids.add(uid);
 
                 const { checkIn, checkOut } = this.getEventDateRange(vevent);
+                feedRanges.push({ checkIn, checkOut });
 
                 // We import all events provided by the feed (including past ones) 
                 // so the user can see historical blocks and recent checkouts in their calendar.
@@ -290,6 +301,33 @@ export class IcalSyncService {
             const live = stats?.[0]?.live ?? 0;
             const stale = stats?.[0]?.stale ?? 0;
 
+            // Un 200 con un iCal impecable puede no cubrir NADA de lo que
+            // importa. Se mide contra los bloqueos que ya sostenemos de este
+            // feed, no contra el calendario entero.
+            const knownRanges = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT check_in, check_out FROM ical_blocks
+                  WHERE property_id = $1::uuid AND ${scope} AND is_deleted = false`,
+                [feed.property_id, feedId, feed.source],
+            );
+            const coverage = assessFeedCoverage(
+                feedRanges,
+                (knownRanges || []).map((b: any) => ({
+                    checkIn: new Date(b.check_in).toISOString().slice(0, 10),
+                    checkOut: new Date(b.check_out).toISOString().slice(0, 10),
+                })),
+            );
+            if (coverage.anomaly) {
+                // El cuerpo va en el log a propósito: la primera vez que pasó
+                // hubo que pedirle la URL al dueño para poder verlo.
+                this.logger.warn(
+                    `Feed ${feedId} (${feed.source}) responde OK pero no exporta NINGUNA reserva de los `
+                    + `próximos ${COVERAGE_HORIZON_DAYS} días, y sostenemos ${coverage.blocksInHorizon} `
+                    + `bloqueo(s) suyos en ese período. Revisar el enlace en la OTA. `
+                    + `Cuerpo (${body.length}b): ${body.substring(0, 300).replace(/\s+/g, ' ')}`,
+                );
+            }
+
             // The hold clock is read from the DB, never from Date.now(): the
             // whole point is that it can't be shortened, and app/DB skew would
             // do exactly that. COALESCE so a hold that hasn't started yet
@@ -338,9 +376,10 @@ export class IcalSyncService {
                 schemaName,
                 `UPDATE ical_feeds SET last_sync_at = NOW(), last_sync_status = 'success',
                    last_sync_error = NULL, events_imported = $1, updated_at = NOW(),
-                   sweep_hold_since = CASE WHEN $2::boolean THEN COALESCE(sweep_hold_since, NOW()) ELSE NULL END
+                   sweep_hold_since = CASE WHEN $2::boolean THEN COALESCE(sweep_hold_since, NOW()) ELSE NULL END,
+                   last_sync_anomaly = $4
                  WHERE id = $3::uuid`,
-                [imported, holding, feedId],
+                [imported, holding, feedId, coverage.anomaly],
             );
 
             this.logger.log(

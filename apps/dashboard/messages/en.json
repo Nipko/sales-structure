@@ -6443,6 +6443,7 @@
     "feedForceCleanup": "I checked the OTA: free them now",
     "syncResult": "{imported} imported · {deleted} freed",
     "feedHoldWarning": "{source} asked to free nearly every block on this calendar at once. That can be real or a broken export, so it is held for ~90 min as a safeguard. If you already checked on {source} that the dates are free, free them now.",
+    "feedNoCoverageWarning": "{source} responds fine but is not exporting any reservation for the next 90 days, while we still hold blocks from it in that period. It is almost always the link: regenerate it at the OTA and paste the new one here. Meanwhile those dates may free themselves.",
     "confirmForceCleanup": "This immediately frees every block this calendar stopped reporting, with no undo. If any reservation is still live on the OTA, that date is exposed to a double booking. Did you verify on the OTA that they are free?",
     "syncResultHeld": "Calendar came back nearly empty: {pending} block(s) held as a safeguard, released automatically in ~{minutes} min."
   },

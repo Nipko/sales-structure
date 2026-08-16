@@ -92,6 +92,8 @@ interface Feed {
    * which is why the warning keys on this and not on events_imported === 0.
    */
   sweep_hold_since?: string | null;
+  /** Diagnóstico del último sync: el feed responde bien pero no cubre lo próximo. */
+  last_sync_anomaly?: string | null;
 }
 
 const FEED_SOURCES = ["Airbnb", "Booking", "Vrbo", "Otro"];
@@ -953,7 +955,10 @@ function CalendarTab({
   const firstDay = new Date(year, month - 1, 1);
   const startDow = firstDay.getDay(); // 0=Sun
   const daysInMonth = new Date(year, month, 0).getDate();
-  const todayStr = today.toISOString().split("T")[0];
+  // toISOString() es UTC: a las 7 PM en Bogotá ya es "mañana", y el día en
+  // curso se pintaba como pasado. El día del calendario es el LOCAL del
+  // anfitrión, que es quien decide si una fecha todavía se puede vender.
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   const dayMap = new Map(days.map(d => [d.date, d]));
 
@@ -1555,6 +1560,19 @@ function FeedsTab({
                     <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400 break-words">
                       {f.last_sync_error}
                     </p>
+                  )}
+
+                  {/* Distinto del hold: ese frena una CAÍDA brusca. Esto avisa
+                      que el feed responde OK y no cubre nada de lo próximo —
+                      Booking llegó a exportar sólo un bloqueo de 2028 teniendo
+                      tres reservas del mes. En rojo porque no se resuelve solo:
+                      hay que ir a la OTA. */}
+                  {f.last_sync_anomaly === "no_near_term_coverage" && (
+                    <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 px-2.5 py-2">
+                      <p className="text-[11px] text-red-700 dark:text-red-400">
+                        {t("feedNoCoverageWarning", { source: f.source })}
+                      </p>
+                    </div>
                   )}
 
                   {/* Keyed on sweep_hold_since, NOT on events_imported === 0:

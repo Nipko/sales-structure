@@ -144,7 +144,7 @@ export class RenewalSchedulerService {
         });
 
         let scheduled = 0;
-        let deferred = 0;
+        const deferred = 0;
 
         for (const sub of due) {
             try {

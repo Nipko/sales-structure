@@ -61,13 +61,13 @@ analytics:{tenantId}:{YYYY-MM-DD}:hourly:{0-23}          — Volume per hour
 refresh:{userId}:{tokenId}                                — Refresh tokens (8h or 14d TTL)
 booking:{conversationId}                                  — Booking engine state (1h TTL)
 lock:conv:{conversationId}                                — Conversation processing mutex (30s TTL)
-offboard:past_due:{tenantId}                              — Past-due timer start (30d TTL, 7d grace)
+offboard:past_due:{tenantId}                              — Redis mirror of durable dunningStartedAt (30d TTL, D10 expiry)
 tenant_plan:{tenantId}                                    — Cached plan info
 handoff:{tenantId}:{conversationId}                       — Handoff state (24h TTL)
 vertical:{tenantId}                                       — Vertical config cache (10min TTL)
 idem:wa:{id}, idem:ig:{id}, idem:fb:{id}, idem:tg:{id}, idem:sms:{id}  — Webhook idempotency (24h TTL)
 idem:email:{messageId}                                     — Email idempotency (24h TTL)
-idem:billing:{provider}:{providerEventId}                  — Billing webhook idempotency (48h TTL; MP redelivery window)
+idem:billing:{provider}:{providerEventId}                  — Billing webhook acceleration/dedup (48h; DB uniqueness is authoritative)
 backup:last_success                                        — Backup heartbeat (Ops Center alerta si > backupStaleHours, default 26h)
 viewing:{tenantId}:{conversationId}                        — ZSET, collision detection viewers (score=timestamp)
 agent_viewing:{agentId}                                    — SET, reverse index of conversations an agent is viewing
@@ -114,16 +114,18 @@ _Todas viven en `public` (cross-tenant). Prisma model → `@@map` table name._
 
 ```
 channel_accounts           — Conexiones por canal (multi-cuenta por tipo): access_token/refresh_token cifrados por-cuenta, UNIQUE(channel_type, account_id)
-billing_plans              — 5 plan definitions (emprendedor/starter/pro/enterprise/custom). priceUsdCents + features JSONB + priceLocalOverrides (COP + annual.mpPlanId)
-billing_subscriptions      — Per-tenant subscription (status, provider mercadopago|stripe|mock, pendingPlan diferido)
-billing_payments           — Payment history (amountCents, currency, status, provider, invoiceNumber)
+billing_plans              — 5 plan definitions (emprendedor/starter/pro/enterprise/custom), runtime prices/features + local monthly/annual totals
+billing_subscriptions      — Subscription state, Wompi/internal engine, trial/period/anchor, dunning and deferred plan change
+billing_payment_sources    — Tenant/provider-isolated Wompi instruments and asynchronous authorization state
+billing_charge_attempts    — Durable initial/renewal/upgrade attempts, canonical reference, frozen amount/currency and settlement
+billing_payments           — Payment history + immutable rail/internal snapshots and refund reservation/finalization metadata
 billing_events             — Append-only log + idempotencia: UNIQUE(provider, providerEventId)
 billing_coupons            — Cupones (percent_off/amount_off/free_months), maxRedemptions, appliesToPlanIds
 billing_coupon_redemptions — Un canje por tenant×cupón: UNIQUE(couponId, tenantId)
 fiscal_invoices            — Facturación DIAN (Factus): CUFE, numbering, XML/PDF, acquirer_snapshot inmutable, type invoice|credit_note
 sms_credit_balances        — Balance prepago de créditos SMS por tenant (UNIQUE tenant_id)
 sms_credit_ledger          — Movimientos append-only (+purchase/-consumption/±adjustment/+refund), balance_after
-sms_package_orders         — Compra de paquete (pago único MP): status pending|paid|failed|cancelled
+sms_package_orders         — Historial legado de paquetes SMS; nuevas compras/checkout están retirados
 financial_snapshots        — Monthly platform-wide SaaS metrics (MRR movements, plan distribution)
 tenant_financial_snapshots — Per-tenant monthly snapshots (UNIQUE tenantId+snapshotMonth)
 storage_snapshots          — Snapshot diario de disco/DB/media por-tenant + fila 'platform' (Ops Center)
@@ -148,17 +150,19 @@ widget_triggers            — Web chat widget trigger rules (conditions, action
 > facturación**. Email conversacional no es autoservicio aunque un seed antiguo lo
 > enumere.
 
-- **Payment providers**: MercadoPago (LatAm, default) + Stripe adapter. Adapter pattern via `IPaymentProvider`; `PaymentProviderFactory` enruta según config del tenant. `mock` solo en dev
-- **Plans**: 5 plans seeded en `billing_plans` (`seed-billing-plans.js`, create-only por defecto — el panel es la fuente de verdad), sincronizados a MercadoPago vía `billing-admin` `POST plans/:slug/sync-mp` (o `sync-mp-plans.js` por SSH)
+- **Subscription provider**: Wompi es el único riel platform→tenant vivo en CO/COP y se cobra con el motor recurrente interno. Mercado Pago está retirado de suscripciones; Stripe queda como adapter no ruteado donde no esté configurado. `mock` sólo en dev
+- **Tenant customer payments**: Mercado Pago vive únicamente en `tenant-payments`; cada tenant aporta Access Token + Webhooks secret cifrados para enlaces tenant→cliente. Esas credenciales no pagan Parallly
+- **Plans**: 5 familias en `billing_plans` (`seed-billing-plans.js`, create-only; el panel/runtime son autoridad). Wompi no tiene catálogo remoto de planes ni endpoint de sync
 - **Precios**: se leen de `billing_plans` y sus overrides locales; no se fijan en esta referencia
-- **Ciclo mensual/anual**: precio, descuento y elegibilidad se leen del catálogo vigente; las referencias del proveedor viven en `priceLocalOverrides`. Ver `docs/billing-annual-cycle.md`
-- **Subscription lifecycle**: pending_auth → trialing → active → past_due → cancelled/expired. `pendingPlan` + `pendingPlanChangeAt` difieren downgrades al fin de período
+- **Ciclo mensual/anual**: precio total y elegibilidad se leen del catálogo vigente; ciclo, importe, moneda, ancla y timezone se congelan en la suscripción/intento. Ver `docs/billing-annual-cycle.md`
+- **Subscription lifecycle**: pending_auth → trialing → active → past_due → cancelled/expired. `pending_auth` nunca concede entitlement; `pendingPlan` + `pendingPlanChangeAt` difieren downgrades al fin de período
 - **Trial**: condiciones y duración se leen de `billing_plans`; el cron emite `trial.ending_soon` según la configuración vigente
-- **Webhooks**: `POST /billing/webhook/:provider` (`:provider` ∈ mercadopago|stripe; `mock` solo fuera de producción). Firma verificada contra el raw body (fail-closed 401) → idempotencia Redis `idem:billing:{provider}:{eventId}` (48h) → idempotencia DB `billing_events` UNIQUE(provider, providerEventId). Siempre responde 200 al ingerir (incl. duplicados) para cortar reintentos
-- **Reconciliation**: barrido past_due horario + detección de drift diaria (`reconciliation.processor`). On-demand desde `billing-admin` (`POST reconcile`, `POST tenants/:tenantId/reconcile`)
+- **Webhooks**: `POST /billing/webhook/wompi`. Checksum por evento sobre raw body (fail-closed), consulta canónica, match exacto de attempt/provider/reference/monto/moneda e idempotencia DB `billing_events` UNIQUE(provider, providerEventId). Payload inválido permanente se ignora 2xx; fallo transitorio devuelve 5xx para reintento
+- **Reconciliation**: polling de intentos asincrónicos/indeterminados, barrido past_due y reparación de fuentes/activaciones. On-demand desde `billing-admin`
 - **Plan quotas**: enforcement server-side (services, automation rules, broadcast, pipelines, drip, webhooks, widget triggers, channel accounts) vía `TenantThrottleService` leyendo `billing_plans.features` en runtime
 - **Email templates**: 5 billing-specific (payment_success, payment_failed, trial_ending, subscription_cancelled, plan_upgraded)
-- **Card tokenization**: MercadoPago para checkout self-serve (planes con `requiresCardForTrial`)
+- **Payment sources**: tokenización Wompi en browser (tarjeta), Nequi push y Bancolombia redirect/polling; la API exige ambos contratos de aceptación y sólo crea fuente tras aprobación
+- **Fiscal**: pagos Wompi producción generan una emisión Factus/DIAN durable o `blocked_config`; sandbox, cero e internal-use quedan registrados como `skipped`, sin factura de venta
 - **Cupones** (`/billing-coupons`): percent_off / amount_off / free_months. Admin CRUD (super_admin) + validate/redeem tenant-facing. `billing_coupons` + `billing_coupon_redemptions` (un canje por tenant×cupón)
 - **Límites y features**: rate limits, agentes, calendarios, propiedades,
   conexiones por canal, API, drip, webhooks y cualquier otra capacidad se leen de

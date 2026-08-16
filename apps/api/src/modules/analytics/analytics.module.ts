@@ -7,6 +7,7 @@ import { MetricsAggregationService } from './metrics-aggregation.service';
 import { AlertsService } from './alerts.service';
 import { AlertsController } from './alerts.controller';
 import { BIApiController } from './bi-api.controller';
+import { BiApiGuard } from './bi-api.guard';
 import { ScheduledReportsService } from './scheduled-reports.service';
 import { SavedReportsService } from './saved-reports.service';
 import { ComplianceService } from './compliance.service';
@@ -22,6 +23,7 @@ import { RedisModule } from '../redis/redis.module';
         AnalyticsService, DashboardAnalyticsService, MetricsAggregationService,
         AlertsService, ScheduledReportsService, SavedReportsService,
         ComplianceService, AuditService, CsatTriggerService, AiResolutionService,
+        BiApiGuard,
     ],
     controllers: [AnalyticsController, DashboardAnalyticsController, AlertsController, BIApiController],
     exports: [AnalyticsService, DashboardAnalyticsService, ComplianceService, AuditService, CsatTriggerService, AiResolutionService],

@@ -15,6 +15,7 @@ describe('TenantsService administrative provisioning', () => {
         let storedInvitation: any = null;
 
         const prisma: any = {
+            $transaction: jest.fn().mockImplementation(async (cb: (tx: any) => unknown) => cb(prisma)),
             tenant: {
                 findUnique: jest.fn(async ({ where, select }: any) => {
                     const matches = storedTenant && (
@@ -187,6 +188,7 @@ describe('TenantsService administrative provisioning', () => {
         subType: 'dental',
         language: 'es-CO',
         plan: 'starter',
+        isInternal: true,
         ownerEmail: 'owner@clinicanorte.com',
         ownerFirstName: 'Laura',
         ownerLastName: 'Gómez',
@@ -251,6 +253,7 @@ describe('TenantsService administrative provisioning', () => {
                 businessInfo: true,
                 vertical: true,
                 invitation: true,
+                activation: true,
             },
         }));
         expect(ctx.prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -292,6 +295,7 @@ describe('TenantsService administrative provisioning', () => {
                 businessInfo: true,
                 vertical: false,
                 invitation: false,
+                activation: false,
             },
         }));
 
@@ -323,6 +327,7 @@ describe('TenantsService administrative provisioning', () => {
                 businessInfo: true,
                 vertical: true,
                 invitation: false,
+                activation: false,
             },
         }));
 
@@ -357,6 +362,29 @@ describe('TenantsService administrative provisioning', () => {
         });
         expect(ctx.invitations.create).not.toHaveBeenCalled();
         expect(ctx.getStoredOwner()).toEqual(expect.objectContaining({ tenantId }));
+    });
+
+    it('keeps an administratively provisioned commercial tenant inactive until billing onboarding', async () => {
+        const ctx = setup();
+
+        const result = await ctx.service.create({ ...input, isInternal: false });
+
+        expect(result).toEqual(expect.objectContaining({
+            isInternal: false,
+            isActive: false,
+            onboardingCompletedAt: null,
+        }));
+        expect(ctx.getStoredOwner()).toEqual(expect.objectContaining({
+            onboardingCompleted: false,
+        }));
+        expect(ctx.prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                details: expect.objectContaining({
+                    isInternal: false,
+                    accessState: 'commercial_onboarding_required',
+                }),
+            }),
+        }));
     });
 
     it('rejects concurrent provisioning before any stage can run', async () => {
@@ -539,6 +567,7 @@ describe('TenantsService secure tenant detail', () => {
 
     function setup(options?: { cached?: any; record?: any }) {
         const prisma: any = {
+            $transaction: jest.fn().mockImplementation(async (cb: (tx: any) => unknown) => cb(prisma)),
             tenant: {
                 findUnique: jest.fn(async () => options?.record === undefined
                     ? databaseRecord
@@ -547,6 +576,8 @@ describe('TenantsService secure tenant detail', () => {
                     id: tenantId, name: 'Clínica Norte', isInternal: data.isInternal,
                 })),
             },
+            billingSubscription: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+            billingChargeAttempt: { findFirst: jest.fn().mockResolvedValue(null), updateMany: jest.fn() },
             auditLog: { create: jest.fn(async () => ({})) },
         };
         const redis: any = {
@@ -581,6 +612,7 @@ describe('TenantsService secure tenant detail', () => {
         await service.setInternal(tenantId, true, { userId: 'u1', email: 'admin@x.com' }, 'cuenta de demo');
 
         expect(redis.del).toHaveBeenCalledWith(expect.stringContaining(`tenant:${tenantId}:detail-safe:v`));
+        expect(redis.del).toHaveBeenCalledWith(`sub_internal:${tenantId}`);
     });
 
     it('deja el motivo y el actor en auditoría al marcar', async () => {

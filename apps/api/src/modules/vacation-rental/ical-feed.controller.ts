@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { IcalSyncService } from './ical-sync.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /**
  * Public iCal feed endpoint — no auth required.
@@ -19,11 +20,13 @@ export class IcalFeedController {
 
     private async resolveSchema(tenantSlug: string): Promise<string> {
         const rows = await this.prisma.$queryRaw<any[]>`
-            SELECT schema_name FROM tenants
+            SELECT id, schema_name FROM tenants
             WHERE slug = ${tenantSlug} AND is_active = true
             LIMIT 1
         `;
         if (!rows?.[0]) throw new BadRequestException('Tenant not found');
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, rows[0].id, 'read');
+        if (!entitlement.allowed) throw new BadRequestException('Tenant not found');
         return rows[0].schema_name;
     }
 

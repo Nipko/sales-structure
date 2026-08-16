@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { SubscriptionGuard } from './common/guards/subscription.guard';
+import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscription-enforcement.interceptor';
 import { LoggerModule } from 'nestjs-pino';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
@@ -112,7 +113,8 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
 @Module({
     providers: [
         { provide: APP_FILTER, useClass: SentryGlobalFilter },
-        { provide: APP_GUARD, useClass: SubscriptionGuard },
+        SubscriptionGuard,
+        { provide: APP_INTERCEPTOR, useClass: SubscriptionEnforcementInterceptor },
     ],
     imports: [
         // Sentry module (must be first)

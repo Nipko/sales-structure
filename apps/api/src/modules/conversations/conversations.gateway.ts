@@ -20,6 +20,8 @@ import {
     resolveReadyTenantContext,
     resolveReadyUserTenantContext,
 } from '../../common/utils/tenant-lifecycle.util';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { BillingEventType } from '../billing/types/billing-event.enum';
 
 // Evento interno del relay: la alerta LLM se entrega por-socket según rol, así
 // que el suscriptor la resuelve con el fanout local en vez de un emit a room.
@@ -110,6 +112,28 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
             }
             tenantId = readyContext.tenantId;
 
+            if (role !== 'super_admin') {
+                const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'read');
+                if (!entitlement.allowed) {
+                    client.emit('error', {
+                        message: 'Subscription does not allow inbox access.',
+                        code: entitlement.error,
+                    });
+                    client.disconnect();
+                    return;
+                }
+                // Revalidate every incoming packet. A socket authenticated
+                // before an expiry/cancellation cannot retain access merely by
+                // staying connected.
+                client.use(async (_packet, next) => {
+                    const current = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'read');
+                    if (current.allowed) return next();
+                    client.emit('error', { message: 'Subscription access changed.', code: current.error });
+                    client.disconnect();
+                    next(new Error(current.error ?? 'subscription_unavailable'));
+                });
+            }
+
             client.join(tenantId);
             this.connectedClients.set(client.id, { tenantId, role });
             // Store on socket data for use in message handlers
@@ -126,6 +150,24 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
     handleDisconnect(client: Socket) {
         this.connectedClients.delete(client.id);
         this.logger.log(`Client ${client.id} disconnected.`);
+    }
+
+    @OnEvent(BillingEventType.SUBSCRIPTION_CANCELLED, { async: true })
+    async handleSubscriptionCancelled(event: { tenantId: string }) {
+        await this.disconnectTenantIfHardLocked(event?.tenantId);
+    }
+
+    @OnEvent(BillingEventType.SUBSCRIPTION_EXPIRED, { async: true })
+    async handleSubscriptionExpired(event: { tenantId: string }) {
+        await this.disconnectTenantIfHardLocked(event?.tenantId);
+    }
+
+    private async disconnectTenantIfHardLocked(tenantId?: string): Promise<void> {
+        if (!tenantId || !this.server) return;
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'read');
+        if (!entitlement.allowed) {
+            this.server.in(tenantId).disconnectSockets(true);
+        }
     }
 
     /**

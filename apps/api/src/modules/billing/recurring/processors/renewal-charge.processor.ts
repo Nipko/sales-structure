@@ -6,7 +6,14 @@ import { PaymentProviderFactory } from '../../payment-provider.factory';
 import { PaymentProviderName } from '../../types/provider-types';
 import { PaymentSourceKind } from '../../adapters/provider-capabilities';
 import { SubscriptionEngineService } from '../subscription-engine.service';
-import { CHARGE_POLL_QUEUE, RENEWAL_QUEUE } from '../renewal-scheduler.service';
+import {
+    CHARGE_POLL_QUEUE,
+    nextBillingLocalDay,
+    RENEWAL_QUEUE,
+    RenewalSchedulerService,
+    wompiTransactionLimitViolation,
+    wompiMerchantTimezone,
+} from '../renewal-scheduler.service';
 
 /** Backoff for asking the provider what happened to a charge it accepted. */
 const POLL_DELAYS_MS = [10_000, 30_000, 60_000, 180_000, 600_000, 1_800_000, 7_200_000];
@@ -34,6 +41,8 @@ export class RenewalChargeProcessor extends WorkerHost {
         private readonly prisma: PrismaService,
         private readonly engine: SubscriptionEngineService,
         private readonly providerFactory: PaymentProviderFactory,
+        private readonly capacity: RenewalSchedulerService,
+        @InjectQueue(RENEWAL_QUEUE) private readonly renewalQueue: Queue,
         @InjectQueue(CHARGE_POLL_QUEUE) private readonly pollQueue: Queue,
     ) {
         super();
@@ -81,14 +90,26 @@ export class RenewalChargeProcessor extends WorkerHost {
         const charging = this.providerFactory.getCharging(provider);
 
         const source = attempt.payment_source_id
-            ? await this.prisma.billingPaymentSource.findUnique({ where: { id: attempt.payment_source_id } })
+            ? await this.prisma.billingPaymentSource.findFirst({
+                where: {
+                    id: attempt.payment_source_id,
+                    tenantId: attempt.tenant_id,
+                    provider: attempt.provider,
+                },
+            })
             : null;
         if (!source || source.status !== 'available') {
-            await this.engine.markAttempt(attemptId, 'failed', {
-                failureCode: source ? `source_${source.status}` : 'no_payment_source',
-                failureClass: 'hard',
-                settledAt: new Date(),
-            });
+            // Funnel through the normal settlement so PAYMENT_FAILED reaches
+            // Dunning. A direct row patch strands the subscription ACTIVE
+            // forever because no retry/soft-lock/expiry transition is started.
+            await this.engine.settleFailed(
+                attemptId,
+                {
+                    status: 'error',
+                    statusMessage: source ? `source_${source.status}` : 'no_payment_source',
+                },
+                'hard',
+            );
             this.logger.warn(`[Charge] Attempt ${attemptId} has no usable payment source`);
             return;
         }
@@ -106,11 +127,106 @@ export class RenewalChargeProcessor extends WorkerHost {
         } catch (err: any) {
             // Not a payment failure: nothing was attempted, so it can be retried
             // safely by rescheduling the same attempt.
-            await this.engine.markAttempt(attemptId, 'failed', {
+            const retryAt = new Date(Date.now() + 15 * 60_000);
+            const rescheduled = await this.engine.markAttempt(attemptId, 'scheduled', {
+                scheduledAt: retryAt,
+                sentAt: null,
                 failureCode: `acceptance_unavailable: ${err?.message}`,
                 failureClass: 'soft',
-                settledAt: new Date(),
+                settledAt: null,
             });
+            if (!rescheduled) return;
+            await this.renewalQueue.add(
+                'charge',
+                { attemptId },
+                {
+                    jobId: `${attemptId}-acceptance-${retryAt.getTime()}`,
+                    attempts: 1,
+                    delay: Math.max(0, retryAt.getTime() - Date.now()),
+                    removeOnComplete: { age: 86_400 },
+                },
+            );
+            return;
+        }
+
+        // The contractual per-transaction limit applies to every purpose too.
+        // Scheduler and onboarding checks improve feedback, but only this point
+        // is common to initial, renewal, dunning and upgrade-proration jobs.
+        if (provider === 'wompi') {
+            const violation = wompiTransactionLimitViolation(attempt.amount_cents, attempt.currency);
+            if (violation) {
+                const retryAt = new Date(Date.now() + 60 * 60_000);
+                const rescheduled = await this.engine.markAttempt(attemptId, 'scheduled', {
+                    scheduledAt: retryAt,
+                    sentAt: null,
+                    failureCode: violation.error,
+                    failureClass: null,
+                    settledAt: null,
+                });
+                if (!rescheduled) return;
+                await this.renewalQueue.add(
+                    'charge',
+                    { attemptId },
+                    {
+                        jobId: `${attemptId}-transaction-limit-${retryAt.getTime()}`,
+                        attempts: 1,
+                        delay: Math.max(0, retryAt.getTime() - Date.now()),
+                        removeOnComplete: { age: 86_400 },
+                    },
+                ).catch((error: any) => {
+                    this.logger.error(`[Charge] Could not enqueue limit-blocked attempt ${attemptId}: ${error?.message ?? error}`);
+                });
+                this.logger.error(
+                    `[Charge] Attempt ${attemptId} blocked before provider POST: ${violation.error} `
+                    + `(amount=${attempt.amount_cents} cents, limit=${violation.limitCents ?? 'missing'}).`,
+                );
+                return;
+            }
+        }
+
+        // The platform merchant cap applies to every Wompi charge purpose —
+        // acquisition, renewal and proration. Reserving here, immediately before
+        // the non-idempotent POST, prevents initial/upgrade jobs (which do not
+        // pass through the renewal scheduler) from bypassing it. The attempt id
+        // is the Redis idempotency marker for duplicate job delivery.
+        const capacityTimezone = wompiMerchantTimezone();
+        const hasCapacity = await this.capacity.reserveDailyCapacity(
+            attempt.amount_cents,
+            attempt.currency,
+            provider,
+            attemptId,
+            capacityTimezone,
+        );
+        if (!hasCapacity) {
+            const retryAt = nextBillingLocalDay(new Date(), capacityTimezone);
+            const rescheduled = await this.engine.markAttempt(attemptId, 'scheduled', {
+                scheduledAt: retryAt,
+                sentAt: null,
+                failureCode: 'daily_capacity_deferred',
+                failureClass: 'soft',
+                settledAt: null,
+            });
+            if (!rescheduled) return;
+            await this.renewalQueue.add(
+                'charge',
+                { attemptId },
+                {
+                    jobId: `${attemptId}-capacity-${retryAt.getTime()}`,
+                    attempts: 1,
+                    delay: Math.max(0, retryAt.getTime() - Date.now()),
+                    removeOnComplete: { age: 172_800 },
+                },
+            ).catch((error: any) => {
+                // The DB row remains scheduled. rescueOrphanAttempts will
+                // republish it when Redis/BullMQ recovers.
+                this.logger.error(`[Charge] Could not enqueue deferred attempt ${attemptId}: ${error?.message ?? error}`);
+            });
+            this.logger.warn(`[Charge] Attempt ${attemptId} deferred to ${retryAt.toISOString()} by merchant daily cap`);
+            return;
+        }
+
+        if (!(await this.engine.markProviderPostStarted(attemptId))) {
+            this.logger.warn(`[Charge] Attempt ${attemptId} lost ownership before the provider POST`);
             return;
         }
 
@@ -152,10 +268,11 @@ export class RenewalChargeProcessor extends WorkerHost {
         }
 
         // PENDING — the normal path with an asynchronous provider.
-        await this.engine.markAttempt(attemptId, 'pending_provider', {
+        const markedPending = await this.engine.markAttempt(attemptId, 'pending_provider', {
             providerTxnId: charge.providerChargeId,
             providerStatus: charge.rawStatus ?? 'PENDING',
         });
+        if (!markedPending) return;
         await this.pollQueue.add(
             'poll',
             { attemptId, providerChargeId: charge.providerChargeId, pollNumber: 0 },

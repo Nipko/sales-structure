@@ -51,7 +51,8 @@
 | Channel Manager | `modules/channel-manager/` | 8 | Listings, reservaciones, disponibilidad (turismo) |
 | Staff Scheduling | `modules/verticals/` | 8 | Personal, horarios, servicios, disponibilidad (`staff-scheduling.controller.ts`) |
 | Vehicle Inventory | `modules/verticals/` | 10 | Inventario vehicular, test drives, búsqueda IA (`vehicle-inventory.controller.ts`) |
-| Billing | `modules/billing/` | 30+ | Suscripciones MercadoPago (ciclo mensual/anual), admin cross-tenant, checkout público, cupones, SMS checkout, webhook |
+| Billing | `modules/billing/` | 30+ | Suscripciones Wompi con motor interno (mensual/anual), fuentes reutilizables, admin cross-tenant, checkout público, cupones, webhook y conciliación |
+| Tenant Payments | `modules/tenant-payments/` | 5+ | Credenciales Mercado Pago cifradas por tenant, enlaces tenant→cliente y webhook terminal idempotente; nunca suscripciones de plataforma |
 | Fiscal DIAN | `modules/fiscal/` | 13 | Facturación electrónica Colombia vía Factus (`IFiscalInvoiceProvider`), gate collect-before-pay |
 | SMS Credits | `modules/sms-credits/` | 7 | Créditos SMS reseller (balance, ledger, paquetes, ajustes admin) |
 | Channel Management | `modules/channels/` | 18 | Multi-canal por tipo: connect/disconnect por-cuenta, OAuth IG/Messenger, Telegram, SMS |

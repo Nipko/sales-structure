@@ -10,11 +10,16 @@ import { FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from './fiscal.const
 import { FiscalAcquirer } from './interfaces/fiscal-provider.interface';
 import { RedisService } from '../redis/redis.service';
 import { tenantPurgingFenceKey } from '../../common/utils/tenant-lifecycle.util';
+import { Cron } from '@nestjs/schedule';
 
 /** Shape of the EventEmitter2 payload billing.service emits for payment events. */
 interface BillingEventPayload {
     tenantId?: string;
     subscriptionId?: string;
+    paymentId?: string;
+    providerPaymentId?: string;
+    amountCents?: number;
+    currency?: string;
     event?: {
         provider?: string;
         payment?: {
@@ -73,7 +78,8 @@ export class FiscalInvoiceService {
         try {
             const tenantId = payload.tenantId;
             const charge = payload.event?.payment;
-            if (!tenantId || !charge?.providerPaymentId) {
+            const providerPaymentId = payload.providerPaymentId ?? charge?.providerPaymentId;
+            if (!tenantId || (!payload.paymentId && !providerPaymentId)) {
                 return; // not enough context to issue a fiscal document
             }
 
@@ -84,24 +90,22 @@ export class FiscalInvoiceService {
             });
             if (!tenant) return;
 
-            const provider = this.factory.resolve(cfg.mode, tenant.billingCountry);
-            if (!provider) {
-                this.logger.debug(`[Fiscal] No provider for tenant=${tenantId} — skipping issuance`);
-                return;
-            }
-
             const payment = await this.prisma.billingPayment.findUnique({
-                where: { providerPaymentId: charge.providerPaymentId },
+                where: payload.paymentId
+                    ? { id: payload.paymentId }
+                    : { providerPaymentId: providerPaymentId! },
                 select: { id: true, amountCents: true, currency: true, metadata: true },
             });
             if (!payment) {
-                this.logger.warn(`[Fiscal] BillingPayment ${charge.providerPaymentId} not found — cannot link invoice`);
+                this.logger.warn(`[Fiscal] BillingPayment ${payload.paymentId ?? providerPaymentId} not found — cannot link invoice`);
                 return;
             }
 
+            const provider = this.factory.resolve(cfg.mode, tenant.billingCountry);
+
             // Idempotency: one fiscal invoice per payment.
             const existing = await this.prisma.fiscalInvoice.findUnique({ where: { paymentId: payment.id } });
-            if (existing) {
+            if (existing && existing.status !== 'blocked_config') {
                 this.logger.debug(`[Fiscal] Invoice already exists for payment ${payment.id} — skipping`);
                 return;
             }
@@ -113,11 +117,15 @@ export class FiscalInvoiceService {
             // silently missing) and shows up in /admin/fiscal as skipped.
             // El riel de cobro y el fiscal se configuran por separado, y ya se
             // cruzaron una vez: pagos de prueba de Wompi en sandbox emitiendo
-            // facturas DIAN reales contra plata que no existió. Sólo frena ante
-            // un 'sandbox' EXPLÍCITO — negarse ante lo desconocido dejaría sin
-            // factura a un cobro real de otro proveedor.
-            const railEnvironment = (payment.metadata as any)?.railEnvironment;
-            const skipReason = tenant.isInternal
+            // facturas DIAN reales contra plata que no existió. Sandbox se
+            // registra como omitido; un origen desconocido queda bloqueado para
+            // revisión. Nunca se adivina el ambiente de un movimiento de dinero.
+            const paymentMetadata = payment.metadata as any ?? {};
+            const railEnvironment = paymentMetadata.railEnvironment;
+            const internalAtPayment = Object.prototype.hasOwnProperty.call(paymentMetadata, 'tenantInternalAtPayment')
+                ? paymentMetadata.tenantInternalAtPayment === true
+                : tenant.isInternal; // legacy payments predate the immutable snapshot
+            const skipReason = internalAtPayment
                 ? 'tenant_internal_use'
                 : railEnvironment === 'sandbox'
                     ? 'test_mode_payment'
@@ -125,7 +133,22 @@ export class FiscalInvoiceService {
                         ? 'no_consideration'
                         : null;
             if (skipReason) {
-                await this.recordSkippedIssuance(tenantId, payment, provider.name, skipReason);
+                if (!existing) {
+                    await this.recordSkippedIssuance(tenantId, payment, provider?.name ?? 'unresolved', skipReason);
+                }
+                return;
+            }
+
+            if (!provider) {
+                if (!existing) {
+                    await this.recordBlockedIssuance(
+                        tenantId,
+                        payment,
+                        'unresolved',
+                        'billing_country_missing_or_not_routed',
+                    );
+                }
+                this.logger.error(`[Fiscal] Payment ${payment.id} has no fiscal provider; durable blocked_config row created`);
                 return;
             }
 
@@ -135,8 +158,30 @@ export class FiscalInvoiceService {
             // doomed-to-fail invoices + Sentry noise on real payments.
             // Deliberately AFTER the skip decisions and without a row: this one
             // is a transient config gap, not a ruling on the payment.
-            if (!this.isProviderReady(provider.name, cfg)) {
-                this.logger.warn(`[Fiscal] ${provider.name} not configured yet — skipping issuance for tenant ${tenantId}`);
+            if (!this.isProviderReady(provider.name, cfg, railEnvironment)) {
+                if (!existing) {
+                    await this.recordBlockedIssuance(
+                        tenantId,
+                        payment,
+                        provider.name,
+                        'fiscal_provider_not_ready',
+                    );
+                }
+                this.logger.warn(`[Fiscal] ${provider.name} not configured yet — payment ${payment.id} is blocked_config and retryable`);
+                return;
+            }
+
+            if (existing?.status === 'blocked_config') {
+                await this.prisma.fiscalInvoice.update({
+                    where: { id: existing.id },
+                    data: {
+                        status: 'pending',
+                        provider: provider.name,
+                        failureReason: null,
+                        acquirerSnapshot: (this.extractAcquirer(tenant.settings) ?? undefined) as any,
+                    },
+                });
+                await this.enqueue({ fiscalInvoiceId: existing.id, kind: 'issue' });
                 return;
             }
 
@@ -169,11 +214,12 @@ export class FiscalInvoiceService {
         try {
             const tenantId = payload.tenantId;
             const charge = payload.event?.payment;
-            if (!tenantId || !charge?.providerPaymentId) return;
+            const providerPaymentId = payload.providerPaymentId ?? charge?.providerPaymentId;
+            if (!tenantId || (!payload.paymentId && !providerPaymentId)) return;
 
             const payment = await this.prisma.billingPayment.findUnique({
-                where: { providerPaymentId: charge.providerPaymentId },
-                select: { id: true, currency: true },
+                where: payload.paymentId ? { id: payload.paymentId } : { providerPaymentId: providerPaymentId! },
+                select: { id: true, currency: true, amountCents: true, metadata: true },
             });
             if (!payment) return;
 
@@ -181,17 +227,45 @@ export class FiscalInvoiceService {
                 where: { paymentId: payment.id, type: 'invoice', status: 'issued' },
             });
             if (!original) {
-                this.logger.warn(`[Fiscal] No issued invoice for refunded payment ${payment.id} — no credit note`);
+                this.logger.warn(`[Fiscal] Refunded payment ${payment.id} has no issued invoice yet — reconciliation will create the note after issuance`);
                 return;
             }
 
+            const refundLockKey = `lock:fiscal:refund:${original.id}`;
+            const refundLockToken = await this.redis.acquireLockToken(refundLockKey, 120).catch(() => null);
+            if (!refundLockToken) return; // durable payment metadata lets the cron retry
+            try {
+
             const cfg = await this.config.getConfig();
-            if (!this.isProviderReady(original.provider, cfg)) {
+            if (!this.isProviderReady(
+                original.provider,
+                cfg,
+                (payment.metadata as any)?.railEnvironment,
+            )) {
                 this.logger.warn(`[Fiscal] ${original.provider} not configured — skipping credit note for ${original.id}`);
                 return;
             }
 
-            const refundCents = charge.amountCents ?? original.amountCents;
+            const targetRefundedCents = Math.min(
+                payment.amountCents,
+                Math.max(
+                    0,
+                    Number((payment.metadata as any)?.refundedAmountCents
+                        ?? payload.amountCents
+                        ?? charge?.amountCents
+                        ?? original.amountCents),
+                ),
+            );
+            const credited = await this.prisma.fiscalInvoice.aggregate({
+                where: {
+                    relatedInvoiceId: original.id,
+                    type: 'credit_note',
+                    status: { not: 'cancelled' },
+                },
+                _sum: { amountCents: true },
+            });
+            const refundCents = targetRefundedCents - (credited._sum.amountCents ?? 0);
+            if (refundCents <= 0) return;
             const creditNote: any = await this.withTenantPurgeGate(tenantId, (tx) =>
                 tx.fiscalInvoice.create({
                     data: {
@@ -210,6 +284,9 @@ export class FiscalInvoiceService {
 
             await this.enqueue({ fiscalInvoiceId: creditNote.id, kind: 'credit_note' });
             this.logger.log(`[Fiscal] Queued credit note ${creditNote.id} for original ${original.id}`);
+            } finally {
+                await this.redis.releaseLockToken(refundLockKey, refundLockToken).catch(() => undefined);
+            }
         } catch (err: any) {
             this.logger.error(`[Fiscal] onPaymentRefunded failed: ${err?.message}`);
         }
@@ -222,6 +299,12 @@ export class FiscalInvoiceService {
         // ser incapaz de resucitarlas y gastar un consecutivo que ya se decidió
         // no gastar. 'issued' ya consumió el suyo.
         if (!inv || ['issued', 'cancelled', 'skipped'].includes(inv.status)) return false;
+        if (inv.status === 'blocked_config') {
+            if (!inv.paymentId) return false;
+            await this.onPaymentSucceeded({ tenantId: inv.tenantId, paymentId: inv.paymentId });
+            const fresh = await this.prisma.fiscalInvoice.findUnique({ where: { id: inv.id } });
+            return fresh?.status === 'pending';
+        }
         const updated = await this.withTenantPurgeGate(inv.tenantId, (tx) =>
             tx.fiscalInvoice.update({
                 where: { id: fiscalInvoiceId },
@@ -265,7 +348,17 @@ export class FiscalInvoiceService {
     }
 
     private async enqueue(data: FiscalJobData): Promise<void> {
+        const jobId = `fiscal.${data.fiscalInvoiceId}.${data.kind}`;
+        if (typeof (this.queue as any).getJob === 'function') {
+            const existing = await this.queue.getJob(jobId);
+            if (existing) {
+                const state = await existing.getState().catch(() => 'unknown');
+                if (['waiting', 'active', 'delayed', 'prioritized', 'waiting-children'].includes(state)) return;
+                await existing.remove().catch(() => undefined);
+            }
+        }
         await this.queue.add(data.kind, data, {
+            jobId,
             attempts: FISCAL_MAX_ATTEMPTS,
             backoff: { type: 'exponential', delay: 30_000 },
             removeOnComplete: { age: 86_400 },
@@ -278,11 +371,20 @@ export class FiscalInvoiceService {
      * (env) AND a numbering range (config). us_remote has no external deps.
      * Used to keep the fiscal layer dormant until go-live configuration exists.
      */
-    private isProviderReady(providerName: string, cfg: FiscalConfig): boolean {
+    private isProviderReady(providerName: string, cfg: FiscalConfig, railEnvironment?: string): boolean {
+        // Fiscal issuance always needs positive proof that real money moved.
+        // This is independent from the legal issuer: US_REMOTE receipts must
+        // not turn a legacy/unknown (or sandbox) rail into a sale either.
+        if (railEnvironment !== 'production') return false;
         if (providerName === 'factus') {
             const e = process.env;
             const creds = !!(e.FACTUS_CLIENT_ID && e.FACTUS_CLIENT_SECRET && e.FACTUS_USERNAME && e.FACTUS_PASSWORD);
-            return creds && !!cfg.factusNumberingRangeId;
+            // Sandbox payments were already recorded as skipped. Anything that
+            // reaches Factus must be positively identified as a production
+            // charge and must use the production fiscal account/range. `unknown`
+            // stays blocked_config until operations classifies/backfills it.
+            const environmentMatches = cfg.factusEnvironment === 'production';
+            return creds && !!cfg.factusNumberingRangeId && environmentMatches;
         }
         return true;
     }
@@ -319,6 +421,136 @@ export class FiscalInvoiceService {
             `[Fiscal] Payment ${payment.id} (tenant=${tenantId}) not invoiced — ${reason}. `
             + 'No DIAN consecutive was consumed.',
         );
+    }
+
+    private async recordBlockedIssuance(
+        tenantId: string,
+        payment: { id: string; amountCents: number; currency: string },
+        providerName: string,
+        reason: string,
+    ): Promise<void> {
+        await this.withTenantPurgeGate(tenantId, (tx) => tx.fiscalInvoice.create({
+            data: {
+                tenantId,
+                paymentId: payment.id,
+                type: 'invoice',
+                status: 'blocked_config',
+                provider: providerName,
+                amountCents: payment.amountCents,
+                currency: payment.currency,
+                failureReason: reason,
+                metadata: { blockReason: reason } as any,
+            },
+        }));
+    }
+
+    /** Durable payment→invoice repair for a lost event or a config gap. */
+    @Cron('17,47 * * * *')
+    async reconcilePaymentInvoices(): Promise<{ discovered: number; retried: number }> {
+        const missing = await this.prisma.$queryRawUnsafe(
+            `SELECT p.id, p.tenant_id, p.provider_payment_id, p.amount_cents, p.currency
+               FROM public.billing_payments p
+               LEFT JOIN public.fiscal_invoices f ON f.payment_id = p.id
+              WHERE p.status IN ('succeeded', 'refunded') AND f.id IS NULL
+              ORDER BY p.created_at ASC
+              LIMIT 500`,
+        ) as Array<{
+            id: string;
+            tenant_id: string;
+            provider_payment_id: string | null;
+            amount_cents: number;
+            currency: string;
+        }>;
+        for (const payment of missing) {
+            await this.onPaymentSucceeded({
+                tenantId: payment.tenant_id,
+                paymentId: payment.id,
+                providerPaymentId: payment.provider_payment_id ?? undefined,
+                amountCents: payment.amount_cents,
+                currency: payment.currency,
+            });
+        }
+
+        // Do not page blindly over every blocked row. Some blocks are
+        // deliberately permanent until an operator changes the underlying
+        // facts (unknown rail environment, non-routed country, missing Factus
+        // production configuration). If 200 of those older rows sit at the
+        // front of the table, a simple ORDER BY created_at LIMIT 200 starves
+        // every later payment forever. Select only rows that the *current*
+        // fiscal configuration can actually move to pending.
+        const cfg = await this.config.getConfig();
+        const factusReadyForProduction = this.isProviderReady('factus', cfg, 'production');
+        const blocked = await this.prisma.$queryRawUnsafe(
+            `SELECT f.id, f.tenant_id, f.payment_id, p.provider_payment_id
+               FROM public.fiscal_invoices f
+               JOIN public.billing_payments p ON p.id = f.payment_id
+               JOIN public.tenants t ON t.id = f.tenant_id
+              WHERE f.status = 'blocked_config'
+                AND p.metadata->>'railEnvironment' = 'production'
+                AND (
+                    $1::text = 'US_REMOTE'
+                    OR (
+                        $1::text = 'CO_LOCAL'
+                        AND $2::boolean
+                        AND UPPER(COALESCE(t.billing_country, '')) = 'CO'
+                    )
+                )
+              ORDER BY f.created_at ASC, f.id ASC
+              LIMIT 200`,
+            cfg.mode,
+            factusReadyForProduction,
+        ) as Array<{
+            id: string;
+            tenant_id: string;
+            payment_id: string;
+            provider_payment_id: string | null;
+        }>;
+        let retried = 0;
+        for (const invoice of blocked) {
+            await this.onPaymentSucceeded({
+                tenantId: invoice.tenant_id,
+                paymentId: invoice.payment_id,
+                providerPaymentId: invoice.provider_payment_id ?? undefined,
+            });
+            const fresh = await this.prisma.fiscalInvoice.findUnique({ where: { id: invoice.id } });
+            if (fresh?.status === 'pending') retried++;
+        }
+
+        // A refund may precede DIAN validation. The payment carries its durable
+        // cumulative refund total, so once the original becomes issued this
+        // sweep creates exactly the missing delta note.
+        const refunded = await this.prisma.$queryRawUnsafe(
+            `SELECT p.id, p.tenant_id, p.provider_payment_id
+               FROM public.billing_payments p
+               JOIN public.fiscal_invoices f
+                 ON f.payment_id = p.id AND f.type = 'invoice' AND f.status = 'issued'
+               LEFT JOIN LATERAL (
+                    SELECT COALESCE(SUM(cn.amount_cents), 0)::bigint AS credited_cents
+                      FROM public.fiscal_invoices cn
+                     WHERE cn.related_invoice_id = f.id
+                       AND cn.type = 'credit_note'
+                       AND cn.status <> 'cancelled'
+               ) credit ON TRUE
+              WHERE LEAST(
+                        p.amount_cents::bigint,
+                        CASE
+                          WHEN COALESCE(p.metadata->>'refundedAmountCents', '') ~ '^[0-9]+$'
+                            THEN (p.metadata->>'refundedAmountCents')::bigint
+                          WHEN p.status = 'refunded' THEN p.amount_cents::bigint
+                          ELSE 0
+                        END
+                    ) > credit.credited_cents
+              ORDER BY p.created_at ASC
+              LIMIT 500`,
+        ) as Array<{ id: string; tenant_id: string; provider_payment_id: string | null }>;
+        for (const payment of refunded) {
+            await this.onPaymentRefunded({
+                tenantId: payment.tenant_id,
+                paymentId: payment.id,
+                providerPaymentId: payment.provider_payment_id ?? undefined,
+            });
+        }
+        return { discovered: missing.length, retried };
     }
 
     /** Map Tenant.settings.fiscalData (JSONB) into a FiscalAcquirer, or null if absent. */

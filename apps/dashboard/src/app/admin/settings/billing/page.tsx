@@ -16,11 +16,16 @@ import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
     Mic, Eye, ArrowUpRight, BookOpen, FileText, MessageSquare,
-    Plus, Trash2, Smartphone,
+    Plus, Trash2, Smartphone, Landmark,
 } from "lucide-react";
 import PaymentForm, { usesStoredPaymentSources } from "@/components/billing/PaymentForm";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { FiscalGateModal } from "@/components/FiscalGateModal";
+import {
+    clearBillingCheckoutIntent,
+    readBillingCheckoutIntent,
+    saveBillingCheckoutIntent,
+} from "@/lib/billing-checkout-session";
 
 type SubscriptionStatus = "pending_auth" | "trialing" | "active" | "past_due" | "cancelled" | "expired";
 
@@ -67,6 +72,7 @@ interface Subscription {
     plan?: Plan;
     provider: string;
     providerBacked: boolean;
+    billingCycle: "monthly" | "annual";
     trialStartedAt?: string | null;
     trialEndsAt?: string | null;
     currentPeriodStart?: string | null;
@@ -77,8 +83,14 @@ interface Subscription {
     pendingPlanId?: string | null;
     pendingPlanChangeAt?: string | null;
     pendingPlan?: { id: string; slug: string; name: string; priceUsdCents: number } | null;
+    nextCharge?: { at: string; amountCents: number; currency: string } | null;
     payments: Payment[];
 }
+
+type PaymentModal =
+    | { kind: "upgrade"; planSlug: string }
+    | { kind: "change-card" }
+    | { kind: "add-method" };
 
 const STATUS_META: Record<SubscriptionStatus, { label: string; className: string; Icon: any }> = {
     pending_auth: { label: "pendingAuth", className: "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300", Icon: Clock },
@@ -202,12 +214,16 @@ export default function BillingPage() {
     // Modal state — "upgrade" when user is about to subscribe/change to a paid plan
     // that needs a payment method; "change-card" when rotating the card on an
     // existing sub; "add-method" when storing an extra reusable method.
-    const [modal, setModal] = useState<null | { kind: "upgrade"; planSlug: string } | { kind: "change-card" } | { kind: "add-method" }>(null);
+    const [modal, setModal] = useState<PaymentModal | null>(null);
     const [fiscalGate, setFiscalGate] = useState(false);
     // Plan the tenant was about to pay when the fiscal gate fired — carried into
     // the modal so, after they save their tax profile, billing resumes THAT checkout.
     const [fiscalGatePlan, setFiscalGatePlan] = useState<string | null>(null);
-    const [modalSubmitting, setModalSubmitting] = useState(false);
+
+    const closePaymentModal = useCallback(() => {
+        if (activeTenantId) clearBillingCheckoutIntent(sessionStorage, activeTenantId);
+        setModal(null);
+    }, [activeTenantId]);
 
     const load = useCallback(async () => {
         if (!activeTenantId) return;
@@ -261,8 +277,8 @@ export default function BillingPage() {
 
     useEffect(() => { load(); }, [load]);
 
-    // Returning from the MercadoPago checkout — the webhook credits async, so
-    // show a note and reload the balance shortly after.
+    // Preserve the callback for historical SMS orders. New SMS checkout is
+    // disabled; Mercado Pago is only available for tenant-to-customer links.
     useEffect(() => {
         if (typeof window === "undefined") return;
         const params = new URLSearchParams(window.location.search);
@@ -296,6 +312,18 @@ export default function BillingPage() {
         [plans, subscription?.planId],
     );
 
+    const currentPlanPrice = useMemo(() => {
+        if (!currentPlan || !subscription) return null;
+        const annual = subscription.billingCycle === "annual";
+        return {
+            amountCents: annual && currentPlan.displayPriceAnnualCents != null
+                ? currentPlan.displayPriceAnnualCents
+                : (currentPlan.displayPriceCents ?? currentPlan.priceUsdCents),
+            currency: currentPlan.displayCurrency ?? "USD",
+            cycleLabel: annual ? t("year") : t("month"),
+        };
+    }, [currentPlan, subscription, t]);
+
     const fiscalStatus = useMemo<"complete" | "consumidor_final" | "pending">(() => {
         if (fiscalData?.consumidorFinal) return "consumidor_final";
         if (fiscalComplete) return "complete";
@@ -313,6 +341,38 @@ export default function BillingPage() {
             setBillingCycle("monthly");
         }
     }, [annualCycleAvailable, billingCycle]);
+
+    // Keep only the non-sensitive checkout intention in sessionStorage. This is
+    // what lets a Bancolombia authorization redirect away and come back to the
+    // exact plan/action without putting a provider token in the URL.
+    useEffect(() => {
+        if (!activeTenantId || !modal) return;
+        saveBillingCheckoutIntent(sessionStorage, activeTenantId, {
+            kind: modal.kind,
+            planSlug: modal.kind === "upgrade" ? modal.planSlug : undefined,
+            billingCycle,
+        });
+    }, [activeTenantId, billingCycle, modal]);
+
+    const recoveredCheckoutRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!activeTenantId || recoveredCheckoutRef.current === activeTenantId) return;
+        recoveredCheckoutRef.current = activeTenantId;
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("wompiReturn")) {
+            url.searchParams.delete("wompiReturn");
+            window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        }
+        // Onboarding/fiscal handoffs carry an explicit resumePlan and are
+        // validated against the loaded catalog by the effect below.
+        if (url.searchParams.has("resumePlan")) return;
+        const intent = readBillingCheckoutIntent(sessionStorage, activeTenantId);
+        if (!intent) return;
+        setBillingCycle(intent.billingCycle);
+        setModal(intent.kind === "upgrade"
+            ? { kind: "upgrade", planSlug: intent.planSlug! }
+            : { kind: intent.kind });
+    }, [activeTenantId]);
 
     const storedSourceCheckout = usesStoredPaymentSources(publicConfig?.provider);
     const hasChargeableSource = useMemo(
@@ -337,15 +397,20 @@ export default function BillingPage() {
 
     const handleUpgrade = async (
         planSlug: string,
-        opts?: { cardTokenId?: string; methodReady?: boolean },
+        opts?: {
+            cardTokenId?: string;
+            methodReady?: boolean;
+            /** Avoid a stale React state value while resuming from a URL handoff. */
+            billingCycle?: "monthly" | "annual";
+        },
     ) => {
         if (!activeTenantId) return;
         const cardTokenId = opts?.cardTokenId;
+        const selectedCycle = opts?.billingCycle ?? billingCycle;
         setAction("upgrade");
         setTargetPlan(planSlug);
         try {
             const plan = plans.find((p) => p.slug === planSlug);
-            // MP no soporta cambios de plan en suscripciones activas sin recrearlas con un nuevo token.
             const localTrial = subscription?.status === "trialing"
                 && !!subscription.trialEndsAt
                 && new Date(subscription.trialEndsAt).getTime() > Date.now()
@@ -371,7 +436,7 @@ export default function BillingPage() {
             const curCycle = (subscription as any)?.billingCycle === "annual" ? "annual" : "monthly";
             const isPureDowngrade = !!subscription && !!curPlanObj && !!plan
                 && plan.priceUsdCents < curPlanObj.priceUsdCents
-                && curCycle === billingCycle;
+                && curCycle === selectedCycle;
             // Proactive fiscal gate: a charge-bearing flow needs a complete tax
             // profile BEFORE the card, so the single-use token isn't wasted and the
             // checkout resumes cleanly after saving. Keyed off the backend's
@@ -395,16 +460,17 @@ export default function BillingPage() {
             }
 
             if (!subscription) {
-                const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId, billingCycle });
+                const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId, billingCycle: selectedCycle });
                 if (!res?.success) {
-                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
+                    if ((res as any)?.errorCode === "fiscal_data_required") { closePaymentModal(); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
                     throw new Error((res as any)?.error || t("actionFailed"));
                 }
-                setToast(t("trialStarted"));
+                const resultStatus = (res.data as { status?: SubscriptionStatus } | undefined)?.status;
+                setToast(resultStatus === "pending_auth" ? t("paymentProcessing") : t("trialStarted"));
             } else {
-                const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId, billingCycle });
+                const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId, billingCycle: selectedCycle });
                 if (!res?.success) {
-                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
+                    if ((res as any)?.errorCode === "fiscal_data_required") { closePaymentModal(); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
                     throw new Error((res as any)?.error || t("actionFailed"));
                 }
                 // Cambiar de plan DURANTE un trial no cobra nada todavía, y la
@@ -414,7 +480,7 @@ export default function BillingPage() {
                 // cobrará ese día.
                 const trialEnd = subscription?.trialEndsAt ? new Date(subscription.trialEndsAt) : null;
                 if (localTrial && trialEnd && plan) {
-                    const amount = billingCycle === "annual" && plan.displayPriceAnnualCents
+                    const amount = selectedCycle === "annual" && plan.displayPriceAnnualCents
                         ? plan.displayPriceAnnualCents
                         : (plan.displayPriceCents ?? plan.priceUsdCents);
                     setToast(t("planChangedDuringTrial", {
@@ -423,10 +489,13 @@ export default function BillingPage() {
                         amount: formatMoney(amount, plan.displayCurrency ?? "USD", locale),
                     }));
                 } else {
-                    setToast(t("planChanged"));
+                    const pendingUpgrade = Boolean(
+                        (res.data as { pendingUpgradePlanId?: string | null } | undefined)?.pendingUpgradePlanId,
+                    );
+                    setToast(pendingUpgrade ? t("paymentProcessing") : t("planChanged"));
                 }
             }
-            setModal(null);
+            closePaymentModal();
             await load();
         } catch (err: any) {
             setError(err?.message || t("actionFailed"));
@@ -447,28 +516,15 @@ export default function BillingPage() {
         const resumePlan = params.get("resumePlan");
         if (!resumePlan) return;
         resumedRef.current = true;
-        const cycle = params.get("cycle");
-        if (cycle === "annual" || cycle === "monthly") setBillingCycle(cycle);
+        const cycleParam = params.get("cycle");
+        const resumedCycle = cycleParam === "annual" || cycleParam === "monthly"
+            ? cycleParam
+            : billingCycle;
+        setBillingCycle(resumedCycle);
         window.history.replaceState({}, "", window.location.pathname);
-        handleUpgrade(resumePlan);
+        handleUpgrade(resumePlan, { billingCycle: resumedCycle });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fiscalData, plans]);
-
-    const handleChangeCard = async (cardTokenId: string) => {
-        if (!activeTenantId) return;
-        setModalSubmitting(true);
-        try {
-            const res = await api.updateBillingPaymentMethod(activeTenantId, { cardTokenId });
-            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
-            setToast(t("cardUpdated"));
-            setModal(null);
-            await load();
-        } catch (err: any) {
-            setError(err?.message || t("actionFailed"));
-        } finally {
-            setModalSubmitting(false);
-        }
-    };
 
     /**
      * A reusable method was stored by the API (Wompi path). When the tenant was
@@ -478,8 +534,19 @@ export default function BillingPage() {
     const handleSourceSaved = async (source: { id: string; status: PaymentSourceStatus }) => {
         await refreshPaymentSources();
         const pending = modal;
-        setModal(null);
+        closePaymentModal();
         if (pending?.kind === "upgrade" && source.status === "available") {
+            // Two-phase onboarding already created this exact subscription in
+            // pending_auth. Saving the source arms the internal engine and
+            // starts the first charge; calling upgrade(same plan) would be both
+            // redundant and rejected. Reload to show the pending settlement.
+            const isPendingActivation = subscription?.status === "pending_auth"
+                && currentPlan?.slug === pending.planSlug;
+            if (isPendingActivation) {
+                setToast(t("paymentProcessing"));
+                await load();
+                return;
+            }
             await handleUpgrade(pending.planSlug, { methodReady: true });
             return;
         }
@@ -719,11 +786,11 @@ export default function BillingPage() {
                             <p className="text-xs uppercase text-neutral-500 tracking-wider">{t("currentPlan")}</p>
                             <h2 className="text-xl font-semibold mt-1">{currentPlan?.name ?? "—"}</h2>
                             <p className="text-sm text-neutral-500 mt-1">
-                                {currentPlan ? formatMoney(
-                                    currentPlan.displayPriceCents ?? currentPlan.priceUsdCents,
-                                    currentPlan.displayCurrency ?? "USD",
+                                {currentPlanPrice ? formatMoney(
+                                    currentPlanPrice.amountCents,
+                                    currentPlanPrice.currency,
                                     locale,
-                                ) : ""} / {t("month")}
+                                ) : ""} / {currentPlanPrice?.cycleLabel ?? t("month")}
                             </p>
                         </div>
                         <StatusBadge status={subscription.status} />
@@ -739,8 +806,20 @@ export default function BillingPage() {
                                 value={formatDate(subscription.currentPeriodEnd, locale)}
                             />
                         )}
-                        <InfoRow label={t("provider")} value={subscription.provider} />
+                        {subscription.nextCharge && (
+                            <InfoRow
+                                label={t("scheduledCharge")}
+                                value={`${formatMoney(subscription.nextCharge.amountCents, subscription.nextCharge.currency, locale)} · ${formatDate(subscription.nextCharge.at, locale)}`}
+                            />
+                        )}
+                        <InfoRow label={t("provider")} value={subscription.provider === "wompi" ? "Wompi" : subscription.provider} />
                     </div>
+
+                    {subscription.status === "pending_auth" && (
+                        <p className="mt-4 text-xs text-amber-700 dark:text-amber-400">
+                            {hasChargeableSource ? t("pendingActivationProcessing") : t("pendingActivationNeedsMethod")}
+                        </p>
+                    )}
 
                     {subscription.cancelAtPeriodEnd && (
                         <p className="mt-4 text-xs text-amber-700 dark:text-amber-400">
@@ -784,7 +863,7 @@ export default function BillingPage() {
                                 )}
 
                                 <div className="mt-5 flex flex-wrap gap-2">
-                                    {/* Past-due (and not paused): "retry now" force-syncs from MP */}
+                                    {/* Past-due (and not paused): explicitly retry or reconcile the local engine. */}
                                     {subscription.status === "past_due" && !isPaused && (
                                         <button
                                             onClick={handleRetry}
@@ -870,7 +949,11 @@ export default function BillingPage() {
                                 <li key={source.id} className="flex items-center justify-between gap-3 py-3 flex-wrap">
                                     <div className="flex items-center gap-3 min-w-0">
                                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                                            {source.kind === "card" ? <CreditCard size={16} /> : <Smartphone size={16} />}
+                                            {source.kind === "card"
+                                                ? <CreditCard size={16} />
+                                                : source.kind === "bancolombia_transfer"
+                                                    ? <Landmark size={16} />
+                                                    : <Smartphone size={16} />}
                                         </div>
                                         <div className="min-w-0">
                                             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
@@ -934,7 +1017,7 @@ export default function BillingPage() {
                 <section
                     className={cn(
                         "rounded-xl border p-5",
-                        fiscalStatus === "pending"
+                        !isInternalAccount && fiscalStatus === "pending"
                             ? "border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20"
                             : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900",
                     )}
@@ -944,14 +1027,17 @@ export default function BillingPage() {
                             <div
                                 className={cn(
                                     "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                                    fiscalStatus === "complete"
+                                    isInternalAccount
+                                        ? "bg-slate-500/10 text-slate-600 dark:text-slate-300"
+                                        : fiscalStatus === "complete"
                                         ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                         : fiscalStatus === "consumidor_final"
                                             ? "bg-teal-500/10 text-teal-600 dark:text-teal-400"
                                             : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
                                 )}
                             >
-                                {fiscalStatus === "complete" ? <CheckCircle2 size={18} />
+                                {isInternalAccount ? <FileText size={18} />
+                                    : fiscalStatus === "complete" ? <CheckCircle2 size={18} />
                                     : fiscalStatus === "consumidor_final" ? <FileText size={18} />
                                         : <AlertTriangle size={18} />}
                             </div>
@@ -968,29 +1054,31 @@ export default function BillingPage() {
                                         {t("fiscalStatusCompleteHint", { name: fiscalData?.businessName || fiscalData?.names || "—" })}
                                     </p>
                                 )}
-                                {fiscalStatus === "consumidor_final" && (
+                                {!isInternalAccount && fiscalStatus === "consumidor_final" && (
                                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                                         {t("fiscalStatusConsumidorFinalHint")}
                                     </p>
                                 )}
-                                {fiscalStatus === "pending" && (
+                                {!isInternalAccount && fiscalStatus === "pending" && (
                                     <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 max-w-xl">
                                         {t("fiscalStatusPendingHint")}
                                     </p>
                                 )}
                             </div>
                         </div>
-                        <Link
-                            href="/admin/settings/fiscal"
-                            className={cn(
-                                "shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                                fiscalStatus === "pending"
-                                    ? "bg-amber-500 hover:bg-amber-600 text-white"
-                                    : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
-                            )}
-                        >
-                            {fiscalStatus === "pending" ? t("fiscalCompleteCta") : t("fiscalManageCta")}
-                        </Link>
+                        {!isInternalAccount && (
+                            <Link
+                                href="/admin/settings/fiscal"
+                                className={cn(
+                                    "shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                                    fiscalStatus === "pending"
+                                        ? "bg-amber-500 hover:bg-amber-600 text-white"
+                                        : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
+                                )}
+                            >
+                                {fiscalStatus === "pending" ? t("fiscalCompleteCta") : t("fiscalManageCta")}
+                            </Link>
+                        )}
                     </div>
                 </section>
             )}
@@ -1419,8 +1507,8 @@ export default function BillingPage() {
                             const isCurrent = subscription?.planId === plan.id && currentCycle === billingCycle;
                             const isCycleSwitch = subscription?.planId === plan.id && currentCycle !== billingCycle;
                             // Only a SAME-cycle tier decrease is a scheduled, no-charge downgrade.
-                            // A cross-cycle change (monthly→annual) is an immediate cancel+recreate
-                            // in MP (charges now), so it must NOT show the "scheduled / no charge /
+                            // A cross-cycle change (monthly→annual) is processed immediately by
+                            // the internal engine, so it must NOT show the "scheduled / no charge /
                             // keep features" downgrade UI — mirror the backend's `!cycleChanged` guard.
                             const isDowngrade = currentPlan && plan.priceUsdCents < currentPlan.priceUsdCents && currentCycle === billingCycle;
                             const showAnnual = billingCycle === "annual" && plan.annualAvailable && !!plan.displayPriceAnnualCents;
@@ -1552,7 +1640,7 @@ export default function BillingPage() {
             {/* Card modal — upgrade-to-paid flow and change-card flow */}
             <FiscalGateModal open={fiscalGate} onClose={() => setFiscalGate(false)} plan={fiscalGatePlan ?? undefined} cycle={billingCycle} />
             {modal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !modalSubmitting && setModal(null)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => action === null && closePaymentModal()}>
                     <div className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-semibold">
@@ -1562,14 +1650,30 @@ export default function BillingPage() {
                                         ? t("modalAddMethodTitle")
                                         : t("modalChangeCardTitle")}
                             </h3>
-                            <button onClick={() => !modalSubmitting && setModal(null)} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded">
+                            <button onClick={() => action === null && closePaymentModal()} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded">
                                 <X size={16} />
                             </button>
                         </div>
 
                         {modal.kind === "upgrade" && (
                             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                                {t("modalUpgradeSubtitle", { name: plans.find(p => p.slug === modal.planSlug)?.name ?? modal.planSlug })}
+                                {(() => {
+                                    const target = plans.find((plan) => plan.slug === modal.planSlug);
+                                    const name = target?.name ?? modal.planSlug;
+                                    const trialEnd = subscription?.status === "trialing" && subscription.trialEndsAt
+                                        ? new Date(subscription.trialEndsAt)
+                                        : null;
+                                    if (trialEnd && trialEnd.getTime() > Date.now()) {
+                                        return t("modalUpgradeTrialSubtitle", {
+                                            name,
+                                            date: trialEnd.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" }),
+                                        });
+                                    }
+                                    if ((!subscription || subscription.status === "pending_auth") && (target?.trialDays ?? 0) > 0) {
+                                        return t("modalUpgradeStartsTrialSubtitle", { name, days: target!.trialDays });
+                                    }
+                                    return t("modalUpgradeImmediateSubtitle", { name });
+                                })()}
                             </p>
                         )}
 
@@ -1577,12 +1681,8 @@ export default function BillingPage() {
                             tenantId={activeTenantId!}
                             country={billingCountry ?? undefined}
                             config={publicConfig}
-                            onToken={(token) => {
-                                if (modal.kind === "upgrade") handleUpgrade(modal.planSlug, { cardTokenId: token });
-                                else handleChangeCard(token);
-                            }}
                             onSourceSaved={handleSourceSaved}
-                            submitting={modalSubmitting || action !== null}
+                            submitting={action !== null}
                             submitLabel={
                                 modal.kind === "upgrade"
                                     ? t("modalUpgradeSubmit")
@@ -1595,10 +1695,14 @@ export default function BillingPage() {
                 </div>
             )}
 
-            {/* Invoice history */}
+            {/* Payment ledger. The downloadable document here is a commercial
+                receipt; official DIAN documents live in Fiscal billing. */}
             {subscription && subscription.payments.length > 0 && (
                 <section>
-                    <h2 className="text-lg font-semibold mb-3">{t("invoiceHistory")}</h2>
+                    <h2 className="text-lg font-semibold mb-1">{t("paymentHistory")}</h2>
+                    <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+                        {isInternalAccount ? t("internalReceiptNotice") : t("receiptHistoryHint")}
+                    </p>
                     <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                         <table className="w-full text-sm">
                             <thead className="bg-neutral-50 dark:bg-neutral-900 text-left text-xs uppercase text-neutral-500">
@@ -1606,7 +1710,7 @@ export default function BillingPage() {
                                     <th className="px-4 py-3">{t("date")}</th>
                                     <th className="px-4 py-3">{t("amount")}</th>
                                     <th className="px-4 py-3">{t("status")}</th>
-                                    <th className="px-4 py-3 text-right">{t("invoice")}</th>
+                                    <th className="px-4 py-3 text-right">{t("receipt")}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800 bg-white dark:bg-neutral-900">
@@ -1629,12 +1733,12 @@ export default function BillingPage() {
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex items-center justify-end gap-3">
-                                                {p.status === "succeeded" || p.status === "refunded" ? (
+                                                {!isInternalAccount && (p.status === "succeeded" || p.status === "refunded") ? (
                                                     <button
                                                         onClick={() => api.downloadInvoice(activeTenantId!, p.id)}
                                                         className="text-indigo-500 hover:underline bg-transparent border-none p-0 cursor-pointer text-sm"
                                                     >
-                                                        {t("download")}
+                                                        {t("downloadReceipt")}
                                                     </button>
                                                 ) : (
                                                     <span className="text-neutral-400">—</span>

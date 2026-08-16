@@ -15,6 +15,7 @@ import { MediaThrottleService } from '../media-processing/media-throttle.service
 import { EmailVerifiedGuard } from '../../common/guards/email-verified.guard';
 import { BillingPlanCatalogService } from './billing-plan-catalog.service';
 import { BILLING_CURRENCY_BY_COUNTRY } from './billing-country-config';
+import { PaymentSourceService } from './recurring/payment-source.service';
 
 const BILLING_COUNTRIES = Object.keys(BILLING_CURRENCY_BY_COUNTRY);
 
@@ -102,6 +103,7 @@ export class BillingController {
         private readonly invoiceGenerator: InvoiceGeneratorService,
         private readonly mediaThrottle: MediaThrottleService,
         private readonly planCatalog: BillingPlanCatalogService,
+        private readonly paymentSources: PaymentSourceService,
     ) {}
 
     /**
@@ -117,8 +119,9 @@ export class BillingController {
     /**
      * Current subscription for a tenant — dashboard reads this for the /admin/settings/billing page.
      * Returns null when the tenant never started a subscription.
-     */
+    */
     @Get(':tenantId/subscription')
+    @Roles('tenant_admin', 'super_admin')
     @UseGuards(AuthGuard('jwt'))
     async getCurrentSubscription(@Param('tenantId') tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
@@ -140,6 +143,7 @@ export class BillingController {
                 success: true,
                 data: null,
                 billingCountry: tenant?.billingCountry ?? null,
+                isInternal: tenant?.isInternal === true,
             };
         }
 
@@ -221,6 +225,15 @@ export class BillingController {
             billingCountry: body.billingCountry,
             billingCycle: body.billingCycle,
         });
+        return { success: true, data: subscription };
+    }
+
+    /** Resume phase two of onboarding after an AVAILABLE source/profile exists. */
+    @Post(':tenantId/subscription/activate')
+    @Roles('tenant_admin', 'super_admin')
+    @UseGuards(AuthGuard('jwt'))
+    async activatePending(@Param('tenantId') tenantId: string) {
+        const subscription = await this.paymentSources.activatePendingSubscription(tenantId);
         return { success: true, data: subscription };
     }
 
@@ -377,10 +390,9 @@ export class BillingController {
     }
 
     /**
-     * Force an immediate provider sync — used by the past_due recovery
-     * "retry now" button. Pulls the latest state from MP; if MP succeeded
-     * a retry charge in background, we pick it up without waiting for
-     * the hourly reconciliation cron.
+     * Force immediate reconciliation — used by the past_due recovery
+     * "retry now" button. For Wompi this reconciles the internal engine's
+     * canonical attempt instead of a nonexistent remote subscription object.
      */
     @Post(':tenantId/subscription/sync')
     @Roles('tenant_admin')
@@ -401,8 +413,9 @@ export class BillingController {
      * Download PDF invoice for a payment. Generated on demand (not persisted)
      * until fiscal integration is wired. Tenant scope enforced via tenantId
      * path param + JWT — service rejects mismatch.
-     */
+    */
     @Get(':tenantId/payments/:paymentId/invoice')
+    @Roles('tenant_admin', 'super_admin')
     @UseGuards(AuthGuard('jwt'))
     async downloadInvoice(
         @Param('tenantId') tenantId: string,

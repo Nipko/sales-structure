@@ -31,25 +31,47 @@ describe('BillingService', () => {
     let mockProvider: MockPaymentProvider;
     let prismaMock: any;
     let redisMock: any;
+    let chargingMock: any;
     let eventEmitter: EventEmitter2;
     let module: TestingModule;
 
     beforeEach(async () => {
         prismaMock = {
-            tenant: { findUnique: jest.fn(), update: jest.fn() },
+            tenant: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
             billingPlan: { findUnique: jest.fn() },
-            billingSubscription: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+            billingSubscription: {
+                findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(),
+                update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            },
             billingEvent: { findUnique: jest.fn(), create: jest.fn() },
             billingPaymentSource: { findFirst: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
-            billingChargeAttempt: { findFirst: jest.fn().mockResolvedValue(null) },
-            billingPayment: { create: jest.fn() },
+            billingChargeAttempt: {
+                findFirst: jest.fn().mockResolvedValue(null),
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
+            billingCreditLedger: {
+                aggregate: jest.fn().mockResolvedValue({ _sum: { deltaCents: 0 } }),
+                create: jest.fn(),
+            },
+            billingPayment: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
+            smsPackageOrder: {
+                findFirst: jest.fn().mockResolvedValue(null),
+                findUnique: jest.fn().mockResolvedValue(null),
+            },
             auditLog: { create: jest.fn() },
+            $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+            $executeRawUnsafe: jest.fn().mockResolvedValue(1),
             // $transaction receives a callback and invokes it with a tx object.
             // For unit tests we pass the same prismaMock so calls inside the
             // transaction hit the same mocks.
             $transaction: jest.fn(async (cb: any) => cb(prismaMock)),
         };
-        redisMock = { del: jest.fn() };
+        redisMock = {
+            del: jest.fn(),
+            acquireLockToken: jest.fn().mockResolvedValue('lock-token'),
+            releaseLockToken: jest.fn().mockResolvedValue(undefined),
+        };
+        chargingMock = { getCharge: jest.fn() };
 
         module = await Test.createTestingModule({
             providers: [
@@ -78,6 +100,7 @@ describe('BillingService', () => {
                     useValue: {
                         settleApproved: jest.fn(),
                         settleFailed: jest.fn(),
+                        settleRefunded: jest.fn().mockResolvedValue(undefined),
                         classifyFailure: jest.fn().mockReturnValue('soft'),
                         claimAttempt: jest.fn(),
                     },
@@ -121,6 +144,7 @@ describe('BillingService', () => {
             .useFactory({
                 factory: (mp: MockPaymentProvider) => ({
                     getByName: (_n: string) => mp,
+                    getCharging: (_n: string) => chargingMock,
                     capabilitiesOf: (n: string) =>
                         PROVIDER_CAPABILITIES[n as PaymentProviderName] ?? PROVIDER_CAPABILITIES.mock,
                     // Espeja producción igual que las capabilities de arriba: el
@@ -157,7 +181,7 @@ describe('BillingService', () => {
                 findFirst: jest.fn().mockResolvedValue({
                     id: 'a1', tenantId: 't1', subscriptionId: 'sub-1',
                     reference: 'sub_x_20260410_1', providerTxnId: 'txn-1',
-                    amountCents: 2_769_000, currency: 'COP',
+                    provider: 'wompi', amountCents: 2_769_000, currency: 'COP',
                 }),
             };
             prismaMock.billingEvent.create.mockResolvedValue({});
@@ -177,6 +201,74 @@ describe('BillingService', () => {
             expect(result).toEqual({ processed: true, reason: 'engine_settled' });
             // The generic path must not also touch the subscription.
             expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+        });
+
+        it('quarantines an unmatched Wompi transaction instead of resolving a tenant by payer email', async () => {
+            prismaMock.billingEvent.findUnique.mockResolvedValue(null);
+            prismaMock.billingChargeAttempt.findFirst.mockResolvedValue(null);
+            prismaMock.billingEvent.create.mockResolvedValue({});
+            const emitSpy = jest.spyOn(eventEmitter, 'emit');
+
+            const result = await service.handleBillingEvent({
+                type: BillingEventType.PAYMENT_SUCCEEDED,
+                provider: 'wompi',
+                providerEventId: 'transaction.updated.unmatched.APPROVED',
+                providerPaymentId: 'txn-unmatched',
+                payerEmail: 'victim@example.com',
+                tenantId: '11111111-1111-4111-8111-111111111111',
+                occurredAt: new Date(),
+                payment: {
+                    providerPaymentId: 'txn-unmatched',
+                    amountCents: 49_000_00,
+                    currency: 'COP',
+                    status: 'succeeded',
+                },
+                rawPayload: {
+                    data: { transaction: { reference: 'external-unrelated-payment' } },
+                },
+            } as any);
+
+            expect(result).toEqual({ processed: false, reason: 'unmatched_engine_charge' });
+            expect(prismaMock.billingSubscription.findUnique).not.toHaveBeenCalled();
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+            expect(prismaMock.billingPayment.create).not.toHaveBeenCalled();
+            expect(prismaMock.billingEvent.create).toHaveBeenCalledWith({
+                data: expect.objectContaining({
+                    tenantId: null,
+                    subscriptionId: null,
+                    provider: 'wompi',
+                    providerEventId: 'transaction.updated.unmatched.APPROVED',
+                }),
+            });
+            expect(emitSpy).toHaveBeenCalledWith(
+                'billing.engine_charge.unmatched',
+                expect.objectContaining({ providerPaymentId: 'txn-unmatched' }),
+            );
+        });
+
+        it('returns a retryable failure when an unmatched signed event cannot be stored', async () => {
+            prismaMock.billingEvent.findUnique.mockResolvedValue(null);
+            prismaMock.billingChargeAttempt.findFirst.mockResolvedValue(null);
+            prismaMock.billingEvent.create.mockRejectedValue(new Error('postgres unavailable'));
+            const emitSpy = jest.spyOn(eventEmitter, 'emit');
+
+            await expect(service.handleBillingEvent({
+                type: BillingEventType.PAYMENT_SUCCEEDED,
+                provider: 'wompi',
+                providerEventId: 'transaction.updated.unstored.APPROVED',
+                providerPaymentId: 'txn-unstored',
+                occurredAt: new Date(),
+                payment: {
+                    providerPaymentId: 'txn-unstored', amountCents: 100_000,
+                    currency: 'COP', status: 'succeeded',
+                },
+                rawPayload: { data: { transaction: { reference: 'unmatched' } } },
+            } as any)).rejects.toMatchObject({
+                status: 503,
+                response: expect.objectContaining({ error: 'billing_event_not_persisted' }),
+            });
+
+            expect(emitSpy).not.toHaveBeenCalledWith('billing.engine_charge.unmatched', expect.anything());
         });
 
         it('leaves provider-native events alone', async () => {
@@ -594,7 +686,12 @@ describe('BillingService', () => {
             // Proveedor con catalogo remoto (Stripe) y un plan destino sin id
             // registrado del otro lado: programar el downgrade seria prometer
             // un cambio que el proveedor no puede ejecutar.
-            const sub = { ...dueDowngrade('stripe-sub-1'), provider: 'stripe' };
+            const sub = {
+                ...dueDowngrade('stripe-sub-1'),
+                provider: 'stripe',
+                pendingPlanId: null,
+                pendingPlanChangeAt: null,
+            };
             prismaMock.billingSubscription.findUnique.mockResolvedValue(sub);
             prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) => {
                 if (where.slug === 'starter') {
@@ -649,8 +746,8 @@ describe('BillingService', () => {
 
             expect(result).toEqual({ applied: 1 });
             expect(providerChange).toHaveBeenCalledWith('mock-sub-1', 'mock-plan');
-            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith({
-                where: { id: 'sub-downgrade' },
+            expect(prismaMock.billingSubscription.updateMany).toHaveBeenCalledWith({
+                where: expect.objectContaining({ id: 'sub-downgrade' }),
                 data: expect.objectContaining({
                     planId: 'plan-starter',
                     pendingPlanId: null,
@@ -658,7 +755,7 @@ describe('BillingService', () => {
                 }),
             });
             expect(providerChange.mock.invocationCallOrder[0]).toBeLessThan(
-                prismaMock.billingSubscription.update.mock.invocationCallOrder[0],
+                prismaMock.billingSubscription.updateMany.mock.invocationCallOrder[0],
             );
             expect(prismaMock.tenant.update).toHaveBeenCalledWith({
                 where: { id: 'tenant-1' },
@@ -680,7 +777,7 @@ describe('BillingService', () => {
 
             expect(result).toEqual({ applied: 1 });
             expect(providerChange).not.toHaveBeenCalled();
-            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(
+            expect(prismaMock.billingSubscription.updateMany).toHaveBeenCalledWith(
                 expect.objectContaining({
                     data: expect.objectContaining({ pendingPlanId: null }),
                 }),
@@ -755,12 +852,18 @@ describe('BillingService', () => {
             );
         });
 
-        it('dice que no sabe pausar, en vez de pedir un id que no existe', async () => {
+        it('pausa localmente sin exigir un id de suscripción que Wompi no tiene', async () => {
             prismaMock.billingSubscription.findUnique.mockResolvedValue(wompiSub);
 
-            await expect(service.pauseSubscription('tenant-w')).rejects.toMatchObject({
-                response: expect.objectContaining({ error: 'pause_unsupported' }),
-            });
+            await expect(service.pauseSubscription('tenant-w')).resolves.toBeUndefined();
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(expect.objectContaining({
+                where: { id: 'sub-w' },
+                data: expect.objectContaining({
+                    status: SubscriptionStatus.PAST_DUE,
+                    nextChargeAt: null,
+                    cancellationReason: 'paused',
+                }),
+            }));
         });
     });
 
@@ -886,6 +989,328 @@ describe('BillingService', () => {
             expect(data.defaultPaymentSourceId).toBe('src-1');
             // No se le quitan los días prometidos.
             expect(data.nextChargeAt).toEqual(trialEndsAt);
+        });
+    });
+
+    describe('cambios de plan del motor interno', () => {
+        const oldStart = new Date('2026-08-01T14:00:00.000Z');
+        const oldEnd = new Date('2026-09-01T14:00:00.000Z');
+        const settledStart = new Date('2026-09-01T14:00:00.000Z');
+        const settledEnd = new Date('2026-10-01T14:00:00.000Z');
+        const activeSub = {
+            id: 'sub-engine', tenantId: 'tenant-engine', planId: 'plan-starter',
+            provider: 'wompi', providerSubscriptionId: null, engine: 'internal',
+            status: SubscriptionStatus.ACTIVE, pendingUpgradePlanId: null, pendingPlanId: null,
+            defaultPaymentSourceId: 'src-wompi', chargeAmountCents: 20_000_000,
+            chargeCurrency: 'COP', currentPeriodStart: oldStart, currentPeriodEnd: oldEnd,
+            billingAnchorDay: 1, billingTimezone: 'America/Bogota', metadata: { billingCycle: 'monthly' },
+        };
+        const targetPlan = {
+            id: 'plan-pro', slug: 'pro', isActive: true, priceUsdCents: 9_900,
+            requiresCardForTrial: true, trialDays: 0, features: {},
+            mpPlanId: null, stripePlanId: null,
+            priceLocalOverrides: { CO: { currency: 'COP', amountCents: 40_000_000 } },
+        };
+        const proration = {
+            chargeCents: 10_000_000, creditAppliedCents: 0, creditGeneratedCents: 0,
+            unusedCents: 0, reason: 'upgrade', periodStart: settledStart, periodEnd: settledEnd,
+        };
+
+        it('permite upgrade Wompi sin intentar resolver un plan remoto', async () => {
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(activeSub);
+            prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) => {
+                if (where.slug === 'pro') return Promise.resolve(targetPlan);
+                if (where.id === 'plan-starter') return Promise.resolve({ id: 'plan-starter', priceUsdCents: 4_900 });
+                return Promise.resolve(null);
+            });
+            prismaMock.tenant.findUnique.mockResolvedValue({
+                id: 'tenant-engine', billingCountry: 'CO', settings: {}, isInternal: false,
+            });
+            prismaMock.billingPaymentSource.findFirst.mockResolvedValue({
+                id: 'src-wompi', tenantId: 'tenant-engine', provider: 'wompi', status: 'available',
+            });
+            const prorationService = module.get(ProrationService) as any;
+            prorationService.computeUpgrade.mockReturnValue(proration);
+            const engine = module.get(SubscriptionEngineService) as any;
+            engine.claimAttempt.mockResolvedValue({ id: 'attempt-upgrade', reference: 'r', cycleKey: 'c' });
+
+            await expect(service.upgradeSubscription('tenant-engine', 'pro')).resolves.toMatchObject({
+                pendingUpgradePlanId: 'plan-pro',
+            });
+
+            expect(engine.claimAttempt).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    provider: 'wompi',
+                    purpose: 'upgrade_proration',
+                    operationKey: expect.stringContaining('plan-starter:plan-pro:monthly'),
+                }),
+                prismaMock,
+            );
+        });
+
+        it('relee período y fuente bajo lock si una renovación ganó la carrera', async () => {
+            const stale = { ...activeSub };
+            const live = {
+                ...activeSub,
+                currentPeriodStart: settledStart,
+                currentPeriodEnd: settledEnd,
+                defaultPaymentSourceId: 'src-after-renewal',
+            };
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(live);
+            prismaMock.billingPaymentSource.findFirst.mockResolvedValue({
+                id: 'src-after-renewal', tenantId: live.tenantId, provider: 'wompi', status: 'available',
+            });
+            const prorationService = module.get(ProrationService) as any;
+            prorationService.computeUpgrade.mockReturnValue(proration);
+            const engine = module.get(SubscriptionEngineService) as any;
+            engine.claimAttempt.mockResolvedValue({ id: 'attempt-live', reference: 'r', cycleKey: 'c' });
+
+            await (service as any).changePlanWithEngine(stale, targetPlan, 'monthly', { billingCountry: 'CO' });
+
+            expect(prorationService.computeUpgrade).toHaveBeenCalledWith(expect.objectContaining({
+                currentPeriodStart: settledStart,
+                currentPeriodEnd: settledEnd,
+            }));
+            expect(prismaMock.billingPaymentSource.findFirst).toHaveBeenCalledWith({
+                where: expect.objectContaining({ id: 'src-after-renewal', provider: 'wompi' }),
+            });
+            expect(engine.claimAttempt).toHaveBeenCalledWith(
+                expect.objectContaining({ paymentSourceId: 'src-after-renewal' }),
+                prismaMock,
+            );
+        });
+
+        it('deriva el downgrade del período re-leído después del lock', async () => {
+            const stale = { ...activeSub, currentPeriodEnd: oldEnd };
+            const live = { ...activeSub, currentPeriodEnd: settledEnd };
+            prismaMock.billingSubscription.findUnique
+                .mockResolvedValueOnce(stale)
+                .mockResolvedValueOnce(live);
+            prismaMock.tenant.findUnique.mockResolvedValue({ billingCountry: 'CO' });
+            prismaMock.billingSubscription.update.mockResolvedValue({ ...live, pendingPlanId: targetPlan.id });
+
+            const result = await (service as any).scheduleDowngrade(
+                live.tenantId,
+                live.id,
+                { ...targetPlan, id: 'plan-lower' },
+                'monthly',
+            );
+
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ pendingPlanChangeAt: settledEnd }),
+            }));
+            expect(result.effectiveAt).toBe(settledEnd.toISOString());
+        });
+
+        it('rechaza una pausa mientras una mejora sigue pendiente', async () => {
+            const pending = { ...activeSub, pendingUpgradePlanId: 'plan-pro' };
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(pending);
+
+            await expect(service.pauseSubscription(pending.tenantId)).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'plan_change_in_progress' }),
+            });
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('cortesía frente a cobros pendientes', () => {
+        it('no convierte a comp mientras el PSP todavía puede debitar', async () => {
+            const existing = {
+                id: 'sub-comp', tenantId: 'tenant-comp', provider: 'wompi', engine: 'internal',
+                providerSubscriptionId: null,
+            };
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 'tenant-comp' });
+            prismaMock.billingPlan.findUnique.mockResolvedValue({ id: 'plan-pro', slug: 'pro', isActive: true });
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(existing);
+            prismaMock.billingChargeAttempt.findFirst.mockResolvedValue({
+                id: 'attempt-pending', reference: 'r-pending', status: 'pending_provider',
+            });
+
+            await expect(service.grantCompPlan({
+                tenantId: 'tenant-comp', planSlug: 'pro', durationDays: 30, reason: 'partner',
+            })).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'billing_settlement_pending' }),
+            });
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+            expect(prismaMock.tenant.update).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('refund Wompi y convergencia local', () => {
+        const payment = {
+            id: 'pay-wompi', tenantId: 'tenant-wompi', subscriptionId: 'sub-wompi',
+            amountCents: 100_000, currency: 'COP', status: 'succeeded',
+            provider: 'wompi', providerPaymentId: 'txn-wompi', metadata: {},
+        };
+
+        it('convierte un monto total explícito de UI en void sin amount y liquida por el engine', async () => {
+            prismaMock.billingPayment.findUnique.mockResolvedValue(payment);
+            prismaMock.billingChargeAttempt.findFirst.mockResolvedValue({ id: 'a-wompi', reference: 'ref-wompi' });
+            const refund = jest.spyOn(mockProvider, 'refundPayment').mockResolvedValue(undefined);
+            chargingMock.getCharge.mockResolvedValue({
+                providerChargeId: payment.providerPaymentId,
+                reference: 'ref-wompi',
+                amountCents: payment.amountCents,
+                currency: payment.currency,
+                status: 'voided',
+            });
+            const engine = module.get(SubscriptionEngineService) as any;
+            const emitSpy = jest.spyOn(eventEmitter, 'emit');
+
+            await service.refundPayment({
+                paymentId: payment.id,
+                amountCents: payment.amountCents,
+                reason: 'duplicado',
+            });
+
+            expect(refund).toHaveBeenCalledWith('txn-wompi', undefined);
+            expect(engine.settleRefunded).toHaveBeenCalledWith('a-wompi', expect.objectContaining({
+                providerChargeId: 'txn-wompi',
+                amountCents: 100_000,
+                reference: 'ref-wompi',
+            }));
+            expect(emitSpy).not.toHaveBeenCalledWith(
+                BillingEventType.PAYMENT_REFUNDED,
+                expect.anything(),
+            );
+        });
+
+        it('rechaza un parcial antes de reservar o llamar el void-only PSP', async () => {
+            prismaMock.billingPayment.findUnique.mockResolvedValue(payment);
+            const refund = jest.spyOn(mockProvider, 'refundPayment').mockResolvedValue(undefined);
+
+            await expect(service.refundPayment({
+                paymentId: payment.id,
+                amountCents: 50_000,
+            })).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'partial_void_not_supported' }),
+            });
+
+            expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled();
+            expect(refund).not.toHaveBeenCalled();
+        });
+
+        it('conserva refundPending y no revoca mientras el canónico siga APPROVED', async () => {
+            prismaMock.billingPayment.findUnique.mockResolvedValue(payment);
+            prismaMock.billingChargeAttempt.findFirst.mockResolvedValue({ id: 'a-wompi', reference: 'ref-wompi' });
+            jest.spyOn(mockProvider, 'refundPayment').mockResolvedValue(undefined);
+            chargingMock.getCharge.mockResolvedValue({
+                providerChargeId: payment.providerPaymentId,
+                reference: 'ref-wompi',
+                amountCents: payment.amountCents,
+                currency: payment.currency,
+                status: 'approved',
+            });
+            const engine = module.get(SubscriptionEngineService) as any;
+
+            await expect(service.refundPayment({ paymentId: payment.id })).rejects.toMatchObject({
+                response: expect.objectContaining({
+                    error: 'provider_void_pending_confirmation',
+                    preserveRefundPending: true,
+                }),
+            });
+
+            expect(engine.settleRefunded).not.toHaveBeenCalled();
+            expect(prismaMock.$executeRawUnsafe.mock.calls.some(([sql]: [string]) =>
+                sql.includes("- 'refundPendingTotalCents'"))).toBe(false);
+            expect(prismaMock.$executeRawUnsafe.mock.calls.some(([sql]: [string]) =>
+                sql.includes('refundPendingNextCheckAt'))).toBe(true);
+        });
+
+        it('conserva la reserva si el void fue aceptado pero falla el segundo lookup canónico', async () => {
+            prismaMock.billingPayment.findUnique.mockResolvedValue(payment);
+            prismaMock.billingChargeAttempt.findFirst.mockResolvedValue({ id: 'a-wompi', reference: 'ref-wompi' });
+            jest.spyOn(mockProvider, 'refundPayment').mockResolvedValue(undefined);
+            chargingMock.getCharge.mockRejectedValue(new Error('canonical lookup timeout'));
+            const engine = module.get(SubscriptionEngineService) as any;
+
+            await expect(service.refundPayment({ paymentId: payment.id })).rejects.toMatchObject({
+                status: 503,
+                response: expect.objectContaining({
+                    error: 'provider_void_confirmation_unavailable',
+                    preserveRefundPending: true,
+                }),
+            });
+
+            expect(engine.settleRefunded).not.toHaveBeenCalled();
+            expect(prismaMock.$executeRawUnsafe.mock.calls.some(([sql]: [string]) =>
+                sql.includes("- 'refundPendingTotalCents'"))).toBe(false);
+        });
+
+        it('recupera un crash post-void consultando el estado canónico', async () => {
+            prismaMock.$queryRawUnsafe.mockResolvedValue([{
+                paymentId: payment.id,
+                provider: 'wompi',
+                providerPaymentId: payment.providerPaymentId,
+                currency: 'COP',
+                pendingTotalCents: payment.amountCents,
+                attemptId: 'a-wompi',
+                reference: 'ref-wompi',
+            }]);
+            chargingMock.getCharge.mockResolvedValue({
+                providerChargeId: payment.providerPaymentId,
+                reference: 'ref-wompi',
+                amountCents: payment.amountCents,
+                currency: 'COP',
+                status: 'voided',
+            });
+            const engine = module.get(SubscriptionEngineService) as any;
+
+            await expect(service.reconcilePendingRefunds()).resolves.toEqual({
+                scanned: 1,
+                finalized: 1,
+                errors: 0,
+            });
+            expect(engine.settleRefunded).toHaveBeenCalledWith('a-wompi', expect.objectContaining({
+                status: 'voided',
+                amountCents: payment.amountCents,
+            }));
+            expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledWith(
+                expect.stringContaining("- 'refundPendingTotalCents'"),
+                payment.id,
+                payment.amountCents,
+            );
+        });
+
+        it('pagina despues de 100 ambiguas y finaliza una VOIDED posterior', async () => {
+            const ambiguous = Array.from({ length: 100 }, (_, index) => ({
+                paymentId: `pay-pending-${index}`,
+                provider: 'wompi',
+                providerPaymentId: `txn-pending-${index}`,
+                currency: 'COP',
+                pendingTotalCents: 100_000,
+                pendingCheckCount: 0,
+                attemptId: `attempt-pending-${index}`,
+                reference: `ref-pending-${index}`,
+            }));
+            const resolvable = {
+                paymentId: 'pay-voided', provider: 'wompi', providerPaymentId: 'txn-voided',
+                currency: 'COP', pendingTotalCents: 100_000, pendingCheckCount: 0,
+                attemptId: 'attempt-voided', reference: 'ref-voided',
+            };
+            prismaMock.$queryRawUnsafe
+                .mockResolvedValueOnce(ambiguous)
+                .mockResolvedValueOnce([resolvable]);
+            chargingMock.getCharge.mockImplementation(async (providerChargeId: string) => ({
+                providerChargeId,
+                reference: providerChargeId === 'txn-voided'
+                    ? 'ref-voided'
+                    : providerChargeId.replace('txn-', 'ref-'),
+                amountCents: 100_000,
+                currency: 'COP',
+                status: providerChargeId === 'txn-voided' ? 'voided' : 'approved',
+            }));
+            const engine = module.get(SubscriptionEngineService) as any;
+
+            await expect(service.reconcilePendingRefunds()).resolves.toEqual({
+                scanned: 101,
+                finalized: 1,
+                errors: 0,
+            });
+            expect(engine.settleRefunded).toHaveBeenCalledTimes(1);
+            expect(engine.settleRefunded).toHaveBeenCalledWith('attempt-voided', expect.objectContaining({
+                status: 'voided',
+            }));
         });
     });
 });

@@ -189,7 +189,16 @@ describe('Agent Quality dependency mutation events', () => {
     it('accepts bounded internal inbound and quota requests after validating tenant and channel', async () => {
         const inboundQueue = { enqueue: jest.fn().mockResolvedValue(undefined) };
         const throttle = { enforceChannelAccountLimit: jest.fn().mockResolvedValue(undefined) };
-        const prisma = { channelAccount: { count: jest.fn().mockResolvedValue(1) } };
+        const prisma = {
+            tenant: { findUnique: jest.fn().mockResolvedValue({
+                subscriptionStatus: 'active',
+                subscription: {
+                    status: 'active', trialEndsAt: null, cancelAtPeriodEnd: false,
+                    currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+                },
+            }) },
+            channelAccount: { count: jest.fn().mockResolvedValue(1) },
+        };
         const controller = new InternalController(
             prisma as any, throttle as any, inboundQueue as any, { emit: jest.fn() } as any,
         );
@@ -220,5 +229,33 @@ describe('Agent Quality dependency mutation events', () => {
         )).rejects.toMatchObject({ status: 400 });
         expect(inboundQueue.enqueue).toHaveBeenCalledWith(payload);
         expect(throttle.enforceChannelAccountLimit).toHaveBeenCalledWith(TENANT_ID, 'whatsapp', 1);
+    });
+
+    it('blocks internal channel work before queue/quota effects for pending payment authorization', async () => {
+        const inboundQueue = { enqueue: jest.fn() };
+        const throttle = { enforceChannelAccountLimit: jest.fn() };
+        const prisma = {
+            tenant: { findUnique: jest.fn().mockResolvedValue({
+                subscriptionStatus: 'pending_auth',
+                subscription: {
+                    status: 'pending_auth', trialEndsAt: null, cancelAtPeriodEnd: false,
+                    currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+                },
+            }) },
+            channelAccount: { count: jest.fn() },
+        };
+        const controller = new InternalController(
+            prisma as any, throttle as any, inboundQueue as any, { emit: jest.fn() } as any,
+        );
+        const internalRequest = { user: { isInternalService: true } };
+
+        await expect(controller.channelAccountQuotaCheck(
+            internalRequest,
+            { tenantId: TENANT_ID, channelType: 'whatsapp' },
+        )).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'payment_method_required' }),
+        });
+        expect(prisma.channelAccount.count).not.toHaveBeenCalled();
+        expect(throttle.enforceChannelAccountLimit).not.toHaveBeenCalled();
     });
 });

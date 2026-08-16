@@ -18,9 +18,9 @@ const PRODUCTION_BASE_URL = 'https://production.wompi.co/v1';
  * env var, so a test key can never be pointed at the production API by
  * misconfiguration. Mismatched prefixes are refused outright.
  *
- * Like the MercadoPago config service, a missing credential logs a warning and
- * lets the app boot: dev environments that do not care about billing still run,
- * and the routing layer keeps the provider unroutable until it is configured.
+ * A missing credential logs a warning and lets the app boot: dev environments
+ * that do not care about billing still run, while the routing layer keeps the
+ * provider unroutable until the complete quartet is configured.
  */
 @Injectable()
 export class WompiConfigService implements OnModuleInit {
@@ -39,17 +39,39 @@ export class WompiConfigService implements OnModuleInit {
         this._eventsSecret = process.env.WOMPI_EVENTS_SECRET?.trim() || undefined;
         this._integritySecret = process.env.WOMPI_INTEGRITY_SECRET?.trim() || undefined;
 
-        if (!this._publicKey && !this._privateKey) {
+        if (!this._publicKey && !this._privateKey && !this._eventsSecret && !this._integritySecret) {
             this.logger.warn('WOMPI_* keys are not set — the Wompi adapter will refuse any real call');
             return;
         }
 
-        const envs = [
-            this.environmentOfKey(this._publicKey, 'pub_'),
-            this.environmentOfKey(this._privateKey, 'prv_'),
-            this.environmentOfEventKey(this._eventsSecret),
-            this.environmentOfEventKey(this._integritySecret),
-        ].filter((e): e is Exclude<WompiEnvironment, 'unconfigured'> => e !== 'unconfigured');
+        const credentials = [
+            { name: 'WOMPI_PUBLIC_KEY', value: this._publicKey, testPrefix: 'pub_test_', prodPrefix: 'pub_prod_' },
+            { name: 'WOMPI_PRIVATE_KEY', value: this._privateKey, testPrefix: 'prv_test_', prodPrefix: 'prv_prod_' },
+            { name: 'WOMPI_EVENTS_SECRET', value: this._eventsSecret, testPrefix: 'test_events_', prodPrefix: 'prod_events_' },
+            { name: 'WOMPI_INTEGRITY_SECRET', value: this._integritySecret, testPrefix: 'test_integrity_', prodPrefix: 'prod_integrity_' },
+        ];
+        const resolved = credentials.map((credential) => ({
+            ...credential,
+            environment: this.environmentOfCredential(
+                credential.value,
+                credential.testPrefix,
+                credential.prodPrefix,
+            ),
+        }));
+
+        const invalid = resolved.filter((credential) => credential.value && credential.environment === 'unconfigured');
+        if (invalid.length) {
+            this._misconfigured = true;
+            this._environment = 'unconfigured';
+            this.logger.error(
+                `Wompi credentials have an invalid role/prefix (${invalid.map((item) => item.name).join(', ')}) — adapter disabled`,
+            );
+            return;
+        }
+
+        const envs = resolved
+            .map((credential) => credential.environment)
+            .filter((e): e is Exclude<WompiEnvironment, 'unconfigured'> => e !== 'unconfigured');
 
         const distinct = Array.from(new Set(envs));
         if (distinct.length > 1) {
@@ -70,6 +92,23 @@ export class WompiConfigService implements OnModuleInit {
         }
         this._environment = distinct[0];
 
+        // `NODE_ENV=production` is where paid entitlements live. Accepting a
+        // complete test quartet there would make sandbox approvals unlock real
+        // tenant plans. Keep isolated production-mode staging possible only via
+        // an explicit, conspicuous opt-in; the production deploy never sets it.
+        if (
+            process.env.NODE_ENV === 'production'
+            && this._environment === 'sandbox'
+            && process.env.WOMPI_ALLOW_SANDBOX_IN_PRODUCTION !== 'true'
+        ) {
+            this._misconfigured = true;
+            this._environment = 'unconfigured';
+            this.logger.error(
+                'Wompi sandbox credentials are forbidden in NODE_ENV=production — adapter disabled',
+            );
+            return;
+        }
+
         const missing = [
             !this._publicKey && 'WOMPI_PUBLIC_KEY',
             !this._privateKey && 'WOMPI_PRIVATE_KEY',
@@ -83,31 +122,34 @@ export class WompiConfigService implements OnModuleInit {
         }
     }
 
-    private environmentOfKey(key: string | undefined, prefix: string): WompiEnvironment {
+    private environmentOfCredential(
+        key: string | undefined,
+        testPrefix: string,
+        productionPrefix: string,
+    ): WompiEnvironment {
         if (!key) return 'unconfigured';
-        if (key.startsWith(`${prefix}test_`)) return 'sandbox';
-        if (key.startsWith(`${prefix}prod_`)) return 'production';
+        if (key.startsWith(testPrefix)) return 'sandbox';
+        if (key.startsWith(productionPrefix)) return 'production';
         return 'unconfigured';
     }
 
-    /** Event/integrity secrets carry the environment FIRST: `test_events_…`, `prod_integrity_…`. */
-    private environmentOfEventKey(key: string | undefined): WompiEnvironment {
-        if (!key) return 'unconfigured';
-        if (key.startsWith('test_')) return 'sandbox';
-        if (key.startsWith('prod_')) return 'production';
-        return 'unconfigured';
-    }
-
-    /** True when charges can actually be executed (private key + integrity secret + a known environment). */
+    /**
+     * True only for a complete rail.  A private/integrity pair can create a
+     * charge, but without the public key acceptance/tokenization fails and
+     * without the event secret settlement notifications cannot be trusted.
+     * Routing must therefore fail closed unless all four credentials match.
+     */
     isConfigured(): boolean {
         return !this._misconfigured
             && this._environment !== 'unconfigured'
-            && Boolean(this._privateKey && this._integritySecret);
+            && Boolean(this._publicKey && this._privateKey && this._eventsSecret && this._integritySecret);
     }
 
     /** True when incoming webhooks can be verified. Separate from isConfigured: reading events needs only the events secret. */
     canVerifyWebhooks(): boolean {
-        return !this._misconfigured && Boolean(this._eventsSecret);
+        return !this._misconfigured
+            && this._environment !== 'unconfigured'
+            && Boolean(this._eventsSecret);
     }
 
     environment(): WompiEnvironment {
@@ -116,11 +158,14 @@ export class WompiConfigService implements OnModuleInit {
 
     /** The API base URL is derived from the keys, never configured independently. */
     get baseUrl(): string {
+        if (this._misconfigured || this._environment === 'unconfigured') {
+            throw new Error('Wompi environment is not configured');
+        }
         return this._environment === 'production' ? PRODUCTION_BASE_URL : SANDBOX_BASE_URL;
     }
 
     get publicKey(): string | undefined {
-        return this._publicKey;
+        return this._misconfigured || this._environment === 'unconfigured' ? undefined : this._publicKey;
     }
 
     get privateKey(): string {
@@ -134,7 +179,7 @@ export class WompiConfigService implements OnModuleInit {
     }
 
     get eventsSecret(): string | undefined {
-        return this._eventsSecret;
+        return this.canVerifyWebhooks() ? this._eventsSecret : undefined;
     }
 
     private requireConfigured(): void {

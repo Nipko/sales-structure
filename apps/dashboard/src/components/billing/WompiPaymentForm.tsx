@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, CreditCard, ExternalLink, Loader2, Smartphone } from "lucide-react";
+import {
+    AlertTriangle,
+    CheckCircle2,
+    CreditCard,
+    ExternalLink,
+    Landmark,
+    Loader2,
+    RefreshCw,
+    Smartphone,
+} from "lucide-react";
 import {
     api,
     type BillingPublicConfig,
@@ -11,6 +20,13 @@ import {
     type PaymentSourceStatus,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+    buildWompiReturnUrl,
+    clearPendingWompiSource,
+    readPendingWompiSource,
+    savePendingWompiSource,
+} from "@/lib/billing-checkout-session";
+import { resolveWompiPaymentKinds } from "@/lib/wompi-payment-methods";
 
 interface WompiPaymentFormProps {
     tenantId: string;
@@ -27,18 +43,11 @@ const API_BY_ENVIRONMENT: Record<string, string> = {
     production: "https://production.wompi.co/v1",
 };
 
-/** Method flags of the operator switch → the `kind` the API stores. */
-const KIND_BY_METHOD_FLAG: Record<string, PaymentSourceKind> = {
-    card: "card",
-    nequi: "nequi",
-    bancolombiaTransfer: "bancolombia_transfer",
-};
-
 /** Methods this form can tokenize from the browser. */
-const TOKENIZABLE_KINDS: PaymentSourceKind[] = ["card", "nequi"];
+const TOKENIZABLE_KINDS: PaymentSourceKind[] = ["card", "nequi", "bancolombia_transfer"];
 
 const POLL_INTERVAL_MS = 3_000;
-const POLL_MAX_ATTEMPTS = 40; // ~2 minutes
+const POLL_MAX_ATTEMPTS = 100; // ~5 minutes; bank account selection can take longer than a wallet push.
 
 type Phase = "form" | "tokenizing" | "saving" | "awaiting_auth" | "timeout" | "saved";
 
@@ -64,10 +73,9 @@ export default function WompiPaymentForm({
     const t = useTranslations("wompiForm");
 
     const availableKinds = useMemo(() => {
-        const kinds = config.methods
-            .map((flag) => KIND_BY_METHOD_FLAG[flag])
-            .filter((kind): kind is PaymentSourceKind => !!kind);
-        return kinds.length ? kinds : (["card"] as PaymentSourceKind[]);
+        // An empty list is an intentional runtime kill switch. Falling back to
+        // card here would offer a method the API is guaranteed to reject.
+        return resolveWompiPaymentKinds(config.methods);
     }, [config.methods]);
 
     const supportedKinds = useMemo(
@@ -95,6 +103,8 @@ export default function WompiPaymentForm({
     const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
     const mounted = useRef(true);
+    const resumedSourceRef = useRef<string | null>(null);
+    const acceptanceRequestRef = useRef(0);
     useEffect(() => {
         mounted.current = true;
         return () => { mounted.current = false; };
@@ -104,19 +114,31 @@ export default function WompiPaymentForm({
         if (!supportedKinds.includes(kind)) setKind(supportedKinds[0] ?? "card");
     }, [supportedKinds, kind]);
 
-    useEffect(() => {
-        let cancelled = false;
+    const refreshAcceptance = useCallback(async (preserveError = false) => {
+        const requestId = ++acceptanceRequestRef.current;
         setAcceptanceLoading(true);
-        api.getPaymentAcceptance(tenantId)
-            .then((res) => {
-                if (cancelled) return;
-                if (res.success && res.data) setAcceptance(res.data);
-                else setErrorKey("errors.acceptanceUnavailable");
-            })
-            .catch(() => { if (!cancelled) setErrorKey("errors.acceptanceUnavailable"); })
-            .finally(() => { if (!cancelled) setAcceptanceLoading(false); });
-        return () => { cancelled = true; };
+        setAcceptance(null);
+        if (!preserveError) {
+            setErrorKey(null);
+            setErrorDetail(null);
+        }
+        try {
+            const res = await api.getPaymentAcceptance(tenantId);
+            if (!mounted.current || acceptanceRequestRef.current !== requestId) return;
+            if (res.success && res.data) setAcceptance(res.data);
+            else setErrorKey("errors.acceptanceUnavailable");
+        } catch {
+            if (mounted.current && acceptanceRequestRef.current === requestId) {
+                setErrorKey("errors.acceptanceUnavailable");
+            }
+        } finally {
+            if (mounted.current && acceptanceRequestRef.current === requestId) {
+                setAcceptanceLoading(false);
+            }
+        }
     }, [tenantId]);
+
+    useEffect(() => { void refreshAcceptance(); }, [refreshAcceptance]);
 
     const baseUrl = config.environment ? API_BY_ENVIRONMENT[config.environment] : undefined;
 
@@ -125,13 +147,25 @@ export default function WompiPaymentForm({
     // shortcut, it is an unlawful collection.
     const consentComplete = !!acceptance
         && acceptedPolicy
-        && (!acceptance.personalDataAuth || acceptedPersonalData);
+        && acceptedPersonalData;
 
     const fail = useCallback((key: string, detail?: string) => {
         setErrorKey(key);
         setErrorDetail(detail ?? null);
         setPhase("form");
     }, []);
+
+    // The API consumes the consent challenge atomically as soon as saving is
+    // attempted. A failed request must therefore fetch a fresh challenge and
+    // force the customer to accept both exact contract versions again. The
+    // provider token is intentionally not retained, so the next submit also
+    // tokenizes the instrument again.
+    const failAfterSaveAttempt = useCallback((key: string, detail?: string) => {
+        setAcceptedPolicy(false);
+        setAcceptedPersonalData(false);
+        fail(key, detail);
+        void refreshAcceptance(true);
+    }, [fail, refreshAcceptance]);
 
     /** Mints a single-use token with the publishable key — card data goes straight to Wompi. */
     const tokenize = useCallback(async (): Promise<string | null> => {
@@ -158,11 +192,19 @@ export default function WompiPaymentForm({
                 exp_year: match[2],
                 card_holder: holder.trim(),
             };
-        } else {
+        } else if (kind === "nequi") {
             const digits = phone.replace(/\D/g, "");
             if (digits.length !== 10) { fail("errors.invalidPhone"); return null; }
             path = "/tokens/nequi";
             body = { phone_number: digits };
+        } else {
+            path = "/tokens/bancolombia_transfer";
+            body = {
+                // No provider token or plan slug travels in the callback URL.
+                // The tenant-scoped pending source is recovered from sessionStorage.
+                redirect_url: buildWompiReturnUrl(window.location.href),
+                type_auth: "TOKEN",
+            };
         }
 
         try {
@@ -181,6 +223,11 @@ export default function WompiPaymentForm({
                 fail("errors.tokenizeFailed", json?.error?.reason || json?.error?.type);
                 return null;
             }
+            const tokenStatus = String(json?.data?.status ?? "").toUpperCase();
+            if (tokenStatus === "DECLINED" || tokenStatus === "ERROR") {
+                fail("errors.declined");
+                return null;
+            }
             return String(token);
         } catch {
             fail("errors.tokenizeFailed");
@@ -193,20 +240,42 @@ export default function WompiPaymentForm({
         for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
             await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
             if (!mounted.current) return;
-            const res = await api.getPaymentSourceStatus(tenantId, sourceId);
+            const res = await api.getPaymentSourceStatus(tenantId, sourceId).catch(() => null);
+            if (!res?.success) continue;
             const status = res.data?.status;
+            if (res.data?.authorizationUrl) setAuthorizationUrl(res.data.authorizationUrl);
             if (status === "available") {
+                clearPendingWompiSource(sessionStorage, tenantId);
                 setPhase("saved");
                 onSaved({ id: sourceId, status });
                 return;
             }
             if (status === "declined" || status === "voided" || status === "error") {
+                clearPendingWompiSource(sessionStorage, tenantId);
                 fail("errors.declined");
                 return;
             }
         }
         if (mounted.current) setPhase("timeout");
     }, [tenantId, onSaved, fail]);
+
+    // Bancolombia redirects away from this page while the customer selects an
+    // account. Recover the local source id after returning and continue polling;
+    // the Wompi token itself remains server-side and never appears in the URL or
+    // browser storage.
+    useEffect(() => {
+        const pending = readPendingWompiSource(sessionStorage, tenantId);
+        if (!pending || resumedSourceRef.current === pending.sourceId) return;
+        if (!supportedKinds.includes(pending.kind)) {
+            clearPendingWompiSource(sessionStorage, tenantId);
+            return;
+        }
+        resumedSourceRef.current = pending.sourceId;
+        setKind(pending.kind);
+        setAuthorizationUrl(pending.authorizationUrl ?? null);
+        setPhase("awaiting_auth");
+        void waitForAuthorization(pending.sourceId);
+    }, [supportedKinds, tenantId, waitForAuthorization]);
 
     const handleSubmit = async () => {
         if (phase !== "form" || busy || !consentComplete) return;
@@ -218,24 +287,51 @@ export default function WompiPaymentForm({
         if (!token || !mounted.current) return;
 
         setPhase("saving");
-        const res = await api.addPaymentSource(tenantId, { kind, token, makeDefault: true });
+        if (!acceptance) {
+            fail("errors.acceptanceUnavailable");
+            return;
+        }
+        const res = await api.addPaymentSource(tenantId, {
+            kind,
+            token,
+            makeDefault: true,
+            // These booleans are intentionally literal true values. The API
+            // consumes the one-use consentId and rejects missing/false/expired
+            // consent, so a caller cannot bypass the two checkboxes.
+            consentId: acceptance.consentId,
+            acceptEndUserPolicy: true,
+            acceptPersonalDataAuth: true,
+        });
         if (!mounted.current) return;
         if (!res.success || !res.data) {
-            fail("errors.saveFailed", res.error);
+            if (res.errorCode === "acceptance_challenge_invalid") {
+                failAfterSaveAttempt("errors.acceptanceExpired");
+                return;
+            }
+            failAfterSaveAttempt("errors.saveFailed", res.error);
             return;
         }
 
         const { id, status, requiresAuthorization, authorizationUrl: url } = res.data;
-        if (status === "declined" || status === "error") {
-            fail("errors.declined");
+        if (status === "declined" || status === "voided" || status === "error") {
+            failAfterSaveAttempt("errors.declined");
             return;
         }
         if (requiresAuthorization) {
             setAuthorizationUrl(url ?? null);
+            // Prevent the recovery effect from starting a second polling loop
+            // while this first one is already running.
+            resumedSourceRef.current = id;
+            savePendingWompiSource(sessionStorage, tenantId, {
+                sourceId: id,
+                kind,
+                authorizationUrl: url,
+            });
             setPhase("awaiting_auth");
             void waitForAuthorization(id);
             return;
         }
+        clearPendingWompiSource(sessionStorage, tenantId);
         setPhase("saved");
         onSaved({ id, status });
     };
@@ -243,6 +339,14 @@ export default function WompiPaymentForm({
     const inputCls = "w-full h-11 px-3 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30";
     const labelCls = "block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1";
     const errorText = errorKey ? t(errorKey) : null;
+
+    if (!baseUrl || !config.publicKey) {
+        return (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {t("errors.publicKeyMissing")}
+            </div>
+        );
+    }
 
     if (acceptanceLoading) {
         return (
@@ -257,12 +361,16 @@ export default function WompiPaymentForm({
     if (!supportedKinds.length) {
         return (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {t("methodUnsupportedNote")}
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                {availableKinds.length ? t("methodUnsupportedNote") : t("noMethodsAvailable")}
             </div>
         );
     }
 
     if (phase === "awaiting_auth" || phase === "timeout") {
+        const pendingHint = kind === "bancolombia_transfer"
+            ? t("pendingAuthHintBancolombia")
+            : t("pendingAuthHintNequi");
         return (
             <div className="space-y-3">
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
@@ -272,17 +380,32 @@ export default function WompiPaymentForm({
                             : <><AlertTriangle size={15} /> {t("pendingTimeoutTitle")}</>}
                     </p>
                     <p className="mt-1">
-                        {phase === "awaiting_auth" ? t("pendingAuthHint") : t("pendingTimeoutHint")}
+                        {phase === "awaiting_auth" ? pendingHint : t("pendingTimeoutHint")}
                     </p>
                     {authorizationUrl && (
                         <a
                             href={authorizationUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
                             className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold underline"
                         >
                             <ExternalLink size={12} /> {t("pendingAuthLink")}
                         </a>
+                    )}
+                    {phase === "timeout" && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const pending = readPendingWompiSource(sessionStorage, tenantId);
+                                if (!pending) {
+                                    fail("errors.authorizationExpired");
+                                    return;
+                                }
+                                setPhase("awaiting_auth");
+                                void waitForAuthorization(pending.sourceId);
+                            }}
+                            className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold underline"
+                        >
+                            <RefreshCw size={12} /> {t("checkAgain")}
+                        </button>
                     )}
                 </div>
             </div>
@@ -331,7 +454,11 @@ export default function WompiPaymentForm({
                                         : "border-neutral-200 text-neutral-600 hover:border-indigo-300 dark:border-neutral-700 dark:text-neutral-300",
                                 )}
                             >
-                                {option === "card" ? <CreditCard size={13} /> : <Smartphone size={13} />}
+                                {option === "card"
+                                    ? <CreditCard size={13} />
+                                    : option === "nequi"
+                                        ? <Smartphone size={13} />
+                                        : <Landmark size={13} />}
                                 {t(`methods.${option}`)}
                             </button>
                         ))}
@@ -398,7 +525,7 @@ export default function WompiPaymentForm({
                         />
                     </div>
                 </>
-            ) : (
+            ) : kind === "nequi" ? (
                 <div>
                     <label className={labelCls} htmlFor="wompi-nequi-phone">{t("nequiPhone")}</label>
                     <input
@@ -411,6 +538,14 @@ export default function WompiPaymentForm({
                         className={inputCls}
                     />
                     <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{t("nequiHint")}</p>
+                </div>
+            ) : (
+                <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/50 dark:text-neutral-300">
+                    <Landmark size={17} className="mt-0.5 shrink-0 text-indigo-500" />
+                    <div>
+                        <p className="font-semibold text-neutral-800 dark:text-neutral-200">{t("bancolombiaTitle")}</p>
+                        <p className="mt-1">{t("bancolombiaHint")}</p>
+                    </div>
                 </div>
             )}
 
@@ -431,34 +566,43 @@ export default function WompiPaymentForm({
                                     href={acceptance.endUserPolicy.permalink}
                                     target="_blank"
                                     rel="noopener noreferrer"
+                                    title={t("contractVersion", { version: acceptance.endUserPolicy.version })}
                                     className="inline-flex items-center gap-0.5 font-medium text-indigo-600 underline dark:text-indigo-400"
                                 >
-                                    {t("viewContract")} <ExternalLink size={10} />
+                                    {t("viewContract")} · {t("contractVersion", { version: acceptance.endUserPolicy.version.slice(0, 8) })} <ExternalLink size={10} />
                                 </a>
                             </span>
                         </label>
-                        {acceptance.personalDataAuth && (
-                            <label className="flex items-start gap-2 text-[11px] text-neutral-600 dark:text-neutral-400">
-                                <input
-                                    type="checkbox"
-                                    checked={acceptedPersonalData}
-                                    onChange={(e) => setAcceptedPersonalData(e.target.checked)}
-                                    className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500/30 dark:border-neutral-600"
-                                />
-                                <span>
-                                    {t("acceptPersonalData")}{" "}
-                                    <a
-                                        href={acceptance.personalDataAuth.permalink}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-0.5 font-medium text-indigo-600 underline dark:text-indigo-400"
-                                    >
-                                        {t("viewContract")} <ExternalLink size={10} />
-                                    </a>
-                                </span>
-                            </label>
-                        )}
+                        <label className="flex items-start gap-2 text-[11px] text-neutral-600 dark:text-neutral-400">
+                            <input
+                                type="checkbox"
+                                checked={acceptedPersonalData}
+                                onChange={(e) => setAcceptedPersonalData(e.target.checked)}
+                                className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500/30 dark:border-neutral-600"
+                            />
+                            <span>
+                                {t("acceptPersonalData")}{" "}
+                                <a
+                                    href={acceptance.personalDataAuth.permalink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={t("contractVersion", { version: acceptance.personalDataAuth.version })}
+                                    className="inline-flex items-center gap-0.5 font-medium text-indigo-600 underline dark:text-indigo-400"
+                                >
+                                    {t("viewContract")} · {t("contractVersion", { version: acceptance.personalDataAuth.version.slice(0, 8) })} <ExternalLink size={10} />
+                                </a>
+                            </span>
+                        </label>
                     </>
+                )}
+                {!acceptance && (
+                    <button
+                        type="button"
+                        onClick={() => { void refreshAcceptance(); }}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 underline dark:text-indigo-400"
+                    >
+                        <RefreshCw size={12} /> {t("checkAgain")}
+                    </button>
                 )}
             </div>
 
@@ -473,7 +617,14 @@ export default function WompiPaymentForm({
             >
                 {working
                     ? <><Loader2 className="animate-spin" size={16} /> {t("processing")}</>
-                    : <><CreditCard size={16} /> {submitLabel || t("save")}</>}
+                    : <>
+                        {kind === "card"
+                            ? <CreditCard size={16} />
+                            : kind === "nequi"
+                                ? <Smartphone size={16} />
+                                : <Landmark size={16} />}
+                        {submitLabel || t("save")}
+                    </>}
             </button>
 
             {!consentComplete && (

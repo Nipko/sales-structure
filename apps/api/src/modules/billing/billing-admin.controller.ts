@@ -335,8 +335,9 @@ export class BillingAdminController {
 
     // ── Provider routing (the operator switch) ──────────────────
     // Which provider bills which country is runtime configuration, not code.
-    // Flipping a country back to MercadoPago (or forward to Wompi) is a settings
-    // write — no deploy, no rebuild. Scope is NEW acquisitions only: live
+    // Selecting an enabled/routable provider such as Wompi is a settings write
+    // — no deploy, no rebuild. Mercado Pago cannot be selected: its literal is
+    // read-only legacy data. Scope is NEW acquisitions only: live
     // subscriptions keep the provider they were created with, and their webhooks
     // and reconciliation keep running even for a disabled provider.
 

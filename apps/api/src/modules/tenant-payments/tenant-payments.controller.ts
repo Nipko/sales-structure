@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Logger, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -10,8 +10,6 @@ import { TenantPaymentsWebhookService } from './tenant-payments-webhook.service'
 @ApiTags('tenant-payments')
 @Controller('tenant-payments')
 export class TenantPaymentsController {
-    private readonly logger = new Logger(TenantPaymentsController.name);
-
     constructor(
         private readonly service: TenantPaymentsService,
         private readonly webhook: TenantPaymentsWebhookService,
@@ -38,7 +36,7 @@ export class TenantPaymentsController {
     @ApiOperation({ summary: 'Save MercadoPago credentials (verified against MP before storing)' })
     async setConfig(
         @Param('tenantId') tenantId: string,
-        @Body() body: { accessToken?: string; publicKey?: string },
+        @Body() body: { accessToken?: string; publicKey?: string; webhookSecret?: string },
     ) {
         const data = await this.service.setConfig(tenantId, body || {});
         return { success: true, data };
@@ -57,29 +55,22 @@ export class TenantPaymentsController {
     /**
      * Webhook de MercadoPago para los cobros DEL TENANT.
      *
-     * Público a propósito: lo llama MercadoPago, no un usuario. La seguridad no
-     * viene de un JWT sino de que nunca se confía en el cuerpo del webhook —
-     * sólo trae un id de pago, y el estado real se le vuelve a preguntar a
-     * MercadoPago con el token del propio tenant. Un tercero que adivine la URL
-     * y mande un id falso no consigue nada: MP no le va a devolver un pago
-     * aprobado que no existe.
+     * Público a propósito: lo llama MercadoPago, no un usuario. La seguridad
+     * viene de la firma HMAC por tenant y de volver a consultar el pago con el
+     * token de esa misma cuenta; el cuerpo por sí solo nunca cambia estado.
      */
     @Post('webhook/:tenantId')
     @ApiOperation({ summary: 'MercadoPago webhook for tenant-side payments (public)' })
     async handleWebhook(
-        @Param('tenantId') tenantId: string,
+        @Param('tenantId', new ParseUUIDPipe()) tenantId: string,
         @Body() body: any,
         @Query() query: any,
+        @Headers('x-signature') signature?: string,
+        @Headers('x-request-id') requestId?: string,
     ) {
-        // Se responde 200 SIEMPRE y se procesa antes de responder. MP reintenta
-        // ante un no-2xx, así que un error nuestro no se pierde; pero tampoco
-        // queremos que MP marque la URL como caída por un pago que no nos
-        // interesa.
-        try {
-            await this.webhook.process(tenantId, body, query);
-        } catch (e: any) {
-            this.logger.warn(`[TenantPayments] webhook falló para ${tenantId}: ${e.message}`);
-        }
+        // Los errores transitorios se dejan propagar como 5xx para que Mercado
+        // Pago reintente; las firmas inválidas responden 401.
+        await this.webhook.process(tenantId, body, query, signature, requestId);
         return { received: true };
     }
 }

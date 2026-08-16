@@ -26,6 +26,6 @@ import { WebhookEventListenerService } from './webhook-event-listener.service';
         WebhookSubscriptionService,
         WebhookEventListenerService,
     ],
-    exports: [PublicApiKeyService, WebhookSubscriptionService],
+    exports: [PublicApiKeyService, PublicApiGuard, WebhookSubscriptionService],
 })
 export class PublicApiModule {}

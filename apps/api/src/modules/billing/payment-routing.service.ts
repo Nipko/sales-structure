@@ -10,6 +10,7 @@ import {
 } from './types/provider-types';
 import { providerSupportsCountry } from './adapters/provider-capabilities';
 import { normalizeBillingCountry } from './billing-country-config';
+import { WompiConfigService } from './adapters/wompi-config.service';
 
 /** Wompi payment methods that can be switched on independently once verified in production. */
 export interface WompiMethodFlags {
@@ -53,7 +54,7 @@ const SETTING_WOMPI_METHODS = 'billing.wompi_methods_enabled';
  * The engine now ships complete — scheduling, charging, polling, dunning,
  * reconciliation, stored payment methods and proration — so the switch accepts
  * these providers. They still stay OFF until an operator enables them: the kill
- * switch defaults to disabled for everything except MercadoPago.
+ * switch defaults to disabled for everything except Wompi.
  */
 export const INTERNAL_RECURRING_ENGINE_AVAILABLE = true;
 
@@ -91,11 +92,9 @@ const DEFAULT_BY_COUNTRY: Record<string, PaymentProviderName> = {
 };
 
 /**
- * Card is the only method proven end to end against the provider.
- *
- * Nequi is implemented but unverified, and it additionally needs the merchant to
- * enable recurring subscriptions in their own Nequi Negocios portal — a step
- * outside this codebase. Bancolombia transfer has no checkout flow yet.
+ * Card is the only method enabled by default. Nequi and Botón Bancolombia are
+ * implemented end to end, but remain behind independent flags until the merchant
+ * activation and a real production smoke test for each method have passed.
  */
 const DEFAULT_WOMPI_METHODS: WompiMethodFlags = {
     card: true,
@@ -155,6 +154,7 @@ export class PaymentRoutingService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly providerFactory: PaymentProviderFactory,
+        private readonly wompiConfig: WompiConfigService,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -187,8 +187,8 @@ export class PaymentRoutingService {
             };
             await this.redis.setJson(this.CACHE_KEY, config, this.CACHE_TTL).catch(() => undefined);
         } catch (err: any) {
-            // DB unreachable: keep MercadoPago alive (fail-open) and everything
-            // else off (fail-closed). Do NOT cache this degraded answer.
+            // DB unreachable: use the fail-safe defaults above (Wompi is the only
+            // platform rail). Do NOT cache this degraded answer.
             this.logger.error(`[Billing] Could not read provider routing config: ${err?.message}. Using safe defaults.`);
         }
 
@@ -396,6 +396,12 @@ export class PaymentRoutingService {
         const usable = (name: PaymentProviderName): string | null => {
             if (!this.providerFactory.isRegistered(name)) return 'adapter_not_registered';
             if (!config.providersEnabled[name]) return 'provider_disabled';
+            // A runtime switch is intent, not readiness. Advertising Wompi with
+            // a missing/partial/mixed quartet sends onboarding through expensive
+            // tenant provisioning only to fail at the final billing write.
+            if (name === 'wompi' && !this.wompiConfig.isConfigured()) {
+                return 'provider_not_configured';
+            }
             const caps = this.providerFactory.capabilitiesOf(name);
             if (!caps.nativeSubscriptions && !INTERNAL_RECURRING_ENGINE_AVAILABLE) {
                 // Would create a tenant that can never be charged.

@@ -1,6 +1,6 @@
 # Manual de Offboarding — Parallly
 
-> Actualizado: 2026-07-23 · Código de referencia: `apps/api/src/modules/offboarding/*`, `apps/api/src/modules/billing/*`, `apps/api/src/modules/meta-compliance/*`
+> Actualizado: 2026-08-15 · Código de referencia: `apps/api/src/modules/offboarding/*`, `apps/api/src/modules/billing/*`, `apps/api/src/modules/meta-compliance/*`
 
 ## Resumen
 
@@ -14,13 +14,15 @@ Todo el ciclo está codificado en `OffboardingService` (`executeOffboarding`, `p
 
 ## 1. Modelo de estado del tenant
 
-No existe una máquina de estados tipo Stripe `active→grace→suspended→archived→deleted`. El estado real se compone de **dos campos en la tabla global `tenants`** más temporizadores en Redis.
+El estado operativo se compone del snapshot en `tenants` y la suscripción global
+`billing_subscriptions`. El reloj de mora durable es `dunning_started_at`; Redis
+es sólo un espejo/cache y nunca la fuente exclusiva del plazo.
 
 | Campo (`tenants`) | Tipo | Valores | Uso |
 |---|---|---|---|
 | `is_active` | boolean | `true` / `false` | Gate de acceso duro. `false` = tenant offboarded (bloqueado, datos intactos) |
 | `subscription_status` | string | `pending_auth` \| `trialing` \| `active` \| `past_due` \| `cancelled` \| `expired` | Estado de la suscripción |
-| `payment_provider` | string | `mercadopago` \| `stripe` \| `mock` | PSP asignado (MercadoPago primario) |
+| `payment_provider` | string | `wompi` \| `stripe` \| `mock` (más `mercadopago` legado) | Wompi es el riel de suscripción vivo para CO; Mercado Pago no es ruteable |
 | `current_period_end` | timestamp | — | Fin del periodo pagado (dispara offboard al cancelar) |
 | `trial_ends_at` | timestamp | — | Fin de trial (dispara `past_due`) |
 
@@ -30,7 +32,7 @@ No existe una máquina de estados tipo Stripe `active→grace→suspended→arch
 
 | Key | TTL | Significado |
 |---|---|---|
-| `offboard:past_due:{tenantId}` | 30 días | Inicio del periodo de gracia. Se offboardea a los **7 días** |
+| `offboard:past_due:{tenantId}` | 30 días | Espejo del `dunning_started_at` durable. La política expira al **día 10** |
 | `billing:soft_lock_notified:{tenantId}` | 7 días | Dedup del aviso de soft-lock (día 3) |
 | `sub_status:{tenantId}` | — | Cache de estado de suscripción (se invalida en cada cambio) |
 | `tenant_plan:{tenantId}` | — | Cache de plan (se invalida en cada cambio) |
@@ -42,7 +44,7 @@ No existe una máquina de estados tipo Stripe `active→grace→suspended→arch
 | Operación normal | `true` | `active` / `trialing` | Activos | Permitido |
 | Pago fallido / trial vencido | `true` | `past_due` | Activos (banner + soft-lock al día 3) | Permitido |
 | Cancelación voluntaria (aún en periodo) | `true` | `cancelled` | Activos hasta `current_period_end` | Permitido |
-| Gracia agotada (día 7) | `true` | `expired` | Activos hasta el offboard | Permitido |
+| Gracia agotada (día 10) | `true` | `expired` | Activos hasta el offboard | Bloqueado por suscripción |
 | Offboarded (suspendido/expirado/cancelado y ejecutado) | `false` | `cancelled` / `expired` | Desconectados, credenciales revocadas | Bloqueado (`SuspendedScreen`) |
 | Schema eliminado (archiveCleaner @90d, o purge) | fila borrada en purge | — | N/A | N/A |
 
@@ -64,11 +66,18 @@ En el dashboard el tenant lo dispara desde `settings/billing` (`api.cancelAccoun
 
 ### 2.2 Fallo de pago / trial vencido → gracia
 
-- **Webhook MercadoPago** `POST /api/v1/billing/webhook/mercadopago` → adaptador verifica firma (HMAC-SHA256) + idempotencia Redis → `BillingService` emite `billing.payment.failed`.
-- `OffboardingCronService.onPaymentFailed` arranca el timer `offboard:past_due:{tenantId}` (30d TTL) si no existía.
-- En paralelo, `trialExpiryDetector` (cada 30 min) transiciona `trialing` con `trial_ends_at < now` → `past_due` y arranca el mismo timer.
-- `graceEnforcer` (@3AM): al **día 3** emite `billing.subscription.soft_locked` (una sola vez, dedup con `billing:soft_lock_notified`); al **día 7** pasa a `expired` y emite `SUBSCRIPTION_EXPIRED`.
+- **Webhook Wompi** `POST /api/v1/billing/webhook/wompi` verifica checksum y
+  resuelve el intento exacto del motor; una transacción Wompi no reconocida jamás
+  activa una suscripción por email.
+- El primer fallo/trial vencido fija `billing_subscriptions.dunning_started_at`
+  mediante CAS y actualiza el espejo `offboard:past_due:{tenantId}`.
+- `trialExpiryDetector` (cada 30 min) sólo transiciona una fila que siga
+  `trialing`; no puede pisar un pago que acaba de activarla.
+- `graceEnforcer` (@3AM): al **día 3** aplica soft-lock; al **día 10** pasa a
+  `expired`, siempre con CAS para no vencer una suscripción ya recuperada.
 - Si el pago entra (`billing.payment.succeeded`), `onPaymentSucceeded` limpia `offboard:past_due`, `soft_lock_notified`, `sub_status` y `tenant_plan` → acceso restaurado.
+- Una pausa voluntaria usa el marcador `paused`, no inicia dunning y queda
+  excluida de expiración hasta que el tenant la reanude.
 
 ### 2.3 Suspensión por admin (violación de políticas)
 
@@ -78,7 +87,8 @@ Endpoint: `POST /api/v1/offboarding/:tenantId/suspend` (`super_admin`) → `admi
 
 - Los canales **no** se desconectan.
 - Los agentes/calendarios/números que excedan el nuevo límite quedan gateados por las features del plan (`maxChannelAccounts`, `maxCalendars`, etc.).
-- El downgrade se sincroniza con MercadoPago desde el panel de billing.
+- El downgrade queda agendado en el motor interno para el fin del periodo; no
+  existe una suscripción remota Wompi que sincronizar.
 
 ---
 
@@ -201,12 +211,12 @@ Todos los emisores de eventos deduplican vía `billing_events UNIQUE(provider, p
 | Cron | Schedule | Qué hace |
 |---|---|---|
 | `trialExpiryDetector` | `*/30 * * * *` | `trialing` con `trial_ends_at < now` → `past_due`; arranca `offboard:past_due`; emite `TRIAL_ENDED` |
-| `graceEnforcer` | `0 3 * * *` | (1) `past_due` **≥7d** → `expired` + `SUBSCRIPTION_EXPIRED`; **≥3d** → `soft_locked`. (2) `cancelled` con `current_period_end < now` → `executeOffboarding` |
+| `graceEnforcer` | `0 3 * * *` | (1) `past_due` no pausado **≥10d** → `expired` + `SUBSCRIPTION_EXPIRED`; **≥3d** → `soft_locked`, con CAS. (2) `cancelled` con `current_period_end < now` → `executeOffboarding` |
 | `archiveCleaner` | `0 4 * * *` | `is_active=false` **y** `updated_at < now-90d` → `DROP SCHEMA "tenant_x" CASCADE` + audit `schema_dropped`. (No borra la fila de `tenants` ni el media; es distinto de `purgeTenant`.) |
 | `purgeStaleInactiveChannels` | `0 5 * * *` | `DELETE FROM channel_accounts WHERE is_active=false AND COALESCE(metadata->>'disconnected_at')::timestamp, updated_at) < now-90d` + 1 audit por lote |
 
 **Listeners de billing:**
-- `@OnEvent('billing.payment.failed')` → arranca `offboard:past_due`.
+- `@OnEvent('billing.payment.failed')` → fija el reloj DB de dunning y su espejo Redis.
 - `@OnEvent('billing.payment.succeeded')` → limpia timers + caches → acceso restaurado.
 
 ---

@@ -26,6 +26,15 @@ describe('AgentConsoleGateway tenant and role isolation', () => {
             removeAgent: jest.fn().mockResolvedValue([]),
         };
         const prisma = overrides.prisma || {
+            tenant: {
+                findUnique: jest.fn().mockResolvedValue({
+                    subscriptionStatus: 'active',
+                    subscription: {
+                        status: 'active', trialEndsAt: null, cancelAtPeriodEnd: false,
+                        currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+                    },
+                }),
+            },
             user: {
                 findUnique: jest.fn().mockResolvedValue({ firstName: 'Ada', lastName: 'Lovelace' }),
                 findFirst: jest.fn().mockResolvedValue({ role: 'tenant_agent', email: 'ada@example.com' }),
@@ -57,6 +66,7 @@ describe('AgentConsoleGateway tenant and role isolation', () => {
             handshake: { auth: { token: 'jwt' } },
             emit: jest.fn(),
             disconnect: jest.fn(),
+            use: jest.fn(),
             join: jest.fn(),
             leave: jest.fn(),
             to: jest.fn().mockReturnValue(room),
@@ -75,6 +85,15 @@ describe('AgentConsoleGateway tenant and role isolation', () => {
 
     it('rejects a viewer even when their signed token and tenant are otherwise valid', async () => {
         const prisma = {
+            tenant: {
+                findUnique: jest.fn().mockResolvedValue({
+                    subscriptionStatus: 'active',
+                    subscription: {
+                        status: 'active', trialEndsAt: null, cancelAtPeriodEnd: false,
+                        currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+                    },
+                }),
+            },
             user: {
                 findUnique: jest.fn().mockResolvedValue({
                     isActive: true,
@@ -113,6 +132,64 @@ describe('AgentConsoleGateway tenant and role isolation', () => {
         }));
         expect(socket.disconnect).toHaveBeenCalledWith(true);
         expect((socket as any).jwtPayload).toBeUndefined();
+    });
+
+    it('revalidates subscription access for every packet on an already-authenticated socket', async () => {
+        const prisma = {
+            tenant: {
+                findUnique: jest.fn().mockResolvedValue({
+                    subscriptionStatus: 'active',
+                    subscription: {
+                        status: 'active', trialEndsAt: null, cancelAtPeriodEnd: false,
+                        currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+                    },
+                }),
+            },
+            user: {
+                findUnique: jest.fn().mockResolvedValue({
+                    isActive: true,
+                    onboardingCompleted: true,
+                    tenantId,
+                    tenant: {
+                        id: tenantId,
+                        schemaName: 'tenant_acme',
+                        isActive: true,
+                        onboardingCompletedAt: new Date(),
+                    },
+                }),
+                findFirst: jest.fn().mockResolvedValue({
+                    role: 'tenant_agent', email: 'ada@example.com',
+                }),
+            },
+        };
+        const jwt = { verify: jest.fn().mockReturnValue({
+            sub: agentId, tenantId, role: 'tenant_agent', email: 'ada@example.com',
+        }) };
+        const h = makeGateway({ prisma, jwt });
+        const socket = client();
+
+        await h.gateway.handleConnection(socket);
+        expect(socket.use).toHaveBeenCalledTimes(1);
+
+        prisma.tenant.findUnique.mockResolvedValue({
+            subscriptionStatus: 'past_due',
+            subscription: {
+                status: 'past_due',
+                cancelAtPeriodEnd: false,
+                currentPeriodEnd: null,
+                cancellationReason: null,
+                dunningStartedAt: new Date(Date.now() - 4 * 86_400_000),
+            },
+        });
+        const middleware = socket.use.mock.calls[0][0];
+        const next = jest.fn();
+        await middleware(['conversation:send', { conversationId }], next);
+
+        expect(next).toHaveBeenCalledWith(expect.any(Error));
+        expect(socket.disconnect).not.toHaveBeenCalled();
+        expect(socket.emit).toHaveBeenCalledWith('error', expect.objectContaining({
+            code: 'subscription_restricted',
+        }));
     });
 
     it('defensively rejects a viewer at join and never joins any room', async () => {

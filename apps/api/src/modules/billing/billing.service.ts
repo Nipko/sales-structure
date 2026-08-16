@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +29,7 @@ import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
 import { anchorDayOf, nextPeriodEnd } from './recurring/period.util';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { DUNNING_EXPIRY_DAY, DUNNING_SOFT_LOCK_DAY } from './recurring/dunning.service';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -78,7 +79,9 @@ export class BillingService {
     railEnvironment(provider: string): 'sandbox' | 'production' | 'unknown' {
         if (provider !== 'wompi') return 'unknown';
         try {
-            return this.wompiConfig.environment() === 'production' ? 'production' : 'sandbox';
+            const environment = this.wompiConfig.environment();
+            if (environment === 'production' || environment === 'sandbox') return environment;
+            return 'unknown';
         } catch {
             return 'unknown';
         }
@@ -225,17 +228,34 @@ export class BillingService {
         }
 
         const requiresPaymentMethodAtSignup = plan.trialDays === 0 || plan.requiresCardForTrial;
+        let storedSourceAtSignup: any | null = null;
         if (requiresPaymentMethodAtSignup) {
             // A single-use card token is one way to have a payment method; a
             // source already stored with the provider is another. Demanding the
             // token regardless would refuse a tenant who just saved their card,
             // for a plan they are entitled to start.
-            const hasStoredSource = this.capabilitiesFor(providerName).storedPaymentSources
-                && (await this.prisma.billingPaymentSource.count({
-                    where: { tenantId: input.tenantId, status: 'available' },
-                })) > 0;
+            if (this.capabilitiesFor(providerName).storedPaymentSources) {
+                storedSourceAtSignup = await this.prisma.billingPaymentSource.findFirst({
+                    where: { tenantId: input.tenantId, provider: providerName, status: 'available' },
+                    orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+                });
+            }
 
-            if (!input.cardTokenId && !hasStoredSource) {
+            // Providers billed by our engine need a TENANT-SCOPED reusable
+            // source, which cannot exist until onboarding has provisioned the
+            // tenant. Provision a locked PENDING_AUTH subscription first; the
+            // payment-source endpoint completes phase two and only APPROVED
+            // grants the paid entitlement. A one-use token handed to this method
+            // cannot be retained safely, so never pretend it was consumed.
+            if (!this.capabilitiesFor(providerName).nativeSubscriptions && input.cardTokenId) {
+                throw new BadRequestException({
+                    error: 'payment_source_must_be_stored',
+                    message: 'Complete tenant provisioning first, then store the payment method on the tenant-scoped billing endpoint.',
+                });
+            }
+
+            if (!input.cardTokenId && !storedSourceAtSignup
+                && this.capabilitiesFor(providerName).nativeSubscriptions) {
                 throw new BadRequestException({
                     error: 'card_required_for_trial',
                     message: `The ${plan.slug} plan requires a payment method to start the trial.`,
@@ -297,22 +317,27 @@ export class BillingService {
         // activa: nace pendiente de autorización y sólo el cobro liquidado la
         // activa. Nacer TRIALING con un trial de cero días daría acceso al plan
         // sin que se haya movido un peso.
-        const engineFirstCharge = skipProviderCreate && plan.trialDays === 0;
+        const awaitingPaymentSource = requiresPaymentMethodAtSignup
+            && !this.capabilitiesFor(providerName).nativeSubscriptions
+            && !storedSourceAtSignup;
+        const engineFirstCharge = skipProviderCreate && plan.trialDays === 0 && !awaitingPaymentSource;
         const localPeriodEnd = engineFirstCharge
             ? nextPeriodEnd(new Date(), billingCycle, anchorDayOf(new Date()))
-            : new Date(Date.now() + plan.trialDays * 86_400_000);
+            : awaitingPaymentSource
+                ? new Date()
+                : new Date(Date.now() + plan.trialDays * 86_400_000);
 
         const providerSub = skipProviderCreate
             ? {
                   providerSubscriptionId: null as string | null,
-                  status: engineFirstCharge
+                  status: awaitingPaymentSource || engineFirstCharge
                       ? SubscriptionStatus.PENDING_AUTH
                       : SubscriptionStatus.TRIALING,
-                  trialEndsAt: plan.trialDays > 0
+                  trialEndsAt: plan.trialDays > 0 && !awaitingPaymentSource
                       ? new Date(Date.now() + plan.trialDays * 86_400_000)
                       : undefined,
                   currentPeriodStart: new Date(),
-                  currentPeriodEnd: localPeriodEnd,
+                  currentPeriodEnd: awaitingPaymentSource ? undefined : localPeriodEnd,
                   cancelAtPeriodEnd: false,
               }
             : await provider.createSubscription({
@@ -330,7 +355,9 @@ export class BillingService {
               });
 
         const trialEndsAt = providerSub.trialEndsAt
-            ?? (plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86_400_000) : undefined);
+            ?? (plan.trialDays > 0 && !awaitingPaymentSource
+                ? new Date(Date.now() + plan.trialDays * 86_400_000)
+                : undefined);
 
         // Un trial con tarjeta sobre un operador que guarda instrumentos se
         // ARMA acá para que se cobre solo al vencer: sin esto la suscripción
@@ -347,12 +374,12 @@ export class BillingService {
         const engineDriven = this.capabilitiesFor(providerName).storedPaymentSources
             && ((plan.requiresCardForTrial && plan.trialDays > 0 && !!trialEndsAt) || engineFirstCharge);
 
-        const engineSource = engineDriven
+        const engineSource = storedSourceAtSignup ?? (engineDriven
             ? await this.prisma.billingPaymentSource.findFirst({
-                where: { tenantId: tenant.id, status: 'available' },
+                where: { tenantId: tenant.id, provider: providerName, status: 'available' },
                 orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
             })
-            : null;
+            : null);
 
         // Fail-closed: si el alta promete un cobro y no hay precio local, tiene
         // que fallar acá y no parir una suscripción que nadie podrá convertir.
@@ -372,7 +399,11 @@ export class BillingService {
                 unattendedCapable: engineSource.supportsUnattended,
                 billingAnchorDay: anchorDayOf(firstChargeAt),
                 billingTimezone: 'America/Bogota',
-                nextChargeAt: firstChargeAt,
+                // Zero-day acquisition is pre-claimed below. Keep it out of the
+                // scheduler until that initial attempt settles; otherwise the
+                // scheduler interprets currentPeriodEnd as a new cycle and can
+                // create a second `initial` charge.
+                nextChargeAt: engineFirstCharge ? null : firstChargeAt,
             }
             : {};
 
@@ -385,20 +416,29 @@ export class BillingService {
                     provider: providerName,
                     providerSubscriptionId: providerSub.providerSubscriptionId,
                     providerCustomerId,
-                    trialStartedAt: plan.trialDays > 0 ? new Date() : null,
+                    trialStartedAt: plan.trialDays > 0 && !awaitingPaymentSource ? new Date() : null,
                     trialEndsAt: trialEndsAt ?? null,
                     ...engineData,
                     currentPeriodStart: providerSub.currentPeriodStart ?? null,
                     currentPeriodEnd: providerSub.currentPeriodEnd ?? null,
                     cancelAtPeriodEnd: providerSub.cancelAtPeriodEnd,
-                    metadata: { billingCycle } as any,
+                    metadata: {
+                        billingCycle,
+                        ...(awaitingPaymentSource && plan.trialDays > 0
+                            ? { trialDaysPending: plan.trialDays }
+                            : {}),
+                    } as any,
                 },
             });
 
             await tx.tenant.update({
                 where: { id: tenant.id },
                 data: {
-                    plan: plan.slug,
+                    // PENDING_AUTH records the commercial intent in
+                    // BillingSubscription.planId, but must not turn the selected
+                    // tier into an entitlement before the first APPROVED charge
+                    // (or before a card-backed trial is actually armed).
+                    plan: awaitingPaymentSource ? tenant.plan : plan.slug,
                     paymentProvider: providerName,
                     paymentProviderCustomerId: providerCustomerId,
                     billingEmail: input.billingEmail ?? tenant.billingEmail,
@@ -417,37 +457,53 @@ export class BillingService {
         await this.redis.del(`sub_status:${tenant.id}`);
         await this.redis.del(`plan_features:${tenant.id}`);
 
-        // Emit both subscription.created and trial.started (trial.started only if trialDays > 0)
+        // A PENDING_AUTH subscription only records commercial intent. Its trial
+        // starts when the stored source becomes AVAILABLE, not during this
+        // provisioning phase.
         this.emit(BillingEventType.SUBSCRIPTION_CREATED, tenant.id, subscription.id);
-        if (plan.trialDays > 0) this.emit(BillingEventType.TRIAL_STARTED, tenant.id, subscription.id);
+        if (subscription.status === SubscriptionStatus.TRIALING) {
+            this.emit(BillingEventType.TRIAL_STARTED, tenant.id, subscription.id);
+        }
 
         // Alta sin trial contra nuestro motor: el primer cobro se dispara ahora y
         // no se espera al barrido. El intento se reclama ANTES de encolar, así que
         // si el scheduler pasa entre medio choca contra el índice único en vez de
         // cobrar dos veces. El plan queda PENDING_AUTH hasta que el cobro liquide.
         if (engineFirstCharge && engineData.engine && enginePricing && engineSource) {
-            const claim = await this.engine.claimAttempt({
-                subscriptionId: subscription.id,
-                tenantId: tenant.id,
-                provider: providerName,
-                purpose: 'initial',
-                periodStart: new Date(),
-                periodEnd: localPeriodEnd,
-                amountCents: enginePricing.amountCents,
-                currency: enginePricing.currency,
-                scheduledAt: new Date(),
-                paymentSourceId: engineSource.id,
-            });
-            if (claim) {
-                await this.enginePendingCharges.add(
-                    'charge',
-                    { attemptId: claim.id },
-                    { jobId: claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
-                );
+            try {
+                const claim = await this.engine.claimAttempt({
+                    subscriptionId: subscription.id,
+                    tenantId: tenant.id,
+                    provider: providerName,
+                    purpose: 'initial',
+                    periodStart: providerSub.currentPeriodStart ?? new Date(),
+                    periodEnd: localPeriodEnd,
+                    amountCents: enginePricing.amountCents,
+                    currency: enginePricing.currency,
+                    scheduledAt: new Date(),
+                    paymentSourceId: engineSource.id,
+                });
+                if (claim) {
+                    await this.enginePendingCharges.add(
+                        'charge',
+                        { attemptId: claim.id },
+                        { jobId: claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
+                    );
+                }
+            } catch (error) {
+                // The durable subscription already exists. Re-open scheduler
+                // recovery on the SAME current period; rescueOrphanAttempts
+                // handles the case where claim committed but queue publication
+                // failed.
+                await this.prisma.billingSubscription.update({
+                    where: { id: subscription.id },
+                    data: { nextChargeAt: new Date(), dunningState: 'activation_pending' },
+                }).catch(() => undefined);
+                throw error;
             }
         }
 
-        this.logger.log(`[Billing] Subscription created for tenant ${tenant.id} on plan ${plan.slug} (${plan.trialDays}d trial, engine=${engineData.engine ?? 'provider'})`);
+        this.logger.log(`[Billing] Subscription created for tenant ${tenant.id} on plan ${plan.slug} (${plan.trialDays}d trial, status=${providerSub.status}, engine=${engineData.engine ?? 'provider'})`);
         return subscription;
     }
 
@@ -457,6 +513,19 @@ export class BillingService {
 
     async upgradeSubscription(tenantId: string, newPlanSlug: string, cardTokenId?: string, billingCycle?: BillingCycle) {
         const sub = await this.requireSubscription(tenantId);
+        if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status as SubscriptionStatus)) {
+            throw new BadRequestException({
+                error: 'subscription_terminal',
+                message: 'A cancelled or expired subscription must be reactivated before changing plans.',
+                status: sub.status,
+            });
+        }
+        if (sub.pendingUpgradePlanId) {
+            throw new ConflictException({
+                error: 'plan_change_in_progress',
+                message: 'A paid plan change is already being processed.',
+            });
+        }
         const newPlan = await this.prisma.billingPlan.findUnique({ where: { slug: newPlanSlug } });
         if (!newPlan || !newPlan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: newPlanSlug });
         if (newPlan.slug === 'custom' || (newPlan.features as any)?.salesLed === true) {
@@ -526,7 +595,7 @@ export class BillingService {
             ).storedPaymentSources;
             const storedSource = engineCapable
                 ? await this.prisma.billingPaymentSource.findFirst({
-                    where: { tenantId, status: 'available' },
+                    where: { tenantId, provider: sub.provider, status: 'available' },
                     orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
                 })
                 : null;
@@ -595,8 +664,6 @@ export class BillingService {
         });
         // Fiscal gate: require DIAN tax identity before charging an upgrade.
         await this.assertFiscalDataReady(tenant);
-        const newProviderPlanId = this.resolveProviderPlanId(newPlan, providerName, tenant?.billingCountry, targetCycle);
-
         let updatedStatus = sub.status;
         let currentPeriodStart = sub.currentPeriodStart;
         let currentPeriodEnd = sub.currentPeriodEnd;
@@ -609,8 +676,27 @@ export class BillingService {
             // Providers without a subscription object are driven by our own
             // engine: a plan change is a local recalculation plus a prorated
             // charge, never a remote subscription edit.
-            return this.changePlanWithEngine(sub, newPlan, targetCycle, tenant);
+            const lockKey = `lock:billing:plan-change:${sub.id}`;
+            const lockToken = await this.redis.acquireLockToken(lockKey, 60);
+            if (!lockToken) {
+                throw new ConflictException({
+                    error: 'plan_change_in_progress',
+                    message: 'A plan change is already being processed.',
+                });
+            }
+            try {
+                return await this.changePlanWithEngine(sub, newPlan, targetCycle, tenant);
+            } finally {
+                await this.redis.releaseLockToken(lockKey, lockToken).catch(() => undefined);
+            }
         }
+
+        const newProviderPlanId = this.resolveProviderPlanId(
+            newPlan,
+            providerName,
+            tenant?.billingCountry,
+            targetCycle,
+        );
 
         if (caps.changePlanInPlace) {
             // Stripe: swap the price on the live subscription, provider prorates.
@@ -685,43 +771,95 @@ export class BillingService {
     ) {
         const sub = await this.prisma.billingSubscription.findUnique({ where: { id: subscriptionId } });
         if (!sub) throw new NotFoundException({ error: 'subscription_not_found' });
-
-        if (sub.providerSubscriptionId) {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { billingCountry: true },
-            });
-            if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId });
-            this.resolveProviderPlanId(
-                targetPlan,
-                sub.provider as PaymentProviderName,
-                tenant.billingCountry,
-                cycle,
-            );
+        if (sub.pendingUpgradePlanId) {
+            throw new ConflictException({ error: 'plan_change_in_progress' });
         }
-
-        // Effective date: end of current period if present, otherwise fall back to
-        // one cycle out (+365d for annual, +30d for monthly).
-        const fallbackDays = cycle === 'annual' ? 365 : 30;
-        const effectiveAt = sub.currentPeriodEnd
-            ?? new Date(Date.now() + fallbackDays * 86_400_000);
-
-        const updated = await this.prisma.billingSubscription.update({
-            where: { id: subscriptionId },
-            data: {
-                pendingPlanId: targetPlan.id,
-                pendingPlanChangeAt: effectiveAt,
-            },
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { billingCountry: true },
         });
+        if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId });
+
+        const outcome = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRawUnsafe(
+                'SELECT id FROM billing_subscriptions WHERE id = $1::uuid FOR UPDATE',
+                subscriptionId,
+            );
+            const liveSub = await tx.billingSubscription.findUnique({ where: { id: subscriptionId } });
+            if (!liveSub) throw new NotFoundException({ error: 'subscription_not_found' });
+            if (liveSub.pendingUpgradePlanId || liveSub.pendingPlanId) {
+                throw new ConflictException({ error: 'plan_change_in_progress' });
+            }
+            if (liveSub.providerSubscriptionId) {
+                this.resolveProviderPlanId(
+                    targetPlan,
+                    liveSub.provider as PaymentProviderName,
+                    tenant.billingCountry,
+                    cycle,
+                );
+            }
+
+            // Derive the boundary only after acquiring the same row lock used
+            // by renewal settlement. Otherwise a just-paid renewal could move
+            // currentPeriodEnd while we persist its obsolete predecessor.
+            const fallbackDays = cycle === 'annual' ? 365 : 30;
+            const effectiveAt = liveSub.currentPeriodEnd
+                ?? new Date(Date.now() + fallbackDays * 86_400_000);
+            const changed = await tx.billingSubscription.update({
+                where: { id: subscriptionId },
+                data: {
+                    pendingPlanId: targetPlan.id,
+                    pendingPlanChangeAt: effectiveAt,
+                },
+            });
+            const unresolved = await tx.billingChargeAttempt.findFirst({
+                where: {
+                    subscriptionId,
+                    purpose: 'renewal',
+                    periodStart: { gte: effectiveAt },
+                    OR: [
+                        { status: { in: ['in_flight', 'pending_provider'] } },
+                        { failureClass: 'indeterminate' },
+                    ],
+                },
+                select: { id: true, reference: true },
+            });
+            if (unresolved) {
+                throw new ConflictException({
+                    error: 'billing_settlement_pending',
+                    message: 'Hay una renovación pendiente; resuélvela antes de programar el cambio de plan.',
+                    attemptId: unresolved.id,
+                    reference: unresolved.reference,
+                });
+            }
+            // A renewal already claimed but not owned is safe to supersede in
+            // the same commit as the pending intent.
+            await tx.billingChargeAttempt.updateMany({
+                where: {
+                    subscriptionId,
+                    purpose: 'renewal',
+                    periodStart: { gte: effectiveAt },
+                    status: 'scheduled',
+                },
+                data: {
+                    status: 'superseded',
+                    failureCode: 'scheduled_plan_change',
+                    settledAt: new Date(),
+                },
+            });
+            return { changed, effectiveAt, liveSub };
+        });
+
+        const { changed: updated, effectiveAt, liveSub } = outcome;
 
         this.logger.log(`[Billing] Tenant ${tenantId} scheduled downgrade to plan ${targetPlan.id} effective ${effectiveAt.toISOString()}`);
         await this.prisma.auditLog.create({
             data: {
                 tenantId,
                 action: 'subscription_downgrade_scheduled',
-                resource: `billing_subscriptions/${sub.id}`,
+                resource: `billing_subscriptions/${liveSub.id}`,
                 details: {
-                    fromPlanId: sub.planId,
+                    fromPlanId: liveSub.planId,
                     toPlanId: targetPlan.id,
                     effectiveAt: effectiveAt.toISOString(),
                 },
@@ -780,7 +918,13 @@ export class BillingService {
             try {
                 const newPlan = await this.prisma.billingPlan.findUnique({
                     where: { id: sub.pendingPlanId! },
-                    select: { slug: true, mpPlanId: true, stripePlanId: true, priceLocalOverrides: true },
+                    select: {
+                        slug: true,
+                        priceUsdCents: true,
+                        mpPlanId: true,
+                        stripePlanId: true,
+                        priceLocalOverrides: true,
+                    },
                 });
                 if (!newPlan) {
                     throw new NotFoundException({
@@ -809,16 +953,43 @@ export class BillingService {
                     );
                 }
 
+                const internalPricing = sub.engine === 'internal'
+                    ? this.resolveEnginePricing(
+                        newPlan,
+                        normalizeBillingCountry(tenant.billingCountry) || 'CO',
+                        this.subscriptionCycle(sub),
+                    )
+                    : null;
+                if (internalPricing && sub.chargeCurrency
+                    && internalPricing.currency !== sub.chargeCurrency) {
+                    throw new BadRequestException({
+                        error: 'pending_plan_currency_mismatch',
+                        message: 'A scheduled plan change cannot switch the charge currency in place.',
+                        fromCurrency: sub.chargeCurrency,
+                        toCurrency: internalPricing.currency,
+                    });
+                }
+
                 phase = 'local';
+                let didApply = false;
                 await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-                    await tx.billingSubscription.update({
-                        where: { id: sub.id },
+                    const claimed = await tx.billingSubscription.updateMany({
+                        where: {
+                            id: sub.id,
+                            pendingPlanId: sub.pendingPlanId,
+                            pendingPlanChangeAt: { lte: now },
+                        },
                         data: {
                             planId: sub.pendingPlanId!,
                             pendingPlanId: null,
                             pendingPlanChangeAt: null,
+                            ...(internalPricing ? {
+                                chargeAmountCents: internalPricing.amountCents,
+                                chargeCurrency: internalPricing.currency,
+                            } : {}),
                         },
                     });
+                    if (claimed.count !== 1) return;
                     await tx.tenant.update({
                         where: { id: sub.tenantId },
                         data: { plan: newPlan.slug },
@@ -831,7 +1002,10 @@ export class BillingService {
                             details: { fromPlanId: sub.planId, toPlanId: sub.pendingPlanId },
                         },
                     });
+                    didApply = true;
                 });
+
+                if (!didApply) continue;
 
                 applied++;
                 await Promise.allSettled([
@@ -961,19 +1135,60 @@ export class BillingService {
         const newStatus = opts.immediate ? SubscriptionStatus.CANCELLED : sub.status;
         const cancelAtPeriodEnd = !opts.immediate;
 
-        await this.prisma.billingSubscription.update({
-            where: { id: sub.id },
-            data: {
+        const cancellationData: Prisma.BillingSubscriptionUpdateInput = {
                 status: newStatus,
                 cancelAtPeriodEnd,
                 cancelledAt: opts.immediate ? new Date() : null,
                 cancellationReason: opts.reason ?? null,
-            },
-        });
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { subscriptionStatus: newStatus },
-        });
+                ...(opts.immediate ? {
+                    nextChargeAt: null,
+                    pendingPlanId: null,
+                    pendingPlanChangeAt: null,
+                    pendingUpgradePlanId: null,
+                    dunningState: 'none',
+                } : {}),
+        };
+        if (sub.engine === 'internal') {
+            await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                // Write the stop flag first. A worker revalidating afterwards
+                // blocks on this row and sees cancellation; one that already
+                // passed revalidation is in_flight and makes this transaction
+                // roll back instead of pretending the charge cannot land.
+                await tx.billingSubscription.update({ where: { id: sub.id }, data: cancellationData });
+                const unresolved = await tx.billingChargeAttempt.findFirst({
+                    where: {
+                        subscriptionId: sub.id,
+                        OR: [
+                            { status: { in: ['in_flight', 'pending_provider'] } },
+                            { failureClass: 'indeterminate' },
+                        ],
+                    },
+                    select: { id: true, reference: true },
+                });
+                if (unresolved) {
+                    throw new ConflictException({
+                        error: 'billing_settlement_pending',
+                        message: 'Hay un cobro con resultado pendiente. Resuélvelo antes de cancelar para evitar un débito tardío.',
+                        attemptId: unresolved.id,
+                        reference: unresolved.reference,
+                    });
+                }
+                await tx.billingChargeAttempt.updateMany({
+                    where: { subscriptionId: sub.id, status: 'scheduled' },
+                    data: { status: 'superseded', failureCode: 'subscription_cancelled', settledAt: new Date() },
+                });
+                await tx.tenant.update({
+                    where: { id: tenantId },
+                    data: { subscriptionStatus: newStatus },
+                });
+            });
+        } else {
+            await this.prisma.billingSubscription.update({ where: { id: sub.id }, data: cancellationData });
+            await this.prisma.tenant.update({
+                where: { id: tenantId },
+                data: { subscriptionStatus: newStatus },
+            });
+        }
         await this.redis.del(`tenant_plan:${tenantId}`);
         await this.redis.del(`sub_status:${tenantId}`);
 
@@ -1033,6 +1248,73 @@ export class BillingService {
                 currentStatus: sub.status,
             });
         }
+        if (sub.engine === 'internal') {
+            await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                await tx.$queryRawUnsafe(
+                    'SELECT id FROM billing_subscriptions WHERE id = $1::uuid FOR UPDATE',
+                    sub.id,
+                );
+                const liveSub = await tx.billingSubscription.findUnique({ where: { id: sub.id } });
+                if (!liveSub) throw new NotFoundException({ error: 'subscription_not_found' });
+                if (liveSub.pendingUpgradePlanId) {
+                    throw new ConflictException({
+                        error: 'plan_change_in_progress',
+                        message: 'Resuelve o cancela la mejora pendiente antes de pausar la suscripción.',
+                    });
+                }
+                const metadata = liveSub.metadata && typeof liveSub.metadata === 'object'
+                    ? liveSub.metadata as any
+                    : {};
+                await tx.billingSubscription.update({
+                    where: { id: liveSub.id },
+                    data: {
+                        status: SubscriptionStatus.PAST_DUE,
+                        nextChargeAt: null,
+                        cancellationReason: opts.reason ? `paused: ${opts.reason}` : 'paused',
+                        metadata: {
+                            ...metadata,
+                            pausedNextChargeAt: liveSub.nextChargeAt?.toISOString() ?? null,
+                        } as any,
+                    },
+                });
+                const unresolved = await tx.billingChargeAttempt.findFirst({
+                    where: {
+                        subscriptionId: liveSub.id,
+                        OR: [
+                            { status: { in: ['in_flight', 'pending_provider'] } },
+                            { failureClass: 'indeterminate' },
+                        ],
+                    },
+                    select: { id: true, reference: true },
+                });
+                if (unresolved) {
+                    throw new ConflictException({
+                        error: 'billing_settlement_pending',
+                        message: 'Hay un cobro pendiente; resuélvelo antes de pausar la suscripción.',
+                        attemptId: unresolved.id,
+                        reference: unresolved.reference,
+                    });
+                }
+                await tx.billingChargeAttempt.updateMany({
+                    where: { subscriptionId: liveSub.id, status: 'scheduled' },
+                    data: { status: 'superseded', failureCode: 'subscription_paused', settledAt: new Date() },
+                });
+                await tx.tenant.update({
+                    where: { id: tenantId },
+                    data: { subscriptionStatus: SubscriptionStatus.PAST_DUE },
+                });
+            });
+            await this.invalidateTenantCaches(tenantId);
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'subscription_paused',
+                    resource: `billing_subscriptions/${sub.id}`,
+                    details: { reason: opts.reason ?? null, engine: 'internal' },
+                },
+            });
+            return;
+        }
         // La capacidad se pregunta ANTES que el id. Al revés, un operador que
         // simplemente no sabe pausar contestaba `missing_provider_subscription`
         // —un id que nunca va a existir— y mandaba a buscar un dato inexistente
@@ -1091,6 +1373,46 @@ export class BillingService {
                 message: 'La suscripción no está pausada.',
             });
         }
+        if (sub.engine === 'internal') {
+            const now = new Date();
+            const stillTrialing = !!sub.trialEndsAt && sub.trialEndsAt > now;
+            const restoredStatus = stillTrialing ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE;
+            const metadata = sub.metadata && typeof sub.metadata === 'object' ? sub.metadata as any : {};
+            const pausedAt = metadata.pausedNextChargeAt ? new Date(metadata.pausedNextChargeAt) : null;
+            const nextChargeAt = stillTrialing
+                ? sub.trialEndsAt
+                : pausedAt && pausedAt > now
+                    ? pausedAt
+                    : sub.currentPeriodEnd && sub.currentPeriodEnd > now
+                        ? sub.currentPeriodEnd
+                        : now;
+            const { pausedNextChargeAt: _discarded, ...restMetadata } = metadata;
+            await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                await tx.billingSubscription.update({
+                    where: { id: sub.id },
+                    data: {
+                        status: restoredStatus,
+                        cancellationReason: null,
+                        nextChargeAt,
+                        metadata: restMetadata as any,
+                    },
+                });
+                await tx.tenant.update({
+                    where: { id: tenantId },
+                    data: { subscriptionStatus: restoredStatus },
+                });
+            });
+            await this.invalidateTenantCaches(tenantId);
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'subscription_resumed',
+                    resource: `billing_subscriptions/${sub.id}`,
+                    details: { restoredStatus, engine: 'internal', nextChargeAt: nextChargeAt?.toISOString() },
+                },
+            });
+            return;
+        }
         if (!sub.providerSubscriptionId) {
             throw new BadRequestException({ error: 'missing_provider_subscription' });
         }
@@ -1141,6 +1463,83 @@ export class BillingService {
      */
     async syncFromProvider(tenantId: string): Promise<{ status: string; updated: boolean }> {
         const sub = await this.requireSubscription(tenantId);
+        if (sub.engine === 'internal') {
+            const live = await this.prisma.billingChargeAttempt.findFirst({
+                where: {
+                    subscriptionId: sub.id,
+                    status: { in: ['scheduled', 'in_flight', 'pending_provider'] },
+                },
+                orderBy: { createdAt: 'desc' },
+            });
+            if (live) return { status: sub.status, updated: false };
+
+            const source = sub.defaultPaymentSourceId
+                ? await this.prisma.billingPaymentSource.findFirst({
+                    where: {
+                        id: sub.defaultPaymentSourceId,
+                        tenantId,
+                        provider: sub.provider,
+                        status: 'available',
+                    },
+                })
+                : null;
+            if (!source) throw new BadRequestException({ error: 'no_payment_method' });
+
+            const previous = await this.prisma.billingChargeAttempt.findFirst({
+                where: { subscriptionId: sub.id, status: { in: ['failed', 'abandoned', 'stale'] } },
+                orderBy: { createdAt: 'desc' },
+            });
+            const cycle = previous
+                ? {
+                    periodStart: previous.periodStart,
+                    periodEnd: previous.periodEnd,
+                    purpose: previous.purpose as 'initial' | 'renewal' | 'upgrade_proration' | 'manual_link',
+                    amountCents: previous.amountCents,
+                    currency: previous.currency,
+                    attemptNumber: previous.attemptNumber + 1,
+                    metadata: previous.metadata as any,
+                }
+                : (() => {
+                    if (!sub.chargeAmountCents || !sub.chargeCurrency) {
+                        throw new BadRequestException({ error: 'subscription_price_missing' });
+                    }
+                    const next = this.engine.computeNextCycle(sub as any);
+                    return {
+                        periodStart: next.periodStart,
+                        periodEnd: next.periodEnd,
+                        purpose: sub.status === SubscriptionStatus.PENDING_AUTH
+                            || sub.status === SubscriptionStatus.TRIALING
+                            ? 'initial' as const
+                            : 'renewal' as const,
+                        amountCents: sub.chargeAmountCents,
+                        currency: sub.chargeCurrency,
+                        attemptNumber: 1,
+                        metadata: {},
+                    };
+                })();
+            const claim = await this.engine.claimAttempt({
+                subscriptionId: sub.id,
+                tenantId,
+                provider: sub.provider as PaymentProviderName,
+                purpose: cycle.purpose,
+                periodStart: cycle.periodStart,
+                periodEnd: cycle.periodEnd,
+                amountCents: cycle.amountCents,
+                currency: cycle.currency,
+                scheduledAt: new Date(),
+                paymentSourceId: source.id,
+                attemptNumber: cycle.attemptNumber,
+                metadata: cycle.metadata ?? {},
+            });
+            if (claim) {
+                await this.enginePendingCharges.add(
+                    'charge',
+                    { attemptId: claim.id },
+                    { jobId: claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
+                );
+            }
+            return { status: sub.status, updated: Boolean(claim) };
+        }
         if (!sub.providerSubscriptionId) {
             throw new BadRequestException({ error: 'missing_provider_subscription' });
         }
@@ -1213,6 +1612,11 @@ export class BillingService {
      * que se puede tener es un UPDATE guardado cuyo conteo de filas se
      * inspecciona.
      *
+     * Mientras el PSP responde, la reserva vive en `refundPending*`, campos que
+     * la capa fiscal ignora. Sólo la confirmación promueve el acumulado a
+     * `metadata.refundedAmountCents`, evitando una nota crédito antes de que el
+     * dinero realmente haya sido devuelto.
+     *
      * El acumulado vive en `metadata.refundedAmountCents` para que los
      * reembolsos PARCIALES sigan siendo posibles (se puede devolver 30 y
      * después 20 de un pago de 50) pero nunca sumen más que el pago.
@@ -1246,6 +1650,9 @@ export class BillingService {
             throw new BadRequestException({ error: 'already_refunded' });
         }
         const requested = input.amountCents ?? remaining;
+        if (!Number.isSafeInteger(requested) || requested <= 0) {
+            throw new BadRequestException({ error: 'invalid_refund_amount' });
+        }
         if (requested > remaining) {
             throw new BadRequestException({
                 error: 'refund_exceeds_payment',
@@ -1261,18 +1668,31 @@ export class BillingService {
         // orden invertido, el throw de getByName dejaba la fila ya marcada como
         // reembolsada sin que el proveedor devolviera un peso.
         const provider = this.providerFactory.getByName(payment.provider);
+        const refundCapability = this.capabilitiesFor(payment.provider);
+        if (refundCapability.refunds === 'none') {
+            throw new BadRequestException({ error: 'refund_not_supported', provider: payment.provider });
+        }
+        if (refundCapability.refunds === 'void_only' && requested !== remaining) {
+            throw new BadRequestException({
+                error: 'partial_void_not_supported',
+                message: `${payment.provider} sólo permite anulación total; no admite reembolsos parciales por API.`,
+            });
+        }
 
         // Reserva optimista: sólo avanza si el acumulado sigue siendo el que
         // leímos. Dos clics simultáneos: uno actualiza 1 fila, el otro 0.
         const newTotal = alreadyRefunded + requested;
         const reserved: number = await this.prisma.$executeRawUnsafe(
             `UPDATE billing_payments
-                SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{refundedAmountCents}', to_jsonb($2::int)),
-                    status   = CASE WHEN $2::int >= amount_cents THEN 'refunded' ELSE status END
+                SET metadata = jsonb_set(
+                        jsonb_set(COALESCE(metadata, '{}'::jsonb), '{refundPendingAmountCents}', to_jsonb($2::int)),
+                        '{refundPendingTotalCents}', to_jsonb($3::int)
+                    )
               WHERE id = $1
                 AND status = 'succeeded'
-                AND COALESCE((metadata->>'refundedAmountCents')::int, 0) = $3::int`,
-            input.paymentId, newTotal, alreadyRefunded,
+                AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'refundPendingAmountCents')
+                AND COALESCE((metadata->>'refundedAmountCents')::int, 0) = $4::int`,
+            input.paymentId, requested, newTotal, alreadyRefunded,
         );
         if (reserved !== 1) {
             // Otro reembolso entró primero. Mejor negarse que cobrarle de nuevo
@@ -1280,19 +1700,108 @@ export class BillingService {
             throw new BadRequestException({ error: 'refund_conflict', message: 'El pago cambió mientras se procesaba el reembolso. Volvé a intentarlo.' });
         }
 
+        let canonicalRefundCharge: any = null;
+        let providerCommandAccepted = false;
         try {
-            await provider.refundPayment(payment.providerPaymentId, input.amountCents);
+            // A void-only API interprets omission as "void the complete charge"
+            // and rejects even an explicit amount equal to the full payment.
+            await provider.refundPayment(
+                payment.providerPaymentId,
+                refundCapability.refunds === 'void_only' ? undefined : input.amountCents,
+            );
+            providerCommandAccepted = true;
+            if (refundCapability.refunds === 'void_only') {
+                canonicalRefundCharge = await this.providerFactory
+                    .getCharging(payment.provider)
+                    .getCharge(payment.providerPaymentId);
+                if (canonicalRefundCharge?.status !== 'voided') {
+                    throw new ServiceUnavailableException({
+                        error: 'provider_void_pending_confirmation',
+                        preserveRefundPending: true,
+                        provider: payment.provider,
+                        providerStatus: canonicalRefundCharge?.status ?? 'unknown',
+                        message: 'La anulación fue solicitada, pero el proveedor aún no confirma VOIDED.',
+                    });
+                }
+            }
         } catch (e) {
+            const response = typeof (e as any)?.getResponse === 'function'
+                ? (e as any).getResponse()
+                : null;
+            if (providerCommandAccepted
+                || (response && typeof response === 'object' && response.preserveRefundPending === true)) {
+                // The PSP may already have accepted the command. Preserve the
+                // reservation and give the durable reconciler a due time; a
+                // retry from the UI must not issue a second void.
+                await this.deferPendingRefundCheck(input.paymentId, newTotal, 0).catch(() => undefined);
+                if (response && typeof response === 'object' && response.preserveRefundPending === true) {
+                    throw e;
+                }
+                throw new ServiceUnavailableException({
+                    error: 'provider_void_confirmation_unavailable',
+                    preserveRefundPending: true,
+                    provider: payment.provider,
+                    message: 'El proveedor aceptó la anulación, pero no fue posible confirmar su estado canónico.',
+                });
+            }
             // El proveedor no devolvió la plata: liberar la reserva o el pago
             // quedaría bloqueado para siempre sin haberse reembolsado nunca.
             await this.prisma.$executeRawUnsafe(
                 `UPDATE billing_payments
-                    SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{refundedAmountCents}', to_jsonb($2::int)),
-                        status   = 'succeeded'
-                  WHERE id = $1`,
-                input.paymentId, alreadyRefunded,
+                    SET metadata = COALESCE(metadata, '{}'::jsonb)
+                                   - 'refundPendingAmountCents'
+                                   - 'refundPendingTotalCents'
+                  WHERE id = $1
+                    AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
+                input.paymentId, newTotal,
             ).catch(() => { /* si esto falla queda bloqueado, pero no se cobró de más */ });
             throw e;
+        }
+
+        const attempt = await this.prisma.billingChargeAttempt.findFirst({
+            where: { paymentId: payment.id },
+            select: { id: true, reference: true },
+        });
+        const settledByEngine = !!attempt;
+        if (attempt) {
+            // One settlement path owns payment status, entitlement revocation
+            // and the fiscal refund event. Updating BillingPayment first made
+            // the later webhook a delta=0 no-op and left the tenant ACTIVE.
+            await this.engine.settleRefunded(attempt.id, {
+                ...(canonicalRefundCharge ?? {}),
+                providerChargeId: canonicalRefundCharge?.providerChargeId ?? payment.providerPaymentId,
+                reference: canonicalRefundCharge?.reference ?? attempt.reference,
+                amountCents: canonicalRefundCharge?.amountCents ?? newTotal,
+                currency: canonicalRefundCharge?.currency ?? payment.currency,
+            });
+            // settleRefunded removes these keys itself. This guarded cleanup is
+            // idempotent for the webhook-won race and legacy engine versions.
+            await this.prisma.$executeRawUnsafe(
+                `UPDATE billing_payments
+                    SET metadata = COALESCE(metadata, '{}'::jsonb)
+                                   - 'refundPendingAmountCents'
+                                   - 'refundPendingTotalCents'
+                  WHERE id = $1
+                    AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
+                input.paymentId, newTotal,
+            );
+        } else {
+            const finalized: number = await this.prisma.$executeRawUnsafe(
+                `UPDATE billing_payments
+                    SET metadata = jsonb_set(
+                            COALESCE(metadata, '{}'::jsonb)
+                              - 'refundPendingAmountCents'
+                              - 'refundPendingTotalCents',
+                            '{refundedAmountCents}', to_jsonb($2::int)
+                        ),
+                        status = CASE WHEN $2::int >= amount_cents THEN 'refunded' ELSE 'succeeded' END
+                  WHERE id = $1
+                    AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
+                input.paymentId, newTotal,
+            );
+            if (finalized !== 1) {
+                throw new Error(`refund_finalize_failed:${input.paymentId}:${newTotal}`);
+            }
         }
 
         await this.prisma.auditLog.create({
@@ -1313,12 +1822,159 @@ export class BillingService {
                 },
             },
         });
+        if (!settledByEngine) {
+            this.eventEmitter.emit(BillingEventType.PAYMENT_REFUNDED, {
+                tenantId: payment.tenantId,
+                subscriptionId: payment.subscriptionId,
+                paymentId: payment.id,
+                providerPaymentId: payment.providerPaymentId,
+                amountCents: requested,
+                currency: payment.currency,
+                event: {
+                    provider: payment.provider,
+                    payment: {
+                        providerPaymentId: payment.providerPaymentId,
+                        amountCents: requested,
+                        currency: payment.currency,
+                        status: 'refunded',
+                    },
+                },
+            });
+        }
         this.logger.log(`[Billing] Refunded payment ${payment.id} (${input.amountCents ?? 'full'} cents)`);
 
         return {
             providerPaymentId: payment.providerPaymentId,
             partialAmountCents: input.amountCents ?? null,
         };
+    }
+
+    /**
+     * Repair the crash window after the PSP accepted a void/refund but before
+     * the local finalizer ran. Only charging providers with a canonical charge
+     * lookup can be recovered automatically; ambiguous rows stay reserved for
+     * manual review instead of being guessed as refunded.
+     */
+    async reconcilePendingRefunds(): Promise<{ scanned: number; finalized: number; errors: number }> {
+        type PendingRefundRow = {
+            paymentId: string;
+            provider: string;
+            providerPaymentId: string;
+            currency: string;
+            pendingTotalCents: number;
+            pendingCheckCount: number;
+            attemptId: string;
+            reference: string;
+        };
+        let scanned = 0;
+        let finalized = 0;
+        let errors = 0;
+        // Ambiguous APPROVED/PENDING rows are moved into a durable backoff
+        // window before reading the next batch. Without this loop, the oldest
+        // 100 could monopolize LIMIT forever and starve a later VOIDED row.
+        for (let batch = 0; batch < 20; batch++) {
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT p.id AS "paymentId",
+                        p.provider,
+                        p.provider_payment_id AS "providerPaymentId",
+                        p.currency,
+                        (p.metadata->>'refundPendingTotalCents')::int AS "pendingTotalCents",
+                        COALESCE((p.metadata->>'refundPendingCheckCount')::int, 0) AS "pendingCheckCount",
+                        a.id AS "attemptId",
+                        a.reference
+                   FROM billing_payments p
+                   JOIN billing_charge_attempts a ON a.payment_id = p.id
+                  WHERE p.metadata ? 'refundPendingTotalCents'
+                    AND p.provider_payment_id IS NOT NULL
+                    AND COALESCE(
+                            NULLIF(p.metadata->>'refundPendingNextCheckAt', '')::timestamptz,
+                            '-infinity'::timestamptz
+                        ) <= NOW()
+                  ORDER BY p.created_at ASC, p.id ASC
+                  LIMIT 100`,
+            ) as PendingRefundRow[];
+            if (!rows.length) break;
+            scanned += rows.length;
+
+            for (const row of rows) {
+                try {
+                    if (this.capabilitiesFor(row.provider).refunds !== 'void_only') {
+                        throw new Error(`pending_refund_provider_not_reconcilable:${row.provider}`);
+                    }
+                    const charge = await this.providerFactory.getCharging(row.provider).getCharge(row.providerPaymentId);
+                    if (charge.status !== 'voided') {
+                        await this.deferPendingRefundCheck(
+                            row.paymentId,
+                            row.pendingTotalCents,
+                            row.pendingCheckCount,
+                        );
+                        continue;
+                    }
+                    if (charge.providerChargeId !== row.providerPaymentId
+                        || charge.reference !== row.reference
+                        || charge.currency.toUpperCase() !== row.currency.toUpperCase()
+                        || charge.amountCents !== row.pendingTotalCents) {
+                        throw new Error(`pending_refund_identity_mismatch:${row.paymentId}`);
+                    }
+                    await this.engine.settleRefunded(row.attemptId, charge);
+                    await this.prisma.$executeRawUnsafe(
+                        `UPDATE billing_payments
+                            SET metadata = COALESCE(metadata, '{}'::jsonb)
+                                           - 'refundPendingAmountCents'
+                                           - 'refundPendingTotalCents'
+                                           - 'refundPendingCheckCount'
+                                           - 'refundPendingNextCheckAt'
+                          WHERE id = $1
+                            AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
+                        row.paymentId,
+                        row.pendingTotalCents,
+                    );
+                    finalized++;
+                } catch (error: any) {
+                    errors++;
+                    await this.deferPendingRefundCheck(
+                        row.paymentId,
+                        row.pendingTotalCents,
+                        row.pendingCheckCount,
+                    ).catch(() => undefined);
+                    this.logger.error(
+                        `[Billing] Could not reconcile pending refund ${row.paymentId}: ${error?.message ?? error}`,
+                    );
+                }
+            }
+
+            if (rows.length < 100) break;
+        }
+        return { scanned, finalized, errors };
+    }
+
+    private async deferPendingRefundCheck(
+        paymentId: string,
+        pendingTotalCents: number,
+        currentCheckCount: number,
+    ): Promise<void> {
+        const nextCheckCount = Math.max(0, Number(currentCheckCount) || 0) + 1;
+        const delaySeconds = Math.min(86_400, 300 * (2 ** Math.min(nextCheckCount - 1, 8)));
+        await this.prisma.$executeRawUnsafe(
+            `UPDATE billing_payments
+                SET metadata = jsonb_set(
+                        jsonb_set(
+                            COALESCE(metadata, '{}'::jsonb),
+                            '{refundPendingCheckCount}',
+                            to_jsonb($3::int),
+                            true
+                        ),
+                        '{refundPendingNextCheckAt}',
+                        to_jsonb((NOW() + ($4::int * INTERVAL '1 second'))::text),
+                        true
+                    )
+              WHERE id = $1
+                AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
+            paymentId,
+            pendingTotalCents,
+            nextCheckCount,
+            delaySeconds,
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -1350,25 +2006,75 @@ export class BillingService {
 
         const existing = await this.prisma.billingSubscription.findUnique({ where: { tenantId: input.tenantId } });
         if (existing) {
-            await this.prisma.billingSubscription.update({
-                where: { id: existing.id },
-                data: {
-                    planId: plan.id,
-                    status: SubscriptionStatus.ACTIVE,
-                    currentPeriodStart: now,
-                    currentPeriodEnd: periodEnd,
-                    cancelAtPeriodEnd: false,
-                    cancelledAt: null,
-                    cancellationReason: `comp: ${input.reason}`,
-                    // Una cortesía tiene que DEJAR DE COBRAR, y el estado que
-                    // dejábamos acá es exactamente el que busca el barrido:
-                    // ACTIVE + cancelAtPeriodEnd=false + engine interno con
-                    // `nextChargeAt` vencido. Al tenant se le regalaba el plan y
-                    // se le seguía pasando la tarjeta — y cada cobro fabricaba
-                    // un pago, una factura electrónica y MRR que no existe.
-                    // Una suscripción de cortesía no tiene próximo cobro.
-                    nextChargeAt: null,
-                },
+            if (existing.providerSubscriptionId
+                && this.capabilitiesFor(existing.provider as PaymentProviderName).nativeSubscriptions) {
+                if (!this.providerFactory.isRegistered(existing.provider as PaymentProviderName)) {
+                    throw new BadRequestException({
+                        error: 'provider_mandate_must_be_cancelled',
+                        message: `Cancel the live ${existing.provider} mandate before granting a non-billable plan.`,
+                        mandateId: existing.providerSubscriptionId,
+                    });
+                }
+                // A courtesy that leaves the provider calendar alive is not a
+                // courtesy: it keeps charging real money and issuing invoices.
+                await this.providerFactory.getByName(existing.provider).cancelSubscription(
+                    existing.providerSubscriptionId,
+                    { immediate: true, reason: `comp: ${input.reason}` },
+                );
+            }
+            await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                await tx.$queryRawUnsafe(
+                    'SELECT id FROM billing_subscriptions WHERE id = $1::uuid FOR UPDATE',
+                    existing.id,
+                );
+                const unresolved = await tx.billingChargeAttempt.findFirst({
+                    where: {
+                        subscriptionId: existing.id,
+                        OR: [
+                            { status: { in: ['in_flight', 'pending_provider'] } },
+                            { failureClass: 'indeterminate' },
+                        ],
+                    },
+                    select: { id: true, reference: true },
+                });
+                if (unresolved) {
+                    throw new ConflictException({
+                        error: 'billing_settlement_pending',
+                        message: 'Resuelve el cobro pendiente antes de conceder un plan de cortesía.',
+                        attemptId: unresolved.id,
+                        reference: unresolved.reference,
+                    });
+                }
+                await tx.billingChargeAttempt.updateMany({
+                    where: { subscriptionId: existing.id, status: 'scheduled' },
+                    data: { status: 'superseded', failureCode: 'comp_plan_granted', settledAt: now },
+                });
+                await tx.billingSubscription.update({
+                    where: { id: existing.id },
+                    data: {
+                        planId: plan.id,
+                        status: SubscriptionStatus.ACTIVE,
+                        currentPeriodStart: now,
+                        currentPeriodEnd: periodEnd,
+                        cancelAtPeriodEnd: false,
+                        cancelledAt: null,
+                        cancellationReason: `comp: ${input.reason}`,
+                        // A courtesy must disable every local billing calendar.
+                        nextChargeAt: null,
+                        providerSubscriptionId: null,
+                        pendingPlanId: null,
+                        pendingPlanChangeAt: null,
+                        pendingUpgradePlanId: null,
+                    },
+                });
+                await tx.tenant.update({
+                    where: { id: input.tenantId },
+                    data: {
+                        plan: input.planSlug,
+                        subscriptionStatus: SubscriptionStatus.ACTIVE,
+                        currentPeriodEnd: periodEnd,
+                    },
+                });
             });
         } else {
             // A comp subscription never reaches a provider (providerSubscriptionId
@@ -1396,29 +2102,30 @@ export class BillingService {
                     );
                     return 'wompi' as PaymentProviderName;
                 });
-            await this.prisma.billingSubscription.create({
-                data: {
-                    tenantId: input.tenantId,
-                    planId: plan.id,
-                    status: SubscriptionStatus.ACTIVE,
-                    provider: compProvider,
-                    providerCustomerId: `comp_${input.tenantId}`,
-                    providerSubscriptionId: null,
-                    currentPeriodStart: now,
-                    currentPeriodEnd: periodEnd,
-                    cancellationReason: `comp: ${input.reason}`,
-                },
+            await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                await tx.billingSubscription.create({
+                    data: {
+                        tenantId: input.tenantId,
+                        planId: plan.id,
+                        status: SubscriptionStatus.ACTIVE,
+                        provider: compProvider,
+                        providerCustomerId: `comp_${input.tenantId}`,
+                        providerSubscriptionId: null,
+                        currentPeriodStart: now,
+                        currentPeriodEnd: periodEnd,
+                        cancellationReason: `comp: ${input.reason}`,
+                    },
+                });
+                await tx.tenant.update({
+                    where: { id: input.tenantId },
+                    data: {
+                        plan: input.planSlug,
+                        subscriptionStatus: SubscriptionStatus.ACTIVE,
+                        currentPeriodEnd: periodEnd,
+                    },
+                });
             });
         }
-
-        await this.prisma.tenant.update({
-            where: { id: input.tenantId },
-            data: {
-                plan: input.planSlug,
-                subscriptionStatus: SubscriptionStatus.ACTIVE,
-                currentPeriodEnd: periodEnd,
-            },
-        });
         await this.redis.del(`tenant_plan:${input.tenantId}`);
         await this.redis.del(`sub_status:${input.tenantId}`);
         await this.redis.del(`plan_features:${input.tenantId}`);
@@ -1491,17 +2198,80 @@ export class BillingService {
         // and issue a second DIAN invoice.
         const engineSettled = await this.settleEngineChargeIfAny(event);
         if (engineSettled) {
-            await this.prisma.billingEvent.create({
-                data: {
-                    tenantId: engineSettled.tenantId,
-                    subscriptionId: engineSettled.subscriptionId,
+            try {
+                await this.prisma.billingEvent.create({
+                    data: {
+                        tenantId: engineSettled.tenantId,
+                        subscriptionId: engineSettled.subscriptionId,
+                        provider: event.provider,
+                        providerEventId: event.providerEventId,
+                        eventType: event.type,
+                        payload: event.rawPayload as any,
+                    },
+                });
+            } catch (error: any) {
+                if (error?.code !== 'P2002') {
+                    throw new ServiceUnavailableException({
+                        error: 'billing_event_not_persisted',
+                        provider: event.provider,
+                        providerEventId: event.providerEventId,
+                    });
+                }
+            }
+            return { processed: true, reason: 'engine_settled' };
+        }
+
+        // A provider without native subscriptions can only move a SaaS
+        // subscription through an attempt created by our recurring engine.  A
+        // signed provider transaction is proof that *some* payment happened;
+        // it is not proof that it belongs to this subscription.  Falling
+        // through to the legacy payer-email resolver here would let any
+        // unmatched Wompi transaction activate a tenant and create an invoice
+        // with no contract reference/amount to reconcile against.
+        const isPaymentOutcome = event.type === BillingEventType.PAYMENT_SUCCEEDED
+            || event.type === BillingEventType.PAYMENT_FAILED
+            || event.type === BillingEventType.PAYMENT_REFUNDED;
+        if (isPaymentOutcome && !this.capabilitiesFor(event.provider).nativeSubscriptions) {
+            try {
+                await this.prisma.billingEvent.create({
+                    data: {
+                        // Deliberately do not trust tenantId/payerEmail from an
+                        // unmatched transaction enough to associate the audit row
+                        // with a subscription.
+                        tenantId: null,
+                        subscriptionId: null,
+                        provider: event.provider,
+                        providerEventId: event.providerEventId,
+                        eventType: event.type,
+                        payload: event.rawPayload as any,
+                    },
+                });
+            } catch (error: any) {
+                this.logger.error(
+                    `[Billing][SECURITY] Could not persist unmatched ${event.provider} charge ${event.providerEventId}: ${error?.message ?? error}`,
+                );
+                // A concurrent delivery that won the UNIQUE is already durable.
+                // Any other DB error must be retryable at the webhook boundary;
+                // ACKing 200 here would permanently lose a signed money event.
+                if (error?.code === 'P2002') {
+                    return { processed: false, reason: 'duplicate' };
+                }
+                throw new ServiceUnavailableException({
+                    error: 'billing_event_not_persisted',
                     provider: event.provider,
                     providerEventId: event.providerEventId,
-                    eventType: event.type,
-                    payload: event.rawPayload as any,
-                },
-            }).catch(() => undefined);
-            return { processed: true, reason: 'engine_settled' };
+                });
+            }
+            this.logger.error(
+                `[Billing][SECURITY] Ignored unmatched ${event.provider} payment outcome ${event.providerEventId}; no recurring-engine attempt matched providerTxnId=${event.providerPaymentId ?? 'none'}`,
+            );
+            this.eventEmitter.emit('billing.engine_charge.unmatched', {
+                provider: event.provider,
+                providerEventId: event.providerEventId,
+                providerPaymentId: event.providerPaymentId,
+                type: event.type,
+            });
+            return { processed: false, reason: 'unmatched_engine_charge' };
         }
 
         // Resolve the subscription this event concerns (if any)
@@ -1700,24 +2470,32 @@ export class BillingService {
         const status = tenant?.subscriptionStatus ?? 'active';
 
         if (status === 'expired') {
-            return { level: 'hard_lock', daysElapsed: 7, daysRemaining: 0, status };
+            return { level: 'hard_lock', daysElapsed: DUNNING_EXPIRY_DAY, daysRemaining: 0, status };
         }
         if (status !== 'past_due') {
-            return { level: 'none', daysElapsed: 0, daysRemaining: 7, status };
+            return { level: 'none', daysElapsed: 0, daysRemaining: DUNNING_EXPIRY_DAY, status };
         }
 
         const pastDueSince = await this.redis.get(`offboard:past_due:${tenantId}`);
         if (!pastDueSince) {
-            return { level: 'warning', daysElapsed: 0, daysRemaining: 7, status };
+            return { level: 'warning', daysElapsed: 0, daysRemaining: DUNNING_EXPIRY_DAY, status };
         }
 
-        const daysElapsed = Math.floor((Date.now() - new Date(pastDueSince).getTime()) / 86_400_000);
-        const daysRemaining = Math.max(0, 7 - daysElapsed);
+        const parsedPastDueSince = new Date(pastDueSince);
+        if (!Number.isFinite(parsedPastDueSince.getTime())) {
+            this.logger.error(`[Billing] Invalid past-due clock for tenant ${tenantId}; refusing to report elapsed grace`);
+            return { level: 'warning', daysElapsed: 0, daysRemaining: DUNNING_EXPIRY_DAY, status };
+        }
+        const daysElapsed = Math.max(
+            0,
+            Math.floor((Date.now() - parsedPastDueSince.getTime()) / 86_400_000),
+        );
+        const daysRemaining = Math.max(0, DUNNING_EXPIRY_DAY - daysElapsed);
 
-        if (daysElapsed >= 7) {
+        if (daysElapsed >= DUNNING_EXPIRY_DAY) {
             return { level: 'hard_lock', daysElapsed, daysRemaining: 0, status };
         }
-        if (daysElapsed >= 3) {
+        if (daysElapsed >= DUNNING_SOFT_LOCK_DAY) {
             return { level: 'soft_lock', daysElapsed, daysRemaining, status };
         }
         return { level: 'warning', daysElapsed, daysRemaining, status };
@@ -1859,51 +2637,194 @@ export class BillingService {
         const country = normalizeBillingCountry(tenant?.billingCountry) || 'CO';
         const pricing = this.resolveEnginePricing(newPlan, country, targetCycle);
 
-        const lastPaid = await this.prisma.billingChargeAttempt.findFirst({
-            where: { subscriptionId: sub.id, status: 'succeeded' },
-            orderBy: { settledAt: 'desc' },
-        });
-
         const now = new Date();
-        const timezone = sub.billingTimezone || 'America/Bogota';
-        const proration = this.proration.computeUpgrade({
-            now,
-            currentPeriodStart: sub.currentPeriodStart ?? now,
-            currentPeriodEnd: sub.currentPeriodEnd ?? now,
-            // What was actually charged, so coupons and country overrides are
-            // honoured instead of the list price.
-            paidCents: lastPaid?.amountCents ?? sub.chargeAmountCents ?? 0,
-            newAmountCents: pricing.amountCents,
-            targetCycle,
-            anchorDay: sub.billingAnchorDay ?? now.getUTCDate(),
-            timezone,
-            creditBalanceCents: sub.creditBalanceCents ?? 0,
-        });
-
-        // Nothing to collect: the change can be applied immediately.
-        if (proration.chargeCents === 0) {
-            await this.prisma.billingSubscription.update({
-                where: { id: sub.id },
-                data: {
-                    planId: newPlan.id,
-                    chargeAmountCents: pricing.amountCents,
-                    chargeCurrency: pricing.currency,
-                    currentPeriodStart: proration.periodStart,
-                    currentPeriodEnd: proration.periodEnd,
-                    nextChargeAt: proration.periodEnd,
-                    metadata: { ...(sub.metadata ?? {}), billingCycle: targetCycle } as any,
-                },
-            });
-            if (proration.creditGeneratedCents > 0) {
-                await this.proration.recordCredit({
-                    tenantId: sub.tenantId,
-                    subscriptionId: sub.id,
-                    deltaCents: proration.creditGeneratedCents,
-                    currency: pricing.currency,
-                    reason: 'upgrade_credit_applied',
+        const outcome = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            // Serialize plan changes with the renewal worker at the durable
+            // subscription row.  The Redis lock serializes API requests, but it
+            // cannot make a scheduler in another process wait or survive a
+            // Redis outage.
+            await tx.$queryRawUnsafe(
+                'SELECT id FROM billing_subscriptions WHERE id = $1::uuid FOR UPDATE',
+                sub.id,
+            );
+            const liveSub = await tx.billingSubscription.findUnique({ where: { id: sub.id } });
+            if (!liveSub || liveSub.pendingUpgradePlanId || liveSub.pendingPlanId) {
+                throw new ConflictException({
+                    error: 'plan_change_in_progress',
+                    message: 'A plan change for this period is already being processed.',
                 });
             }
-            await this.prisma.tenant.update({ where: { id: sub.tenantId }, data: { plan: newPlan.slug } });
+
+            // Source, provider and period must come from the row protected by
+            // the lock. A renewal may have settled between the controller's
+            // initial read and this transaction.
+            const source = liveSub.defaultPaymentSourceId
+                ? await tx.billingPaymentSource.findFirst({
+                    where: {
+                        id: liveSub.defaultPaymentSourceId,
+                        tenantId: liveSub.tenantId,
+                        provider: liveSub.provider,
+                        status: 'available',
+                    },
+                })
+                : null;
+            if (!source) {
+                throw new BadRequestException({
+                    error: 'no_payment_method',
+                    message: 'Add an available payment method before changing to a charge-bearing plan.',
+                });
+            }
+
+            // Never place an upgrade proration beside an initial/renewal whose
+            // money outcome is unresolved.  That creates two simultaneous
+            // charges against the same source and makes entitlement ordering
+            // impossible to reason about.
+            const pendingSettlement = await tx.billingChargeAttempt.findFirst({
+                where: {
+                    subscriptionId: liveSub.id,
+                    purpose: { in: ['initial', 'renewal'] },
+                    OR: [
+                        { status: { in: ['scheduled', 'in_flight', 'pending_provider'] } },
+                        { failureClass: 'indeterminate' },
+                    ],
+                },
+                select: { id: true, reference: true, status: true },
+            });
+            if (pendingSettlement) {
+                throw new ConflictException({
+                    error: 'billing_settlement_pending',
+                    message: 'Wait for the current subscription charge to settle before changing plan.',
+                    attemptId: pendingSettlement.id,
+                    reference: pendingSettlement.reference,
+                });
+            }
+
+            const [lastPaid, creditAggregate] = await Promise.all([
+                tx.billingChargeAttempt.findFirst({
+                    where: { subscriptionId: liveSub.id, status: 'succeeded' },
+                    orderBy: { settledAt: 'desc' },
+                }),
+                tx.billingCreditLedger.aggregate({
+                    where: { tenantId: liveSub.tenantId, currency: pricing.currency },
+                    _sum: { deltaCents: true },
+                }),
+            ]);
+            const creditBalanceCents = creditAggregate._sum.deltaCents ?? 0;
+            const proration = this.proration.computeUpgrade({
+                now,
+                currentPeriodStart: liveSub.currentPeriodStart ?? now,
+                currentPeriodEnd: liveSub.currentPeriodEnd ?? now,
+                // What was actually charged, so coupons and country overrides
+                // are honoured instead of the list price.
+                paidCents: lastPaid?.amountCents ?? liveSub.chargeAmountCents ?? 0,
+                newAmountCents: pricing.amountCents,
+                targetCycle,
+                anchorDay: liveSub.billingAnchorDay ?? now.getUTCDate(),
+                timezone: liveSub.billingTimezone || 'America/Bogota',
+                creditBalanceCents,
+            });
+
+            // Nothing to collect: entitlement and append-only credit movements
+            // still commit as one unit while the row lock prevents two requests
+            // from consuming the same balance.
+            if (proration.chargeCents === 0) {
+                const resultingCreditBalance = creditBalanceCents
+                    - proration.creditAppliedCents
+                    + proration.creditGeneratedCents;
+                if (proration.creditAppliedCents > 0) {
+                    await tx.billingCreditLedger.create({
+                        data: {
+                            tenantId: liveSub.tenantId,
+                            subscriptionId: liveSub.id,
+                            deltaCents: -proration.creditAppliedCents,
+                            currency: pricing.currency,
+                            reason: 'upgrade_credit_consumed',
+                            notes: `Credit consumed by no-charge plan change to ${newPlan.slug}`,
+                        },
+                    });
+                }
+                if (proration.creditGeneratedCents > 0) {
+                    await tx.billingCreditLedger.create({
+                        data: {
+                            tenantId: liveSub.tenantId,
+                            subscriptionId: liveSub.id,
+                            deltaCents: proration.creditGeneratedCents,
+                            currency: pricing.currency,
+                            reason: 'upgrade_unused_time_credit',
+                        },
+                    });
+                }
+                await tx.billingSubscription.update({
+                    where: { id: liveSub.id },
+                    data: {
+                        planId: newPlan.id,
+                        chargeAmountCents: pricing.amountCents,
+                        chargeCurrency: pricing.currency,
+                        currentPeriodStart: proration.periodStart,
+                        currentPeriodEnd: proration.periodEnd,
+                        nextChargeAt: proration.periodEnd,
+                        creditBalanceCents: resultingCreditBalance,
+                        metadata: {
+                            ...(liveSub.metadata && typeof liveSub.metadata === 'object'
+                                ? liveSub.metadata as any
+                                : {}),
+                            billingCycle: targetCycle,
+                        } as any,
+                    },
+                });
+                await tx.tenant.update({ where: { id: liveSub.tenantId }, data: { plan: newPlan.slug } });
+                return { kind: 'applied' as const, proration };
+            }
+
+            // Record pending intent and claim the money movement atomically.
+            // Queue publication happens only after commit, so revalidation can
+            // never observe an orphan attempt without its target plan.
+            await tx.billingSubscription.update({
+                where: { id: liveSub.id },
+                data: { pendingUpgradePlanId: newPlan.id },
+            });
+            const upgradeOperationKey = [
+                'plan-change',
+                liveSub.planId,
+                newPlan.id,
+                targetCycle,
+                liveSub.currentPeriodStart?.toISOString()
+                    ?? liveSub.currentPeriodEnd?.toISOString()
+                    ?? 'unanchored',
+            ].join(':');
+            const claim = await this.engine.claimAttempt({
+                subscriptionId: liveSub.id,
+                tenantId: liveSub.tenantId,
+                provider: liveSub.provider as PaymentProviderName,
+                purpose: 'upgrade_proration',
+                periodStart: proration.periodStart,
+                periodEnd: proration.periodEnd,
+                amountCents: proration.chargeCents,
+                currency: pricing.currency,
+                scheduledAt: new Date(),
+                paymentSourceId: source.id,
+                operationKey: upgradeOperationKey,
+                metadata: {
+                    operationKey: upgradeOperationKey,
+                    targetPlanId: newPlan.id,
+                    targetAmountCents: pricing.amountCents,
+                    targetCurrency: pricing.currency,
+                    targetBillingCycle: targetCycle,
+                    creditAppliedCents: proration.creditAppliedCents,
+                    unusedCents: proration.unusedCents,
+                    prorationReason: proration.reason,
+                },
+            }, tx);
+            if (!claim) {
+                throw new ConflictException({
+                    error: 'plan_change_in_progress',
+                    message: 'A plan change for this period is already being processed.',
+                });
+            }
+            return { kind: 'charge' as const, proration, claim };
+        });
+
+        if (outcome.kind === 'applied') {
             await this.invalidateTenantCaches(sub.tenantId);
             this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, sub.tenantId, sub.id, {
                 fromPlan: sub.planId, toPlan: newPlan.id, prorated: true, charged: 0,
@@ -1911,47 +2832,16 @@ export class BillingService {
             return { ...sub, planId: newPlan.id };
         }
 
-        const claim = await this.engine.claimAttempt({
-            subscriptionId: sub.id,
-            tenantId: sub.tenantId,
-            provider: sub.provider as PaymentProviderName,
-            purpose: 'upgrade_proration',
-            periodStart: proration.periodStart,
-            periodEnd: proration.periodEnd,
-            amountCents: proration.chargeCents,
-            currency: pricing.currency,
-            scheduledAt: new Date(),
-            paymentSourceId: sub.defaultPaymentSourceId,
-        });
-        if (!claim) {
-            throw new ConflictException({
-                error: 'plan_change_in_progress',
-                message: 'A plan change for this period is already being processed.',
-            });
-        }
-
-        // The target plan is recorded as PENDING: settleApproved promotes it
-        // once the money lands, and a failed charge leaves the tenant untouched.
-        await this.prisma.billingSubscription.update({
-            where: { id: sub.id },
-            data: {
-                pendingUpgradePlanId: newPlan.id,
-                chargeAmountCents: pricing.amountCents,
-                chargeCurrency: pricing.currency,
-                metadata: { ...(sub.metadata ?? {}), billingCycle: targetCycle } as any,
-            },
-        });
-
         await this.enginePendingCharges.add(
             'charge',
-            { attemptId: claim.id },
-            { jobId: claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
+            { attemptId: outcome.claim.id },
+            { jobId: outcome.claim.id, attempts: 1, removeOnComplete: { age: 604_800 } },
         );
 
         this.logger.log(
-            `[Billing] Tenant ${sub.tenantId} plan change to ${newPlan.slug}: charging ${proration.chargeCents} ${pricing.currency} (${proration.reason})`,
+            `[Billing] Tenant ${sub.tenantId} plan change to ${newPlan.slug}: charging ${outcome.proration.chargeCents} ${pricing.currency} (${outcome.proration.reason})`,
         );
-        return { ...sub, pendingUpgradePlanId: newPlan.id, prorationCents: proration.chargeCents };
+        return { ...sub, pendingUpgradePlanId: newPlan.id, prorationCents: outcome.proration.chargeCents };
     }
 
     /**
@@ -2024,10 +2914,34 @@ export class BillingService {
         });
         if (!attempt) return null;
 
+        const eventCurrency = event.payment?.currency?.toUpperCase();
+        const reportedAmount = event.payment?.amountCents;
+        const amountMismatch = reportedAmount != null && (
+            event.type === BillingEventType.PAYMENT_REFUNDED
+                ? reportedAmount <= 0 || reportedAmount > attempt.amountCents
+                : reportedAmount !== attempt.amountCents
+        );
+        const currencyMismatch = !!eventCurrency && eventCurrency !== attempt.currency.toUpperCase();
+        const referenceMismatch = reference != null && String(reference) !== attempt.reference;
+        if (event.provider !== attempt.provider || amountMismatch || currencyMismatch || referenceMismatch) {
+            this.logger.error(
+                `[Billing][SECURITY] Refusing engine settlement mismatch for attempt ${attempt.id}: `
+                + `event=${event.provider}/${event.payment?.amountCents ?? 'n/a'}/${eventCurrency ?? 'n/a'} `
+                + `attempt=${attempt.provider}/${attempt.amountCents}/${attempt.currency}; `
+                + `reference=${reference ?? 'n/a'} expected=${attempt.reference}`,
+            );
+            throw new BadRequestException({
+                error: 'engine_settlement_mismatch',
+                attemptId: attempt.id,
+            });
+        }
+
         const charge = {
             providerChargeId: providerTxnId ?? attempt.providerTxnId ?? '',
             status: 'approved' as const,
-            reference: attempt.reference,
+            // Preserve the canonical provider value so the engine's independent
+            // identity check cannot be bypassed by substituting our DB value.
+            reference: reference != null ? String(reference) : attempt.reference,
             amountCents: attempt.amountCents,
             currency: attempt.currency,
             settledAt: event.occurredAt,
@@ -2039,12 +2953,12 @@ export class BillingService {
             const failure = { ...charge, status: 'declined' as const, statusMessage: event.payment?.failureReason };
             await this.engine.settleFailed(attempt.id, failure, this.engine.classifyFailure(failure));
         } else {
-            // A void/refund on a charge we made: record it, do not advance the period.
-            await this.engine.settleFailed(
-                attempt.id,
-                { ...charge, status: 'voided' as const, statusMessage: 'voided at the provider' },
-                'hard',
-            );
+            await this.engine.settleRefunded(attempt.id, {
+                ...charge,
+                amountCents: event.payment?.amountCents ?? attempt.amountCents,
+                status: 'voided' as const,
+                statusMessage: 'refunded/voided at the provider',
+            });
         }
 
         return { tenantId: attempt.tenantId, subscriptionId: attempt.subscriptionId };

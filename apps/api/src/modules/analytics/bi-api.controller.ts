@@ -1,8 +1,7 @@
-import { Controller, Get, Param, Query, Headers, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { PrismaService } from '../prisma/prisma.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
-import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { BiApiGuard } from './bi-api.guard';
 
 /**
  * BI API: External-facing analytics endpoints authenticated via API key.
@@ -13,104 +12,77 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
  */
 @ApiTags('bi-api')
 @Controller('bi-api')
+@UseGuards(BiApiGuard)
 export class BIApiController {
     constructor(
-        private prisma: PrismaService,
         private dashboardAnalytics: DashboardAnalyticsService,
-        private throttle: TenantThrottleService,
     ) { }
-
-    private async validateApiKey(apiKey: string | undefined): Promise<string> {
-        if (!apiKey) throw new UnauthorizedException('X-API-Key header required');
-
-        const tenant = await this.prisma.tenant.findFirst({
-            where: {
-                isActive: true,
-                settings: { path: ['biApiKey'], equals: apiKey },
-            },
-            select: { id: true },
-        });
-
-        if (!tenant) throw new UnauthorizedException('Invalid API key');
-
-        const enabled = await this.throttle.isFeatureEnabled(tenant.id, 'biApi');
-        if (!enabled) throw new ForbiddenException('BI API is not available on your current plan. Upgrade to access this feature.');
-
-        return tenant.id;
-    }
 
     @Get('kpis')
     @ApiOperation({ summary: 'BI: Get KPIs with period comparison' })
     async getKPIs(
-        @Headers('x-api-key') apiKey: string,
+        @Req() req: any,
         @Query('start') start: string,
         @Query('end') end: string,
     ) {
-        const tenantId = await this.validateApiKey(apiKey);
-        const result = await this.dashboardAnalytics.getOverviewKPIs(tenantId, start, end);
+        const result = await this.dashboardAnalytics.getOverviewKPIs(req.tenantId, start, end);
         return { success: true, data: result };
     }
 
     @Get('time-series')
     @ApiOperation({ summary: 'BI: Conversation volume time series' })
     async getTimeSeries(
-        @Headers('x-api-key') apiKey: string,
+        @Req() req: any,
         @Query('start') start: string,
         @Query('end') end: string,
     ) {
-        const tenantId = await this.validateApiKey(apiKey);
-        const result = await this.dashboardAnalytics.getConversationsVolume(tenantId, start, end);
+        const result = await this.dashboardAnalytics.getConversationsVolume(req.tenantId, start, end);
         return { success: true, data: result };
     }
 
     @Get('ai-metrics')
     @ApiOperation({ summary: 'BI: AI resolution, containment, cost metrics' })
     async getAIMetrics(
-        @Headers('x-api-key') apiKey: string,
+        @Req() req: any,
         @Query('start') start: string,
         @Query('end') end: string,
     ) {
-        const tenantId = await this.validateApiKey(apiKey);
-        const result = await this.dashboardAnalytics.getAIMetrics(tenantId, start, end);
+        const result = await this.dashboardAnalytics.getAIMetrics(req.tenantId, start, end);
         return { success: true, data: result };
     }
 
     @Get('realtime')
     @ApiOperation({ summary: 'BI: Real-time stats (active convos, agents, queue)' })
-    async getRealtime(@Headers('x-api-key') apiKey: string) {
-        const tenantId = await this.validateApiKey(apiKey);
-        const result = await this.dashboardAnalytics.getRealtime(tenantId);
+    async getRealtime(@Req() req: any) {
+        const result = await this.dashboardAnalytics.getRealtime(req.tenantId);
         return { success: true, data: result };
     }
 
     @Get('export')
     @ApiOperation({ summary: 'BI: Full data export (KPIs + time series + AI + channels)' })
     async getFullExport(
-        @Headers('x-api-key') apiKey: string,
+        @Req() req: any,
         @Query('start') start: string,
         @Query('end') end: string,
     ) {
-        const tenantId = await this.validateApiKey(apiKey);
-        const result = await this.dashboardAnalytics.getBIData(tenantId, start, end);
+        const result = await this.dashboardAnalytics.getBIData(req.tenantId, start, end);
         return { success: true, data: result };
     }
 
     @Get('anomalies')
     @ApiOperation({ summary: 'BI: Detected anomalies (z-score > 2)' })
-    async getAnomalies(@Headers('x-api-key') apiKey: string) {
-        const tenantId = await this.validateApiKey(apiKey);
-        const result = await this.dashboardAnalytics.getAnomalies(tenantId);
+    async getAnomalies(@Req() req: any) {
+        const result = await this.dashboardAnalytics.getAnomalies(req.tenantId);
         return { success: true, data: result };
     }
 
     @Get('cohorts')
     @ApiOperation({ summary: 'BI: Cohort retention analysis' })
     async getCohorts(
-        @Headers('x-api-key') apiKey: string,
+        @Req() req: any,
         @Query('months') months?: string,
     ) {
-        const tenantId = await this.validateApiKey(apiKey);
-        const result = await this.dashboardAnalytics.getCohortAnalysis(tenantId, Number(months) || 6);
+        const result = await this.dashboardAnalytics.getCohortAnalysis(req.tenantId, Number(months) || 6);
         return { success: true, data: result };
     }
 }

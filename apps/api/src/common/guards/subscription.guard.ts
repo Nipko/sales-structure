@@ -1,24 +1,41 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+    Injectable,
+    CanActivate,
+    ExecutionContext,
+    ForbiddenException,
+    ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../modules/prisma/prisma.service';
-import { RedisService } from '../../modules/redis/redis.service';
+import {
+    evaluateSubscriptionAccess,
+    readSubscriptionEntitlement,
+    type SubscriptionAccessDecision,
+    type SubscriptionEntitlementSnapshot,
+} from '../utils/subscription-entitlement.util';
 
-const CACHE_TTL = 300; // 5 min
-const HARD_LOCK_STATUSES = ['expired', 'cancelled'];
-// OJO: el match es por substring sobre la URL completa, así que un prefijo no
-// cubre a sus "hermanos": '/billing/' NO exime a '/billing-coupons/'. Sin esa
-// entrada, un tenant en soft_lock (día 3, solo GET) o hard_lock (día 7, nada) no
-// podía canjear el cupón — justo la campaña de recuperación "volvé, te damos un
-// mes gratis" moría contra este guard.
-const EXEMPT_PATHS = ['/billing/', '/billing-admin/', '/billing-coupons/', '/auth/', '/health', '/billing/webhook'];
+// `pending_auth` is intentionally locked too. During two-phase onboarding the
+// tenant and its requested BillingSubscription already exist so a payment
+// source can be stored tenant-scoped, but no money has moved yet. Letting that
+// status through would make `tenants.plan` an entitlement before APPROVED.
+// Billing/auth/fiscal endpoints remain reachable through EXEMPT_PATHS below.
+// Prefixes are matched against the URL *pathname* and on a segment boundary.
+// Matching substrings in the raw URL would let `/contacts?next=/billing/`
+// bypass the guard. Keep recovery surfaces reachable while pending/locked.
+const EXEMPT_ROUTE_PREFIXES = [
+    '/billing',
+    '/billing-admin',
+    '/billing-coupons',
+    '/fiscal',
+    '/auth',
+    '/onboarding',
+    '/health',
+];
 const SOFT_LOCK_ALLOWED_METHODS = ['GET', 'HEAD', 'OPTIONS'];
-const GRACE_DAYS_SOFT_LOCK = 3;
-const GRACE_DAYS_HARD_LOCK = 7;
 
 @Injectable()
 export class SubscriptionGuard implements CanActivate {
     constructor(
         private prisma: PrismaService,
-        private redis: RedisService,
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -26,80 +43,87 @@ export class SubscriptionGuard implements CanActivate {
         if (ctxType !== 'http') return true;
 
         const request = context.switchToHttp().getRequest();
-        if (!request?.url) return true;
+        if (!request || (!request.url && !request.originalUrl && !request.path)) {
+            throw new ServiceUnavailableException({ error: 'request_path_unavailable' });
+        }
 
-        if (EXEMPT_PATHS.some(p => request.url.includes(p))) return true;
+        const pathname = this.requestPathname(request);
+        if (EXEMPT_ROUTE_PREFIXES.some((prefix) => this.matchesRoutePrefix(pathname, prefix))) return true;
 
         const user = request.user;
-        if (!user) return true;
-        if (user.role === 'super_admin') return true;
+        if (user?.role === 'super_admin') return true;
 
-        const tenantId = request.tenantId || user.tenantId;
+        // API-key guards authenticate a tenant without creating a JWT `user`.
+        // They run before this global interceptor and populate request.tenantId;
+        // treating !user as public would bypass every subscription lock.
+        const tenantId = request.tenantId || user?.tenantId;
         if (!tenantId) return true;
 
-        const status = await this.getSubscriptionStatus(tenantId);
-        if (!status) return true;
-
-        if (HARD_LOCK_STATUSES.includes(status)) {
-            throw new ForbiddenException({
-                error: 'subscription_expired',
-                restrictionLevel: 'hard_lock',
-                message: 'Tu suscripción ha expirado. Reactiva tu plan desde la página de facturación.',
-            });
-        }
-
-        if (status === 'past_due') {
-            const graceDays = await this.getGraceDays(tenantId);
-
-            if (graceDays >= GRACE_DAYS_HARD_LOCK) {
-                throw new ForbiddenException({
-                    error: 'subscription_expired',
-                    restrictionLevel: 'hard_lock',
-                    message: 'Tu período de gracia expiró. Reactiva tu plan desde la página de facturación.',
-                });
-            }
-
-            if (graceDays >= GRACE_DAYS_SOFT_LOCK) {
-                const method = request.method?.toUpperCase();
-                if (!SOFT_LOCK_ALLOWED_METHODS.includes(method)) {
-                    throw new ForbiddenException({
-                        error: 'subscription_restricted',
-                        restrictionLevel: 'soft_lock',
-                        daysRemaining: GRACE_DAYS_HARD_LOCK - graceDays,
-                        message: 'Tu cuenta está en modo solo lectura. Realiza un pago para restaurar el acceso completo.',
-                    });
-                }
-            }
-        }
+        const method = request.method?.toUpperCase();
+        const mode = SOFT_LOCK_ALLOWED_METHODS.includes(method) ? 'read' : 'write';
+        const decision = evaluateSubscriptionAccess(
+            await this.getSubscriptionSnapshot(tenantId),
+            mode,
+        );
+        this.assertAllowed(decision);
 
         return true;
     }
 
-    private async getSubscriptionStatus(tenantId: string): Promise<string | null> {
-        const cacheKey = `sub_status:${tenantId}`;
-        const cached = await this.redis.get(cacheKey);
-        if (cached) return cached === 'none' ? null : cached;
-
+    private async getSubscriptionSnapshot(tenantId: string): Promise<SubscriptionEntitlementSnapshot> {
         try {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { subscriptionStatus: true },
+            // Do not cache the decisive money state. Cache invalidation is
+            // necessarily best-effort; a surviving ACTIVE value must not grant
+            // five extra minutes after refund, expiry or payment failure.
+            return await readSubscriptionEntitlement(this.prisma, tenantId);
+        } catch {
+            throw new ServiceUnavailableException({
+                error: 'subscription_status_unavailable',
+                message: 'No fue posible validar temporalmente el estado de la suscripción.',
             });
-            const status = tenant?.subscriptionStatus || null;
-            await this.redis.set(cacheKey, status || 'none', CACHE_TTL);
-            return status;
-        } catch {
-            return null;
         }
     }
 
-    private async getGraceDays(tenantId: string): Promise<number> {
+    private assertAllowed(decision: SubscriptionAccessDecision): void {
+        if (decision.allowed) return;
+        if (decision.restrictionLevel === 'unavailable') {
+            throw new ServiceUnavailableException({
+                error: decision.error,
+                restrictionLevel: decision.restrictionLevel,
+                message: 'No fue posible validar temporalmente el estado de la suscripción.',
+            });
+        }
+        const messages: Record<string, string> = {
+            payment_method_required: 'Completa el medio de pago para activar tu plan.',
+            subscription_expired: 'Tu suscripción ha expirado. Reactiva tu plan desde la página de facturación.',
+            subscription_paused: 'Tu suscripción está pausada. Reanúdala desde facturación para volver a escribir.',
+            subscription_restricted: 'Tu cuenta está en modo solo lectura. Realiza un pago para restaurar el acceso completo.',
+        };
+        throw new ForbiddenException({
+            error: decision.error,
+            restrictionLevel: decision.restrictionLevel,
+            ...(decision.daysRemaining === undefined ? {} : { daysRemaining: decision.daysRemaining }),
+            message: messages[decision.error ?? ''] ?? 'La suscripción no permite esta operación.',
+        });
+    }
+
+    private requestPathname(request: { originalUrl?: string; url?: string; path?: string }): string {
+        if (typeof request.path === 'string' && request.path.startsWith('/')) return request.path;
+        const raw = request.originalUrl || request.url || '/';
         try {
-            const pastDueSince = await this.redis.get(`offboard:past_due:${tenantId}`);
-            if (!pastDueSince) return 0;
-            return Math.floor((Date.now() - new Date(pastDueSince).getTime()) / 86_400_000);
+            return new URL(raw, 'http://subscription.guard').pathname;
         } catch {
-            return 0;
+            return raw.split('?')[0] || '/';
         }
     }
+
+    private matchesRoutePrefix(pathname: string, prefix: string): boolean {
+        // Nest mounts this application either at root or below the known API
+        // prefixes. A matching segment later in the route is not an exemption
+        // (`/contacts/billing/export` remains protected).
+        return [prefix, `/api${prefix}`, `/api/v1${prefix}`].some(
+            (candidate) => pathname === candidate || pathname.startsWith(`${candidate}/`),
+        );
+    }
+
 }

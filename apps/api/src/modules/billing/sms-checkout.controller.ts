@@ -8,8 +8,9 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 
 /**
  * Tenant-facing SMS package purchase endpoints. Lives under the same
- * `sms-credits` route prefix as the read/admin endpoints (separate controller
- * because purchasing needs the MercadoPago adapter from the billing module).
+ * `sms-credits` route prefix as the read/admin endpoints. The write route is
+ * intentionally retained so clients receive the explicit product/rail
+ * retirement response from SmsCheckoutService instead of a missing route.
  */
 @Controller('sms-credits')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
@@ -17,7 +18,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 export class SmsCheckoutController {
     constructor(private readonly checkout: SmsCheckoutService) { }
 
-    /** Start a package purchase → returns the MercadoPago checkout URL. */
+    /** Start a package purchase when the SMS product and its checkout rail exist. */
     @Post(':tenantId/checkout')
     @Roles('super_admin', 'tenant_admin')
     async createCheckout(@Param('tenantId') tenantId: string, @Body() body: { packageId: string }) {

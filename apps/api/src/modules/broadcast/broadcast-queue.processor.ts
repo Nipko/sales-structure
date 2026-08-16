@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BroadcastService, BROADCAST_QUEUE, BroadcastJobData } from './broadcast.service';
 import { AbTestService } from './ab-test.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 @Processor(BROADCAST_QUEUE, {
     concurrency: 10,
@@ -38,6 +39,19 @@ export class BroadcastQueueProcessor extends WorkerHost {
         this.logger.debug(
             `Processing broadcast job ${job.id}: campaign=${campaignId} channel=${channel} attempt=${job.attemptsMade + 1}`,
         );
+
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, job.data.tenantId, 'write');
+        if (!entitlement.allowed) {
+            if (entitlement.restrictionLevel === 'unavailable') {
+                throw new Error(`subscription_entitlement_unavailable:${entitlement.error ?? 'unknown'}`);
+            }
+            const reason = entitlement.error ?? 'subscription_restricted';
+            this.logger.warn(
+                `Broadcast dropped (${reason}): campaign=${campaignId} recipient=${recipientId}`,
+            );
+            await this.markFailed(schemaName, campaignId, recipientId, job.data.variantId, reason);
+            return `skipped:${reason}`;
+        }
 
         // --- SEND: the ONLY step allowed to trigger a BullMQ retry ---
         let messageId: string;

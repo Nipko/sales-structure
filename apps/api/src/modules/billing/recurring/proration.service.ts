@@ -186,7 +186,7 @@ export class ProrationService {
             },
         });
 
-        const balance = await this.recalculateBalance(input.tenantId, input.subscriptionId);
+        const balance = await this.recalculateBalance(input.tenantId, input.subscriptionId, input.currency);
         this.logger.log(
             `[Proration] Tenant ${input.tenantId} credit ${input.deltaCents >= 0 ? '+' : ''}${input.deltaCents} (${input.reason}) → balance ${balance}`,
         );
@@ -194,9 +194,9 @@ export class ProrationService {
     }
 
     /** Recompute the balance from the ledger — the ledger always wins. */
-    async recalculateBalance(tenantId: string, subscriptionId?: string): Promise<number> {
+    async recalculateBalance(tenantId: string, subscriptionId?: string, currency?: string): Promise<number> {
         const aggregate = await this.prisma.billingCreditLedger.aggregate({
-            where: { tenantId },
+            where: { tenantId, ...(currency ? { currency } : {}) },
             _sum: { deltaCents: true },
         });
         const balance = aggregate._sum.deltaCents ?? 0;
@@ -215,9 +215,9 @@ export class ProrationService {
         return balance;
     }
 
-    async getBalance(tenantId: string): Promise<number> {
+    async getBalance(tenantId: string, currency?: string): Promise<number> {
         const aggregate = await this.prisma.billingCreditLedger.aggregate({
-            where: { tenantId },
+            where: { tenantId, ...(currency ? { currency } : {}) },
             _sum: { deltaCents: true },
         });
         return aggregate._sum.deltaCents ?? 0;

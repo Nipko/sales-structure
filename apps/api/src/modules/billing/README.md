@@ -1,150 +1,132 @@
-# Billing Module
+# Billing module
 
-Provider-agnostic subscription billing for Parallly. MercadoPago is the primary provider in LatAm; Stripe will be added later for international markets without touching the service layer.
+Provider-capability-driven subscription billing for Parallly.
 
-The authoritative reference for the plan and the decisions that shaped it is [`docs/billing-plan.md`](../../../../../docs/billing-plan.md). This README documents the **code layout** and current implementation state.
+## Live provider boundary (August 2026)
 
----
+- **Wompi is the only live platform subscription rail**. Colombia/COP uses
+  reusable payment sources and Parallly's internal renewal engine.
+- **Mercado Pago is not a subscription provider**. Its remaining live use is
+  tenant-owned credentials and payment links for tenant → end-customer sales in
+  `tenant-payments`; there are no global `MP_*` subscription credentials.
+- Stripe remains an adapter/capability for a future international rollout; it
+  is not a fallback for unsupported countries unless Billing Ops explicitly
+  enables and routes it.
+- Mock is test-only.
 
-## Architecture
+Operational details and go-live checks: [`docs/billing-runbook.md`](../../../../../docs/billing-runbook.md).
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  BillingService  (pure business logic, provider-agnostic)│
-│  - createTrialSubscription / upgrade / cancel            │
-│  - handleBillingEvent (state machine + idempotency)      │
-│  - getActiveSubscription                                 │
-└───────┬─────────────────────────────────────────────────┘
-        │ uses
-        ▼
-┌─────────────────────────────────────────────────────────┐
-│  PaymentProviderFactory                                  │
-│  - getByName(providerName) → IPaymentProvider            │
-└───────┬─────────────────────────────────────────────────┘
-        │ resolves to
-        ▼
-┌──────────────────┐    ┌──────────────────┐   ┌──────────┐
-│ MercadoPagoAdapter│    │ StripeAdapter   │   │ Mock     │
-│ (Sprint 2)        │    │ (Phase 4+)       │   │ (in-mem) │
-└──────────────────┘    └──────────────────┘   └──────────┘
-```
+## Request flow
 
-Every payment provider implements the same `IPaymentProvider` interface. The factory selects the adapter per request based on `Tenant.paymentProvider`. Swapping providers is a factory change — `BillingService` never sees a concrete adapter.
-
----
-
-## File layout
-
-```
-billing/
-├── billing.module.ts                  NestJS module registration
-├── billing.service.ts                 Business logic + state machine
-├── billing.service.spec.ts            12 unit tests (state machine, idempotency, validation)
-├── billing.controller.ts              Tenant REST: /billing/plans, /billing/subscription
-├── webhook.controller.ts              POST /billing/webhook/:provider (stub until Sprint 2)
-├── payment-provider.factory.ts        Adapter selector
-├── adapters/
-│   ├── payment-provider.interface.ts  The contract — IPaymentProvider
-│   ├── mock-payment-provider.adapter.ts  Deterministic in-memory (tests + dev)
-│   └── mercadopago.adapter.ts         MP Preapproval API (stub until Sprint 2)
-├── processors/
-│   └── reconciliation.processor.ts    Cron reconciliation vs. GET /preapproval (Sprint 2)
-└── types/
-    ├── subscription-status.enum.ts    6 internal states
-    ├── billing-event.enum.ts          12 normalized events
-    └── provider-types.ts              ProviderCustomer, ProviderSubscription, NormalizedBillingEvent, DTOs
+```text
+public plan/config endpoints
+  → PaymentRoutingService (kill switch → country → tenant pin → frozen sub)
+  → browser tokenization with provider public key
+  → PaymentSourceService (explicit consent + AVAILABLE source)
+  → BillingService (trial/change/cancel/pause/resume)
+  → RenewalSchedulerService / SubscriptionEngineService
+  → provider transaction (async)
+  → webhook + poll reconciliation
+  → payment, entitlement and fiscal events
 ```
 
----
+Wompi has no remote subscription object. The internal engine owns billing
+anchor, period, price/currency, next charge, retries and pending plan changes.
+Every Wompi transaction starts asynchronous; only a terminal `APPROVED` result
+can activate a paid subscription or promote a charged upgrade.
 
-## Persistence
+## Main files
 
-Global tables (in `public` schema, not tenant-scoped — billing crosses tenants):
-
-| Table | Purpose |
+| Area | Files |
 |---|---|
-| `billing_plans` | Catalog. Prices in USD cents. Per-country overrides in `price_local_overrides` JSONB. `mp_plan_id` + `stripe_plan_id` populated by per-provider sync scripts |
-| `billing_subscriptions` | One active row per tenant (UNIQUE `tenant_id`). `status` is the internal enum; adapters translate from provider vocabulary |
-| `billing_events` | Append-only audit log. UNIQUE `(provider, provider_event_id)` is the webhook idempotency store |
-| `billing_payments` | Charge history for invoices + dashboard. `invoice_pdf_url` populated by Phase 4 fiscal integration |
+| Tenant subscription API | `billing.controller.ts`, `billing.service.ts` |
+| Public plan/checkout contract | `billing-public.controller.ts`, `billing-plan-catalog.service.ts` |
+| Runtime routing and method flags | `payment-routing.service.ts`, `adapters/provider-capabilities.ts` |
+| Wompi configuration/HTTP | `adapters/wompi-config.service.ts`, `adapters/wompi.adapter.ts` |
+| Sources and legal consent | `recurring/payment-source.controller.ts`, `recurring/payment-source.service.ts` |
+| Renewal execution | `recurring/renewal-scheduler.service.ts`, `recurring/subscription-engine.service.ts` |
+| Dunning/proration | `recurring/dunning.service.ts`, `recurring/proration.service.ts` |
+| Webhooks/reconciliation | `webhook.controller.ts`, `processors/reconciliation.processor.ts` |
+| Super admin | `billing-admin.controller.ts` |
+| Tenant → customer links (Mercado Pago only) | `../tenant-payments/tenant-payments.controller.ts`, `../tenant-payments/tenant-payments.service.ts` |
 
-Denormalized on `tenants` for the hot path (rate limiter, middleware): `subscription_status`, `trial_ends_at`, `current_period_end`, `payment_provider`, `payment_provider_customer_id`, `billing_email`, `billing_country`. `BillingService` keeps them in sync on every state transition.
+## Invariants
 
----
+1. Prices, trials, cycles and limits come from active `billing_plans` rows.
+2. No implicit provider, method, country, cycle or plan fallback.
+3. `pending_auth` never grants paid entitlement.
+4. Card PAN/CVV never reaches this API; the browser sends only provider tokens.
+5. Wompi sources require both current acceptance contracts and explicit consent.
+6. Nequi/Bancolombia tokens may be pending locally, but the remote payment
+   source is created only after token `APPROVED`; charges require `AVAILABLE`.
+7. Provider references and attempt rows are idempotent; do not mutate payment or
+   subscription states by hand.
+8. A charged plan change is pending until settlement succeeds. Failure leaves
+   the tenant on the previous plan.
+9. `isInternal` tenants cannot be charged by the engine and fiscal records the
+   skip instead of issuing a sales invoice.
+10. Sandbox Wompi payments never issue a production DIAN invoice.
 
-## State machine
+## Required Wompi configuration
 
+```dotenv
+WOMPI_PUBLIC_KEY=
+WOMPI_PRIVATE_KEY=
+WOMPI_EVENTS_SECRET=
+WOMPI_INTEGRITY_SECRET=
+WOMPI_MAX_TRANSACTION_COP_CENTS=
+WOMPI_DAILY_CAP_COP_CENTS=
 ```
-pending_auth ──► trialing ──► active ──► past_due ──► cancelled ──► expired
-                                 ▲          │             │
-                                 └──────────┘             ▼
-                              (retry OK)              (no recovery)
+
+All four keys must share test or production prefixes. The events secret is not
+the private key. The webhook endpoint is `POST /billing/webhook/wompi` and must
+validate Wompi's event checksum before dispatch.
+
+Runtime switches live in platform settings and are edited in `/admin/plans`:
+
+- `billing.providers_enabled`
+- `billing.default_provider_by_country`
+- `billing.wompi_methods_enabled` (`card`, `nequi`, `bancolombiaTransfer`)
+
+An empty enabled-method array is a deliberate kill switch.
+
+## Lifecycle
+
+```text
+pending_auth → trialing → active → past_due → expired
+                    └──────────────→ cancelled
 ```
 
-Transitions are enforced by `deriveSubscriptionPatch()` inside `handleBillingEvent`. Do not mutate `billing_subscriptions.status` from outside the service.
+- Two-phase onboarding creates tenant/subscription first, then attaches a
+  tenant-owned source. No trial/paid access is fabricated while authorization
+  is missing.
+- Trial conversion freezes the amount/currency and schedules `nextChargeAt`.
+- Monthly/annual renewal uses the subscription anchor and timezone.
+- Same-cycle lower-price downgrade is scheduled at period end.
+- Charge-bearing upgrade/cycle change uses a pending target and proration.
+- Pause/resume/retry are local engine operations for Wompi, not calls to a
+  nonexistent remote subscription.
 
----
+## Fiscal boundary
 
-## Normalized event taxonomy
+Successful payments emit the normalized billing event consumed by the fiscal
+module. The generic billing PDF is a commercial receipt; DIAN FEVs and credit
+notes are owned by `modules/fiscal`. Internal, sandbox and zero-consideration
+payments get durable `skipped` decisions; configuration gaps get retryable
+`blocked_config` rows.
 
-Every webhook from every provider maps to one of 12 events published via `EventEmitter2`:
+## Testing
 
-```
-billing.subscription.created        billing.payment.succeeded
-billing.subscription.activated      billing.payment.failed
-billing.subscription.past_due       billing.payment.refunded
-billing.subscription.cancelled      billing.trial.started
-billing.subscription.expired        billing.trial.ending_soon
-billing.subscription.plan_changed   billing.trial.ended
-```
+Relevant suites include:
 
-Listeners subscribe with `@OnEvent('billing.payment.succeeded')`. They never see raw provider payloads.
+- `adapters/wompi*.spec.ts`
+- `recurring/payment-source*.spec.ts`
+- `recurring/subscription-engine*.spec.ts`
+- `recurring/renewal-scheduler*.spec.ts`
+- `recurring/dunning*.spec.ts`
+- `billing.service.spec.ts`
+- `webhook.controller.spec.ts`
 
----
-
-## Adding a new payment provider
-
-1. Create `adapters/<provider>.adapter.ts` implementing `IPaymentProvider`.
-2. Map the provider's native status strings to `SubscriptionStatus` inside the adapter.
-3. Map the provider's webhook topics to `BillingEventType` inside `parseWebhookEvent`.
-4. Register the adapter as a provider in `billing.module.ts`.
-5. Add a branch in `PaymentProviderFactory.getByName()`.
-6. Extend `billing_plans` with the new provider's plan id column (or store in a JSONB map).
-7. Write a sync script `scripts/sync-<provider>-plans.ts` that creates the 4 plans on the provider side and populates the plan ids.
-
-No changes to `BillingService`, controllers, or listeners are required.
-
----
-
-## Current state (April 23, 2026 — end of Sprint 1)
-
-Done:
-- Schema + migration applied
-- `IPaymentProvider` interface + normalized types
-- `BillingService` with full business logic (create / upgrade / cancel / handleBillingEvent / getActive)
-- `PaymentProviderFactory`
-- `MockPaymentProvider` — deterministic in-memory, test helpers `simulateWebhookEvent()` / `buildPayment()` / `reset()`
-- `MercadoPagoAdapter` — skeleton (throws NotImplementedException until Sprint 2)
-- `BillingWebhookController` — 200 stub until Sprint 2
-- 12 unit tests (state machine, idempotency, input validation), green
-- 5 billing email templates auto-seeded
-- Seed script for 4 billing plans (run with `npx ts-node prisma/seed-billing-plans.ts`)
-- Server-side enforcement of `maxAgents` per plan (commit `837c183`)
-
-Pending:
-- Sprint 2: MercadoPago adapter real HTTP + HMAC webhook verification + reconciliation cron + raw-body middleware for webhooks. SDK chosen: `mercadopago@2.12.0` official — it exposes `PreApproval` (create/get/search/update) and `PreApprovalPlan` classes with proper TypeScript types including `auto_recurring.free_trial`, `summarized.semaphore`, `card_token_id`, `external_reference`. No need for `mercadopago-extended` or raw HTTP.
-- Sprint 3: Onboarding plan picker, dashboard billing page, email sender wiring, server-side enforcement of remaining plan limits (services, automations, broadcasts, AI messages)
-- Sprint 4: Fiscal integration (Facturapi for MX+CL+AR)
-- Sprint 5: Beta rollout (feature flag per tenant)
-
----
-
-## Operational runbook
-
-The full operational guide — deploy automation, adding countries, updating prices, manual ops, incident response, sandbox↔prod cutover — lives at [`docs/billing-runbook.md`](../../../../../docs/billing-runbook.md).
-
-Quick incident shortcuts:
-- **Subscription stuck in `past_due`**: reconciliation cron (hourly) self-heals. Force via script (see runbook §6).
-- **Webhook signature failures**: confirm `MP_WEBHOOK_SECRET` matches MP dashboard Signing Key; rotate if needed (runbook §6).
-- **Manual refund**: issue on provider dashboard; webhook fires `billing.payment.refunded` into `billing_payments`. No manual DB work.
-- **Manually change a tenant's plan**: call `BillingService.upgradeSubscription(tenantId, newSlug)` — never mutate rows directly (denormalized fields on `tenants` would drift).
+Production enablement still requires real minimum-value smoke tests for each
+method, webhook finality/idempotency, renewal, upgrade/downgrade, cancellation,
+dunning and the fiscal result. A green sandbox suite is not merchant activation.

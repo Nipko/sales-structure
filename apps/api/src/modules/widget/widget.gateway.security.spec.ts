@@ -11,6 +11,7 @@ function socket(overrides: Record<string, any> = {}): any {
         emit: jest.fn(),
         disconnect: jest.fn(),
         join: jest.fn(),
+        use: jest.fn(),
         ...overrides,
     };
 }
@@ -22,6 +23,11 @@ describe('WidgetGateway security containment', () => {
             tenant: { findUnique: jest.fn().mockResolvedValue({
                 id: 'tenant-1', schemaName: 'tenant_1', isActive: true,
                 onboardingCompletedAt: new Date(),
+                subscriptionStatus: 'active',
+                subscription: {
+                    status: 'active', trialEndsAt: null, cancelAtPeriodEnd: false,
+                    currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+                },
             }) },
             executeInTenantSchema: jest.fn(),
             getTenantSchemaName: jest.fn().mockResolvedValue('tenant_1'),
@@ -135,5 +141,42 @@ describe('WidgetGateway security containment', () => {
             expect.anything(), expect.objectContaining({ id: 'session-1' }),
             'question', 'inbound-new',
         );
+    });
+
+    it('hard-locks pending_auth before history and revalidates an already-open socket per packet', async () => {
+        const { gateway, widgetService, prisma } = makeGateway();
+        widgetService.getSessionByToken.mockResolvedValue(session);
+        const client = socket();
+
+        prisma.tenant.findUnique.mockResolvedValueOnce({
+            id: 'tenant-1', schemaName: 'tenant_1', isActive: true,
+            onboardingCompletedAt: new Date(), subscriptionStatus: 'active',
+            subscription: {
+                status: 'active', trialEndsAt: null, cancelAtPeriodEnd: false,
+                currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+            },
+        }).mockResolvedValueOnce({
+            subscriptionStatus: 'active',
+            subscription: {
+                status: 'active', trialEndsAt: null, cancelAtPeriodEnd: false,
+                currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+            },
+        });
+        await gateway.handleConnection(client);
+
+        expect(client.use).toHaveBeenCalledTimes(1);
+        prisma.tenant.findUnique.mockResolvedValue({
+            subscriptionStatus: 'pending_auth',
+            subscription: {
+                status: 'pending_auth', trialEndsAt: null, cancelAtPeriodEnd: false,
+                currentPeriodEnd: null, cancellationReason: null, dunningStartedAt: null,
+            },
+        });
+        const middleware = client.use.mock.calls[0][0];
+        const next = jest.fn();
+        await middleware(['widget:message', { content: 'hola' }], next);
+
+        expect(client.disconnect).toHaveBeenCalled();
+        expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
 });

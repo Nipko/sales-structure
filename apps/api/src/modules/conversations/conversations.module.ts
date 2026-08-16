@@ -53,9 +53,11 @@ import { AgentTestRateLimitGuard } from './agent-test-rate-limit.guard';
 import { AgentTestRequestGuard } from './agent-test-request.guard';
 import { ActiveOperationsContextService } from './active-operations-context.service';
 import { ToolExecutionControlService } from './tool-execution-control.service';
-import { PaymentOperationService } from './payment-operation.service';
+import { PAYMENT_OPERATION_PROVIDER, PaymentOperationService } from './payment-operation.service';
 import { ToolApprovalController } from './tool-approval.controller';
 import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
+import { TenantPaymentsModule } from '../tenant-payments/tenant-payments.module';
+import { TenantMercadoPagoOperationProvider } from '../tenant-payments/tenant-mercadopago-operation.provider';
 
 @Module({
     imports: [
@@ -92,6 +94,7 @@ import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
         forwardRef(() => MediaProcessingModule),
         EmailModule,
         SmsCreditsModule,
+        TenantPaymentsModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: (config: ConfigService) => ({
@@ -100,7 +103,31 @@ import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, ToolExecutionControlService, ToolApprovalWorkflowService, PaymentOperationService, ResponseValidatorService, CustomerMemoryService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AgentTestRateLimitGuard, AgentTestRequestGuard, PreChatService, ChatIdentityService],
+    providers: [
+        ConversationsService,
+        ConversationsGateway,
+        AIToolExecutorService,
+        ToolExecutionControlService,
+        ToolApprovalWorkflowService,
+        PaymentOperationService,
+        {
+            provide: PAYMENT_OPERATION_PROVIDER,
+            useExisting: TenantMercadoPagoOperationProvider,
+        },
+        ResponseValidatorService,
+        CustomerMemoryService,
+        BookingEngineService,
+        ProcedureEngineService,
+        IntentInterpreterService,
+        PromptAssemblerService,
+        LanguageDetectorService,
+        ActiveOperationsContextService,
+        AgentTestService,
+        AgentTestRateLimitGuard,
+        AgentTestRequestGuard,
+        PreChatService,
+        ChatIdentityService,
+    ],
     controllers: [ConversationsController, AgentTestController, ToolApprovalController],
     exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService],
 })

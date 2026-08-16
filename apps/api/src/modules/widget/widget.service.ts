@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
@@ -6,6 +6,10 @@ import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
+import {
+    resolveTenantSubscriptionAccess,
+    type SubscriptionAccessMode,
+} from '../../common/utils/subscription-entitlement.util';
 
 /** Default widget strings by language (es/en/pt/fr). Fallback: es. */
 const WIDGET_DEFAULTS: Record<string, { welcomeMessage: string; agentName: string }> = {
@@ -225,6 +229,9 @@ export class WidgetService implements OnModuleInit {
         phone?: string;
         page?: string;
     }): Promise<{ sessionId: string; token: string }> {
+        if (!await this.isTenantWidgetRuntimeAvailable(widgetConfig?.tenant_id, 'write')) {
+            throw new ForbiddenException({ error: 'subscription_unavailable' });
+        }
         const existing: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, conversation_id, token FROM public.widget_sessions
              WHERE visitor_id = $1 AND widget_config_id = $2::uuid AND last_seen_at > NOW() - interval '90 days'
@@ -304,8 +311,13 @@ export class WidgetService implements OnModuleInit {
         return this.isTenantWidgetRuntimeAvailable(config.tenant_id);
     }
 
-    private async isTenantWidgetRuntimeAvailable(tenantId: string): Promise<boolean> {
+    private async isTenantWidgetRuntimeAvailable(
+        tenantId: string,
+        mode: SubscriptionAccessMode = 'read',
+    ): Promise<boolean> {
         if (!await resolveReadyTenantContext(this.prisma, this.redis, tenantId)) return false;
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, mode);
+        if (!entitlement.allowed) return false;
         const features = await this.throttle.getPlanFeatures(tenantId);
         return features.widget === true;
     }

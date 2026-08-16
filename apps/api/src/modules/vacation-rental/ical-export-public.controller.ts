@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { IcalSyncService } from './ical-sync.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /**
  * Public iCal export — no auth required. Path matches what the dashboard shows
@@ -25,6 +26,8 @@ export class IcalExportPublicController {
         @Param('propertyId') propertyId: string,
         @Res() res: Response,
     ) {
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'read');
+        if (!entitlement.allowed) throw new NotFoundException('Tenant not found');
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) throw new NotFoundException('Tenant not found');
 

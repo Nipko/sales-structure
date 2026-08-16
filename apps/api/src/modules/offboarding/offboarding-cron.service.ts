@@ -7,7 +7,13 @@ import { RedisService } from '../redis/redis.service';
 import { OffboardingService } from './offboarding.service';
 import { BillingEventType } from '../billing/types/billing-event.enum';
 import { CronLockService } from '../redis/cron-lock.service';
-import { DunningService } from '../billing/recurring/dunning.service';
+import {
+    DUNNING_EXPIRY_DAY,
+    DUNNING_SOFT_LOCK_DAY,
+    DunningService,
+} from '../billing/recurring/dunning.service';
+
+const PAST_DUE_MIRROR_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 @Injectable()
 export class OffboardingCronService {
@@ -24,7 +30,7 @@ export class OffboardingCronService {
 
     /**
      * Runs every 30 min — detects trials that have expired and transitions
-     * them to past_due, starting the 7-day grace countdown.
+     * them to past_due, starting the durable 10-day recovery countdown.
      */
     @Cron('*/30 * * * *')
     async trialExpiryDetector(): Promise<void> {
@@ -41,22 +47,34 @@ export class OffboardingCronService {
 
             for (const sub of expired) {
                 try {
-                    await this.prisma.billingSubscription.update({
-                        where: { id: sub.id },
-                        data: { status: 'past_due' },
+                    // The contractual trial end is the recovery-clock anchor,
+                    // not whichever API instance happens to run this cron.
+                    // Redis mirrors it for backwards compatibility, but the DB
+                    // remains authoritative across cache flushes and outages.
+                    const dunningStartedAt = sub.trialEndsAt ?? new Date();
+                    const transitioned = await this.prisma.$transaction(async (tx: any) => {
+                        const updated = await tx.billingSubscription.updateMany({
+                            where: {
+                                id: sub.id,
+                                status: 'trialing',
+                                trialEndsAt: sub.trialEndsAt,
+                            },
+                            data: {
+                                status: 'past_due',
+                                dunningState: 'grace',
+                                dunningStartedAt,
+                            },
+                        });
+                        if (updated.count !== 1) return false;
+                        await tx.tenant.update({
+                            where: { id: sub.tenantId },
+                            data: { subscriptionStatus: 'past_due' },
+                        });
+                        return true;
                     });
-                    await this.prisma.tenant.update({
-                        where: { id: sub.tenantId },
-                        data: { subscriptionStatus: 'past_due' },
-                    });
-                    await this.redis.del(`sub_status:${sub.tenantId}`);
-                    await this.redis.del(`tenant_plan:${sub.tenantId}`);
-
-                    const key = `offboard:past_due:${sub.tenantId}`;
-                    const existing = await this.redis.get(key);
-                    if (!existing) {
-                        await this.redis.set(key, new Date().toISOString(), 30 * 24 * 60 * 60);
-                    }
+                    if (!transitioned) continue;
+                    await this.invalidateEntitlementCaches(sub.tenantId);
+                    await this.mirrorPastDueStartedAt(sub.tenantId, dunningStartedAt);
 
                     // Dedup via billing_events UNIQUE(provider, providerEventId) —
                     // prevents duplicate emails when multiple API instances run this cron.
@@ -81,7 +99,7 @@ export class OffboardingCronService {
                         tenantId: sub.tenantId,
                         subscriptionId: sub.id,
                     });
-                    this.logger.log(`[TrialExpiry] Tenant ${sub.tenantId} trial expired → past_due (7d grace)`);
+                    this.logger.log(`[TrialExpiry] Tenant ${sub.tenantId} trial expired → past_due (10d recovery)`);
                 } catch (error) {
                     this.logger.error(`[TrialExpiry] Failed for tenant ${sub.tenantId}: ${error}`);
                 }
@@ -106,7 +124,8 @@ export class OffboardingCronService {
     async graceEnforcer(): Promise<void> {
         this.logger.log('Running grace period enforcer...');
 
-        // 1. Past-due tenants: transition to expired after 7 days, emit soft_lock at day 3
+        // 1. Past-due tenants: transition to expired after day 10, soft-lock at day 3.
+        // DunningService uses the same ladder; this cron is the durable safety net.
         try {
             const pastDueTenants = await this.prisma.tenant.findMany({
                 where: {
@@ -118,18 +137,6 @@ export class OffboardingCronService {
 
             for (const tenant of pastDueTenants) {
                 try {
-                    const pastDueSince = await this.redis.get(`offboard:past_due:${tenant.id}`);
-                    if (!pastDueSince) {
-                        await this.redis.set(
-                            `offboard:past_due:${tenant.id}`,
-                            new Date().toISOString(),
-                            30 * 24 * 60 * 60,
-                        );
-                        continue;
-                    }
-
-                    const daysSincePastDue = (Date.now() - new Date(pastDueSince).getTime()) / (1000 * 60 * 60 * 24);
-
                     // Never cut off a tenant whose charge is still in play. With
                     // the internal engine a renewal can be queued, in flight, or
                     // waiting on an asynchronous provider — and an unresolved
@@ -137,8 +144,70 @@ export class OffboardingCronService {
                     // would revoke access to someone who just paid.
                     const subscription = await this.prisma.billingSubscription.findUnique({
                         where: { tenantId: tenant.id },
-                        select: { id: true, engine: true },
+                        select: {
+                            id: true,
+                            engine: true,
+                            dunningStartedAt: true,
+                            dunningState: true,
+                            cancellationReason: true,
+                        },
                     });
+                    if (!subscription) {
+                        this.logger.error(
+                            `[GraceEnforcer] Tenant ${tenant.id} is past_due without a billing subscription; refusing to infer an expiry clock`,
+                        );
+                        continue;
+                    }
+                    if (String(subscription.cancellationReason ?? '').startsWith('paused')) {
+                        this.logger.debug(
+                            `[GraceEnforcer] Tenant ${tenant.id} is voluntarily paused; skipping dunning expiry`,
+                        );
+                        continue;
+                    }
+
+                    let pastDueStartedAt = subscription.dunningStartedAt;
+                    if (!pastDueStartedAt) {
+                        // One-time bridge for rows created before the durable
+                        // clock existed. If Redis is also missing/unavailable,
+                        // start a fresh recovery window rather than guess and
+                        // revoke access prematurely.
+                        const legacyValue = await this.redis.get(`offboard:past_due:${tenant.id}`)
+                            .catch((error: any) => {
+                                this.logger.warn(
+                                    `[GraceEnforcer] Could not read legacy timer for ${tenant.id}: ${error?.message ?? String(error)}`,
+                                );
+                                return null;
+                            });
+                        const parsedLegacy = legacyValue ? new Date(legacyValue) : null;
+                        const hasValidLegacy = !!parsedLegacy && Number.isFinite(parsedLegacy.getTime());
+                        pastDueStartedAt = hasValidLegacy ? parsedLegacy! : new Date();
+
+                        const clockClaim = await this.prisma.billingSubscription.updateMany({
+                            where: {
+                                id: subscription.id,
+                                status: 'past_due',
+                                dunningStartedAt: null,
+                                dunningState: subscription.dunningState,
+                            },
+                            data: {
+                                dunningStartedAt: pastDueStartedAt,
+                                ...(!subscription.dunningState || subscription.dunningState === 'none'
+                                    ? { dunningState: 'grace' }
+                                    : {}),
+                            },
+                        });
+                        // A payment may have restored ACTIVE after the tenant
+                        // scan. Never seed a new dunning clock over that commit.
+                        if (clockClaim.count !== 1) continue;
+                        await this.mirrorPastDueStartedAt(tenant.id, pastDueStartedAt);
+                        if (!hasValidLegacy) continue;
+                    }
+
+                    const daysSincePastDue = Math.max(
+                        0,
+                        (Date.now() - pastDueStartedAt.getTime()) / 86_400_000,
+                    );
+
                     if (subscription?.engine === 'internal'
                         && await this.dunning.hasLiveAttempt(subscription.id)) {
                         this.logger.log(
@@ -147,19 +216,27 @@ export class OffboardingCronService {
                         continue;
                     }
 
-                    if (daysSincePastDue >= 7) {
+                    if (daysSincePastDue >= DUNNING_EXPIRY_DAY) {
                         this.logger.log(`Tenant ${tenant.id} (${tenant.name}) past_due ${Math.floor(daysSincePastDue)}d → expired`);
-                        await this.prisma.billingSubscription.updateMany({
-                            where: { tenantId: tenant.id, status: 'past_due' },
-                            data: { status: 'expired' },
+                        const transitioned = await this.prisma.$transaction(async (tx: any) => {
+                            const updated = await tx.billingSubscription.updateMany({
+                                where: {
+                                    id: subscription.id,
+                                    tenantId: tenant.id,
+                                    status: 'past_due',
+                                    dunningStartedAt: pastDueStartedAt,
+                                },
+                                data: { status: 'expired', dunningState: 'suspended' },
+                            });
+                            if (updated.count !== 1) return false;
+                            await tx.tenant.update({
+                                where: { id: tenant.id },
+                                data: { subscriptionStatus: 'expired' },
+                            });
+                            return true;
                         });
-                        await this.prisma.tenant.update({
-                            where: { id: tenant.id },
-                            data: { subscriptionStatus: 'expired' },
-                        });
-                        await this.redis.del(`sub_status:${tenant.id}`);
-                        await this.redis.del(`tenant_plan:${tenant.id}`);
-                        await this.redis.del(`offboard:past_due:${tenant.id}`);
+                        if (!transitioned) continue;
+                        await this.invalidateEntitlementCaches(tenant.id, [`offboard:past_due:${tenant.id}`]);
 
                         const expiredEventId = `synthetic_subscription_expired_${tenant.id}`;
                         try {
@@ -180,15 +257,19 @@ export class OffboardingCronService {
                         this.eventEmitter.emit(BillingEventType.SUBSCRIPTION_EXPIRED, {
                             tenantId: tenant.id,
                         });
-                    } else if (daysSincePastDue >= 3) {
+                    } else if (daysSincePastDue >= DUNNING_SOFT_LOCK_DAY) {
                         const softLockKey = `billing:soft_lock_notified:${tenant.id}`;
-                        const alreadyNotified = await this.redis.get(softLockKey);
+                        const alreadyNotified = await this.redis.get(softLockKey).catch(() => null);
                         if (!alreadyNotified) {
                             this.eventEmitter.emit('billing.subscription.soft_locked', {
                                 tenantId: tenant.id,
-                                daysRemaining: Math.max(0, 7 - Math.floor(daysSincePastDue)),
+                                daysRemaining: Math.max(0, DUNNING_EXPIRY_DAY - Math.floor(daysSincePastDue)),
                             });
-                            await this.redis.set(softLockKey, '1', 7 * 24 * 60 * 60);
+                            await this.redis.set(
+                                softLockKey,
+                                '1',
+                                DUNNING_EXPIRY_DAY * 24 * 60 * 60,
+                            ).catch(() => undefined);
                         }
                     }
                 } catch (error) {
@@ -201,6 +282,95 @@ export class OffboardingCronService {
 
         // 2. Cancelled tenants: offboard if period has ended
         try {
+            // Time-boxed comp/gift plans have no provider and no next charge,
+            // therefore no webhook can end them. Expire the entitlement at the
+            // promised boundary instead of leaving a permanent free account.
+            const expiredComps = await this.prisma.billingSubscription.findMany({
+                where: {
+                    status: 'active',
+                    cancellationReason: { startsWith: 'comp:' },
+                    currentPeriodEnd: { lt: new Date() },
+                },
+                select: {
+                    id: true,
+                    tenantId: true,
+                    status: true,
+                    cancellationReason: true,
+                    currentPeriodEnd: true,
+                },
+                take: 500,
+            });
+            for (const sub of expiredComps) {
+                const transitioned = await this.prisma.$transaction(async (tx: any) => {
+                    const updated = await tx.billingSubscription.updateMany({
+                        where: {
+                            id: sub.id,
+                            tenantId: sub.tenantId,
+                            status: sub.status,
+                            cancellationReason: sub.cancellationReason,
+                            currentPeriodEnd: sub.currentPeriodEnd,
+                        },
+                        data: { status: 'expired', nextChargeAt: null },
+                    });
+                    if (updated.count !== 1) return false;
+                    await tx.tenant.update({
+                        where: { id: sub.tenantId },
+                        data: { subscriptionStatus: 'expired' },
+                    });
+                    return true;
+                });
+                if (!transitioned) continue;
+                await this.redis.del(`sub_status:${sub.tenantId}`);
+                await this.redis.del(`tenant_plan:${sub.tenantId}`);
+            }
+
+            // Internal-engine cancellations deliberately stay ACTIVE while the
+            // already-paid period is usable. There is no provider webhook to
+            // flip them at the boundary, so materialize that transition here
+            // before the existing offboarding query.
+            const endedScheduled = await this.prisma.billingSubscription.findMany({
+                where: {
+                    cancelAtPeriodEnd: true,
+                    currentPeriodEnd: { lt: new Date() },
+                    status: { notIn: ['cancelled', 'expired'] },
+                },
+                select: {
+                    id: true,
+                    tenantId: true,
+                    status: true,
+                    cancelAtPeriodEnd: true,
+                    currentPeriodEnd: true,
+                },
+                take: 500,
+            });
+            for (const sub of endedScheduled) {
+                const transitioned = await this.prisma.$transaction(async (tx: any) => {
+                    const updated = await tx.billingSubscription.updateMany({
+                        where: {
+                            id: sub.id,
+                            tenantId: sub.tenantId,
+                            status: sub.status,
+                            cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+                            currentPeriodEnd: sub.currentPeriodEnd,
+                        },
+                        data: {
+                            status: 'cancelled',
+                            cancelledAt: new Date(),
+                            nextChargeAt: null,
+                        },
+                    });
+                    if (updated.count !== 1) return false;
+                    await tx.tenant.update({
+                        where: { id: sub.tenantId },
+                        data: { subscriptionStatus: 'cancelled' },
+                    });
+                    return true;
+                });
+                if (!transitioned) continue;
+                await this.redis.del(`sub_status:${sub.tenantId}`);
+                await this.redis.del(`tenant_plan:${sub.tenantId}`);
+            }
+
             const cancelledTenants = await this.prisma.tenant.findMany({
                 where: {
                     subscriptionStatus: 'cancelled',
@@ -345,10 +515,25 @@ export class OffboardingCronService {
         const { tenantId } = payload;
         if (!tenantId) return;
 
+        const startedAt = new Date();
+        await this.prisma.billingSubscription.updateMany({
+            where: {
+                tenantId,
+                status: 'past_due',
+                dunningStartedAt: null,
+            },
+            data: { dunningStartedAt: startedAt, dunningState: 'grace' },
+        }).catch((error: any) => {
+            this.logger.error(
+                `Payment failed for tenant ${tenantId}, but durable dunning clock could not be started: ${error?.message ?? String(error)}`,
+            );
+        });
+
         const key = `offboard:past_due:${tenantId}`;
-        const existing = await this.redis.get(key);
+        const existing = await this.redis.get(key).catch(() => null);
         if (!existing) {
-            await this.redis.set(key, new Date().toISOString(), 30 * 24 * 60 * 60);
+            await this.redis.set(key, startedAt.toISOString(), PAST_DUE_MIRROR_TTL_SECONDS)
+                .catch(() => undefined);
             this.logger.log(`Payment failed for tenant ${tenantId} — past_due timer started`);
         }
     }
@@ -363,5 +548,35 @@ export class OffboardingCronService {
         await this.redis.del(`sub_status:${tenantId}`);
         await this.redis.del(`tenant_plan:${tenantId}`);
         this.logger.log(`Payment succeeded for tenant ${tenantId} — grace timers cleared, access restored`);
+    }
+
+    private async mirrorPastDueStartedAt(tenantId: string, startedAt: Date): Promise<void> {
+        await this.redis.set(
+            `offboard:past_due:${tenantId}`,
+            startedAt.toISOString(),
+            PAST_DUE_MIRROR_TTL_SECONDS,
+        ).catch((error: any) => {
+            this.logger.warn(
+                `[Billing] Could not mirror durable dunning clock for ${tenantId}: ${error?.message ?? String(error)}`,
+            );
+        });
+    }
+
+    private async invalidateEntitlementCaches(tenantId: string, extraKeys: string[] = []): Promise<void> {
+        const keys = [
+            `sub_status:${tenantId}`,
+            `tenant_plan:${tenantId}`,
+            `plan_features:${tenantId}`,
+            ...extraKeys,
+        ];
+        await Promise.all(keys.map(async (key) => {
+            try {
+                await this.redis.del(key);
+            } catch (error: any) {
+                this.logger.warn(
+                    `[Billing] Could not invalidate ${key}: ${error?.message ?? String(error)}`,
+                );
+            }
+        }));
     }
 }

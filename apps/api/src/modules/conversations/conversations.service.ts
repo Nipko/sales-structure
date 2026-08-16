@@ -56,6 +56,7 @@ import { MediaProcessingService } from '../media-processing/media-processing.ser
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { toolBatchRequiresSequentialExecution, toolRequiresSequentialExecution } from './tool-policy-registry';
 import { ActiveOperationsContextService } from './active-operations-context.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 // History budget in TOKENS (not chars), measured against the smallest context window
@@ -237,6 +238,15 @@ export class ConversationsService {
      */
     async processIncomingMessage(normalizedMsg: NormalizedMessage): Promise<void> {
         const { tenantId, contactId, channelType, content } = normalizedMsg;
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            // Channel webhooks bypass JWT/HTTP subscription enforcement. Stop
+            // before persistence, queues, tools or an LLM call.
+            this.logger.warn(
+                `[Entitlement] Dropped inbound ${channelType} message for tenant ${tenantId}: ${entitlement.error}`,
+            );
+            return;
+        }
         this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
 
         // Store-only sources: NEVER run an AI turn for them.
@@ -2817,6 +2827,11 @@ export class ConversationsService {
         text: string,
         options?: { allowHumanHandoff?: boolean },
     ): Promise<string | null> {
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            this.logger.warn(`[Entitlement] Dropped widget message for tenant ${tenantId}: ${entitlement.error}`);
+            return null;
+        }
         const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget');
         const config = personaResolution.config;
         if (!config) return null;
@@ -2920,6 +2935,11 @@ export class ConversationsService {
         inboundMessageId?: string,
         options?: { allowHumanHandoff?: boolean },
     ): AsyncGenerator<string, void, unknown> {
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            this.logger.warn(`[Entitlement] Stopped widget stream for tenant ${tenantId}: ${entitlement.error}`);
+            return;
+        }
         const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget');
         const config = personaResolution.config;
         if (!config) return;

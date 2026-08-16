@@ -3,6 +3,7 @@ import { TenantPaymentsService } from './tenant-payments.service';
 import { TenantPaymentsWebhookService } from './tenant-payments-webhook.service';
 import { TenantPaymentsController } from './tenant-payments.controller';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
+import { TenantMercadoPagoOperationProvider } from './tenant-mercadopago-operation.provider';
 
 /**
  * Cobros del tenant a su cliente final (D3).
@@ -13,8 +14,13 @@ import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.serv
  * cifrado.
  */
 @Module({
-    providers: [TenantPaymentsService, TenantPaymentsWebhookService, WhatsappCryptoService],
+    providers: [
+        TenantPaymentsService,
+        TenantPaymentsWebhookService,
+        TenantMercadoPagoOperationProvider,
+        WhatsappCryptoService,
+    ],
     controllers: [TenantPaymentsController],
-    exports: [TenantPaymentsService],
+    exports: [TenantPaymentsService, TenantMercadoPagoOperationProvider],
 })
 export class TenantPaymentsModule {}

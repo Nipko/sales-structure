@@ -1706,15 +1706,27 @@ La API decide si el cambio es inmediato, programado o requiere contacto comercia
 La respuesta y el estado mostrados después de confirmar prevalecen sobre cualquier
 regla histórica de upgrade o downgrade.
 
-## 20.4 Método de pago
+## 20.4 Método de pago Wompi
 
-La acción para agregar o cambiar el método de pago aparece solo cuando el checkout
-activo la soporta. El flujo puede abrir un formulario seguro o redirigir al proveedor
-habilitado para la cuenta. Parallly muestra datos enmascarados y no solicita que pegues
-credenciales sensibles en campos de texto libre.
+Las suscripciones de Parallly se procesan con Wompi. La pantalla ofrece únicamente
+los medios que Billing Ops haya habilitado; si todos están apagados, bloquea el
+checkout en lugar de mostrar una tarjeta por defecto.
 
-Si el botón no aparece, consulta la modalidad indicada en la tarjeta del plan o
-contacta al administrador comercial.
+- **Tarjeta:** los datos viajan directamente del navegador a Wompi. Parallly no
+  recibe PAN ni CVV.
+- **Nequi:** ingresa el celular, acepta la solicitud push en la app y mantén la
+  pantalla abierta hasta la aprobación.
+- **Botón Bancolombia:** abre la autorización, elige la cuenta y vuelve a la misma
+  pantalla; el sistema retoma la intención y verifica el estado.
+
+En los tres casos debes abrir y aceptar por separado los términos del servicio y
+la autorización de datos personales. Un medio pendiente o rechazado no activa el
+plan. Solo una fuente marcada como disponible permite un cobro.
+
+No pegues llaves privadas ni credenciales del comercio en este formulario. Las
+credenciales Mercado Pago de **Integraciones → Pagos** pertenecen a otro flujo:
+sirven para que tu negocio cobre a sus clientes mediante enlaces, nunca para pagar
+la suscripción de Parallly.
 
 ## 20.5 Pausar o reanudar
 
@@ -1756,14 +1768,26 @@ La respuesta del catálogo determina el descuento efectivo.
 ## 20.9 Historial de pagos
 
 Cuando hay movimientos, la tabla muestra la fecha, monto, moneda, estado y referencia
-disponible. Un comprobante o documento descargable solo aparece si el backend lo ha
-publicado para ese pago; su ausencia no debe reemplazarse con un archivo inventado.
+disponible. El PDF de esta tabla es un **comprobante comercial**. Una factura
+electrónica DIAN oficial, con CUFE/XML, se consulta en **Datos fiscales** y puede
+tener un estado distinto mientras Factus termina la emisión.
+
+Las cuentas internas de la propia empresa no reciben factura ni comprobante de venta:
+no existe una venta al tenant. Los pagos de sandbox tampoco generan una factura DIAN
+real.
 
 ## 20.10 Periodo de prueba
 
 La duración, necesidad de método de pago y acciones al vencimiento dependen del plan
 y se muestran en su tarjeta y en el resumen de suscripción. Usa la fecha exacta de
 finalización del panel para planificar la continuidad.
+
+Cuando el plan requiere medio desde el alta, el proceso ocurre en dos fases: primero
+se crea la cuenta como **Autorización pendiente**, sin acceso pagado; después se
+autoriza el medio. Si el plan incluye prueba, esta empieza al aprobarse la fuente y el
+panel muestra fecha e importe del próximo cobro. Si no incluye prueba, el primer cobro
+se procesa de inmediato y el plan solo se activa cuando Wompi lo aprueba. No se cambia
+silenciosamente a otro plan.
 
 Los recordatorios, conservación de datos y restricciones posteriores al vencimiento
 siguen la configuración vigente de la cuenta; no se debe asumir un plazo universal.
@@ -1819,6 +1843,11 @@ la pantalla y revisa el estado de cada documento publicado.
 Un checkout puede pedir datos adicionales antes de continuar solo cuando el backend
 lo indique para esa cuenta. Si la tarjeta o el aviso no aparecen, este manual no debe
 interpretarse como una obligación fiscal universal.
+
+En Colombia, un cobro real aprobado puede iniciar la FEV DIAN. Un cobro Wompi en
+sandbox, una cuenta marcada como interna o un movimiento sin contraprestación queda
+registrado como omitido y no consume numeración. Si falta configuración fiscal, el
+documento debe quedar bloqueado y visible para reintento; no se considera emitido.
 
 ---
 

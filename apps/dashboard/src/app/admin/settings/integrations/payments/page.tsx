@@ -13,44 +13,38 @@
  * pagos en un sistema de terceros.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
-import { api } from "@/lib/api";
+import { api, type TenantPaymentsConfig } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { CreditCard, Save, Loader2, CheckCircle2, AlertTriangle, Unplug } from "lucide-react";
-
-interface Config {
-    connected: boolean;
-    accessToken?: string;
-    publicKey?: string;
-    accountEmail?: string;
-}
 
 export default function TenantPaymentsPage() {
     const t = useTranslations("tenantPayments");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
-    const [cfg, setCfg] = useState<Config>({ connected: false });
+    const [cfg, setCfg] = useState<TenantPaymentsConfig>({ connected: false });
     const [accessToken, setAccessToken] = useState("");
     const [publicKey, setPublicKey] = useState("");
+    const [webhookSecret, setWebhookSecret] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
-    async function load() {
+    const load = useCallback(async () => {
         if (!activeTenantId) return;
         setLoading(true);
         const res = await api.getTenantPaymentsConfig(activeTenantId).catch(() => null);
         if (res?.success) {
-            setCfg(res.data as Config);
-            setPublicKey((res.data as Config).publicKey || "");
+            setCfg(res.data ?? { connected: false });
+            setPublicKey(res.data?.publicKey || "");
         }
         setLoading(false);
-    }
+    }, [activeTenantId]);
 
-    useEffect(() => { load(); }, [activeTenantId]);
+    useEffect(() => { void load(); }, [load]);
 
     async function handleSave() {
         if (!activeTenantId) return;
@@ -60,11 +54,13 @@ export default function TenantPaymentsPage() {
             // Sólo se manda el token si el dueño escribió uno nuevo: si no, el
             // backend conserva el que ya tiene guardado y cifrado.
             ...(accessToken ? { accessToken } : {}),
+            ...(webhookSecret ? { webhookSecret } : {}),
             publicKey: publicKey || undefined,
         }).catch((e: any) => ({ success: false, error: e?.message }));
         setSaving(false);
         if ((res as any)?.success) {
             setAccessToken("");
+            setWebhookSecret("");
             setFeedback({ ok: true, text: t("saved") });
             load();
         } else {
@@ -80,6 +76,7 @@ export default function TenantPaymentsPage() {
         if (!confirm(t("disconnectConfirm"))) return;
         await api.disconnectTenantPayments(activeTenantId).catch(() => null);
         setAccessToken("");
+        setWebhookSecret("");
         load();
     }
 
@@ -126,6 +123,19 @@ export default function TenantPaymentsPage() {
                 </div>
 
                 <div>
+                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("webhookSecret")}</label>
+                    <input
+                        type="password"
+                        value={webhookSecret}
+                        onChange={e => setWebhookSecret(e.target.value)}
+                        placeholder={cfg.webhookConfigured ? "••••••••••••" : t("webhookSecretPlaceholder")}
+                        autoComplete="new-password"
+                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">{t("webhookSecretHint")}</p>
+                </div>
+
+                <div>
                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("publicKey")}</label>
                     <input
                         value={publicKey}
@@ -146,7 +156,9 @@ export default function TenantPaymentsPage() {
                     ) : <span />}
                     <button
                         onClick={handleSave}
-                        disabled={saving || (!accessToken && !cfg.connected)}
+                        disabled={saving
+                            || (!cfg.connected && !accessToken)
+                            || (!cfg.webhookConfigured && !webhookSecret)}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-sm font-semibold transition-colors cursor-pointer"
                     >
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -155,7 +167,10 @@ export default function TenantPaymentsPage() {
                 </div>
             </div>
 
-            <p className="text-xs text-muted-foreground">{t("footnote")}</p>
+            <div className="space-y-1 text-xs text-muted-foreground">
+                <p>{t("footnote")}</p>
+                <p>{t("scopeNotice")}</p>
+            </div>
         </div>
     );
 }

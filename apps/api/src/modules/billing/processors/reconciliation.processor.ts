@@ -119,7 +119,15 @@ export class BillingReconciliationProcessor {
      */
     @Cron('*/20 * * * *')
     async reconcileEngineChargesCron() {
-        await this.cronLock.runExclusive('reconciliation.engineCharges', 600, () => this.reconcileEngineCharges());
+        await this.cronLock.runExclusive('reconciliation.engineCharges', 600, async () => {
+            await this.reconcileEngineCharges();
+            const refunds = await this.billingService.reconcilePendingRefunds();
+            if (refunds.finalized || refunds.errors) {
+                this.logger.log(
+                    `[Reconcile][Refund] scanned=${refunds.scanned} finalized=${refunds.finalized} errors=${refunds.errors}`,
+                );
+            }
+        });
     }
 
     async reconcileEngineCharges(): Promise<{ scanned: number; resolved: number; errors: number }> {
@@ -140,8 +148,28 @@ export class BillingReconciliationProcessor {
                     : await charging.getChargeByReference(attempt.reference);
 
                 if (!charge) {
-                    // The provider never received it: safe to release for retry.
-                    if (attempt.failureClass === 'indeterminate') {
+                    const executionStage = attempt.metadata && typeof attempt.metadata === 'object'
+                        ? (attempt.metadata as any).executionStage
+                        : undefined;
+                    if (executionStage === 'reserved') {
+                        // The durable pre-POST marker proves the worker died
+                        // before it was authorised to call the provider. Reuse
+                        // the same attempt; the orphan sweep republishes it.
+                        const rescheduled = await this.engine.markAttempt(attempt.id, 'scheduled', {
+                            scheduledAt: new Date(),
+                            sentAt: null,
+                            settledAt: null,
+                            failureCode: 'worker_crash_before_provider_post',
+                            failureClass: null,
+                        });
+                        if (!rescheduled) continue;
+                        this.logger.warn(
+                            `[Reconcile][Engine] Attempt ${attempt.id} crashed before provider POST — safely rescheduled`,
+                        );
+                        resolved++;
+                    // Once provider_post_started is durable, only the canonical
+                    // reference lookup above can prove no charge exists.
+                    } else if (attempt.failureClass === 'indeterminate') {
                         await this.engine.settleFailed(
                             attempt.id,
                             { status: 'error', statusMessage: 'never reached the provider' },
@@ -289,16 +317,16 @@ export class BillingReconciliationProcessor {
     }
 
     /**
-     * Daily at 02:30 — apply scheduled plan downgrades whose effective
+     * Every 10 minutes — apply scheduled plan downgrades whose effective
      * date has passed. Tenants who downgrade keep their higher tier
      * features until period end, then this cron flips planId.
      */
     // Corre en UNA sola instancia: la API y el worker cargan el mismo
     // AppModule con ScheduleModule, asi que sin esto el cuerpo se
     // ejecuta dos veces. Ver CronLockService.
-    @Cron('30 2 * * *')
+    @Cron('*/10 * * * *')
     async applyPendingDowngradesCron() {
-        await this.cronLock.runExclusive('reconciliation.applyPendingDowngrades', 3600, () => this.applyPendingDowngrades());
+        await this.cronLock.runExclusive('reconciliation.applyPendingDowngrades', 300, () => this.applyPendingDowngrades());
     }
 
     async applyPendingDowngrades() {

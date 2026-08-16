@@ -33,8 +33,10 @@ describe('OffboardingService purge saga', () => {
                 updateMany: jest.fn().mockResolvedValue({ count: 0 }),
             },
             billingSubscription: { findUnique: jest.fn().mockResolvedValue(null) },
+            billingChargeAttempt: { findFirst: jest.fn().mockResolvedValue(null) },
             preflightTenantPublicPurge: jest.fn().mockImplementation(async () => { order.push('public-preflight'); }),
             executeInTenantSchema: jest.fn().mockResolvedValue([]),
+            $queryRawUnsafe: jest.fn().mockResolvedValue([]),
             $executeRawUnsafe: jest.fn().mockImplementation(async () => { order.push('checkpoint'); return 1; }),
             dropTenantSchema: jest.fn().mockImplementation(async () => { order.push('drop'); }),
             purgeTenantPublicDataAtomic: jest.fn().mockImplementation(async () => {
@@ -42,10 +44,12 @@ describe('OffboardingService purge saga', () => {
                 return { tenants: 1, fiscal_invoices_retained: 1 };
             }),
         };
+        prisma.$transaction = jest.fn(async (callback: any) => callback(prisma));
         const redis: any = {
             acquireLockToken: jest.fn().mockResolvedValue('lock-token'),
             renewLockToken: jest.fn().mockResolvedValue(true),
             releaseLockToken: jest.fn().mockResolvedValue(undefined),
+            del: jest.fn().mockResolvedValue(undefined),
             set: jest.fn().mockResolvedValue(undefined),
             get: jest.fn().mockResolvedValue(null),
             getClient: jest.fn(),
@@ -88,6 +92,23 @@ describe('OffboardingService purge saga', () => {
         return { service, prisma, redis, events, media, billing, order, releaseFence };
     }
 
+    it('routes voluntary cancellation through the canonical deferred billing state machine', async () => {
+        const h = makeHarness();
+
+        await expect(h.service.voluntaryCancel(tenantId, 'customer request')).resolves.toMatchObject({
+            periodEnd: null,
+        });
+
+        expect(h.billing.cancelSubscription).toHaveBeenCalledWith(tenantId, {
+            immediate: false,
+            reason: 'customer request',
+        });
+        expect(h.prisma.tenant.update).not.toHaveBeenCalledWith(expect.objectContaining({
+            data: { subscriptionStatus: 'cancelled' },
+        }));
+        expect(h.redis.del).toHaveBeenCalledWith(`sub_status:${tenantId}`);
+    });
+
     it('does not run any irreversible external effect when DROP/verify fails', async () => {
         const h = makeHarness();
         h.prisma.dropTenantSchema.mockRejectedValue(new Error('injected DROP failure'));
@@ -101,6 +122,26 @@ describe('OffboardingService purge saga', () => {
         expect(h.events.emit).not.toHaveBeenCalled();
         expect(h.releaseFence).toHaveBeenCalledTimes(1);
         expect(h.redis.releaseLockToken).toHaveBeenCalledWith(`lock:tenant-lifecycle:${tenantId}`, 'lock-token');
+    });
+
+    it('blocks before DROP when any retired Mercado Pago mandate id remains, even if locally terminal', async () => {
+        const h = makeHarness();
+        h.prisma.billingSubscription.findUnique.mockResolvedValue({
+            provider: 'mercadopago',
+            providerSubscriptionId: 'preapproval-still-needs-remote-proof',
+            status: 'cancelled',
+        });
+
+        await expect(h.service.purgeTenant(tenantId)).rejects.toMatchObject({
+            response: {
+                error: 'retired_provider_mandate_requires_verification',
+                provider: 'mercadopago',
+            },
+        });
+
+        expect(h.prisma.dropTenantSchema).not.toHaveBeenCalled();
+        expect((h.service as any).executePurgeExternalPlan).not.toHaveBeenCalled();
+        expect(h.prisma.purgeTenantPublicDataAtomic).not.toHaveBeenCalled();
     });
 
     it('fails closed on queue fencing errors before DROP', async () => {
@@ -198,6 +239,74 @@ describe('OffboardingService purge saga', () => {
             `lock:tenant-lifecycle:${tenantId}`,
             'lock-token',
         );
+    });
+
+    it('never turns a cancelled subscription active through administrative reactivation', async () => {
+        const h = makeHarness();
+        h.prisma.tenant.findUnique.mockResolvedValue({
+            ...tenant, onboardingCompletedAt: new Date(), isInternal: false,
+        });
+        h.prisma.billingSubscription.findUnique.mockResolvedValue({
+            id: 'sub-terminal', tenantId, status: 'cancelled',
+            cancellationReason: 'customer_request', currentPeriodEnd: new Date(Date.now() + 86_400_000),
+        });
+
+        await expect(h.service.reactivate(tenantId)).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'terminal_subscription_requires_billing_flow' }),
+        });
+
+        expect(h.prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+        expect(h.prisma.user.updateMany).not.toHaveBeenCalled();
+        expect(h.prisma.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it('reactivates transactionally only with a current full-period approved charge', async () => {
+        const h = makeHarness();
+        h.prisma.tenant.findUnique.mockResolvedValue({
+            ...tenant, onboardingCompletedAt: new Date(), isInternal: false,
+        });
+        h.prisma.billingSubscription.findUnique.mockResolvedValue({
+            id: 'sub-paid', tenantId, status: 'active', cancellationReason: null,
+            currentPeriodEnd: new Date(Date.now() + 86_400_000),
+        });
+        h.prisma.billingChargeAttempt.findFirst.mockResolvedValue({ id: 'attempt-paid' });
+
+        await expect(h.service.reactivate(tenantId)).resolves.toMatchObject({
+            isActive: true,
+            subscriptionStatus: 'active',
+        });
+
+        expect(h.prisma.$transaction).toHaveBeenCalled();
+        expect(h.prisma.billingChargeAttempt.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                status: 'succeeded', purpose: { in: ['initial', 'renewal'] },
+            }),
+        }));
+        expect(h.prisma.user.updateMany).toHaveBeenCalledWith({
+            where: { tenantId }, data: { isActive: true },
+        });
+        expect(h.prisma.tenant.update).toHaveBeenCalledWith({
+            where: { id: tenantId }, data: { isActive: true, subscriptionStatus: 'active' },
+        });
+    });
+
+    it('fails closed when standing cannot be revalidated inside the final transaction', async () => {
+        const h = makeHarness();
+        h.prisma.tenant.findUnique.mockResolvedValue({
+            ...tenant, onboardingCompletedAt: new Date(), isInternal: false,
+        });
+        h.prisma.billingSubscription.findUnique.mockResolvedValue({
+            id: 'sub-paid', tenantId, status: 'active', cancellationReason: null,
+            currentPeriodEnd: new Date(Date.now() + 86_400_000),
+        });
+        h.prisma.billingChargeAttempt.findFirst
+            .mockResolvedValueOnce({ id: 'attempt-paid' })
+            .mockRejectedValueOnce(new Error('billing ledger unavailable'));
+
+        await expect(h.service.reactivate(tenantId)).rejects.toThrow('billing ledger unavailable');
+
+        expect(h.prisma.user.updateMany).not.toHaveBeenCalled();
+        expect(h.prisma.tenant.update).not.toHaveBeenCalled();
     });
 
     it('does not let extendTrial activate a tenant whose provisioning never committed', async () => {

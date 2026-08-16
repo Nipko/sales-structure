@@ -27,7 +27,8 @@ GitHub y ≥1 LLM son obligatorias para arrancar; el resto habilita features con
 | **Instagram / Messenger** | Opcional | App ID + App Secret + Config ID (misma app Meta) | developers.facebook.com |
 | **Google OAuth + Calendar** | Opcional | Client ID + Secret (login + sync de calendario) | console.cloud.google.com |
 | **Microsoft OAuth + Calendar** | Opcional | Client ID + Secret (login + Outlook Calendar) | portal.azure.com |
-| **MercadoPago** | Opcional (billing) | Access Token, Public Key, Webhook Secret | mercadopago.com.co/developers |
+| **Wompi** | Si para suscripciones pagadas | Public/Private key, Events secret, Integrity secret, webhook | comercios.wompi.co |
+| **Mercado Pago por tenant** | Opcional (cobros tenant→cliente) | Cada tenant pega Access Token, Public Key y Webhooks secret en su panel; no son secretos de plataforma | mercadopago.com.co/developers |
 | **Factus (DIAN Colombia)** | Opcional (factura electronica) | Base URL, Client ID/Secret, Username/Password | factus.com.co |
 | **Twilio** | Opcional (alertas + SMS creditos) | Account SID, Auth Token, numero/sender | twilio.com |
 | **S3-compatible (Cloudflare R2 / Backblaze B2 / AWS S3)** | Opcional (backups offsite) | Bucket, endpoint, access/secret key | dash.cloudflare.com (R2) / backblaze.com |
@@ -202,11 +203,25 @@ EMAIL_LOGO_URL=https://TU-DOMINIO.com/parallly-logo.svg
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIMENSIONS=1536
 
-# ---- MercadoPago (Billing) ----
-MP_ACCESS_TOKEN=CAMBIAR
-MP_WEBHOOK_SECRET=CAMBIAR
-MP_PUBLIC_KEY=CAMBIAR
-MP_WEBHOOK_URL=https://api.TU-DOMINIO.com/api/v1/billing/webhook/mercadopago
+# ---- Wompi (suscripciones plataforma → tenant) ----
+# Las cuatro llaves deben pertenecer al mismo ambiente. El prefijo test/prod
+# selecciona sandbox o producción; no existe un flag de ambiente separado.
+WOMPI_PUBLIC_KEY=CAMBIAR
+WOMPI_PRIVATE_KEY=CAMBIAR
+WOMPI_EVENTS_SECRET=CAMBIAR
+WOMPI_INTEGRITY_SECRET=CAMBIAR
+# Límites contractuales en centavos COP. El motor falla cerrado si falta el
+# límite por transacción y difiere cobros al alcanzar el tope diario.
+WOMPI_MAX_TRANSACTION_COP_CENTS=CAMBIAR
+WOMPI_DAILY_CAP_COP_CENTS=CAMBIAR
+WOMPI_MERCHANT_TIMEZONE=America/Bogota
+# Solo staging aislado; producción real debe dejarlo false.
+WOMPI_ALLOW_SANDBOX_IN_PRODUCTION=false
+WOMPI_WEBHOOK_URL=https://api.TU-DOMINIO.com/api/v1/billing/webhook/wompi
+
+# Mercado Pago no tiene credenciales globales: cada tenant configura las suyas
+# en Configuración → Integraciones → Pagos para generar enlaces y cobrar a sus
+# propios clientes. Nunca se usa para pagar una suscripción de Parallly.
 
 # ---- Factus (DIAN — factura electronica Colombia) ----
 FACTUS_BASE_URL=https://api-sandbox.factus.com.co

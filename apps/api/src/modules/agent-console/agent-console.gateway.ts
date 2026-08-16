@@ -21,9 +21,12 @@ import { WsRelayService } from '../redis/ws-relay.service';
 import { RedisService } from '../redis/redis.service';
 import { JwtPayload } from '@parallext/shared';
 import { resolveReadyUserTenantContext } from '../../common/utils/tenant-lifecycle.util';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { BillingEventType } from '../billing/types/billing-event.enum';
 
 const INBOX_SOCKET_ROLES = ['tenant_admin', 'tenant_supervisor', 'tenant_agent'] as const;
 const RELAY_EVICT_CONVERSATION_ROOM = '__evict_conversation_room';
+const READ_ONLY_AGENT_EVENTS = new Set(['agent:join', 'conversation:open']);
 
 @WebSocketGateway({
     cors: { origin: '*' },
@@ -152,6 +155,34 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
                 return;
             }
 
+            const entitlement = await resolveTenantSubscriptionAccess(
+                this.prisma,
+                readyContext.tenantId,
+                'read',
+            );
+            if (!entitlement.allowed) {
+                client.emit('error', {
+                    message: 'Subscription does not allow agent-console access.',
+                    code: entitlement.error,
+                });
+                client.disconnect(true);
+                return;
+            }
+
+            client.use?.(async (packet: unknown[], next: (error?: Error) => void) => {
+                const eventName = String(packet?.[0] ?? '');
+                const mode = READ_ONLY_AGENT_EVENTS.has(eventName) ? 'read' : 'write';
+                const current = await resolveTenantSubscriptionAccess(
+                    this.prisma,
+                    readyContext.tenantId,
+                    mode,
+                );
+                if (current.allowed) return next();
+                client.emit('error', { message: 'Subscription access changed.', code: current.error });
+                if (current.restrictionLevel !== 'soft_lock') client.disconnect(true);
+                next(new Error(current.error ?? 'subscription_unavailable'));
+            });
+
             // Store current database role and authoritative tenant context. A
             // stale JWT cannot retain Inbox access after a role downgrade.
             (client as any).jwtPayload = {
@@ -188,6 +219,24 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
             this.connectedAgents.delete(this.agentKey(meta.tenantId, meta.agentId));
             this.socketMeta.delete(client.id);
             this.logger.log(`Agent disconnected: ${meta.agentId}`);
+        }
+    }
+
+    @OnEvent(BillingEventType.SUBSCRIPTION_CANCELLED, { async: true })
+    async handleSubscriptionCancelled(event: { tenantId: string }) {
+        await this.disconnectTenantIfHardLocked(event?.tenantId);
+    }
+
+    @OnEvent(BillingEventType.SUBSCRIPTION_EXPIRED, { async: true })
+    async handleSubscriptionExpired(event: { tenantId: string }) {
+        await this.disconnectTenantIfHardLocked(event?.tenantId);
+    }
+
+    private async disconnectTenantIfHardLocked(tenantId?: string): Promise<void> {
+        if (!tenantId || !this.server) return;
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'read');
+        if (!entitlement.allowed) {
+            this.server.in?.(`tenant:${tenantId}`).disconnectSockets(true);
         }
     }
 

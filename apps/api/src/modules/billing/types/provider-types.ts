@@ -206,8 +206,8 @@ export interface NormalizedBillingEvent {
     /** Provider that sourced this event. */
     provider: PaymentProviderName;
     /**
-     * Provider's unique event id. Used with Redis `idem:billing:{provider}:{id}`
-     * to deduplicate; MP can redeliver the same event for 4 days.
+     * Provider's unique event id. The database unique constraint is the durable
+     * idempotency authority; Redis only holds a short processing lock.
      */
     providerEventId: string;
     /** When the event happened at the provider. */

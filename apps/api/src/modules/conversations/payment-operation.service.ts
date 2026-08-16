@@ -38,13 +38,21 @@ export interface DiscountProviderRequest {
 /** No provider is selected by this contract. An adapter must be bound explicitly. */
 export interface PaymentOperationProvider {
     readonly id: string;
+    /** A bound adapter may deliberately expose only a subset of money actions. */
+    supports?(kind: PaymentOperationKind): boolean;
     /** Mandatory ownership check before any money/provider side effect. */
     resolveOwnership(input: {
         tenantId: string;
         contactId: string;
         kind: PaymentOperationKind;
         reference: string;
-    }): Promise<{ owned: boolean; canonicalReference?: string }>;
+    }): Promise<{
+        owned: boolean;
+        canonicalReference?: string;
+        /** When supplied, the caller-provided money values must match exactly. */
+        canonicalAmountCents?: number;
+        canonicalCurrency?: string;
+    }>;
     createPaymentLink(input: PaymentLinkProviderRequest): Promise<{
         providerOperationId: string;
         url: string;
@@ -128,12 +136,15 @@ export class PaymentOperationService {
         });
         const terminal = this.terminalResult(intent);
         if (terminal) return terminal;
-        if (!this.provider) return this.handoffUnavailable(schemaName, intent, 'payment_link');
+        if (!this.provider || !this.supports('payment_link')) {
+            return this.handoffUnavailable(schemaName, intent, 'payment_link');
+        }
         const canonicalReference = await this.resolveCanonicalOwnership(
             tenantId,
             contactId,
             'payment_link',
             externalReference,
+            { amountCents, currency },
         );
         if (!canonicalReference || !await this.bindCanonicalReference(schemaName, intent.id, canonicalReference)) {
             return this.markOwnershipFailure(schemaName, intent.id);
@@ -212,7 +223,9 @@ export class PaymentOperationService {
         });
         const terminal = this.terminalResult(intent);
         if (terminal) return terminal;
-        if (!this.provider) return this.handoffUnavailable(schemaName, intent, 'refund');
+        if (!this.provider || !this.supports('refund')) {
+            return this.handoffUnavailable(schemaName, intent, 'refund');
+        }
         const canonicalReference = await this.resolveCanonicalOwnership(
             tenantId,
             contactId,
@@ -286,7 +299,9 @@ export class PaymentOperationService {
         });
         const terminal = this.terminalResult(intent);
         if (terminal) return terminal;
-        if (!this.provider) return this.handoffUnavailable(schemaName, intent, 'discount');
+        if (!this.provider || !this.supports('discount')) {
+            return this.handoffUnavailable(schemaName, intent, 'discount');
+        }
         const canonicalReference = await this.resolveCanonicalOwnership(
             tenantId,
             contactId,
@@ -412,17 +427,27 @@ export class PaymentOperationService {
         contactId: string,
         kind: PaymentOperationKind,
         reference: string,
+        expectedMoney?: { amountCents: number; currency: string },
     ): Promise<string | null> {
         if (!this.provider) return null;
         try {
             const result = await this.provider.resolveOwnership({ tenantId, contactId, kind, reference });
             if (result?.owned !== true) return null;
+            if (expectedMoney && result.canonicalAmountCents !== undefined
+                && result.canonicalAmountCents !== expectedMoney.amountCents) return null;
+            if (expectedMoney && result.canonicalCurrency !== undefined
+                && result.canonicalCurrency.toUpperCase() !== expectedMoney.currency) return null;
             if (typeof result.canonicalReference !== 'string') return null;
             const canonical = result.canonicalReference.trim();
             return canonical.length > 0 && canonical.length <= 180 ? canonical : null;
         } catch {
             return null;
         }
+    }
+
+    private supports(kind: PaymentOperationKind): boolean {
+        if (!this.provider) return false;
+        return this.provider.supports?.(kind) !== false;
     }
 
     private async bindCanonicalReference(

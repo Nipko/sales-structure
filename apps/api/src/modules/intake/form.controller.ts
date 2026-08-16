@@ -31,8 +31,6 @@ export class FormController {
             return { ok: true }; // return OK to avoid leaking info
         }
 
-        const schemaName = `tenant_${(tenantId || tenantSlug || '').replace(/-/g, '_')}`;
-        
         const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
             ?? req.socket?.remoteAddress
             ?? 'unknown';
@@ -40,12 +38,17 @@ export class FormController {
         const originUrl = req.headers['referer'] ?? req.headers['origin'] ?? '';
 
         try {
+            const tenant = await this.intakeService.resolvePublicTenant(
+                tenantId || tenantSlug || '',
+                'write',
+            );
+            if (!tenant) return { ok: true };
             await this.intakeService.processFormSubmission(formDefinitionId, payload, {
                 ip,
                 userAgent,
                 originUrl,
-                tenantId: tenantId || tenantSlug || '',
-                schemaName,
+                tenantId: tenant.tenantId,
+                schemaName: tenant.schemaName,
                 lang,
             });
             return { ok: true, message: imsg(lang, 'form.thankYou') };

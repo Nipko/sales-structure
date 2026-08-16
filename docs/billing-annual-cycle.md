@@ -1,94 +1,84 @@
-# Billing — Ciclo mensual/anual y billing-ops
+# Billing — ciclos mensual/anual y billing-ops
 
-_Última actualización: 2026-07-23_
+_Última actualización: 2026-08-15_
 
-Referencia del ciclo de facturación **mensual/anual** y de las operaciones de billing cross-tenant (super_admin). El ciclo anual es first-class en el código pero antes no estaba documentado en ningún doc vivo. Para el setup de MercadoPago ver [`billing-mp-setup.md`](billing-mp-setup.md); para el runbook operativo, [`billing-runbook.md`](billing-runbook.md).
+Referencia operativa del ciclo de suscripción y de las acciones cross-tenant. El
+riel de suscripciones es **Wompi + motor recurrente interno de Parallly**.
+Mercado Pago no participa en altas, trials, renovaciones ni cambios de plan; su
+único uso vivo son enlaces tenant → cliente con credenciales propias del tenant.
 
-> **Modelo en una línea:** un plan (`billing_plans`) tiene precio **mensual** y, opcionalmente, precio **anual** por país. El anual es un `preapproval_plan` **separado** en MercadoPago (frequency 12 meses), cuyo id se guarda en `priceLocalOverrides[country].annual.mpPlanId`. El sync mensual y el anual son **independientes** e idempotentes por ciclo.
+## 1. Precio y ciclo: fuente de verdad
 
----
-
-## 1. Estructura de precios (`priceLocalOverrides`)
-
-Cada plan guarda overrides de precio por país en el JSON `priceLocalOverrides`:
+Cada fila activa de `billing_plans` guarda el precio local por país en
+`priceLocalOverrides`. Para Colombia:
 
 ```jsonc
 {
   "CO": {
     "currency": "COP",
-    "amountCents": <precio mensual local en centavos>,
-    "mpPlanId": "<preapproval_plan_id MENSUAL>",
+    "amountCents": 100000,
     "annual": {
       "currency": "COP",
-      "amountCents": <TOTAL del año en centavos>,   // no es mensual×12 automático
-      "mpPlanId": "<preapproval_plan_id ANUAL>"
+      "amountCents": 1020000
     }
   }
 }
 ```
 
-- El **precio anual es explícito** (`annual.amountCents` = total del año). No hay derivación automática mensual×12 ni una fuente USD/FX para el anual — el descuento (~15%) se refleja al setear ese total. Es el editor de planes (o el seed) quien lo define.
-- El mensual y el anual tienen **`mpPlanId` distintos** (dos preapproval_plans en MP).
+- `amountCents` es el cobro mensual total, en centavos COP.
+- `annual.amountCents` es el cobro anual total; no se deriva automáticamente de
+  mensual × 12.
+- Los campos históricos `mpPlanId` pueden permanecer en JSON legado, pero no
+  autorizan cobros ni se sincronizan. Wompi no tiene catálogo remoto de planes.
+- El seed es create-only; el runtime y el editor auditado de `/admin/plans` son
+  la fuente vigente.
 
-## 2. Sincronización a MercadoPago
+## 2. Cómo cobra el motor
 
-MP requiere un `preapproval_plan` por (plan × país × ciclo). Dos caminos, ambos **idempotentes por ciclo** (saltan si ese ciclo ya existe, salvo `--force`):
+La suscripción congela ciclo, importe, moneda, día ancla y zona horaria. El
+scheduler crea un intento durable y el worker vuelve a validar suscripción,
+plan, fuente, tenant y límite de capacidad inmediatamente antes de llamar a
+Wompi. Una respuesta `PENDING` no concede acceso; webhook/polling sólo liquidan
+una transacción canónica `APPROVED` con referencia, monto y moneda coincidentes.
 
-**Desde el panel super_admin** (`billing-admin.controller.ts` → `POST /billing-admin/plans/:slug/sync-mp`):
-```jsonc
-{ "country": "CO", "cycle": "year" }   // cycle: "month" (default) | "year"
-```
-Fail-closed: si no hay precio anual local para el país, responde error pidiendo definir `priceLocalOverrides.<country>.annual.amountCents` **antes** de sincronizar el ciclo anual (no crea un plan anual "adivinando" el precio).
+- Mensual: el próximo periodo avanza un mes conservando el día ancla cuando
+  existe (por ejemplo, 31 ene → 28/29 feb → 31 mar).
+- Anual: avanza doce meses y cobra el total anual configurado.
+- La hora de cobro y el límite diario usan `WOMPI_MERCHANT_TIMEZONE`
+  (`America/Bogota` en producción).
 
-**Por script** (`apps/api/scripts/sync-mp-plans.js`):
-```bash
-node scripts/sync-mp-plans.js --country=CO --cycle=annual   # alias: --cycle=year (frequency 12 meses)
-```
+## 3. Cambios de plan/ciclo
 
-> ⚠️ **El deploy no sincroniza ningún ciclo con MercadoPago.** La integración está en
-> pausa desde agosto de 2026 y el workflow omite de forma explícita el preflight y el
-> sync. Cuando la pasarela vuelva a estar habilitada, los planes mensuales y anuales
-> deberán crearse en una operación controlada desde el panel o los scripts. Si falta
-> el `mpPlanId` del ciclo solicitado, la suscripción falla en vez de cobrar mal.
+- **Upgrade o cambio con mayor cargo:** se calcula prorrateo, se crea un intento
+  `upgrade_proration` y el plan objetivo sólo entra en vigor cuando Wompi lo
+  aprueba. Un intento inicial/renovación vivo bloquea el cambio.
+- **Downgrade:** se agenda para el final del periodo; el motor vuelve a validar
+  el cambio antes del siguiente cobro.
+- **Cambio de ciclo:** usa el mismo contrato. No cancela ni crea una suscripción
+  remota porque Wompi no tiene `preapproval`; cambia el snapshot local únicamente
+  después del movimiento autorizado que corresponda.
+- **Cortesía / tenant interno:** deshabilita el motor y no deja próximo cobro.
 
-## 3. Suscripción y cambio de ciclo
-
-- Al crear/cambiar una suscripción, el ciclo elegido (`month`/`year`) determina qué `mpPlanId` se usa (el mensual o el `annual.mpPlanId`).
-- **Cambiar de ciclo** (mensual↔anual) implica **cancelar y recrear** el preapproval en MercadoPago (MP no permite mutar la frecuencia de un preapproval existente), igual que un cambio de plan. El ciclo vigente queda persistido en la metadata de la suscripción.
-
-## 4. Frontend
-
-- **Dashboard** (`settings/billing`): toggle **mensual/anual** que muestra el precio de cada ciclo y el ahorro del anual.
-- **Landing** (`/precios`, `apps/landing/(marketing)/precios`): página de precios **data-driven** — lee los planes reales desde `billing_plans` (no precios hardcodeados), con el toggle mensual/anual.
-
-## 5. Billing-ops cross-tenant (super_admin)
-
-`billing-admin.controller.ts` expone operaciones de plataforma sobre todos los tenants:
+## 4. Billing-ops (super_admin)
 
 | Acción | Endpoint |
 |--------|----------|
-| Sync de plan+país+ciclo a MP | `POST /billing-admin/plans/:slug/sync-mp` |
-| Reconciliación on-demand (global / por tenant) | `POST /billing-admin/reconcile`, `POST /billing-admin/tenants/:tenantId/reconcile` |
-| Refund inline de un pago | `POST /billing-admin/payments/:paymentId/refund` |
-| Editar plan (precio/overrides) con auditoría | `PUT /billing-admin/plans/:slug` |
-| Vistas cross-tenant de suscripciones / pagos / eventos | endpoints de listado bajo `/billing-admin` |
+| Estado y readiness de proveedores | `GET /billing-admin/provider-status` |
+| Switch/ruteo de proveedores | `GET/PUT /billing-admin/providers` |
+| Asignar riel de un tenant | `PUT /billing-admin/tenants/:tenantId/payment-provider` |
+| Reconciliación global/tenant | `POST /billing-admin/reconcile`, `POST /billing-admin/tenants/:tenantId/reconcile` |
+| Reembolso auditado | `POST /billing-admin/payments/:paymentId/refund` |
+| Conceder plan de cortesía | `POST /billing-admin/tenants/:tenantId/comp-plan` |
+| Cambiar plan de tenant | `PUT /billing-admin/tenants/:tenantId/plan` |
+| Catálogo y vistas cross-tenant | rutas `plans`, `subscriptions`, `payments`, `events` bajo `/billing-admin` |
 
-Toda edición de precio/plan de catálogo queda **auditada** (se registra `from`/`to` de los campos, incl. `priceLocalOverrides`). Los checkouts de **créditos SMS** (pago único MP) van por `sms-checkout.*`, no por el ciclo de suscripción.
+No existe endpoint `sync-mp`: fue retirado junto con el adapter de suscripciones
+Mercado Pago. Tampoco hay checkout de paquetes SMS activo.
 
-## 6. Planes (fuente de verdad)
+## 5. Checklist operativo
 
-Los planes, ciclos y features aplicables viven en la tabla runtime `billing_plans` y
-se editan con auditoría desde `/admin/plans`. El archivo
-`apps/api/prisma/seed-billing-plans.js` es solo un baseline **create-only** para filas
-faltantes; no actualiza planes existentes. Los precios locales por país viven en
-`priceLocalOverrides`. Los documentos fechados de rentabilidad sirven para análisis,
-no como contrato de precio vigente.
-
----
-
-## Referencias
-
-- [`billing-runbook.md`](billing-runbook.md) — runbook operativo de billing
-- [`billing-mp-setup.md`](billing-mp-setup.md) — setup de MercadoPago
-- [`plan-profitability-2026-07.md`](plan-profitability-2026-07.md) — precios COP por país y rentabilidad
-- `apps/api/src/modules/billing/billing-admin.controller.ts`, `apps/api/scripts/sync-mp-plans.js`, `apps/api/prisma/seed-billing-plans.js`
+Antes de aceptar un cobro real: cuatro secretos Wompi del mismo ambiente,
+límites positivos, webhook HTTPS validado, precios COP mensuales/anuales,
+Factus producción + rango DIAN y método Wompi activado en el merchant. Consulte
+[`billing-runbook.md`](billing-runbook.md) y el dictamen
+[`wompi-integration-validation-2026-08.md`](wompi-integration-validation-2026-08.md).

@@ -49,9 +49,6 @@ export class IntakeController {
             return { ok: true };
         }
 
-        // Derive schema name (matches createTenantSchema convention)
-        const schemaName = `tenant_${(tenantId || tenantSlug).replace(/-/g, '_')}`;
-
         const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
             ?? req.socket?.remoteAddress
             ?? 'unknown';
@@ -59,17 +56,22 @@ export class IntakeController {
         const originUrl = req.headers['referer'] ?? req.headers['origin'] ?? '';
 
         try {
+            const tenant = await this.intakeService.resolvePublicTenant(
+                tenantId || tenantSlug,
+                'write',
+            );
+            if (!tenant) return { ok: true };
             const result = await this.intakeService.captureFromForm(dto, {
                 ip,
                 userAgent,
                 originUrl,
-                tenantId: tenantId || tenantSlug,
-                schemaName,
+                tenantId: tenant.tenantId,
+                schemaName: tenant.schemaName,
             });
 
             this.logger.log(
                 `[Intake] Lead ${result.isNew ? 'created' : 'updated'}: ${result.leadId} ` +
-                `| phone: ${result.phone} | tenant: ${schemaName}`
+                `| phone: ${result.phone} | tenant: ${tenant.schemaName}`
             );
 
             // Always return 200 OK — never reveal lead existence status

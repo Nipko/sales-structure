@@ -8,6 +8,7 @@ import {
     Param,
     Post,
     Req,
+    ServiceUnavailableException,
     UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -24,13 +25,13 @@ import { PaymentProviderName } from './types/provider-types';
  *  2. Verify the signature against the raw body (rawBody is preserved globally
  *     by NestFactory.create({ rawBody: true }) in main.ts). Fail closed with
  *     401 on mismatch so bad actors can't replay arbitrary payloads.
- *  3. Check Redis idempotency before dispatching — MP can redeliver the same
- *     notification for up to 4 days. Redis SET NX with 48h TTL.
+ *  3. Take a short ownership-token processing lock. Durable idempotency lives
+ *     in billing_events' UNIQUE(provider,event_id), never in an expiring Redis
+ *     marker that could survive a process crash before the DB insert.
  *  4. Delegate parsing + dispatch to the adapter + BillingService.
- *  5. Always return 200 on successful ingestion (even duplicates) so the
- *     provider stops retrying. Any surprise exception logs a warning but
- *     still returns 200 because the adapter already persisted the event in
- *     billing_events and the daily reconciliation cron will catch drift.
+ *  5. Return 200 only after durable ingestion (or for a permanently ignored
+ *     signed update). Transient parse/dispatch failures return 503 so the
+ *     provider's retry schedule remains our recovery path.
  */
 @Controller('billing/webhook')
 export class BillingWebhookController {
@@ -94,22 +95,30 @@ export class BillingWebhookController {
         try {
             normalized = await provider.parseWebhookEvent(rawBody, headers);
         } catch (err: any) {
-            // Provider API hiccups should not make us 5xx the webhook — the
-            // provider will retry and the daily reconciliation cron catches
-            // any drift. Return 200 with a log.
             this.logger.error(`[Webhook] ${providerName} parseWebhookEvent failed: ${err?.message}`);
             await this.recordWebhookFailure(providerKey, 'parse');
-            return { received: true, status: 'parse_error' };
+            // A verified but unsupported/informational provider update is a
+            // permanent no-op. Network/provider/unknown failures have not been
+            // durably recorded and MUST stay retryable.
+            if (err instanceof BadRequestException) {
+                return { received: true, status: 'ignored', reason: this.errorCode(err) };
+            }
+            throw new ServiceUnavailableException({
+                error: 'webhook_parse_retryable',
+                provider: providerName,
+            });
         }
 
-        // 3. Redis idempotency — an extra layer on top of the UNIQUE(provider, providerEventId)
-        // index on billing_events. Cheaper to return early here than to hit the DB for a duplicate.
-        // acquireLock is atomic SET NX EX — 48h TTL matches MP's maximum redelivery window.
-        const idemKey = `idem:billing:${providerName}:${normalized.providerEventId}`;
-        const claimed = await this.redis.acquireLock(idemKey, 48 * 3600);
-        if (!claimed) {
-            this.logger.debug(`[Webhook] Duplicate ${providerName}/${normalized.providerEventId} — idempotency hit`);
-            return { received: true, status: 'duplicate' };
+        // 3. Short processing lock only. A 48h Redis "done" marker was unsafe:
+        // if the process died after SET NX but before billing_events INSERT, all
+        // Wompi retries were acknowledged as duplicates and the payment was lost.
+        const lockKey = `lock:billing:webhook:${providerName}:${normalized.providerEventId}`;
+        const lockToken = await this.redis.acquireLockToken(lockKey, 60);
+        if (!lockToken) {
+            throw new ServiceUnavailableException({
+                error: 'webhook_event_in_progress',
+                provider: providerName,
+            });
         }
 
         // 4. Dispatch
@@ -117,15 +126,27 @@ export class BillingWebhookController {
             const result = await this.billingService.handleBillingEvent(normalized);
             return { received: true, status: result.processed ? 'processed' : 'skipped', reason: result.reason };
         } catch (err: any) {
-            // Free the idempotency key so a retry can process — the DB-level
-            // UNIQUE will catch genuine duplicates anyway.
-            await this.redis.del(idemKey);
             this.logger.error(`[Webhook] ${providerName} handleBillingEvent failed: ${err?.message}`, err?.stack);
             await this.recordWebhookFailure(providerKey, 'dispatch');
-            // Return 200 to stop provider retries — the reconciliation
-            // cron will detect drift and replay the needed state.
-            return { received: true, status: 'error', reason: err?.message };
+            throw new ServiceUnavailableException({
+                error: 'webhook_dispatch_retryable',
+                provider: providerName,
+            });
+        } finally {
+            // Ownership token prevents an expired lock holder deleting a lock
+            // that another process has since acquired. TTL remains the crash
+            // recovery path if Redis is unavailable during release.
+            await this.redis.releaseLockToken(lockKey, lockToken).catch((err: any) => {
+                this.logger.warn(`[Webhook] Could not release ${lockKey}: ${err?.message}`);
+            });
         }
+    }
+
+    private errorCode(err: BadRequestException): string {
+        const response = err.getResponse();
+        if (typeof response === 'string') return response;
+        const code = (response as any)?.error ?? (response as any)?.message;
+        return typeof code === 'string' ? code : 'permanent_parse_error';
     }
 
     /**

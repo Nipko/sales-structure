@@ -245,4 +245,58 @@ describe('OnboardingService Business Portfolio resolution', () => {
       }),
     );
   });
+
+  it('fails closed when the API entitlement boundary is unconfigured or unreachable', async () => {
+    const harness = createHarness();
+    await expect((harness.service as any).assertChannelAccountQuotaViaApi(
+      tenantId, 'whatsapp', phone.id,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CHANNEL_ENTITLEMENT_CHECK_UNAVAILABLE' }),
+    });
+
+    harness.config.get.mockImplementation((key: string) => (
+      key === 'INTERNAL_API_KEY' ? 'internal-secret' : undefined
+    ));
+    const originalFetch = globalThis.fetch;
+    (globalThis as any).fetch = jest.fn().mockRejectedValue(new Error('api down'));
+    try {
+      await expect((harness.service as any).assertChannelAccountQuotaViaApi(
+        tenantId, 'whatsapp', phone.id,
+      )).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'CHANNEL_ENTITLEMENT_CHECK_UNAVAILABLE' }),
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('preserves the plan-limit contract while denying subscription-locked channels', async () => {
+    const harness = createHarness();
+    harness.config.get.mockImplementation((key: string) => (
+      key === 'INTERNAL_API_KEY' ? 'internal-secret' : undefined
+    ));
+    const originalFetch = globalThis.fetch;
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: jest.fn().mockResolvedValue({ error: 'plan_limit_reached', message: 'limit' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: jest.fn().mockResolvedValue({ error: 'payment_method_required', message: 'pay' }),
+      });
+    (globalThis as any).fetch = fetchMock;
+    try {
+      await expect((harness.service as any).assertChannelAccountQuotaViaApi(
+        tenantId, 'whatsapp', phone.id,
+      )).rejects.toMatchObject({ response: expect.objectContaining({ code: 'PLAN_LIMIT_REACHED' }) });
+      await expect((harness.service as any).assertChannelAccountQuotaViaApi(
+        tenantId, 'whatsapp', phone.id,
+      )).rejects.toMatchObject({ response: expect.objectContaining({ code: 'CHANNEL_ACCESS_DENIED' }) });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

@@ -19,6 +19,7 @@ describe('PaymentRoutingService', () => {
         registered?: PaymentProviderName[];
         dbThrows?: boolean;
         cacheThrows?: boolean;
+        wompiConfigured?: boolean;
     } = {}) {
         const registered = opts.registered ?? ['stripe', 'wompi', 'mock'];
         const rows = Object.entries(opts.settings ?? {}).map(([key, value]) => ({ key, value }));
@@ -46,9 +47,17 @@ describe('PaymentRoutingService', () => {
                 return caps;
             },
         };
+        const wompiConfig = {
+            isConfigured: jest.fn().mockReturnValue(opts.wompiConfigured ?? true),
+        };
 
         return {
-            service: new PaymentRoutingService(prisma as any, redis as any, providerFactory as any),
+            service: new PaymentRoutingService(
+                prisma as any,
+                redis as any,
+                providerFactory as any,
+                wompiConfig as any,
+            ),
             prisma,
             redis,
         };
@@ -123,6 +132,13 @@ describe('PaymentRoutingService', () => {
     });
 
     describe('resolveForNewSubscription', () => {
+        it('does not advertise or route Wompi until the complete credential quartet is ready', async () => {
+            const { service } = makeService({ wompiConfigured: false });
+
+            await expect(service.resolveForNewSubscription({ billingCountry: 'CO' }))
+                .rejects.toMatchObject({ response: { error: 'no_payment_provider_available' } });
+        });
+
         it('routes a country to its configured provider', async () => {
             const { service } = makeService({
                 settings: {

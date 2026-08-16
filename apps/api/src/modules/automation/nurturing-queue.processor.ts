@@ -4,6 +4,8 @@ import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { NurturingService, NURTURING_QUEUE, NurturingJobData } from './nurturing.service';
 import { DripSequenceService, DripStepJobData } from './drip-sequence.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 @Processor(NURTURING_QUEUE, {
     limiter: {
@@ -18,11 +20,24 @@ export class NurturingQueueProcessor extends WorkerHost {
     constructor(
         private readonly nurturingService: NurturingService,
         private readonly dripSequenceService: DripSequenceService,
+        private readonly prisma: PrismaService,
     ) {
         super();
     }
 
     async process(job: Job<NurturingJobData | DripStepJobData>): Promise<void> {
+        const tenantId = job.data.tenantId;
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            if (entitlement.restrictionLevel === 'unavailable') {
+                throw new Error(`subscription_entitlement_unavailable:${entitlement.error ?? 'unknown'}`);
+            }
+            this.logger.warn(
+                `Discarding delayed ${job.name} job ${job.id} for tenant=${tenantId}: `
+                + `${entitlement.error ?? 'subscription_restricted'}`,
+            );
+            return;
+        }
         switch (job.name) {
             case 'drip-step': {
                 const { tenantId, enrollmentId } = job.data as DripStepJobData;

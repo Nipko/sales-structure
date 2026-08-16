@@ -141,13 +141,17 @@ export type StoredPaymentSource = {
 
 /**
  * Habeas data contracts (Colombian law) the checkout must display, with a
- * checkbox each, before it may store any payment method. Only the permalinks
- * travel to the browser; the acceptance tokens are re-fetched server-side.
+ * checkbox each, before it may store any payment method. Permalinks and their
+ * versions travel to the browser; provider acceptance tokens stay server-side
+ * behind a one-use, tenant-bound consent id.
  */
 export type PaymentAcceptanceContracts = {
     provider: PaymentProviderName;
-    endUserPolicy: { permalink: string; type: string };
-    personalDataAuth: { permalink: string; type: string } | null;
+    /** One-use, tenant/provider-bound proof that these exact contract versions were shown. */
+    consentId: string;
+    expiresAt: string;
+    endUserPolicy: { permalink: string; type: string; version: string };
+    personalDataAuth: { permalink: string; type: string; version: string };
 };
 
 export type AddPaymentSourceResult = {
@@ -156,6 +160,30 @@ export type AddPaymentSourceResult = {
     /** Wallets are approved out of band (the customer taps accept in their bank app). */
     requiresAuthorization: boolean;
     authorizationUrl?: string;
+};
+
+export type BillingCheckoutHandoff = {
+    status: 'pending_auth' | 'trialing' | 'active';
+    requiresPaymentMethod: boolean;
+    planSlug: string;
+    billingCycle: 'monthly' | 'annual';
+};
+
+export type CompleteOnboardingResult = {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: { tenantId?: string; [key: string]: unknown };
+    verticalConfig?: unknown;
+    coupon?: { applied: boolean; freeMonths?: number };
+    billingCheckout?: BillingCheckoutHandoff;
+};
+
+export type TenantPaymentsConfig = {
+    connected: boolean;
+    publicKey?: string;
+    accountEmail?: string;
+    /** Secrets are never returned; this boolean only drives the masked placeholder. */
+    webhookConfigured?: boolean;
 };
 
 export type ResourceRentalType = "vehicle_rental" | "pet_boarding";
@@ -337,7 +365,7 @@ export const api = {
         apiPatch<{ email: string; verificationEmailSent: boolean }>("/auth/pending-email", { email }),
 
     completeOnboarding: (data: any) =>
-        apiPost("/auth/complete-onboarding", data),
+        apiPost<CompleteOnboardingResult>("/auth/complete-onboarding", data),
 
     me: () => apiPost("/auth/me", {}),
 
@@ -773,7 +801,7 @@ export const api = {
         apiPut(`/auth/users/${userId}/skills`, { skillTags }),
 
     // --- Tenant CRUD ---
-    createTenant: (data: { name: string; slug: string; industry: string; subType?: string | null; language?: string; plan?: string; ownerEmail: string; ownerFirstName: string; ownerLastName?: string }) =>
+    createTenant: (data: { name: string; slug: string; industry: string; subType?: string | null; language?: string; plan?: string; isInternal?: boolean; ownerEmail: string; ownerFirstName: string; ownerLastName?: string }) =>
         apiPost("/tenants", data),
 
     updateTenant: (id: string, data: any) =>
@@ -1302,10 +1330,22 @@ export const api = {
     /** `token` is minted CLIENT-SIDE by the operator: raw card data never reaches our API. */
     addPaymentSource: (
         tenantId: string,
-        data: { kind: PaymentSourceKind; token: string; customerEmail?: string; makeDefault?: boolean },
+        data: {
+            kind: PaymentSourceKind;
+            token: string;
+            customerEmail?: string;
+            makeDefault?: boolean;
+            consentId: string;
+            acceptEndUserPolicy: true;
+            acceptPersonalDataAuth: true;
+        },
     ) => apiPost<AddPaymentSourceResult>(`/billing/payment-sources/${tenantId}`, data),
     getPaymentSourceStatus: (tenantId: string, sourceId: string) =>
-        apiGet<{ status: PaymentSourceStatus }>(`/billing/payment-sources/${tenantId}/${sourceId}/status`),
+        apiGet<{
+            status: PaymentSourceStatus;
+            requiresAuthorization?: boolean;
+            authorizationUrl?: string;
+        }>(`/billing/payment-sources/${tenantId}/${sourceId}/status`),
     setDefaultPaymentSource: (tenantId: string, sourceId: string) =>
         apiPut(`/billing/payment-sources/${tenantId}/${sourceId}/default`, {}),
     deletePaymentSource: (tenantId: string, sourceId: string) =>
@@ -1314,8 +1354,11 @@ export const api = {
     // --- SMS credits (monetized notification packages) ---
     // ─── Cobros del tenant a SU cliente final (no confundir con billing, que
     // es lo que el tenant nos paga a nosotros) ───
-    getTenantPaymentsConfig: (tenantId: string) => apiGet(`/tenant-payments/${tenantId}/config`),
-    setTenantPaymentsConfig: (tenantId: string, data: { accessToken?: string; publicKey?: string }) =>
+    getTenantPaymentsConfig: (tenantId: string) => apiGet<TenantPaymentsConfig>(`/tenant-payments/${tenantId}/config`),
+    setTenantPaymentsConfig: (
+        tenantId: string,
+        data: { accessToken?: string; publicKey?: string; webhookSecret?: string },
+    ) =>
         apiPut(`/tenant-payments/${tenantId}/config`, data),
     disconnectTenantPayments: (tenantId: string) => apiDelete(`/tenant-payments/${tenantId}/config`),
     getSmsPackages: () => apiGet(`/sms-credits/packages`),

@@ -78,7 +78,7 @@ export function ProvidersTab({
     // the translator: a changing `t` identity would re-trigger the fetch effect.
     const [error, setError] = useState<{ key: string; params?: Record<string, string>; detail?: string } | null>(null);
     const [newCountry, setNewCountry] = useState("");
-    const [newProvider, setNewProvider] = useState<PaymentProviderName>("mercadopago");
+    const [newProvider, setNewProvider] = useState<PaymentProviderName>("wompi");
 
     const load = useCallback(async () => {
         setLoading(true);

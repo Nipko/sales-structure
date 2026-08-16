@@ -143,12 +143,23 @@ function localDateOnly(at: Date, timezone: string): number {
  * Dots, never colons: BullMQ rejects ':' inside a job id, and this string is
  * reused as one. That exact mistake once silently blocked outbound delivery.
  */
-export function buildCycleKey(subscriptionId: string, periodStart: Date, purpose: string): string {
+export function buildCycleKey(
+    subscriptionId: string,
+    periodStart: Date,
+    purpose: string,
+    operationKey?: string,
+): string {
     const stamp = [
         periodStart.getUTCFullYear(),
         String(periodStart.getUTCMonth() + 1).padStart(2, '0'),
         String(periodStart.getUTCDate()).padStart(2, '0'),
     ].join('');
+    // An operation key is itself the stable billing-cycle identity. Do not keep
+    // the wall-clock date in that case: two authorization callbacks straddling
+    // UTC midnight must still contend for the same initial acquisition row.
+    if (operationKey) {
+        return `${subscriptionId}.${purpose}.${stableKeyDigest(operationKey, 16)}`;
+    }
     return `${subscriptionId}.${stamp}.${purpose}`;
 }
 
@@ -160,15 +171,43 @@ export function buildCycleKey(subscriptionId: string, periodStart: Date, purpose
 export function buildChargeReference(
     subscriptionId: string,
     periodStart: Date,
+    purpose: string,
     attemptNumber: number,
+    operationKey?: string,
 ): string {
-    const short = subscriptionId.replace(/-/g, '').slice(0, 8);
+    const compactSubscriptionId = subscriptionId.replace(/-/g, '');
+    const purposeCode: Record<string, string> = {
+        initial: 'ini',
+        renewal: 'ren',
+        upgrade_proration: 'upg',
+        manual_link: 'man',
+    };
+    const compactPurpose = purposeCode[purpose]
+        || purpose.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 6)
+        || 'chg';
     const stamp = [
         periodStart.getUTCFullYear(),
         String(periodStart.getUTCMonth() + 1).padStart(2, '0'),
         String(periodStart.getUTCDate()).padStart(2, '0'),
     ].join('');
-    return `sub_${short}_${stamp}_${attemptNumber}`;
+    // Plan changes are operations, not calendar cycles. A customer can perform
+    // two legitimate upgrades on the same UTC date, so the target/source
+    // contract identity must participate in DB and provider idempotency.
+    const operationSuffix = operationKey ? `_${stableKeyDigest(operationKey, 10)}` : '';
+    return `sub_${compactSubscriptionId}_${compactPurpose}_${stamp}${operationSuffix}_${attemptNumber}`;
+}
+
+/** Deterministic provider-safe digest without pulling Node crypto into this utility. */
+function stableKeyDigest(value: string, length: number): string {
+    const fnv = (seed: number) => {
+        let hash = seed >>> 0;
+        for (let i = 0; i < value.length; i++) {
+            hash ^= value.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return hash.toString(16).padStart(8, '0');
+    };
+    return `${fnv(0x811c9dc5)}${fnv(0x9e3779b9)}`.slice(0, length);
 }
 
 /**

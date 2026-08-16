@@ -23,10 +23,13 @@ export class LandingController {
             throw new NotFoundException('Página no encontrada.');
         }
 
-        const schemaName = `tenant_${(tenantId || tenantSlug || '').replace(/-/g, '_')}`;
-
         try {
-            const landing = await this.intakeService.getLandingPageBySlug(schemaName, slug);
+            const tenant = await this.intakeService.resolvePublicTenant(
+                tenantId || tenantSlug || '',
+                'read',
+            );
+            if (!tenant) throw new NotFoundException('Página no encontrada.');
+            const landing = await this.intakeService.getLandingPageBySlug(tenant.schemaName, slug);
             if (!landing) {
                 throw new NotFoundException('Página no encontrada o no publicada.');
             }

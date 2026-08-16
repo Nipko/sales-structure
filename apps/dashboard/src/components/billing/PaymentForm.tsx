@@ -23,8 +23,6 @@ interface PaymentFormProps {
     tenantId: string;
     /** Billing country of the tenant; the routing resolves the operator from it. */
     country?: string;
-    /** Token path (MercadoPago): the billing endpoints consume this `cardTokenId`. */
-    onToken: (cardTokenId: string) => void;
     /** Stored-source path (Wompi): the API already persisted the method. */
     onSourceSaved: (source: { id: string; status: PaymentSourceStatus }) => void;
     submitting?: boolean;
@@ -43,7 +41,6 @@ interface PaymentFormProps {
 export default function PaymentForm({
     tenantId,
     country,
-    onToken,
     onSourceSaved,
     submitting = false,
     submitLabel,
@@ -57,10 +54,13 @@ export default function PaymentForm({
     useEffect(() => {
         if (providedConfig) {
             setConfig(providedConfig);
+            setFailed(false);
             setLoading(false);
             return;
         }
         let cancelled = false;
+        setConfig(null);
+        setFailed(false);
         setLoading(true);
         api.getBillingPublicConfig(country)
             .then((res) => {

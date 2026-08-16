@@ -1899,7 +1899,7 @@ export class AuthService {
                 { assertLifecycleOwned },
             );
             await assertLockOwned();
-            await this.ensureOnboardingSubscription({
+            const onboardingSubscription = await this.ensureOnboardingSubscription({
                 tenantId: existingTenantId,
                 planSlug: (data.plan || data.planSlug || tenant.plan || 'emprendedor') as string,
                 billingEmail: businessDraft.email || tenant.billingEmail || user.email,
@@ -1961,6 +1961,12 @@ export class AuthService {
                 },
                 verticalConfig,
                 coupon: couponResult,
+                billingCheckout: {
+                    status: onboardingSubscription.status,
+                    requiresPaymentMethod: onboardingSubscription.status === 'pending_auth',
+                    planSlug: onboardingSubscription.planSlug,
+                    billingCycle: onboardingSubscription.billingCycle,
+                },
             };
             });
         }
@@ -2167,7 +2173,7 @@ export class AuthService {
         // card_required_for_trial/plan_not_found nunca deben dejar un usuario
         // marcado como listo sin suscripción; el retry consulta antes de crear.
         await assertLockOwned();
-        await this.ensureOnboardingSubscription({
+        const onboardingSubscription = await this.ensureOnboardingSubscription({
             tenantId: result.tenant.id,
             planSlug: selectedPlan,
             billingEmail: businessEmail || user.email,
@@ -2251,6 +2257,12 @@ export class AuthService {
             },
             verticalConfig,
             coupon: couponResult,
+            billingCheckout: {
+                status: onboardingSubscription.status,
+                requiresPaymentMethod: onboardingSubscription.status === 'pending_auth',
+                planSlug: onboardingSubscription.planSlug,
+                billingCycle: onboardingSubscription.billingCycle,
+            },
         };
         });
     }
@@ -2311,13 +2323,32 @@ export class AuthService {
         billingCountry?: string;
         cardTokenId?: string;
         billingCycle?: 'monthly' | 'annual';
-    }): Promise<void> {
+    }): Promise<any> {
         const existing = await this.prisma.billingSubscription.findUnique({
             where: { tenantId: input.tenantId },
-            select: { id: true },
+            select: {
+                id: true,
+                status: true,
+                metadata: true,
+                plan: { select: { slug: true } },
+            },
         });
-        if (existing) return;
-        await this.billingService.createTrialSubscription(input);
+        if (existing) {
+            return {
+                ...existing,
+                // The durable subscription is authoritative on an idempotent
+                // onboarding retry. Never tell the UI to resume a newly-clicked
+                // plan/cycle while the stored PENDING_AUTH intent is different.
+                planSlug: existing.plan.slug,
+                billingCycle: (existing.metadata as any)?.billingCycle === 'annual' ? 'annual' : 'monthly',
+            };
+        }
+        const created = await this.billingService.createTrialSubscription(input);
+        return {
+            ...created,
+            planSlug: input.planSlug,
+            billingCycle: input.billingCycle === 'annual' ? 'annual' : 'monthly',
+        };
     }
 
     // ── Super Admin Impersonation ──────────────────────────────────

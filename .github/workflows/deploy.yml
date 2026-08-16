@@ -227,6 +227,8 @@ jobs:
           apps/dashboard/src/lib/initial-setup.spec.ts
           apps/dashboard/src/lib/navigation-contract.spec.ts
           apps/dashboard/src/lib/roles.spec.ts
+          apps/dashboard/src/lib/billing-checkout-session.spec.ts
+          apps/dashboard/src/lib/wompi-payment-methods.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
@@ -613,21 +615,25 @@ jobs:
           PROD_MS_AUTH_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
           PROD_MS_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
           PROD_MS_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
-          # Wompi (Bancolombia). Absent secrets are harmless: the adapter logs a
-          # warning and the provider simply stays unroutable — it is off by
-          # default in the runtime routing config anyway.
+          # Wompi is the sole platform subscription rail. This local/syntactic
+          # preflight requires a production-prefixed quartet plus contractual
+          # caps; merchant ownership and method activation still require the
+          # provider-side go-live smoke documented in the billing runbook.
           PROD_WOMPI_PUBLIC_KEY: ${{ secrets.WOMPI_PUBLIC_KEY }}
           PROD_WOMPI_PRIVATE_KEY: ${{ secrets.WOMPI_PRIVATE_KEY }}
           PROD_WOMPI_EVENTS_SECRET: ${{ secrets.WOMPI_EVENTS_SECRET }}
           PROD_WOMPI_INTEGRITY_SECRET: ${{ secrets.WOMPI_INTEGRITY_SECRET }}
+          PROD_WOMPI_MAX_TRANSACTION_COP_CENTS: ${{ secrets.WOMPI_MAX_TRANSACTION_COP_CENTS }}
+          PROD_WOMPI_DAILY_CAP_COP_CENTS: ${{ secrets.WOMPI_DAILY_CAP_COP_CENTS }}
           # PIN del dueño para emitir cupones de alto impacto. Opcional: si el
           # secret no está, los cupones de alto impacto se bloquean (fail-closed).
           PROD_OWNER_COUPON_PIN: ${{ secrets.OWNER_COUPON_PIN }}
           # Optional but strongly recommended: numeric User/collector ID shown
           # by the verified MCO merchant. The preflight compares without logging it.
           # Factus (DIAN electronic invoicing — Colombia). Credentials from the
-          # Factus admin. FACTUS_BASE_URL = https://api-sandbox.factus.com.co
-          # until production go-live.
+          # Factus admin. This production workflow rejects an absent, HTTP or
+          # sandbox FACTUS_BASE_URL so Wompi cannot collect real money while
+          # DIAN issuance is knowingly unavailable.
           PROD_FACTUS_BASE_URL: ${{ secrets.FACTUS_BASE_URL }}
           PROD_FACTUS_CLIENT_ID: ${{ secrets.FACTUS_CLIENT_ID }}
           PROD_FACTUS_CLIENT_SECRET: ${{ secrets.FACTUS_CLIENT_SECRET }}
@@ -679,6 +685,7 @@ jobs:
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
             PROD_OWNER_COUPON_PIN,
             PROD_WOMPI_PUBLIC_KEY,PROD_WOMPI_PRIVATE_KEY,PROD_WOMPI_EVENTS_SECRET,PROD_WOMPI_INTEGRITY_SECRET,
+            PROD_WOMPI_MAX_TRANSACTION_COP_CENTS,PROD_WOMPI_DAILY_CAP_COP_CENTS,
             PROD_FACTUS_BASE_URL,PROD_FACTUS_CLIENT_ID,PROD_FACTUS_CLIENT_SECRET,PROD_FACTUS_USERNAME,PROD_FACTUS_PASSWORD,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
             PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET,
@@ -692,6 +699,53 @@ jobs:
             set -e
             cd /opt/parallext-engine
             export DC="docker compose --env-file .env -f infra/docker/docker-compose.prod.yml"
+
+            echo "===> Validating Wompi production readiness..."
+            for wompi_var in \
+              PROD_WOMPI_PUBLIC_KEY \
+              PROD_WOMPI_PRIVATE_KEY \
+              PROD_WOMPI_EVENTS_SECRET \
+              PROD_WOMPI_INTEGRITY_SECRET \
+              PROD_WOMPI_MAX_TRANSACTION_COP_CENTS \
+              PROD_WOMPI_DAILY_CAP_COP_CENTS; do
+              if [ -z "$(printenv "$wompi_var" 2>/dev/null)" ]; then
+                echo "ERROR: required Wompi secret is missing: $wompi_var"
+                exit 1
+              fi
+            done
+            case "$PROD_WOMPI_PUBLIC_KEY" in pub_prod_*) ;; *) echo "ERROR: WOMPI_PUBLIC_KEY is not production"; exit 1 ;; esac
+            case "$PROD_WOMPI_PRIVATE_KEY" in prv_prod_*) ;; *) echo "ERROR: WOMPI_PRIVATE_KEY is not production"; exit 1 ;; esac
+            case "$PROD_WOMPI_EVENTS_SECRET" in prod_events_*) ;; *) echo "ERROR: WOMPI_EVENTS_SECRET is not production"; exit 1 ;; esac
+            case "$PROD_WOMPI_INTEGRITY_SECRET" in prod_integrity_*) ;; *) echo "ERROR: WOMPI_INTEGRITY_SECRET is not production"; exit 1 ;; esac
+            for cap_var in PROD_WOMPI_MAX_TRANSACTION_COP_CENTS PROD_WOMPI_DAILY_CAP_COP_CENTS; do
+              cap_value="$(printenv "$cap_var")"
+              case "$cap_value" in ''|*[!0-9]*) echo "ERROR: $cap_var must be a positive integer in COP cents"; exit 1 ;; esac
+              if [ "$cap_value" -le 0 ]; then
+                echo "ERROR: $cap_var must be greater than zero"
+                exit 1
+              fi
+            done
+
+            echo "===> Validating DIAN/Factus production readiness..."
+            for factus_var in \
+              PROD_FACTUS_BASE_URL \
+              PROD_FACTUS_CLIENT_ID \
+              PROD_FACTUS_CLIENT_SECRET \
+              PROD_FACTUS_USERNAME \
+              PROD_FACTUS_PASSWORD; do
+              if [ -z "$(printenv "$factus_var" 2>/dev/null)" ]; then
+                echo "ERROR: required production fiscal secret is missing: $factus_var"
+                exit 1
+              fi
+            done
+            case "$PROD_FACTUS_BASE_URL" in
+              https://*sandbox*|http://*|*sandbox*)
+                echo "ERROR: FACTUS_BASE_URL must be the HTTPS production endpoint"
+                exit 1
+                ;;
+              https://*) ;;
+              *) echo "ERROR: FACTUS_BASE_URL must be an HTTPS production endpoint"; exit 1 ;;
+            esac
 
             echo "===> Pulling latest infrastructure code..."
             git fetch origin
@@ -811,6 +865,10 @@ jobs:
             echo "WOMPI_PRIVATE_KEY=${PROD_WOMPI_PRIVATE_KEY}" >> .env
             echo "WOMPI_EVENTS_SECRET=${PROD_WOMPI_EVENTS_SECRET}" >> .env
             echo "WOMPI_INTEGRITY_SECRET=${PROD_WOMPI_INTEGRITY_SECRET}" >> .env
+            echo "WOMPI_MAX_TRANSACTION_COP_CENTS=${PROD_WOMPI_MAX_TRANSACTION_COP_CENTS}" >> .env
+            echo "WOMPI_DAILY_CAP_COP_CENTS=${PROD_WOMPI_DAILY_CAP_COP_CENTS}" >> .env
+            echo "WOMPI_MERCHANT_TIMEZONE=America/Bogota" >> .env
+            echo "WOMPI_ALLOW_SANDBOX_IN_PRODUCTION=false" >> .env
             echo "WOMPI_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/wompi" >> .env
             # PIN del dueño para cupones de alto impacto / que superan la cuota
             # mensual. Vive en Secrets (no en la DB) para que ningún super_admin
@@ -818,7 +876,7 @@ jobs:
             # los cupones de rutina funcionan igual; los de alto impacto se bloquean.
             echo "OWNER_COUPON_PIN=${PROD_OWNER_COUPON_PIN}" >> .env
             echo "# Factus (DIAN electronic invoicing — Colombia)" >> .env
-            echo "FACTUS_BASE_URL=${PROD_FACTUS_BASE_URL:-https://api-sandbox.factus.com.co}" >> .env
+            echo "FACTUS_BASE_URL=${PROD_FACTUS_BASE_URL}" >> .env
             echo "FACTUS_CLIENT_ID=${PROD_FACTUS_CLIENT_ID}" >> .env
             echo "FACTUS_CLIENT_SECRET=${PROD_FACTUS_CLIENT_SECRET}" >> .env
             echo "FACTUS_USERNAME=${PROD_FACTUS_USERNAME}" >> .env
@@ -902,6 +960,21 @@ jobs:
               exit 1
             fi
             ls -t /backup/pre-deploy/predeploy_*.dump 2>/dev/null | tail -n +4 | xargs -r rm -f
+
+            echo "===> Checking retired Mercado Pago platform mandates..."
+            MP_LIVE_MANDATES="$(docker exec -e PGPASSWORD="${PROD_DB_PASSWORD}" parallext-postgres \
+              psql -U parallext -d parallext_engine -Atc \
+              "SELECT (SELECT COUNT(*) FROM public.billing_subscriptions WHERE provider = 'mercadopago' AND provider_subscription_id IS NOT NULL) + (SELECT COUNT(*) FROM public.audit_logs stranded WHERE stranded.action = 'billing.stranded_provider_mandate' AND stranded.details->>'provider' = 'mercadopago' AND COALESCE(stranded.details->>'mandateId','') <> '' AND NOT EXISTS (SELECT 1 FROM public.audit_logs resolved WHERE resolved.action = 'billing.stranded_provider_mandate_resolved' AND resolved.details->>'provider' = 'mercadopago' AND resolved.details->>'mandateId' = stranded.details->>'mandateId' AND resolved.created_at >= stranded.created_at));")"
+            case "$MP_LIVE_MANDATES" in ''|*[!0-9]*)
+              echo "::error::Could not inventory retired Mercado Pago mandates; aborting before migrations"
+              exit 1
+              ;;
+            esac
+            if [ "$MP_LIVE_MANDATES" -gt 0 ]; then
+              echo "::error::Deploy blocked: $MP_LIVE_MANDATES unresolved Mercado Pago platform mandate record(s) in subscriptions/audit logs must be cancelled and verified provider-side first"
+              exit 1
+            fi
+            echo "  [OK] no live Mercado Pago platform mandates"
 
             echo "===> Running Prisma public schema migrations..."
             # No "|| true": a failed public-schema migration MUST abort the deploy.

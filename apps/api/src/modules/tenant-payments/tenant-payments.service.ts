@@ -4,14 +4,15 @@ import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 
 const MP_API = 'https://api.mercadopago.com';
-const CACHE_TTL_SEC = 300;
 
 export interface TenantPaymentConfig {
     provider: 'mercadopago';
     /** Enmascarado al leer; sólo se guarda cifrado. */
     accessToken?: string;
+    webhookSecret?: string;
     publicKey?: string;
     connected: boolean;
+    webhookConfigured: boolean;
     /** Verificado contra MercadoPago la última vez que se guardó. */
     accountEmail?: string;
 }
@@ -24,16 +25,36 @@ export interface PaymentLink {
     description: string;
 }
 
+export interface OwnedPaymentReference {
+    canonicalReference: string;
+    amountCents: number;
+    currency: string;
+}
+
+const PAYMENT_REFERENCE_TARGETS: Record<string, {
+    table: 'orders' | 'tour_bookings' | 'food_orders' | 'enrollments';
+    amountExpression: string;
+    currencyExpression: string;
+}> = {
+    order: { table: 'orders', amountExpression: 'target.total_amount', currencyExpression: 'target.currency' },
+    tour: { table: 'tour_bookings', amountExpression: 'target.total_price', currencyExpression: 'target.currency' },
+    food: { table: 'food_orders', amountExpression: 'target.total', currencyExpression: 'target.currency' },
+    enrollment: {
+        table: 'enrollments',
+        amountExpression: 'course.price',
+        currencyExpression: 'course.currency',
+    },
+};
+
 /**
  * Cobros del tenant a SU cliente final.
  *
- * Toda la infraestructura de MercadoPago que ya existía cobra con las
- * credenciales de la PLATAFORMA: sirve para cobrarle la suscripción al tenant,
- * no para que el tenant le cobre a su cliente. Por eso la seña anti-no-show, el
- * anticipo de un tour, la matrícula de un curso y el pedido pago de un
- * restaurante quedaban con el circuito de dinero cortado — las columnas
- * `payment_status` existen en pedidos, tours e inscripciones y no las escribía
- * nadie.
+ * Mercado Pago fue retirado por completo del cobro de suscripciones de la
+ * PLATAFORMA. Este módulo no comparte credenciales, webhooks ni adaptadores con
+ * billing: existe solamente para que el tenant cobre a su propio cliente. Por
+ * eso conecta la seña anti-no-show, el anticipo de un tour, la matrícula de un
+ * curso y el pedido de un restaurante con las columnas `payment_status` que ya
+ * existían dentro de su esquema.
  *
  * MODELO ELEGIDO (decisión de agosto 2026): token del tenant, cifrado. Cada
  * tenant carga sus propias credenciales de MercadoPago y el dinero va DIRECTO a
@@ -69,9 +90,11 @@ export class TenantPaymentsService {
         return {
             provider: 'mercadopago',
             connected: !!cfg.accessTokenEnc,
+            webhookConfigured: !!cfg.webhookSecretEnc,
             publicKey: cfg.publicKey || undefined,
             accountEmail: cfg.accountEmail || undefined,
             accessToken: cfg.accessTokenEnc ? '***' : undefined,
+            webhookSecret: cfg.webhookSecretEnc ? '***' : undefined,
         };
     }
 
@@ -82,13 +105,17 @@ export class TenantPaymentsService {
      * se descubre recién cuando un cliente real intenta pagar y el link no
      * existe — o sea, en el peor momento posible y sin que el dueño se entere.
      */
-    async setConfig(tenantId: string, input: { accessToken?: string; publicKey?: string }): Promise<TenantPaymentConfig> {
+    async setConfig(
+        tenantId: string,
+        input: { accessToken?: string; publicKey?: string; webhookSecret?: string },
+    ): Promise<TenantPaymentConfig> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) throw new BadRequestException('Tenant not found');
         const settings = (tenant.settings as any) || {};
         const current = settings.tenantPayments || {};
 
         let accessTokenEnc = current.accessTokenEnc;
+        let webhookSecretEnc = current.webhookSecretEnc;
         let accountEmail = current.accountEmail;
 
         // '***' = el frontend devolvió el valor enmascarado sin tocarlo.
@@ -103,6 +130,16 @@ export class TenantPaymentsService {
             accessTokenEnc = this.crypto.encryptToken(input.accessToken);
             accountEmail = check.email;
         }
+        if (input.webhookSecret && input.webhookSecret !== '***') {
+            const secret = input.webhookSecret.trim();
+            if (secret.length < 16 || secret.length > 512) {
+                throw new BadRequestException({
+                    error: 'invalid_mp_webhook_secret',
+                    message: 'La clave secreta de Webhooks de Mercado Pago no tiene un formato válido.',
+                });
+            }
+            webhookSecretEnc = this.crypto.encryptToken(secret);
+        }
 
         await this.prisma.tenant.update({
             where: { id: tenantId },
@@ -112,6 +149,7 @@ export class TenantPaymentsService {
                     tenantPayments: {
                         provider: 'mercadopago',
                         accessTokenEnc,
+                        webhookSecretEnc,
                         publicKey: input.publicKey ?? current.publicKey,
                         accountEmail,
                     },
@@ -147,8 +185,69 @@ export class TenantPaymentsService {
         }
     }
 
+    /** Secreto HMAC del webhook; nunca se expone por controller. */
+    async getWebhookSecret(tenantId: string): Promise<string | null> {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        const enc = (tenant?.settings as any)?.tenantPayments?.webhookSecretEnc;
+        if (!enc) return null;
+        try {
+            return this.crypto.decryptToken(enc);
+        } catch (e: any) {
+            this.logger.error(`No se pudo descifrar la clave webhook de cobro del tenant ${tenantId}: ${e.message}`);
+            return null;
+        }
+    }
+
     async isConfigured(tenantId: string): Promise<boolean> {
         return !!(await this.getAccessToken(tenantId));
+    }
+
+    /**
+     * Resuelve únicamente objetos de compra que pertenecen al contacto actual.
+     * Además devuelve el monto canónico para que el LLM no pueda inventarlo.
+     */
+    async resolveOwnedReference(
+        tenantId: string,
+        contactId: string,
+        reference: string,
+    ): Promise<OwnedPaymentReference | null> {
+        const match = /^([a-z]+):([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(reference.trim());
+        if (!match) return null;
+        const [, kind, entityId] = match;
+        const target = PAYMENT_REFERENCE_TARGETS[kind.toLowerCase()];
+        if (!target) return null;
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) return null;
+
+        const join = target.table === 'enrollments'
+            ? 'JOIN courses course ON course.id = target.course_id'
+            : '';
+        try {
+            const rows = await this.prisma.executeInTenantSchema<Array<{ amount: unknown; currency: string | null }>>(
+                schemaName,
+                `SELECT ${target.amountExpression} AS amount,
+                        ${target.currencyExpression} AS currency
+                   FROM ${target.table} target
+                   ${join}
+                  WHERE target.id = $1::uuid
+                    AND target.contact_id = $2::uuid
+                  LIMIT 1`,
+                [entityId, contactId],
+            );
+            const row = rows[0];
+            const amountMajor = Number(row?.amount);
+            const amountCents = Math.round(amountMajor * 100);
+            const currency = String(row?.currency || '').trim().toUpperCase();
+            if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || !/^[A-Z]{3}$/.test(currency)) return null;
+            return {
+                canonicalReference: `${kind.toLowerCase()}:${entityId.toLowerCase()}`,
+                amountCents,
+                currency,
+            };
+        } catch (e: any) {
+            this.logger.warn(`No se pudo resolver ${reference} para el tenant ${tenantId}: ${e.message}`);
+            return null;
+        }
     }
 
     /**
@@ -166,6 +265,7 @@ export class TenantPaymentsService {
             description: string;
             externalReference: string;
             payerEmail?: string;
+            idempotencyKey?: string;
         },
     ): Promise<PaymentLink> {
         const token = await this.getAccessToken(tenantId);
@@ -175,7 +275,13 @@ export class TenantPaymentsService {
                 message: 'Este negocio todavía no conectó su cuenta de MercadoPago para cobrar.',
             });
         }
-        if (!input.amountCents || input.amountCents <= 0) {
+        if (!await this.getWebhookSecret(tenantId)) {
+            throw new BadRequestException({
+                error: 'mp_webhook_not_configured',
+                message: 'Falta guardar la clave secreta de Webhooks de Mercado Pago antes de generar enlaces.',
+            });
+        }
+        if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
             throw new BadRequestException({ error: 'invalid_amount' });
         }
 
@@ -184,11 +290,19 @@ export class TenantPaymentsService {
         // enteras, y mandarle 90000.00 en vez de 90000 hace que rechace o
         // redondee sin avisar.
         const zeroDecimal = ['COP', 'CLP', 'PYG', 'JPY', 'KRW', 'VND', 'ISK'].includes(currency);
-        const unitPrice = zeroDecimal ? Math.round(input.amountCents / 100) : input.amountCents / 100;
+        if (zeroDecimal && input.amountCents % 100 !== 0) {
+            throw new BadRequestException({ error: 'invalid_zero_decimal_amount' });
+        }
+        const unitPrice = input.amountCents / 100;
+        const notificationUrl = this.notificationUrl(tenantId);
 
         const res = await fetch(`${MP_API}/checkout/preferences`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+                ...(input.idempotencyKey ? { 'X-Idempotency-Key': input.idempotencyKey } : {}),
+            },
             body: JSON.stringify({
                 items: [{
                     title: input.description.slice(0, 250),
@@ -200,7 +314,7 @@ export class TenantPaymentsService {
                 ...(input.payerEmail ? { payer: { email: input.payerEmail } } : {}),
                 // El webhook llega a NUESTRA API, pero el pago es del tenant: lo
                 // usamos sólo para marcar el estado, nunca para mover plata.
-                notification_url: `${(process.env.API_PUBLIC_URL || process.env.NEXT_PUBLIC_API_URL || '').replace(/\/api\/v1\/?$/, '')}/api/v1/tenant-payments/webhook/${tenantId}`,
+                notification_url: notificationUrl,
             }),
             signal: AbortSignal.timeout(15000),
         });
@@ -215,13 +329,67 @@ export class TenantPaymentsService {
         }
 
         const data: any = await res.json();
+        const id = String(data?.id || '').trim();
+        const url = String(data?.init_point || data?.sandbox_init_point || '').trim();
+        if (!id || !this.isHttpsUrl(url)) {
+            throw new BadRequestException({ error: 'invalid_payment_link_response' });
+        }
+        if (input.idempotencyKey) {
+            await this.redis.set(this.idempotencyKey(tenantId, input.idempotencyKey), id, 7 * 86400).catch(() => {});
+        }
         return {
-            id: String(data.id),
-            url: data.init_point || data.sandbox_init_point,
+            id,
+            url,
             amountCents: input.amountCents,
             currency,
             description: input.description,
         };
+    }
+
+    async findPaymentLinkByIdempotencyKey(tenantId: string, key: string): Promise<string | null> {
+        return this.redis.get(this.idempotencyKey(tenantId, key)).catch(() => null);
+    }
+
+    async verifyPaymentLink(tenantId: string, preferenceId: string): Promise<boolean> {
+        const token = await this.getAccessToken(tenantId);
+        if (!token || !preferenceId) return false;
+        try {
+            const res = await fetch(`${MP_API}/checkout/preferences/${encodeURIComponent(preferenceId)}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                signal: AbortSignal.timeout(15000),
+            });
+            if (!res.ok) return false;
+            const data: any = await res.json();
+            const url = String(data?.init_point || data?.sandbox_init_point || '').trim();
+            return String(data?.id || '') === preferenceId && this.isHttpsUrl(url);
+        } catch {
+            return false;
+        }
+    }
+
+    private idempotencyKey(tenantId: string, key: string): string {
+        return `tenant_payment_link:idem:${tenantId}:${key}`;
+    }
+
+    private notificationUrl(tenantId: string): string {
+        const rawBase = String(process.env.API_PUBLIC_URL || process.env.NEXT_PUBLIC_API_URL || '')
+            .trim()
+            .replace(/\/api\/v1\/?$/, '');
+        try {
+            const base = new URL(rawBase);
+            const local = ['localhost', '127.0.0.1', '::1'].includes(base.hostname);
+            if (base.protocol !== 'https:' && !(local && base.protocol === 'http:')) throw new Error('https_required');
+            return new URL(`/api/v1/tenant-payments/webhook/${tenantId}`, base).toString();
+        } catch {
+            throw new BadRequestException({
+                error: 'payment_webhook_url_not_configured',
+                message: 'API_PUBLIC_URL debe ser una URL HTTPS válida para recibir confirmaciones de pago.',
+            });
+        }
+    }
+
+    private isHttpsUrl(value: string): boolean {
+        try { return new URL(value).protocol === 'https:'; } catch { return false; }
     }
 
     /** Le pregunta a MercadoPago de quién es este token. */

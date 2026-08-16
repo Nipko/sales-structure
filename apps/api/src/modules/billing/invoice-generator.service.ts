@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -39,8 +39,21 @@ export class InvoiceGeneratorService {
                 billingEmail: true,
                 billingCountry: true,
                 settings: true,
+                isInternal: true,
             },
         });
+        if (tenant?.isInternal) {
+            throw new BadRequestException({
+                error: 'tenant_internal_no_invoice',
+                message: 'Internal-use tenants do not generate sales invoices.',
+            });
+        }
+        if (!['succeeded', 'refunded'].includes(payment.status)) {
+            throw new BadRequestException({
+                error: 'payment_not_invoiceable',
+                status: payment.status,
+            });
+        }
 
         const planName = payment.subscription?.plan?.name || 'Subscription';
         const tenantName = tenant?.name || 'Customer';

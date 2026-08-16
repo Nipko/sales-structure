@@ -1,403 +1,371 @@
-# Billing — Guía operativa
+# Billing — runbook operativo Wompi
 
-> **Actualizado: jul 2026.** 5 planes (emprendedor / starter / pro / enterprise / custom). MercadoPago (Colombia) para suscripciones + pago único de créditos SMS. Factus para facturación electrónica DIAN (cross-ref abajo). La **fuente de verdad de precios/límites en runtime es la tabla `billing_plans`**, editada desde el panel super_admin (`/admin/plans`) — el seed sólo bootstrapea planes faltantes.
+> Vigencia: agosto de 2026. Este documento describe el circuito vivo de
+> suscripciones plataforma → tenant. La fuente contractual de precios, trials,
+> ciclos y cuotas son las filas activas de `billing_plans`, no este archivo.
 
-Guía operativa para la facturación por suscripción de Parallly. Para el plan estratégico, decisiones de precio y justificaciones, ver [`docs/archive/billing-plan.md`](./archive/billing-plan.md) y [`docs/plan-profitability-2026-07.md`](./plan-profitability-2026-07.md). Para la puesta a punto de MercadoPago, ver [`docs/billing-mp-setup.md`](./billing-mp-setup.md). Para la arquitectura del código, ver [`apps/api/src/modules/billing/README.md`](../apps/api/src/modules/billing/README.md).
+## 1. Alcance y separación de dinero
 
-Este documento es el **runbook**: qué pasa en cada deploy, cómo operar desde el panel Billing Ops, cómo agregar un país, cómo actualizar precios, cómo recuperar de incidentes.
+| Flujo | Proveedor | Credenciales | Resultado |
+|---|---|---|---|
+| Parallly cobra la suscripción del tenant | **Wompi** | Cuarteto global `WOMPI_*` | Fuente reutilizable + cobro mensual/anual desde el motor interno |
+| Tenant cobra a su cliente por una compra, seña o pedido | **Mercado Pago** | Access Token, Public Key y Webhooks secret propios del tenant | Enlace de pago; el dinero va directo a la cuenta del tenant |
+| Factura electrónica por una venta de Parallly en Colombia | **Factus / DIAN** | `FACTUS_*` + configuración fiscal runtime | FEV, XML/PDF y, cuando corresponda, nota crédito |
 
-> **Vía primaria = panel, no SSH.** Casi todo lo operativo (ver suscripciones/pagos/eventos cross-tenant, refund, reconciliar, sincronizar planes a MP, editar el catálogo, comp-plans) se hace desde el panel super_admin sin tocar la VPS. Ver [Panel Billing Ops](#panel-billing-ops-super_admin--vía-primaria-sin-ssh). Los comandos SSH de las secciones 5–6 quedan como fallback.
+Mercado Pago está retirado como proveedor de suscripciones de Parallly. No hay
+`MP_*` globales, no se crean `preapproval_plan` y ninguna alta, renovación,
+upgrade o downgrade nuevo puede rutearse a Mercado Pago. Su única superficie
+viva es **Configuración → Integraciones → Pagos** de cada tenant, para cobrar a
+sus propios clientes mediante enlaces internos.
 
----
+## 2. Arquitectura efectiva
 
-## Panel Billing Ops (super_admin) — vía primaria (sin SSH)
+Wompi no mantiene un objeto de suscripción remoto. Parallly conserva el
+calendario, la fuente predeterminada, el importe congelado y cada intento; crea
+una transacción Wompi por periodo y solo cambia acceso/plan tras un estado final
+confirmado.
 
-Controlador `apps/api/src/modules/billing/billing-admin.controller.ts` bajo `/api/v1/billing-admin` (guard `AuthGuard('jwt') + RolesGuard`, `@Roles('super_admin')`). Es la superficie de operación por defecto y reemplaza casi todos los `docker exec … psql` y los scripts por-SSH de abajo. UI en el dashboard: **`/admin/billing-ops`** (subs/pagos/eventos + refund + reconcile) y **`/admin/plans`** (editor de catálogo + sync-MP + badge sandbox/prod).
-
-**Vistas cross-tenant (read):**
-- `GET /billing-admin/subscriptions` — filtros `status`, `provider`, `plan`, `q` (nombre/slug de tenant), paginado. Reemplaza el `SELECT … FROM billing_subscriptions`.
-- `GET /billing-admin/payments` — filtros `status`, `provider`, `tenantId`, paginado.
-- `GET /billing-admin/events` — filtros `eventType`, `provider`, `tenantId`, paginado (omite el payload crudo, que puede ser grande).
-
-**Acciones:**
-- `POST /billing-admin/payments/:paymentId/refund` — refund inline (parcial vía `amountCents` o total) con `reason`.
-- `POST /billing-admin/reconcile` — reconciliación on-demand (`scope: 'full' | 'past_due'`) sin esperar los crons. Útil justo tras un cutover para confirmar que DB y MP coinciden.
-- `POST /billing-admin/tenants/:tenantId/reconcile` — reconciliar la suscripción de un solo tenant contra el provider (`BillingService.syncFromProvider`).
-- `POST /billing-admin/plans/:slug/sync-mp` — registra/recrea el `preapproval_plan` en MP para `{ country, fx?, force?, cycle: 'month' | 'year' }` desde el panel (equivale a `sync-mp-plans.js`, sin SSH). `custom` no es sincronizable (sales-led).
-- `PUT /billing-admin/plans/:slug` — editor del catálogo (precio, trial, `maxAgents`, `features`, `priceLocalOverrides`). **Valida `features` contra `plan-features.registry.ts`** (merge, no reemplazo → un payload parcial no borra claves omitidas) e invalida el cache de plan de los tenants afectados.
-- `POST /billing-admin/tenants/:tenantId/comp-plan` — regalo temporal de plan (`planSlug`, `durationDays`, `reason` obligatorio).
-- `PUT /billing-admin/tenants/:tenantId/plan` — cambio de plan permanente (entitlement override; NO toca la suscripción de pago).
-- `GET /billing-admin/provider-status` — entorno MP (`sandbox`/`production`), `configured`, `webhookConfigured`. Alimenta el badge sandbox/prod en `/admin/plans`.
-- `GET /billing-admin/plans` / `GET /billing-admin/feature-registry` — catálogo (con `tenantCount` por plan) + registry de features conocidas.
-
-Todas las mutaciones escriben en `audit_log` con el **actor real** (`audit-actor.util.ts`): en modo impersonación queda registrado el super_admin real, no el tenant.
-
----
-
-## 1. Lo que hace el deploy automáticamente
-
-Cada push a `main` dispara `.github/workflows/deploy.yml`. Después de compilar
-imágenes, el deploy ejecuta dos operaciones relevantes para billing: migraciones y
-bootstrap create-only de planes. Ambas son fail-fast. Antes de migrar toma un
-**pg_dump completo en `/backup/pre-deploy/`** (dentro del contenedor
-`parallext-postgres`) como punto de rollback — ver §6.
-
-El preflight y la sincronización de MercadoPago fueron retirados del deploy en agosto
-de 2026 porque el collector fue rechazado por cumplimiento. La integración está en
-pausa: el workflow publica el runtime sin crear ni sincronizar planes en MP. Los
-scripts siguientes son herramientas manuales y solo deben ejecutarse cuando la
-pasarela vuelva a estar habilitada y el merchant haya superado el preflight.
-
-### 1.1 Migración de schema Prisma
-```bash
-docker compose run --rm api npx prisma migrate deploy --schema=prisma/schema.prisma
-```
-Aplica cualquier `prisma/migrations/*/migration.sql` nuevo al schema global `public`. Idempotente — migraciones ya aplicadas se saltean. En el pipeline corre **fail-fast** (sin `|| true`): un fallo aborta el deploy sin recrear contenedores.
-
-El schema de billing arrancó en la migración `20260423000000_add_billing`:
-- columnas nuevas en `tenants` (billingEmail, billingCountry, subscriptionStatus, trialEndsAt, currentPeriodEnd, paymentProvider, paymentProviderCustomerId)
-- 4 tablas base: `billing_plans`, `billing_subscriptions`, `billing_events`, `billing_payments`
-
-Migraciones posteriores extendieron el modelo (p. ej. `20260507120000_add_billing_coupons` → cupones; y columnas de ciclo anual / cambio de plan pendiente como `pendingPlanId`, `pendingPlanChangeAt`, `cancelAtPeriodEnd` en `billing_subscriptions`). El schema vivo está en `apps/api/prisma/schema.prisma`.
-
-### 1.2 Seed de billing_plans
-```bash
-docker compose run --rm api node prisma/seed-billing-plans.js
-```
-Bootstrapea las filas faltantes del catálogo factory en `billing_plans`. Los nombres,
-precios y cuotas aplicables se consultan en la tabla runtime y el panel; no se copian
-en este runbook. El paso corre **fail-fast** en el pipeline: un error real de DB
-aborta el deploy.
-
-**El seed es CREATE-ONLY por default** (no upsert): en un DB fresco crea los planes faltantes, pero **si un plan ya existe lo saltea y NO lo sobreescribe**. La razón: la fuente de verdad en runtime es la tabla `billing_plans` editada desde el panel (`PUT /billing-admin/plans/:slug`), así que un seed en cada deploy no debe pisar las ediciones del panel. Para restaurar un plan a los valores de fábrica del archivo (p. ej. tras una mala edición manual) hay que pasar **`--force`** — ese path sí sobreescribe, preservando sólo los `mpPlanId` ya sincronizados vía el merge de overrides. Los precios en el archivo están en USD cents; los precios locales (COP, mensual y anual) viven en `priceLocalOverrides`.
-
-### 1.3 Preflight manual del collector de MercadoPago (Colombia)
-
-```bash
-docker compose run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO
+```text
+Dashboard
+  → token Wompi en el navegador (nunca PAN/CVV al API)
+  → POST /billing/payment-sources/:tenantId
+  → fuente AVAILABLE
+  → billing_subscriptions + billing_charge_attempts
+  → cola billing-renewals
+  → transacción Wompi PENDING
+  → webhook/polling
+  → APPROVED: pago + entitlement + evento fiscal
+     DECLINED/ERROR: dunning, sin promoción de plan
 ```
 
-Este diagnóstico manual hace únicamente consultas **read-only** (`/users/me`,
-estado del usuario y búsqueda de planes) con el `MP_ACCESS_TOKEN` que ve el
-contenedor. Antes de cualquier intento manual de crear planes debe confirmar `MCO`,
-cuenta activa, términos aceptados y ausencia de acciones globales pendientes. Los
-flags `billing`, `sell` y `list` —incluido `address_pending`— son advertencias; no
-demuestran elegibilidad para escribir `preapproval_plan`. Un prefijo `APP_USR-`
-tampoco demuestra país, merchant correcto ni cumplimiento del collector.
+Controles que evitan dobles cobros:
 
-Para fijar también el merchant exacto, obtené su ID numérico desde el portal y usá
-`--expected-collector-id=<ID>` o definí `MP_EXPECTED_COLLECTOR_ID` dentro del
-contenedor de la operación manual. La comparación ocurre en memoria: el reporte solo
-expone si el valor está configurado y coincide, nunca los IDs. Sin ese pin, un
-resultado `ok: true` conserva la advertencia `collector_identity_not_pinned`.
+- referencia única por intento y restricción única por periodo/propósito;
+- claim transaccional antes de encolar;
+- `jobId` igual al ID del intento;
+- webhook idempotente y conciliación por referencia/ID de transacción;
+- un upgrade con cargo se guarda como pendiente y solo se promueve al plan
+  objetivo cuando el pago queda `APPROVED`.
 
-El preflight no imprime el Access Token. Si falla, **detén la operación manual** y no
-ejecutes el sync. Como solo hace `GET`, incluso un resultado exitoso conserva
-`read_only_scope.write_eligibility_tested:false`: reduce causas posibles, pero no
-garantiza que MercadoPago autorice el `POST`.
+## 3. Secretos y despliegue
 
-### 1.4 Sync manual de planes a MercadoPago (Colombia; integración en pausa)
-```bash
-docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --fx=4200
-docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --derive-missing-annual=15
+Se requiere un único cuarteto del mismo ambiente:
+
+```dotenv
+WOMPI_PUBLIC_KEY=pub_test_...          # o pub_prod_...
+WOMPI_PRIVATE_KEY=prv_test_...         # o prv_prod_...
+WOMPI_EVENTS_SECRET=test_events_...   # o prod_events_...
+WOMPI_INTEGRITY_SECRET=test_integrity_... # o prod_integrity_...
+WOMPI_WEBHOOK_URL=https://api.DOMINIO/api/v1/billing/webhook/wompi
+
+# Límites del contrato comercial, expresados en centavos COP.
+WOMPI_MAX_TRANSACTION_COP_CENTS=
+WOMPI_DAILY_CAP_COP_CENTS=
+WOMPI_MERCHANT_TIMEZONE=America/Bogota
 ```
-Registra los **4 tiers pagos** (`emprendedor`, `starter`, `pro`, `enterprise`; `custom` es sales-led y se omite) como `preapproval_plan` en MercadoPago Colombia. Guarda el ID mensual en `billing_plans.priceLocalOverrides[CO].mpPlanId` y, para Colombia, mantiene el mirror legacy en la columna `mpPlanId`. El FX rate se lee del secret `PROD_MP_FX_CO` (default `4200`), aunque un precio local fijo existente tiene precedencia. `--derive-missing-annual=15` repara filas legacy calculando el total anual desde el mensual; los precios e IDs solo se guardan en una transacción después de que los cuatro planes del ciclo fueron aceptados, por lo que un fallo parcial no habilita un checkout incompleto.
 
-El deploy actual **no ejecuta** estos comandos. Cuando la integración vuelva a estar
-habilitada, valida primero los payloads mensual y anual con `--force --dry-run` y
-solo después realiza una sincronización manual controlada. El ciclo anual usa
-`priceLocalOverrides.CO.annual.amountCents` o, únicamente para una fila legacy sin
-ese campo, deriva el total desde el precio mensual con el descuento explícito; ver
-`docs/billing-annual-cycle.md`.
+El prefijo decide sandbox o producción. Una mezcla test/prod deja el adapter no
+configurado; nunca se corrige por fallback. API y worker necesitan las llaves
+privada/integridad porque ambos participan en el circuito de cobro. En
+`NODE_ENV=production` el runtime rechaza llaves `*_test_*`; el workflow de
+producción exige los cuatro prefijos `prod` y ambos topes positivos antes de
+modificar el servidor. `WOMPI_ALLOW_SANDBOX_IN_PRODUCTION=true` existe únicamente
+para un staging aislado que usa build de producción; nunca se configura en el
+entorno que atiende tenants reales.
 
-**Cómo preparar otro país cuando la pasarela esté habilitada**: añade su catálogo
-local y ejecuta el diagnóstico y el sync como una operación separada, nunca como
-condición del deploy general. Ejemplo manual para México:
-```yaml
-docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}"
+En GitHub Actions los secretos deben llamarse exactamente:
+
+- `WOMPI_PUBLIC_KEY`
+- `WOMPI_PRIVATE_KEY`
+- `WOMPI_EVENTS_SECRET`
+- `WOMPI_INTEGRITY_SECRET`
+
+Configurar una URL de eventos distinta para sandbox y producción. Wompi exige
+validar el checksum SHA-256 con el secreto de eventos; el endpoint es
+`POST /api/v1/billing/webhook/wompi` y falla cerrado si la firma no coincide.
+Ver [Eventos de Wompi](https://docs.wompi.co/docs/colombia/eventos/).
+
+## 4. Interruptores runtime
+
+Super admin opera **Planes → Proveedores** (`/admin/plans`):
+
+- `billing.providers_enabled`: kill switch del proveedor;
+- `billing.default_provider_by_country`: ruteo por país;
+- `billing.wompi_methods_enabled`: flags independientes `card`, `nequi` y
+  `bancolombiaTransfer`;
+- override de proveedor por tenant: excepcional, auditado y nunca sustituye el
+  proveedor congelado de una suscripción existente.
+
+Un arreglo público de métodos vacío significa “todos apagados”. El checkout
+debe bloquearse; no existe fallback implícito a tarjeta.
+
+Wompi en esta integración cobra COP para tenants de Colombia. Un país/moneda no
+soportado debe responder sin proveedor disponible, nunca caer a otro plan o PSP.
+
+## 5. Alta y trial en dos fases
+
+1. Onboarding valida el plan/ciclo exactos del catálogo runtime.
+2. El API provisiona tenant y suscripción. Si falta una fuente obligatoria,
+   devuelve `billingCheckout` con `status=pending_auth`, `planSlug`, ciclo y
+   `requiresPaymentMethod=true`.
+3. `pending_auth` no concede entitlement pagado ni factura.
+4. El navegador guarda solo la intención tenant/plan/ciclo en `sessionStorage`
+   durante 30 minutos y abre `/admin/settings/billing`.
+5. El usuario acepta por separado los dos contratos Wompi y autoriza un medio.
+6. Cuando la fuente queda `AVAILABLE`, el backend arma el motor:
+   - plan con trial: pasa a `trialing`, con `nextChargeAt` al final del trial;
+   - plan sin trial: crea el intento inicial inmediatamente y conserva
+     `pending_auth` hasta `APPROVED`;
+   - un rechazo no activa el plan y no se reemplaza por un plan gratuito.
+
+La respuesta `nextCharge { at, amountCents, currency }` es la autoridad visible
+para el primer cobro. No prometer “sin cobro hoy” si no existe trial vigente.
+
+## 6. Consentimiento y fuentes de pago
+
+`GET /billing/payment-sources/:tenantId/acceptance` entrega permalinks/versiones
+y un `consentId` de un solo uso, ligado a tenant y proveedor. El dashboard debe
+mostrar dos checkboxes independientes y el `POST` debe incluir exactamente:
+
+```json
+{
+  "consentId": "...",
+  "acceptEndUserPolicy": true,
+  "acceptPersonalDataAuth": true
+}
 ```
-El diagnóstico incluido hoy es deliberadamente **MCO-only**. Antes de habilitar otro país hay que extender su allowlist y pruebas para el `site_id` correspondiente, además de proveer las credenciales de ese merchant. Cargá `MP_FX_MX` en GitHub si querés overridear el default.
 
-**Idempotencia con validación remota**: si un tier ya tiene `mpPlanId` para el país/ciclo, el sync hace `GET` de ese plan con el token activo y sólo lo saltea cuando es accesible y coincide en moneda, frecuencia, monto y estado. Un `404` —caso habitual al pasar de TEST a `APP_USR`— o una configuración distinta provoca la creación y persistencia automática de un reemplazo. El ID por sí solo no guarda ambiente ni collector; `--force` queda reservado para una recreación intencional aun cuando el plan existente sea válido (§7).
+Ausencia, `false`, expiración o reutilización se rechazan. Los tokens Wompi
+prefirmados nunca viajan al navegador. Esta obligación está documentada en
+[Tokens de aceptación de Wompi](https://docs.wompi.co/docs/colombia/tokens-de-aceptacion/).
 
----
+### 6.1 Tarjeta
 
-## 2. Variables de entorno
+- El navegador llama `POST /v1/tokens/cards` con la llave pública.
+- Parallly recibe únicamente el token; no recibe ni registra PAN/CVV.
+- El backend crea la fuente con ambos tokens de aceptación.
+- Solo `AVAILABLE` permite cargos desatendidos.
 
-### Requeridas (billing se rompe sin estas)
-| Variable | Dónde | Para qué |
+### 6.2 Nequi
+
+Flujo técnico:
+
+1. navegador: `POST /v1/tokens/nequi` con celular colombiano de 10 dígitos;
+2. el token nace `PENDING` y el usuario recibe aprobación push en Nequi;
+3. Parallly guarda una fuente local `pending_auth` y consulta el token;
+4. únicamente `APPROVED` permite crear la fuente Wompi;
+5. únicamente una fuente `AVAILABLE` arma/cobra la suscripción.
+
+Go-live comercial: no asumir que implementar el API habilita el medio. Para el
+modelo Gateway, Wompi indica registro con ejecutivo, formulario de Nequi y
+confirmación posterior de activación. Ver
+[activación oficial de Nequi Gateway](https://soporte.wompi.co/hc/es-419/articles/1500007698501--C%C3%B3mo-activar-Nequi-como-medio-de-pago-en-Wompi-bajo-el-modelo-Gateway).
+Mantener `nequi=false` hasta validar el modelo contratado, ver el medio activo en
+el comercio y completar un cobro real mínimo con webhook final.
+
+### 6.3 Botón Bancolombia recurrente
+
+Flujo técnico oficial:
+
+1. navegador: `POST /v1/tokens/bancolombia_transfer` con
+   `{ redirect_url, type_auth: "TOKEN" }`;
+2. abrir `authorization_url` en la misma pestaña;
+3. el pagador elige/autoriza su cuenta y vuelve a `redirect_url`;
+4. Parallly recupera solo el ID de fuente local desde `sessionStorage` y hace
+   polling hasta `APPROVED` o estado final negativo;
+5. backend crea `BANCOLOMBIA_TRANSFER` con una descripción segura de pago y los
+   dos tokens de aceptación;
+6. solo la fuente `AVAILABLE` puede financiar cargos posteriores.
+
+No guardar el token Wompi en URL/localStorage. El retorno no activa el plan por
+sí mismo. Ver [Fuentes de pago y tokenización](https://docs.wompi.co/docs/colombia/fuentes-de-pago/)
+y [métodos de pago](https://docs.wompi.co/docs/colombia/metodos-de-pago/).
+
+La cuenta donde el comercio recibe liquidaciones de Wompi y la cuenta que un
+pagador autoriza con Botón Bancolombia son conceptos distintos.
+
+## 7. Ciclo de suscripción
+
+Estados internos:
+
+| Estado | Acceso | Operación |
 |---|---|---|
-| `MP_ACCESS_TOKEN` | GitHub Secret | Auth del servidor a MP API. TEST-* en sandbox, APP_USR-* en producción; en prod debe pasar `/users/me` con el `site_id` esperado |
-| `MP_WEBHOOK_SECRET` | GitHub Secret | Clave de firma HMAC-SHA256 para webhooks entrantes |
+| `pending_auth` | Sin entitlement pagado | Falta fuente o primer cobro aprobado |
+| `trialing` | Sí, hasta `trialEndsAt` | Cobro agendado si existe fuente/`nextCharge` |
+| `active` | Sí | Renovaciones normales |
+| `past_due` | Ventana de recuperación/lock según dunning | Corregir fuente y reintentar |
+| `cancelled` | Según `cancelAtPeriodEnd` | No generar ciclos nuevos tras fecha efectiva |
+| `expired` | No | Recuperación agotada; aplica retención/offboarding |
 
-### Opcionales (los defaults aplican si no están)
-| Variable | Default | Para qué |
-|---|---|---|
-| `MP_PUBLIC_KEY` | vacío | Usada por el frontend del dashboard para tokenizar tarjetas (Sprint 3) |
-| `MP_EXPECTED_COLLECTOR_ID` | vacío | Fija el merchant esperado durante el preflight sin serializar su ID; configurarlo como GitHub Secret es muy recomendado en producción |
-| `MP_FX_CO` | `4200` | Tipo de cambio USD→COP. Cambiar cuando fluctúe |
-| `MP_FX_AR` | `1200` | Tipo de cambio USD→ARS |
-| `MP_FX_MX` | `18` | Tipo de cambio USD→MXN |
-| `MP_FX_CL` | `950` | Tipo de cambio USD→CLP |
-| `MP_FX_PE` | `3.8` | Tipo de cambio USD→PEN |
-| `MP_FX_UY` | `40` | Tipo de cambio USD→UYU |
-| `MP_FX_BR` | `5.5` | Tipo de cambio USD→BRL |
+### Renovación y día de cobro
 
-Los secrets `MP_FX_*` son todos opcionales. Los seteás en GitHub → Settings → Secrets and variables → Actions cuando necesités sobreescribir un default. El prefijo del token no reemplaza el preflight: verificá siempre la identidad runtime con `diagnose-mp-collector.js`.
+- El motor persiste zona horaria, día ancla, inicio/fin de periodo y
+  `nextChargeAt`; no se usa un “día universal” codificado en la UI.
+- El scheduler corre cada 10 minutos con lookahead y jitter, reclama un único
+  intento y respeta el tope diario configurado.
+- El tope diario pertenece al comercio Wompi compartido, no a cada tenant. Su
+  contador usa `WOMPI_MERCHANT_TIMEZONE` (por defecto `America/Bogota`) para que
+  distintas zonas de tenants no dividan artificialmente el mismo límite.
+- Mensual/anual provienen del ciclo de la suscripción y de su precio local
+  congelado. La UI muestra el ciclo real, no siempre “por mes”.
+- Si falta `WOMPI_MAX_TRANSACTION_COP_CENTS` o el importe lo supera, el cargo COP
+  se difiere/rechaza de forma explícita. Antes de habilitar Enterprise anual,
+  confirmar el límite por transacción del contrato Wompi.
 
----
+### Upgrade, downgrade y ciclo
 
-## 3. Agregar un país nuevo
+- Upgrade/cambio de ciclo con importe: calcular prorrateo, crear intento
+  `upgrade_proration`, mantener el plan anterior y promover el objetivo solo
+  tras `APPROVED`.
+- Upgrade durante trial: conserva la fecha prometida; actualiza plan/precio
+  congelado y cobra al terminar el trial.
+- Downgrade de menor precio en el mismo ciclo: programar para el final del
+  periodo; el usuario conserva el plan superior hasta entonces.
+- Cancelar downgrade elimina la intención pendiente sin cobrar.
+- Cancelación al fin del periodo conserva acceso hasta la fecha publicada;
+  cancelación inmediata revoca según la respuesta del motor.
+- Pausa/reanudación son estado local del motor Wompi; no requieren un objeto de
+  suscripción remoto.
 
-La API de Suscripciones de MP es por país — necesitás una cuenta merchant de
-MercadoPago en ese país. **El deploy actual no sincroniza ningún país** y solo puede
-entregar un `MP_ACCESS_TOKEN` runtime; definir `MP_SYNC_COUNTRIES` no activa un loop
-ni selecciona credenciales. Antes de abrir otro país hay que reactivar la pasarela y
-resolver el soporte de credenciales por merchant o reemplazar intencionalmente la
-única cuenta activa.
+## 8. Fallos, reintentos y conciliación
 
-1. **Conseguí las credenciales** desde el portal developer específico del país (ej. `mercadopago.com.mx/developers` para México) — cada país tiene su propio Access Token y Webhook Secret. En el corto plazo soportamos solo las credenciales de un país a la vez vía `MP_ACCESS_TOKEN` — el soporte multi-cuenta es trabajo de Fase 4.
-2. **Setear el FX** en GitHub Secrets. Ejemplo México:
-   ```
-   MP_FX_MX = 18.5
-   ```
-3. **Extender primero el preflight MCO-only** para aceptar y probar el `site_id` del
-   nuevo país. No agregues ese diagnóstico/sync como blocker del deploy general y no
-   sincronices MX con el token colombiano.
-4. **Operación manual** — el preflight debe confirmar merchant/site antes de llamar a
-   `/preapproval_plan`; luego el sync manual persiste los IDs en
-   `billing_plans.priceLocalOverrides[MX]`.
-5. **Verificá** — entrá a la VPS y chequeá:
-   ```bash
-   docker exec parallext-postgres psql -U parallext -d parallext_engine -c \
-     "SELECT slug, price_local_overrides FROM billing_plans WHERE slug != 'custom';"
-   ```
-   Cada fila debería tener una clave `MX` al lado de `CO` en `price_local_overrides`.
+El dunning del motor usa intentos en días 0, 1, 3 y 7; el barrido temporal pasa
+a soft lock desde día 3 y expira al día 10 si no existe un intento vivo. La
+política visible de la cuenta y los estados runtime prevalecen si esto cambia.
 
----
+Operación super admin:
 
-## 4. Actualizar precios de planes
+- `/admin/billing-ops`: suscripciones, pagos, eventos, reembolso/anulación y
+  conciliación;
+- `POST /billing-admin/reconcile`: barrido global;
+- `POST /billing-admin/tenants/:tenantId/reconcile`: un tenant;
+- `POST /billing/:tenantId/subscription/sync`: reintento/conciliación segura del
+  motor local; no debe intentar consultar una suscripción Wompi inexistente.
 
-### Para un cambio permanente (aplica a todos los signups futuros)
+Nunca marcar manualmente un pago `succeeded` ni una suscripción `active`. Buscar
+por referencia del intento, confirmar el estado final en Wompi y dejar que el
+settlement idempotente actualice pago, acceso y fiscal.
 
-1. Entra como `super_admin` a **Planes** (`/admin/plans`), edita el precio
-   USD y/o los overrides locales y guarda. Esa operación usa
-   `PUT /billing-admin/plans/:slug` y actualiza la fuente runtime
-   `billing_plans` con auditoría e invalidación de caché.
-2. Verifica la lectura en el mismo panel y, para una comprobación operativa, consulta
-   la fila de `billing_plans` antes de continuar. **Un commit o deploy por sí solo no
-   cambia una fila existente**: el seed normal es create-only.
-3. Actualiza también `apps/api/prisma/seed-billing-plans.js` si quieres que un entorno
-   nuevo nazca con el mismo valor de fábrica. Ese cambio queda como baseline para DB
-   frescas; no sustituye el paso 1 ni debe aplicarse con `--force` de forma rutinaria,
-   porque `--force` restaura el plan completo desde el archivo.
-4. **Los planes de MP ya creados conservan su monto original.** Para que las nuevas
-   suscripciones usen el precio local actualizado, recrea/sincroniza el plan del
-   proveedor desde el panel o, tras el preflight del merchant correcto, con:
-   ```bash
-   docker exec parallext-api sh -c \
-     'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200 --force'
-   ```
-   El flag `--force` de `sync-mp-plans.js` crea un plan nuevo en MP y reemplaza su ID
-   en `priceLocalOverrides[CO].mpPlanId`; no es el mismo flag que el del seed. Los
-   suscriptores actuales permanecen en el ID anterior. Una migración de suscripciones
-   existentes requiere un procedimiento explícito, validado y auditado; no la
-   infieras de un deploy ni la ejecutes como efecto lateral de este cambio.
+## 9. Facturación electrónica e internas
 
-### Para un ajuste de FX solamente (ej. devaluación)
+`billing.payment.succeeded` crea una decisión fiscal durable uno-a-uno por pago:
 
-Igual que arriba pero solo cambia el secret `MP_FX_*`. El precio USD en `billing_plans` se queda igual. Force-sync recrea el plan de MP en el monto local nuevo.
+- tenant Colombia + riel producción + venta real + Factus listo: FEV DIAN;
+- `tenant.isInternal=true`: `skipped / tenant_internal_use`, sin factura porque
+  no hay venta a documentar;
+- pago Wompi sandbox: `skipped / test_mode_payment`, nunca una factura DIAN real;
+- monto sin contraprestación: `skipped / no_consideration`;
+- proveedor/config fiscal faltante: `blocked_config`, visible y reintentable.
 
----
+El PDF de `/billing/:tenantId/payments/:paymentId/invoice` es un comprobante
+comercial. Las facturas DIAN oficiales (CUFE, XML/PDF) se consultan en
+**Configuración → Datos fiscales** o `/admin/fiscal`. La UI no debe llamar
+“factura DIAN” al comprobante genérico.
 
-## 5. Operaciones manuales
+Antes del go-live:
 
-Todas las operaciones de abajo asumen acceso SSH a la VPS de producción.
+- `FACTUS_*` de producción y rango de numeración vigentes;
+- `fiscal.mode`, IVA y `fiscal.gate_enabled` revisados con contabilidad;
+- cobro sandbox confirma `skipped`, no emisión;
+- cobro real mínimo confirma `issued`, CUFE, XML/PDF y correo;
+- reversa aprobada confirma nota crédito cuando corresponda.
 
-### Re-correr seed (ej. después de un cambio de schema)
-```bash
-docker exec parallext-api node prisma/seed-billing-plans.js
-```
+### Retiro seguro del riel Mercado Pago de plataforma
 
-### Re-correr sync para un solo país
-```bash
-docker exec parallext-api sh -c \
-  'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200'
-```
+La migración `20260815161000_block_unretired_mercadopago_platform_cohorts`
+detiene el deploy si cualquier fila —incluida una marcada localmente como
+cancelada/expirada— conserva `provider_subscription_id` de Mercado Pago. El
+estado local no demuestra la cancelación del mandato remoto, que podría seguir
+debitando aunque el adapter ya no exista. Antes de reintentar:
 
-### Dry-run del sync (imprime los bodies de MP, no llama a MP)
-```bash
-docker exec parallext-api sh -c \
-  'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200 --dry-run'
-```
+1. Inventariar los mandatos sin imprimir datos del pagador:
 
-### Recrear planes forzadamente para un país (MP no upsertea)
-```bash
-docker exec parallext-api sh -c \
-  'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200 --force'
-```
-Usalo cuando cambió un precio o el plan se borró por accidente en MP.
-
-### Inspeccionar el estado actual de los planes
-```bash
-# ¿Qué tenemos en nuestra DB?
-docker exec parallext-postgres psql -U parallext -d parallext_engine -c \
-  "SELECT slug, price_usd_cents, trial_days, mp_plan_id, price_local_overrides FROM billing_plans ORDER BY sort_order;"
-
-# ¿Qué tiene MP sandbox?
-# Andá a https://www.mercadopago.com.co/developers → tu app → Suscripciones
-```
-
-### Inspeccionar la suscripción de un tenant específico
-```bash
-docker exec parallext-postgres psql -U parallext -d parallext_engine -c \
-  "SELECT tenant_id, status, provider_subscription_id, trial_ends_at, current_period_end FROM billing_subscriptions WHERE tenant_id = '<TENANT_UUID>';"
-```
-
-### Ver eventos de billing recientes de un tenant
-```bash
-docker exec parallext-postgres psql -U parallext -d parallext_engine -c \
-  "SELECT processed_at, event_type, provider, provider_event_id FROM billing_events WHERE tenant_id = '<TENANT_UUID>' ORDER BY processed_at DESC LIMIT 20;"
-```
-
----
-
-## 6. Respuesta a incidentes
-
-### Un cliente dice "me cancelaron la suscripción pero pagué"
-1. Conseguí su tenant id + ID de suscripción MP:
    ```sql
-   SELECT tenant_id, provider_subscription_id, status
-   FROM billing_subscriptions WHERE tenant_id = '...';
-   ```
-2. Pollea MP directo — el cron de reconciliación horario ya debería hacerlo, pero si querés forzarlo:
-   ```bash
-   docker exec parallext-api node -e "
-     const { MercadoPagoConfig, PreApproval } = require('mercadopago');
-     const c = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-     new PreApproval(c).get({ id: '<SUB_ID>' }).then(r => console.log(JSON.stringify(r, null, 2)));
-   "
-   ```
-3. Si MP dice `authorized` y nuestra DB dice `cancelled` → el webhook falló en algún momento. El cron horario se auto-cura, pero podés forzarlo llamando a BillingService con un evento sintético (ver `reconciliation.processor.ts`).
-
-### Los webhooks dejaron de llegar en producción
-1. Chequeá que el endpoint del webhook sea alcanzable desde el lado de MP:
-   ```bash
-   curl -I https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago
-   ```
-   Debería devolver `405 Method Not Allowed` (GET no está soportado; POST sí).
-2. Mirá en el dashboard de MP → Webhooks → entregas recientes. Buscá respuestas 401 (signature mismatch — ver sección siguiente) o 5xx.
-3. Revisá los logs del API:
-   ```bash
-   docker logs parallext-api --tail 200 | grep -i webhook
+   SELECT status, COUNT(*)
+     FROM billing_subscriptions
+    WHERE provider = 'mercadopago'
+      AND provider_subscription_id IS NOT NULL
+   GROUP BY status;
    ```
 
-### Falla la verificación de firma de webhook (`401 invalid_signature`)
-1. Confirmá que `MP_WEBHOOK_SECRET` coincida con la "Signing Key" del dashboard de MP (los rotan — revisá las entregas recientes con `x-signature`).
-2. Si el secret está bien, MP puede haber cambiado el formato de firma (ya pasó — ver `sdk-nodejs#318`). Logueá headers crudos para debuggear:
-   ```bash
-   docker logs parallext-api --tail 500 | grep -E 'x-signature|webhook'
+   También inventariar tenants ya purgados que conservaron únicamente la
+   evidencia append-only:
+
+   ```sql
+   SELECT details->>'mandateId' AS mandate_id, created_at
+     FROM audit_logs stranded
+    WHERE action = 'billing.stranded_provider_mandate'
+      AND details->>'provider' = 'mercadopago'
+      AND NOT EXISTS (
+          SELECT 1 FROM audit_logs resolved
+           WHERE resolved.action = 'billing.stranded_provider_mandate_resolved'
+             AND resolved.details->>'provider' = 'mercadopago'
+             AND resolved.details->>'mandateId' = stranded.details->>'mandateId'
+             AND resolved.created_at >= stranded.created_at
+      );
    ```
-3. Rotá el webhook secret en el dashboard de MP + actualizá el GitHub Secret `MP_WEBHOOK_SECRET` + redeployá.
 
-### El sync manual de planes falló
-Causas comunes:
-- `MP_ACCESS_TOKEN is not set` → falta la credencial en el entorno de la operación.
-- `Invalid --fx value` → el secret `MP_FX_<CC>` tiene un valor no-numérico.
-- MP devolvió un body de error → lee `FAILED: MP returned...` en el log de la
-  operación manual.
+2. Cancelarlos en Mercado Pago usando el acceso operativo anterior o su panel.
+3. Verificar del lado del proveedor que ninguno continúa autorizado.
+4. Para un mandato de tenant ya purgado, registrar la resolución sin editar ni
+   borrar el audit original (reemplace los valores literales por la evidencia
+   verificada):
 
-El seed create-only del deploy es fail-fast. El preflight y el sync manual también
-deben detener su propia operación ante blockers fuertes, pero **no forman parte del
-deploy actual**. No conviertas su fallo en un falso éxito ni vuelvas a acoplarlo a la
-publicación general de código.
-
-### `403 rejected_by_regulations_collector_non_compliant` al crear `preapproval_plan`
-
-Este código indica que MercadoPago rechazó al **collector asociado al Access Token** por una regla de cumplimiento. No lo corrigen `back_url`, `notification_url`, el webhook secret ni cambiar el JSON del precio. Tampoco basta con ver `APP_USR-`: ese prefijo no prueba país, collector, KYC ni habilitación del producto Suscripciones.
-
-El request de Parallly usa el cuerpo mínimo documentado (`reason`, `auto_recurring` y `back_url`). `payment_methods_allowed` es opcional y se omite para que MercadoPago aplique los métodos habilitados para el collector MCO; así no queda una allowlist local como variable adicional del diagnóstico.
-
-1. Ejecutá el diagnóstico dentro del mismo contenedor/entorno que hace el sync:
-   ```bash
-   docker compose -f infra/docker/docker-compose.prod.yml run --rm api \
-     node scripts/diagnose-mp-collector.js --expected-site=MCO \
-       --expected-collector-id="$EXPECTED_MP_COLLECTOR_ID"
+   ```sql
+   INSERT INTO audit_logs (id, action, resource, details, created_at)
+   VALUES (
+     gen_random_uuid(),
+     'billing.stranded_provider_mandate_resolved',
+     'billing_subscriptions',
+     jsonb_build_object(
+       'provider', 'mercadopago',
+       'mandateId', '<ID_VERIFICADO>',
+       'verifiedAt', NOW(),
+       'evidence', '<TICKET_O_CONFIRMACION_DEL_PROVEEDOR>'
+     ),
+     NOW()
+   );
    ```
-   Cargá `EXPECTED_MP_COLLECTOR_ID` desde el ID numérico que muestra el portal; también podés pasar el mismo valor como `MP_EXPECTED_COLLECTOR_ID` dentro del contenedor.
-2. Confirmá `ok: true`, `expected_site_id: MCO`, `collector_identity.expected_configured: true`, `collector_identity.matches: true` y ningún blocker. Puede haber advertencias de `billing`/`sell`/`list` (por ejemplo, `address_pending`); quedan registradas, pero no sustituyen ni impiden la prueba real del `POST /preapproval_plan`. Por privacidad, el script no imprime ninguno de los dos IDs. Si omitís la identidad esperada, `collector_identity_not_pinned` es una advertencia: no bloquea, pero tampoco prueba que el token sea del merchant correcto. Nunca pegues el Access Token en tickets o logs.
-3. Si el site o collector no coincide, generá las credenciales desde la aplicación del merchant correcto, reemplazá `MP_ACCESS_TOKEN` y repetí el preflight.
-4. Si identidad y site son correctos pero el `POST /preapproval_plan` sigue devolviendo el mismo 403, escalá a soporte de MercadoPago con el `collector_id` obtenido de forma segura en el portal, `site_id`, aplicación, timestamp, endpoint y request-id del rechazo. Pedí confirmación explícita de que ese collector está habilitado para **Suscripciones / preapproval_plan en producción MCO**.
 
-No borres IDs de planes ni uses `--force` hasta que el preflight pase. Un intento forzado crea un plan nuevo; si la respuesta se pierde antes de persistir el ID, un reintento puede dejar duplicados en MercadoPago.
+5. Solo entonces cerrar/normalizar las filas locales y reintentar la migración.
 
----
+Nunca se debe borrar el ID local para “hacer pasar” la migración antes de haber
+confirmado la cancelación remota. Las filas locales no-CO sin mandato quedan
+`pending_auth` y requieren asignación manual a un proveedor compatible; no
+conservan entitlement silencioso sobre el proveedor retirado.
 
-## 7. Credenciales sandbox vs producción
+## 10. Checklist de habilitación
 
-| Prefijo de token | Ambiente | Dónde |
-|---|---|---|
-| `TEST-xxxxxxxxxxxxxxxx-xxxxxx-xxxxx` | MP Sandbox | Usalas en desarrollo. No se mueve plata real |
-| `APP_USR-xxxxxxxxxxxxxxxx-xxxxxx-xxxxx` | MP Producción | Clientes reales, cobros reales |
+1. Cuarteto Wompi productivo completo y de un solo ambiente en API/worker; cero
+   IDs de mandato Mercado Pago plataforma sin cancelación remota verificada.
+2. URL HTTPS de eventos configurada para ese ambiente.
+3. `provider-status`: Wompi `configured=true`, webhook listo y entorno esperado.
+4. País CO ruteado a Wompi; Mercado Pago apagado como PSP de plataforma.
+5. Precio mensual/anual y moneda COP validados en cada plan autoservicio.
+6. Límites por transacción y diarios acordados con Wompi y cargados.
+7. Tarjeta: fuente `AVAILABLE`, cobro `PENDING→APPROVED`, webhook idempotente.
+8. Trial: `pending_auth→trialing`, `nextCharge` correcto y conversión aprobada.
+9. Plan sin trial: sin entitlement hasta aprobar el primer cargo.
+10. Upgrade, downgrade, cancelación, pausa, reanudación y dunning probados.
+11. Nequi/Bancolombia permanecen apagados hasta activación comercial y smoke real
+    individual; habilitar cada flag por separado.
+12. Factus alineado; cuentas internas y sandbox producen decisión `skipped`.
+13. Mercado Pago por tenant exige Access Token y Webhooks secret cifrados antes
+    de crear un enlace; su webhook valida firma, ownership, monto y transición
+    terminal idempotente.
 
-El método `MercadoPagoConfigService.environment()` infiere sandbox vs producción del prefijo del token y loguea ese modo al arrancar. Esa inferencia es informativa: el único chequeo de identidad del merchant/site es el preflight contra `/users/me`.
+## 11. Diagnóstico rápido
 
-Los `preapproval_plan_id` son específicos del ambiente, aplicación y collector que los creó. La DB sólo guarda el string del ID; no registra si provino de TEST o producción. Reemplazar el secret **no convierte** esos IDs, pero el sync compensa esa falta de procedencia: consulta cada ID con el token activo y lo reemplaza cuando no es visible (`404`) o no coincide con la configuración esperada.
-
-**Plan de cutover para salir en vivo en Colombia:**
-1. Crear y completar la verificación de la cuenta merchant colombiana de producción; confirmar que la aplicación tiene habilitado el producto Suscripciones.
-2. Guardar un respaldo del mapeo actual de IDs y confirmar que no existen suscripciones reales que dependan de ellos. Un cambio de catálogo no migra suscripciones activas.
-3. Conseguir el Access Token y Public Key de producción de la **misma aplicación**, más el Webhook Secret de producción.
-4. Reemplazar los secrets `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY` y
-   `MP_WEBHOOK_SECRET`, y guardar `MP_EXPECTED_COLLECTOR_ID` con el merchant correcto.
-   Publicar el runtime es un paso separado; no ejecuta preflight ni sync.
-5. Ejecutar manualmente el preflight. Debe terminar con `MCO`,
-   `expected_configured:true` y `matches:true`; si falla, detener el cutover.
-6. Ejecutar ambos ciclos con `--force --dry-run` para validar los payloads respaldados
-   por la DB y, solo entonces, realizar el sync manual. Los IDs TEST normalmente
-   responden `404` con la credencial de producción y se reemplazan durante esa
-   operación. Revisa que ambos resúmenes terminen con `failures=0`.
-7. Usá `--force` sólo si necesitás recrear intencionalmente planes que el sync considera accesibles y correctos, por ejemplo durante un cambio controlado de catálogo:
-   ```bash
-   docker compose -f infra/docker/docker-compose.prod.yml run --rm api \
-     node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" --force
-   ```
-   Este flag crea reemplazos incluso si los IDs actuales son válidos; ejecutalo en una ventana controlada y verificá el resultado antes de reintentar para no dejar planes duplicados.
-8. Verificá en DB y en MercadoPago que los ocho IDs resultantes (4 mensuales + 4 anuales) pertenecen al collector MCO de producción, tienen moneda/frecuencia correctas y están activos. Conservá el respaldo de los IDs anteriores para auditoría; no los reutilices con el token nuevo.
-9. Actualizá la URL del webhook en la aplicación de producción a `https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago` y confirmá la firma con el secret nuevo.
-10. Probá end-to-end con una tarjeta real y un cobro controlado antes de anunciar: creación de suscripción, webhook firmado, estado local, reconciliación, factura y eventual reembolso.
-
----
-
-## 8. Gate adicional antes del go-live: conversión trial → pago
-
-Resolver el sync de `preapproval_plan` no alcanza para cobrar al terminar un trial. En el flujo actual, `BillingService.createTrialSubscription()` omite la creación remota cuando `trialDays > 0`. Para Pro/Enterprise recibe un `cardTokenId`, pero ese token de un solo uso no se persiste ni se canjea por una suscripción de MercadoPago; los campos `providerSubscriptionId` y `providerCustomerId` quedan vacíos. Al expirar, el cron mueve el registro local a `past_due`, y la activación del mismo plan/ciclo queda bloqueada tanto por `same_plan` en backend como por el botón de plan actual en dashboard.
-
-Por tanto, **Pro/Enterprise no convierten automáticamente de trial a primer cobro hoy**. Antes de abrir producción hay que escoger e implementar una de estas políticas y probarla end-to-end:
-
-1. Crear la autorización remota al iniciar el trial con una variante de plan que tenga `free_trial`, conservando planes sin trial para upgrades; o
-2. Mantener el trial local sin tarjeta y, al terminar, pedir un token nuevo, permitir la activación del mismo plan/ciclo y crear entonces `/preapproval`.
-
-La prueba de aceptación debe demostrar: tokenización, creación de `/preapproval`, persistencia de IDs provider, fecha del primer cobro, webhook firmado, transición local a `active`, reconciliación y reembolso controlado. No se debe reutilizar ni guardar un `card_token_id` de MercadoPago.
-
----
-
-## 9. Referencia rápida — mapa de archivos
-
-| Tema | Archivo |
+| Síntoma | Verificar primero |
 |---|---|
-| Plan estratégico y decisiones | `docs/billing-plan.md` |
-| Este runbook | `docs/billing-runbook.md` |
-| Arquitectura de código | `apps/api/src/modules/billing/README.md` |
-| Columnas de billing en tenant | `apps/api/prisma/schema.prisma` (`model Tenant`) |
-| Tablas globales de billing | `apps/api/prisma/schema.prisma` (4 modelos `BillingX`) |
-| Migración de schema | `apps/api/prisma/migrations/20260423000000_add_billing/migration.sql` |
-| Script de seed | `apps/api/prisma/seed-billing-plans.js` |
-| Preflight read-only del collector | `apps/api/scripts/diagnose-mp-collector.js` |
-| Script de sync MP | `apps/api/scripts/sync-mp-plans.js` |
-| Automatización del deploy | `.github/workflows/deploy.yml` (sección de billing) |
-| Interfaz del provider | `apps/api/src/modules/billing/adapters/payment-provider.interface.ts` |
-| Adapter de MercadoPago | `apps/api/src/modules/billing/adapters/mercadopago.adapter.ts` |
-| Servicio de billing | `apps/api/src/modules/billing/billing.service.ts` |
-| Receptor de webhooks | `apps/api/src/modules/billing/webhook.controller.ts` |
-| Cron de reconciliación | `apps/api/src/modules/billing/processors/reconciliation.processor.ts` |
+| No aparece ningún medio | `billing.wompi_methods_enabled`; vacío es bloqueo intencional |
+| Formulario dice pasarela no configurada | prefijos/coherencia de las cuatro `WOMPI_*` |
+| Nequi no sale de pendiente | aprobación push, estado del token y activación comercial del medio |
+| Bancolombia no vuelve | `redirect_url` absoluta, misma pestaña, sesión no expirada y estado del token |
+| Fuente aprobada pero plan no activo | estado del intento inicial; solo `APPROVED` activa |
+| Cobro aprobado sin factura | fila fiscal `blocked_config/skipped/failed`, país, `isInternal`, ambiente y Factus |
+| Reintento devuelve error remoto de suscripción | debe usar motor local; no existe preapproval Wompi |
+| Plan anual no cobra | precio anual COP y `WOMPI_MAX_TRANSACTION_COP_CENTS` |
+
+No incluir llaves, tokens, PAN/CVV, payloads completos ni datos personales en
+logs, tickets o capturas.

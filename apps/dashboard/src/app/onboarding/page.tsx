@@ -10,6 +10,7 @@ import {
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { saveBillingCheckoutIntent } from "@/lib/billing-checkout-session";
 import {
     getVerticalLabel,
     isCanonicalVerticalCatalog,
@@ -709,13 +710,7 @@ export default function OnboardingPage() {
             case 3:
                 return planCatalogIsCurrent
                     && !!selectedPlan
-                    && isCycleAvailable(selectedPlan, billingCycle)
-                    // Un plan que exige medio de pago al alta no puede
-                    // completarse desde aca: la fuente de pago de Wompi
-                    // pertenece al TENANT, que todavia no existe. Ese plan se
-                    // activa desde Configuracion → Facturacion tras crear la
-                    // cuenta (el aviso de abajo lo explica).
-                    && !selectedPlan.requiresPaymentMethodAtSignup;
+                    && isCycleAvailable(selectedPlan, billingCycle);
             default:
                 return false;
         }
@@ -782,7 +777,7 @@ export default function OnboardingPage() {
 
             // Update tokens & user if returned
             if (result.data) {
-                const d = result.data as any;
+                const d = result.data;
                 if (d.accessToken) localStorage.setItem("accessToken", d.accessToken);
                 if (d.refreshToken) localStorage.setItem("refreshToken", d.refreshToken);
                 if (d.user) localStorage.setItem("user", JSON.stringify(d.user));
@@ -797,6 +792,22 @@ export default function OnboardingPage() {
                 if (d.coupon) setCouponNotice({ ok: !!d.coupon.applied, months: d.coupon.freeMonths });
             }
 
+            const checkout = result.data?.billingCheckout;
+            if (selectedPlan.requiresPaymentMethodAtSignup && !checkout) {
+                // Never substitute another plan or grant paid access when the
+                // server omitted the two-phase billing handoff.
+                throw new Error(t('billingHandoffError'));
+            }
+            if (checkout?.requiresPaymentMethod) {
+                const tenantId = result.data?.user?.tenantId;
+                if (!tenantId) throw new Error(t('billingHandoffError'));
+                saveBillingCheckoutIntent(sessionStorage, tenantId, {
+                    kind: "upgrade",
+                    planSlug: checkout.planSlug,
+                    billingCycle: checkout.billingCycle,
+                });
+            }
+
             // El alta ya está hecha: el borrador no debe sobrevivir (si no, reaparecería
             // relleno la próxima vez que alguien abra /onboarding en este navegador).
             try {
@@ -804,17 +815,21 @@ export default function OnboardingPage() {
                 sessionStorage.removeItem(PRICING_INTENT_KEY);
             } catch { /* noop */ }
 
-            // Puente cohesivo: en vez de caer al dashboard (que rebota al wizard con un
-            // flash), mostramos una transición breve y vamos DIRECTO al setup-wizard.
+            // Paid onboarding is intentionally two-phase: the tenant and its
+            // pending_auth subscription now exist, so Billing can attach the
+            // tenant-owned Wompi source without granting paid entitlements.
             // Full page reload para que AuthContext re-lea los tokens nuevos con tenantId.
             setRedirecting(true);
             // Con aviso de cupón el puente se alarga: 1400 ms no alcanzan para leer
             // que el código no entró, y después de la redirección ya no hay dónde verlo.
-            const bridgeDelay = (result.data as any)?.coupon ? 3600 : 1400;
-            redirectTimerRef.current = setTimeout(() => { window.location.href = "/admin/setup-wizard"; }, bridgeDelay);
+            const bridgeDelay = result.data?.coupon ? 3600 : 1400;
+            const checkoutTarget = checkout?.requiresPaymentMethod
+                ? `/admin/settings/billing?resumePlan=${encodeURIComponent(checkout.planSlug)}&cycle=${checkout.billingCycle}&from=onboarding`
+                : "/admin/setup-wizard";
+            redirectTimerRef.current = setTimeout(() => { window.location.href = checkoutTarget; }, bridgeDelay);
             return;
-        } catch {
-            setError(t('connectionError'));
+        } catch (error) {
+            setError(error instanceof Error ? error.message : t('connectionError'));
         }
         setIsSubmitting(false);
     };

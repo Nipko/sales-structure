@@ -6,6 +6,7 @@ import { EmailService } from '../email/email.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 @Injectable()
 export class ScheduledReportsService {
@@ -130,6 +131,7 @@ export class ScheduledReportsService {
 
         for (const tenant of tenants) {
             try {
+                if (!await this.canDeliverCustomerOutput(tenant.id)) continue;
                 const hasFeature = await this.throttle.isFeatureEnabled(tenant.id, 'scheduledReports');
                 if (!hasFeature) continue;
 
@@ -252,6 +254,9 @@ export class ScheduledReportsService {
         </div>`;
 
         // Send to all recipients
+        // Metrics generation can take long enough to cross a billing boundary;
+        // revalidate immediately before exposing customer data by email.
+        if (!await this.canDeliverCustomerOutput(tenant.id)) return;
         for (const recipient of config.recipients) {
             await this.email.send({
                 to: recipient,
@@ -268,5 +273,15 @@ export class ScheduledReportsService {
         );
 
         this.logger.log(`Report sent to ${config.recipients.length} recipients for tenant ${tenant.name}`);
+    }
+
+    private async canDeliverCustomerOutput(tenantId: string): Promise<boolean> {
+        const access = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (access.allowed) return true;
+        this.logger.warn(
+            `[ScheduledReports] Skipping tenant=${tenantId}: `
+            + `${access.error ?? 'subscription_restricted'}`,
+        );
+        return false;
     }
 }

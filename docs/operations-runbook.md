@@ -1,8 +1,8 @@
 # Operations Runbook — Parallext Engine
 
-_Actualizado: jul 2026._
+_Actualizado: 15 ago 2026._
 
-Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, backups/restore, platform monitoring (Ops Center), SMS credits, fiscal DIAN, billing/MercadoPago, deploy/auth hardening, and recovery from common edge cases.
+Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, backups/restore, platform monitoring (Ops Center), SMS credits, fiscal DIAN, Wompi billing, tenant-owned Mercado Pago links, deploy/auth hardening, and recovery from common edge cases.
 
 ---
 
@@ -280,52 +280,44 @@ The 90-day window is hardcoded in `OffboardingCronService.purgeStaleInactiveChan
 
 ---
 
-## 5. MercadoPago — operating tasks
+## 5. Wompi subscriptions and tenant-owned Mercado Pago
 
-### 5.1 Rotate the access token without rebuild
+### 5.1 Rotate Wompi platform credentials
 
-```bash
-# 1. Edit .env on the VPS
-vi /opt/parallext-engine/.env
-# Change MP_ACCESS_TOKEN=...
+Update the six GitHub Actions secrets (`WOMPI_PUBLIC_KEY`,
+`WOMPI_PRIVATE_KEY`, `WOMPI_EVENTS_SECRET`, `WOMPI_INTEGRITY_SECRET` and the
+two COP-cent caps) with values from one production merchant. Deploy regenerates
+`.env` and recreates API/worker. The production preflight rejects missing,
+sandbox-prefixed or non-positive values without printing secrets.
 
-# 2. Recreate api + worker (env_file is only read on container create, not restart)
-cd /opt/parallext-engine/infra/docker
-docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps api worker
-```
+Do not place global Mercado Pago credentials in `.env`. Mercado Pago is retired
+from platform subscriptions; each tenant stores its own encrypted Access Token
+and Webhooks secret in **Integrations → Payments** only for tenant → customer
+links.
 
-The next deploy from GitHub Actions regenerates `.env` from secrets — **also update the secret** in GitHub if the change should survive deploys.
+### 5.2 Prices and monthly/annual cycles
 
-### 5.2 Sync MP plan IDs after price change
+`billing_plans` is authoritative. Colombia monthly and full-year totals live in
+`priceLocalOverrides.CO.amountCents` and `.annual.amountCents`. Wompi has no
+remote plan catalog, so no plan synchronization command or `mpPlanId` is used.
+After changing a price, invalidate the plan cache from `/admin/plans` or
+`POST /billing-admin/plans/:slug/invalidate-cache` and verify both cycles in the
+public catalog before accepting new subscriptions.
 
-Plans are the source of truth in the `billing_plans` table (seeded by `apps/api/prisma/seed-billing-plans.js`, then editable from **`/admin/plans`**). Prices are **data-driven** — there are no hardcoded COP amounts anymore. USD anchors: emprendedor $21, starter $49, pro $129, enterprise $349, custom (sales-led, not syncable). Local overrides (e.g. COP) and the yearly total live in `priceLocalOverrides[country]` / `...annual`.
+### 5.3 Trial/pending authorization diagnostics
 
-Preferred path is the panel, which replaces the SSH-only `scripts/sync-mp-plans.js` for a single plan+country and registers the preapproval_plan **per cycle** (monthly vs annual are SEPARATE MP plans):
+- `pending_auth`: no paid entitlement; the tenant must complete a Wompi source.
+- `trialing`: trial clock is in DB; the first charge is shown by `nextChargeAt`.
+- zero-day plans activate only after their one canonical initial charge is
+  `APPROVED`.
+- Nequi and Bancolombia can remain pending while the customer approves; the
+  browser polls and a distributed sweep/webhook finishes abandoned sessions.
 
-```bash
-# Panel: /admin/plans → "Sincronizar con MercadoPago" (per plan+country+cycle)
-# API:  POST /billing-admin/plans/:slug/sync-mp   { "country": "CO", "cycle": "month" | "year", "force": false }
-#   → creates the MP plan and stores mpPlanId under priceLocalOverrides[CO].mpPlanId (monthly)
-#     or priceLocalOverrides[CO].annual.mpPlanId (annual). Idempotent per cycle.
-```
+If authorization stalls, check provider readiness, the payment-source status,
+the matching charge attempt and the Wompi webhook before retrying. Never switch
+the subscription to `active` by hand.
 
-`cycle:"year"` requires an annual local price already set (`priceLocalOverrides.CO.annual.amountCents` = full-year total in cents, ≈ −15% vs 12× monthly); it 400s with `no_annual_price` otherwise. `Custom` returns `custom_not_syncable`. Every sync writes an `billing_plan_synced_mp` audit row.
-
-The legacy batch script still exists for bulk/one-off use:
-
-```bash
-docker exec parallext-api sh -c 'node scripts/sync-mp-plans.js --country=CO'
-```
-
-### 5.3 Why is starter trial returning 400?
-
-`starter` is free-trial without card. The MP adapter requires `card_token_id` always — if `BillingService.createTrialSubscription` calls the adapter, it 400s. The fix in `b0e9c53` makes `createTrialSubscription` skip the provider call for free trials and create the subscription locally in `trialing` state. If you see the bug again, check `plan.requiresCardForTrial` is `false` for starter and `cardTokenId` is empty in the payload.
-
-### 5.4 Monthly vs annual billing cycle
-
-Every plan (except custom) can be billed **monthly or annually** (annual ≈ −15% vs 12× monthly). The two cycles are distinct MercadoPago `preapproval_plan`s with their own `mpPlanId` (`priceLocalOverrides[country].mpPlanId` vs `...annual.mpPlanId`), synced independently via §5.2. The landing `/precios` page and the in-app plan toggle read these amounts data-driven from `billing_plans`.
-
-### 5.5 Cross-tenant billing views + inline refund (super_admin)
+### 5.4 Cross-tenant billing views + inline refund (super_admin)
 
 Billing-ops screens are backed by `/billing-admin/*` (super_admin):
 
@@ -338,20 +330,25 @@ POST /billing-admin/tenants/:tenantId/comp-plan   # grant a comped plan
 PUT  /billing-admin/tenants/:tenantId/plan        # change/downgrade a tenant's plan
 ```
 
-### 5.6 Reconciliation (on-demand + downgrade sync)
+### 5.5 Reconciliation and plan changes
 
 Beyond the hourly `ReconciliationProcessor`, super_admin can trigger it by hand:
 
 ```bash
 POST /billing-admin/reconcile              { "scope": "past_due" | "full" }   # platform-wide
-POST /billing-admin/tenants/:tenantId/reconcile    # single tenant: syncFromProvider
+POST /billing-admin/tenants/:tenantId/reconcile    # single tenant
 ```
 
-Downgrades through `PUT /billing-admin/tenants/:tenantId/plan` also sync the change down to MercadoPago (the preapproval amount is updated), so the provider and our DB don't drift.
+The internal engine owns renewal, upgrade proration and deferred downgrades.
+There is no Wompi subscription object to mutate. Do not attempt a plan change
+while an initial/renewal charge is unresolved; the API rejects that race.
 
-### 5.7 Price-change auditing
+### 5.6 Price-change auditing
 
-Editing a plan in `/admin/plans` (`PUT /billing-admin/plans/:slug`) is a create-only-safe upsert (the seed never overwrites panel values without `--force`) and writes an audit row on price/plan changes. MP syncs and manual reconciles are audited too (`billing_plan_synced_mp`, `billing_reconcile_manual`).
+Editing a plan in `/admin/plans` (`PUT /billing-admin/plans/:slug`) writes an
+audit row; the seed does not overwrite existing runtime rows. Manual
+reconciliation, refunds, courtesy plans and provider assignments are audited.
+See `docs/billing-runbook.md` for readiness, DIAN and Mercado Pago retirement.
 
 ---
 
@@ -482,6 +479,6 @@ LIMIT 50;
 - `modules-reference.md` — 40 modules and their files
 - `analytics-billing-reference.md` — analytics / billing / financials
 - `appointments-manual.md` — appointments specifics
-- `billing-runbook.md` — MercadoPago specifics
+- `billing-runbook.md` — Wompi, DIAN and tenant-owned Mercado Pago links
 - `offboarding-manual.md` — offboarding flow detail
 - `vertical-strategy.md` — which verticals + roadmap

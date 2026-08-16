@@ -8,6 +8,7 @@ import {
     ConnectedSocket,
 } from '@nestjs/websockets';
 import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import { WidgetService } from './widget.service';
@@ -15,6 +16,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { RedisService } from '../redis/redis.service';
 import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { BillingEventType } from '../billing/types/billing-event.enum';
 import { WidgetMessageDto } from './dto/widget-public.dto';
 import { isWidgetOriginAllowed, resolveWidgetSocketIp } from './widget-security';
 import { WidgetRateLimitService } from './widget-rate-limit.service';
@@ -60,6 +63,11 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
             this.rejectClient(client, 'Tenant unavailable');
             return;
         }
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, session.tenant_id, 'write');
+        if (!entitlement.allowed) {
+            this.rejectClient(client, 'Subscription unavailable', entitlement.error);
+            return;
+        }
 
         const capabilities = this.resolveCurrentCapabilities(session);
         if (!capabilities.formalChannel) {
@@ -71,6 +79,17 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         (client as any).widgetToken = token;
         (client as any).widgetCapabilities = capabilities;
         client.join(`session:${session.id}`);
+        client.join(`tenant:${session.tenant_id}`);
+        client.use(async (_packet, next) => {
+            const current = await resolveTenantSubscriptionAccess(this.prisma, session.tenant_id, 'write');
+            if (current.allowed) return next();
+            client.emit('widget:error', {
+                message: 'Subscription unavailable',
+                code: current.error,
+            });
+            client.disconnect();
+            next(new Error(current.error ?? 'subscription_unavailable'));
+        });
 
         if (session.conversation_id) {
             const schemaName = await this.prisma.getTenantSchemaName(session.tenant_id);
@@ -124,6 +143,11 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         text: string,
         inboundMessageId?: string,
     ): Promise<void> {
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, session.tenant_id, 'write');
+        if (!entitlement.allowed) {
+            this.rejectClient(client, 'Subscription unavailable', entitlement.error);
+            return;
+        }
         const schemaName = await this.prisma.getTenantSchemaName(session.tenant_id);
         await this.streamAssistantReply(
             client, session.tenant_id, schemaName, session.conversation_id, session.contact_id, text,
@@ -133,6 +157,24 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     handleDisconnect(client: Socket) {
         // Cleanup handled by socket.io room removal
+    }
+
+    @OnEvent(BillingEventType.SUBSCRIPTION_CANCELLED, { async: true })
+    async handleSubscriptionCancelled(event: { tenantId: string }) {
+        await this.disconnectTenantIfRestricted(event?.tenantId);
+    }
+
+    @OnEvent(BillingEventType.SUBSCRIPTION_EXPIRED, { async: true })
+    async handleSubscriptionExpired(event: { tenantId: string }) {
+        await this.disconnectTenantIfRestricted(event?.tenantId);
+    }
+
+    private async disconnectTenantIfRestricted(tenantId?: string): Promise<void> {
+        if (!tenantId || !this.server) return;
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            this.server.in(`tenant:${tenantId}`).disconnectSockets(true);
+        }
     }
 
     @SubscribeMessage('widget:message')
@@ -166,6 +208,11 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const ready = await resolveReadyTenantContext(this.prisma, this.redis, tenantId);
         if (!ready) {
             this.rejectClient(client, 'Tenant unavailable');
+            return;
+        }
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            this.rejectClient(client, 'Subscription unavailable', entitlement.error);
             return;
         }
         const messageLimit = await this.rateLimit.consumeMessage({
@@ -345,8 +392,8 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
     }
 
-    private rejectClient(client: Socket, message: string): void {
-        client.emit('widget:error', { message });
+    private rejectClient(client: Socket, message: string, code?: string): void {
+        client.emit('widget:error', { message, ...(code ? { code } : {}) });
         client.disconnect();
     }
 }

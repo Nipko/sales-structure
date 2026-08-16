@@ -13,6 +13,7 @@ interface CreateTenantInput {
   subType: string | null;
   language: string;
   plan: TenantPlanSlug;
+  isInternal: boolean;
   ownerEmail: string;
   ownerFirstName: string;
   ownerLastName: string;
@@ -34,6 +35,7 @@ const EMPTY_FORM = {
   subType: "",
   language: "es-CO",
   plan: "starter" as TenantPlanSlug,
+  isInternal: false,
   ownerEmail: "",
   ownerFirstName: "",
   ownerLastName: "",
@@ -201,6 +203,25 @@ export default function CreateTenantModal({
               {plans.map((plan) => <option key={plan} value={plan}>{t(`plans.${plan}`)}</option>)}
             </select>
           </div>
+          <label className="flex items-start gap-3 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.isInternal}
+              disabled={submitting}
+              onChange={(e) => setForm({ ...form, isInternal: e.target.checked })}
+              className="mt-0.5 h-4 w-4 rounded border-neutral-300"
+            />
+            <span>
+              <span className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                {t("modals.internalTenant")}
+              </span>
+              <span className="block mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                {form.isInternal
+                  ? t("modals.internalTenantHint")
+                  : t("modals.commercialTenantHint")}
+              </span>
+            </span>
+          </label>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("modals.provisioningHint")}</p>
           <div className="flex gap-3 justify-end pt-2">
             <button disabled={submitting} onClick={closeIfIdle} className="px-4 py-2 rounded-lg text-sm font-medium border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 disabled:opacity-50">

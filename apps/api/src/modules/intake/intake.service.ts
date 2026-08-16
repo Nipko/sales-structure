@@ -5,6 +5,11 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { createHash } from 'crypto';
 import { imsg, isOptOutMessage } from './intake-i18n';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { isUUID } from 'class-validator';
+import {
+    evaluateSubscriptionAccess,
+    type SubscriptionAccessMode,
+} from '../../common/utils/subscription-entitlement.util';
 
 interface IntakeResult {
     leadId: string;
@@ -22,6 +27,54 @@ export class IntakeService {
         private readonly eventEmitter: EventEmitter2,
         private readonly pipelineService: PipelineService,
     ) { }
+
+    /**
+     * Resolve public-form tenant identity authoritatively. Public callers may
+     * send a UUID or slug, but never get to construct a schema name themselves.
+     * Subscription policy is evaluated before any tenant-schema query/write.
+     */
+    async resolvePublicTenant(
+        identifier: string,
+        mode: SubscriptionAccessMode,
+    ): Promise<{ tenantId: string; schemaName: string } | null> {
+        const tenant = await this.prisma.tenant.findFirst({
+            where: {
+                isActive: true,
+                ...(isUUID(identifier)
+                    ? { OR: [{ id: identifier }, { slug: identifier }] }
+                    : { slug: identifier }),
+            },
+            select: {
+                id: true,
+                schemaName: true,
+                isInternal: true,
+                subscriptionStatus: true,
+                subscription: {
+                    select: {
+                        status: true,
+                        cancelAtPeriodEnd: true,
+                        trialEndsAt: true,
+                        currentPeriodEnd: true,
+                        cancellationReason: true,
+                        dunningStartedAt: true,
+                    },
+                },
+            },
+        });
+        if (!tenant) return null;
+        const access = evaluateSubscriptionAccess({
+            isInternal: tenant.isInternal === true,
+            status: tenant.subscription?.status
+                ?? (tenant.isInternal === true ? tenant.subscriptionStatus : null),
+            trialEndsAt: tenant.subscription?.trialEndsAt ?? null,
+            cancelAtPeriodEnd: tenant.subscription?.cancelAtPeriodEnd === true,
+            currentPeriodEnd: tenant.subscription?.currentPeriodEnd ?? null,
+            cancellationReason: tenant.subscription?.cancellationReason ?? null,
+            dunningStartedAt: tenant.subscription?.dunningStartedAt ?? null,
+        }, mode);
+        if (!access.allowed) return null;
+        return { tenantId: tenant.id, schemaName: tenant.schemaName };
+    }
 
     // ─── Internal Landing Admin ──────────────────────────────────────────────────
 

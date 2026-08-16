@@ -4,6 +4,8 @@ import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { EvalService } from './eval.service';
 import { EVAL_GATE_QUEUE, EvalGateJob } from './eval-autorun.listener';
+import { PrismaService } from '../prisma/prisma.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /**
  * Drains the auto-run eval gate. Each job runs the full τ² gate (golden set × k ×
@@ -14,11 +16,19 @@ import { EVAL_GATE_QUEUE, EvalGateJob } from './eval-autorun.listener';
 export class EvalGateProcessor extends WorkerHost {
     private readonly logger = new Logger(EvalGateProcessor.name);
 
-    constructor(private readonly evals: EvalService) {
+    constructor(
+        private readonly evals: EvalService,
+        private readonly prisma: PrismaService,
+    ) {
         super();
     }
 
     async process(job: Job<EvalGateJob>): Promise<any> {
+        const access = await resolveTenantSubscriptionAccess(this.prisma, job.data.tenantId, 'write');
+        if (!access.allowed) {
+            if (access.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
+            return { ok: false, skipped: true, reason: access.error };
+        }
         await this.evals.runGateV2(job.data.tenantId, job.data.agentId, {
             trigger: job.data.trigger || 'persona_edit',
         });

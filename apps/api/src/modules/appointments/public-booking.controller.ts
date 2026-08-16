@@ -3,6 +3,7 @@ import {
     Body,
     ConflictException,
     Controller,
+    ForbiddenException,
     Get,
     HttpException,
     HttpStatus,
@@ -10,6 +11,7 @@ import {
     Post,
     Query,
     Req,
+    ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { createHash } from 'node:crypto';
@@ -21,6 +23,10 @@ import { CalendarIntegrationService } from './calendar-integration.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { IdentityService } from '../identity/identity.service';
 import { resolveTrustedClientIp } from '../../common/utils/trusted-client-ip.util';
+import {
+    evaluateSubscriptionAccess,
+    type SubscriptionAccessMode,
+} from '../../common/utils/subscription-entitlement.util';
 
 interface PublicBookingRequestBody {
     serviceId: string;
@@ -189,31 +195,61 @@ export class PublicBookingController {
         };
     }
 
-    private async resolveSchema(tenantSlug: string): Promise<{
+    private async resolveSchema(tenantSlug: string, mode: SubscriptionAccessMode = 'read'): Promise<{
         tenantId: string; schemaName: string;
         tenantName: string; tenantLogo: string | null; tenantColor: string | null;
         publicBookingEnabled: boolean;
         welcomeText: string | null;
     }> {
         const rows = await this.prisma.$queryRaw<any[]>`
-            SELECT id, schema_name, name,
+            SELECT t.id, t.schema_name, t.name, t.is_internal,
+                   bs.status AS subscription_status,
+                   bs.trial_ends_at,
+                   bs.cancel_at_period_end,
+                   bs.current_period_end AS subscription_period_end,
+                   bs.cancellation_reason,
+                   bs.dunning_started_at,
                    (settings::jsonb)->>'logoUrl' as logo_url,
                    COALESCE((settings::jsonb)->>'brandColor', NULL) as brand_color,
                    COALESCE((settings::jsonb)->'publicBooking'->>'enabled', 'false')::boolean as public_booking_enabled,
                    (settings::jsonb)->'publicBooking'->>'welcomeText' as welcome_text
-            FROM tenants
-            WHERE slug = ${tenantSlug} AND is_active = true
+            FROM tenants t
+            LEFT JOIN billing_subscriptions bs ON bs.tenant_id = t.id
+            WHERE t.slug = ${tenantSlug} AND t.is_active = true
             LIMIT 1
         `;
         if (!rows?.[0]) throw new BadRequestException('Tenant not found');
+        const row = rows[0];
+        const entitlement = evaluateSubscriptionAccess({
+            isInternal: row.is_internal === true,
+            status: row.subscription_status ?? null,
+            trialEndsAt: row.trial_ends_at ? new Date(row.trial_ends_at) : null,
+            cancelAtPeriodEnd: row.cancel_at_period_end === true,
+            currentPeriodEnd: row.subscription_period_end
+                ? new Date(row.subscription_period_end)
+                : null,
+            cancellationReason: row.cancellation_reason ?? null,
+            dunningStartedAt: row.dunning_started_at ? new Date(row.dunning_started_at) : null,
+        }, mode);
+        if (!entitlement.allowed) {
+            const body = {
+                error: entitlement.error,
+                restrictionLevel: entitlement.restrictionLevel,
+                message: 'This booking page is unavailable for the current subscription state.',
+            };
+            if (entitlement.restrictionLevel === 'unavailable') {
+                throw new ServiceUnavailableException(body);
+            }
+            throw new ForbiddenException(body);
+        }
         return {
-            tenantId: rows[0].id,
-            schemaName: rows[0].schema_name,
-            tenantName: rows[0].name || tenantSlug,
-            tenantLogo: rows[0].logo_url || null,
-            tenantColor: rows[0].brand_color || null,
-            publicBookingEnabled: rows[0].public_booking_enabled ?? false,
-            welcomeText: rows[0].welcome_text || null,
+            tenantId: row.id,
+            schemaName: row.schema_name,
+            tenantName: row.name || tenantSlug,
+            tenantLogo: row.logo_url || null,
+            tenantColor: row.brand_color || null,
+            publicBookingEnabled: row.public_booking_enabled ?? false,
+            welcomeText: row.welcome_text || null,
         };
     }
 
@@ -444,7 +480,7 @@ export class PublicBookingController {
             throw new BadRequestException('customerPhone must be a valid phone number');
         }
 
-        const t = await this.resolveSchema(tenantSlug);
+        const t = await this.resolveSchema(tenantSlug, 'write');
         this.requireBookingEnabled(t);
         const schemaName = t.schemaName;
         const svc = await this.servicesService.getById(schemaName, body.serviceId);

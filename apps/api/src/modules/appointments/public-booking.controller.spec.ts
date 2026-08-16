@@ -56,6 +56,8 @@ describe('PublicBookingController canonical appointment handoff', () => {
                 id: '33333333-3333-4333-8333-333333333333',
                 schema_name: schemaName,
                 name: 'Negocio',
+                is_internal: false,
+                subscription_status: 'active',
                 public_booking_enabled: true,
             }]),
             executeInTenantSchema: execute,
@@ -320,6 +322,29 @@ describe('PublicBookingController canonical appointment handoff', () => {
             staffId,
         })]);
         expect(h.calendar.getFreeBusyForDate).toHaveBeenCalledTimes(1);
+    });
+
+    it('blocks a public booking before service/calendar work when payment authorization is pending', async () => {
+        const h = harness();
+        h.prisma.$queryRaw.mockResolvedValue([{
+            id: '33333333-3333-4333-8333-333333333333',
+            schema_name: schemaName,
+            name: 'Negocio',
+            public_booking_enabled: true,
+            subscription_status: 'pending_auth',
+        }]);
+
+        await expect(h.controller.createBooking('negocio', { ip: '127.0.0.1' }, {
+            serviceId,
+            date: '2026-08-12',
+            startTime: '09:00',
+            customerName: 'Cliente',
+            customerPhone: '+573001112233',
+        })).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'payment_method_required' }),
+        });
+        expect(h.calendar.getFreeBusyForDate).not.toHaveBeenCalled();
+        expect(h.appointments.create).not.toHaveBeenCalled();
     });
 
     it('recovers the committed winner when a concurrent retry loses at capacity or unique index', async () => {

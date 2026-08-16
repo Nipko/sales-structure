@@ -1,5 +1,5 @@
-import { Body, Controller, Headers, Post, UnauthorizedException } from '@nestjs/common';
-import { PublicApiKeyService } from '../public-api/public-api-key.service';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { PublicApiGuard } from '../public-api/guards/public-api.guard';
 import { McpServerService } from './mcp-server.service';
 
 /**
@@ -12,15 +12,14 @@ import { McpServerService } from './mcp-server.service';
 @Controller('mcp')
 export class McpRpcController {
     constructor(
-        private readonly apiKeyService: PublicApiKeyService,
         private readonly mcpServer: McpServerService,
     ) {}
 
     @Post('rpc')
-    async rpc(@Headers('x-api-key') apiKey: string, @Body() body: any) {
-        if (!apiKey) throw new UnauthorizedException('X-API-Key header required');
-        const keyData = await this.apiKeyService.validateKey(apiKey);
-        if (!keyData) throw new UnauthorizedException('Invalid API key');
-        return this.mcpServer.handle(keyData.tenantId, body);
+    @UseGuards(PublicApiGuard)
+    async rpc(@Req() req: any, @Body() body: any) {
+        // PublicApiGuard authenticates and resolves tenantId before the global
+        // subscription interceptor runs, so locked tenants cannot use MCP.
+        return this.mcpServer.handle(req.tenantId, body);
     }
 }

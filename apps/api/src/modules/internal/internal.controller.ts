@@ -6,6 +6,7 @@ import {
   Logger,
   Post,
   Req,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { NormalizedMessage } from '@parallext/shared';
@@ -15,6 +16,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { InboundQueueService } from '../inbound/inbound-queue.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /**
  * Internal endpoints — callable only by trusted internal microservices via
@@ -46,7 +48,7 @@ export class InternalController {
   async receiveInboundMessage(
     @Req() request: { user?: { isInternalService?: boolean } },
     @Body() payload: NormalizedMessage,
-  ) {
+    ) {
     this.assertInternalService(request);
     this.assertTenantId(payload?.tenantId);
     if (
@@ -61,6 +63,7 @@ export class InternalController {
     ) {
       throw new BadRequestException('Invalid normalized inbound message');
     }
+    await this.assertSubscriptionWriteAccess(payload.tenantId);
     this.logger.log(
       `[Internal] Received inbound message for tenant ${payload.tenantId} from ${payload.contactId}`,
     );
@@ -100,6 +103,7 @@ export class InternalController {
     if (excludeAccountId !== undefined && (typeof excludeAccountId !== 'string' || excludeAccountId.length > 255)) {
       throw new BadRequestException('Invalid excludeAccountId');
     }
+    await this.assertSubscriptionWriteAccess(tenantId);
     const existingActive = await this.prisma.channelAccount.count({
       where: {
         tenantId,
@@ -134,6 +138,20 @@ export class InternalController {
     if (request.user?.isInternalService !== true) {
       throw new ForbiddenException('Internal service authentication required');
     }
+  }
+
+  private async assertSubscriptionWriteAccess(tenantId: string): Promise<void> {
+    const access = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+    if (access.allowed) return;
+    const response = {
+      error: access.error,
+      restrictionLevel: access.restrictionLevel,
+      message: 'Tenant subscription does not allow operational channel work.',
+    };
+    if (access.restrictionLevel === 'unavailable') {
+      throw new ServiceUnavailableException(response);
+    }
+    throw new ForbiddenException(response);
   }
 
   private assertTenantId(tenantId: unknown): asserts tenantId is string {

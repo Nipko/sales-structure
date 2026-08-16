@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -989,8 +990,10 @@ export class OnboardingService {
    * Gate connecting an additional channel account behind the plan's
    * maxChannelAccounts limit, delegating to the API's internal endpoint (single
    * source of truth incl. per-tenant overrides). Throws BadRequestException when
-   * over quota. Network/infra failures are logged and allowed through so a
-   * transient API hiccup never hard-fails onboarding.
+   * over quota or when the subscription is not writable. This gate is a
+   * security/entitlement boundary: missing credentials, network errors and
+   * unexpected API responses fail closed so a transient outage cannot connect
+   * a channel for an unpaid tenant.
    */
   private async assertChannelAccountQuotaViaApi(
     tenantId: string,
@@ -1001,13 +1004,17 @@ export class OnboardingService {
     const internalKey =
       this.config.get<string>('INTERNAL_API_KEY') || this.config.get<string>('INTERNAL_JWT_SECRET');
     if (!internalKey) {
-      this.logger.warn('INTERNAL_API_KEY not set — skipping channel-account quota check');
-      return;
+      throw new ServiceUnavailableException({
+        code: 'CHANNEL_ENTITLEMENT_CHECK_UNAVAILABLE',
+        userMessage: 'No fue posible validar temporalmente el acceso para conectar el canal.',
+      });
     }
     const fetchFn: any = (globalThis as any).fetch;
     if (!fetchFn) {
-      this.logger.warn('global fetch unavailable — skipping channel-account quota check');
-      return;
+      throw new ServiceUnavailableException({
+        code: 'CHANNEL_ENTITLEMENT_CHECK_UNAVAILABLE',
+        userMessage: 'No fue posible validar temporalmente el acceso para conectar el canal.',
+      });
     }
     let res: any;
     try {
@@ -1017,17 +1024,29 @@ export class OnboardingService {
         body: JSON.stringify({ tenantId, channelType, excludeAccountId }),
       });
     } catch (e: any) {
-      this.logger.warn(`channel-account quota check unreachable (${e?.message}) — allowing`);
-      return;
+      this.logger.warn(`channel-account quota check unreachable (${e?.message}) — blocking`);
+      throw new ServiceUnavailableException({
+        code: 'CHANNEL_ENTITLEMENT_CHECK_UNAVAILABLE',
+        userMessage: 'No fue posible validar temporalmente el acceso para conectar el canal.',
+      });
     }
     if (res.status === 403) {
       let msg =
         'Tu plan no permite conectar otro número de WhatsApp. Actualizá tu plan o desconectá otro número para agregar uno nuevo.';
+      let code = 'CHANNEL_ACCESS_DENIED';
       try {
         const b = await res.json();
         if (b?.message) msg = b.message;
+        if (b?.error === 'plan_limit_reached') code = 'PLAN_LIMIT_REACHED';
       } catch { /* keep default message */ }
-      throw new BadRequestException({ code: 'PLAN_LIMIT_REACHED', userMessage: msg });
+      throw new BadRequestException({ code, userMessage: msg });
+    }
+    if (!res.ok) {
+      this.logger.warn(`channel-account quota check returned ${res.status} — blocking`);
+      throw new ServiceUnavailableException({
+        code: 'CHANNEL_ENTITLEMENT_CHECK_UNAVAILABLE',
+        userMessage: 'No fue posible validar temporalmente el acceso para conectar el canal.',
+      });
     }
   }
 

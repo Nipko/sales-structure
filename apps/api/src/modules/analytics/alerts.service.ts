@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 interface AlertRule {
     id: string;
@@ -188,6 +189,7 @@ export class AlertsService {
 
         for (const tenant of tenants) {
             try {
+                if (!await this.canDeliverCustomerOutput(tenant.id)) continue;
                 await this.evaluateTenantAlerts(tenant.id, tenant.schemaName);
             } catch (error) {
                 this.logger.error(`Alert eval failed for tenant ${tenant.id}: ${error}`);
@@ -257,6 +259,9 @@ export class AlertsService {
     }
 
     private async fireAlert(schemaName: string, tenantId: string, rule: AlertRule, currentValue: number): Promise<void> {
+        // Close the TOCTOU window between metric evaluation and the external
+        // email/history side effect.
+        if (!await this.canDeliverCustomerOutput(tenantId)) return;
         this.logger.log(`Alert triggered: ${rule.name} (${rule.metric} ${rule.operator} ${rule.threshold}, current: ${currentValue})`);
 
         // Record in history
@@ -291,5 +296,15 @@ export class AlertsService {
                 });
             }
         }
+    }
+
+    private async canDeliverCustomerOutput(tenantId: string): Promise<boolean> {
+        const access = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (access.allowed) return true;
+        this.logger.warn(
+            `[Alerts] Skipping tenant=${tenantId}: `
+            + `${access.error ?? 'subscription_restricted'}`,
+        );
+        return false;
     }
 }

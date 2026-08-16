@@ -8,6 +8,8 @@ import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
@@ -31,6 +33,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         private channelToken: ChannelTokenService,
         private redis: RedisService,
         private tenantSms: TenantNotificationSmsService,
+        private prisma: PrismaService,
     ) {
         super();
     }
@@ -63,6 +66,25 @@ export class OutboundQueueProcessor extends WorkerHost {
                 );
                 return alreadySent;
             }
+        }
+
+        // Queued replies, reminders and automations may execute after a trial,
+        // paid period or dunning boundary. Revalidate at the last authoritative
+        // point before SMS balance/provider work; HTTP and inbound guards cannot
+        // protect a job that was enqueued hours earlier.
+        const entitlement = await resolveTenantSubscriptionAccess(
+            this.prisma,
+            outbound.tenantId,
+            'write',
+        );
+        if (!entitlement.allowed) {
+            if (entitlement.restrictionLevel === 'unavailable') {
+                throw new Error(`subscription_entitlement_unavailable:${entitlement.error ?? 'unknown'}`);
+            }
+            this.logger.warn(
+                `[Outbound] Dropped job ${job.id} for tenant ${outbound.tenantId}: ${entitlement.error}`,
+            );
+            return `skipped:${entitlement.error ?? 'subscription_restricted'}`;
         }
 
         // Per-tenant rate limit — read-only check (isOverLimit) so a delayed job's

@@ -10,6 +10,7 @@ import { FiscalStorageService } from '../fiscal-storage.service';
 import { FiscalEmailService } from '../fiscal-email.service';
 import { CONSUMIDOR_FINAL_ACQUIRER, FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from '../fiscal.constants';
 import { FiscalAcquirer, FiscalIssueResult } from '../interfaces/fiscal-provider.interface';
+import { RedisService } from '../../redis/redis.service';
 
 /**
  * Worker that performs the actual fiscal provider call. Runs async so a slow or
@@ -28,11 +29,31 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         private readonly factus: FactusAdapter,
         private readonly storage: FiscalStorageService,
         private readonly fiscalEmail: FiscalEmailService,
+        private readonly redis: RedisService,
     ) {
         super();
     }
 
     async process(job: Job<FiscalJobData>): Promise<unknown> {
+        const fiscalInvoiceId = job.data?.fiscalInvoiceId;
+        if (!fiscalInvoiceId) return;
+        const lockKey = `lock:fiscal:issue:${fiscalInvoiceId}`;
+        // Issuance consumes a legal consecutive. If Redis is unavailable or a
+        // twin worker owns the invoice, fail closed and let BullMQ/reconciliation
+        // retry; issuing twice is never the safer fallback.
+        const lockToken = await this.redis.acquireLockToken(lockKey, 30 * 60).catch(() => null);
+        if (!lockToken) {
+            this.logger.warn(`[Fiscal] Invoice ${fiscalInvoiceId} is already being issued (or lock unavailable)`);
+            throw new Error('fiscal_issuance_lock_unavailable');
+        }
+        try {
+            return await this.processOwned(job);
+        } finally {
+            await this.redis.releaseLockToken(lockKey, lockToken).catch(() => undefined);
+        }
+    }
+
+    private async processOwned(job: Job<FiscalJobData>): Promise<unknown> {
         const { fiscalInvoiceId } = job.data;
         const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id: fiscalInvoiceId } });
         if (!inv) {
@@ -46,10 +67,13 @@ export class FiscalInvoiceProcessor extends WorkerHost {
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: inv.tenantId },
-            select: { billingCountry: true, settings: true },
+            select: { settings: true },
         });
         const cfg = await this.config.getConfig();
-        const provider = this.factory.resolve(cfg.mode, tenant?.billingCountry);
+        // The issuing entity/adapter is part of the immutable invoice snapshot.
+        // Re-resolving from today's mode/country could send an old Factus row to
+        // the US adapter (or vice versa) after an operational config change.
+        const provider = this.factory.getByName(inv.provider);
         if (!provider) {
             await this.markFailed(inv.id, 'no_provider');
             return;
@@ -85,7 +109,14 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                 trmApplied = rate;
                 copAmountCents = Math.round(inv.amountCents * rate);
             } else {
-                this.logger.warn(`[Fiscal] No ${inv.currency}->COP rate; issuing with original amount for ${inv.id}`);
+                const reason = `missing_fx_rate_${inv.currency.toUpperCase()}_COP`;
+                // Never relabel foreign minor units as COP. That would turn, for
+                // example, USD 100.00 (10,000 cents) into COP 100.00 on the legal
+                // document. Keep it failed/retryable until an authoritative rate
+                // for the recognition date is loaded.
+                await this.markFailed(inv.id, reason);
+                this.escalate(inv.id, inv.tenantId, reason);
+                return;
             }
         }
 

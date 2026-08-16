@@ -1,13 +1,16 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Equals, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { TenantGuard } from '../../../common/guards/tenant.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { PaymentSourceService } from './payment-source.service';
 import { PaymentSourceKind } from '../adapters/provider-capabilities';
 
-const STOREABLE_KINDS = ['card', 'nequi', 'bancolombia_transfer', 'daviplata'] as const;
+// Keep the public contract aligned with WOMPI_CAPABILITIES. Daviplata remains
+// a future adapter vocabulary value but is not commercially activated or
+// implemented as a supported recurring checkout method.
+const STOREABLE_KINDS = ['card', 'nequi', 'bancolombia_transfer'] as const;
 
 class AddPaymentSourceDto {
     @IsIn(STOREABLE_KINDS as unknown as string[])
@@ -22,8 +25,19 @@ class AddPaymentSourceDto {
     @MaxLength(255)
     token!: string;
 
-    @IsOptional() @IsString() @MaxLength(255) customerEmail?: string;
+    @IsOptional() @IsEmail() @MaxLength(255) customerEmail?: string;
     @IsOptional() @IsBoolean() makeDefault?: boolean;
+
+    /** One-use challenge returned by GET /acceptance for this tenant. */
+    @IsUUID()
+    consentId!: string;
+
+    /** Exact-true guards prevent direct API clients bypassing either checkbox. */
+    @Equals(true)
+    acceptEndUserPolicy!: true;
+
+    @Equals(true)
+    acceptPersonalDataAuth!: true;
 }
 
 /**
@@ -41,24 +55,12 @@ export class PaymentSourceController {
     @Get(':tenantId/acceptance')
     @Roles('tenant_admin', 'super_admin')
     async acceptance(@Param('tenantId') tenantId: string) {
-        const contracts = await this.paymentSources.getAcceptanceContracts(tenantId);
+        const challenge = await this.paymentSources.issueAcceptanceChallenge(tenantId);
         return {
             success: true,
-            data: {
-                provider: contracts.provider,
-                // Only the links and types travel to the browser; the tokens are
-                // re-fetched server-side when the source is actually created.
-                endUserPolicy: {
-                    permalink: contracts.endUserPolicy.permalink,
-                    type: contracts.endUserPolicy.type,
-                },
-                personalDataAuth: contracts.personalDataAuth
-                    ? {
-                          permalink: contracts.personalDataAuth.permalink,
-                          type: contracts.personalDataAuth.type,
-                      }
-                    : null,
-            },
+            // JWT acceptance tokens stay server-side. The browser receives a
+            // one-use nonce plus immutable evidence for what it displayed.
+            data: challenge,
         };
     }
 
@@ -80,8 +82,13 @@ export class PaymentSourceController {
             kind: body.kind,
             token: body.token,
             customerEmail: body.customerEmail || req?.user?.email || '',
+            consentId: body.consentId,
+            acceptEndUserPolicy: body.acceptEndUserPolicy,
+            acceptPersonalDataAuth: body.acceptPersonalDataAuth,
             // Consent evidence: who accepted, and from where.
             acceptedIp: req?.headers?.['cf-connecting-ip'] || req?.ip,
+            acceptedByUserId: req?.user?.id,
+            acceptedByEmail: req?.user?.email,
             makeDefault: body.makeDefault,
         });
         return { success: true, data: result };

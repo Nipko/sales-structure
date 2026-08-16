@@ -39,6 +39,11 @@ export class CreateTenantDto {
     @IsIn([...TENANT_PLAN_SLUGS])
     plan?: string;
 
+    /** Explicit classification: internal tenants bypass billing/fiscal sales. */
+    @IsOptional()
+    @IsBoolean()
+    isInternal?: boolean;
+
     @IsEmail()
     @MaxLength(254)
     ownerEmail: string;

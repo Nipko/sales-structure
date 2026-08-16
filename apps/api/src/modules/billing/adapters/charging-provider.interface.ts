@@ -24,7 +24,13 @@ export interface AcceptanceContract {
 
 export interface AcceptanceContracts {
     endUserPolicy: AcceptanceContract;
-    personalDataAuth?: AcceptanceContract;
+    /**
+     * Wompi requires this second, independent consent on both
+     * POST /payment_sources and POST /transactions.  Keeping it required in the
+     * charging contract prevents an apparently valid source/charge request from
+     * being sent without the personal-data authorization.
+     */
+    personalDataAuth: AcceptanceContract;
 }
 
 /** Evidence that the customer accepted the contracts, persisted for audit (never the JWT itself). */
@@ -50,6 +56,18 @@ export interface StartPaymentSourceInput {
     acceptance: AcceptanceContracts;
     /** Phone number for wallet sources (Nequi). */
     phoneNumber?: string;
+    /** Default statement shown for Bancolombia recurring-account mandates. */
+    paymentDescription?: string;
+}
+
+export interface PaymentSourceAuthorizationContext {
+    /** Token kind determines which `/tokens/:kind/:id` endpoint must be polled. */
+    kind: PaymentSourceKind;
+    /** Needed when an approved token is finally converted into a payment source. */
+    customerEmail: string;
+    paymentDescription?: string;
+    /** Fresh provider tokens for the same contract versions the user accepted. */
+    acceptance?: AcceptanceContracts;
 }
 
 export type PaymentSourceStatus = 'pending_auth' | 'available' | 'declined' | 'voided' | 'error';
@@ -165,7 +183,11 @@ export interface IChargingProvider {
     startPaymentSource(input: StartPaymentSourceInput): Promise<ProviderPaymentSource>;
 
     /** Re-read a source whose authorization was still pending. */
-    pollPaymentSourceAuth(providerSourceId: string, authTokenId?: string): Promise<ProviderPaymentSource>;
+    pollPaymentSourceAuth(
+        providerSourceId: string,
+        authTokenId?: string,
+        context?: PaymentSourceAuthorizationContext,
+    ): Promise<ProviderPaymentSource>;
 
     /** Revoke a stored source (customer removed the card, or it went bad). */
     voidPaymentSource(providerSourceId: string): Promise<void>;

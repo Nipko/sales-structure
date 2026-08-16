@@ -9,6 +9,7 @@ import { AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { HttpRequestHandler } from './handlers/http-request.handler';
 import { LeadCapturedEvent } from './events/lead-captured.event';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 export interface AutomationJobData {
     tenantId: string;
@@ -60,6 +61,27 @@ export class AutomationJobsProcessor extends WorkerHost {
     async process(job: Job<AutomationJobData>): Promise<any> {
         const { tenantId, schemaName, executionId, ruleName, action, event } = job.data;
         const startTime = Date.now();
+
+        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (!entitlement.allowed) {
+            if (entitlement.restrictionLevel === 'unavailable') {
+                throw new Error(`subscription_entitlement_unavailable:${entitlement.error ?? 'unknown'}`);
+            }
+            const reason = entitlement.error ?? 'subscription_restricted';
+            if (executionId) {
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `UPDATE automation_executions
+                     SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2
+                     WHERE id = $1::uuid`,
+                    [executionId, JSON.stringify({ error: reason, skipped: true })],
+                );
+            }
+            this.logger.warn(
+                `[AutomationJobs] Omitido '${action.type}' para tenant=${tenantId}: ${reason}`,
+            );
+            return { skipped: true, reason };
+        }
 
         // Per-tenant rate limit check — if exceeded, throw to trigger BullMQ retry
         if (await this.throttle.isLimited(tenantId, 'automation')) {

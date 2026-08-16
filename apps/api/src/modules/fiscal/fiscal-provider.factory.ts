@@ -37,4 +37,12 @@ export class FiscalProviderFactory {
         );
         return null;
     }
+
+    /** Resolve the immutable provider name persisted on FiscalInvoice. */
+    getByName(name: string): IFiscalInvoiceProvider | null {
+        if (name === this.factus.name) return this.factus;
+        if (name === this.usRemote.name) return this.usRemote;
+        this.logger.error(`Unknown stored fiscal provider: ${name}`);
+        return null;
+    }
 }

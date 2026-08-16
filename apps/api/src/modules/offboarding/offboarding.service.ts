@@ -167,30 +167,14 @@ export class OffboardingService {
 
         const now = new Date();
 
+        // Use the canonical billing state machine. It preserves ACTIVE access
+        // through the already-paid period, atomically fences unresolved engine
+        // charges and disables future scheduling. The previous duplicate path
+        // wrote tenant CANCELLED first and swallowed a subscription-update
+        // failure, which both cut access immediately and could leave split
+        // state.
         await assertOwned();
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { subscriptionStatus: 'cancelled' },
-        });
-
-        // Try to update billing subscription if it exists
-        try {
-            const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
-            if (sub) {
-                await assertOwned();
-                await this.prisma.billingSubscription.update({
-                    where: { id: sub.id },
-                    data: {
-                        status: 'cancelled',
-                        cancelAtPeriodEnd: true,
-                        cancelledAt: now,
-                        cancellationReason: reason ?? null,
-                    },
-                });
-            }
-        } catch (error) {
-            this.logger.warn(`Failed to update billing subscription for tenant ${tenantId}: ${error}`);
-        }
+        await this.billing.cancelSubscription(tenantId, { immediate: false, reason });
 
         // Audit log
         try {
@@ -206,7 +190,10 @@ export class OffboardingService {
             this.logger.warn(`Failed to create audit log for voluntary cancel: ${error}`);
         }
 
-        await this.redis.del(`tenant_plan:${tenantId}`);
+        await Promise.all([
+            this.redis.del(`tenant_plan:${tenantId}`),
+            this.redis.del(`sub_status:${tenantId}`),
+        ]);
 
         this.logger.log(`Tenant ${tenantId} voluntarily cancelled (reason: ${reason || 'none'})`);
 
@@ -727,14 +714,15 @@ export class OffboardingService {
             });
         }
 
+        // Reactivation restores runtime infrastructure; it is not a hidden way
+        // to mint a paid subscription. Prove standing before re-enabling any
+        // dependent state, then prove it again under row locks at the final
+        // commit. Terminal subscriptions stay terminal and must use the normal
+        // billing/comp workflow instead.
+        await this.assertCanonicalReactivationStanding(this.prisma, tenantId, new Date());
+
         // Restore dependent state while the tenant remains inactive. The
         // tenant row is the final runtime-ready commit below.
-        await assertOwned();
-        await this.prisma.user.updateMany({
-            where: { tenantId },
-            data: { isActive: true },
-        });
-
         // Re-enable channel_accounts that were turned off during offboarding,
         // BUT skip the ones we actually unsubscribed at the provider (Meta /
         // Telegram). Those need a fresh OAuth reconnect; flipping is_active
@@ -768,37 +756,37 @@ export class OffboardingService {
             this.logger.warn(`[Reactivate ${tenantId}] ${skippedChannels} channel(s) need OAuth reconnect (provider unsubscribed) — left inactive`);
         }
 
-        // Update billing subscription if exists
-        try {
-            const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
-            if (sub) {
-                await this.prisma.billingSubscription.update({
-                    where: { id: sub.id },
-                    data: {
-                        status: 'active',
-                        cancelAtPeriodEnd: false,
-                        cancelledAt: null,
-                        cancellationReason: null,
-                    },
-                });
-            }
-        } catch (error) {
-            this.logger.warn(`Failed to update billing subscription on reactivation for tenant ${tenantId}: ${error}`);
-        }
-
-        // Clear past_due Redis key
-        await this.redis.del(`offboard:past_due:${tenantId}`);
-
-        // Invalidate caches
-        await this.redis.del(`tenant:${tenantId}:config`);
-        await this.redis.del(`tenant:${tenantId}:schema`);
-        await this.redis.del(`tenant_plan:${tenantId}`);
-
         await assertOwned();
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { isActive: true, subscriptionStatus: 'active' },
+        await this.prisma.$transaction(async (tx: any) => {
+            await tx.$queryRawUnsafe(
+                'SELECT id FROM tenants WHERE id = $1::uuid FOR UPDATE',
+                tenantId,
+            );
+            await tx.$queryRawUnsafe(
+                'SELECT id FROM billing_subscriptions WHERE tenant_id = $1::uuid FOR UPDATE',
+                tenantId,
+            );
+            await this.assertCanonicalReactivationStanding(tx, tenantId, new Date());
+            await tx.user.updateMany({
+                where: { tenantId },
+                data: { isActive: true },
+            });
+            await tx.tenant.update({
+                where: { id: tenantId },
+                data: { isActive: true, subscriptionStatus: 'active' },
+            });
         });
+
+        // Cache cleanup is best-effort after the durable commit. A Redis outage
+        // must not roll back PostgreSQL or report that a paid tenant is inactive.
+        await Promise.allSettled([
+            this.redis.del(`offboard:past_due:${tenantId}`),
+            this.redis.del(`tenant:${tenantId}:config`),
+            this.redis.del(`tenant:${tenantId}:schema`),
+            this.redis.del(`tenant_plan:${tenantId}`),
+            this.redis.del(`sub_status:${tenantId}`),
+            this.redis.del(`plan_features:${tenantId}`),
+        ]);
 
         // Audit log
         try {
@@ -822,6 +810,58 @@ export class OffboardingService {
             isActive: true,
             subscriptionStatus: 'active',
         };
+    }
+
+    private async assertCanonicalReactivationStanding(
+        db: any,
+        tenantId: string,
+        now: Date,
+    ): Promise<void> {
+        const [tenant, sub] = await Promise.all([
+            db.tenant.findUnique({ where: { id: tenantId }, select: { isInternal: true } }),
+            db.billingSubscription.findUnique({ where: { tenantId } }),
+        ]);
+        if (tenant?.isInternal === true) return;
+        if (!sub) {
+            throw new ConflictException({
+                error: 'billing_reactivation_requires_standing',
+                message: 'Reactiva la suscripción mediante un pago aprobado o una cortesía vigente.',
+            });
+        }
+        if (['cancelled', 'expired'].includes(sub.status)) {
+            throw new ConflictException({
+                error: 'terminal_subscription_requires_billing_flow',
+                status: sub.status,
+                message: 'Una suscripción terminal no puede convertirse a activa desde offboarding.',
+            });
+        }
+        const periodIsLive = !!sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() > now.getTime();
+        const isActiveComp = sub.status === 'active'
+            && String(sub.cancellationReason ?? '').startsWith('comp:')
+            && periodIsLive;
+        if (isActiveComp) return;
+        if (sub.status !== 'active' || !periodIsLive) {
+            throw new ConflictException({
+                error: 'billing_reactivation_requires_standing',
+                status: sub.status,
+                message: 'La suscripción debe recuperar standing por el flujo de cobro antes de reactivar el tenant.',
+            });
+        }
+        const paidCycle = await db.billingChargeAttempt.findFirst({
+            where: {
+                subscriptionId: sub.id,
+                status: 'succeeded',
+                purpose: { in: ['initial', 'renewal'] },
+                periodEnd: { gt: now },
+            },
+            select: { id: true },
+        });
+        if (!paidCycle) {
+            throw new ConflictException({
+                error: 'billing_reactivation_requires_standing',
+                message: 'No existe un ciclo vigente respaldado por un cobro aprobado.',
+            });
+        }
     }
 
     /**
@@ -1425,6 +1465,27 @@ export class OffboardingService {
                 );
                 await lease.assertOwned();
                 await this.prisma.preflightTenantPublicPurge();
+                await lease.assertOwned();
+                // A local terminal status does not prove that Mercado Pago
+                // cancelled its remote mandate. The adapter/credentials are no
+                // longer present, so deleting the only mandate id would make a
+                // continuing debit invisible and impossible to reconcile. Stop
+                // before DROP for every legacy MP id, regardless of local status;
+                // operations must cancel/verify it remotely and only then clear
+                // the id as part of the audited retirement procedure.
+                const legacyMandate = await this.prisma.billingSubscription.findUnique({
+                    where: { tenantId },
+                    select: { provider: true, providerSubscriptionId: true, status: true },
+                });
+                if (legacyMandate?.provider === 'mercadopago' && legacyMandate.providerSubscriptionId) {
+                    throw new ConflictException({
+                        error: 'retired_provider_mandate_requires_verification',
+                        provider: 'mercadopago',
+                        mandateId: legacyMandate.providerSubscriptionId,
+                        localStatus: legacyMandate.status,
+                        message: 'Cancel and verify the Mercado Pago mandate remotely before purging this tenant.',
+                    });
+                }
                 await lease.assertOwned();
                 await this.prisma.dropTenantSchema(tenant.schemaName);
                 this.logger.log(`[Purge ${tenantId}] Schema "${tenant.schemaName}" dropped and verified`);

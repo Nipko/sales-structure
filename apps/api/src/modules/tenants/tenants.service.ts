@@ -43,13 +43,19 @@ export const TENANT_PLAN_SLUGS = ['emprendedor', 'starter', 'pro', 'enterprise',
 export type TenantPlanSlug = typeof TENANT_PLAN_SLUGS[number];
 export const TENANT_LANGUAGE_TAGS = ['es-CO', 'es-MX', 'es-ES', 'en-US', 'pt-BR', 'fr-FR'] as const;
 
-type TenantProvisioningStage = 'owner' | 'schema' | 'agent' | 'businessInfo' | 'vertical' | 'invitation';
+type TenantProvisioningStage = 'owner' | 'schema' | 'agent' | 'businessInfo' | 'vertical' | 'invitation' | 'activation';
 
 interface TenantProvisioningState {
-    version: 2;
+    version: 3;
     source: 'super_admin';
     status: 'pending' | 'failed' | 'complete';
-    selection: { industry: string; subType: string | null; plan: TenantPlanSlug; ownerEmail: string };
+    selection: {
+        industry: string;
+        subType: string | null;
+        plan: TenantPlanSlug;
+        ownerEmail: string;
+        isInternal: boolean;
+    };
     stages: Record<TenantProvisioningStage, boolean>;
     currentStage?: TenantProvisioningStage;
     error?: string;
@@ -102,6 +108,7 @@ export class TenantsService {
         subType?: string | null;
         language?: string;
         plan?: string;
+        isInternal?: boolean;
         ownerEmail: string;
         ownerFirstName: string;
         ownerLastName?: string;
@@ -110,6 +117,7 @@ export class TenantsService {
         const slug = (data.slug || '').trim().toLowerCase();
         const language = data.language || 'es-CO';
         const plan = (data.plan || 'emprendedor') as TenantPlanSlug;
+        const isInternal = data.isInternal === true;
         const ownerEmail = (data.ownerEmail || '').trim().toLowerCase();
         const ownerFirstName = (data.ownerFirstName || '').trim();
         const ownerLastName = (data.ownerLastName || '').trim();
@@ -227,7 +235,8 @@ export class TenantsService {
                 && tenant.language === language
                 && tenant.plan === plan
                 && existingState.selection?.subType === subType
-                && existingState.selection?.ownerEmail === ownerEmail;
+                && existingState.selection?.ownerEmail === ownerEmail
+                && (existingState.selection?.isInternal === true) === isInternal;
 
             if (!sameRequest) {
                 throw new ConflictException(`Tenant slug "${slug}" already exists`);
@@ -236,8 +245,8 @@ export class TenantsService {
             const existingStages = existingState.stages as Partial<Record<TenantProvisioningStage, boolean>>;
             provisioning = {
                 ...existingState,
-                version: 2,
-                selection: { industry, subType, plan, ownerEmail },
+                version: 3,
+                selection: { industry, subType, plan, ownerEmail, isInternal },
                 stages: {
                     owner: existingStages.owner === true,
                     schema: existingStages.schema === true,
@@ -245,6 +254,7 @@ export class TenantsService {
                     businessInfo: existingStages.businessInfo === true,
                     vertical: existingStages.vertical === true,
                     invitation: existingStages.invitation === true,
+                    activation: existingStages.activation === true,
                 },
             };
             this.logger.warn(`Resuming failed tenant provisioning for ${tenant.id} at ${existingState.currentStage || 'unknown'}`);
@@ -260,10 +270,10 @@ export class TenantsService {
                 });
             }
             provisioning = {
-                version: 2,
+                version: 3,
                 source: 'super_admin',
                 status: 'pending',
-                selection: { industry, subType, plan, ownerEmail },
+                selection: { industry, subType, plan, ownerEmail, isInternal },
                 stages: {
                     owner: false,
                     schema: false,
@@ -271,6 +281,7 @@ export class TenantsService {
                     businessInfo: false,
                     vertical: false,
                     invitation: false,
+                    activation: false,
                 },
                 startedAt: now,
                 updatedAt: now,
@@ -286,6 +297,7 @@ export class TenantsService {
                         language,
                         schemaName: requestedSchemaName,
                         plan,
+                        isInternal,
                         isActive: false,
                         signupSource: 'super_admin',
                         settings: { subType, provisioning } as any,
@@ -378,7 +390,7 @@ export class TenantsService {
                         where: { id: existingOwner.id },
                         data: {
                             tenantId: tenant!.id,
-                            onboardingCompleted: true,
+                            onboardingCompleted: isInternal,
                         },
                     });
                     return;
@@ -427,7 +439,7 @@ export class TenantsService {
             return owner;
         };
         await assertOwnerOwnership();
-        if (provisioningWasComplete) return tenant;
+        if (provisioningWasComplete && provisioning.stages.activation) return tenant;
 
         await runStage('schema', async () => {
             this.logger.log(`Allocating schema from "${schemaName}" for tenant "${name}"...`);
@@ -503,6 +515,33 @@ export class TenantsService {
             if (!invitation?.id) throw new Error('No se creó la invitación del propietario');
         });
 
+        // Administrative provisioning must classify the account before it can
+        // become operational. Internal/demo tenants are explicitly usable and
+        // non-billable. Commercial tenants remain inactive/onboarding-pending;
+        // the invited owner completes the normal country/cycle/payment flow,
+        // which creates the canonical TRIALING or PENDING_AUTH subscription.
+        await runStage('activation', async () => {
+            const owner = await assertOwnerOwnership();
+            const completedAt = isInternal ? new Date() : null;
+            await assertLockOwned();
+            await this.prisma.$transaction(async (tx: any) => {
+                await tx.tenant.update({
+                    where: { id: tenant!.id },
+                    data: {
+                        isInternal,
+                        isActive: isInternal,
+                        onboardingCompletedAt: completedAt,
+                    },
+                });
+                await tx.user.update({
+                    where: { id: owner.id },
+                    data: { onboardingCompleted: isInternal },
+                });
+            });
+            tenant = await this.prisma.tenant.findUnique({ where: { id: tenant!.id } });
+            if (!tenant) throw new Error('El tenant desapareció durante su clasificación de facturación');
+        });
+
         await assertOwnerOwnership();
         const completedAt = new Date().toISOString();
         provisioning = {
@@ -513,10 +552,7 @@ export class TenantsService {
             updatedAt: completedAt,
             completedAt,
         };
-        tenant = await persistProvisioning(provisioning, {
-            isActive: true,
-            onboardingCompletedAt: new Date(completedAt),
-        });
+        tenant = await persistProvisioning(provisioning);
 
         await assertLockOwned();
         await this.prisma.auditLog.create({
@@ -525,7 +561,12 @@ export class TenantsService {
                 userId: actorUserId,
                 action: 'tenant_created',
                 resource: 'tenant',
-                details: { name, slug, schemaName, industry, subType, plan, ownerEmail, provisioning: 'complete' },
+                details: {
+                    name, slug, schemaName, industry, subType, plan, ownerEmail,
+                    isInternal,
+                    accessState: isInternal ? 'internal_active' : 'commercial_onboarding_required',
+                    provisioning: 'complete',
+                },
             },
         }).catch((error: any) => this.logger.warn(`Tenant ${tenant!.id} audit failed: ${error.message}`));
 
@@ -780,11 +821,82 @@ export class TenantsService {
         actor: { userId?: string | null; email?: string | null },
         reason: string,
     ): Promise<{ id: string; name: string; isInternal: boolean }> {
-        const tenant = await this.prisma.tenant.update({
-            where: { id },
-            data: { isInternal },
-            select: { id: true, name: true, isInternal: true },
+        const subscription = await this.prisma.billingSubscription.findUnique({ where: { tenantId: id } });
+        if (!isInternal && subscription?.cancellationReason?.startsWith('comp: internal-use')) {
+            throw new BadRequestException({
+                error: 'internal_reactivation_required',
+                message: 'Reactiva y rearma la facturación mediante el flujo explícito antes de desmarcar este tenant como interno.',
+            });
+        }
+        if (subscription?.providerSubscriptionId
+            && !['cancelled', 'expired'].includes(subscription.status)) {
+            throw new BadRequestException({
+                error: 'live_billing_mandate',
+                message: 'Cancela primero la suscripción activa en el proveedor; marcarla interna no detiene un mandato remoto.',
+                provider: subscription.provider,
+                mandateId: subscription.providerSubscriptionId,
+            });
+        }
+        const tenant = await this.prisma.$transaction(async (tx: any) => {
+            const updated = await tx.tenant.update({
+                where: { id },
+                data: { isInternal },
+                select: { id: true, name: true, isInternal: true },
+            });
+
+            if (isInternal && subscription) {
+                // Disable the engine before retiring queued work. A worker that
+                // picked up a scheduled attempt concurrently will fail its live
+                // revalidation on engine_disabled and cannot move money.
+                await tx.billingSubscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        engine: 'disabled',
+                        nextChargeAt: null,
+                        cancellationReason: `comp: internal-use — ${reason}`,
+                        dunningState: 'none',
+                    },
+                });
+                // This read happens after engine=disabled in the SAME
+                // transaction. A worker that already reserved becomes visible
+                // here and rolls the conversion back; a worker that revalidates
+                // after commit sees engine_disabled and cannot charge.
+                const unresolved = await tx.billingChargeAttempt.findFirst({
+                    where: {
+                        subscriptionId: subscription.id,
+                        OR: [
+                            { status: { in: ['in_flight', 'pending_provider'] } },
+                            { failureClass: 'indeterminate' },
+                        ],
+                    },
+                    select: { id: true, status: true, reference: true },
+                });
+                if (unresolved) {
+                    throw new BadRequestException({
+                        error: 'billing_charge_unresolved',
+                        message: 'Resuelve primero el cobro en curso; podría haberse debitado y no es seguro convertir la cuenta.',
+                        attemptId: unresolved.id,
+                        reference: unresolved.reference,
+                    });
+                }
+                await tx.billingChargeAttempt.updateMany({
+                    where: { subscriptionId: subscription.id, status: 'scheduled' },
+                    data: {
+                        status: 'superseded',
+                        failureCode: 'tenant_marked_internal',
+                        settledAt: new Date(),
+                    },
+                });
+            }
+            return updated;
         });
+
+        if (isInternal && subscription) {
+            await this.redis.del(`tenant_plan:${id}`);
+            await this.redis.del(`sub_status:${id}`);
+            await this.redis.del(`plan_features:${id}`);
+        }
+        await this.redis.del(`sub_internal:${id}`);
 
         await this.redis.del(tenantDetailCacheKey(id));
         await this.redis.del(legacyTenantConfigCacheKey(id));

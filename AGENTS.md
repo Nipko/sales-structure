@@ -114,7 +114,7 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 | **AI & Config** | ai (router + 5 providers), persona (multi-agent CRUD, templates, channel assignment), knowledge, copilot |
 | **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring, analytics, insights, deal-approval, bulk-update, pipeline-stages), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
-| **Billing & Finance** | billing (MercadoPago adapter, webhook, reconciliation cron, email listeners, plan quotas), financials (SaaS metrics, snapshots, infra costs, exchange rates), offboarding (tenant lifecycle, grace enforcer cron, archive cleaner) |
+| **Billing & Finance** | billing (Wompi adapter + internal subscription engine, payment sources, webhook, reconciliation/dunning, plan quotas), tenant-payments (tenant-owned Mercado Pago credentials and customer payment links), fiscal (Factus/DIAN), financials (SaaS metrics, snapshots, infra costs, exchange rates), offboarding (tenant lifecycle, grace enforcer cron, archive cleaner) |
 | **Operations** | broadcast, inventory, orders, compliance, email, email-templates, offers, business-info |
 | **Media & Files** | media (upload, resize, logo, tags, serve) |
 | **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection, multi-calendar, Google/Microsoft sync) |
@@ -131,7 +131,7 @@ WhatsappModule → ConversationsModule → [PersonaModule, AIModule, ChannelsMod
 ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, InstagramTokenRefreshService, conversational adapters (WA/IG/Messenger/Telegram) plus internal Email inbound and legacy one-way SMS support
 ThrottleModule: @Global — TenantThrottleService available everywhere
 AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsService, ScheduledReportsService, BIApiController
-BillingModule provides: BillingService, MercadoPagoAdapter, ReconciliationProcessor, BillingEmailService
+BillingModule provides: BillingService, WompiAdapter, payment-source/internal renewal engine, ReconciliationProcessor, BillingEmailService
 FinancialsModule provides: FinancialsService, FinancialSnapshotService (super_admin only)
 OffboardingModule provides: OffboardingService, OffboardingCronService (depends on all 5 BullMQ queues)
 ```
@@ -195,7 +195,7 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | Offboarding cron | `offboarding/offboarding-cron.service.ts` (grace enforcer @3AM, archive cleaner @4AM) |
 | Financials | `financials/financials.service.ts` (MRR, ARR, ARPU, churn, LTV, quick ratio, tenant profitability) |
 | Financial snapshots | `financials/financial-snapshot.service.ts` (monthly @1AM, MRR movements, per-tenant snapshots) |
-| Billing | `billing/billing.service.ts` (MercadoPago adapter, subscription lifecycle, plan quotas) |
+| Billing | `billing/billing.service.ts` (Wompi/internal-engine subscription lifecycle, plan quotas) |
 | Billing webhooks | `billing/webhook.controller.ts` (HMAC-SHA256 verify + idempotency + dispatch) |
 | Billing reconciliation | `billing/processors/reconciliation.processor.ts` (hourly past_due sweep + daily drift) |
 | Impersonation | `auth/auth.service.ts` (impersonate method, 1h tokens, audit trail) |
@@ -336,7 +336,7 @@ scoring_config         — Lead scoring configuration (weights JSONB, purchase_k
 ### Global Prisma Tables (Billing & Finance)
 ```
 billing_plans              — 5 plan families (emprendedor/starter/pro/enterprise/custom); runtime rows are authoritative
-billing_subscriptions      — Per-tenant subscription (status, trial, MercadoPago external IDs)
+billing_subscriptions      — Per-tenant subscription (status, trial, provider/engine, anchor and next charge)
 billing_payments           — Payment history (amount, status, provider reference)
 financial_snapshots        — Monthly platform-wide SaaS metrics (MRR, churn, costs, plan distribution)
 tenant_financial_snapshots — Per-tenant monthly snapshots (revenue, LLM cost, plan, message count)
@@ -345,18 +345,19 @@ exchange_rates             — Currency exchange rates for multi-currency suppor
 audit_logs                 — Offboarding and billing audit trail
 ```
 
-## Billing System (Apr 2026)
+## Billing System (Aug 2026)
 
-- **Payment provider**: MercadoPago (LatAm market). Adapter pattern via `IPaymentProvider` interface
+- **Subscription provider**: Wompi is the only live platform→tenant rail (Colombia/COP), driven by Parallly's internal renewal engine. Mercado Pago is retired from subscriptions.
+- **Tenant customer payments**: Mercado Pago remains only under `tenant-payments`: each tenant supplies its own encrypted credentials to generate links and collect tenant→customer purchases. Those credentials never pay Parallly.
 - **Plans**: 5 plan families seeded in `billing_plans`; active database rows are authoritative. Provider sync scripts do not by themselves prove a payment provider is enabled in production.
-- **Subscription lifecycle**: trialing → active → past_due → cancelled/expired. State machine in `BillingService`
+- **Subscription lifecycle**: pending_auth → trialing → active → past_due → cancelled/expired. `pending_auth` never grants paid entitlement.
 - **Trial**: Created at end of onboarding (`completeOnboarding`). Daily cron fires `trial.ending_soon` 3 days before end
-- **Webhooks**: `POST /billing/webhook/:provider` (for example, `mercadopago`) with provider-specific signature verification + Redis idempotency
+- **Subscription webhooks**: `POST /billing/webhook/wompi` with Wompi checksum verification + Redis idempotency. Mercado Pago webhooks live only under tenant-payments for tenant→customer links.
 - **Reconciliation**: Hourly past_due sweep + daily drift detection via `ReconciliationProcessor`
 - **Plan quotas**: Server-side enforcement on services count, automation rules count, broadcast limits
 - **Email templates**: 5 billing-specific templates (payment_success, payment_failed, trial_ending, subscription_cancelled, plan_upgraded)
 - **Dashboard pages**: `/admin/settings/billing` (plan info, countdown, actions, payment history), final onboarding step (plan picker)
-- **Card tokenization**: MercadoPago card tokenization for Pro/Enterprise self-serve checkout
+- **Payment sources**: Wompi browser tokenization for card, Nequi push approval and Bancolombia redirect/polling; remote source creation requires both explicit acceptance contracts and status `APPROVED/AVAILABLE`.
 
 ## Offboarding System (Apr 2026)
 
@@ -617,9 +618,9 @@ See `.env.example`. Key ones:
 - `GOOGLE_OAUTH_CLIENT_ID` — Google Sign-In client ID
 - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` — Email service
 - `MEDIA_STORAGE_PATH` — /data/media (Docker volume)
-- `MP_ACCESS_TOKEN` — MercadoPago API token (sandbox or production)
-- `MP_PUBLIC_KEY` — MercadoPago public key (for card tokenization)
-- `MP_WEBHOOK_SECRET` — HMAC-SHA256 secret for webhook verification
+- `WOMPI_PUBLIC_KEY`, `WOMPI_PRIVATE_KEY` — Wompi tokenization/source/charge credentials
+- `WOMPI_EVENTS_SECRET`, `WOMPI_INTEGRITY_SECRET` — Wompi event checksum and transaction integrity secrets
+- Mercado Pago has no platform-level env secrets; tenant credentials are encrypted in tenant-payments storage
 - `NEXT_PUBLIC_INSTAGRAM_APP_ID` — Instagram OAuth app ID
 - `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI` — Instagram OAuth redirect URI
 - `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID` — Facebook Login configuration ID for Messenger

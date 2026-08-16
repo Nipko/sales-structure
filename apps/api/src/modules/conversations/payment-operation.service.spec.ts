@@ -190,6 +190,62 @@ describe('PaymentOperationService provider-neutral contract', () => {
         expect(state.row.status).toBe('handoff_required');
     });
 
+    it('keeps unsupported operations unavailable even when a payment-link-only provider is bound', async () => {
+        const provider: PaymentOperationProvider = {
+            id: 'links-only',
+            supports: kind => kind === 'payment_link',
+            resolveOwnership: jest.fn(),
+            createPaymentLink: jest.fn(),
+            refundPayment: jest.fn(),
+            applyDiscount: jest.fn(),
+            reconcile: jest.fn(),
+            findByIdempotencyKey: jest.fn(),
+        };
+        const { service, state } = createHarness(provider);
+
+        const result = await service.refundPayment(
+            schemaName,
+            tenantId,
+            contactId,
+            executionLedgerId,
+            { paymentReference: 'payment:123', currency: 'USD', reason: 'Requested' },
+        );
+
+        expect(result).toMatchObject({ error: 'payment_provider_unavailable', shouldHandoff: true });
+        expect(provider.resolveOwnership).not.toHaveBeenCalled();
+        expect(provider.refundPayment).not.toHaveBeenCalled();
+        expect(state.row.status).toBe('handoff_required');
+    });
+
+    it('rejects a caller amount that differs from the owned business object', async () => {
+        const provider: PaymentOperationProvider = {
+            id: 'links-only',
+            resolveOwnership: jest.fn().mockResolvedValue({
+                owned: true,
+                canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 5000,
+                canonicalCurrency: 'COP',
+            }),
+            createPaymentLink: jest.fn(),
+            refundPayment: jest.fn(),
+            applyDiscount: jest.fn(),
+            reconcile: jest.fn(),
+            findByIdempotencyKey: jest.fn(),
+        };
+        const { service } = createHarness(provider);
+
+        const result = await service.createPaymentLink(
+            schemaName,
+            tenantId,
+            contactId,
+            executionLedgerId,
+            { amountCents: 4000, currency: 'COP', description: 'Pedido', externalReference: 'order:123' },
+        );
+
+        expect(result).toMatchObject({ error: 'payment_ownership_unverified', shouldHandoff: true });
+        expect(provider.createPaymentLink).not.toHaveBeenCalled();
+    });
+
     it('rejects ambiguous money inputs before creating a ledger intent', async () => {
         const { service, executeInTenantSchema } = createHarness();
 

@@ -163,6 +163,7 @@ export default function TenantsPage() {
     subType: string | null;
     language: string;
     plan: TenantPlanSlug;
+    isInternal: boolean;
     ownerEmail: string;
     ownerFirstName: string;
     ownerLastName: string;

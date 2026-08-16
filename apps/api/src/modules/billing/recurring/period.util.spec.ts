@@ -171,15 +171,42 @@ describe('period.util', () => {
         });
 
         it('builds a provider reference that carries the subscription and period', () => {
-            const ref = buildChargeReference('11111111-2222-3333-4444-555555555555', new Date('2026-04-10T00:00:00Z'), 2);
-            expect(ref).toBe('sub_11111111_20260410_2');
+            const ref = buildChargeReference('11111111-2222-3333-4444-555555555555', new Date('2026-04-10T00:00:00Z'), 'renewal', 2);
+            expect(ref).toBe('sub_11111111222233334444555555555555_ren_20260410_2');
             expect(ref).not.toContain(':');
+        });
+
+        it('does not collide when UUIDs share the same first eight characters', () => {
+            const period = new Date('2026-04-10T00:00:00Z');
+            const first = buildChargeReference('11111111-2222-3333-4444-555555555555', period, 'renewal', 1);
+            const second = buildChargeReference('11111111-aaaa-bbbb-cccc-dddddddddddd', period, 'renewal', 1);
+
+            expect(first).not.toBe(second);
+            expect(first).toContain('11111111222233334444555555555555');
+            expect(second).toContain('11111111aaaabbbbccccdddddddddddd');
         });
 
         it('gives each retry its own reference', () => {
             const id = 'sub-1';
             const period = new Date('2026-04-10T00:00:00Z');
-            expect(buildChargeReference(id, period, 1)).not.toBe(buildChargeReference(id, period, 2));
+            expect(buildChargeReference(id, period, 'renewal', 1)).not.toBe(buildChargeReference(id, period, 'renewal', 2));
+        });
+
+        it('does not collide across charge purposes on the same subscription day', () => {
+            const id = '11111111-2222-3333-4444-555555555555';
+            const period = new Date('2026-04-10T00:00:00Z');
+            expect(buildChargeReference(id, period, 'initial', 1))
+                .not.toBe(buildChargeReference(id, period, 'upgrade_proration', 1));
+        });
+
+        it('keeps an operation cycle stable when authorization crosses UTC midnight', () => {
+            const id = '11111111-2222-3333-4444-555555555555';
+            const operation = `initial-activation:${id}`;
+            const before = new Date('2026-08-15T23:59:59.900Z');
+            const after = new Date('2026-08-16T00:00:00.100Z');
+
+            expect(buildCycleKey(id, before, 'initial', operation))
+                .toBe(buildCycleKey(id, after, 'initial', operation));
         });
     });
 

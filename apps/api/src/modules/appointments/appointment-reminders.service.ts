@@ -7,6 +7,7 @@ import { AppointmentsService } from './appointments.service';
 import { normalizeMetaLanguage } from '../whatsapp/seed-templates.config';
 import { CronLockService } from '../redis/cron-lock.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 @Injectable()
 export class AppointmentRemindersService {
@@ -42,6 +43,7 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
+                if (!await this.canSendTenantWork(tenant.id)) continue;
                 const settings = await this.appointmentsService.getReminderSettings(tenant.id);
                 if (!settings.reminder24h) continue;
                 await this.processReminders(tenant.id, tenant.schema_name, '24h');
@@ -72,6 +74,7 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
+                if (!await this.canSendTenantWork(tenant.id)) continue;
                 const settings = await this.appointmentsService.getReminderSettings(tenant.id);
                 if (!settings.reminder2h) continue;
                 await this.processReminders(tenant.id, tenant.schema_name, '2h');
@@ -101,6 +104,7 @@ export class AppointmentRemindersService {
             if (!tenants?.length) return;
 
             for (const tenant of tenants) {
+                if (!await this.canSendTenantWork(tenant.id)) continue;
                 const settings = await this.appointmentsService.getReminderSettings(tenant.id);
                 if (!settings.attendanceCheck) continue;
                 await this.processAttendanceChecks(tenant.id, tenant.schema_name);
@@ -173,6 +177,7 @@ export class AppointmentRemindersService {
     }
 
     private async sendReminderTemplate(tenantId: string, schemaName: string, appt: any, type: '24h' | '2h') {
+        await this.assertTenantCanSend(tenantId);
         if ((appt.contact_channel || 'whatsapp') !== 'whatsapp') {
             this.logger.debug(`Skipping template for non-WhatsApp contact ${appt.contact_phone}`);
             return;
@@ -256,6 +261,7 @@ export class AppointmentRemindersService {
     }
 
     private async sendAttendanceTemplate(tenantId: string, schemaName: string, appt: any) {
+        await this.assertTenantCanSend(tenantId);
         if ((appt.contact_channel || 'whatsapp') !== 'whatsapp') {
             return;
         }
@@ -298,6 +304,26 @@ export class AppointmentRemindersService {
             components,
         );
         this.logger.log(`Sent attendance check template to ${appt.contact_phone} for appointment ${appt.id}`);
+    }
+
+    private async canSendTenantWork(tenantId: string): Promise<boolean> {
+        const access = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (access.allowed) return true;
+        this.logger.warn(
+            `[AppointmentReminders] Skipping tenant=${tenantId}: `
+            + `${access.error ?? 'subscription_restricted'}`,
+        );
+        return false;
+    }
+
+    private async assertTenantCanSend(tenantId: string): Promise<void> {
+        const access = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
+        if (access.allowed) return;
+        throw new Error(
+            access.restrictionLevel === 'unavailable'
+                ? `subscription_entitlement_unavailable:${access.error ?? 'unknown'}`
+                : access.error ?? 'subscription_restricted',
+        );
     }
 
     private async processAutoComplete(tenantId: string, schemaName: string) {

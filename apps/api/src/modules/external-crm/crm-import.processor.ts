@@ -3,6 +3,8 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { CrmImportService, CRM_IMPORT_QUEUE, CrmImportJob } from './crm-import.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /**
  * Single concurrency: imports are long-running per-tenant operations and we
@@ -13,11 +15,19 @@ import { CrmImportService, CRM_IMPORT_QUEUE, CrmImportJob } from './crm-import.s
 export class CrmImportProcessor extends WorkerHost {
     private readonly logger = new Logger(CrmImportProcessor.name);
 
-    constructor(private readonly service: CrmImportService) {
+    constructor(
+        private readonly service: CrmImportService,
+        private readonly prisma: PrismaService,
+    ) {
         super();
     }
 
     async process(job: Job<CrmImportJob>): Promise<any> {
+        const access = await resolveTenantSubscriptionAccess(this.prisma, job.data.tenantId, 'write');
+        if (!access.allowed) {
+            if (access.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
+            return { ok: false, skipped: true, reason: access.error };
+        }
         await this.service.runImport(job.data);
         return { ok: true };
     }

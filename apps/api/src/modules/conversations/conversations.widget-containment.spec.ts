@@ -27,7 +27,21 @@ describe('ConversationsService widget containment', () => {
                 }
                 return [];
             }),
-            tenant: { findUnique: jest.fn().mockResolvedValue({ language: 'es' }) },
+            tenant: {
+                findUnique: jest.fn().mockResolvedValue({
+                    language: 'es',
+                    isInternal: false,
+                    subscriptionStatus: 'active',
+                    subscription: {
+                        status: 'active',
+                        trialEndsAt: null,
+                        cancelAtPeriodEnd: false,
+                        currentPeriodEnd: null,
+                        cancellationReason: null,
+                        dunningStartedAt: null,
+                    },
+                }),
+            },
             ...overrides.prisma,
         };
         const throttle = {
@@ -189,6 +203,9 @@ describe('ConversationsService widget containment', () => {
             'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human follow-up', 'inbound-1',
         ))).resolves.toBe('');
 
+        expect(executeInTenantSchema.mock.calls.some(
+            (call: any[]) => String(call[1]).includes('SELECT * FROM conversations'),
+        )).toBe(true);
         expect(executeInTenantSchema.mock.calls.some(
             (call: any[]) => String(call[1]).includes('SET agent_persona_id'),
         )).toBe(false);

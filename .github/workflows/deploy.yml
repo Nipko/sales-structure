@@ -96,6 +96,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # @prisma/client's workspace postinstall cannot discover the schema under
+      # apps/api from a fresh root install. Generate before Jest/tsc so CI never
+      # type-checks against Prisma's permissive fallback stub.
+      - name: Generate Prisma client
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
       - name: Install mobile dependencies
         run: npm ci --prefix apps/mobile
 
@@ -300,6 +306,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+          DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
       - name: TypeScript check (API)
         run: cd apps/api && npx tsc --noEmit

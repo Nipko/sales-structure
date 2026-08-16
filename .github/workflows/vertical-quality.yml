@@ -53,6 +53,11 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+          DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
       - run: npm ci --prefix apps/mobile
       - run: mkdir -p artifacts
       - name: Claims and competitive evidence
@@ -305,6 +310,11 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+          DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
       - run: mkdir -p artifacts
       - name: Full API regression
         run: >-

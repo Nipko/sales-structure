@@ -47,7 +47,8 @@ export class TenantWompiWebhookService {
             throw new UnauthorizedException(`invalid_wompi_event_signature:${signature.reason || 'unknown'}`);
         }
         const transactionId = String(body?.data?.transaction?.id || '').trim();
-        if (!transactionId || transactionId.length > 255 || /[\/\\?#\u0000-\u001f]/.test(transactionId)) {
+        // eslint-disable-next-line no-control-regex
+        if (!transactionId || transactionId.length > 255 || /[/?#\u0000-\u001f\\]/.test(transactionId)) {
             throw new UnauthorizedException('invalid_wompi_transaction_id');
         }
 

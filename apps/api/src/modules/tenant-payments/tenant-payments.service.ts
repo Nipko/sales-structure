@@ -871,6 +871,7 @@ export class TenantPaymentsService {
             throw new BadRequestException({ error: 'tenant_payment_reference_changed' });
         }
         const idempotencyKey = String(input.idempotencyKey || '').trim();
+        // eslint-disable-next-line no-control-regex
         if (!idempotencyKey || idempotencyKey.length > 180 || /[\u0000-\u001f]/.test(idempotencyKey)) {
             throw new BadRequestException({ error: 'invalid_payment_idempotency_key' });
         }

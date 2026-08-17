@@ -8,7 +8,7 @@ describe('WidgetService security containment', () => {
         const prisma = {
             $queryRawUnsafe: jest.fn(),
             tenant: { findUnique: jest.fn().mockResolvedValue({
-                id: 'tenant-1', schemaName: 'tenant_1', isActive: true,
+                id: 'tenant-1', schemaName: 'tenant_1', isActive: true, isInternal: true,
                 onboardingCompletedAt: new Date(),
             }) },
             ...overrides.prisma,

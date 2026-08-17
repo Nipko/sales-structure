@@ -28,7 +28,7 @@ GitHub y ≥1 LLM son obligatorias para arrancar; el resto habilita features con
 | **Google OAuth + Calendar** | Opcional | Client ID + Secret (login + sync de calendario) | console.cloud.google.com |
 | **Microsoft OAuth + Calendar** | Opcional | Client ID + Secret (login + Outlook Calendar) | portal.azure.com |
 | **Wompi** | Si para suscripciones pagadas | Public/Private key, Events secret, Integrity secret, webhook | comercios.wompi.co |
-| **Mercado Pago por tenant** | Opcional (cobros tenant→cliente) | Cada tenant pega Access Token, Public Key y Webhooks secret en su panel; no son secretos de plataforma | mercadopago.com.co/developers |
+| **Wompi/Mercado Pago por tenant** | Opcional (cobros tenant→cliente) | Cada tenant conecta sus propias llaves Wompi o credenciales Mercado Pago en el panel; no son secretos de plataforma | comercios.wompi.co / mercadopago.com.co/developers |
 | **Factus (DIAN Colombia)** | Opcional (factura electronica) | Base URL, Client ID/Secret, Username/Password | factus.com.co |
 | **Twilio** | Opcional (alertas + SMS creditos) | Account SID, Auth Token, numero/sender | twilio.com |
 | **S3-compatible (Cloudflare R2 / Backblaze B2 / AWS S3)** | Opcional (backups offsite) | Bucket, endpoint, access/secret key | dash.cloudflare.com (R2) / backblaze.com |
@@ -122,6 +122,11 @@ INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET}
 
 # ---- Encryption (AES-256-GCM, 64 hex) ----
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
+# Opcional: keyring dedicado para credenciales Wompi/MP de tenants. Si no se
+# define, usa ENCRYPTION_KEY con el key id "primary".
+# TENANT_PAYMENT_CREDENTIAL_KEY=<64-hex>
+# TENANT_PAYMENT_CREDENTIAL_KEY_ID=payments-2026-08
+# TENANT_PAYMENT_CREDENTIAL_PREVIOUS_KEYS={"payments-previous":"<64-hex>"}
 
 # ---- Internal Service Auth ----
 INTERNAL_API_KEY=${INTERNAL_API_KEY}
@@ -219,9 +224,9 @@ WOMPI_MERCHANT_TIMEZONE=America/Bogota
 WOMPI_ALLOW_SANDBOX_IN_PRODUCTION=false
 WOMPI_WEBHOOK_URL=https://api.TU-DOMINIO.com/api/v1/billing/webhook/wompi
 
-# Mercado Pago no tiene credenciales globales: cada tenant configura las suyas
-# en Configuración → Integraciones → Pagos para generar enlaces y cobrar a sus
-# propios clientes. Nunca se usa para pagar una suscripción de Parallly.
+# Los proveedores tenant→cliente no tienen credenciales globales: cada tenant
+# configura su cuenta Wompi o Mercado Pago en Configuración → Integraciones →
+# Pagos. Nunca se reutilizan para pagar una suscripción de Parallly.
 
 # ---- Factus (DIAN — factura electronica Colombia) ----
 FACTUS_BASE_URL=https://api-sandbox.factus.com.co
@@ -459,6 +464,9 @@ En el repositorio de GitHub, ve a Settings > Secrets and variables > Actions.
 | `INTERNAL_JWT_SECRET` | Secret para JWT (generado con `openssl rand -base64 48`) |
 | `JWT_REFRESH_SECRET` | Secret para refresh tokens (generado con `openssl rand -base64 48`) |
 | `ENCRYPTION_KEY` | 64 hex chars para AES-256-GCM (`openssl rand -hex 32`) |
+| `TENANT_PAYMENT_CREDENTIAL_KEY` | Opcional: clave AES-256-GCM dedicada (64 hex) para credenciales de cobro de tenants; si falta usa `ENCRYPTION_KEY` |
+| `TENANT_PAYMENT_CREDENTIAL_KEY_ID` | Identificador no secreto de la clave vigente; por defecto `primary` |
+| `TENANT_PAYMENT_CREDENTIAL_PREVIOUS_KEYS` | JSON opcional `keyId → clave 64-hex` durante una rotación; retirar sólo después del rewrap |
 | `INTERNAL_API_KEY` | API key servicio-a-servicio (`openssl rand -base64 32`) |
 | `META_APP_ID` | Facebook App ID |
 | `META_APP_SECRET` | Facebook App Secret |

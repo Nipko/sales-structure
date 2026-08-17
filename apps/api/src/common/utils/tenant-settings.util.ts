@@ -1,5 +1,40 @@
 import type { PrismaService } from '../../modules/prisma/prisma.service';
 
+/**
+ * Keys owned by a dedicated persistence/API boundary. They must never be
+ * writable or serializable through the generic `tenants.settings` contract.
+ */
+export const RESERVED_TENANT_SETTING_KEYS = ['tenantPayments'] as const;
+
+export function hasReservedTenantSetting(settings: unknown): boolean {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
+    return RESERVED_TENANT_SETTING_KEYS.some((key) => (
+        Object.prototype.hasOwnProperty.call(settings, key)
+    ));
+}
+
+/**
+ * Return a copy suitable for generic tenant responses. Never mutate the
+ * Prisma record or cached DTO supplied by the caller.
+ */
+export function redactReservedTenantSettings(settings: unknown): unknown {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return settings;
+
+    const safe = { ...(settings as Record<string, unknown>) };
+    for (const key of RESERVED_TENANT_SETTING_KEYS) delete safe[key];
+    return safe;
+}
+
+export function redactReservedTenantSettingsFromRecord<T>(record: T): T {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return record;
+    if (!Object.prototype.hasOwnProperty.call(record, 'settings')) return record;
+
+    return {
+        ...(record as Record<string, unknown>),
+        settings: redactReservedTenantSettings((record as Record<string, unknown>).settings),
+    } as T;
+}
+
 export interface TenantSettingsMergeOptions {
     industry?: string;
     isActive?: boolean;

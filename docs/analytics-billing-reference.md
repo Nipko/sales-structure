@@ -151,7 +151,7 @@ widget_triggers            — Web chat widget trigger rules (conditions, action
 > enumere.
 
 - **Subscription provider**: Wompi es el único riel platform→tenant vivo en CO/COP y se cobra con el motor recurrente interno. Mercado Pago está retirado de suscripciones; Stripe queda como adapter no ruteado donde no esté configurado. `mock` sólo en dev
-- **Tenant customer payments**: Mercado Pago vive únicamente en `tenant-payments`; cada tenant aporta Access Token + Webhooks secret cifrados para enlaces tenant→cliente. Esas credenciales no pagan Parallly
+- **Tenant customer payments**: Wompi Payment Links y Mercado Pago viven únicamente en `tenant-payments`; cada tenant aporta credenciales propias cifradas, elige un proveedor activo y recibe el dinero directamente. Esas credenciales no pagan Parallly. La feature runtime `customerPayments` bloquea enlaces nuevos, no la conciliación de links ya emitidos
 - **Plans**: 5 familias en `billing_plans` (`seed-billing-plans.js`, create-only; el panel/runtime son autoridad). Wompi no tiene catálogo remoto de planes ni endpoint de sync
 - **Precios**: se leen de `billing_plans` y sus overrides locales; no se fijan en esta referencia
 - **Ciclo mensual/anual**: precio total y elegibilidad se leen del catálogo vigente; ciclo, importe, moneda, ancla y timezone se congelan en la suscripción/intento. Ver `docs/billing-annual-cycle.md`

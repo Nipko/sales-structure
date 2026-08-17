@@ -1,9 +1,9 @@
-import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { TenantPaymentsService } from './tenant-payments.service';
+import { TenantPaymentStoreService } from './tenant-payment-store.service';
 
 const MP_API = 'https://api.mercadopago.com';
 
@@ -55,9 +55,9 @@ export class TenantPaymentsWebhookService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly crypto: WhatsappCryptoService,
         private readonly eventEmitter: EventEmitter2,
         private readonly tenantPayments: TenantPaymentsService,
+        @Optional() private readonly store?: TenantPaymentStoreService,
     ) {}
 
     /**
@@ -83,12 +83,20 @@ export class TenantPaymentsWebhookService {
         if (!paymentId || (type && !type.includes('payment'))) return;
 
         const signedDataId = String(query?.['data.id'] || '').trim().toLowerCase();
-        const webhookSecret = await this.tenantPayments.getWebhookSecret(tenantId);
-        if (!webhookSecret) {
-            throw new ServiceUnavailableException('tenant_payment_webhook_secret_missing');
+        const candidates = await this.tenantPayments.getMercadoPagoCredentialCandidates(tenantId);
+        if (!candidates.length) {
+            throw new ServiceUnavailableException('tenant_payment_account_identity_missing');
         }
-        if (!signedDataId || signedDataId !== paymentId.toLowerCase()
-            || !this.verifySignature(signedDataId, signatureHeader, requestIdHeader, webhookSecret)) {
+        if (!signedDataId || signedDataId !== paymentId.toLowerCase()) {
+            throw new UnauthorizedException('invalid_mercadopago_webhook_signature');
+        }
+        const matchingCredentials = candidates.filter(candidate => this.verifySignature(
+            signedDataId,
+            signatureHeader,
+            requestIdHeader,
+            candidate.webhookSecret,
+        ));
+        if (!matchingCredentials.length) {
             throw new UnauthorizedException('invalid_mercadopago_webhook_signature');
         }
         // Mercado Pago payment ids are numeric. Rejecting a signed but malformed
@@ -96,21 +104,37 @@ export class TenantPaymentsWebhookService {
         // and avoids a retry storm for a payload that can never be looked up.
         if (!/^\d+$/.test(paymentId)) return;
 
-        const token = await this.tokenFor(tenantId);
-        if (!token) {
-            throw new ServiceUnavailableException('tenant_payment_credentials_missing');
+        // The same webhook secret can legitimately survive an access-token
+        // rotation. Probe only signature-matching generations and select the
+        // first canonical payment whose collector matches that generation;
+        // current credentials are ordered first by the config service.
+        let token = '';
+        let payment: any;
+        let transientLookupFailure = false;
+        for (const candidate of matchingCredentials) {
+            const response = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+                headers: { Authorization: `Bearer ${candidate.accessToken}` },
+                signal: AbortSignal.timeout(15000),
+            }).catch(() => null);
+            if (!response?.ok) {
+                if (!response || response.status === 429 || response.status >= 500) {
+                    transientLookupFailure = true;
+                }
+                continue;
+            }
+            const canonical: any = await response.json();
+            if (String(canonical?.collector_id ?? '').trim() !== candidate.accountId) continue;
+            token = candidate.accessToken;
+            payment = canonical;
+            break;
         }
-
-        const res = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: AbortSignal.timeout(15000),
-        }).catch(() => null);
-        if (!res?.ok) {
+        if (!payment) {
             this.logger.warn(`[TenantPayments] no se pudo leer el pago ${paymentId} de ${tenantId}`);
-            throw new ServiceUnavailableException('mercadopago_payment_lookup_failed');
+            if (transientLookupFailure) {
+                throw new ServiceUnavailableException('mercadopago_payment_lookup_failed');
+            }
+            throw new UnauthorizedException('mercadopago_account_mismatch');
         }
-
-        const payment: any = await res.json();
         const reference = String(payment?.external_reference || '');
         const [kind, entityId] = reference.split(':');
         const target = TARGETS[kind];
@@ -120,7 +144,108 @@ export class TenantPaymentsWebhookService {
         }
 
         const status = this.mapStatus(payment?.status);
-        if (!status) return; // in_process / pending: todavía no hay nada que escribir
+        if (!status) return;
+
+        const paidAmountCents = Math.round(Number(payment?.transaction_amount) * 100);
+        const paidCurrency = String(payment?.currency_id || '').trim().toUpperCase();
+        if (this.store) {
+            const orderId = String(payment?.order?.id || '').trim();
+            let preferenceId = '';
+            let merchantReference = '';
+            if (orderId && /^\d+$/.test(orderId)) {
+                const merchantOrderResponse = await fetch(`${MP_API}/merchant_orders/${orderId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    signal: AbortSignal.timeout(15000),
+                }).catch(() => null);
+                if (!merchantOrderResponse?.ok) {
+                    throw new ServiceUnavailableException('mercadopago_merchant_order_lookup_failed');
+                }
+                const merchantOrder: any = await merchantOrderResponse.json();
+                preferenceId = String(merchantOrder?.preference_id || '').trim();
+                merchantReference = String(merchantOrder?.external_reference || '').trim();
+            }
+
+            if (preferenceId && merchantReference === reference) {
+                const eventKey = createHash('sha256')
+                    .update(`mp:${paymentId}:${status}:${paidAmountCents}:${paidCurrency}`)
+                    .digest('hex');
+                const settled = await this.store.settleMercadoPagoPayment({
+                    tenantId,
+                    providerLinkId: preferenceId,
+                    providerPaymentId: paymentId,
+                    canonicalReference: reference,
+                    status,
+                    amountCents: paidAmountCents,
+                    currency: paidCurrency,
+                    eventKey,
+                }).catch((error: any) => {
+                    this.logger.warn(`MP durable settlement failed for ${paymentId}: ${error.message}`);
+                    throw new ServiceUnavailableException('tenant_payment_persistence_failed');
+                });
+                if (settled) {
+                    if (settled.validationError) {
+                        this.eventEmitter.emit('tenant_payment.validation_failed', {
+                            tenantId,
+                            provider: 'mercadopago',
+                            providerPaymentId: paymentId,
+                            providerLinkId: preferenceId,
+                            canonicalReference: reference,
+                            reason: settled.validationError,
+                        });
+                    } else if (settled.transitioned && settled.status === 'paid') {
+                        this.eventEmitter.emit('tenant_payment.succeeded', {
+                            tenantId,
+                            provider: 'mercadopago',
+                            kind: settled.kind,
+                            entityId: settled.entityId,
+                            amountCents: paidAmountCents,
+                            currency: paidCurrency,
+                            providerPaymentId: paymentId,
+                            providerLinkId: preferenceId,
+                        });
+                    } else if (settled.transitioned && settled.status === 'refunded') {
+                        this.eventEmitter.emit('tenant_payment.refunded', {
+                            tenantId,
+                            provider: 'mercadopago',
+                            kind: settled.kind,
+                            entityId: settled.entityId,
+                            amountCents: paidAmountCents,
+                            currency: paidCurrency,
+                            providerPaymentId: paymentId,
+                            providerLinkId: preferenceId,
+                        });
+                    }
+                    return;
+                }
+            }
+
+            const linked = preferenceId
+                ? await this.store.findByProviderLink(tenantId, 'mercadopago', preferenceId)
+                : await this.store.findUnresolvedByReference(tenantId, 'mercadopago', reference);
+            if (linked) {
+                await this.store.markCreationState(
+                    tenantId,
+                    linked.id,
+                    'requires_review',
+                    preferenceId ? 'mercadopago_reference_mismatch' : 'mercadopago_preference_unresolved',
+                    preferenceId || linked.providerLinkId,
+                );
+                this.eventEmitter.emit('tenant_payment.validation_failed', {
+                    tenantId,
+                    provider: 'mercadopago',
+                    providerPaymentId: paymentId,
+                    providerLinkId: preferenceId || linked.providerLinkId,
+                    canonicalReference: reference,
+                    reason: preferenceId ? 'mercadopago_reference_mismatch' : 'mercadopago_preference_unresolved',
+                });
+                return;
+            }
+            // No durable intent means this is a pre-ledger preference. Preserve
+            // the exact legacy external_reference/money fallback below.
+            if (status === 'pending') return;
+        } else if (status === 'pending') {
+            return;
+        }
 
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) {
@@ -236,21 +361,17 @@ export class TenantPaymentsWebhookService {
         return left.length === right.length && timingSafeEqual(left, right);
     }
 
-    private mapStatus(mpStatus?: string): 'paid' | 'failed' | 'refunded' | null {
+    private mapStatus(mpStatus?: string): 'pending' | 'paid' | 'failed' | 'refunded' | null {
         switch (mpStatus) {
             case 'approved': return 'paid';
             case 'refunded':
             case 'charged_back': return 'refunded';
             case 'rejected':
             case 'cancelled': return 'failed';
+            case 'pending':
+            case 'in_process':
+            case 'in_mediation': return 'pending';
             default: return null;
         }
-    }
-
-    private async tokenFor(tenantId: string): Promise<string | null> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const enc = (tenant?.settings as any)?.tenantPayments?.accessTokenEnc;
-        if (!enc) return null;
-        try { return this.crypto.decryptToken(enc); } catch { return null; }
     }
 }

@@ -178,13 +178,69 @@ export type CompleteOnboardingResult = {
     billingCheckout?: BillingCheckoutHandoff;
 };
 
-export type TenantPaymentsConfig = {
+export type TenantPaymentProvider = "mercadopago" | "wompi";
+
+export type TenantPaymentProviderConfig = {
+    provider: TenantPaymentProvider;
     connected: boolean;
+    /** Ready means new links may be created; existing payment state remains readable otherwise. */
+    ready: boolean;
+    /** The remote merchant/account credentials were checked by the backend. */
+    verified: boolean;
+    /** Secrets are never returned; booleans and masked markers only drive the UI. */
+    webhookConfigured: boolean;
+    /** Credentials and callback URL are complete enough for an explicit activation step. */
+    activationReady?: boolean;
+    /** The admin explicitly confirmed that the callback URL was installed at the provider. */
+    webhookAcknowledged?: boolean;
     publicKey?: string;
     accountEmail?: string;
-    /** Secrets are never returned; this boolean only drives the masked placeholder. */
-    webhookConfigured?: boolean;
+    merchantName?: string;
+    environment?: "sandbox" | "production";
+    webhookUrl?: string;
+    verifiedAt?: string;
+    accessToken?: "***";
+    webhookSecret?: "***";
+    privateKey?: "***";
+    eventsSecret?: "***";
 };
+
+export type TenantPaymentsConfig = {
+    version?: 2;
+    provider?: TenantPaymentProvider;
+    activeProvider?: TenantPaymentProvider;
+    connected: boolean;
+    ready?: boolean;
+    verified?: boolean;
+    publicKey?: string;
+    accountEmail?: string;
+    environment?: "sandbox" | "production";
+    webhookUrl?: string;
+    /** Legacy top-level projection of the active provider. */
+    webhookConfigured?: boolean;
+    providers?: Partial<Record<TenantPaymentProvider, TenantPaymentProviderConfig>>;
+};
+
+export type MercadoPagoTenantPaymentConfigInput = {
+    provider: "mercadopago";
+    activate?: boolean;
+    accessToken?: string;
+    publicKey?: string;
+    webhookSecret?: string;
+};
+
+export type WompiTenantPaymentConfigInput = {
+    provider: "wompi";
+    activate?: boolean;
+    environment?: "sandbox" | "production";
+    publicKey?: string;
+    privateKey?: string;
+    eventsSecret?: string;
+};
+
+export type TenantPaymentConfigInput =
+    | MercadoPagoTenantPaymentConfigInput
+    | WompiTenantPaymentConfigInput;
 
 export type ResourceRentalType = "vehicle_rental" | "pet_boarding";
 export type ResourceRentalStatus =
@@ -1357,9 +1413,18 @@ export const api = {
     getTenantPaymentsConfig: (tenantId: string) => apiGet<TenantPaymentsConfig>(`/tenant-payments/${tenantId}/config`),
     setTenantPaymentsConfig: (
         tenantId: string,
-        data: { accessToken?: string; publicKey?: string; webhookSecret?: string },
+        data: TenantPaymentConfigInput | { accessToken?: string; publicKey?: string; webhookSecret?: string },
     ) =>
-        apiPut(`/tenant-payments/${tenantId}/config`, data),
+        apiPut<TenantPaymentsConfig>(`/tenant-payments/${tenantId}/config`, data),
+    setTenantPaymentsProviderConfig: (
+        tenantId: string,
+        provider: TenantPaymentProvider,
+        data: TenantPaymentConfigInput,
+    ) => apiPut<TenantPaymentsConfig>(`/tenant-payments/${tenantId}/config/${provider}`, data),
+    activateTenantPaymentsProvider: (tenantId: string, provider: TenantPaymentProvider) =>
+        apiPut<TenantPaymentsConfig>(`/tenant-payments/${tenantId}/active-provider`, { provider }),
+    disconnectTenantPaymentsProvider: (tenantId: string, provider: TenantPaymentProvider) =>
+        apiDelete(`/tenant-payments/${tenantId}/config/${provider}`),
     disconnectTenantPayments: (tenantId: string) => apiDelete(`/tenant-payments/${tenantId}/config`),
     getSmsPackages: () => apiGet(`/sms-credits/packages`),
     getSmsBalance: (tenantId: string) => apiGet(`/sms-credits/${tenantId}/balance`),

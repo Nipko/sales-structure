@@ -9,14 +9,15 @@
 | Flujo | Proveedor | Credenciales | Resultado |
 |---|---|---|---|
 | Parallly cobra la suscripción del tenant | **Wompi** | Cuarteto global `WOMPI_*` | Fuente reutilizable + cobro mensual/anual desde el motor interno |
-| Tenant cobra a su cliente por una compra, seña o pedido | **Mercado Pago** | Access Token, Public Key y Webhooks secret propios del tenant | Enlace de pago; el dinero va directo a la cuenta del tenant |
+| Tenant cobra a su cliente por una compra, seña o pedido | **Wompi o Mercado Pago** | Llaves/secreto de eventos o Access Token/Webhooks secret propios del tenant | Enlace alojado; el dinero va directo a la cuenta del tenant |
 | Factura electrónica por una venta de Parallly en Colombia | **Factus / DIAN** | `FACTUS_*` + configuración fiscal runtime | FEV, XML/PDF y, cuando corresponda, nota crédito |
 
 Mercado Pago está retirado como proveedor de suscripciones de Parallly. No hay
 `MP_*` globales, no se crean `preapproval_plan` y ninguna alta, renovación,
-upgrade o downgrade nuevo puede rutearse a Mercado Pago. Su única superficie
-viva es **Configuración → Integraciones → Pagos** de cada tenant, para cobrar a
-sus propios clientes mediante enlaces internos.
+upgrade o downgrade nuevo puede rutearse a Mercado Pago. Wompi y Mercado Pago
+sí tienen una superficie separada en **Configuración → Integraciones → Pagos**:
+cada tenant conecta su propia cuenta para cobrar a sus clientes mediante links.
+Este riel no comparte credenciales, webhooks, pagos ni factura Factus con billing.
 
 ## 2. Arquitectura efectiva
 
@@ -350,9 +351,9 @@ conservan entitlement silencioso sobre el proveedor retirado.
 11. Nequi/Bancolombia permanecen apagados hasta activación comercial y smoke real
     individual; habilitar cada flag por separado.
 12. Factus alineado; cuentas internas y sandbox producen decisión `skipped`.
-13. Mercado Pago por tenant exige Access Token y Webhooks secret cifrados antes
-    de crear un enlace; su webhook valida firma, ownership, monto y transición
-    terminal idempotente.
+13. El proveedor tenant→cliente activo exige credenciales cifradas y feature
+    `customerPayments`; Wompi usa link COP fijo/single-use y cada webhook valida
+    firma, tenant/conexión, ownership, link, monto, moneda y transición idempotente.
 
 ## 11. Diagnóstico rápido
 

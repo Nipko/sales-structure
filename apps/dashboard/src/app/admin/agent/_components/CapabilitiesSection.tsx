@@ -8,9 +8,10 @@ import {
   Scale, BookOpen, Sliders, Tag, Package, UserCircle,
   Home, Compass, HeartPulse, Building2, Stethoscope,
   UtensilsCrossed, Dumbbell, GraduationCap, ShieldCheck,
-  Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake, Briefcase,
+  Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake, Briefcase, CreditCard,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import type { PersonaConfig } from "../_types";
 
 interface CapabilitiesSectionProps {
@@ -40,8 +41,11 @@ const VERTICAL_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
 
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
   const t = useTranslations("agent.capabilities");
+  const { features, loading: planLoading } = usePlanLimits();
   const tools = config.tools || { appointments: { enabled: false, canBook: true, canCancel: true } };
   const apt = tools.appointments || { enabled: false, canBook: true, canCancel: true };
+  const payments = tools.payments || { enabled: false, canCreateLinks: true };
+  const customerPaymentsAllowed = features.customerPayments === true;
   const industry = config.industry || "general";
 
   const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
@@ -334,6 +338,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             offers: "",
             crm: "",
             ecommerce: "",
+            payments: "",
             vehicles: "",
             orders: "order_confirmation"
           };
@@ -433,6 +438,96 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("ecommerceDiscountsDesc")}</p>
               </div>
             </label>
+          </div>
+        )}
+      </div>
+
+      {/* Customer payments are independent from a store/catalog. A tenant may
+          collect a tour deposit or an enrollment without running e-commerce. */}
+      <div className={cn(
+        "rounded-lg border p-4 mt-3",
+        payments.enabled && customerPaymentsAllowed
+          ? "border-indigo-300 dark:border-indigo-500/40 bg-indigo-500/[0.03] dark:bg-indigo-500/5"
+          : "border-neutral-200 dark:border-neutral-700"
+      )}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={cn(
+              "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+              payments.enabled && customerPaymentsAllowed ? "bg-indigo-500/15" : "bg-neutral-100 dark:bg-neutral-800"
+            )}>
+              <CreditCard size={18} className={payments.enabled && customerPaymentsAllowed ? "text-indigo-500" : "text-neutral-500 dark:text-neutral-400"} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("paymentsTitle")}</h4>
+                {!planLoading && !customerPaymentsAllowed && (
+                  <Badge variant="secondary" className="text-[10px]">{t("paymentsPlanBadge")}</Badge>
+                )}
+              </div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("paymentsDesc")}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label={t("paymentsTitle")}
+            disabled={planLoading || (!customerPaymentsAllowed && !payments.enabled)}
+            onClick={() => onChange({
+              tools: {
+                ...tools,
+                payments: {
+                  ...payments,
+                  enabled: payments.enabled ? false : true,
+                  canCreateLinks: payments.canCreateLinks !== false,
+                },
+              },
+            })}
+            className={cn(
+              "relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed",
+              payments.enabled && customerPaymentsAllowed ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600"
+            )}
+          >
+            <div className={cn(
+              "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
+              payments.enabled && customerPaymentsAllowed ? "translate-x-[22px]" : "translate-x-0.5"
+            )} />
+          </button>
+        </div>
+
+        {!planLoading && !customerPaymentsAllowed && (
+          <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-amber-700 dark:text-amber-300">
+            <span>{t("paymentsPlanRequired")}</span>{" "}
+            <Link href="/admin/settings/billing" className="font-semibold underline underline-offset-2">
+              {t("paymentsUpgrade")}
+            </Link>
+          </div>
+        )}
+
+        {payments.enabled && customerPaymentsAllowed && (
+          <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={payments.canCreateLinks !== false}
+                onChange={(e) => onChange({
+                  tools: {
+                    ...tools,
+                    payments: { ...payments, enabled: true, canCreateLinks: e.target.checked },
+                  },
+                })}
+                className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("paymentsCreateLinks")}</span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("paymentsCreateLinksDesc")}</p>
+              </div>
+            </label>
+            <Link
+              href="/admin/settings/integrations/payments"
+              className="inline-flex text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              {t("paymentsConfigure")}
+            </Link>
           </div>
         )}
       </div>

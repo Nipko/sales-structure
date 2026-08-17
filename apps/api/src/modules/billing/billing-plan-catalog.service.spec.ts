@@ -312,6 +312,7 @@ describe('BillingPlanCatalogService', () => {
             features: {
                 channels: ['whatsapp'],
                 maxCalendars: 3,
+                customerPayments: true,
                 rateLimits: { outbound: 2_000 },
                 llmBudgetCents: 999,
                 mediaProcessing: {
@@ -329,6 +330,7 @@ describe('BillingPlanCatalogService', () => {
         expect(plan.features).toMatchObject({
             channels: ['whatsapp'],
             maxCalendars: 3,
+            customerPayments: true,
             mediaProcessing: { audioPerMonth: 100, imagePerMonth: 50 },
         });
         expect(plan.features).not.toHaveProperty('rateLimits');

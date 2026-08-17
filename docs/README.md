@@ -31,6 +31,7 @@ _Última actualización: 2026-08-11_
 |-----------|-------------|
 | [billing-annual-cycle.md](billing-annual-cycle.md) | Ciclo mensual/anual del motor Wompi, cambios de plan y billing-ops cross-tenant |
 | [billing-runbook.md](billing-runbook.md) · [wompi-integration-validation-2026-08.md](wompi-integration-validation-2026-08.md) | Runbook Wompi/DIAN y dictamen integral; Mercado Pago queda sólo para cobros tenant → cliente |
+| [tenant-customer-payments-wompi.md](tenant-customer-payments-wompi.md) | Wompi/Mercado Pago del tenant, links alojados, agente, plan gate, webhooks y certificación |
 | [plan-profitability-2026-07.md](plan-profitability-2026-07.md) | Análisis de rentabilidad y precios COP por país |
 | [facturacion-electronica-colombia-2026-06.md](facturacion-electronica-colombia-2026-06.md) | Facturación electrónica DIAN (Colombia) vía Factus |
 

@@ -32,7 +32,7 @@ import {
     ToolExecutionControlService,
     type ToolExecutionControlDecision,
 } from './tool-execution-control.service';
-import { PaymentOperationService } from './payment-operation.service';
+import { PaymentOperationService, type PreparedPaymentLink } from './payment-operation.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
 import { assertActiveTenantUser } from '../appointments/tenant-user-scope.util';
 import {
@@ -112,6 +112,7 @@ export class AIToolExecutorService {
         this.logger.log(`[Tool] Executing: ${toolName}`);
 
         let controlDecision: ToolExecutionControlDecision | undefined;
+        let preparedPaymentLink: PreparedPaymentLink | undefined;
         try {
             // Static tools must have a reviewed policy entry before they can
             // reach a handler. Dynamic MCP names use their separate opaque
@@ -137,6 +138,26 @@ export class AIToolExecutorService {
                     shouldHandoff: true,
                 };
             }
+            if (toolName === 'create_payment_link') {
+                const preparation = await this.paymentOperations.preparePaymentLink(
+                    tenantId,
+                    contactId,
+                    args,
+                );
+                if (!preparation.ok) return preparation.result;
+                preparedPaymentLink = preparation.payable;
+                // The central confirmation/idempotency hash must bind only the
+                // server-resolved snapshot, never money or text supplied by the
+                // model in the original tool arguments.
+                args = {
+                    paymentIntentId: preparedPaymentLink.paymentIntentId,
+                    payableReference: preparedPaymentLink.canonicalReference,
+                    amountCents: preparedPaymentLink.amountCents,
+                    currency: preparedPaymentLink.currency,
+                    description: preparedPaymentLink.description,
+                    paymentStatus: preparedPaymentLink.paymentStatus,
+                };
+            }
             controlDecision = await this.toolExecutionControl.preflight({
                 schemaName,
                 tenantId,
@@ -149,7 +170,16 @@ export class AIToolExecutorService {
                 readOnlyExecution: persistenceDisabled(opts?.executionContext),
                 authorityEvidence: opts?.authorityEvidence,
             });
-            if (!controlDecision.allowed) return controlDecision.result;
+            if (!controlDecision.allowed) {
+                if (preparedPaymentLink
+                    && controlDecision.result?.error === 'confirmation_required') {
+                    return this.paymentOperations.confirmationRequiredResult(
+                        preparedPaymentLink,
+                        controlDecision.result,
+                    );
+                }
+                return controlDecision.result;
+            }
 
             const executeHandler = async (): Promise<any> => {
 
@@ -257,7 +287,7 @@ export class AIToolExecutorService {
                     );
 
                 case 'create_payment_link':
-                    if (!controlDecision?.allowed || !controlDecision.ledgerId) {
+                    if (!controlDecision?.allowed || !controlDecision.ledgerId || !preparedPaymentLink) {
                         return this.moneyLedgerUnavailable();
                     }
                     return this.paymentOperations.createPaymentLink(
@@ -265,6 +295,13 @@ export class AIToolExecutorService {
                         tenantId,
                         contactId,
                         controlDecision.ledgerId,
+                        preparedPaymentLink,
+                    );
+
+                case 'get_payment_status':
+                    return this.paymentOperations.getPaymentStatus(
+                        tenantId,
+                        contactId,
                         args,
                     );
 
@@ -937,6 +974,7 @@ export class AIToolExecutorService {
                     id: o.id,
                     status: o.status,
                     paymentStatus: o.payment_status,
+                    payableReference: this.payableReference('order', o.id, o.payment_status, o.status),
                     totalAmount: Number(o.total_amount || 0),
                     currency: o.currency,
                     items: Array.isArray(o.items) ? o.items : [],
@@ -1105,6 +1143,7 @@ export class AIToolExecutorService {
                     id: o.id,
                     status: o.status,
                     paymentStatus: o.payment_status,
+                    payableReference: this.payableReference('order', o.id, o.payment_status, o.status),
                     totalAmount: Number(o.total_amount || 0),
                     currency: o.currency,
                     items: Array.isArray(o.items) ? o.items : [],
@@ -1123,6 +1162,40 @@ export class AIToolExecutorService {
             shouldHandoff: true,
             message: 'No se pudo reservar una operación monetaria segura. Escala la solicitud y no anuncies éxito.',
         };
+    }
+
+    /**
+     * Produce only the opaque reference understood by TenantPaymentsService.
+     * The amount, currency and concept deliberately never travel through this
+     * value: the payment backend resolves those from the contact-owned row.
+     */
+    private payableReference(
+        kind: 'order' | 'tour' | 'food' | 'enrollment',
+        entityId: unknown,
+        paymentStatus: unknown,
+        resourceStatus?: unknown,
+    ): string | null {
+        const id = String(entityId || '').trim().toLowerCase();
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) {
+            return null;
+        }
+
+        // Fail closed on unknown/terminal states. `partial` is intentionally
+        // excluded until the canonical resolver charges only the remaining
+        // balance instead of the full enrollment price.
+        const normalizedPaymentStatus = String(paymentStatus || '').trim().toLowerCase();
+        if (!['pending', 'failed'].includes(normalizedPaymentStatus)) return null;
+
+        const normalizedResourceStatus = String(resourceStatus || '').trim().toLowerCase();
+        const rejectedByKind: Record<typeof kind, string[]> = {
+            order: ['cancelled', 'refunded', 'paid'],
+            tour: ['cancelled', 'refunded'],
+            food: ['cancelled', 'refunded'],
+            enrollment: ['cancelled', 'dropped', 'refunded'],
+        };
+        if (rejectedByKind[kind].includes(normalizedResourceStatus)) return null;
+
+        return `${kind}:${id}`;
     }
 
     // ── Knowledge tools ─────────────────────────────
@@ -2355,6 +2428,13 @@ export class AIToolExecutorService {
                     totalPrice: Number(booking.total_price || 0),
                     currency: booking.currency,
                     status: booking.status,
+                    paymentStatus: booking.payment_status || 'pending',
+                    payableReference: this.payableReference(
+                        'tour',
+                        booking.id,
+                        booking.payment_status || 'pending',
+                        booking.status,
+                    ),
                 },
             };
         } catch (e: any) {
@@ -2809,6 +2889,13 @@ export class AIToolExecutorService {
             return {
                 orderId: order.id,
                 status: order.status,
+                paymentStatus: order.payment_status || 'pending',
+                payableReference: this.payableReference(
+                    'food',
+                    order.id,
+                    order.payment_status || 'pending',
+                    order.status,
+                ),
                 total: Number(order.total || 0),
                 currency: order.currency,
                 itemsCount: (order.items || []).length,
@@ -3041,6 +3128,12 @@ export class AIToolExecutorService {
                 cohortId: enrollment.cohort_id,
                 status: enrollment.status,
                 paymentStatus: enrollment.payment_status,
+                payableReference: this.payableReference(
+                    'enrollment',
+                    enrollment.id,
+                    enrollment.payment_status,
+                    enrollment.status,
+                ),
                 message: 'Enrollment registered. Payment pending to confirm the seat.',
             };
         } catch (e: any) {
@@ -3915,7 +4008,7 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT tb.id, tb.departure_date, tb.departure_time, tb.party_size,
-                        tb.total_price, tb.currency, tb.status, tb.guest_name,
+                        tb.total_price, tb.currency, tb.status, tb.payment_status, tb.guest_name,
                         tp.name AS package_name
                  FROM "${schema}".tour_bookings tb
                  LEFT JOIN "${schema}".tour_packages tp ON tp.id = tb.package_id
@@ -3933,6 +4026,8 @@ export class AIToolExecutorService {
                     totalPrice: Number(r.total_price || 0),
                     currency: r.currency,
                     status: r.status,
+                    paymentStatus: r.payment_status,
+                    payableReference: this.payableReference('tour', r.id, r.payment_status, r.status),
                     guestName: r.guest_name,
                 })),
             };
@@ -3976,7 +4071,7 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT id, contact_id, status, order_type, total, currency,
-                        customer_name, delivery_address, estimated_delivery_at,
+                        payment_status, customer_name, delivery_address, estimated_delivery_at,
                         created_at, updated_at
                  FROM "${schema}".food_orders WHERE id = $1::uuid`,
                 orderId,
@@ -3993,6 +4088,8 @@ export class AIToolExecutorService {
             return {
                 id: o.id,
                 status: o.status,
+                paymentStatus: o.payment_status,
+                payableReference: this.payableReference('food', o.id, o.payment_status, o.status),
                 orderType: o.order_type,
                 total: Number(o.total || 0),
                 currency: o.currency,
@@ -4011,7 +4108,7 @@ export class AIToolExecutorService {
     private async listMyOrders(schema: string, contactId: string, limit = 5): Promise<any> {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT fo.id, fo.status, fo.order_type, fo.total, fo.currency, fo.created_at,
+                `SELECT fo.id, fo.status, fo.payment_status, fo.order_type, fo.total, fo.currency, fo.created_at,
                         (SELECT COUNT(*)::int FROM "${schema}".food_order_items WHERE order_id = fo.id) AS item_count
                  FROM "${schema}".food_orders fo
                  WHERE fo.contact_id = $1::uuid
@@ -4022,6 +4119,8 @@ export class AIToolExecutorService {
                 orders: rows.map(o => ({
                     id: o.id,
                     status: o.status,
+                    paymentStatus: o.payment_status,
+                    payableReference: this.payableReference('food', o.id, o.payment_status, o.status),
                     orderType: o.order_type,
                     total: Number(o.total || 0),
                     currency: o.currency,
@@ -4133,6 +4232,7 @@ export class AIToolExecutorService {
                     schedule: r.schedule,
                     status: r.status,
                     paymentStatus: r.payment_status,
+                    payableReference: this.payableReference('enrollment', r.id, r.payment_status, r.status),
                 })),
             };
         } catch (e: any) {

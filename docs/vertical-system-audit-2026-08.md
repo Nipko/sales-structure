@@ -250,7 +250,7 @@ Además pueden descubrirse tools MCP dinámicas. Estas no pueden validarse por c
 | VERT-P1-15 | `prompt-assembler.service.ts:67-99` |
 | VERT-P1-16 | `insurance-tools.ts`; `tier3-tools.ts`; handlers correspondientes en `ai-tool-executor.service.ts` |
 | VERT-P1-17 | `dashboard/src/lib/api.ts:792-803`; `dashboard/.../service-requests/page.tsx:201-297` |
-| VERT-P1-18 | `apps/api/src/modules/tenant-payments/`; ausencia de payment tools en `conversations/tools/` |
+| VERT-P1-18 | **Resuelto 16-ago-2026:** `tenant-payments/` + `conversations/tools/payment-tools.ts`; referencia opaca, confirmación A2, estado canónico y plan gate |
 | VERT-P1-19 | `vertical-integrations.service.ts:59-124,283-299,361-394`; `conversations.service.ts:1881-1900` |
 | VERT-P1-20 | `apps/landing/src/data/verticals.ts:62,139,156,201,248,278`; `apps/landing/messages/en.json:679` |
 | VERT-P1-21 | `vehicle-inventory.controller.ts:53,131` |

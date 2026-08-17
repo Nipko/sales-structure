@@ -49,6 +49,7 @@ export interface PersonaConfig {
     knowledge?: { enabled: boolean };
     orders?: { enabled: boolean; emailConfirmations?: boolean };
     ecommerce?: { enabled: boolean; canRecommend?: boolean; canApplyDiscount?: boolean };
+    payments?: { enabled: boolean; canCreateLinks?: boolean };
     offers?: { enabled: boolean };
     crm?: { enabled: boolean };
     properties?: { enabled: boolean; emailConfirmations?: boolean };

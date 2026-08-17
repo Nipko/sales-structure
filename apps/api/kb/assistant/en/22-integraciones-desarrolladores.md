@@ -12,4 +12,6 @@ An administrator manages external connections under **Settings → Channels & In
 
 For custom integrations, use **API Keys** and **Webhooks**. Treat keys and secrets like passwords: copy them only to the system that needs them, rotate exposed credentials, and verify every webhook signature. Before enabling an integration in production, test its event with non-sensitive data and confirm which actions it can perform.
 
+Under **Integrations → Payments**, the business can connect its own Wompi or Mercado Pago account to charge customers. Funds go directly to that account and these credentials never pay the Parallly subscription. Select one active provider, copy the events URL shown on screen, and enable **Customer payments** on the agent. The agent uses the order amount stored in Parallly and only confirms “paid” after the backend validates the provider event and canonical transaction; a link, redirect, or screenshot is not proof of payment. New links depend on the current plan feature, while previously issued payments continue to reconcile after a downgrade.
+
 Connector availability depends on account configuration. The integration screen and **Plan & Billing** are the current source of truth; avoid relying on limits or prices copied into external documents.

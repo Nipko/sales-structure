@@ -697,7 +697,7 @@ describe('ToolExecutionControlService', () => {
         expect(state.ledger.status).not.toBe('executing');
     });
 
-    it('fails A3 closed before persistence when no independent identity channel exists', async () => {
+    it('fails A2 payment-link creation closed before persistence when no independent identity channel exists', async () => {
         const { service, executeInTenantSchema, chatIdentity } = createHarness(false);
         const result = await service.preflight({
             schemaName,
@@ -706,7 +706,7 @@ describe('ToolExecutionControlService', () => {
             conversationId,
             channelType: 'whatsapp',
             toolName: 'create_payment_link',
-            args: { amountCents: 1000, currency: 'USD', description: 'Deposit', externalReference: 'order:1' },
+            args: { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
         });
 
         expect(result).toMatchObject({

@@ -52,7 +52,7 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'place_order',
-        description: 'Create a food order. Use when the customer has confirmed which items + quantities they want. orderType=delivery requires deliveryAddress; pickup needs nothing extra; dine_in optionally takes tableNumber. Returns the order ID + total + estimated delivery time. Always confirm the items + total with the customer before calling this.',
+        description: 'Create a food order. Use when the customer has confirmed which items + quantities they want. orderType=delivery requires deliveryAddress; pickup needs nothing extra; dine_in optionally takes tableNumber. Returns the order ID, total, paymentStatus and a payableReference when chargeable. Pass that opaque reference unchanged to payment tools and never derive one yourself. Always confirm the items + total with the customer before calling this.',
         parameters: {
             type: 'object',
             properties: {
@@ -86,8 +86,8 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
                 },
                 paymentMethod: {
                     type: 'string',
-                    enum: ['cash', 'card', 'mp', 'pse', 'transfer'],
-                    description: 'How the customer will pay',
+                    enum: ['cash', 'card', 'payment_link', 'pse', 'transfer'],
+                    description: 'How the customer will pay. payment_link uses the tenant active provider selected by the backend; never select a provider by name.',
                 },
                 notes: { type: 'string', description: 'Free-form note for the kitchen / staff' },
             },
@@ -108,7 +108,7 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'check_order_status',
-        description: 'Check the current status of a food order. Returns status, items, total, and estimatedDeliveryAt when an ETA was calculated for the order. Use when the customer asks about their order progress.',
+        description: 'Check the current status of a food order. Returns status, paymentStatus, a payableReference only when chargeable, items, total, and estimatedDeliveryAt when an ETA was calculated. Use for order progress, payment-link creation, or payment-status lookup. Pass payableReference unchanged and never derive one yourself.',
         parameters: {
             type: 'object',
             properties: {
@@ -119,7 +119,7 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'list_my_orders',
-        description: 'List recent orders for the current customer. Use to help the customer find an order ID for cancellation or status check.',
+        description: 'List recent orders for the current customer, including paymentStatus and a payableReference only when chargeable. Use to find an order for cancellation, payment-link creation, or status lookup. Pass payableReference unchanged and never derive one yourself.',
         parameters: {
             type: 'object',
             properties: {

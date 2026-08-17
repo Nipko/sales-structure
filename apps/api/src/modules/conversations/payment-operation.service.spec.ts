@@ -1,4 +1,8 @@
-import { PaymentOperationService, type PaymentOperationProvider } from './payment-operation.service';
+import {
+    PaymentOperationService,
+    PaymentProviderCallError,
+    type PaymentOperationProvider,
+} from './payment-operation.service';
 
 const schemaName = 'tenant_payment_contract';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -8,7 +12,7 @@ const operationId = '44444444-4444-4444-8444-444444444444';
 
 function createHarness(
     provider?: PaymentOperationProvider,
-    options: { denyProcessingCas?: boolean } = {},
+    options: { denyProcessingCas?: boolean; planEnabled?: boolean } = {},
 ) {
     const state: any = {
         row: null,
@@ -42,6 +46,12 @@ function createHarness(
             state.response = JSON.parse(params[1]);
             state.row.response_payload = state.response;
             return [];
+        }
+        if (normalized.includes("SET status = 'failed'")) {
+            state.row.status = 'failed';
+            state.response = JSON.parse(params[1]);
+            state.row.response_payload = state.response;
+            return normalized.includes('RETURNING id') ? [{ id: state.row.id }] : [];
         }
         if (normalized.includes("SET status = 'processing'")) {
             if (options.denyProcessingCas) {
@@ -77,19 +87,74 @@ function createHarness(
         }
         throw new Error(`Unhandled SQL in fake: ${normalized}`);
     });
-    const service = new PaymentOperationService({ executeInTenantSchema } as any, provider);
-    return { service, state, executeInTenantSchema };
+    const throttle = {
+        isFeatureEnabled: jest.fn().mockResolvedValue(options.planEnabled !== false),
+    };
+    const service = new PaymentOperationService(
+        { executeInTenantSchema } as any,
+        provider,
+        throttle as any,
+    );
+    return { service, state, executeInTenantSchema, throttle };
+}
+
+async function prepareAndCreate(
+    service: PaymentOperationService,
+    payableReference = 'order:123',
+) {
+    const preparation = await service.preparePaymentLink(tenantId, contactId, { payableReference });
+    if (!preparation.ok) return preparation.result;
+    return service.createPaymentLink(
+        schemaName,
+        tenantId,
+        contactId,
+        executionLedgerId,
+        preparation.payable,
+    );
 }
 
 describe('PaymentOperationService provider-neutral contract', () => {
+    it('keeps status capability after downgrade while creation remains disabled', async () => {
+        const provider = {
+            id: 'tenant_customer_payments',
+            getRuntimeCapability: jest.fn().mockResolvedValue({
+                configured: true,
+                ready: true,
+                statusAvailable: true,
+                activeProvider: 'wompi',
+            }),
+            getPaymentStatus: jest.fn(),
+            supports: jest.fn().mockReturnValue(true),
+        } as any;
+        const { service } = createHarness(provider, { planEnabled: false });
+
+        await expect(service.getRuntimeCapability(tenantId)).resolves.toEqual({
+            planEnabled: false,
+            configured: true,
+            ready: true,
+            statusAvailable: true,
+            activeProvider: 'wompi',
+        });
+        expect(provider.getRuntimeCapability).toHaveBeenCalledWith(tenantId);
+    });
+
+    it('fails status capability closed when the local ledger readiness check fails', async () => {
+        const provider = {
+            id: 'tenant_customer_payments',
+            getRuntimeCapability: jest.fn().mockRejectedValue(new Error('ledger unavailable')),
+            getPaymentStatus: jest.fn(),
+        } as any;
+        const { service } = createHarness(provider);
+
+        await expect(service.getRuntimeCapability(tenantId)).resolves.toEqual({
+            planEnabled: true,
+            configured: false,
+            ready: false,
+            statusAvailable: false,
+        });
+    });
+
     it.each([
-        ['payment_link', async (service: PaymentOperationService) => service.createPaymentLink(
-            schemaName,
-            tenantId,
-            contactId,
-            executionLedgerId,
-            { amountCents: 2500, currency: 'USD', description: 'Deposit', externalReference: 'order:123' },
-        )],
         ['refund', async (service: PaymentOperationService) => service.refundPayment(
             schemaName,
             tenantId,
@@ -125,6 +190,10 @@ describe('PaymentOperationService provider-neutral contract', () => {
             resolveOwnership: jest.fn().mockResolvedValue({
                 owned: true,
                 canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 2500,
+                canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido #123',
+                paymentStatus: 'pending',
             }),
             createPaymentLink: jest.fn().mockResolvedValue({
                 providerOperationId: 'provider-op-1',
@@ -137,13 +206,7 @@ describe('PaymentOperationService provider-neutral contract', () => {
         };
         const { service, state } = createHarness(provider);
 
-        const result = await service.createPaymentLink(
-            schemaName,
-            tenantId,
-            contactId,
-            executionLedgerId,
-            { amountCents: 2500, currency: 'USD', description: 'Deposit', externalReference: 'order:123' },
-        );
+        const result = await prepareAndCreate(service);
 
         expect(result).toMatchObject({
             error: 'payment_reconciliation_required',
@@ -190,6 +253,18 @@ describe('PaymentOperationService provider-neutral contract', () => {
         expect(state.row.status).toBe('handoff_required');
     });
 
+    it('fails payment preparation before confirmation when no provider is bound', async () => {
+        const { service, executeInTenantSchema } = createHarness();
+
+        await expect(service.preparePaymentLink(tenantId, contactId, {
+            payableReference: 'order:123',
+        })).resolves.toMatchObject({
+            ok: false,
+            result: { error: 'payment_provider_unavailable' },
+        });
+        expect(executeInTenantSchema).not.toHaveBeenCalled();
+    });
+
     it('keeps unsupported operations unavailable even when a payment-link-only provider is bound', async () => {
         const provider: PaymentOperationProvider = {
             id: 'links-only',
@@ -217,7 +292,7 @@ describe('PaymentOperationService provider-neutral contract', () => {
         expect(state.row.status).toBe('handoff_required');
     });
 
-    it('rejects a caller amount that differs from the owned business object', async () => {
+    it('uses only the canonical money snapshot and reports link-created as pending, never paid', async () => {
         const provider: PaymentOperationProvider = {
             id: 'links-only',
             resolveOwnership: jest.fn().mockResolvedValue({
@@ -225,6 +300,137 @@ describe('PaymentOperationService provider-neutral contract', () => {
                 canonicalReference: 'order:canonical-123',
                 canonicalAmountCents: 5000,
                 canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido canónico',
+                paymentStatus: 'pending',
+            }),
+            createPaymentLink: jest.fn().mockResolvedValue({
+                providerOperationId: 'link-123',
+                url: 'https://checkout.example/link-123',
+                provider: 'wompi',
+                paymentStatus: 'pending',
+            }),
+            refundPayment: jest.fn(),
+            applyDiscount: jest.fn(),
+            reconcile: jest.fn().mockResolvedValue({ status: 'confirmed' }),
+            findByIdempotencyKey: jest.fn(),
+        };
+        const { service } = createHarness(provider);
+
+        const preparation = await service.preparePaymentLink(tenantId, contactId, {
+            payableReference: 'order:123',
+            amountCents: 1,
+            currency: 'USD',
+            description: 'LLM supplied values must be ignored',
+            provider: 'attacker-selected-provider',
+        });
+        expect(preparation.ok).toBe(true);
+        if (!preparation.ok) throw new Error('expected payment preparation');
+        expect(preparation.payable).toMatchObject({
+            amountCents: 5000,
+            currency: 'COP',
+            description: 'Pedido canónico',
+            confirmationSummary: expect.stringContaining('Pedido canónico'),
+        });
+        expect(preparation.payable.confirmationSummary).not.toContain('LLM supplied');
+        expect(service.confirmationRequiredResult(preparation.payable, {
+            error: 'confirmation_required',
+            confirmationId: 'confirmation-1',
+        })).toMatchObject({
+            error: 'confirmation_required',
+            paymentIntentId: preparation.payable.paymentIntentId,
+            payment: {
+                amountCents: 5000,
+                currency: 'COP',
+                description: 'Pedido canónico',
+            },
+            confirmationSummary: preparation.payable.confirmationSummary,
+        });
+        const result = await service.createPaymentLink(
+            schemaName,
+            tenantId,
+            contactId,
+            executionLedgerId,
+            preparation.payable,
+        );
+
+        expect(provider.createPaymentLink).toHaveBeenCalledWith(expect.objectContaining({
+            amountCents: 5000,
+            currency: 'COP',
+            description: 'Pedido canónico',
+            canonicalReference: 'order:canonical-123',
+        }));
+        expect(result).toMatchObject({
+            linkCreated: true,
+            paymentStatus: 'pending',
+            paid: false,
+            provider: 'wompi',
+            amountCents: 5000,
+            currency: 'COP',
+        });
+        expect(result).not.toHaveProperty('success');
+        expect(result).not.toMatchObject({ paymentStatus: 'paid' });
+    });
+
+    it('requires a new confirmation if the canonical snapshot changes before the provider write', async () => {
+        const resolveOwnership = jest.fn()
+            .mockResolvedValueOnce({
+                owned: true,
+                canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 5000,
+                canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido canónico',
+                paymentStatus: 'pending',
+            })
+            .mockResolvedValueOnce({
+                owned: true,
+                canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 6000,
+                canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido actualizado',
+                paymentStatus: 'pending',
+            });
+        const provider: PaymentOperationProvider = {
+            id: 'tenant-payment-router',
+            resolveOwnership,
+            createPaymentLink: jest.fn(),
+            refundPayment: jest.fn(),
+            applyDiscount: jest.fn(),
+            reconcile: jest.fn(),
+            findByIdempotencyKey: jest.fn(),
+        };
+        const { service, state } = createHarness(provider);
+        const preparation = await service.preparePaymentLink(tenantId, contactId, {
+            payableReference: 'order:123',
+        });
+        expect(preparation.ok).toBe(true);
+        if (!preparation.ok) throw new Error('expected payment preparation');
+
+        const result = await service.createPaymentLink(
+            schemaName,
+            tenantId,
+            contactId,
+            executionLedgerId,
+            preparation.payable,
+        );
+
+        expect(result).toMatchObject({
+            error: 'payment_snapshot_changed',
+            requiresNewConfirmation: true,
+        });
+        expect(provider.createPaymentLink).not.toHaveBeenCalled();
+        expect(state.row.status).toBe('failed');
+    });
+
+    it('fails closed on the runtime plan immediately before creating a link', async () => {
+        const provider: PaymentOperationProvider = {
+            id: 'tenant-payment-router',
+            resolveOwnership: jest.fn().mockResolvedValue({
+                owned: true,
+                canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 5000,
+                canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido canónico',
+                paymentStatus: 'pending',
             }),
             createPaymentLink: jest.fn(),
             refundPayment: jest.fn(),
@@ -232,32 +438,109 @@ describe('PaymentOperationService provider-neutral contract', () => {
             reconcile: jest.fn(),
             findByIdempotencyKey: jest.fn(),
         };
-        const { service } = createHarness(provider);
+        const { service, state, throttle } = createHarness(provider);
+        const preparation = await service.preparePaymentLink(tenantId, contactId, {
+            payableReference: 'order:123',
+        });
+        expect(preparation.ok).toBe(true);
+        if (!preparation.ok) throw new Error('expected payment preparation');
+        throttle.isFeatureEnabled.mockResolvedValue(false);
 
         const result = await service.createPaymentLink(
             schemaName,
             tenantId,
             contactId,
             executionLedgerId,
-            { amountCents: 4000, currency: 'COP', description: 'Pedido', externalReference: 'order:123' },
+            preparation.payable,
         );
 
-        expect(result).toMatchObject({ error: 'payment_ownership_unverified', shouldHandoff: true });
+        expect(throttle.isFeatureEnabled).toHaveBeenCalledWith(tenantId, 'customerPayments');
         expect(provider.createPaymentLink).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+            error: 'customer_payments_not_in_plan',
+            shouldHandoff: false,
+        });
+        expect(state.row.status).toBe('failed');
     });
 
-    it('rejects ambiguous money inputs before creating a ledger intent', async () => {
-        const { service, executeInTenantSchema } = createHarness();
+    it('keeps authoritative status reads available after a downgrade', async () => {
+        const provider: PaymentOperationProvider = {
+            id: 'tenant-payment-router',
+            resolveOwnership: jest.fn(),
+            createPaymentLink: jest.fn(),
+            getPaymentStatus: jest.fn().mockResolvedValue({
+                canonicalReference: 'order:canonical-123',
+                amountCents: 5000,
+                currency: 'COP',
+                description: 'Pedido canónico',
+                paymentStatus: 'paid',
+                provider: 'wompi',
+                paidAt: '2026-08-16T12:00:00.000Z',
+            }),
+            refundPayment: jest.fn(),
+            applyDiscount: jest.fn(),
+            reconcile: jest.fn(),
+            findByIdempotencyKey: jest.fn(),
+        };
+        const { service, throttle } = createHarness(provider, { planEnabled: false });
 
-        const result = await service.createPaymentLink(
-            schemaName,
+        const result = await service.getPaymentStatus(tenantId, contactId, {
+            payableReference: 'order:123',
+        });
+
+        expect(throttle.isFeatureEnabled).not.toHaveBeenCalled();
+        expect(provider.getPaymentStatus).toHaveBeenCalledWith({
             tenantId,
             contactId,
-            executionLedgerId,
-            { amountCents: 12.5, currency: 'dollars', description: '', externalReference: '' },
-        );
+            payableReference: 'order:123',
+        });
+        expect(result).toMatchObject({
+            found: true,
+            paymentStatus: 'paid',
+            paid: true,
+            provider: 'wompi',
+        });
+    });
 
-        expect(result).toMatchObject({ error: 'invalid_payment_request' });
+    it.each(['ambiguous', 'requires_review'] as const)(
+        'preserves %s as a review state instead of reporting payment_not_found',
+        async (paymentStatus) => {
+            const provider = {
+                id: 'tenant-payment-router',
+                getPaymentStatus: jest.fn().mockResolvedValue({
+                    canonicalReference: 'order:canonical-123',
+                    amountCents: 5000,
+                    currency: 'COP',
+                    description: 'Pedido canónico',
+                    paymentStatus,
+                    provider: 'wompi',
+                }),
+            } as any;
+            const { service } = createHarness(provider);
+
+            await expect(service.getPaymentStatus(tenantId, contactId, {
+                payableReference: 'order:123',
+            })).resolves.toMatchObject({
+                found: true,
+                paymentStatus,
+                paid: false,
+                requiresReview: true,
+                shouldHandoff: true,
+                message: expect.stringContaining('requiere revisión manual'),
+            });
+        },
+    );
+
+    it('rejects a missing payable reference before creating a ledger intent', async () => {
+        const { service, executeInTenantSchema } = createHarness();
+
+        const result = await service.preparePaymentLink(tenantId, contactId, {
+            payableReference: '',
+            amountCents: 12.5,
+            currency: 'dollars',
+        });
+
+        expect(result).toMatchObject({ ok: false, result: { error: 'invalid_payment_request' } });
         expect(executeInTenantSchema).not.toHaveBeenCalled();
     });
 
@@ -276,23 +559,32 @@ describe('PaymentOperationService provider-neutral contract', () => {
         expect(executeInTenantSchema).not.toHaveBeenCalled();
     });
 
-    it('rejects request drift when a direct retry reuses an execution ledger id', async () => {
-        const { service } = createHarness();
-        await service.createPaymentLink(
-            schemaName,
-            tenantId,
-            contactId,
-            executionLedgerId,
-            { amountCents: 2500, currency: 'USD', description: 'Deposit', externalReference: 'order:123' },
-        );
+    it('rejects canonical snapshot drift when an execution ledger id is reused', async () => {
+        const provider: PaymentOperationProvider = {
+            id: 'stub-provider',
+            resolveOwnership: jest.fn().mockImplementation(({ reference }: any) => Promise.resolve({
+                owned: true,
+                canonicalReference: reference,
+                canonicalAmountCents: reference === 'order:changed' ? 5000 : 2500,
+                canonicalCurrency: 'COP',
+                canonicalDescription: reference === 'order:changed' ? 'Pedido cambiado' : 'Pedido original',
+                paymentStatus: 'pending',
+            })),
+            createPaymentLink: jest.fn().mockResolvedValue({
+                providerOperationId: 'link-1',
+                url: 'https://checkout.example/link-1',
+                paymentStatus: 'pending',
+            }),
+            refundPayment: jest.fn(),
+            applyDiscount: jest.fn(),
+            reconcile: jest.fn().mockResolvedValue({ status: 'confirmed' }),
+            findByIdempotencyKey: jest.fn(),
+        };
+        const { service } = createHarness(provider);
+        await prepareAndCreate(service, 'order:123');
 
-        await expect(service.createPaymentLink(
-            schemaName,
-            tenantId,
-            contactId,
-            executionLedgerId,
-            { amountCents: 5000, currency: 'USD', description: 'Changed', externalReference: 'order:123' },
-        )).rejects.toThrow('payment_operation_idempotency_conflict');
+        await expect(prepareAndCreate(service, 'order:changed'))
+            .rejects.toThrow('payment_operation_idempotency_conflict');
     });
 
     it('does not call the provider unless it acquires the requested-to-processing CAS', async () => {
@@ -301,6 +593,10 @@ describe('PaymentOperationService provider-neutral contract', () => {
             resolveOwnership: jest.fn().mockResolvedValue({
                 owned: true,
                 canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 2500,
+                canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido #123',
+                paymentStatus: 'pending',
             }),
             createPaymentLink: jest.fn(),
             refundPayment: jest.fn(),
@@ -310,13 +606,7 @@ describe('PaymentOperationService provider-neutral contract', () => {
         };
         const { service } = createHarness(provider, { denyProcessingCas: true });
 
-        const result = await service.createPaymentLink(
-            schemaName,
-            tenantId,
-            contactId,
-            executionLedgerId,
-            { amountCents: 2500, currency: 'USD', description: 'Deposit', externalReference: 'order:123' },
-        );
+        const result = await prepareAndCreate(service);
 
         expect(result).toMatchObject({
             error: 'payment_operation_in_progress',
@@ -332,6 +622,10 @@ describe('PaymentOperationService provider-neutral contract', () => {
             resolveOwnership: jest.fn().mockResolvedValue({
                 owned: true,
                 canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 2500,
+                canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido #123',
+                paymentStatus: 'pending',
             }),
             createPaymentLink: jest.fn().mockRejectedValue(new Error('socket closed after submit')),
             refundPayment: jest.fn(),
@@ -343,13 +637,7 @@ describe('PaymentOperationService provider-neutral contract', () => {
         };
         const { service, state } = createHarness(provider);
 
-        const result = await service.createPaymentLink(
-            schemaName,
-            tenantId,
-            contactId,
-            executionLedgerId,
-            { amountCents: 2500, currency: 'USD', description: 'Deposit', externalReference: 'order:123' },
-        );
+        const result = await prepareAndCreate(service);
 
         expect(result).toMatchObject({ error: 'payment_reconciliation_required' });
         expect(provider.findByIdempotencyKey).toHaveBeenCalledWith({
@@ -359,6 +647,77 @@ describe('PaymentOperationService provider-neutral contract', () => {
         });
         expect(state.row.provider_operation_id).toBe('provider-op-recovered');
     });
+
+    it('records a proven provider 4xx as retry-safe and requires a fresh confirmation', async () => {
+        const provider: PaymentOperationProvider = {
+            id: 'stub-provider',
+            resolveOwnership: jest.fn().mockResolvedValue({
+                owned: true,
+                canonicalReference: 'order:canonical-123',
+                canonicalAmountCents: 2500,
+                canonicalCurrency: 'COP',
+                canonicalDescription: 'Pedido #123',
+                paymentStatus: 'pending',
+            }),
+            createPaymentLink: jest.fn().mockRejectedValue(new PaymentProviderCallError(
+                'known_no_effect',
+                'wompi_link_creation_rejected',
+            )),
+            refundPayment: jest.fn(),
+            applyDiscount: jest.fn(),
+            reconcile: jest.fn(),
+            findByIdempotencyKey: jest.fn(),
+        };
+        const { service, state } = createHarness(provider);
+
+        const result = await prepareAndCreate(service);
+
+        expect(result).toMatchObject({
+            error: 'payment_provider_rejected',
+            providerErrorCode: 'wompi_link_creation_rejected',
+            requiresNewConfirmation: true,
+            shouldHandoff: false,
+        });
+        expect(state.row.status).toBe('failed');
+        expect(provider.findByIdempotencyKey).not.toHaveBeenCalled();
+    });
+
+    it.each(['timeout', '5xx'] as const)(
+        'keeps a %s provider outcome fail-closed for reconciliation',
+        async failureKind => {
+            const provider: PaymentOperationProvider = {
+                id: 'stub-provider',
+                resolveOwnership: jest.fn().mockResolvedValue({
+                    owned: true,
+                    canonicalReference: 'order:canonical-123',
+                    canonicalAmountCents: 2500,
+                    canonicalCurrency: 'COP',
+                    canonicalDescription: 'Pedido #123',
+                    paymentStatus: 'pending',
+                }),
+                createPaymentLink: jest.fn().mockRejectedValue(new PaymentProviderCallError(
+                    'unknown',
+                    failureKind === 'timeout'
+                        ? 'wompi_link_creation_outcome_unknown'
+                        : 'payment_provider_5xx',
+                )),
+                refundPayment: jest.fn(),
+                applyDiscount: jest.fn(),
+                reconcile: jest.fn(),
+                findByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            };
+            const { service, state } = createHarness(provider);
+
+            const result = await prepareAndCreate(service);
+
+            expect(result).toMatchObject({
+                error: 'payment_reconciliation_required',
+                shouldHandoff: true,
+            });
+            expect(state.row.status).toBe('reconciliation_required');
+            expect(provider.findByIdempotencyKey).toHaveBeenCalled();
+        },
+    );
 
     it('binds an owned alias to the provider canonical reference before any side effect', async () => {
         const provider: PaymentOperationProvider = {
@@ -406,15 +765,11 @@ describe('PaymentOperationService provider-neutral contract', () => {
         };
         const { service } = createHarness(provider);
 
-        const result = await service.createPaymentLink(
-            schemaName,
-            tenantId,
-            contactId,
-            executionLedgerId,
-            { amountCents: 2500, currency: 'USD', description: 'Deposit', externalReference: 'alias' },
-        );
+        const result = await service.preparePaymentLink(tenantId, contactId, {
+            payableReference: 'alias',
+        });
 
-        expect(result).toMatchObject({ error: 'payment_ownership_unverified' });
+        expect(result).toMatchObject({ ok: false, result: { error: 'payment_ownership_unverified' } });
         expect(provider.createPaymentLink).not.toHaveBeenCalled();
     });
 

@@ -24,7 +24,7 @@ const PUBLIC_FEATURE_KEYS = [
     'channels', 'customPrompt', 'customTemplates', 'aiInsights', 'recall', 'llmTier',
     'maxContacts', 'pipelineStages', 'automationRules', 'broadcastCampaigns', 'segments',
     'customAttributes', 'externalCrm', 'outboundWebhooks', 'maxCalendars',
-    'appointmentsServices', 'scheduledReports', 'biApi', 'widget', 'ecommerce',
+    'appointmentsServices', 'scheduledReports', 'biApi', 'widget', 'ecommerce', 'customerPayments',
     'staffScheduling', 'vehicleInventory', 'channelManager', 'seats', 'mediaStorageMb',
     'dataRetentionDays', 'knowledgeArticles', 'emailTemplates', 'sso', 'auditLog',
     'customDomainKb', 'prioritySupport', 'whiteLabel', 'salesLed',

@@ -114,7 +114,7 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 | **AI & Config** | ai (router + 5 providers), persona (multi-agent CRUD, templates, channel assignment), knowledge, copilot |
 | **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring, analytics, insights, deal-approval, bulk-update, pipeline-stages), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
-| **Billing & Finance** | billing (Wompi adapter + internal subscription engine, payment sources, webhook, reconciliation/dunning, plan quotas), tenant-payments (tenant-owned Mercado Pago credentials and customer payment links), fiscal (Factus/DIAN), financials (SaaS metrics, snapshots, infra costs, exchange rates), offboarding (tenant lifecycle, grace enforcer cron, archive cleaner) |
+| **Billing & Finance** | billing (Wompi adapter + internal subscription engine, payment sources, webhook, reconciliation/dunning, plan quotas), tenant-payments (tenant-owned Wompi/Mercado Pago credentials, hosted customer payment links and canonical settlement), fiscal (Factus/DIAN), financials (SaaS metrics, snapshots, infra costs, exchange rates), offboarding (tenant lifecycle, grace enforcer cron, archive cleaner) |
 | **Operations** | broadcast, inventory, orders, compliance, email, email-templates, offers, business-info |
 | **Media & Files** | media (upload, resize, logo, tags, serve) |
 | **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection, multi-calendar, Google/Microsoft sync) |
@@ -348,11 +348,11 @@ audit_logs                 — Offboarding and billing audit trail
 ## Billing System (Aug 2026)
 
 - **Subscription provider**: Wompi is the only live platform→tenant rail (Colombia/COP), driven by Parallly's internal renewal engine. Mercado Pago is retired from subscriptions.
-- **Tenant customer payments**: Mercado Pago remains only under `tenant-payments`: each tenant supplies its own encrypted credentials to generate links and collect tenant→customer purchases. Those credentials never pay Parallly.
+- **Tenant customer payments**: Wompi Payment Links and Mercado Pago Checkout Pro live under `tenant-payments`; each tenant supplies its own encrypted credentials, selects one active provider, and collects tenant→customer purchases directly. Those credentials never pay Parallly. The `customerPayments` plan feature and `tools.payments` agent capability gate new links; webhook/status reconciliation remains available after downgrade.
 - **Plans**: 5 plan families seeded in `billing_plans`; active database rows are authoritative. Provider sync scripts do not by themselves prove a payment provider is enabled in production.
 - **Subscription lifecycle**: pending_auth → trialing → active → past_due → cancelled/expired. `pending_auth` never grants paid entitlement.
 - **Trial**: Created at end of onboarding (`completeOnboarding`). Daily cron fires `trial.ending_soon` 3 days before end
-- **Subscription webhooks**: `POST /billing/webhook/wompi` with Wompi checksum verification + Redis idempotency. Mercado Pago webhooks live only under tenant-payments for tenant→customer links.
+- **Subscription webhooks**: `POST /billing/webhook/wompi` handles the platform merchant. Tenant-owned Wompi and Mercado Pago callbacks live only under `tenant-payments`, use the tenant connection secret, and must never share platform billing credentials or settlement state.
 - **Reconciliation**: Hourly past_due sweep + daily drift detection via `ReconciliationProcessor`
 - **Plan quotas**: Server-side enforcement on services count, automation rules count, broadcast limits
 - **Email templates**: 5 billing-specific templates (payment_success, payment_failed, trial_ending, subscription_cancelled, plan_upgraded)
@@ -620,7 +620,7 @@ See `.env.example`. Key ones:
 - `MEDIA_STORAGE_PATH` — /data/media (Docker volume)
 - `WOMPI_PUBLIC_KEY`, `WOMPI_PRIVATE_KEY` — Wompi tokenization/source/charge credentials
 - `WOMPI_EVENTS_SECRET`, `WOMPI_INTEGRITY_SECRET` — Wompi event checksum and transaction integrity secrets
-- Mercado Pago has no platform-level env secrets; tenant credentials are encrypted in tenant-payments storage
+- Tenant customer-payment providers have no platform-level env secrets; each tenant's Wompi/Mercado Pago credentials are encrypted in tenant-payments storage
 - `NEXT_PUBLIC_INSTAGRAM_APP_ID` — Instagram OAuth app ID
 - `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI` — Instagram OAuth redirect URI
 - `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID` — Facebook Login configuration ID for Messenger

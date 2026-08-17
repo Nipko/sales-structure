@@ -170,13 +170,20 @@ const TOOL_POLICY_ENTRIES = [
     })),
     entry('create_payment_link', contactWrite({
         dataClassification: 'sensitive',
-        assurance: 'A3',
+        // A hosted checkout link does not itself move money. It still requires
+        // the A2 identity boundary and a signed confirmation in another turn.
+        assurance: 'A2',
         assuranceEnforcement: 'central_guard',
         ownership: 'resource_owner',
         idempotency: 'central_ledger',
         externalEffect: 'provider_write',
         downstreamEffects: ['handoff'],
         confirmation: 'runtime_enforced',
+    })),
+    entry('get_payment_status', contactRead({
+        dataClassification: 'sensitive',
+        ownership: 'resource_owner',
+        externalEffect: 'provider_read',
     })),
     entry('refund_payment', contactWrite({
         dataClassification: 'sensitive',

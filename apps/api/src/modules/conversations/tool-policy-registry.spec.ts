@@ -31,15 +31,15 @@ describe('canonical AI tool policy registry', () => {
         /\bcase\s+'([^']+)'/g,
     );
 
-    it('covers exactly the 92 definitions and 92 executor branches', () => {
+    it('covers exactly the 93 definitions and 93 executor branches', () => {
         const expected = [...new Set(definitionNames)].sort();
         const executed = [...new Set(executorNames)].sort();
         const registered = [...STATIC_TOOL_NAMES].sort();
 
-        expect(definitionNames).toHaveLength(92);
-        expect(expected).toHaveLength(92);
-        expect(executed).toHaveLength(92);
-        expect(registered).toHaveLength(92);
+        expect(definitionNames).toHaveLength(93);
+        expect(expected).toHaveLength(93);
+        expect(executed).toHaveLength(93);
+        expect(registered).toHaveLength(93);
         expect(registered).toEqual(expected);
         expect(registered).toEqual(executed);
     });
@@ -128,9 +128,16 @@ describe('canonical AI tool policy registry', () => {
             confirmation: 'runtime_enforced',
         });
         expect(getToolPolicy('create_payment_link')).toMatchObject({
-            assurance: 'A3',
+            assurance: 'A2',
             assuranceEnforcement: 'central_guard',
             externalEffect: 'provider_write',
+            confirmation: 'runtime_enforced',
+        });
+        expect(getToolPolicy('get_payment_status')).toMatchObject({
+            assurance: 'A1',
+            effect: 'read',
+            ownership: 'resource_owner',
+            externalEffect: 'provider_read',
         });
         for (const name of ['refund_payment', 'apply_discount']) {
             expect(getToolPolicy(name)).toMatchObject({

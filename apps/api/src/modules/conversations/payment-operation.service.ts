@@ -1,10 +1,57 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 export const PAYMENT_OPERATION_PROVIDER = 'PAYMENT_OPERATION_PROVIDER';
 
 export type PaymentOperationKind = 'payment_link' | 'refund' | 'discount';
+export type CustomerPaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'expired' | 'requires_review' | 'ambiguous';
+export type PaymentProviderFailureOutcome = 'known_no_effect' | 'unknown';
+
+/**
+ * Provider adapters must distinguish a proven rejection before any remote
+ * effect from an unknown outcome (timeout, 5xx or malformed post-submit
+ * response). Only the former may be offered again after a fresh confirmation.
+ */
+export class PaymentProviderCallError extends Error {
+    readonly name = 'PaymentProviderCallError';
+
+    constructor(
+        public readonly outcome: PaymentProviderFailureOutcome,
+        public readonly code: string,
+        cause?: unknown,
+    ) {
+        super(code);
+        if (cause !== undefined) (this as Error & { cause?: unknown }).cause = cause;
+    }
+}
+
+export interface PaymentRuntimeCapability {
+    planEnabled: boolean;
+    configured: boolean;
+    ready: boolean;
+    /** Existing local/provider state can still be read after downgrade. */
+    statusAvailable: boolean;
+    activeProvider?: string;
+}
+
+export interface CanonicalPayable {
+    canonicalReference: string;
+    amountCents: number;
+    currency: string;
+    description: string;
+    paymentStatus: CustomerPaymentStatus;
+}
+
+export interface PreparedPaymentLink extends CanonicalPayable {
+    paymentIntentId: string;
+    confirmationSummary: string;
+}
+
+export type PaymentLinkPreparationResult =
+    | { ok: true; payable: PreparedPaymentLink }
+    | { ok: false; result: Record<string, unknown> };
 
 export interface PaymentLinkProviderRequest {
     tenantId: string;
@@ -12,8 +59,16 @@ export interface PaymentLinkProviderRequest {
     amountCents: number;
     currency: string;
     description: string;
-    externalReference: string;
+    canonicalReference: string;
     idempotencyKey: string;
+}
+
+export interface PaymentStatusProviderResult extends CanonicalPayable {
+    provider?: string;
+    providerLinkId?: string;
+    providerTransactionId?: string;
+    paidAt?: string;
+    updatedAt?: string;
 }
 
 export interface RefundProviderRequest {
@@ -38,6 +93,8 @@ export interface DiscountProviderRequest {
 /** No provider is selected by this contract. An adapter must be bound explicitly. */
 export interface PaymentOperationProvider {
     readonly id: string;
+    /** Provider/account readiness only; plan entitlement is applied by this service. */
+    getRuntimeCapability?(tenantId: string): Promise<Omit<PaymentRuntimeCapability, 'planEnabled'>>;
     /** A bound adapter may deliberately expose only a subset of money actions. */
     supports?(kind: PaymentOperationKind): boolean;
     /** Mandatory ownership check before any money/provider side effect. */
@@ -52,11 +109,21 @@ export interface PaymentOperationProvider {
         /** When supplied, the caller-provided money values must match exactly. */
         canonicalAmountCents?: number;
         canonicalCurrency?: string;
+        canonicalDescription?: string;
+        paymentStatus?: CustomerPaymentStatus;
     }>;
     createPaymentLink(input: PaymentLinkProviderRequest): Promise<{
         providerOperationId: string;
         url: string;
+        provider?: string;
+        paymentStatus?: 'pending';
     }>;
+    /** Contact-owned authoritative state. This read is intentionally not plan-gated. */
+    getPaymentStatus?(input: {
+        tenantId: string;
+        contactId: string;
+        payableReference: string;
+    }): Promise<PaymentStatusProviderResult | null>;
     refundPayment(input: RefundProviderRequest): Promise<{ providerOperationId: string }>;
     applyDiscount(input: DiscountProviderRequest): Promise<{
         providerOperationId: string;
@@ -111,42 +178,167 @@ export class PaymentOperationService {
         private readonly prisma: PrismaService,
         @Optional() @Inject(PAYMENT_OPERATION_PROVIDER)
         private readonly provider?: PaymentOperationProvider,
+        @Optional() private readonly throttle?: TenantThrottleService,
     ) {}
+
+    async getRuntimeCapability(tenantId: string): Promise<PaymentRuntimeCapability> {
+        const planEnabled = await this.isCustomerPaymentsEnabled(tenantId);
+        // Status availability is deliberately resolved even after a downgrade:
+        // existing links still need an authoritative read path. Entitlement and
+        // provider readiness affect only creation.
+        if (!this.provider?.getRuntimeCapability) {
+            return {
+                planEnabled,
+                configured: false,
+                ready: false,
+                statusAvailable: false,
+            };
+        }
+        try {
+            const providerCapability = await this.provider.getRuntimeCapability(tenantId);
+            return {
+                planEnabled,
+                configured: providerCapability.configured === true,
+                ready: this.supports('payment_link')
+                    && providerCapability.ready === true,
+                statusAvailable: Boolean(this.provider.getPaymentStatus)
+                    && providerCapability.statusAvailable === true,
+                activeProvider: providerCapability.activeProvider,
+            };
+        } catch {
+            return {
+                planEnabled,
+                configured: false,
+                ready: false,
+                statusAvailable: false,
+            };
+        }
+    }
+
+    /**
+     * Resolve the contact-owned purchase before the central confirmation guard.
+     * The resulting deterministic id binds that confirmation to exact backend
+     * money and concept; none of these fields come from model arguments.
+     */
+    async preparePaymentLink(
+        tenantId: string,
+        contactId: string,
+        args: Record<string, unknown>,
+    ): Promise<PaymentLinkPreparationResult> {
+        const payableReference = this.exactIdentifier(args.payableReference, 180);
+        if (!payableReference) {
+            return {
+                ok: false,
+                result: {
+                    error: 'invalid_payment_request',
+                    message: 'La referencia pagable es inválida. Usa únicamente la referencia entregada por una herramienta del negocio.',
+                },
+            };
+        }
+        if (!await this.isCustomerPaymentsEnabled(tenantId)) {
+            return {
+                ok: false,
+                result: {
+                    error: 'customer_payments_not_in_plan',
+                    shouldHandoff: false,
+                    message: 'El plan actual no permite crear enlaces de pago. No generes ni inventes un enlace.',
+                },
+            };
+        }
+        if (!this.provider || !this.supports('payment_link')) {
+            return {
+                ok: false,
+                result: {
+                    error: 'payment_provider_unavailable',
+                    shouldHandoff: true,
+                    message: 'No hay un proveedor de pagos disponible. No generes ni inventes un enlace.',
+                },
+            };
+        }
+        const canonical = await this.resolveCanonicalPayable(tenantId, contactId, payableReference);
+        if (!canonical) {
+            return {
+                ok: false,
+                result: {
+                    error: 'payment_ownership_unverified',
+                    shouldHandoff: true,
+                    message: 'No se pudo demostrar que esta compra pertenece al contacto o sigue siendo pagable.',
+                },
+            };
+        }
+        const snapshot = {
+            tenantId,
+            contactId,
+            canonicalReference: canonical.canonicalReference,
+            amountCents: canonical.amountCents,
+            currency: canonical.currency,
+            description: canonical.description,
+            paymentStatus: canonical.paymentStatus,
+        };
+        return {
+            ok: true,
+            payable: {
+                ...canonical,
+                paymentIntentId: hash(JSON.stringify(snapshot)),
+                confirmationSummary: `${this.formatMoney(canonical.amountCents, canonical.currency)} por ${canonical.description}`,
+            },
+        };
+    }
+
+    confirmationRequiredResult(
+        prepared: PreparedPaymentLink,
+        guardResult: Record<string, unknown>,
+    ): Record<string, unknown> {
+        return {
+            ...guardResult,
+            paymentIntentId: prepared.paymentIntentId,
+            payment: {
+                payableReference: prepared.canonicalReference,
+                amountCents: prepared.amountCents,
+                currency: prepared.currency,
+                description: prepared.description,
+            },
+            confirmationSummary: prepared.confirmationSummary,
+            message: `Pide al cliente confirmar explícitamente ${prepared.confirmationSummary}. La acción no se ejecutará en este mismo turno.`,
+        };
+    }
 
     async createPaymentLink(
         schemaName: string,
         tenantId: string,
         contactId: string,
         executionLedgerId: string,
-        args: Record<string, unknown>,
+        prepared: PreparedPaymentLink,
     ): Promise<Record<string, unknown>> {
-        const amountCents = Number(args.amountCents);
-        const currency = this.currency(args.currency);
-        const description = this.boundedText(args.description, 250);
-        const externalReference = this.exactIdentifier(args.externalReference, 180);
-        if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || !currency || !description || !externalReference) {
-            return { error: 'invalid_payment_request', message: 'Monto, moneda, descripción o referencia inválidos.' };
+        if (!this.validPreparedPaymentLink(tenantId, contactId, prepared)) {
+            return {
+                error: 'invalid_payment_request',
+                message: 'El snapshot confirmado del pago es inválido. No generes un enlace.',
+            };
         }
 
         const intent = await this.createIntent(schemaName, executionLedgerId, 'payment_link', {
-            amountCents,
-            currency,
-            description,
-            externalReference,
+            paymentIntentId: prepared.paymentIntentId,
+            payableReference: prepared.canonicalReference,
+            amountCents: prepared.amountCents,
+            currency: prepared.currency,
+            description: prepared.description,
+            paymentStatus: prepared.paymentStatus,
         });
         const terminal = this.terminalResult(intent);
         if (terminal) return terminal;
         if (!this.provider || !this.supports('payment_link')) {
             return this.handoffUnavailable(schemaName, intent, 'payment_link');
         }
-        const canonicalReference = await this.resolveCanonicalOwnership(
+        const payable = await this.resolveCanonicalPayable(
             tenantId,
             contactId,
-            'payment_link',
-            externalReference,
-            { amountCents, currency },
+            prepared.canonicalReference,
         );
-        if (!canonicalReference || !await this.bindCanonicalReference(schemaName, intent.id, canonicalReference)) {
+        if (!payable || !this.samePayableSnapshot(prepared, payable)) {
+            return this.markSnapshotChanged(schemaName, intent.id);
+        }
+        if (!await this.bindCanonicalReference(schemaName, intent.id, payable.canonicalReference)) {
             return this.markOwnershipFailure(schemaName, intent.id);
         }
 
@@ -155,21 +347,29 @@ export class PaymentOperationService {
             if (!await this.markProcessing(schemaName, intent.id, this.provider.id)) {
                 return this.processingConflict(schemaName, intent.id);
             }
+            // This check is deliberately adjacent to the provider write. Tool
+            // advertisement is only UX; a stale tool call or a mid-session
+            // downgrade must still fail closed on the server.
+            if (!await this.isCustomerPaymentsEnabled(tenantId)) {
+                return this.markFeatureUnavailable(schemaName, intent.id);
+            }
             const created = await this.provider.createPaymentLink({
                 tenantId,
                 contactId,
-                amountCents,
-                currency,
-                description,
-                externalReference: canonicalReference,
+                amountCents: payable.amountCents,
+                currency: payable.currency,
+                description: payable.description,
+                canonicalReference: payable.canonicalReference,
                 idempotencyKey: intent.id,
             });
             providerOperationId = created?.providerOperationId;
-            if (!created?.providerOperationId || !this.isHttpsUrl(created.url)) {
+            if (!created?.providerOperationId || !this.isHttpsUrl(created.url)
+                || (created.paymentStatus !== undefined && created.paymentStatus !== 'pending')) {
                 return this.markReconciliationRequired(schemaName, intent.id, 'invalid_provider_response', providerOperationId);
             }
             if (!await this.markProviderSubmitted(schemaName, intent.id, created.providerOperationId, {
                 paymentLink: created.url,
+                paymentStatus: 'pending',
             })) {
                 return this.markReconciliationRequired(schemaName, intent.id, 'provider_submission_commit_failed', created.providerOperationId);
             }
@@ -182,18 +382,27 @@ export class PaymentOperationService {
                 return this.markReconciliationRequired(schemaName, intent.id, reconciliation.status, created.providerOperationId);
             }
             const result = {
-                success: true,
+                linkCreated: true,
                 operationId: intent.id,
                 paymentLink: created.url,
-                amountCents,
-                currency,
-                reconciled: true,
+                payableReference: payable.canonicalReference,
+                amountCents: payable.amountCents,
+                currency: payable.currency,
+                description: payable.description,
+                provider: created.provider || this.provider.id,
+                linkStatus: 'active',
+                paymentStatus: 'pending',
+                paid: false,
+                message: 'El enlace fue creado, pero el pago sigue pendiente hasta que el proveedor lo confirme.',
             };
             if (!await this.markSucceeded(schemaName, intent.id, created.providerOperationId, result)) {
                 return this.markReconciliationRequired(schemaName, intent.id, 'ledger_commit_failed', created.providerOperationId);
             }
             return result;
-        } catch {
+        } catch (error: unknown) {
+            if (error instanceof PaymentProviderCallError && error.outcome === 'known_no_effect') {
+                return this.markKnownNoEffectFailure(schemaName, intent.id, error.code);
+            }
             providerOperationId ||= await this.recoverProviderOperationId(tenantId, 'payment_link', intent.id);
             return this.markReconciliationRequired(schemaName, intent.id, 'provider_call_failed', providerOperationId);
         }
@@ -427,21 +636,152 @@ export class PaymentOperationService {
         contactId: string,
         kind: PaymentOperationKind,
         reference: string,
-        expectedMoney?: { amountCents: number; currency: string },
     ): Promise<string | null> {
         if (!this.provider) return null;
         try {
             const result = await this.provider.resolveOwnership({ tenantId, contactId, kind, reference });
             if (result?.owned !== true) return null;
-            if (expectedMoney && result.canonicalAmountCents !== undefined
-                && result.canonicalAmountCents !== expectedMoney.amountCents) return null;
-            if (expectedMoney && result.canonicalCurrency !== undefined
-                && result.canonicalCurrency.toUpperCase() !== expectedMoney.currency) return null;
             if (typeof result.canonicalReference !== 'string') return null;
             const canonical = result.canonicalReference.trim();
             return canonical.length > 0 && canonical.length <= 180 ? canonical : null;
         } catch {
             return null;
+        }
+    }
+
+    private async resolveCanonicalPayable(
+        tenantId: string,
+        contactId: string,
+        payableReference: string,
+    ): Promise<CanonicalPayable | null> {
+        if (!this.provider) return null;
+        try {
+            const result = await this.provider.resolveOwnership({
+                tenantId,
+                contactId,
+                kind: 'payment_link',
+                reference: payableReference,
+            });
+            const payable: CanonicalPayable = {
+                canonicalReference: String(result?.canonicalReference || '').trim(),
+                amountCents: Number(result?.canonicalAmountCents),
+                currency: String(result?.canonicalCurrency || '').trim().toUpperCase(),
+                description: String(result?.canonicalDescription || '').trim(),
+                paymentStatus: result?.paymentStatus as CustomerPaymentStatus,
+            };
+            if (result?.owned !== true || !this.validCanonicalPayable(payable)) return null;
+            // A new checkout must never be produced for a terminal or disputed
+            // purchase. A failed attempt remains payable and can receive a new
+            // single-use link through the provider's own idempotent workflow.
+            if (!['pending', 'failed'].includes(payable.paymentStatus)) return null;
+            return payable;
+        } catch {
+            return null;
+        }
+    }
+
+    private validCanonicalPayable(value: CanonicalPayable): boolean {
+        return value.canonicalReference.length > 0
+            && value.canonicalReference.length <= 180
+            && Number.isSafeInteger(value.amountCents)
+            && value.amountCents > 0
+            && /^[A-Z]{3}$/.test(value.currency)
+            && value.description.length > 0
+            && value.description.length <= 250
+            && ['pending', 'paid', 'failed', 'refunded', 'expired', 'requires_review', 'ambiguous']
+                .includes(value.paymentStatus);
+    }
+
+    private validPreparedPaymentLink(
+        tenantId: string,
+        contactId: string,
+        value: PreparedPaymentLink,
+    ): boolean {
+        if (!value || !this.validCanonicalPayable(value)) return false;
+        const expectedId = hash(JSON.stringify({
+            tenantId,
+            contactId,
+            canonicalReference: value.canonicalReference,
+            amountCents: value.amountCents,
+            currency: value.currency,
+            description: value.description,
+            paymentStatus: value.paymentStatus,
+        }));
+        return value.paymentIntentId === expectedId
+            && value.confirmationSummary === `${this.formatMoney(value.amountCents, value.currency)} por ${value.description}`;
+    }
+
+    private samePayableSnapshot(prepared: PreparedPaymentLink, current: CanonicalPayable): boolean {
+        return prepared.canonicalReference === current.canonicalReference
+            && prepared.amountCents === current.amountCents
+            && prepared.currency === current.currency
+            && prepared.description === current.description
+            && prepared.paymentStatus === current.paymentStatus;
+    }
+
+    private async isCustomerPaymentsEnabled(tenantId: string): Promise<boolean> {
+        if (!this.throttle) return false;
+        try {
+            return await this.throttle.isFeatureEnabled(tenantId, 'customerPayments');
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Read the provider-backed, contact-owned payment state. Deliberately no
+     * plan entitlement check: links issued before a downgrade must still settle
+     * and remain verifiable.
+     */
+    async getPaymentStatus(
+        tenantId: string,
+        contactId: string,
+        args: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+        const payableReference = this.exactIdentifier(args.payableReference, 180);
+        if (!payableReference) {
+            return { error: 'invalid_payment_reference', found: false };
+        }
+        if (!this.provider?.getPaymentStatus) {
+            return {
+                error: 'payment_status_unavailable',
+                found: false,
+                shouldHandoff: true,
+                message: 'No se pudo consultar el estado autoritativo. No afirmes que el pago fue aprobado.',
+            };
+        }
+        try {
+            const status = await this.provider.getPaymentStatus({ tenantId, contactId, payableReference });
+            if (!status || !this.validCanonicalPayable(status)) {
+                return { found: false, error: 'payment_not_found' };
+            }
+            const requiresReview = ['ambiguous', 'requires_review'].includes(status.paymentStatus);
+            return {
+                found: true,
+                payableReference: status.canonicalReference,
+                paymentStatus: status.paymentStatus,
+                paid: status.paymentStatus === 'paid',
+                requiresReview,
+                shouldHandoff: requiresReview,
+                amountCents: status.amountCents,
+                currency: status.currency,
+                description: status.description,
+                provider: status.provider,
+                paidAt: status.paidAt,
+                updatedAt: status.updatedAt,
+                message: status.paymentStatus === 'paid'
+                    ? 'El proveedor confirmó el pago como aprobado.'
+                    : requiresReview
+                        ? 'El estado del pago es ambiguo y requiere revisión manual. No afirmes que fue aprobado ni pidas otro pago.'
+                        : 'El proveedor todavía no confirmó este pago como aprobado.',
+            };
+        } catch {
+            return {
+                error: 'payment_status_unavailable',
+                found: false,
+                shouldHandoff: true,
+                message: 'No se pudo consultar el estado autoritativo. No afirmes que el pago fue aprobado.',
+            };
         }
     }
 
@@ -496,6 +836,43 @@ export class PaymentOperationService {
             schemaName,
             `UPDATE payment_operation_ledger
                 SET status = 'handoff_required', reconciliation_status = 'ownership_unverified',
+                    response_payload = $2::jsonb, updated_at = NOW()
+              WHERE id = $1::uuid AND status = 'requested'`,
+            [id, JSON.stringify(result)],
+        );
+        return result;
+    }
+
+    private async markFeatureUnavailable(schemaName: string, id: string): Promise<Record<string, unknown>> {
+        const result = {
+            error: 'customer_payments_not_in_plan',
+            operationId: id,
+            shouldHandoff: false,
+            message: 'El plan actual no permite crear enlaces de pago. No generes ni inventes un enlace.',
+        };
+        await this.query(
+            schemaName,
+            `UPDATE payment_operation_ledger
+                SET status = 'failed', reconciliation_status = 'feature_unavailable',
+                    response_payload = $2::jsonb, updated_at = NOW()
+              WHERE id = $1::uuid AND status IN ('requested', 'processing')`,
+            [id, JSON.stringify(result)],
+        );
+        return result;
+    }
+
+    private async markSnapshotChanged(schemaName: string, id: string): Promise<Record<string, unknown>> {
+        const result = {
+            error: 'payment_snapshot_changed',
+            operationId: id,
+            shouldHandoff: false,
+            requiresNewConfirmation: true,
+            message: 'El monto, concepto o estado cambió desde la confirmación. Informa los datos actuales y solicita una confirmación nueva antes de crear otro enlace.',
+        };
+        await this.query(
+            schemaName,
+            `UPDATE payment_operation_ledger
+                SET status = 'failed', reconciliation_status = 'snapshot_changed',
                     response_payload = $2::jsonb, updated_at = NOW()
               WHERE id = $1::uuid AND status = 'requested'`,
             [id, JSON.stringify(result)],
@@ -601,6 +978,42 @@ export class PaymentOperationService {
         return result;
     }
 
+    private async markKnownNoEffectFailure(
+        schemaName: string,
+        id: string,
+        providerCode: string,
+    ): Promise<Record<string, unknown>> {
+        const safeCode = /^[A-Za-z0-9_.:-]{1,80}$/.test(providerCode)
+            ? providerCode
+            : 'payment_provider_rejected';
+        const result = {
+            error: 'payment_provider_rejected',
+            providerErrorCode: safeCode,
+            operationId: id,
+            shouldHandoff: false,
+            requiresNewConfirmation: true,
+            message: 'El proveedor rechazó la creación antes de generar un enlace. Corrige la configuración o los datos y solicita una confirmación nueva antes de reintentar.',
+        };
+        const updated = await this.query<Array<{ id: string }>>(
+            schemaName,
+            `UPDATE payment_operation_ledger
+                SET status = 'failed', reconciliation_status = $3,
+                    response_payload = $2::jsonb, updated_at = NOW()
+              WHERE id = $1::uuid AND status = 'processing'
+                AND provider_operation_id IS NULL
+              RETURNING id`,
+            [id, JSON.stringify(result), `known_no_effect:${safeCode}`.slice(0, 80)],
+        );
+        if (!updated[0]) {
+            return this.markReconciliationRequired(
+                schemaName,
+                id,
+                'known_no_effect_commit_failed',
+            );
+        }
+        return result;
+    }
+
     private ensureTable(schemaName: string): Promise<void> {
         const pending = this.initializedSchemas.get(schemaName);
         if (pending) return pending;
@@ -673,6 +1086,15 @@ export class PaymentOperationService {
         if (typeof value !== 'string') return '';
         const identifier = value.trim();
         return identifier.length > 0 && identifier.length <= max ? identifier : '';
+    }
+
+    private formatMoney(amountCents: number, currency: string): string {
+        return new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(amountCents / 100);
     }
 
     private isHttpsUrl(value: unknown): value is string {

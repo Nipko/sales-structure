@@ -3,6 +3,7 @@ import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { INSURANCE_TOOLS } from './tools/insurance-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
+import { CREATE_PAYMENT_LINK_TOOL, GET_PAYMENT_STATUS_TOOL } from './tools/payment-tools';
 
 describe('AI tool schema and runtime alignment', () => {
     const schemaName = 'tenant_tools';
@@ -69,6 +70,12 @@ describe('AI tool schema and runtime alignment', () => {
         expect(cancelOrder.description).toContain('legacy "pending" or "confirmed"');
         expect(cancelOrder.description).toContain('"preparing", "ready", "delivered", or "cancelled"');
         expect(checkOrderStatus.description).toContain('estimatedDeliveryAt');
+        expect(checkOrderStatus.description).toContain('payableReference');
+
+        const placeOrder = tool(RESTAURANTS_TOOLS, 'place_order');
+        expect(placeOrder.parameters.properties.paymentMethod.enum).toContain('payment_link');
+        expect(placeOrder.parameters.properties.paymentMethod.enum).not.toContain('wompi');
+        expect(placeOrder.parameters.properties.paymentMethod.enum).not.toContain('mp');
     });
 
     it('advertises only availability inputs that the daycare and photography handlers use', () => {
@@ -108,6 +115,19 @@ describe('AI tool schema and runtime alignment', () => {
         expect(photoRequest.description).toContain('does not calculate or promise a price');
     });
 
+    it('never lets the model supply payment money, description or provider', () => {
+        expect(CREATE_PAYMENT_LINK_TOOL.parameters.properties).toEqual({
+            payableReference: expect.objectContaining({ type: 'string' }),
+        });
+        expect(CREATE_PAYMENT_LINK_TOOL.parameters.required).toEqual(['payableReference']);
+        expect(CREATE_PAYMENT_LINK_TOOL.description).toContain('still pending');
+        expect(GET_PAYMENT_STATUS_TOOL.parameters.properties).toEqual({
+            payableReference: expect.objectContaining({ type: 'string' }),
+        });
+        expect(GET_PAYMENT_STATUS_TOOL.description).toContain('Only a backend-verified status of paid');
+        expect(GET_PAYMENT_STATUS_TOOL.description).toContain('ambiguous or requires_review');
+    });
+
     it('returns the stored food-order ETA only for an order owned by the contact', async () => {
         const harness = createHarness();
         const orderId = '44444444-4444-4444-8444-444444444444';
@@ -117,6 +137,7 @@ describe('AI tool schema and runtime alignment', () => {
                 id: orderId,
                 contact_id: contactId,
                 status: 'preparing',
+                payment_status: 'pending',
                 order_type: 'delivery',
                 total: '45.00',
                 currency: 'COP',
@@ -141,7 +162,39 @@ describe('AI tool schema and runtime alignment', () => {
         expect(result).toMatchObject({
             id: orderId,
             status: 'preparing',
+            paymentStatus: 'pending',
+            payableReference: `food:${orderId}`,
             estimatedDeliveryAt: estimatedAt,
+        });
+    });
+
+    it('does not expose a new payable reference for an already-paid order', async () => {
+        const harness = createHarness();
+        const orderId = '44444444-4444-4444-8444-444444444444';
+        harness.prisma.$queryRawUnsafe
+            .mockResolvedValueOnce([{
+                id: orderId,
+                contact_id: contactId,
+                status: 'delivered',
+                payment_status: 'paid',
+                order_type: 'delivery',
+                total: '45.00',
+                currency: 'COP',
+            }])
+            .mockResolvedValueOnce([]);
+
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'check_order_status',
+            { orderId },
+            conversationId,
+        );
+
+        expect(result).toMatchObject({
+            paymentStatus: 'paid',
+            payableReference: null,
         });
     });
 

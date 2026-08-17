@@ -93,6 +93,23 @@ describe('SubscriptionGuard billing recovery boundaries', () => {
         expect(h.prisma.tenant.findUnique).not.toHaveBeenCalled();
     });
 
+    it('admits tenant-payment settlement callbacks but not configuration routes', async () => {
+        const callback = harness({
+            url: `/api/v1/tenant-payments/webhook/wompi/${tenantId}/opaque-token`,
+            status: 'expired',
+        });
+        await expect(callback.guard.canActivate(callback.context)).resolves.toBe(true);
+        expect(callback.prisma.tenant.findUnique).not.toHaveBeenCalled();
+
+        const config = harness({
+            url: `/api/v1/tenant-payments/${tenantId}/config`,
+            status: 'expired',
+        });
+        await expect(config.guard.canActivate(config.context)).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'subscription_expired' }),
+        });
+    });
+
     it('fails closed when subscription status cannot be read', async () => {
         const h = harness({ redisError: true, dbError: true });
         await expect(h.guard.canActivate(h.context)).rejects.toBeInstanceOf(ServiceUnavailableException);

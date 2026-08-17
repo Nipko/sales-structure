@@ -49,6 +49,8 @@ import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
+import { PaymentOperationService } from './payment-operation.service';
+import { paymentToolsForRuntime } from './payment-tool-registration';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -231,6 +233,7 @@ export class ConversationsService {
         private mcpClient: McpClientService,
         private attributionService: AttributionService,
         private activeOperationsContext: ActiveOperationsContextService,
+        private paymentOperations: PaymentOperationService,
     ) {}
 
     /**
@@ -1905,6 +1908,18 @@ export class ConversationsService {
             tools = [...tools, ...ECOMMERCE_TOOLS];
             if (cfgTools.ecommerce.canApplyDiscount === true) {
                 tools = [...tools, APPLY_DISCOUNT_TOOL];
+            }
+        }
+
+        // Customer checkout is independent from ecommerce and fails closed on
+        // every turn. A saved agent toggle alone never advertises a money tool:
+        // the runtime plan and the tenant-owned provider must both be ready.
+        if (cfgTools?.payments?.enabled === true) {
+            try {
+                const capability = await this.paymentOperations.getRuntimeCapability(tenantId);
+                tools = [...tools, ...paymentToolsForRuntime(cfgTools.payments, capability)];
+            } catch (error: any) {
+                this.logger.warn(`[TenantPayments] capability unavailable for ${tenantId}: ${error?.message || 'unknown'}`);
             }
         }
 

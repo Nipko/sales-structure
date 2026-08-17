@@ -61,6 +61,30 @@ describe('TenantsController DTO contracts', () => {
 
         expect(errors.some((error) => error.property === 'language')).toBe(true);
     });
+
+    it('rejects the reserved tenantPayments namespace in generic settings updates', async () => {
+        const dto = plainToInstance(UpdateTenantDto, {
+            settings: {
+                timezone: 'America/Bogota',
+                tenantPayments: { provider: 'wompi', privateKey: 'do-not-store-here' },
+            },
+        });
+
+        const errors = await validate(dto, { whitelist: true });
+
+        expect(errors.some((error) => (
+            error.property === 'settings'
+            && error.constraints?.doesNotContainReservedTenantSettings !== undefined
+        ))).toBe(true);
+    });
+
+    it('keeps ordinary generic tenant settings valid', async () => {
+        const dto = plainToInstance(UpdateTenantDto, {
+            settings: { timezone: 'America/Lima', businessHours: { monday: [] } },
+        });
+
+        await expect(validate(dto, { whitelist: true })).resolves.toHaveLength(0);
+    });
 });
 
 describe('TenantsController tenant detail authorization', () => {
@@ -69,7 +93,14 @@ describe('TenantsController tenant detail authorization', () => {
 
     function setup() {
         const tenantsService = {
-            findById: jest.fn(async (id: string) => ({ id, name: 'Tenant' })),
+            findById: jest.fn(async (id: string) => ({
+                id,
+                name: 'Tenant',
+                settings: {
+                    timezone: 'America/Bogota',
+                    tenantPayments: { encryptedAccessToken: 'ciphertext' },
+                },
+            })),
         };
         const controller = new TenantsController(
             tenantsService as any,
@@ -89,7 +120,11 @@ describe('TenantsController tenant detail authorization', () => {
             tenantId: ownTenantId,
         })).resolves.toEqual({
             success: true,
-            data: { id: ownTenantId, name: 'Tenant' },
+            data: {
+                id: ownTenantId,
+                name: 'Tenant',
+                settings: { timezone: 'America/Bogota' },
+            },
         });
         expect(tenantsService.findById).toHaveBeenCalledWith(ownTenantId, {
             role: 'tenant_admin',
@@ -111,11 +146,73 @@ describe('TenantsController tenant detail authorization', () => {
             tenantId: null,
         })).resolves.toEqual({
             success: true,
-            data: { id: otherTenantId, name: 'Tenant' },
+            data: {
+                id: otherTenantId,
+                name: 'Tenant',
+                settings: { timezone: 'America/Bogota' },
+            },
         });
         expect(tenantsService.findById).toHaveBeenCalledWith(otherTenantId, {
             role: 'super_admin',
             tenantId: null,
         });
+    });
+});
+
+describe('TenantsController tenant settings response boundary', () => {
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+    const unsafeTenant = {
+        id: tenantId,
+        name: 'Tenant',
+        settings: {
+            timezone: 'America/Bogota',
+            verticalConfig: { industry: 'retail', subType: 'ecommerce' },
+            tenantPayments: { encryptedPrivateKey: 'ciphertext' },
+        },
+        _count: { channelAccounts: 1 },
+    };
+
+    function setup() {
+        const tenantsService = {
+            findAll: jest.fn(async () => ({ tenants: [unsafeTenant], total: 1, page: 1, limit: 20 })),
+            update: jest.fn(async () => unsafeTenant),
+            deactivate: jest.fn(async () => unsafeTenant),
+        };
+        const controller = new TenantsController(
+            tenantsService as any,
+            {} as any,
+            {} as any,
+            {} as any,
+            {} as any,
+        );
+        return { controller, tenantsService };
+    }
+
+    it('redacts tenantPayments from the tenant list while preserving public settings', async () => {
+        const { controller } = setup();
+
+        const response = await controller.findAll();
+
+        expect(response.data[0]).toEqual(expect.objectContaining({
+            vertical: 'retail',
+            subType: 'ecommerce',
+            healthScore: 20,
+            settings: expect.objectContaining({ timezone: 'America/Bogota' }),
+        }));
+        expect(response.data[0].settings).not.toHaveProperty('tenantPayments');
+        expect(unsafeTenant.settings).toHaveProperty('tenantPayments');
+    });
+
+    it('redacts tenantPayments from PATCH and deactivate responses', async () => {
+        const { controller } = setup();
+
+        const updated = await controller.update(tenantId, { name: 'Updated' }, {
+            role: 'tenant_admin',
+            tenantId,
+        });
+        const deactivated = await controller.deactivate(tenantId);
+
+        expect((updated.data as any).settings).not.toHaveProperty('tenantPayments');
+        expect((deactivated.data as any).settings).not.toHaveProperty('tenantPayments');
     });
 });

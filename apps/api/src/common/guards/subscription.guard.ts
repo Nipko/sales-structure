@@ -26,6 +26,10 @@ const EXEMPT_ROUTE_PREFIXES = [
     '/billing-admin',
     '/billing-coupons',
     '/fiscal',
+    // Existing customer payments must settle even after a plan downgrade,
+    // cancellation or hard lock. Only the public callback subtree is exempt;
+    // tenant payment configuration remains subject to normal entitlement.
+    '/tenant-payments/webhook',
     '/auth',
     '/onboarding',
     '/health',

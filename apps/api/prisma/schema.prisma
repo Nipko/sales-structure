@@ -72,8 +72,27 @@ model Tenant {
   subscription    BillingSubscription?
   invitations     TenantInvitation[]
   paymentSources  BillingPaymentSource[]
+  customerPaymentProviderConfig TenantPaymentProviderConfig?
 
   @@map("tenants")
+  @@schema("public")
+}
+
+// Tenant-owned credentials for collecting money from that tenant's customers.
+// Kept outside tenants.settings so unrelated settings writers can never roll
+// back a credential rotation/tombstone or expose encrypted envelopes through a
+// generic tenant DTO.
+model TenantPaymentProviderConfig {
+  tenantId              String   @id @map("tenant_id") @db.Uuid
+  config                Json     @default("{\"version\":2,\"activeProvider\":null,\"providers\":{}}")
+  wompiPublicKey        String?  @unique @map("wompi_public_key")
+  mercadoPagoAccountId String?  @unique @map("mercadopago_account_id")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_payment_provider_configs")
   @@schema("public")
 }
 

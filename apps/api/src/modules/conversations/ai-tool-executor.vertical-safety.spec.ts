@@ -21,7 +21,9 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             $executeRawUnsafe: jest.fn(),
         };
         const eventEmitter = { emit: jest.fn() };
+        const toursService = { createBooking: jest.fn() };
         const restaurantsService = { createOrder: jest.fn() };
+        const educationService = { enrollStudent: jest.fn() };
         const insuranceService = {
             getPolicyByNumber: jest.fn(),
             fileClaim: jest.fn(),
@@ -40,13 +42,13 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             {} as any,
             {} as any,
             {} as any,
-            {} as any,
+            toursService as any,
             {} as any,
             {} as any,
             {} as any,
             restaurantsService as any,
             {} as any,
-            {} as any,
+            educationService as any,
             insuranceService as any,
             chatIdentity as any,
             {} as any,
@@ -65,7 +67,9 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             executor,
             prisma,
             eventEmitter,
+            toursService,
             restaurantsService,
+            educationService,
             insuranceService,
             chatIdentity,
         };
@@ -188,6 +192,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             id: '77777777-7777-4777-8777-777777777777',
             order_type: 'delivery',
             status: 'received',
+            payment_status: 'pending',
             total: 24,
             currency: 'MXN',
             items: [{ menu_item_id: menuItemId }],
@@ -227,6 +232,8 @@ describe('AIToolExecutorService vertical safety contracts', () => {
         );
         expect(result).toMatchObject({
             currency: 'MXN',
+            paymentStatus: 'pending',
+            payableReference: 'food:77777777-7777-4777-8777-777777777777',
             estimatedDelivery: '22 minutos',
             estimatedDeliveryAt: estimatedAt,
         });
@@ -234,6 +241,68 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             'food_order.created',
             expect.anything(),
         );
+    });
+
+    it('returns a canonical tour reference without putting money in the reference', async () => {
+        const harness = createHarness();
+        const bookingId = '88888888-8888-4888-8888-888888888888';
+        harness.toursService.createBooking.mockResolvedValue({
+            id: bookingId,
+            departure_date: '2026-09-01',
+            departure_time: '09:00',
+            party_size: 2,
+            total_price: '180000.00',
+            currency: 'COP',
+            status: 'reserved',
+            payment_status: 'pending',
+        });
+
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'create_tour_booking',
+            {
+                packageId: '99999999-9999-4999-8999-999999999999',
+                departureDate: '2026-09-01',
+                partySize: 2,
+                guestName: 'Ana',
+            },
+            conversationId,
+        );
+
+        expect(result.booking).toMatchObject({
+            id: bookingId,
+            paymentStatus: 'pending',
+            payableReference: `tour:${bookingId}`,
+        });
+        expect(result.booking.payableReference).not.toContain('180000');
+    });
+
+    it('returns an enrollment reference only for a fully chargeable pending balance', async () => {
+        const harness = createHarness();
+        const enrollmentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+        harness.educationService.enrollStudent.mockResolvedValue({
+            id: enrollmentId,
+            cohort_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            status: 'enrolled',
+            payment_status: 'pending',
+        });
+
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'enroll_student',
+            { cohortId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', studentName: 'Ana' },
+            conversationId,
+        );
+
+        expect(result).toMatchObject({
+            enrollmentId,
+            paymentStatus: 'pending',
+            payableReference: `enrollment:${enrollmentId}`,
+        });
     });
 
     it('keeps raw email, phone and arbitrary metadata out of LLM customer context', async () => {

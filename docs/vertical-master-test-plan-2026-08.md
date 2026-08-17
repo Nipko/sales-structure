@@ -484,7 +484,9 @@ Comparar cada KPI contra queries de control sobre fixtures. No aprobar solo porq
 - Mindbody: schedule, zona horaria, cupos y auth.
 - Cliniko: servicios/disponibilidad, scopes, PII y auth.
 - Google/Microsoft Calendar: create/update/cancel, conflicto, token refresh y webhook.
-- Mercado Pago: payment link/deposit, webhook, idempotencia, failure y refund cuando se implemente.
+- Wompi/ Mercado Pago del tenant: enlace alojado, selección server-side, webhook
+  firmado, consulta canónica, idempotencia, reintento, doble aprobación y
+  bloqueo por plan. Los reembolsos no se exponen al agente en esta fase.
 - MCP: discovery, namespacing, schema, timeout, permisos y tool maliciosa.
 
 ### Gate de conexión

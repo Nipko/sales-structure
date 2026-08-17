@@ -1,20 +1,123 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+    BadRequestException,
+    ConflictException,
+    Injectable,
+    Logger,
+    Optional,
+    ServiceUnavailableException,
+} from '@nestjs/common';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import {
+    TenantPaymentCredentialCryptoService,
+    type TenantPaymentCredentialContext,
+    type TenantPaymentCredentialEnvironment,
+    type TenantPaymentCredentialField,
+    type TenantPaymentCredentialReadResult,
+} from './tenant-payment-credential-crypto.service';
+import {
+    parsePaymentReference,
+    type TenantPaymentProvider,
+    type TenantPaymentStatus,
+} from './tenant-payment-reference';
+import {
+    TenantPaymentStoreService,
+    type TenantPaymentIntent,
+} from './tenant-payment-store.service';
+import {
+    TenantWompiClient,
+    WompiProviderError,
+    type WompiEnvironment,
+} from './tenant-wompi.client';
 
 const MP_API = 'https://api.mercadopago.com';
+const MASK = '***' as const;
+const MAX_PROVIDER_CREDENTIAL_HISTORY = 16;
+const TENANT_PAYMENT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 
-export interface TenantPaymentConfig {
-    provider: 'mercadopago';
-    /** Enmascarado al leer; sólo se guarda cifrado. */
-    accessToken?: string;
-    webhookSecret?: string;
+class MercadoPagoProviderError extends Error {
+    constructor(
+        public readonly code: string,
+        public readonly ambiguous: boolean,
+        public readonly providerLinkId?: string,
+    ) {
+        super(code);
+    }
+}
+
+interface StoredMercadoPagoCredentialGeneration {
+    revision?: number;
+    disabledAt?: string;
+    accountId?: string;
+    accessTokenEnc?: string;
+    webhookSecretEnc?: string;
+    environment?: WompiEnvironment;
     publicKey?: string;
-    connected: boolean;
-    webhookConfigured: boolean;
-    /** Verificado contra MercadoPago la última vez que se guardó. */
     accountEmail?: string;
+    verifiedAt?: string;
+}
+
+interface StoredMercadoPagoConfig extends StoredMercadoPagoCredentialGeneration {
+    history?: StoredMercadoPagoCredentialGeneration[];
+}
+
+interface StoredWompiCredentialGeneration {
+    revision?: number;
+    disabledAt?: string;
+    publicKey?: string;
+    privateKeyEnc?: string;
+    eventsSecretEnc?: string;
+    webhookTokenEnc?: string;
+    environment?: WompiEnvironment;
+    merchantId?: string;
+    merchantName?: string;
+    verifiedAt?: string;
+    webhookAcknowledgedAt?: string;
+}
+
+interface StoredWompiConfig extends StoredWompiCredentialGeneration {
+    history?: StoredWompiCredentialGeneration[];
+}
+
+interface StoredTenantPaymentConfigV2 {
+    version: 2;
+    documentRevision?: number;
+    activeProvider: TenantPaymentProvider | null;
+    providers: {
+        mercadopago?: StoredMercadoPagoConfig;
+        wompi?: StoredWompiConfig;
+    };
+}
+
+export interface TenantPaymentProviderState {
+    provider: TenantPaymentProvider;
+    connected: boolean;
+    ready: boolean;
+    verified: boolean;
+    webhookConfigured: boolean;
+    publicKey?: string;
+    accountEmail?: string;
+    merchantName?: string;
+    environment?: WompiEnvironment;
+    webhookUrl?: string;
+    verifiedAt?: string;
+    configRevision?: number;
+    activationReady?: boolean;
+    webhookAcknowledged?: boolean;
+    accessToken?: typeof MASK;
+    webhookSecret?: typeof MASK;
+    privateKey?: typeof MASK;
+    eventsSecret?: typeof MASK;
+}
+
+export interface TenantPaymentConfig extends TenantPaymentProviderState {
+    version: 2;
+    activeProvider: TenantPaymentProvider | null;
+    providers: Record<TenantPaymentProvider, TenantPaymentProviderState>;
 }
 
 export interface PaymentLink {
@@ -23,54 +126,52 @@ export interface PaymentLink {
     amountCents: number;
     currency: string;
     description: string;
+    provider?: TenantPaymentProvider;
+    providerLinkId?: string;
+    paymentStatus?: 'pending';
+    /** Compatibility aliases used by older conversation-operation callers. */
+    preferenceId?: string;
+    initPoint?: string;
 }
 
 export interface OwnedPaymentReference {
     canonicalReference: string;
     amountCents: number;
     currency: string;
+    description: string;
+    paymentStatus: string;
 }
 
-const PAYMENT_REFERENCE_TARGETS: Record<string, {
-    table: 'orders' | 'tour_bookings' | 'food_orders' | 'enrollments';
-    amountExpression: string;
-    currencyExpression: string;
-}> = {
-    order: { table: 'orders', amountExpression: 'target.total_amount', currencyExpression: 'target.currency' },
-    tour: { table: 'tour_bookings', amountExpression: 'target.total_price', currencyExpression: 'target.currency' },
-    food: { table: 'food_orders', amountExpression: 'target.total', currencyExpression: 'target.currency' },
-    enrollment: {
-        table: 'enrollments',
-        amountExpression: 'course.price',
-        currencyExpression: 'course.currency',
-    },
-};
+export interface CreateTenantPaymentLinkInput {
+    tenantId: string;
+    contactId: string;
+    canonicalReference?: string;
+    payableReference?: string;
+    amountCents?: number;
+    currency?: string;
+    description?: string;
+    payerEmail?: string;
+    idempotencyKey: string;
+}
 
-/**
- * Cobros del tenant a SU cliente final.
- *
- * Mercado Pago fue retirado por completo del cobro de suscripciones de la
- * PLATAFORMA. Este módulo no comparte credenciales, webhooks ni adaptadores con
- * billing: existe solamente para que el tenant cobre a su propio cliente. Por
- * eso conecta la seña anti-no-show, el anticipo de un tour, la matrícula de un
- * curso y el pedido de un restaurante con las columnas `payment_status` que ya
- * existían dentro de su esquema.
- *
- * MODELO ELEGIDO (decisión de agosto 2026): token del tenant, cifrado. Cada
- * tenant carga sus propias credenciales de MercadoPago y el dinero va DIRECTO a
- * su cuenta; la plataforma no toca esa plata en ningún momento.
- *
- * La alternativa era marketplace/split — el pago pasa por la cuenta de la
- * plataforma y se reparte, lo que habilitaría comisión por transacción. Se
- * descartó a propósito: convierte a la plataforma en intermediario financiero,
- * con los requisitos de MercadoPago, la exposición fiscal y la responsabilidad
- * sobre contracargos que eso implica. Acá el tenant cobra y factura como
- * siempre; nosotros sólo generamos el link.
- *
- * El token se cifra con el mismo servicio que ya protege los tokens de canal
- * (AES-256-GCM con ENCRYPTION_KEY) y nunca vuelve al frontend: se devuelve
- * enmascarado.
- */
+export interface TenantPaymentStatusResult {
+    canonicalReference: string;
+    status: TenantPaymentStatus;
+    amountCents: number;
+    currency: string;
+    description: string;
+    paidAt?: string;
+    provider?: TenantPaymentProvider;
+    providerTransactionId?: string;
+}
+
+interface LoadedOwnedReference extends OwnedPaymentReference {
+    contactId: string;
+    resourceStatus: string;
+    kind: string;
+    entityId: string;
+}
+
 @Injectable()
 export class TenantPaymentsService {
     private readonly logger = new Logger(TenantPaymentsService.name);
@@ -79,185 +180,1133 @@ export class TenantPaymentsService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly crypto: WhatsappCryptoService,
+        @Optional() private readonly store?: TenantPaymentStoreService,
+        @Optional() private readonly wompi?: TenantWompiClient,
+        @Optional() private readonly throttle?: TenantThrottleService,
+        @Optional() private readonly credentialCrypto?: TenantPaymentCredentialCryptoService,
     ) {}
 
     private cacheKey(tenantId: string) { return `tenant_payments:${tenantId}`; }
 
-    /** Config enmascarada, para la UI. Nunca devuelve el token. */
+    /** Masked, versioned config. No private credential is ever returned. */
     async getConfig(tenantId: string): Promise<TenantPaymentConfig> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const cfg = (tenant?.settings as any)?.tenantPayments || {};
-        return {
+        const stored = await this.readStoredConfig(tenantId);
+        const mp = stored.providers.mercadopago || {};
+        const wompi = stored.providers.wompi || {};
+        const mpEnvironment = this.resolveMercadoPagoEnvironment(tenantId, mp);
+        const mpAccessToken = mpEnvironment
+            ? this.tryDecryptCredential(
+                mp.accessTokenEnc,
+                this.credentialContext(tenantId, 'mercadopago', mpEnvironment, 'access_token'),
+            )
+            : undefined;
+        const mpWebhookSecret = mpEnvironment
+            ? this.tryDecryptCredential(
+                mp.webhookSecretEnc,
+                this.credentialContext(tenantId, 'mercadopago', mpEnvironment, 'webhook_secret'),
+            )
+            : undefined;
+        const mpTokenEnvironment = mpAccessToken
+            ? this.mercadoPagoEnvironmentForToken(mpAccessToken)
+            : undefined;
+        const mpCredentialsValid = !!mpEnvironment
+            && !!mp.accountId
+            && mpTokenEnvironment === mpEnvironment;
+        const mpEnabled = !mp.disabledAt;
+        const wompiPrivateKey = wompi.environment
+            ? this.tryDecryptCredential(
+                wompi.privateKeyEnc,
+                this.credentialContext(tenantId, 'wompi', wompi.environment, 'private_key'),
+            )
+            : undefined;
+        const wompiEventsSecret = wompi.environment
+            ? this.tryDecryptCredential(
+                wompi.eventsSecretEnc,
+                this.credentialContext(tenantId, 'wompi', wompi.environment, 'events_secret'),
+            )
+            : undefined;
+        const wompiCallbackToken = wompi.environment
+            ? this.tryDecryptCredential(
+                wompi.webhookTokenEnc,
+                this.credentialContext(tenantId, 'wompi', wompi.environment, 'callback_token'),
+            )
+            : undefined;
+        const wompiWebhookUrl = wompiCallbackToken
+            ? this.safeWompiNotificationUrl(tenantId, wompiCallbackToken)
+            : undefined;
+        const mpState: TenantPaymentProviderState = {
             provider: 'mercadopago',
-            connected: !!cfg.accessTokenEnc,
-            webhookConfigured: !!cfg.webhookSecretEnc,
-            publicKey: cfg.publicKey || undefined,
-            accountEmail: cfg.accountEmail || undefined,
-            accessToken: cfg.accessTokenEnc ? '***' : undefined,
-            webhookSecret: cfg.webhookSecretEnc ? '***' : undefined,
+            connected: mpEnabled && mpCredentialsValid,
+            webhookConfigured: !!mpWebhookSecret,
+            ready: mpEnabled && mpCredentialsValid && !!mpWebhookSecret,
+            verified: mpCredentialsValid && !!(mp.verifiedAt || mp.accountEmail),
+            publicKey: mp.publicKey || undefined,
+            accountEmail: mp.accountEmail || undefined,
+            environment: mpEnvironment,
+            verifiedAt: mp.verifiedAt || undefined,
+            configRevision: mp.revision || 0,
+            activationReady: mpCredentialsValid && !!mpWebhookSecret,
+            webhookAcknowledged: !!mpWebhookSecret,
+            accessToken: mpAccessToken ? MASK : undefined,
+            webhookSecret: mpWebhookSecret ? MASK : undefined,
         };
+        const wompiConnected = !!wompi.publicKey && !!wompiPrivateKey && !!wompiEventsSecret;
+        const wompiEnabled = !wompi.disabledAt;
+        const wompiState: TenantPaymentProviderState = {
+            provider: 'wompi',
+            connected: wompiEnabled && wompiConnected,
+            webhookConfigured: !!wompi.eventsSecretEnc && !!wompi.webhookTokenEnc && !!wompiWebhookUrl,
+            ready: wompiEnabled
+                && wompiConnected
+                && !!wompi.verifiedAt
+                && !!wompi.webhookTokenEnc
+                && !!wompiWebhookUrl
+                && !!wompi.webhookAcknowledgedAt,
+            verified: wompiConnected && !!wompi.verifiedAt,
+            publicKey: wompi.publicKey || undefined,
+            merchantName: wompi.merchantName || undefined,
+            environment: wompi.environment,
+            webhookUrl: wompiWebhookUrl,
+            verifiedAt: wompi.verifiedAt || undefined,
+            configRevision: wompi.revision || 0,
+            activationReady: wompiConnected && !!wompi.verifiedAt && !!wompi.webhookTokenEnc && !!wompiWebhookUrl,
+            webhookAcknowledged: !!wompi.webhookAcknowledgedAt,
+            privateKey: wompiPrivateKey ? MASK : undefined,
+            eventsSecret: wompiEventsSecret ? MASK : undefined,
+        };
+        const providers = { mercadopago: mpState, wompi: wompiState };
+        const activeProvider = stored.activeProvider && providers[stored.activeProvider].ready
+            ? stored.activeProvider
+            : null;
+        const active = activeProvider ? providers[activeProvider] : {
+            provider: 'mercadopago' as const,
+            connected: false,
+            ready: false,
+            verified: false,
+            webhookConfigured: false,
+        };
+        return { version: 2, activeProvider, providers, ...active };
     }
 
     /**
-     * Guarda las credenciales del tenant.
-     *
-     * VERIFICA contra MercadoPago antes de guardar. Sin eso, un token mal pegado
-     * se descubre recién cuando un cliente real intenta pagar y el link no
-     * existe — o sea, en el peor momento posible y sin que el dueño se entere.
+     * A body without `provider` remains a legacy Mercado Pago body. Wompi
+     * secrets are accepted only when all prefixes point to one environment and
+     * the public merchant can be read from that same environment.
      */
     async setConfig(
         tenantId: string,
-        input: { accessToken?: string; publicKey?: string; webhookSecret?: string },
+        input: {
+            provider?: TenantPaymentProvider;
+            activate?: boolean;
+            accessToken?: string;
+            publicKey?: string;
+            webhookSecret?: string;
+            privateKey?: string;
+            eventsSecret?: string;
+            environment?: WompiEnvironment;
+        },
     ): Promise<TenantPaymentConfig> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        if (!tenant) throw new BadRequestException('Tenant not found');
-        const settings = (tenant.settings as any) || {};
-        const current = settings.tenantPayments || {};
-
-        let accessTokenEnc = current.accessTokenEnc;
-        let webhookSecretEnc = current.webhookSecretEnc;
-        let accountEmail = current.accountEmail;
-
-        // '***' = el frontend devolvió el valor enmascarado sin tocarlo.
-        if (input.accessToken && input.accessToken !== '***') {
-            const check = await this.verifyToken(input.accessToken);
-            if (!check.ok) {
-                throw new BadRequestException({
-                    error: 'invalid_mp_credentials',
-                    message: 'MercadoPago rechazó ese access token. Verificá que sea el de producción de tu cuenta.',
-                });
-            }
-            accessTokenEnc = this.crypto.encryptToken(input.accessToken);
-            accountEmail = check.email;
+        const provider: TenantPaymentProvider = input.provider
+            || (input.privateKey || input.eventsSecret ? 'wompi' : 'mercadopago');
+        if (!['mercadopago', 'wompi'].includes(provider)) {
+            throw new BadRequestException({ error: 'unsupported_payment_provider' });
         }
-        if (input.webhookSecret && input.webhookSecret !== '***') {
-            const secret = input.webhookSecret.trim();
-            if (secret.length < 16 || secret.length > 512) {
-                throw new BadRequestException({
-                    error: 'invalid_mp_webhook_secret',
-                    message: 'La clave secreta de Webhooks de Mercado Pago no tiene un formato válido.',
-                });
-            }
-            webhookSecretEnc = this.crypto.encryptToken(secret);
-        }
+        // `activate` is a legacy MP convenience flag. It is deliberately
+        // ignored for Wompi: saving credentials must never imply that the
+        // tenant already copied and configured the event URL. Wompi activation
+        // happens only through activateProvider(), which records that explicit
+        // acknowledgement.
+        await this.assertCustomerPaymentsEntitled(tenantId);
+        return this.withProviderMutationLock(
+            tenantId,
+            provider,
+            () => this.setConfigUnderProviderLock(tenantId, input, provider),
+        );
+    }
 
-        await this.prisma.tenant.update({
+    private async setConfigUnderProviderLock(
+        tenantId: string,
+        input: {
+            provider?: TenantPaymentProvider;
+            activate?: boolean;
+            accessToken?: string;
+            publicKey?: string;
+            webhookSecret?: string;
+            privateKey?: string;
+            eventsSecret?: string;
+            environment?: WompiEnvironment;
+        },
+        provider: TenantPaymentProvider,
+    ): Promise<TenantPaymentConfig> {
+        const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            data: {
-                settings: {
-                    ...settings,
-                    tenantPayments: {
-                        provider: 'mercadopago',
-                        accessTokenEnc,
-                        webhookSecretEnc,
-                        publicKey: input.publicKey ?? current.publicKey,
-                        accountEmail,
-                    },
-                } as any,
-            },
+            select: { id: true },
         });
-        await this.redis.del(this.cacheKey(tenantId)).catch(() => {});
-        this.logger.log(`Credenciales de cobro guardadas para el tenant ${tenantId}${accountEmail ? ` (${accountEmail})` : ''}`);
+        if (!tenant) throw new BadRequestException('Tenant not found');
+        const stored = await this.readStoredConfig(tenantId);
+        const initialProviderHash = this.providerConfigHash(stored.providers[provider]);
+        let providerMaterialChange = false;
+
+        if (provider === 'mercadopago') {
+            const current = stored.providers.mercadopago || {};
+            const materialChange = (input.accessToken !== undefined && input.accessToken !== MASK)
+                || (input.webhookSecret !== undefined && input.webhookSecret !== MASK)
+                || (input.publicKey !== undefined && input.publicKey !== current.publicKey);
+            providerMaterialChange = materialChange;
+            const history = this.nextMercadoPagoHistory(current, materialChange);
+            const suppliedAccessToken = input.accessToken && input.accessToken !== MASK
+                ? input.accessToken.trim()
+                : undefined;
+            const suppliedEnvironment = suppliedAccessToken
+                ? this.mercadoPagoEnvironmentForToken(suppliedAccessToken)
+                : undefined;
+            if (suppliedAccessToken && !suppliedEnvironment) {
+                throw new BadRequestException({ error: 'invalid_mp_access_token_environment' });
+            }
+            if (input.environment && suppliedEnvironment && input.environment !== suppliedEnvironment) {
+                throw new BadRequestException({ error: 'mp_environment_mismatch' });
+            }
+            const currentEnvironment = this.resolveMercadoPagoEnvironment(tenantId, current);
+            const targetEnvironment = suppliedEnvironment || currentEnvironment;
+            const currentAccessToken = !suppliedAccessToken && current.accessTokenEnc
+                ? this.decryptExistingCredential(
+                    current.accessTokenEnc,
+                    this.credentialContext(
+                        tenantId,
+                        'mercadopago',
+                        currentEnvironment || targetEnvironment || 'production',
+                        'access_token',
+                    ),
+                )
+                : undefined;
+            const accessToken = suppliedAccessToken || currentAccessToken;
+            const derivedEnvironment = accessToken
+                ? this.mercadoPagoEnvironmentForToken(accessToken)
+                : undefined;
+            if (accessToken && (!derivedEnvironment || derivedEnvironment !== targetEnvironment)) {
+                throw new BadRequestException({ error: 'invalid_mp_access_token_environment' });
+            }
+            if (input.environment && derivedEnvironment && input.environment !== derivedEnvironment) {
+                throw new BadRequestException({ error: 'mp_environment_mismatch' });
+            }
+            let accountId = current.accountId;
+            let accountEmail = current.accountEmail;
+            let verifiedAt = current.verifiedAt;
+            if (suppliedAccessToken) {
+                const check = await this.verifyMpToken(suppliedAccessToken);
+                if (!check.ok || !check.accountId) {
+                    throw new BadRequestException({ error: 'invalid_mp_credentials' });
+                }
+                accountId = check.accountId;
+                accountEmail = check.email;
+                verifiedAt = new Date().toISOString();
+            }
+            const suppliedWebhookSecret = input.webhookSecret && input.webhookSecret !== MASK
+                ? input.webhookSecret.trim()
+                : undefined;
+            const currentWebhookSecret = !suppliedWebhookSecret && current.webhookSecretEnc
+                ? this.decryptExistingCredential(
+                    current.webhookSecretEnc,
+                    this.credentialContext(
+                        tenantId,
+                        'mercadopago',
+                        currentEnvironment || targetEnvironment || 'production',
+                        'webhook_secret',
+                    ),
+                )
+                : undefined;
+            const webhookSecret = suppliedWebhookSecret || currentWebhookSecret;
+            if (input.webhookSecret && input.webhookSecret !== MASK) {
+                if (!webhookSecret || webhookSecret.length < 16 || webhookSecret.length > 512) {
+                    throw new BadRequestException({ error: 'invalid_mp_webhook_secret' });
+                }
+            }
+            if (webhookSecret && !accessToken) {
+                throw new BadRequestException({ error: 'invalid_mp_credentials' });
+            }
+            if ((accessToken || webhookSecret) && !targetEnvironment) {
+                throw new BadRequestException({ error: 'invalid_mp_access_token_environment' });
+            }
+            stored.providers.mercadopago = {
+                ...(history.length ? { history } : {}),
+                // A controlled rewrap must not reconnect an account. Supplying
+                // and remotely validating material credentials is the only
+                // save operation that clears a prior tombstone.
+                disabledAt: materialChange ? undefined : current.disabledAt,
+                accessTokenEnc: accessToken && targetEnvironment
+                    ? this.encryptCredential(
+                        accessToken,
+                        this.credentialContext(tenantId, provider, targetEnvironment, 'access_token'),
+                    )
+                    : undefined,
+                webhookSecretEnc: webhookSecret && targetEnvironment
+                    ? this.encryptCredential(
+                        webhookSecret,
+                        this.credentialContext(tenantId, provider, targetEnvironment, 'webhook_secret'),
+                    )
+                    : undefined,
+                environment: derivedEnvironment,
+                publicKey: input.publicKey ?? current.publicKey,
+                accountId,
+                accountEmail,
+                verifiedAt,
+            };
+        } else {
+            const client = this.requireWompiClient();
+            const current = stored.providers.wompi || {};
+            const materialChange = (input.privateKey !== undefined && input.privateKey !== MASK)
+                || (input.eventsSecret !== undefined && input.eventsSecret !== MASK)
+                || (input.publicKey !== undefined && input.publicKey !== current.publicKey)
+                || (input.environment !== undefined && input.environment !== current.environment);
+            providerMaterialChange = materialChange;
+            const history = this.nextWompiHistory(current, materialChange);
+            const publicKey = String(input.publicKey || current.publicKey || '').trim();
+            const currentEnvironment = current.environment;
+            const privateKey = input.privateKey && input.privateKey !== MASK
+                ? input.privateKey.trim()
+                : current.privateKeyEnc && currentEnvironment
+                    ? this.decryptExistingCredential(
+                        current.privateKeyEnc,
+                        this.credentialContext(tenantId, provider, currentEnvironment, 'private_key'),
+                    )
+                    : undefined;
+            const eventsSecret = input.eventsSecret && input.eventsSecret !== MASK
+                ? input.eventsSecret.trim()
+                : current.eventsSecretEnc && currentEnvironment
+                    ? this.decryptExistingCredential(
+                        current.eventsSecretEnc,
+                        this.credentialContext(tenantId, provider, currentEnvironment, 'events_secret'),
+                    )
+                    : undefined;
+            const environment = client.environmentForKeys({
+                publicKey,
+                privateKey: privateKey || '',
+                eventsSecret: eventsSecret || '',
+                environment: input.environment,
+            });
+            if (!environment || !privateKey || !eventsSecret) {
+                throw new BadRequestException({ error: 'invalid_wompi_key_set' });
+            }
+            const merchant = await client.verifyMerchant(publicKey, environment);
+            if (!merchant) {
+                throw new BadRequestException({ error: 'invalid_wompi_credentials' });
+            }
+            const webhookToken = !materialChange && current.webhookTokenEnc && currentEnvironment
+                ? this.decryptExistingCredential(
+                    current.webhookTokenEnc,
+                    this.credentialContext(tenantId, provider, currentEnvironment, 'callback_token'),
+                )
+                : randomBytes(32).toString('base64url');
+            if (!webhookToken) throw new ServiceUnavailableException('wompi_webhook_token_unavailable');
+            // Fail closed: a provider cannot become ready if its callback URL
+            // cannot be configured as HTTPS.
+            this.wompiNotificationUrl(tenantId, webhookToken);
+            stored.providers.wompi = {
+                ...(history.length ? { history } : {}),
+                disabledAt: materialChange ? undefined : current.disabledAt,
+                publicKey,
+                privateKeyEnc: this.encryptCredential(
+                    privateKey,
+                    this.credentialContext(tenantId, provider, environment, 'private_key'),
+                ),
+                eventsSecretEnc: this.encryptCredential(
+                    eventsSecret,
+                    this.credentialContext(tenantId, provider, environment, 'events_secret'),
+                ),
+                webhookTokenEnc: this.encryptCredential(
+                    webhookToken,
+                    this.credentialContext(tenantId, provider, environment, 'callback_token'),
+                ),
+                environment,
+                merchantId: merchant.id,
+                merchantName: merchant.name || merchant.legalName,
+                verifiedAt: new Date().toISOString(),
+                webhookAcknowledgedAt: materialChange ? undefined : current.webhookAcknowledgedAt,
+            };
+        }
+
+        const preparedProvider = { ...(stored.providers[provider] as any) };
+        await this.assertCustomerPaymentsEntitled(tenantId);
+        await this.mutateStoredConfigLocked(tenantId, latest => {
+            if (this.providerConfigHash(latest.providers[provider]) !== initialProviderHash) {
+                throw new ConflictException({ error: 'tenant_payment_config_changed' });
+            }
+            const currentRevision = Number((latest.providers[provider] as any)?.revision || 0);
+            // A cryptographic envelope refresh is not a credential-generation
+            // change. Payment submissions pin this semantic revision, so a
+            // pure legacy/key-rotation rewrap must not invalidate an intent.
+            (preparedProvider as any).revision = currentRevision + (providerMaterialChange ? 1 : 0);
+            (latest.providers as any)[provider] = preparedProvider;
+            if (provider === 'mercadopago' && (
+                input.activate === true
+                || !input.provider
+            ) && !(preparedProvider as any).disabledAt) {
+                latest.activeProvider = provider;
+            }
+            return latest;
+        }, {
+            wompiPublicKey: provider === 'wompi'
+                ? String((preparedProvider as any).publicKey || '')
+                : undefined,
+            mercadoPagoAccountId: provider === 'mercadopago'
+                ? String((preparedProvider as any).accountId || '')
+                : undefined,
+        });
         return this.getConfig(tenantId);
     }
 
+    /**
+     * Explicit one-tenant migration primitive. It is intentionally not wired
+     * to a controller or cron. It deliberately bypasses plan entitlement and
+     * remote provider probes: downgraded/tombstoned accounts still need their
+     * historical webhook credentials rewrapped before an old key is retired.
+     * The semantic revision, activation state and credential values do not
+     * change.
+     */
+    async rewrapProviderCredentials(
+        tenantId: string,
+        provider: TenantPaymentProvider,
+    ): Promise<TenantPaymentConfig> {
+        if (!['mercadopago', 'wompi'].includes(provider)) {
+            throw new BadRequestException({ error: 'unsupported_payment_provider' });
+        }
+        return this.withProviderMutationLock(tenantId, provider, async () => {
+            await this.mutateStoredConfigLocked(tenantId, stored => {
+                if (provider === 'mercadopago') {
+                    const current = stored.providers.mercadopago;
+                    if (!current) throw new BadRequestException({ error: 'payment_provider_not_configured' });
+                    stored.providers.mercadopago = {
+                        ...this.rewrapMercadoPagoGeneration(tenantId, current),
+                        history: Array.isArray(current.history)
+                            ? current.history.map(generation => this.rewrapMercadoPagoGeneration(
+                                tenantId,
+                                generation,
+                            ))
+                            : undefined,
+                    };
+                    return stored;
+                }
+
+                const current = stored.providers.wompi;
+                if (!current) {
+                    throw new BadRequestException({ error: 'payment_provider_not_configured' });
+                }
+                stored.providers.wompi = {
+                    ...this.rewrapWompiGeneration(tenantId, current),
+                    history: Array.isArray(current.history)
+                        ? current.history.map(generation => this.rewrapWompiGeneration(
+                            tenantId,
+                            generation,
+                        ))
+                        : undefined,
+                };
+                return stored;
+            });
+            return this.getConfig(tenantId);
+        });
+    }
+
+    async activateProvider(tenantId: string, provider: TenantPaymentProvider): Promise<TenantPaymentConfig> {
+        if (!['mercadopago', 'wompi'].includes(provider)) {
+            throw new BadRequestException({ error: 'unsupported_payment_provider' });
+        }
+        await this.assertCustomerPaymentsEntitled(tenantId);
+        return this.withProviderMutationLock(tenantId, provider, async () => {
+            await this.assertCustomerPaymentsEntitled(tenantId);
+            await this.mutateStoredConfigLocked(tenantId, stored => {
+                if (!this.isStoredProviderActivationReady(stored, provider)) {
+                    throw new BadRequestException({ error: 'payment_provider_not_ready', provider });
+                }
+                const target = stored.providers[provider];
+                if (!target) {
+                    throw new BadRequestException({ error: 'payment_provider_not_ready', provider });
+                }
+                target.disabledAt = undefined;
+                if (provider === 'wompi' && stored.providers.wompi) {
+                    stored.providers.wompi.webhookAcknowledgedAt = new Date().toISOString();
+                }
+                stored.activeProvider = provider;
+                return stored;
+            });
+            return this.getConfig(tenantId);
+        });
+    }
+
+    /** Legacy endpoint: disconnect every tenant-owned provider. */
     async disconnect(tenantId: string): Promise<void> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        if (!tenant) return;
-        const settings = (tenant.settings as any) || {};
-        delete settings.tenantPayments;
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings } });
-        await this.redis.del(this.cacheKey(tenantId)).catch(() => {});
+        await this.withProviderMutationLock(tenantId, 'wompi', async () => {
+            await this.mutateStoredConfigLocked(tenantId, stored => {
+                const disabledAt = new Date().toISOString();
+                for (const provider of ['mercadopago', 'wompi'] as const) {
+                    const config = stored.providers[provider];
+                    if (!config) continue;
+                    config.disabledAt = disabledAt;
+                }
+                stored.activeProvider = null;
+                return stored;
+            });
+        });
     }
 
-    /** El token descifrado, sólo para uso interno. */
-    private async getAccessToken(tenantId: string): Promise<string | null> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const enc = (tenant?.settings as any)?.tenantPayments?.accessTokenEnc;
-        if (!enc) return null;
-        try {
-            return this.crypto.decryptToken(enc);
-        } catch (e: any) {
-            // Pasa si rotó ENCRYPTION_KEY. Decirlo claro: el síntoma sin esto es
-            // "los cobros dejaron de funcionar" sin ninguna pista de por qué.
-            this.logger.error(`No se pudo descifrar el token de cobro del tenant ${tenantId}: ${e.message}`);
-            return null;
+    async disconnectProvider(tenantId: string, provider: TenantPaymentProvider): Promise<TenantPaymentConfig> {
+        if (!['mercadopago', 'wompi'].includes(provider)) {
+            throw new BadRequestException({ error: 'unsupported_payment_provider' });
         }
+        return this.withProviderMutationLock(tenantId, provider, async () => {
+            await this.mutateStoredConfigLocked(tenantId, stored => {
+                const config = stored.providers[provider];
+                if (config) {
+                    // Do not erase verification authority: an already-paid
+                    // intent may receive a late VOIDED/refund/chargeback event.
+                    // The tombstone disables creation while webhook/status
+                    // readers retain access to the encrypted credentials.
+                    config.disabledAt = new Date().toISOString();
+                }
+                if (stored.activeProvider === provider) {
+                    // Never switch money rails as a side effect of disconnect.
+                    // The tenant must explicitly acknowledge and activate the
+                    // other provider.
+                    stored.activeProvider = null;
+                }
+                return stored;
+            });
+            return this.getConfig(tenantId);
+        });
     }
 
-    /** Secreto HMAC del webhook; nunca se expone por controller. */
+    async getRuntimeCapability(tenantId: string): Promise<{
+        configured: boolean;
+        ready: boolean;
+        statusAvailable: boolean;
+        activeProvider?: TenantPaymentProvider;
+    }> {
+        const config = await this.getConfig(tenantId);
+        const statusAvailable = this.store ? await this.store.isAvailable(tenantId) : false;
+        return {
+            configured: config.connected,
+            ready: config.ready && statusAvailable,
+            statusAvailable,
+            activeProvider: config.activeProvider || undefined,
+        };
+    }
+
+    async getMercadoPagoCredentialCandidates(tenantId: string): Promise<Array<{
+        revision: number;
+        accessToken: string;
+        webhookSecret: string;
+        accountId: string;
+        environment: WompiEnvironment;
+    }>> {
+        const stored = await this.readStoredConfig(tenantId);
+        const config = stored.providers.mercadopago;
+        if (!config) return [];
+        const generations: StoredMercadoPagoCredentialGeneration[] = [
+            config,
+            ...(Array.isArray(config.history) ? config.history : []),
+        ];
+        const candidates: Array<{
+            revision: number;
+            accessToken: string;
+            webhookSecret: string;
+            accountId: string;
+            environment: WompiEnvironment;
+        }> = [];
+        for (const generation of generations) {
+            const environment = this.resolveMercadoPagoEnvironment(
+                tenantId,
+                generation as StoredMercadoPagoConfig,
+            );
+            const accountId = String(generation.accountId || '').trim();
+            if (!environment || !/^\d{1,32}$/.test(accountId)) continue;
+            const accessToken = this.tryDecryptCredential(
+                generation.accessTokenEnc,
+                this.credentialContext(tenantId, 'mercadopago', environment, 'access_token'),
+            );
+            const webhookSecret = this.tryDecryptCredential(
+                generation.webhookSecretEnc,
+                this.credentialContext(tenantId, 'mercadopago', environment, 'webhook_secret'),
+            );
+            if (!accessToken || !webhookSecret
+                || this.mercadoPagoEnvironmentForToken(accessToken) !== environment) continue;
+            candidates.push({
+                revision: Number(generation.revision || 0),
+                accessToken,
+                webhookSecret,
+                accountId,
+                environment,
+            });
+        }
+        return candidates;
+    }
+
+    /** Historical MP secrets remain readable so outstanding links can settle after a provider switch. */
     async getWebhookSecret(tenantId: string): Promise<string | null> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const enc = (tenant?.settings as any)?.tenantPayments?.webhookSecretEnc;
-        if (!enc) return null;
-        try {
-            return this.crypto.decryptToken(enc);
-        } catch (e: any) {
-            this.logger.error(`No se pudo descifrar la clave webhook de cobro del tenant ${tenantId}: ${e.message}`);
-            return null;
+        return (await this.getMercadoPagoCredentialCandidates(tenantId))[0]?.webhookSecret || null;
+    }
+
+    async getMercadoPagoAccessToken(tenantId: string, revision?: number): Promise<string | null> {
+        const candidates = await this.getMercadoPagoCredentialCandidates(tenantId);
+        return (revision === undefined
+            ? candidates[0]
+            : candidates.find(candidate => candidate.revision === revision)
+        )?.accessToken || null;
+    }
+
+    async getMercadoPagoAccountId(tenantId: string): Promise<string | null> {
+        return (await this.getMercadoPagoCredentialCandidates(tenantId))[0]?.accountId || null;
+    }
+
+    async getWompiCredentials(
+        tenantId: string,
+        callbackToken?: string,
+        revision?: number,
+    ): Promise<{
+        publicKey: string;
+        privateKey: string;
+        eventsSecret: string;
+        environment: WompiEnvironment;
+    } | null> {
+        const stored = await this.readStoredConfig(tenantId);
+        const config = stored.providers.wompi;
+        if (!config) return null;
+        const generations: StoredWompiCredentialGeneration[] = revision === undefined && callbackToken === undefined
+            ? [config]
+            : [config, ...(Array.isArray(config.history) ? config.history : [])];
+        for (const generation of generations) {
+            if (!generation.publicKey || !generation.environment) continue;
+            if (revision !== undefined && Number(generation.revision || 0) !== revision) continue;
+            const privateKey = this.tryDecryptCredential(
+                generation.privateKeyEnc,
+                this.credentialContext(tenantId, 'wompi', generation.environment, 'private_key'),
+            );
+            const eventsSecret = this.tryDecryptCredential(
+                generation.eventsSecretEnc,
+                this.credentialContext(tenantId, 'wompi', generation.environment, 'events_secret'),
+            );
+            const expectedCallback = this.tryDecryptCredential(
+                generation.webhookTokenEnc,
+                this.credentialContext(tenantId, 'wompi', generation.environment, 'callback_token'),
+            );
+            if (!privateKey || !eventsSecret || !expectedCallback) continue;
+            if (callbackToken !== undefined && !this.constantTimeEqual(callbackToken, expectedCallback)) continue;
+            const environment = this.requireWompiClient().environmentForKeys({
+                publicKey: generation.publicKey,
+                privateKey,
+                eventsSecret,
+                environment: generation.environment,
+            });
+            if (!environment) continue;
+            return { publicKey: generation.publicKey, privateKey, eventsSecret, environment };
         }
+        return null;
     }
 
     async isConfigured(tenantId: string): Promise<boolean> {
-        return !!(await this.getAccessToken(tenantId));
+        return (await this.getConfig(tenantId)).ready;
     }
 
-    /**
-     * Resuelve únicamente objetos de compra que pertenecen al contacto actual.
-     * Además devuelve el monto canónico para que el LLM no pueda inventarlo.
-     */
+    async resolveOwnedPayable(
+        tenantId: string,
+        contactId: string,
+        payableReference: string,
+    ): Promise<OwnedPaymentReference | null> {
+        const owned = await this.loadOwnedReference(tenantId, contactId, payableReference, false);
+        if (!owned) return null;
+        const stored = await this.readStoredConfig(tenantId);
+        if (stored.activeProvider === 'wompi' && owned.currency !== 'COP') return null;
+        return {
+            canonicalReference: owned.canonicalReference,
+            amountCents: owned.amountCents,
+            currency: owned.currency,
+            description: owned.description,
+            paymentStatus: owned.paymentStatus,
+        };
+    }
+
+    /** Backward compatible ownership method, now fail-closed for paid/cancelled purchases. */
     async resolveOwnedReference(
         tenantId: string,
         contactId: string,
         reference: string,
     ): Promise<OwnedPaymentReference | null> {
-        const match = /^([a-z]+):([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(reference.trim());
-        if (!match) return null;
-        const [, kind, entityId] = match;
-        const target = PAYMENT_REFERENCE_TARGETS[kind.toLowerCase()];
-        if (!target) return null;
+        return this.resolveOwnedPayable(tenantId, contactId, reference);
+    }
+
+    async createPaymentLink(tenantId: string, input: {
+        amountCents: number;
+        currency?: string;
+        description: string;
+        externalReference: string;
+        payerEmail?: string;
+        idempotencyKey?: string;
+    }): Promise<PaymentLink>;
+    async createPaymentLink(input: CreateTenantPaymentLinkInput): Promise<PaymentLink>;
+    async createPaymentLink(
+        tenantOrInput: string | CreateTenantPaymentLinkInput,
+        legacyInput?: {
+            amountCents: number;
+            currency?: string;
+            description: string;
+            externalReference: string;
+            payerEmail?: string;
+            idempotencyKey?: string;
+        },
+    ): Promise<PaymentLink> {
+        if (typeof tenantOrInput === 'string') {
+            await this.assertCustomerPaymentsEntitled(tenantOrInput);
+            const stored = await this.readStoredConfig(tenantOrInput);
+            if (stored.activeProvider === 'wompi') {
+                throw new BadRequestException({ error: 'payment_contact_required' });
+            }
+            return this.createMercadoPagoLink(tenantOrInput, legacyInput!);
+        }
+
+        const input = tenantOrInput;
+        await this.assertCustomerPaymentsEntitled(input.tenantId);
+        const reference = input.canonicalReference || input.payableReference || '';
+        const owned = await this.resolveOwnedPayable(input.tenantId, input.contactId, reference);
+        if (!owned) throw new BadRequestException({ error: 'payment_reference_not_chargeable' });
+        if ((input.amountCents !== undefined && input.amountCents !== owned.amountCents)
+            || (input.currency && input.currency.toUpperCase() !== owned.currency)) {
+            throw new BadRequestException({ error: 'tenant_payment_reference_changed' });
+        }
+        const idempotencyKey = String(input.idempotencyKey || '').trim();
+        if (!idempotencyKey || idempotencyKey.length > 180 || /[\u0000-\u001f]/.test(idempotencyKey)) {
+            throw new BadRequestException({ error: 'invalid_payment_idempotency_key' });
+        }
+        const config = await this.getConfig(input.tenantId);
+        if (!config.activeProvider || !config.ready) {
+            throw new BadRequestException({ error: 'payments_not_configured' });
+        }
+        const store = this.requireStore();
+        const provider = config.activeProvider;
+        if (provider === 'wompi' && owned.currency !== 'COP') {
+            throw new BadRequestException({ error: 'wompi_cop_only' });
+        }
+        const expiresAt = new Date(Date.now() + TENANT_PAYMENT_LINK_TTL_MS);
+        const { intent, created } = await store.createOrGetIntent({
+            tenantId: input.tenantId,
+            provider,
+            idempotencyKey,
+            canonicalReference: owned.canonicalReference,
+            contactId: input.contactId,
+            amountCents: owned.amountCents,
+            currency: owned.currency,
+            description: owned.description,
+            resourceSnapshot: {
+                canonicalReference: owned.canonicalReference,
+                amountCents: owned.amountCents,
+                currency: owned.currency,
+                paymentStatus: owned.paymentStatus,
+                provider,
+                providerConfigRevision: config.providers[provider].configRevision || 0,
+            },
+            expiresAt,
+        });
+        if (intent.status === 'pending'
+            && intent.expiresAt
+            && intent.expiresAt.getTime() <= Date.now()) {
+            if (intent.provider === 'wompi') {
+                await this.reconcileExpiredWompiIntent(input.tenantId, intent);
+            } else {
+                await store.markCreationState(
+                    input.tenantId,
+                    intent.id,
+                    'requires_review',
+                    'mercadopago_expired_link_requires_provider_evidence',
+                    intent.providerLinkId,
+                );
+            }
+            throw new ServiceUnavailableException({ error: 'payment_link_expiry_reconciliation_required' });
+        }
+        if (intent.providerLinkId && intent.checkoutUrl && intent.status === 'pending') {
+            return this.intentToPaymentLink(intent);
+        }
+        if (!created || intent.status !== 'pending') {
+            throw new ServiceUnavailableException({
+                error: 'payment_link_reconciliation_required',
+                status: intent.status,
+            });
+        }
+
+        let providerLockToken: string | null = null;
+        try {
+            try {
+                providerLockToken = await this.acquireProviderMutationLock(input.tenantId, provider);
+            } catch (error) {
+                await store.markCreationState(
+                    input.tenantId,
+                    intent.id,
+                    'failed',
+                    'tenant_payment_provider_busy_before_submission',
+                );
+                throw error;
+            }
+
+        try {
+            // Re-check entitlement, active rail and credential revision after
+            // the durable intent exists and immediately before any provider
+            // effect. A concurrent downgrade/switch/rotation therefore fails
+            // without using a stale credential set.
+            await this.assertCustomerPaymentsEntitled(input.tenantId);
+            const latest = await this.getConfig(input.tenantId);
+            if (latest.activeProvider !== provider
+                || !latest.ready
+                || latest.providers[provider].configRevision !== config.providers[provider].configRevision) {
+                throw new ConflictException({ error: 'payment_provider_changed_before_submission' });
+            }
+        } catch (error) {
+            await store.markCreationState(
+                input.tenantId,
+                intent.id,
+                'failed',
+                'payment_provider_changed_before_submission',
+            );
+            throw error;
+        }
+
+        if (provider === 'wompi') {
+            const credentials = await this.getWompiCredentials(input.tenantId);
+            if (!credentials) {
+                await store.markCreationState(
+                    input.tenantId,
+                    intent.id,
+                    'failed',
+                    'wompi_credentials_unavailable_before_submission',
+                );
+                throw new BadRequestException({ error: 'wompi_not_configured' });
+            }
+            let knownProviderLinkId: string | undefined;
+            try {
+                const link = await this.requireWompiClient().createAndVerifyPaymentLink({
+                    publicKey: credentials.publicKey,
+                    privateKey: credentials.privateKey,
+                    environment: credentials.environment,
+                    intentId: intent.id,
+                    amountCents: intent.amountCents,
+                    description: intent.description,
+                    expiresAt: intent.expiresAt || expiresAt!,
+                });
+                knownProviderLinkId = link.id;
+                let attached: TenantPaymentIntent;
+                try {
+                    attached = await store.attachProviderLink({
+                        tenantId: input.tenantId,
+                        intentId: intent.id,
+                        providerLinkId: link.id,
+                        checkoutUrl: link.url,
+                        expiresAt: link.expiresAt,
+                    });
+                } catch {
+                    // The remote link is canonical and its id is known. Keep
+                    // that evidence so reconciliation can repair only this
+                    // specific post-provider/pre-local-attach crash window.
+                    throw new WompiProviderError(
+                        'tenant_payment_link_attach_failed',
+                        true,
+                        link.id,
+                    );
+                }
+                return this.intentToPaymentLink(attached);
+            } catch (error: any) {
+                const providerError = error instanceof WompiProviderError
+                    ? error
+                    : new WompiProviderError('wompi_link_creation_outcome_unknown', true);
+                const recoverableLinkId = providerError.providerLinkId || knownProviderLinkId;
+                const state = recoverableLinkId
+                    ? 'requires_review'
+                    : providerError.ambiguous ? 'ambiguous' : 'failed';
+                await store.markCreationState(
+                    input.tenantId,
+                    intent.id,
+                    state,
+                    providerError.code,
+                    recoverableLinkId,
+                );
+                if (providerError.ambiguous) {
+                    throw new ServiceUnavailableException({ error: providerError.code });
+                }
+                throw new BadRequestException({ error: providerError.code });
+            }
+        }
+
+        let knownMercadoPagoLinkId: string | undefined;
+        try {
+            // `expiresAt` is deliberately NOT forwarded: unlike Wompi, the Mercado
+            // Pago preference carries no remote expiry here, so the local date only
+            // drives the requires_review sweep — it never proves the link is dead.
+            const link = await this.createMercadoPagoLink(input.tenantId, {
+                amountCents: owned.amountCents,
+                currency: owned.currency,
+                description: owned.description,
+                externalReference: owned.canonicalReference,
+                payerEmail: input.payerEmail,
+                idempotencyKey,
+            });
+            knownMercadoPagoLinkId = link.id;
+            const attached = await store.attachProviderLink({
+                tenantId: input.tenantId,
+                intentId: intent.id,
+                providerLinkId: link.id,
+                checkoutUrl: link.url,
+                expiresAt,
+            });
+            return this.intentToPaymentLink(attached);
+        } catch (error: any) {
+            const providerError = error instanceof MercadoPagoProviderError ? error : undefined;
+            const recoverableLinkId = providerError?.providerLinkId || knownMercadoPagoLinkId;
+            const state = recoverableLinkId
+                ? 'requires_review'
+                : providerError?.ambiguous ? 'ambiguous' : 'failed';
+            await store.markCreationState(
+                input.tenantId,
+                intent.id,
+                state,
+                providerError?.code || error?.message || 'mp_link_failed',
+                recoverableLinkId,
+            );
+            throw error;
+        }
+        } finally {
+            if (providerLockToken) {
+                await this.redis.releaseLockToken(
+                    this.providerMutationLockKey(input.tenantId, provider),
+                    providerLockToken,
+                ).catch(() => undefined);
+            }
+        }
+    }
+
+    async findPaymentLinkByIdempotencyKey(tenantId: string, key: string): Promise<string | null> {
+        if (this.store) {
+            try {
+                const intent = await this.store.findByIdempotencyKey(tenantId, key);
+                if (intent?.providerLinkId) return intent.providerLinkId;
+            } catch (error: any) {
+                this.logger.warn(`Durable payment idempotency lookup failed: ${error.message}`);
+            }
+        }
+        return this.redis.get(this.idempotencyRedisKey(tenantId, key)).catch(() => null);
+    }
+
+    async reconcilePaymentLinkCreation(
+        tenantId: string,
+        providerLinkId: string,
+    ): Promise<{ status: 'confirmed' | 'pending' | 'failed'; url?: string }> {
+        const store = this.requireStore();
+        const wompiIntent = await store.findByProviderLink(tenantId, 'wompi', providerLinkId);
+        if (wompiIntent) {
+            const credentials = await this.getWompiCredentials(
+                tenantId,
+                undefined,
+                this.intentCredentialRevision(wompiIntent),
+            );
+            if (!credentials) return { status: 'failed' };
+            const locallyExpired = !!wompiIntent.expiresAt
+                && wompiIntent.expiresAt.getTime() <= Date.now();
+            try {
+                const link = await this.requireWompiClient().getAndValidatePaymentLink({
+                    providerLinkId,
+                    environment: credentials.environment,
+                    expectedPublicKey: credentials.publicKey,
+                    expectedIntentId: wompiIntent.id,
+                    expectedAmountCents: wompiIntent.amountCents,
+                    expectedExpiresAt: wompiIntent.expiresAt,
+                    allowInactive: locallyExpired,
+                });
+                // Never re-share a URL after our signed expires_at snapshot,
+                // even if the provider still reports the link as active. Time
+                // alone also cannot prove that a bank redirect was not already
+                // started, so reconciliation keeps the reference unresolved.
+                if (locallyExpired) {
+                    if (!link.active) {
+                        await this.reconcileExpiredWompiIntent(tenantId, wompiIntent);
+                    }
+                    return { status: 'pending' };
+                }
+                const repairableAttachFailure = wompiIntent.status === 'requires_review'
+                    && wompiIntent.lastError === 'tenant_payment_link_attach_failed';
+                if (wompiIntent.status !== 'pending' && !repairableAttachFailure) {
+                    return { status: 'pending' };
+                }
+                await store.attachProviderLink({
+                    tenantId,
+                    intentId: wompiIntent.id,
+                    providerLinkId,
+                    checkoutUrl: link.url,
+                    expiresAt: link.expiresAt,
+                });
+                return { status: 'confirmed', url: link.url };
+            } catch {
+                return { status: 'pending' };
+            }
+        }
+        return await this.verifyMercadoPagoLink(tenantId, providerLinkId)
+            ? { status: 'confirmed' }
+            : { status: 'pending' };
+    }
+
+    async verifyPaymentLink(tenantId: string, providerLinkId: string): Promise<boolean> {
+        if (this.store) {
+            try {
+                const wompiIntent = await this.store.findByProviderLink(tenantId, 'wompi', providerLinkId);
+                if (wompiIntent) {
+                    return (await this.reconcilePaymentLinkCreation(tenantId, providerLinkId)).status === 'confirmed';
+                }
+            } catch {
+                return false;
+            }
+        }
+        return this.verifyMercadoPagoLink(tenantId, providerLinkId);
+    }
+
+    async getPaymentStatus(input: {
+        tenantId: string;
+        contactId: string;
+        payableReference: string;
+    }): Promise<TenantPaymentStatusResult | null> {
+        const owned = await this.loadOwnedReference(
+            input.tenantId,
+            input.contactId,
+            input.payableReference,
+            true,
+        );
+        if (!owned) return null;
+        const store = this.requireStore();
+        let intent = await store.findLatestOwned(input.tenantId, input.contactId, owned.canonicalReference);
+        if (intent?.provider === 'wompi'
+            && intent.providerTransactionId
+            && ['pending', 'failed'].includes(intent.status)) {
+            const credentials = await this.getWompiCredentials(
+                input.tenantId,
+                undefined,
+                this.intentCredentialRevision(intent),
+            );
+            if (credentials) {
+                try {
+                    const transaction = await this.requireWompiClient().getTransaction({
+                        transactionId: intent.providerTransactionId,
+                        publicKey: credentials.publicKey,
+                        environment: credentials.environment,
+                    });
+                    if (!transaction.paymentLinkId) return {
+                        canonicalReference: owned.canonicalReference,
+                        status: intent.status,
+                        amountCents: intent.amountCents,
+                        currency: intent.currency,
+                        description: owned.description,
+                        paidAt: intent.paidAt?.toISOString(),
+                        provider: intent.provider,
+                        providerTransactionId: intent.providerTransactionId,
+                    };
+                    const eventKey = createHash('sha256')
+                        .update(`poll:${transaction.id}:${transaction.status}:${transaction.amountCents}:${transaction.paymentLinkId}`)
+                        .digest('hex');
+                    const settled = await store.settleWompiTransaction({
+                        tenantId: input.tenantId,
+                        transaction,
+                        eventKey,
+                        source: 'poll',
+                    });
+                    intent = settled.intent || intent;
+                } catch (error: any) {
+                    this.logger.warn(`Wompi status poll failed for ${intent.providerTransactionId}: ${error.message}`);
+                }
+            }
+        }
+        if (intent?.provider === 'wompi'
+            && intent.status === 'pending'
+            && intent.expiresAt
+            && intent.expiresAt.getTime() <= Date.now()) {
+            intent = await this.reconcileExpiredWompiIntent(input.tenantId, intent) || intent;
+        }
+        const domainStatus = this.normalizeDomainStatus(owned.paymentStatus);
+        // Ledger review states always win over a seemingly-terminal domain row:
+        // a second distinct APPROVED charge leaves the purchase paid but must
+        // be surfaced to the agent as requires_review, never as a clean success.
+        // Outside review, refunded is monotonic over paid and either durable
+        // side may carry the terminal transition for legacy MP compatibility.
+        const authoritativeStatus = intent && ['requires_review', 'ambiguous'].includes(intent.status)
+            ? intent.status
+            : (intent?.status === 'refunded' || domainStatus === 'refunded')
+                ? 'refunded'
+                : (intent?.status === 'paid' || domainStatus === 'paid')
+                    ? 'paid'
+                    : intent?.status || domainStatus;
+        return {
+            canonicalReference: owned.canonicalReference,
+            status: authoritativeStatus,
+            amountCents: intent?.amountCents ?? owned.amountCents,
+            currency: intent?.currency ?? owned.currency,
+            description: owned.description,
+            paidAt: intent?.paidAt?.toISOString(),
+            provider: intent?.provider,
+            providerTransactionId: intent?.providerTransactionId,
+        };
+    }
+
+    private async loadOwnedReference(
+        tenantId: string,
+        contactId: string,
+        reference: string,
+        includeTerminal: boolean,
+    ): Promise<LoadedOwnedReference | null> {
+        const parsed = parsePaymentReference(reference);
+        if (!parsed) return null;
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) return null;
-
-        const join = target.table === 'enrollments'
-            ? 'JOIN courses course ON course.id = target.course_id'
-            : '';
         try {
-            const rows = await this.prisma.executeInTenantSchema<Array<{ amount: unknown; currency: string | null }>>(
+            const rows = await this.prisma.executeInTenantSchema<Array<{
+                amount: unknown;
+                currency: string | null;
+                contact_id: string | null;
+                status: string | null;
+                payment_status: string | null;
+            }>>(
                 schemaName,
-                `SELECT ${target.amountExpression} AS amount,
-                        ${target.currencyExpression} AS currency
-                   FROM ${target.table} target
-                   ${join}
+                `SELECT ${parsed.target.amountExpression} AS amount,
+                        ${parsed.target.currencyExpression} AS currency,
+                        target.contact_id,
+                        target.status,
+                        target.payment_status
+                   FROM ${parsed.target.table} target
+                   ${parsed.target.join ?? ''}
                   WHERE target.id = $1::uuid
                     AND target.contact_id = $2::uuid
                   LIMIT 1`,
-                [entityId, contactId],
+                [parsed.entityId, contactId],
             );
             const row = rows[0];
-            const amountMajor = Number(row?.amount);
-            const amountCents = Math.round(amountMajor * 100);
+            const amountCents = Math.round(Number(row?.amount) * 100);
             const currency = String(row?.currency || '').trim().toUpperCase();
-            if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || !/^[A-Z]{3}$/.test(currency)) return null;
+            const paymentStatus = String(row?.payment_status || 'pending').trim().toLowerCase();
+            const resourceStatus = String(row?.status || '').trim().toLowerCase();
+            if (!row
+                || !Number.isSafeInteger(amountCents)
+                || amountCents <= 0
+                || !/^[A-Z]{3}$/.test(currency)) return null;
+            if (!includeTerminal && (
+                !['pending', 'failed'].includes(paymentStatus)
+                || parsed.target.rejectedStatuses.includes(resourceStatus)
+            )) return null;
             return {
-                canonicalReference: `${kind.toLowerCase()}:${entityId.toLowerCase()}`,
+                canonicalReference: parsed.canonicalReference,
                 amountCents,
                 currency,
+                description: parsed.target.description(parsed.entityId),
+                paymentStatus,
+                resourceStatus,
+                contactId: String(row.contact_id),
+                kind: parsed.kind,
+                entityId: parsed.entityId,
             };
-        } catch (e: any) {
-            this.logger.warn(`No se pudo resolver ${reference} para el tenant ${tenantId}: ${e.message}`);
+        } catch (error: any) {
+            this.logger.warn(`Could not resolve ${reference} for tenant ${tenantId}: ${error.message}`);
             return null;
         }
     }
 
-    /**
-     * Genera un link de pago con las credenciales DEL TENANT.
-     *
-     * `externalReference` es lo que después permite saber qué se pagó: se arma
-     * como `{tipo}:{id}` (por ejemplo `appointment:<uuid>`) para que el webhook
-     * pueda escribir el `payment_status` en la tabla correcta sin adivinar.
-     */
-    async createPaymentLink(
+    private async createMercadoPagoLink(
         tenantId: string,
         input: {
             amountCents: number;
@@ -268,74 +1317,63 @@ export class TenantPaymentsService {
             idempotencyKey?: string;
         },
     ): Promise<PaymentLink> {
-        const token = await this.getAccessToken(tenantId);
-        if (!token) {
-            throw new BadRequestException({
-                error: 'payments_not_configured',
-                message: 'Este negocio todavía no conectó su cuenta de MercadoPago para cobrar.',
-            });
-        }
+        const token = await this.getMercadoPagoAccessToken(tenantId);
+        if (!token) throw new BadRequestException({ error: 'payments_not_configured' });
         if (!await this.getWebhookSecret(tenantId)) {
-            throw new BadRequestException({
-                error: 'mp_webhook_not_configured',
-                message: 'Falta guardar la clave secreta de Webhooks de Mercado Pago antes de generar enlaces.',
-            });
+            throw new BadRequestException({ error: 'mp_webhook_not_configured' });
         }
         if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
             throw new BadRequestException({ error: 'invalid_amount' });
         }
-
         const currency = (input.currency || 'COP').toUpperCase();
-        // COP y CLP no tienen decimales: MercadoPago espera el monto en unidades
-        // enteras, y mandarle 90000.00 en vez de 90000 hace que rechace o
-        // redondee sin avisar.
         const zeroDecimal = ['COP', 'CLP', 'PYG', 'JPY', 'KRW', 'VND', 'ISK'].includes(currency);
         if (zeroDecimal && input.amountCents % 100 !== 0) {
             throw new BadRequestException({ error: 'invalid_zero_decimal_amount' });
         }
-        const unitPrice = input.amountCents / 100;
-        const notificationUrl = this.notificationUrl(tenantId);
-
-        const res = await fetch(`${MP_API}/checkout/preferences`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-                ...(input.idempotencyKey ? { 'X-Idempotency-Key': input.idempotencyKey } : {}),
-            },
-            body: JSON.stringify({
-                items: [{
-                    title: input.description.slice(0, 250),
-                    quantity: 1,
-                    unit_price: unitPrice,
-                    currency_id: currency,
-                }],
-                external_reference: input.externalReference,
-                ...(input.payerEmail ? { payer: { email: input.payerEmail } } : {}),
-                // El webhook llega a NUESTRA API, pero el pago es del tenant: lo
-                // usamos sólo para marcar el estado, nunca para mover plata.
-                notification_url: notificationUrl,
-            }),
-            signal: AbortSignal.timeout(15000),
+        const requestBody = JSON.stringify({
+            items: [{
+                title: input.description.slice(0, 250),
+                quantity: 1,
+                unit_price: input.amountCents / 100,
+                currency_id: currency,
+            }],
+            external_reference: input.externalReference,
+            ...(input.payerEmail ? { payer: { email: input.payerEmail } } : {}),
+            notification_url: this.mpNotificationUrl(tenantId),
         });
-
-        if (!res.ok) {
-            const body = await res.text().catch(() => '');
-            this.logger.warn(`MP preference falló para el tenant ${tenantId}: ${res.status} ${body.slice(0, 200)}`);
-            throw new BadRequestException({
-                error: 'payment_link_failed',
-                message: 'No se pudo generar el link de pago. Revisá las credenciales de MercadoPago del negocio.',
+        let response: Response;
+        try {
+            response = await fetch(`${MP_API}/checkout/preferences`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                    ...(input.idempotencyKey ? { 'X-Idempotency-Key': input.idempotencyKey } : {}),
+                },
+                body: requestBody,
+                signal: AbortSignal.timeout(15_000),
             });
+        } catch {
+            throw new MercadoPagoProviderError('mercadopago_link_creation_outcome_unknown', true);
         }
-
-        const data: any = await res.json();
-        const id = String(data?.id || '').trim();
-        const url = String(data?.init_point || data?.sandbox_init_point || '').trim();
+        if (!response.ok) {
+            throw new MercadoPagoProviderError(
+                response.status >= 500 ? 'mercadopago_link_creation_outcome_unknown' : 'payment_link_failed',
+                response.status >= 500,
+            );
+        }
+        const payload: any = await response.json();
+        const id = String(payload?.id || '').trim();
+        const url = String(payload?.init_point || payload?.sandbox_init_point || '').trim();
         if (!id || !this.isHttpsUrl(url)) {
-            throw new BadRequestException({ error: 'invalid_payment_link_response' });
+            throw new MercadoPagoProviderError('invalid_payment_link_response', true, id || undefined);
         }
         if (input.idempotencyKey) {
-            await this.redis.set(this.idempotencyKey(tenantId, input.idempotencyKey), id, 7 * 86400).catch(() => {});
+            await this.redis.set(
+                this.idempotencyRedisKey(tenantId, input.idempotencyKey),
+                id,
+                7 * 86400,
+            ).catch(() => undefined);
         }
         return {
             id,
@@ -343,35 +1381,552 @@ export class TenantPaymentsService {
             amountCents: input.amountCents,
             currency,
             description: input.description,
+            provider: 'mercadopago',
+            providerLinkId: id,
+            paymentStatus: 'pending',
+            preferenceId: id,
+            initPoint: url,
         };
     }
 
-    async findPaymentLinkByIdempotencyKey(tenantId: string, key: string): Promise<string | null> {
-        return this.redis.get(this.idempotencyKey(tenantId, key)).catch(() => null);
-    }
-
-    async verifyPaymentLink(tenantId: string, preferenceId: string): Promise<boolean> {
-        const token = await this.getAccessToken(tenantId);
+    private async verifyMercadoPagoLink(tenantId: string, preferenceId: string): Promise<boolean> {
+        const token = await this.getMercadoPagoAccessToken(tenantId);
         if (!token || !preferenceId) return false;
         try {
-            const res = await fetch(`${MP_API}/checkout/preferences/${encodeURIComponent(preferenceId)}`, {
+            const response = await fetch(`${MP_API}/checkout/preferences/${encodeURIComponent(preferenceId)}`, {
                 headers: { Authorization: `Bearer ${token}` },
-                signal: AbortSignal.timeout(15000),
+                signal: AbortSignal.timeout(15_000),
             });
-            if (!res.ok) return false;
-            const data: any = await res.json();
-            const url = String(data?.init_point || data?.sandbox_init_point || '').trim();
-            return String(data?.id || '') === preferenceId && this.isHttpsUrl(url);
+            if (!response.ok) return false;
+            const payload: any = await response.json();
+            const url = String(payload?.init_point || payload?.sandbox_init_point || '').trim();
+            return String(payload?.id || '') === preferenceId && this.isHttpsUrl(url);
         } catch {
             return false;
         }
     }
 
-    private idempotencyKey(tenantId: string, key: string): string {
+    private async reconcileExpiredWompiIntent(
+        tenantId: string,
+        intent: TenantPaymentIntent,
+    ): Promise<TenantPaymentIntent | null> {
+        if (!intent.providerLinkId || !intent.expiresAt || intent.expiresAt.getTime() > Date.now()) {
+            return intent;
+        }
+        const credentials = await this.getWompiCredentials(
+            tenantId,
+            undefined,
+            this.intentCredentialRevision(intent),
+        );
+        if (!credentials) return intent;
+        try {
+            const link = await this.requireWompiClient().getAndValidatePaymentLink({
+                providerLinkId: intent.providerLinkId,
+                environment: credentials.environment,
+                expectedPublicKey: credentials.publicKey,
+                expectedIntentId: intent.id,
+                expectedAmountCents: intent.amountCents,
+                expectedExpiresAt: intent.expiresAt,
+                allowInactive: true,
+            });
+            if (link.active) return intent;
+            // An inactive/expired link does not prove that no bank redirect is
+            // still PENDING, nor that an APPROVED webhook was not lost. Keep
+            // the reference blocked for explicit reconciliation and never
+            // manufacture an `expired` terminal state from local time.
+            await this.requireStore().markCreationState(
+                tenantId,
+                intent.id,
+                'requires_review',
+                'wompi_inactive_link_requires_provider_evidence',
+                intent.providerLinkId,
+            );
+            return { ...intent, status: 'requires_review', lastError: 'wompi_inactive_link_requires_provider_evidence' };
+        } catch (error: any) {
+            this.logger.warn(`Could not reconcile expired Wompi link ${intent.providerLinkId}: ${error.message}`);
+            return intent;
+        }
+    }
+
+    private intentToPaymentLink(intent: TenantPaymentIntent): PaymentLink {
+        if (!intent.providerLinkId || !intent.checkoutUrl) {
+            throw new ServiceUnavailableException('tenant_payment_link_not_shareable');
+        }
+        return {
+            id: intent.providerLinkId,
+            providerLinkId: intent.providerLinkId,
+            provider: intent.provider,
+            url: intent.checkoutUrl,
+            initPoint: intent.checkoutUrl,
+            preferenceId: intent.providerLinkId,
+            amountCents: intent.amountCents,
+            currency: intent.currency,
+            description: intent.description,
+            paymentStatus: 'pending',
+        };
+    }
+
+    private async readStoredConfig(tenantId: string): Promise<StoredTenantPaymentConfigV2> {
+        try {
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT config
+                   FROM tenant_payment_provider_configs
+                  WHERE tenant_id = $1::uuid
+                  LIMIT 1`,
+                tenantId,
+            ) as Array<{ config: unknown }>;
+            if (rows[0]) return this.normalizeStoredConfig(rows[0].config);
+            // The dedicated table exists and migration has completed. A
+            // missing row means genuinely unconfigured; never trust a value
+            // later injected through generic tenants.settings.
+            return this.normalizeStoredConfig(undefined);
+        } catch (error: any) {
+            // Compatibility only for the migration window and unit harnesses.
+            // Production migrations create the dedicated table before the new
+            // application starts; writes below never fall back to settings.
+            this.logger.warn(`Dedicated tenant payment config read unavailable for ${tenantId}: ${error.message}`);
+        }
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        return this.normalizeStoredConfig((tenant?.settings as any)?.tenantPayments);
+    }
+
+    private normalizeStoredConfig(raw: any): StoredTenantPaymentConfigV2 {
+        if (raw?.version === 2 && raw?.providers && typeof raw.providers === 'object') {
+            const active = ['mercadopago', 'wompi'].includes(raw.activeProvider)
+                ? raw.activeProvider as TenantPaymentProvider
+                : null;
+            const mercadoPago = raw.providers.mercadopago
+                ? { ...raw.providers.mercadopago }
+                : undefined;
+            const wompi = raw.providers.wompi
+                ? { ...raw.providers.wompi }
+                : undefined;
+            if (mercadoPago) mercadoPago.environment = this.normalizeCredentialEnvironment(mercadoPago.environment);
+            if (wompi) wompi.environment = this.normalizeCredentialEnvironment(wompi.environment);
+            return {
+                version: 2,
+                documentRevision: Number.isSafeInteger(Number(raw.documentRevision))
+                    ? Math.max(0, Number(raw.documentRevision))
+                    : 0,
+                activeProvider: active,
+                providers: {
+                    ...(mercadoPago ? { mercadopago: mercadoPago } : {}),
+                    ...(wompi ? { wompi } : {}),
+                },
+            };
+        }
+        const legacy: StoredMercadoPagoConfig = {
+            accessTokenEnc: raw?.accessTokenEnc,
+            webhookSecretEnc: raw?.webhookSecretEnc,
+            environment: this.normalizeCredentialEnvironment(raw?.environment),
+            publicKey: raw?.publicKey,
+            accountId: raw?.accountId,
+            accountEmail: raw?.accountEmail,
+            verifiedAt: raw?.verifiedAt,
+        };
+        const hasLegacy = Object.values(legacy).some(Boolean);
+        return {
+            version: 2,
+            documentRevision: 0,
+            activeProvider: hasLegacy ? 'mercadopago' : null,
+            providers: hasLegacy ? { mercadopago: legacy } : {},
+        };
+    }
+
+    private async mutateStoredConfigLocked(
+        tenantId: string,
+        mutate: (stored: StoredTenantPaymentConfigV2) => StoredTenantPaymentConfigV2,
+        claims: {
+            wompiPublicKey?: string;
+            mercadoPagoAccountId?: string;
+        } = {},
+    ): Promise<void> {
+        await this.prisma.$transaction(async (transaction: any) => {
+            if (claims.wompiPublicKey) {
+                await transaction.$queryRawUnsafe(
+                    `SELECT pg_advisory_xact_lock(hashtext($1))::text AS lock_acquired`,
+                    `tenant-wompi-merchant:${claims.wompiPublicKey}`,
+                );
+                const duplicate = await transaction.$queryRawUnsafe(
+                    `SELECT tenant_id AS id
+                       FROM tenant_payment_provider_configs
+                      WHERE tenant_id <> $1::uuid
+                        AND (
+                            wompi_public_key = $2
+                            OR EXISTS (
+                                SELECT 1
+                                  FROM jsonb_array_elements(
+                                      CASE
+                                          WHEN jsonb_typeof(config #> '{providers,wompi,history}') = 'array'
+                                              THEN config #> '{providers,wompi,history}'
+                                          ELSE '[]'::jsonb
+                                      END
+                                  ) AS generation
+                                 WHERE generation ->> 'publicKey' = $2
+                            )
+                        )
+                      LIMIT 1`,
+                    tenantId,
+                    claims.wompiPublicKey,
+                ) as Array<{ id: string }>;
+                if (duplicate[0]) {
+                    throw new ConflictException({
+                        error: 'wompi_merchant_already_connected',
+                        provider: 'wompi',
+                    });
+                }
+            }
+            if (claims.mercadoPagoAccountId) {
+                await transaction.$queryRawUnsafe(
+                    `SELECT pg_advisory_xact_lock(hashtext($1))::text AS lock_acquired`,
+                    `tenant-mercadopago-account:${claims.mercadoPagoAccountId}`,
+                );
+                const duplicate = await transaction.$queryRawUnsafe(
+                    `SELECT tenant_id AS id
+                       FROM tenant_payment_provider_configs
+                      WHERE tenant_id <> $1::uuid
+                        AND (
+                            mercadopago_account_id = $2
+                            OR EXISTS (
+                                SELECT 1
+                                  FROM jsonb_array_elements(
+                                      CASE
+                                          WHEN jsonb_typeof(config #> '{providers,mercadopago,history}') = 'array'
+                                              THEN config #> '{providers,mercadopago,history}'
+                                          ELSE '[]'::jsonb
+                                      END
+                                  ) AS generation
+                                 WHERE generation ->> 'accountId' = $2
+                            )
+                        )
+                      LIMIT 1`,
+                    tenantId,
+                    claims.mercadoPagoAccountId,
+                ) as Array<{ id: string }>;
+                if (duplicate[0]) {
+                    throw new ConflictException({
+                        error: 'mercadopago_account_already_connected',
+                        provider: 'mercadopago',
+                    });
+                }
+            }
+            const rows = await transaction.$queryRawUnsafe(
+                `SELECT settings FROM tenants WHERE id = $1::uuid FOR UPDATE`,
+                tenantId,
+            ) as Array<{ settings: Record<string, unknown> | null }>;
+            if (!rows[0]) throw new BadRequestException('Tenant not found');
+            const settings = { ...((rows[0].settings as any) || {}) };
+            const configRows = await transaction.$queryRawUnsafe(
+                `SELECT config
+                   FROM tenant_payment_provider_configs
+                  WHERE tenant_id = $1::uuid
+                  FOR UPDATE`,
+                tenantId,
+            ) as Array<{ config: unknown }>;
+            const current = this.normalizeStoredConfig(
+                configRows[0]?.config ?? (settings as any).tenantPayments,
+            );
+            const next = mutate(current);
+            next.documentRevision = Math.max(0, Number(current.documentRevision || 0)) + 1;
+            await transaction.$executeRawUnsafe(
+                `INSERT INTO tenant_payment_provider_configs
+                    (tenant_id, config, wompi_public_key, mercadopago_account_id, created_at, updated_at)
+                 VALUES ($1::uuid, $2::jsonb, $3, $4, NOW(), NOW())
+                 ON CONFLICT (tenant_id) DO UPDATE
+                    SET config = EXCLUDED.config,
+                        wompi_public_key = EXCLUDED.wompi_public_key,
+                        mercadopago_account_id = EXCLUDED.mercadopago_account_id,
+                        updated_at = NOW()`,
+                tenantId,
+                JSON.stringify(next),
+                next.providers.wompi?.publicKey || null,
+                next.providers.mercadopago?.accountId || null,
+            );
+            // Expand/contract bridge for rolling deploys. Old instances still
+            // read this copy; the migration's revision-aware BEFORE trigger
+            // prevents an unrelated stale settings snapshot from rolling the
+            // dedicated record back.
+            await transaction.$executeRawUnsafe(
+                `UPDATE tenants
+                    SET settings = jsonb_set(
+                        COALESCE(settings, '{}'::jsonb),
+                        '{tenantPayments}',
+                        $2::jsonb,
+                        true
+                    ),
+                        updated_at = NOW()
+                  WHERE id = $1::uuid`,
+                tenantId,
+                JSON.stringify(next),
+            );
+        });
+        await this.redis.del(this.cacheKey(tenantId)).catch(() => undefined);
+    }
+
+    private providerConfigHash(config: StoredMercadoPagoConfig | StoredWompiConfig | undefined): string {
+        return createHash('sha256').update(JSON.stringify(config || null)).digest('hex');
+    }
+
+    private nextMercadoPagoHistory(
+        current: StoredMercadoPagoConfig,
+        materialChange: boolean,
+    ): StoredMercadoPagoCredentialGeneration[] {
+        const history = Array.isArray(current.history) ? [...current.history] : [];
+        if (!materialChange || (!current.accessTokenEnc && !current.webhookSecretEnc && !current.accountId)) {
+            return history;
+        }
+        if (history.length >= MAX_PROVIDER_CREDENTIAL_HISTORY) {
+            throw new ConflictException({
+                error: 'payment_provider_credential_history_limit',
+                provider: 'mercadopago',
+            });
+        }
+        const { history: _history, ...generation } = current;
+        history.push(generation);
+        return history;
+    }
+
+    private nextWompiHistory(
+        current: StoredWompiConfig,
+        materialChange: boolean,
+    ): StoredWompiCredentialGeneration[] {
+        const history = Array.isArray(current.history) ? [...current.history] : [];
+        if (!materialChange || (!current.publicKey && !current.privateKeyEnc && !current.eventsSecretEnc)) {
+            return history;
+        }
+        if (history.length >= MAX_PROVIDER_CREDENTIAL_HISTORY) {
+            throw new ConflictException({
+                error: 'payment_provider_credential_history_limit',
+                provider: 'wompi',
+            });
+        }
+        const { history: _history, ...generation } = current;
+        history.push(generation);
+        return history;
+    }
+
+    private isStoredProviderReady(stored: StoredTenantPaymentConfigV2, provider: TenantPaymentProvider): boolean {
+        if (provider === 'mercadopago') {
+            const config = stored.providers.mercadopago;
+            return !config?.disabledAt
+                && !!config?.accessTokenEnc
+                && !!config.webhookSecretEnc
+                && !!config.environment
+                && !!config.accountId;
+        }
+        const config = stored.providers.wompi;
+        return !config?.disabledAt
+            && !!config?.publicKey
+            && !!config.privateKeyEnc
+            && !!config.eventsSecretEnc
+            && !!config.webhookTokenEnc
+            && !!config.environment
+            && !!config.verifiedAt
+            && !!config.webhookAcknowledgedAt;
+    }
+
+    private isStoredProviderActivationReady(stored: StoredTenantPaymentConfigV2, provider: TenantPaymentProvider): boolean {
+        if (provider === 'mercadopago') {
+            const config = stored.providers.mercadopago;
+            return !!config?.accessTokenEnc
+                && !!config.webhookSecretEnc
+                && !!config.environment
+                && !!config.accountId;
+        }
+        const config = stored.providers.wompi;
+        return !!config?.publicKey
+            && !!config.privateKeyEnc
+            && !!config.eventsSecretEnc
+            && !!config.webhookTokenEnc
+            && !!config.environment
+            && !!config.verifiedAt;
+    }
+
+    private credentialContext(
+        tenantId: string,
+        provider: TenantPaymentProvider,
+        environment: TenantPaymentCredentialEnvironment,
+        field: TenantPaymentCredentialField,
+    ): TenantPaymentCredentialContext {
+        return { tenantId, provider, environment, field };
+    }
+
+    private encryptCredential(plaintext: string, context: TenantPaymentCredentialContext): string {
+        try {
+            return this.requireCredentialCrypto().encrypt(plaintext, context);
+        } catch {
+            throw new ServiceUnavailableException('tenant_payment_credential_encryption_unavailable');
+        }
+    }
+
+    private rewrapEncryptedCredential(
+        encrypted: string | undefined,
+        context: TenantPaymentCredentialContext,
+    ): string | undefined {
+        if (!encrypted) return undefined;
+        return this.encryptCredential(this.decryptExistingCredential(encrypted, context), context);
+    }
+
+    private rewrapMercadoPagoGeneration(
+        tenantId: string,
+        generation: StoredMercadoPagoCredentialGeneration,
+    ): StoredMercadoPagoCredentialGeneration {
+        const environment = this.resolveMercadoPagoEnvironment(
+            tenantId,
+            generation as StoredMercadoPagoConfig,
+        );
+        if (!environment) {
+            throw new ServiceUnavailableException('tenant_payment_credential_decryption_unavailable');
+        }
+        return {
+            ...generation,
+            environment,
+            accessTokenEnc: this.rewrapEncryptedCredential(
+                generation.accessTokenEnc,
+                this.credentialContext(tenantId, 'mercadopago', environment, 'access_token'),
+            ),
+            webhookSecretEnc: this.rewrapEncryptedCredential(
+                generation.webhookSecretEnc,
+                this.credentialContext(tenantId, 'mercadopago', environment, 'webhook_secret'),
+            ),
+        };
+    }
+
+    private rewrapWompiGeneration(
+        tenantId: string,
+        generation: StoredWompiCredentialGeneration,
+    ): StoredWompiCredentialGeneration {
+        const environment = generation.environment;
+        if (!environment) {
+            throw new ServiceUnavailableException('tenant_payment_credential_decryption_unavailable');
+        }
+        return {
+            ...generation,
+            privateKeyEnc: this.rewrapEncryptedCredential(
+                generation.privateKeyEnc,
+                this.credentialContext(tenantId, 'wompi', environment, 'private_key'),
+            ),
+            eventsSecretEnc: this.rewrapEncryptedCredential(
+                generation.eventsSecretEnc,
+                this.credentialContext(tenantId, 'wompi', environment, 'events_secret'),
+            ),
+            webhookTokenEnc: this.rewrapEncryptedCredential(
+                generation.webhookTokenEnc,
+                this.credentialContext(tenantId, 'wompi', environment, 'callback_token'),
+            ),
+        };
+    }
+
+    private readCredential(
+        encrypted: string,
+        context: TenantPaymentCredentialContext,
+    ): TenantPaymentCredentialReadResult {
+        return this.requireCredentialCrypto().readCompatible(
+            encrypted,
+            context,
+            legacy => this.decryptStrictLegacyCredential(legacy),
+        );
+    }
+
+    private decryptStrictLegacyCredential(encrypted: string): string {
+        // WhatsappCryptoService historically falls back to plaintext/base64 in
+        // development when ENCRYPTION_KEY is absent. That behavior is never
+        // acceptable for money credentials, even inside the migration bridge.
+        const legacyKey = process.env.ENCRYPTION_KEY;
+        if (!legacyKey || !/^[a-f0-9]{64,}$/i.test(legacyKey) || legacyKey.length % 2 !== 0) {
+            throw new Error('tenant_payment_legacy_key_unavailable');
+        }
+        return this.crypto.decryptToken(encrypted);
+    }
+
+    private decryptExistingCredential(
+        encrypted: string,
+        context: TenantPaymentCredentialContext,
+    ): string {
+        try {
+            return this.readCredential(encrypted, context).plaintext;
+        } catch {
+            throw new ServiceUnavailableException('tenant_payment_credential_decryption_unavailable');
+        }
+    }
+
+    private tryDecryptCredential(
+        encrypted: string | undefined,
+        context: TenantPaymentCredentialContext,
+    ): string | undefined {
+        if (!encrypted) return undefined;
+        try {
+            return this.readCredential(encrypted, context).plaintext;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Older Mercado Pago envelopes predate authenticated environment metadata.
+     * Only a strict legacy AES-GCM value may be opened provisionally to derive
+     * TEST-/APP_USR-. A v2 envelope without its stored environment is unusable.
+     */
+    private resolveMercadoPagoEnvironment(
+        tenantId: string,
+        config: StoredMercadoPagoConfig,
+    ): WompiEnvironment | undefined {
+        const storedEnvironment = this.normalizeCredentialEnvironment(config.environment);
+        if (storedEnvironment) return storedEnvironment;
+        if (!config.accessTokenEnc || config.accessTokenEnc.startsWith('tpc:')) return undefined;
+        try {
+            const read = this.readCredential(
+                config.accessTokenEnc,
+                this.credentialContext(tenantId, 'mercadopago', 'production', 'access_token'),
+            );
+            return read.format === 'legacy-v1'
+                ? this.mercadoPagoEnvironmentForToken(read.plaintext)
+                : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    private mercadoPagoEnvironmentForToken(token: string): WompiEnvironment | undefined {
+        if (/^TEST-\S+$/.test(token)) return 'sandbox';
+        if (/^APP_USR-\S+$/.test(token)) return 'production';
+        return undefined;
+    }
+
+    private normalizeCredentialEnvironment(value: unknown): WompiEnvironment | undefined {
+        return value === 'sandbox' || value === 'production' ? value : undefined;
+    }
+
+    private constantTimeEqual(left: string, right: string): boolean {
+        const leftBuffer = Buffer.from(left);
+        const rightBuffer = Buffer.from(right);
+        return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+    }
+
+    private idempotencyRedisKey(tenantId: string, key: string): string {
         return `tenant_payment_link:idem:${tenantId}:${key}`;
     }
 
-    private notificationUrl(tenantId: string): string {
+    private mpNotificationUrl(tenantId: string): string {
+        return new URL(`/api/v1/tenant-payments/webhook/${tenantId}`, this.apiPublicBase()).toString();
+    }
+
+    private wompiNotificationUrl(tenantId: string, token: string): string {
+        return new URL(
+            `/api/v1/tenant-payments/webhook/wompi/${tenantId}/${encodeURIComponent(token)}`,
+            this.apiPublicBase(),
+        ).toString();
+    }
+
+    private safeWompiNotificationUrl(tenantId: string, token: string): string | undefined {
+        if (!token) return undefined;
+        try { return this.wompiNotificationUrl(tenantId, token); } catch { return undefined; }
+    }
+
+    private apiPublicBase(): URL {
         const rawBase = String(process.env.API_PUBLIC_URL || process.env.NEXT_PUBLIC_API_URL || '')
             .trim()
             .replace(/\/api\/v1\/?$/, '');
@@ -379,12 +1934,9 @@ export class TenantPaymentsService {
             const base = new URL(rawBase);
             const local = ['localhost', '127.0.0.1', '::1'].includes(base.hostname);
             if (base.protocol !== 'https:' && !(local && base.protocol === 'http:')) throw new Error('https_required');
-            return new URL(`/api/v1/tenant-payments/webhook/${tenantId}`, base).toString();
+            return base;
         } catch {
-            throw new BadRequestException({
-                error: 'payment_webhook_url_not_configured',
-                message: 'API_PUBLIC_URL debe ser una URL HTTPS válida para recibir confirmaciones de pago.',
-            });
+            throw new BadRequestException({ error: 'payment_webhook_url_not_configured' });
         }
     }
 
@@ -392,18 +1944,116 @@ export class TenantPaymentsService {
         try { return new URL(value).protocol === 'https:'; } catch { return false; }
     }
 
-    /** Le pregunta a MercadoPago de quién es este token. */
-    private async verifyToken(accessToken: string): Promise<{ ok: boolean; email?: string }> {
+    private normalizeDomainStatus(status: string): TenantPaymentStatus {
+        return ['paid', 'failed', 'refunded'].includes(status)
+            ? status as TenantPaymentStatus
+            : 'pending';
+    }
+
+    private intentCredentialRevision(intent: TenantPaymentIntent): number | undefined {
+        const revision = Number((intent.resourceSnapshot as any)?.providerConfigRevision);
+        return Number.isSafeInteger(revision) && revision >= 0 ? revision : undefined;
+    }
+
+    private async verifyMpToken(accessToken: string): Promise<{
+        ok: boolean;
+        accountId?: string;
+        email?: string;
+    }> {
         try {
-            const res = await fetch(`${MP_API}/users/me`, {
+            const response = await fetch(`${MP_API}/users/me`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
-                signal: AbortSignal.timeout(15000),
+                signal: AbortSignal.timeout(15_000),
             });
-            if (!res.ok) return { ok: false };
-            const data: any = await res.json();
-            return { ok: true, email: data?.email };
+            if (!response.ok) return { ok: false };
+            const payload: any = await response.json();
+            const accountId = String(payload?.id ?? '').trim();
+            if (!/^\d{1,32}$/.test(accountId)) return { ok: false };
+            return { ok: true, accountId, email: payload?.email };
         } catch {
             return { ok: false };
+        }
+    }
+
+    private requireStore(): TenantPaymentStoreService {
+        if (!this.store) throw new ServiceUnavailableException('tenant_payment_store_unavailable');
+        return this.store;
+    }
+
+    private requireWompiClient(): TenantWompiClient {
+        if (!this.wompi) throw new ServiceUnavailableException('tenant_wompi_client_unavailable');
+        return this.wompi;
+    }
+
+    private requireCredentialCrypto(): TenantPaymentCredentialCryptoService {
+        if (!this.credentialCrypto) {
+            throw new ServiceUnavailableException('tenant_payment_credential_crypto_unavailable');
+        }
+        return this.credentialCrypto;
+    }
+
+    private async assertCustomerPaymentsEntitled(tenantId: string): Promise<void> {
+        const [featureEnabled, tenant, entitlement] = await Promise.all([
+            this.throttle?.isFeatureEnabled(tenantId, 'customerPayments') ?? Promise.resolve(false),
+            this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { isActive: true },
+            }),
+            resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write'),
+        ]);
+        if (!tenant?.isActive) {
+            throw new BadRequestException({ error: 'tenant_not_active' });
+        }
+        if (!entitlement.allowed) {
+            if (entitlement.restrictionLevel === 'unavailable') {
+                throw new ServiceUnavailableException(entitlement.error || 'subscription_status_unavailable');
+            }
+            throw new BadRequestException({
+                error: entitlement.error || 'subscription_restricted',
+            });
+        }
+        if (!featureEnabled) {
+            throw new BadRequestException({
+                error: 'customer_payments_not_available_on_plan',
+                feature: 'customerPayments',
+            });
+        }
+    }
+
+    private providerMutationLockKey(tenantId: string, _provider: TenantPaymentProvider): string {
+        // Tenant-wide on purpose: switching the active rail must serialize with
+        // a submission using the previously active rail as well as rotations of
+        // either provider's webhook credentials.
+        return `lock:tenant-customer-payments:${tenantId}`;
+    }
+
+    private async acquireProviderMutationLock(
+        tenantId: string,
+        provider: TenantPaymentProvider,
+    ): Promise<string> {
+        const token = await this.redis.acquireLockToken(
+            this.providerMutationLockKey(tenantId, provider),
+            60,
+        ).catch(() => null);
+        if (!token) {
+            throw new ConflictException({ error: 'tenant_payment_provider_busy' });
+        }
+        return token;
+    }
+
+    private async withProviderMutationLock<T>(
+        tenantId: string,
+        provider: TenantPaymentProvider,
+        callback: () => Promise<T>,
+    ): Promise<T> {
+        const token = await this.acquireProviderMutationLock(tenantId, provider);
+        try {
+            return await callback();
+        } finally {
+            await this.redis.releaseLockToken(
+                this.providerMutationLockKey(tenantId, provider),
+                token,
+            ).catch(() => undefined);
         }
     }
 }

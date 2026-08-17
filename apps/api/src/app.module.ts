@@ -150,11 +150,24 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
                     ? { target: 'pino-pretty', options: { colorize: true, singleLine: true } }
                     : undefined,
                 redact: {
-                    paths: ['req.headers.authorization', 'req.headers.cookie'],
+                    paths: [
+                        'req.headers.authorization',
+                        'req.headers.cookie',
+                        'req.headers.x-signature',
+                        'req.headers.x-event-checksum',
+                    ],
                     censor: '[REDACTED]',
                 },
                 autoLogging: {
-                    ignore: (req: any) => ['/api/v1/health', '/docs', '/admin/queues'].some(p => req.url?.startsWith(p)),
+                    ignore: (req: any) => [
+                        '/api/v1/health',
+                        '/docs',
+                        '/admin/queues',
+                        // The last Wompi path segment is an opaque routing id.
+                        // The event signature remains authoritative, but the
+                        // callback URL still should not enter routine logs.
+                        '/api/v1/tenant-payments/webhook/wompi/',
+                    ].some(p => req.url?.startsWith(p)),
                 },
                 customProps: (req: any) => ({
                     tenantId: req.user?.tenantId || req.headers?.['x-tenant-id'],

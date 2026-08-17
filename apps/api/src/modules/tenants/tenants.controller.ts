@@ -9,7 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
-import { IsBoolean, IsEmail, IsIn, IsObject, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsObject, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateBy } from 'class-validator';
+import {
+    hasReservedTenantSetting,
+    redactReservedTenantSettingsFromRecord,
+} from '../../common/utils/tenant-settings.util';
 
 export class CreateTenantDto {
     @IsString()
@@ -86,6 +90,13 @@ export class UpdateTenantDto {
 
     @IsOptional()
     @IsObject()
+    @ValidateBy({
+        name: 'doesNotContainReservedTenantSettings',
+        validator: {
+            validate: (value: unknown) => !hasReservedTenantSetting(value),
+            defaultMessage: () => 'settings.tenantPayments is reserved and cannot be managed through the tenant settings endpoint',
+        },
+    })
     settings?: any;
 }
 
@@ -107,7 +118,7 @@ export class TenantsController {
     @ApiOperation({ summary: 'Create a new tenant' })
     async create(@Body() dto: CreateTenantDto, @CurrentUser() currentUser: any) {
         const tenant = await this.tenantsService.create(dto, currentUser?.sub);
-        return { success: true, data: tenant };
+        return { success: true, data: redactReservedTenantSettingsFromRecord(tenant) };
     }
 
     // ── Super Admin Platform Endpoints (static routes BEFORE :id) ────
@@ -323,7 +334,8 @@ export class TenantsController {
 
         // Enrich each tenant with vertical + healthScore from settings JSONB
         const enriched = result.tenants.map((t: any) => {
-            const settings = (t as any).settings || {};
+            const safeTenant = redactReservedTenantSettingsFromRecord(t);
+            const settings = (safeTenant as any).settings || {};
             const vertical: string | null = settings.verticalConfig?.industry || null;
             const subType: string | null = settings.verticalConfig?.subType ?? settings.subType ?? null;
 
@@ -332,7 +344,7 @@ export class TenantsController {
             // Remaining factors default to 0 for the list view (detailed via engagement endpoint)
             const healthScore = channelBonus;
 
-            return { ...t, vertical, subType, healthScore };
+            return { ...safeTenant, vertical, subType, healthScore };
         });
 
         return { success: true, data: enriched, meta: { page: result.page, limit: result.limit, total: result.total } };
@@ -361,7 +373,7 @@ export class TenantsController {
             role: currentUser.role,
             tenantId: currentUser.tenantId,
         });
-        return { success: true, data: tenant };
+        return { success: true, data: redactReservedTenantSettingsFromRecord(tenant) };
     }
 
     @Patch(':id')
@@ -373,7 +385,7 @@ export class TenantsController {
             throw new ForbiddenException('Cannot update another tenant');
         }
         const tenant = await this.tenantsService.update(id, dto);
-        return { success: true, data: tenant };
+        return { success: true, data: redactReservedTenantSettingsFromRecord(tenant) };
     }
 
     @Get(':id/users')
@@ -389,7 +401,7 @@ export class TenantsController {
     @ApiOperation({ summary: 'Deactivate a tenant' })
     async deactivate(@Param('id') id: string) {
         const tenant = await this.tenantsService.deactivate(id);
-        return { success: true, data: tenant };
+        return { success: true, data: redactReservedTenantSettingsFromRecord(tenant) };
     }
 
     @Get(':id/quota-overrides')

@@ -35,6 +35,31 @@ export class PersonaController {
         private readonly throttleService: TenantThrottleService,
     ) {}
 
+    /**
+     * Persona configuration is a write boundary: an ineligible tenant must not
+     * be able to persist payment tools by bypassing the dashboard. Runtime
+     * execution has its own independent entitlement check immediately before
+     * provider writes.
+     */
+    private async rejectUnavailableCustomerPayments(tenantId: string, config: any) {
+        if (config?.tools?.payments?.enabled !== true) return null;
+
+        try {
+            if (await this.throttleService.isFeatureEnabled(tenantId, 'customerPayments')) {
+                return null;
+            }
+        } catch (error) {
+            this.logger.warn(
+                `Could not resolve customerPayments entitlement for tenant ${tenantId}; rejecting persona configuration`,
+            );
+        }
+
+        return {
+            success: false,
+            message: 'Los cobros a clientes no están disponibles en tu plan actual.',
+        };
+    }
+
     // ── Templates for Setup Wizard ──
 
     @Get('templates')
@@ -424,6 +449,9 @@ export class PersonaController {
         @Body() body: any,
         @Req() req: any,
     ) {
+        const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body);
+        if (paymentEntitlementError) return paymentEntitlementError;
+
         if (body.editorMode === 'prompt' && body.customPrompt) {
             const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
             if (!enabled) {
@@ -473,6 +501,9 @@ export class PersonaController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Create a new agent persona' })
     async createAgent(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
+        const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
+        if (paymentEntitlementError) return paymentEntitlementError;
+
         if (body.configJson?.editorMode === 'prompt' && body.configJson?.customPrompt) {
             const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
             if (!enabled) return { success: false, message: 'El prompt personalizado no está disponible en tu plan actual.' };
@@ -494,6 +525,9 @@ export class PersonaController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Update an existing agent persona' })
     async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
+        const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
+        if (paymentEntitlementError) return paymentEntitlementError;
+
         if (body.configJson?.editorMode === 'prompt' && body.configJson?.customPrompt) {
             const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
             if (!enabled) return { success: false, message: 'El prompt personalizado no está disponible en tu plan actual.' };
@@ -514,6 +548,15 @@ export class PersonaController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Duplicate an agent persona' })
     async duplicateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Req() req: any) {
+        // Duplication is another creation path and must not clone an entitled
+        // payment capability into a tenant after a downgrade.
+        const source = await this.personaService.getAgent(tenantId, agentId);
+        const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(
+            tenantId,
+            source?.config_json,
+        );
+        if (paymentEntitlementError) return paymentEntitlementError;
+
         const agent = await this.personaService.duplicateAgent(tenantId, agentId, req.user?.email);
         return { success: true, data: agent };
     }

@@ -4,6 +4,10 @@ import { TenantPaymentsWebhookService } from './tenant-payments-webhook.service'
 import { TenantPaymentsController } from './tenant-payments.controller';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { TenantMercadoPagoOperationProvider } from './tenant-mercadopago-operation.provider';
+import { TenantPaymentStoreService } from './tenant-payment-store.service';
+import { TenantWompiClient } from './tenant-wompi.client';
+import { TenantWompiWebhookService } from './tenant-wompi-webhook.service';
+import { TenantPaymentCredentialCryptoService } from './tenant-payment-credential-crypto.service';
 
 /**
  * Cobros del tenant a su cliente final (D3).
@@ -18,6 +22,10 @@ import { TenantMercadoPagoOperationProvider } from './tenant-mercadopago-operati
         TenantPaymentsService,
         TenantPaymentsWebhookService,
         TenantMercadoPagoOperationProvider,
+        TenantPaymentStoreService,
+        TenantWompiClient,
+        TenantWompiWebhookService,
+        TenantPaymentCredentialCryptoService,
         WhatsappCryptoService,
     ],
     controllers: [TenantPaymentsController],

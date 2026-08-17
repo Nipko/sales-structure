@@ -100,6 +100,10 @@ export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
     { key: 'staffScheduling', type: 'boolean', category: 'module' },
     { key: 'vehicleInventory', type: 'boolean', category: 'module' },
     { key: 'ecommerce', type: 'boolean', category: 'module' },
+    // Tenant-owned checkout links (tenant -> its customer). This is deliberately
+    // independent from ecommerce: tours, restaurants and education can also
+    // collect through the same capability.
+    { key: 'customerPayments', type: 'boolean', category: 'module' },
     { key: 'channelManager', type: 'boolean', category: 'module' },
     { key: 'widget', type: 'boolean', category: 'module' },
     { key: 'httpRequestAction', type: 'boolean', category: 'module' },

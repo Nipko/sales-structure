@@ -27,7 +27,8 @@ export class TenantDetailResponseDto {
     plan!: string;
     /** Plan que se le cobra. Puede diferir de `plan`: ver override de permisos. */
     billedPlan!: string | null;
-    settings!: unknown;
+    /** Generic settings only. Dedicated tenant payment configuration is never serialized here. */
+    settings!: (Record<string, unknown> & { tenantPayments?: never }) | null;
     operatingCurrency!: string | null;
     operatingCurrencyLockedAt!: Date | string | null;
     subscriptionStatus!: string | null;

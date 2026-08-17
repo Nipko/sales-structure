@@ -288,6 +288,11 @@ export interface ToolsConfig {
         canRecommend?: boolean;
         canApplyDiscount?: boolean;
     };
+    /** Tenant-owned hosted checkout links for purchases made by its customers. */
+    payments?: {
+        enabled: boolean;
+        canCreateLinks?: boolean;
+    };
     offers?: {
         enabled: boolean;
     };

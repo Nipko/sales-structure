@@ -68,7 +68,7 @@ export const TOURS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'create_tour_booking',
-        description: 'Reserve seats on a tour package for the customer. Decrements available capacity. Booking is created in "reserved" status — payment is handled separately.',
+        description: 'Reserve seats on a tour package for the customer. Decrements available capacity. Booking is created in "reserved" status — payment is handled separately. Returns paymentStatus and a payableReference when chargeable; pass that opaque reference unchanged to payment tools and never derive one yourself.',
         parameters: {
             type: 'object',
             properties: {
@@ -101,7 +101,7 @@ export const TOURS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'list_my_tour_bookings',
-        description: 'List all tour bookings for the current customer. Use before cancel_tour_booking so the customer can identify which booking to cancel.',
+        description: 'List all tour bookings for the current customer, including paymentStatus and a payableReference only when chargeable. Use before cancellation, payment-link creation, or payment-status lookup. Pass payableReference unchanged and never derive one yourself.',
         parameters: { type: 'object', properties: {} },
     },
 ];

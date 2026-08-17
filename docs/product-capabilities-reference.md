@@ -42,6 +42,20 @@ indicados abajo.
 | Email | Adaptador e ingreso técnico interno para integraciones administradas; la pantalla `/admin/channels/email` no tiene hoy handlers de lectura/escritura por tenant y **no es una configuración autoservicio certificada** |
 | SMS | Producto separado de notificaciones salientes por créditos; no es un canal conversacional |
 
+## Cobros del tenant a sus clientes
+
+**Integraciones → Pagos** admite cuentas propias Wompi y Mercado Pago. El tenant
+elige un proveedor activo; Parallly genera un checkout alojado con el monto
+canónico del objeto comercial y el dinero llega directamente al comercio. Esta
+superficie es independiente del Wompi que cobra la suscripción de Parallly.
+
+La creación de enlaces exige la feature runtime `customerPayments`, configuración
+del agente y proveedor listo. Un downgrade bloquea enlaces nuevos, pero no detiene
+webhooks, conciliación ni consulta de links existentes. El agente sólo recibe una
+`payableReference`; no elige monto, moneda ni proveedor y sólo informa pago tras
+estado canónico `paid`. Wompi se limita inicialmente a Links de Pago COP alojados;
+reembolsos no se ofrecen al agente.
+
 La existencia de un adaptador, una tabla o una pantalla no certifica por sí sola un
 flujo de conexión. En particular, no se debe prometer conexión, envío, recepción en
 Inbox ni respuesta automática por Email hasta que exista y se valide el contrato de

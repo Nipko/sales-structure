@@ -193,9 +193,14 @@ Implementación completa según §5 del doc de investigación (datos, scheduler,
 - Checkout: el dispatcher ya elige por provider; Stripe Elements es un componente más.
 - Bloqueantes heredados del informe MoR: concepto tributarista (exportación ficticia), pre-aprobación AUP si es MoR, IVA +19% a no-responsables colombianos si se vendiera CO vía MoR (por eso el híbrido geo-separado: **el MoR nunca cobra a Colombia**).
 
+### Entregado después de v1
+
+- `tenant-payments` con Links de Pago Wompi: cuenta propia por tenant, monto COP
+  canónico, webhook multi-tenant por URL opaca, ledger durable y herramientas
+  del agente controladas por `customerPayments`.
+
 ### Backlog opcional post-v1 (no bloquea nada)
 
-- `tenant-payments` con links de pago Wompi (el tenant cobra señas por Nequi/PSE a SU cliente — alto retorno, independiente del motor; webhook multi-tenant por token opaco).
 - PSE pago único para el ciclo del tenant (patrón link+recordatorio del diseño §5.6).
 - Botón Bancolombia como fuente recurrente (encender flag tras prueba).
 - 3DS/3RI si algún día se decide pedir la activación al equipo de fraude.

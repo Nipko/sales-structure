@@ -27,7 +27,12 @@ import { BusinessInfoService } from '../business-info/business-info.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
-import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import {
+    hasReservedTenantSetting,
+    mergeTenantSettingsAtomic,
+    redactReservedTenantSettings,
+    redactReservedTenantSettingsFromRecord,
+} from '../../common/utils/tenant-settings.util';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import {
@@ -684,7 +689,7 @@ export class TenantsService {
         // global billing_coupon_redemptions (tenant_id TEXT, sin FK).
         const couponByTenant = await this.buildCouponSummary(tenants.map((t: any) => t.id));
         const withCoupon = tenants.map((t: any) => ({
-            ...t,
+            ...redactReservedTenantSettingsFromRecord(t),
             coupon: couponByTenant.get(t.id) ?? null,
         }));
 
@@ -928,7 +933,7 @@ export class TenantsService {
             isInternal: source.isInternal === true,
             plan: source.plan,
             billedPlan: source.subscription?.plan?.slug ?? null,
-            settings: source.settings,
+            settings: redactReservedTenantSettings(source.settings) as TenantDetailResponseDto['settings'],
             operatingCurrency: source.operatingCurrency ?? null,
             operatingCurrencyLockedAt: source.operatingCurrencyLockedAt ?? null,
             subscriptionStatus: source.subscriptionStatus ?? null,
@@ -965,7 +970,7 @@ export class TenantsService {
             throw new NotFoundException(`Tenant "${slug}" not found`);
         }
 
-        return tenant;
+        return redactReservedTenantSettingsFromRecord(tenant);
     }
 
     /**
@@ -1038,6 +1043,14 @@ export class TenantsService {
             settings: requestedSettings,
             ...tenantData
         } = data;
+
+        if (hasReservedTenantSetting(requestedSettings)) {
+            throw new BadRequestException({
+                error: 'reserved_tenant_setting',
+                key: 'tenantPayments',
+                message: 'settings.tenantPayments solo puede administrarse mediante la integración dedicada de pagos del tenant.',
+            });
+        }
 
         const selectionWasProvided = data.industry !== undefined || requestedSubType !== undefined;
         let nextIndustry = existing.industry;
@@ -1113,7 +1126,7 @@ export class TenantsService {
             });
         }
 
-        return tenant;
+        return redactReservedTenantSettingsFromRecord(tenant);
     }
 
     /**
@@ -1167,7 +1180,7 @@ export class TenantsService {
         await this.redis.del(tenantDetailCacheKey(id));
         await this.redis.del(legacyTenantConfigCacheKey(id));
 
-        return tenant;
+        return redactReservedTenantSettingsFromRecord(tenant);
     }
 
     // ── Super Admin Platform Methods ─────────────────────────────

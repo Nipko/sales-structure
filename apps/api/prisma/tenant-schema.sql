@@ -224,6 +224,70 @@ ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" ADD CONSTRAINT "payment
 ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" DROP CONSTRAINT IF EXISTS "payment_operation_ledger_status_chk";
 ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" ADD CONSTRAINT "payment_operation_ledger_status_chk" CHECK ("status" IN ('requested', 'processing', 'succeeded', 'handoff_required', 'reconciliation_required', 'failed')) NOT VALID;
 
+-- ---- Durable tenant -> customer payment lifecycle ----
+-- These rows contain only canonical purchase snapshots and provider identifiers.
+-- Provider credentials remain encrypted in the global tenant settings document;
+-- customer/provider payloads (which can contain PII) are deliberately not stored.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tenant_payment_intents" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "provider" VARCHAR(30) NOT NULL,
+    "idempotency_key" VARCHAR(180) NOT NULL,
+    "canonical_reference" VARCHAR(180) NOT NULL,
+    "contact_id" UUID NOT NULL,
+    "amount_cents" BIGINT NOT NULL,
+    "currency" CHAR(3) NOT NULL,
+    "description" VARCHAR(250) NOT NULL,
+    "resource_snapshot" JSONB NOT NULL DEFAULT '{}'::jsonb,
+    "provider_link_id" VARCHAR(255),
+    "checkout_url" TEXT,
+    "provider_transaction_id" VARCHAR(255),
+    "status" VARCHAR(30) NOT NULL DEFAULT 'pending',
+    "expires_at" TIMESTAMPTZ,
+    "paid_at" TIMESTAMPTZ,
+    "last_error" TEXT,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT "tenant_payment_intents_provider_idem_uq" UNIQUE ("provider", "idempotency_key"),
+    CONSTRAINT "tenant_payment_intents_amount_chk" CHECK ("amount_cents" > 0),
+    CONSTRAINT "tenant_payment_intents_currency_chk" CHECK ("currency" ~ '^[A-Z]{3}$'),
+    CONSTRAINT "tenant_payment_intents_provider_chk" CHECK ("provider" IN ('mercadopago', 'wompi')),
+    CONSTRAINT "tenant_payment_intents_status_chk" CHECK ("status" IN ('pending', 'paid', 'failed', 'refunded', 'expired', 'requires_review', 'ambiguous'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_tenant_payment_intents_provider_link"
+    ON "{{SCHEMA_NAME}}"."tenant_payment_intents" ("provider", "provider_link_id")
+    WHERE "provider_link_id" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_tenant_payment_intents_unresolved_reference"
+    ON "{{SCHEMA_NAME}}"."tenant_payment_intents" ("canonical_reference")
+    WHERE "status" IN ('pending', 'requires_review', 'ambiguous');
+CREATE INDEX IF NOT EXISTS "idx_tenant_payment_intents_contact_reference"
+    ON "{{SCHEMA_NAME}}"."tenant_payment_intents" ("contact_id", "canonical_reference", "created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_tenant_payment_intents_transaction"
+    ON "{{SCHEMA_NAME}}"."tenant_payment_intents" ("provider", "provider_transaction_id")
+    WHERE "provider_transaction_id" IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tenant_payment_attempts" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "intent_id" UUID REFERENCES "{{SCHEMA_NAME}}"."tenant_payment_intents"("id") ON DELETE RESTRICT,
+    "provider" VARCHAR(30) NOT NULL,
+    "provider_event_key" CHAR(64) NOT NULL,
+    "provider_link_id" VARCHAR(255),
+    "provider_transaction_id" VARCHAR(255),
+    "provider_status" VARCHAR(40),
+    "normalized_status" VARCHAR(30) NOT NULL,
+    "amount_cents" BIGINT,
+    "currency" CHAR(3),
+    "event_snapshot" JSONB NOT NULL DEFAULT '{}'::jsonb,
+    "validation_error" VARCHAR(120),
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT "tenant_payment_attempts_event_uq" UNIQUE ("provider", "provider_event_key"),
+    CONSTRAINT "tenant_payment_attempts_provider_chk" CHECK ("provider" IN ('mercadopago', 'wompi')),
+    CONSTRAINT "tenant_payment_attempts_status_chk" CHECK ("normalized_status" IN ('pending', 'paid', 'failed', 'refunded', 'requires_review', 'ambiguous'))
+);
+CREATE INDEX IF NOT EXISTS "idx_tenant_payment_attempts_intent"
+    ON "{{SCHEMA_NAME}}"."tenant_payment_attempts" ("intent_id", "created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_tenant_payment_attempts_transaction"
+    ON "{{SCHEMA_NAME}}"."tenant_payment_attempts" ("provider", "provider_transaction_id", "created_at" DESC);
+
 -- ---- Persona Config ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."persona_config" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

@@ -39,6 +39,8 @@ export interface PlanFeatures {
   staffScheduling: boolean;
   vehicleInventory: boolean;
   ecommerce: boolean;
+  /** Tenant-owned rails used to collect money from that tenant's customers. */
+  customerPayments: boolean;
   channelManager: boolean;
   widget: boolean;
   dataRetentionDays: number;
@@ -58,7 +60,7 @@ const STARTER_DEFAULTS: PlanFeatures = {
   recall: false, scheduledReports: false, sso: false, auditLog: false,
   biApi: false, customDomainKb: false, whiteLabel: false,
   prioritySupport: false, staffScheduling: false, vehicleInventory: false,
-  ecommerce: false, channelManager: false, widget: false, dataRetentionDays: 180,
+  ecommerce: false, customerPayments: false, channelManager: false, widget: false, dataRetentionDays: 180,
   channels: ["whatsapp", "instagram", "messenger", "telegram"],
   maxChannelAccounts: { whatsapp: 1, instagram: 1, messenger: 1, telegram: 1, sms: 1 },
 };

@@ -1,8 +1,8 @@
 # Operations Runbook — Parallext Engine
 
-_Actualizado: 15 ago 2026._
+_Actualizado: 16 ago 2026._
 
-Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, backups/restore, platform monitoring (Ops Center), SMS credits, fiscal DIAN, Wompi billing, tenant-owned Mercado Pago links, deploy/auth hardening, and recovery from common edge cases.
+Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, backups/restore, platform monitoring (Ops Center), SMS credits, fiscal DIAN, Wompi billing, tenant-owned Wompi/Mercado Pago links, deploy/auth hardening, and recovery from common edge cases.
 
 ---
 
@@ -280,7 +280,7 @@ The 90-day window is hardcoded in `OffboardingCronService.purgeStaleInactiveChan
 
 ---
 
-## 5. Wompi subscriptions and tenant-owned Mercado Pago
+## 5. Wompi subscriptions and tenant-owned customer-payment providers
 
 ### 5.1 Rotate Wompi platform credentials
 
@@ -290,10 +290,11 @@ two COP-cent caps) with values from one production merchant. Deploy regenerates
 `.env` and recreates API/worker. The production preflight rejects missing,
 sandbox-prefixed or non-positive values without printing secrets.
 
-Do not place global Mercado Pago credentials in `.env`. Mercado Pago is retired
-from platform subscriptions; each tenant stores its own encrypted Access Token
-and Webhooks secret in **Integrations → Payments** only for tenant → customer
-links.
+Do not place global Mercado Pago or tenant Wompi credentials in `.env`. Mercado
+Pago is retired from platform subscriptions; each tenant stores its own encrypted
+Wompi (public/private/events) or Mercado Pago (Access Token/Webhooks) credentials
+in **Integrations → Payments** only for tenant → customer links. These connections
+must never use the four global Wompi subscription keys.
 
 ### 5.2 Prices and monthly/annual cycles
 
@@ -479,6 +480,6 @@ LIMIT 50;
 - `modules-reference.md` — 40 modules and their files
 - `analytics-billing-reference.md` — analytics / billing / financials
 - `appointments-manual.md` — appointments specifics
-- `billing-runbook.md` — Wompi, DIAN and tenant-owned Mercado Pago links
+- `billing-runbook.md` — Wompi, DIAN and tenant-owned Wompi/Mercado Pago links
 - `offboarding-manual.md` — offboarding flow detail
 - `vertical-strategy.md` — which verticals + roadmap

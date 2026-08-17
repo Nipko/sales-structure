@@ -520,6 +520,27 @@ describe('TenantsService administrative provisioning', () => {
         expect((updated.settings as any).verticalConfig).toEqual(expect.objectContaining({ industry: 'salud' }));
         expect((updated.settings as any).provisioning.status).toBe('complete');
     });
+
+    it('rejects tenantPayments before the generic settings merge', async () => {
+        const ctx = setup();
+        await ctx.service.create(input);
+        const mergeCallsBeforeUpdate = ctx.prisma.$executeRawUnsafe.mock.calls.length;
+
+        await expect(ctx.service.update(tenantId, {
+            settings: {
+                timezone: 'America/Bogota',
+                tenantPayments: { provider: 'wompi', privateKey: 'forged' },
+            },
+        })).rejects.toMatchObject({
+            response: expect.objectContaining({
+                error: 'reserved_tenant_setting',
+                key: 'tenantPayments',
+            }),
+        });
+
+        expect(ctx.prisma.$executeRawUnsafe).toHaveBeenCalledTimes(mergeCallsBeforeUpdate);
+        expect(ctx.getStoredTenant().settings).not.toHaveProperty('tenantPayments');
+    });
 });
 
 describe('TenantsService secure tenant detail', () => {
@@ -535,7 +556,13 @@ describe('TenantsService secure tenant detail', () => {
         language: 'es-CO',
         isActive: true,
         plan: 'pro',
-        settings: { timezone: 'America/Bogota' },
+        settings: {
+            timezone: 'America/Bogota',
+            tenantPayments: {
+                provider: 'wompi',
+                encryptedPrivateKey: 'ciphertext',
+            },
+        },
         operatingCurrency: 'COP',
         operatingCurrencyLockedAt: now,
         subscriptionStatus: 'active',
@@ -572,10 +599,15 @@ describe('TenantsService secure tenant detail', () => {
                 findUnique: jest.fn(async () => options?.record === undefined
                     ? databaseRecord
                     : options.record),
+                findMany: jest.fn(async () => [options?.record === undefined
+                    ? databaseRecord
+                    : options.record].filter(Boolean)),
+                count: jest.fn(async () => options?.record === null ? 0 : 1),
                 update: jest.fn(async ({ data }: any) => ({
                     id: tenantId, name: 'Clínica Norte', isInternal: data.isInternal,
                 })),
             },
+            billingCouponRedemption: { findMany: jest.fn(async () => []) },
             billingSubscription: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
             billingChargeAttempt: { findFirst: jest.fn().mockResolvedValue(null), updateMany: jest.fn() },
             auditLog: { create: jest.fn(async () => ({})) },
@@ -735,5 +767,15 @@ describe('TenantsService secure tenant detail', () => {
         });
         expect(cachedResult.channelAccounts[0]).not.toHaveProperty('accessToken');
         expect(cachedResult.channelAccounts[0]).not.toHaveProperty('metadata');
+        expect(cachedResult.settings).toEqual({ timezone: 'America/Bogota' });
+    });
+
+    it('redacts tenantPayments from list results without mutating the database record', async () => {
+        const { service } = setup();
+
+        const result = await service.findAll(1, 20);
+
+        expect(result.tenants[0].settings).toEqual({ timezone: 'America/Bogota' });
+        expect(databaseRecord.settings).toHaveProperty('tenantPayments');
     });
 });

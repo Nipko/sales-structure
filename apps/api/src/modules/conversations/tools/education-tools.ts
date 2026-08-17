@@ -36,7 +36,7 @@ export const EDUCATION_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'enroll_student',
-        description: 'Enroll a student in a specific cohort. Decrements available seats atomically. Always confirm name + email + phone with the student before calling. Use cohort_id from get_course_schedule.',
+        description: 'Enroll a student in a specific cohort. Decrements available seats atomically. Always confirm name + email + phone with the student before calling. Use cohort_id from get_course_schedule. Returns paymentStatus and a payableReference when the full balance is chargeable; pass it unchanged to payment tools and never derive one yourself.',
         parameters: {
             type: 'object',
             properties: {
@@ -72,7 +72,7 @@ export const EDUCATION_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'list_my_enrollments',
-        description: 'List all enrollments for the current student. Use before cancel_enrollment so the student can identify which enrollment to cancel.',
+        description: 'List all enrollments for the current student with paymentStatus and a payableReference only when the full balance is chargeable. Use before cancellation, payment-link creation, or payment-status lookup. Pass payableReference unchanged and never derive one yourself.',
         parameters: { type: 'object', properties: {} },
     },
 ];

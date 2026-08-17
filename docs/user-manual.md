@@ -1724,9 +1724,10 @@ la autorización de datos personales. Un medio pendiente o rechazado no activa e
 plan. Solo una fuente marcada como disponible permite un cobro.
 
 No pegues llaves privadas ni credenciales del comercio en este formulario. Las
-credenciales Mercado Pago de **Integraciones → Pagos** pertenecen a otro flujo:
+cuentas Wompi o Mercado Pago de **Integraciones → Pagos** pertenecen a otro flujo:
 sirven para que tu negocio cobre a sus clientes mediante enlaces, nunca para pagar
-la suscripción de Parallly.
+la suscripción de Parallly. Cada cuenta es del tenant, usa un webhook separado y
+el agente sólo confirma un pago después de la validación canónica del proveedor.
 
 ## 20.5 Pausar o reanudar
 

@@ -117,16 +117,62 @@ interface TemplatePreset {
   bodyHtml: string;
 }
 
+/**
+ * Cuerpo de los presets de cita: mismo diseño que la plantilla que siembra la
+ * API (cabecera del negocio, tarjeta de detalle, pie con datos de contacto).
+ * `{{#if}}` no anida — cada fila opcional abre y cierra su propio bloque.
+ */
+const APPOINTMENT_PRESET_HTML = (
+  badge: string,
+  heading: string,
+  intro: string,
+  policy: string,
+  fg: string,
+  bg: string,
+  border: string,
+) => `<div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;">
+<div style="padding:26px 28px 0;text-align:center;">{{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:44px;max-width:220px;border:0;"/>{{/if}}<p style="margin:10px 0 0;font-size:17px;font-weight:700;color:#101828;">{{company_name}}</p></div>
+<div style="padding:20px 28px 0;"><div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:13px 18px;text-align:center;"><p style="margin:0;font-size:15px;font-weight:700;color:${fg};">${badge}</p></div></div>
+<div style="padding:22px 28px 0;">
+<h1 style="margin:0 0 12px;font-size:19px;font-weight:700;color:#101828;">${heading}</h1>
+<p style="margin:0 0 6px;font-size:15px;color:#101828;">Hola <strong>{{customer_name}}</strong>,</p>
+<p style="margin:0;font-size:14px;color:#475467;line-height:1.6;">${intro}</p>
+</div>
+<div style="padding:18px 28px 0;"><div style="background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:14px 18px;">
+<table style="width:100%;border-collapse:collapse;">
+<tr><td style="padding:7px 0;font-size:13px;color:#667085;width:36%;">Servicio</td><td style="padding:7px 0;font-size:14px;color:#101828;font-weight:600;">{{service_name}}</td></tr>
+<tr><td style="padding:7px 0;font-size:13px;color:#667085;">Fecha</td><td style="padding:7px 0;font-size:14px;color:#101828;font-weight:600;">{{appointment_date}}</td></tr>
+<tr><td style="padding:7px 0;font-size:13px;color:#667085;">Hora</td><td style="padding:7px 0;font-size:14px;color:#101828;font-weight:600;">{{appointment_time}}</td></tr>
+{{#if appointment_duration}}<tr><td style="padding:7px 0;font-size:13px;color:#667085;">Duración</td><td style="padding:7px 0;font-size:14px;color:#101828;font-weight:600;">{{appointment_duration}}</td></tr>{{/if}}
+{{#if staff_name}}<tr><td style="padding:7px 0;font-size:13px;color:#667085;">Te atiende</td><td style="padding:7px 0;font-size:14px;color:#101828;font-weight:600;">{{staff_name}}</td></tr>{{/if}}
+{{#if location}}<tr><td style="padding:7px 0;font-size:13px;color:#667085;">Dirección</td><td style="padding:7px 0;font-size:14px;color:#101828;font-weight:600;">{{location}}</td></tr>{{/if}}
+</table>
+</div></div>
+{{#if meeting_url}}<div style="padding:18px 28px 0;text-align:center;"><a href="{{meeting_url}}" style="display:inline-block;padding:13px 34px;background:#6c5ce7;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;">Entrar a la reunión</a></div>{{/if}}
+<div style="padding:20px 28px 0;"><p style="margin:0;font-size:13px;color:#475467;line-height:1.6;">${policy}</p></div>
+<div style="padding:22px 28px 26px;"><div style="border-top:1px solid #eaecf0;padding-top:16px;">
+<p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#98a2b3;text-transform:uppercase;letter-spacing:.8px;">Cómo contactarnos</p>
+{{#if company_address}}<p style="margin:3px 0;font-size:13px;color:#475467;">&#128205; {{company_address}}</p>{{/if}}
+{{#if company_phone}}<p style="margin:3px 0;font-size:13px;color:#475467;">&#128222; {{company_phone}}</p>{{/if}}
+{{#if company_email}}<p style="margin:3px 0;font-size:13px;color:#475467;">&#9993;&#65039; {{company_email}}</p>{{/if}}
+{{#if company_website}}<p style="margin:3px 0;font-size:13px;color:#475467;">&#127760; {{company_website}}</p>{{/if}}
+</div></div>
+</div>`;
+
 const TEMPLATE_PRESETS: TemplatePreset[] = [
+  // Los slugs de cita ya se siembran con la plantilla completa desde la API
+  // (appointment-email-layout.ts). Crear desde preset SOBRESCRIBE esa fila, así
+  // que estos cuerpos deben identificar al negocio igual que el original: si
+  // vuelven a ser un <h2> pelado, el cliente final recibe un correo anónimo.
   {
     id: "preset_appointment_confirm",
     name: "Confirmación de cita",
     description: "Email automático cuando se agenda una cita",
     icon: "Calendar",
     slug: "appointment_confirmation_email",
-    subject: "Cita confirmada — {{service_name}}",
-    variables: ["customer_name", "service_name", "appointment_date", "appointment_time", "location"],
-    bodyHtml: `<h2>Tu cita está confirmada</h2><p>Hola {{customer_name}},</p><p>Tu cita de <strong>{{service_name}}</strong> ha sido agendada para el <strong>{{appointment_date}}</strong> a las <strong>{{appointment_time}}</strong>.</p>{{#if location}}<p>Ubicación: {{location}}</p>{{/if}}<p>Si necesitas cancelar o reprogramar, contáctanos con 24h de anticipación.</p>`,
+    subject: "Cita confirmada — {{service_name}} · {{company_name}}",
+    variables: ["customer_name", "company_name", "company_logo", "company_phone", "company_email", "company_address", "company_website", "service_name", "appointment_date", "appointment_time", "appointment_duration", "staff_name", "location", "meeting_url"],
+    bodyHtml: APPOINTMENT_PRESET_HTML("Cita confirmada", "Tu cita quedó agendada", "Confirmamos tu cita en <strong>{{company_name}}</strong>. Estos son los detalles:", "Si necesitas cancelar o reprogramar, avísanos con al menos 24 horas de anticipación.", "#067647", "#ecfdf3", "#abefc6"),
   },
   {
     id: "preset_appointment_reminder",
@@ -134,9 +180,9 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
     description: "Enviado automáticamente 24h antes de la cita",
     icon: "Bell",
     slug: "appointment_reminder_email",
-    subject: "Recordatorio: tu cita mañana — {{service_name}}",
-    variables: ["customer_name", "service_name", "appointment_date", "appointment_time", "location"],
-    bodyHtml: `<h2>Recordatorio de tu cita</h2><p>Hola {{customer_name}},</p><p>Te recordamos que tienes una cita mañana:</p><p><strong>{{service_name}}</strong><br/>{{appointment_date}} a las {{appointment_time}}</p>{{#if location}}<p>Ubicación: {{location}}</p>{{/if}}<p>¡Te esperamos!</p>`,
+    subject: "Recordatorio: tu cita de {{service_name}} — {{company_name}}",
+    variables: ["customer_name", "company_name", "company_logo", "company_phone", "company_email", "company_address", "company_website", "service_name", "appointment_date", "appointment_time", "appointment_duration", "staff_name", "location", "meeting_url"],
+    bodyHtml: APPOINTMENT_PRESET_HTML("Recordatorio de cita", "Te esperamos mañana", "Te recordamos tu cita en <strong>{{company_name}}</strong>:", "Si no puedes asistir, avísanos cuanto antes para liberar el horario.", "#b54708", "#fffaeb", "#fedf89"),
   },
   {
     id: "preset_booking_confirm",

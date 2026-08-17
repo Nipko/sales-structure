@@ -19,6 +19,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelBody:     'Tu cita de *{service}* del {date} ha sido cancelada.',
         cancelReason:   'Motivo: {reason}',
         cancelFooter:   'Si deseas reprogramar, no dudes en escribirnos.',
+
+        customerFallback: 'Cliente',
+        durationHours:    '{h} h',
+        durationMinutes:  '{m} min',
+        durationBoth:     '{h} h {m} min',
     },
     en: {
         confirmTitle:   '✅ *Appointment confirmed*',
@@ -31,6 +36,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelBody:     'Your *{service}* appointment on {date} has been cancelled.',
         cancelReason:   'Reason: {reason}',
         cancelFooter:   'Feel free to reach out if you would like to reschedule.',
+
+        customerFallback: 'Customer',
+        durationHours:    '{h} h',
+        durationMinutes:  '{m} min',
+        durationBoth:     '{h} h {m} min',
     },
     pt: {
         confirmTitle:   '✅ *Consulta confirmada*',
@@ -43,6 +53,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelBody:     'Seu agendamento de *{service}* do dia {date} foi cancelado.',
         cancelReason:   'Motivo: {reason}',
         cancelFooter:   'Se desejar reagendar, não hesite em nos escrever.',
+
+        customerFallback: 'Cliente',
+        durationHours:    '{h} h',
+        durationMinutes:  '{m} min',
+        durationBoth:     '{h} h {m} min',
     },
     fr: {
         confirmTitle:   '✅ *Rendez-vous confirmé*',
@@ -55,6 +70,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelBody:     'Votre rendez-vous *{service}* du {date} a été annulé.',
         cancelReason:   'Motif : {reason}',
         cancelFooter:   'N\'hésitez pas à nous écrire si vous souhaitez reporter.',
+
+        customerFallback: 'Client',
+        durationHours:    '{h} h',
+        durationMinutes:  '{m} min',
+        durationBoth:     '{h} h {m} min',
     },
 };
 
@@ -94,4 +114,17 @@ export function apptMsg(
         text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
     }
     return text;
+}
+
+/**
+ * "45 min", "1 h", "1 h 30 min" — empty when the interval is unknown, so the
+ * caller can drop the row instead of printing "0 min".
+ */
+export function formatDuration(lang: string, minutes: number): string {
+    if (!Number.isFinite(minutes) || minutes <= 0) return '';
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    if (hours && rest) return apptMsg(lang, 'durationBoth', { h: String(hours), m: String(rest) });
+    if (hours) return apptMsg(lang, 'durationHours', { h: String(hours) });
+    return apptMsg(lang, 'durationMinutes', { m: String(rest) });
 }

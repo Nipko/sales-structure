@@ -1,7 +1,16 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
+import { EmailService, EmailAttachment } from '../email/email.service';
 import { TEMPLATE_TRANSLATIONS } from './email-template-translations';
+import {
+    APPOINTMENT_EMAIL_KINDS,
+    APPOINTMENT_EMAIL_SLUGS,
+    appointmentEmailName,
+    appointmentEmailSubject,
+    appointmentEmailVariables,
+    buildAppointmentEmail,
+} from './appointment-email-layout';
+import { LEGACY_STOCK_BODIES } from './email-template-legacy-bodies';
 import { randomUUID } from 'crypto';
 
 export interface EmailTemplate {
@@ -404,42 +413,20 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'language' | 'createdAt' | '
 
     // -----------------------------------------------------------------------
     // Appointment email-specific templates (complement the WhatsApp channel
-    // notifications already sent by AppointmentNotificationsService)
+    // notifications already sent by AppointmentNotificationsService). Markup is
+    // generated from the shared layout so the three states and the four
+    // languages can never drift apart — see appointment-email-layout.ts.
     // -----------------------------------------------------------------------
 
-    {
-        name: 'Confirmación de Cita (Email)',
-        slug: 'appointment_confirmation_email',
-        subject: 'Cita confirmada — {{service_name}}',
-        bodyHtml: `<h2>Tu cita está confirmada</h2>
-<p>Hola {{customer_name}},</p>
-<p>Tu cita ha sido agendada exitosamente.</p>
-<table style="width:100%;border-collapse:collapse;margin:16px 0">
-<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Servicio</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{service_name}}</td></tr>
-<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Fecha</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{appointment_date}}</td></tr>
-<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Hora</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{appointment_time}}</td></tr>
-{{#if location}}<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Ubicación</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{location}}</td></tr>{{/if}}
-</table>
-<p>Si necesitas cancelar o reprogramar, contáctanos con al menos 24 horas de anticipación.</p>`,
+    ...APPOINTMENT_EMAIL_KINDS.map((kind) => ({
+        name: appointmentEmailName(kind, 'es'),
+        slug: APPOINTMENT_EMAIL_SLUGS[kind],
+        subject: appointmentEmailSubject(kind, 'es'),
+        bodyHtml: buildAppointmentEmail(kind, 'es'),
         bodyJson: {},
-        variables: ['customer_name', 'service_name', 'appointment_date', 'appointment_time', 'location'],
+        variables: appointmentEmailVariables(kind),
         isActive: true,
-    },
-
-    {
-        name: 'Recordatorio de Cita (Email)',
-        slug: 'appointment_reminder_email',
-        subject: 'Recordatorio: tu cita mañana — {{service_name}}',
-        bodyHtml: `<h2>Recordatorio de tu cita</h2>
-<p>Hola {{customer_name}},</p>
-<p>Te recordamos que tienes una cita mañana:</p>
-<p><strong>Servicio:</strong> {{service_name}}<br/><strong>Fecha:</strong> {{appointment_date}}<br/><strong>Hora:</strong> {{appointment_time}}</p>
-{{#if location}}<p><strong>Ubicación:</strong> {{location}}</p>{{/if}}
-<p>¡Te esperamos!</p>`,
-        bodyJson: {},
-        variables: ['customer_name', 'service_name', 'appointment_date', 'appointment_time', 'location'],
-        isActive: true,
-    },
+    })),
 
     // -----------------------------------------------------------------------
     // Handoff / escalation notification template
@@ -1119,7 +1106,10 @@ export class EmailTemplatesService {
         to: string,
         variables: Record<string, string>,
         lang: string = 'es',
+        options: { attachments?: EmailAttachment[] } = {},
     ): Promise<boolean> {
+        await this.refreshManagedDefaults(schemaName, slug);
+
         let template = await this.getBySlug(schemaName, slug, lang);
         if (!template) {
             await this.seedDefaults(schemaName);
@@ -1171,20 +1161,106 @@ export class EmailTemplatesService {
             this.logger.error(`Error fetching branding from companies: ${err.message}`);
         }
 
+        // A template that speaks for the tenant must arrive FROM the tenant. Only
+        // platform-owned mail (billing, and anything addressed to the tenant's own
+        // staff) keeps the Parallly identity.
+        const identity = this.isPlatformOwnedTemplate(slug)
+            ? { from: undefined, replyTo: undefined, credit: '', displayName: '' }
+            : await this.resolveTenantSenderIdentity(schemaName, companyName, companyEmail);
+
         const mergedVars = {
-            company_name: companyName,
+            // Same backstop as the sender name: a header reading "Hola X, tu cita en
+            // <nothing>" is exactly the anonymous mail this is meant to end.
+            company_name: companyName || identity.displayName,
             company_logo: companyLogo,
             company_phone: companyPhone,
             company_email: companyEmail,
             company_address: companyAddress,
             company_website: companyWebsite,
+            platform_credit: identity.credit,
             ...variables,
         };
 
         const subject = this.renderVariables(template.subject, mergedVars);
         const html = this.renderVariables(template.bodyHtml, mergedVars);
 
-        return this.emailService.send({ to, subject, html });
+        return this.emailService.send({
+            to,
+            subject,
+            html,
+            from: identity.from,
+            replyTo: identity.replyTo,
+            attachments: options.attachments,
+        });
+    }
+
+    /**
+     * Templates whose real author is Parallly, not the tenant: they must never be
+     * signed with a customer's business name. Billing mail is the obvious case;
+     * handoff/escalation mail goes to the tenant's OWN agents, so branding it as
+     * the tenant would only make the inbox harder to read.
+     */
+    private isPlatformOwnedTemplate(slug: string): boolean {
+        return slug.startsWith('billing_') || slug.startsWith('handoff_');
+    }
+
+    /**
+     * Build the From/Reply-To pair for tenant-facing mail.
+     *
+     * The address stays on the platform domain on purpose: SPF/DKIM are signed for
+     * it, and swapping in the tenant's own domain would fail DMARC and land the
+     * confirmation in spam. What the customer needs is the NAME — "Clínica X" —
+     * plus a Reply-To that actually reaches the business instead of a no-reply
+     * mailbox nobody reads.
+     */
+    private async resolveTenantSenderIdentity(
+        schemaName: string,
+        companyName: string,
+        companyEmail: string,
+    ): Promise<{ from?: string; replyTo?: string; credit: string; displayName: string }> {
+        const tenant = await this.getTenantIdentity(schemaName);
+        // The company profile is the better name, but it is optional — a tenant
+        // that never filled it in would otherwise keep mailing customers as
+        // "Parallly". The account name always exists, so it backstops.
+        const name = (companyName || '').trim() || tenant.name;
+        const credit = tenant.whiteLabelled || !name ? '' : `Enviado por ${name} con Parallly`;
+        const address = this.emailService.getSenderAddress();
+
+        if (!name || !address) {
+            return { from: undefined, replyTo: companyEmail || undefined, credit, displayName: name };
+        }
+
+        // Quotes and control characters in a display name break the header, and the
+        // name is tenant-supplied. Strip rather than escape: a business name with a
+        // stray quote is still perfectly readable without it.
+        const safeName = name.replace(/["\\\r\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 64);
+        const displayName = tenant.whiteLabelled ? safeName : `${safeName} · vía Parallly`;
+
+        return {
+            from: `"${displayName}" <${address}>`,
+            replyTo: companyEmail || undefined,
+            credit,
+            displayName: name,
+        };
+    }
+
+    /**
+     * Account name + white-label flag. Custom-plan tenants who paid to hide us
+     * must not get a "vía Parallly" byline on mail sent to their own customers.
+     */
+    private async getTenantIdentity(schemaName: string): Promise<{ name: string; whiteLabelled: boolean }> {
+        try {
+            const rows = await this.prisma.$queryRaw<any[]>`
+                SELECT name, settings FROM tenants WHERE schema_name = ${schemaName} LIMIT 1
+            `;
+            const row = rows?.[0];
+            return {
+                name: (row?.name || '').trim(),
+                whiteLabelled: row?.settings?.whiteLabel?.hidePoweredBy === true,
+            };
+        } catch {
+            return { name: '', whiteLabelled: false };
+        }
     }
 
     /**
@@ -1254,10 +1330,26 @@ export class EmailTemplatesService {
 
         // Replace {{variable}} placeholders
         result = result.replace(/\{\{(\w+)\}\}/g, (_, varName) => {
-            return vars[varName] || '';
+            const value = vars[varName];
+            if (value === undefined || value === null) return '';
+            // Most values are customer-supplied (their own name, the notes they
+            // dictated to the agent). Interpolating them raw lets a contact called
+            // `<a href="...">` inject markup into a mail the business signs, so
+            // everything is escaped except the handful of slots that are HTML by
+            // contract — those all end in `_html`.
+            return varName.endsWith('_html') ? String(value) : this.escapeHtml(String(value));
         });
 
         return result;
+    }
+
+    private escapeHtml(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     private getSampleValue(varName: string): string {
@@ -1287,6 +1379,12 @@ export class EmailTemplatesService {
             update_payment_url: 'https://admin.parallly-chat.cloud/admin/settings/billing',
             invoice_url: '#',
             failure_reason: 'Fondos insuficientes',
+            appointment_duration: '1 h 30 min',
+            staff_name: 'Maria Lopez',
+            meeting_url: 'https://meet.google.com/abc-defg-hij',
+            cancellation_reason: 'El profesional tuvo una urgencia',
+            // Flag, not copy: the layout only renders the credit line when set.
+            platform_credit: 'Enviado por Mi Empresa con Parallly',
         };
         return samples[varName] || `[${varName}]`;
     }
@@ -1332,6 +1430,62 @@ export class EmailTemplatesService {
             // Do not poison the cache on failure — let the next call retry. The
             // statements are individually idempotent so partial application is fine.
             this.logger.warn(`ensureTemplateLanguage failed for ${schemaName}: ${err?.message}`);
+        }
+    }
+
+    // Per (schema, slug) flag: the stock-body refresh below runs at most once per
+    // process lifetime. It is idempotent, so a cold cache costs one cheap SELECT.
+    private readonly managedRefreshed = new Set<string>();
+
+    /**
+     * Bring never-customised appointment templates up to the current default.
+     *
+     * `seedDefaults` inserts non-billing slugs with ON CONFLICT DO NOTHING, so an
+     * existing tenant keeps whatever was shipped the day their schema was created
+     * — a redesign would otherwise only ever reach tenants created after it.
+     *
+     * A row is replaced ONLY when its HTML is byte-identical to a body this
+     * platform shipped (see LEGACY_STOCK_BODIES). One character of tenant editing
+     * and the row is theirs forever.
+     */
+    private async refreshManagedDefaults(schemaName: string, slug: string): Promise<void> {
+        const stockBodies = LEGACY_STOCK_BODIES[slug];
+        if (!stockBodies) return;
+
+        const cacheKey = `${schemaName}:${slug}`;
+        if (this.managedRefreshed.has(cacheKey)) return;
+
+        const kind = APPOINTMENT_EMAIL_KINDS.find((k) => APPOINTMENT_EMAIL_SLUGS[k] === slug);
+        if (!kind) return;
+
+        try {
+            await this.ensureTemplateLanguage(schemaName);
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, language, body_html FROM email_templates WHERE slug = $1`,
+                [slug],
+            );
+
+            for (const row of rows || []) {
+                if (!stockBodies.includes(row.body_html)) continue;
+                const lang = row.language || 'es';
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE email_templates
+                        SET name = $1, subject = $2, body_html = $3, variables = $4, updated_at = NOW()
+                      WHERE id = $5::uuid`,
+                    [
+                        appointmentEmailName(kind, lang),
+                        appointmentEmailSubject(kind, lang),
+                        buildAppointmentEmail(kind, lang),
+                        appointmentEmailVariables(kind),
+                        row.id,
+                    ],
+                );
+                this.logger.log(`Refreshed stock template ${slug}/${lang} for ${schemaName}`);
+            }
+            this.managedRefreshed.add(cacheKey);
+        } catch (err: any) {
+            // A cosmetic upgrade must never block an email. Retry on the next send.
+            this.logger.warn(`refreshManagedDefaults(${slug}) failed for ${schemaName}: ${err?.message}`);
         }
     }
 

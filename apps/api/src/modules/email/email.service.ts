@@ -110,6 +110,24 @@ export class EmailService implements OnModuleInit {
         }
     }
 
+    /**
+     * The bare address every outgoing mail is sent from, with no display name.
+     *
+     * Callers that speak for a tenant pair it with their own display name so the
+     * customer sees the business instead of "Parallly". The address itself must
+     * stay ours: SPF/DKIM are signed for this domain, and borrowing the tenant's
+     * would fail DMARC and route the mail to spam.
+     */
+    getSenderAddress(): string | null {
+        const configured = this.config.get<string>('SMTP_FROM');
+        const fromAngle = configured?.match(/<([^>]+)>/)?.[1]?.trim();
+        const address = fromAngle
+            || (configured?.includes('@') ? configured.trim() : null)
+            || this.config.get<string>('SMTP_USER')?.trim()
+            || null;
+        return address && address.includes('@') ? address : null;
+    }
+
     async send(payload: EmailPayload): Promise<boolean> {
         if (!this.transporter) {
             this.logger.warn('Email not sent — SMTP not configured');

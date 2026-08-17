@@ -8,6 +8,16 @@ import { normalizeMetaLanguage } from '../whatsapp/seed-templates.config';
 import { CronLockService } from '../redis/cron-lock.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
+import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
+import {
+    buildAppointmentIcs,
+    durationMinutes,
+    formatWallClockDate,
+    formatWallClockTime,
+    timezoneLabel,
+} from './appointment-ics.util';
 
 @Injectable()
 export class AppointmentRemindersService {
@@ -20,6 +30,7 @@ export class AppointmentRemindersService {
         private appointmentsService: AppointmentsService,
         private readonly cronLock: CronLockService,
         private readonly eventEmitter: EventEmitter2,
+        private readonly emailTemplates: EmailTemplatesService,
     ) {}
 
     /**
@@ -145,19 +156,27 @@ export class AppointmentRemindersService {
 
         const tz = await this.getTenantTimezone(tenantId);
         const appointments = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT a.id, a.service_name, a.start_at, a.end_at, a.location,
-                    a.contact_id, a.assigned_to,
-                    c.name as contact_name, c.phone as contact_phone,
-                    c.channel_type as contact_channel
+            `SELECT a.id, a.service_name, a.start_at, a.end_at, a.location, a.metadata,
+                    a.contact_id, a.assigned_to, a.customer_name, a.customer_email,
+                    c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
+                    c.channel_type as contact_channel,
+                    u.first_name || ' ' || u.last_name AS staff_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
+             LEFT JOIN public.tenants tenant_owner
+               ON tenant_owner.schema_name = $1
+              AND tenant_owner.is_active = true
+             LEFT JOIN public.users u
+               ON u.id = a.assigned_to::uuid
+              AND u.tenant_id = tenant_owner.id
+              AND u.is_active = true
              WHERE a.status IN ('pending', 'confirmed')
                AND a.${flagColumn} = false
                AND a.start_at > (NOW() AT TIME ZONE '${tz}')
                AND a.start_at <= (NOW() AT TIME ZONE '${tz}') + interval '${maxHours} hours'
                AND a.start_at >= (NOW() AT TIME ZONE '${tz}') + interval '${minHours} hours'
-               AND c.phone IS NOT NULL`,
-            [],
+               AND (c.phone IS NOT NULL OR c.email IS NOT NULL OR a.customer_email IS NOT NULL)`,
+            [schemaName],
         );
 
         if (!appointments?.length) return;
@@ -165,7 +184,14 @@ export class AppointmentRemindersService {
 
         for (const appt of appointments) {
             try {
-                await this.sendReminderTemplate(tenantId, schemaName, appt, type);
+                if (appt.contact_phone) {
+                    await this.sendReminderTemplate(tenantId, schemaName, appt, type);
+                }
+                // Email only on the 24h pass: a second copy two hours out is noise,
+                // and by then nobody is reading mail to decide whether to show up.
+                if (type === '24h') {
+                    await this.sendReminderEmail(tenantId, schemaName, appt);
+                }
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE appointments SET ${flagColumn} = true, updated_at = NOW() WHERE id = $1::uuid`,
                     [appt.id],
@@ -174,6 +200,108 @@ export class AppointmentRemindersService {
                 this.logger.error(`Failed to send ${type} reminder for appointment ${appt.id}: ${err.message}`);
             }
         }
+    }
+
+    /**
+     * Email reminder with the same branding and .ics as the confirmation.
+     *
+     * The `appointment_reminder_email` template has existed since May 2026 and
+     * nothing ever sent it — the reminder path was WhatsApp-template-only, so a
+     * customer who booked by email heard nothing until the appointment itself.
+     */
+    private async sendReminderEmail(tenantId: string, schemaName: string, appt: any): Promise<void> {
+        const to = (appt.contact_email || appt.customer_email || '').trim();
+        if (!to) return;
+
+        try {
+            await this.assertTenantCanSend(tenantId);
+            // Same switch the confirmation honours: a tenant who turned appointment
+            // emails off must not keep getting reminders through the back door.
+            if (!await this.appointmentEmailsEnabled(schemaName)) return;
+            // getTenantLanguage returns the full locale ('es-CO'); template lookup
+            // and the i18n maps are keyed by the 2-char code.
+            const lang = normaliseLang(await this.getTenantLanguage(tenantId));
+            const locale = LANG_LOCALE[lang] ?? 'es-CO';
+            const tz = await this.getTenantTimezone(tenantId);
+
+            const startAt = this.toNaive(appt.start_at);
+            const endAt = this.toNaive(appt.end_at);
+            if (!startAt) return;
+
+            const tzSuffix = timezoneLabel(startAt, tz, locale);
+            const timeStr = formatWallClockTime(startAt, locale);
+            const meetingUrl = appt.metadata?.meetingUrl || '';
+
+            let attachments;
+            if (endAt) {
+                try {
+                    const ics = buildAppointmentIcs({
+                        uid: `appointment-${appt.id}@parallly-chat.cloud`,
+                        method: 'REQUEST',
+                        status: 'CONFIRMED',
+                        sequence: 0,
+                        startAt,
+                        endAt,
+                        timezone: tz,
+                        stamp: new Date(),
+                        summary: appt.service_name || '',
+                        location: appt.location || undefined,
+                        url: meetingUrl || undefined,
+                        attendeeName: appt.contact_name || appt.customer_name || undefined,
+                        attendeeEmail: to,
+                    });
+                    attachments = [{
+                        filename: 'cita.ics',
+                        content: Buffer.from(ics, 'utf8'),
+                        contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+                    }];
+                } catch (err: any) {
+                    this.logger.warn(`Could not build .ics for reminder ${appt.id}: ${err?.message}`);
+                }
+            }
+
+            await this.emailTemplates.renderAndSend(
+                schemaName,
+                APPOINTMENT_EMAIL_SLUGS.reminder,
+                to,
+                {
+                    customer_name: appt.contact_name || appt.customer_name || '',
+                    service_name: appt.service_name || '',
+                    appointment_date: formatWallClockDate(startAt, locale),
+                    appointment_time: tzSuffix ? `${timeStr} (${tzSuffix})` : timeStr,
+                    appointment_duration: endAt ? formatDuration(lang, durationMinutes(startAt, endAt)) : '',
+                    staff_name: (appt.staff_name || '').trim(),
+                    location: appt.location || '',
+                    meeting_url: meetingUrl,
+                },
+                lang,
+                { attachments },
+            );
+            this.logger.log(`Sent 24h email reminder to ${to} for appointment ${appt.id}`);
+        } catch (err: any) {
+            // Non-critical: the WhatsApp reminder (if any) already went out.
+            this.logger.warn(`Reminder email failed for appointment ${appt.id}: ${err?.message}`);
+        }
+    }
+
+    /** `agent_personas.config_json.tools.appointments.emailConfirmations` — opt-out only. */
+    private async appointmentEmailsEnabled(schemaName: string): Promise<boolean> {
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
+                [],
+            );
+            return rows?.[0]?.config_json?.tools?.appointments?.emailConfirmations !== false;
+        } catch {
+            return true;
+        }
+    }
+
+    /** start_at/end_at are naive wall clocks — see appointment-ics.util.ts. */
+    private toNaive(value: any): string | null {
+        if (!value) return null;
+        if (value instanceof Date) return value.toISOString().slice(0, 19);
+        return String(value).replace(' ', 'T').slice(0, 19);
     }
 
     private async sendReminderTemplate(tenantId: string, schemaName: string, appt: any, type: '24h' | '2h') {

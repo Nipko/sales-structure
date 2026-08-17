@@ -5,8 +5,36 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import type { OutboundMessage } from '@parallext/shared';
-import { apptMsg, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
+import { apptMsg, normaliseLang, formatDuration, LANG_LOCALE } from './appointment-notifications-i18n';
+import {
+    buildAppointmentIcs,
+    durationMinutes,
+    formatWallClockDate,
+    formatWallClockShortDate,
+    formatWallClockTime,
+    timezoneLabel,
+} from './appointment-ics.util';
+
+/**
+ * Everything we need to write a customer-facing notification, read straight from
+ * the appointment row. The two `appointment.created` emitters (manual CRUD and
+ * the AI tool executor) hand over different shapes, and the AI one has omitted
+ * `location` since it was written — so the payload is treated as a pointer and
+ * the facts come from the table.
+ */
+interface AppointmentFacts {
+    id: string;
+    serviceName: string;
+    startAt: string;
+    endAt: string | null;
+    location: string | null;
+    meetingUrl: string | null;
+    staffName: string | null;
+    customerName: string | null;
+    customerEmail: string | null;
+}
 
 /**
  * Listens for appointment events and sends WhatsApp/channel notifications.
@@ -29,89 +57,51 @@ export class AppointmentNotificationsService {
         const { schemaName, appointment } = payload;
 
         try {
-            const contact = await this.getContactInfo(schemaName, appointment.contactId);
-            if (!contact?.phone) return;
-
             const tenantId = await this.getTenantId(schemaName);
             if (!tenantId) return;
 
+            const contact = await this.getContactInfo(schemaName, appointment.contactId);
+            const facts = await this.getAppointmentFacts(schemaName, appointment);
             const lang = await this.getContactLanguage(schemaName, appointment.contactId, tenantId);
             const locale = LANG_LOCALE[lang] ?? 'es-CO';
+            const timezone = await this.getTenantTimezone(schemaName);
 
-            const startDate = new Date(appointment.startAt);
-            const dateStr = startDate.toLocaleDateString(locale, {
-                weekday: 'long', day: 'numeric', month: 'long',
+            const dateStr = formatWallClockDate(facts.startAt, locale);
+            const timeStr = formatWallClockTime(facts.startAt, locale);
+
+            // Channel confirmation still needs a phone; the email no longer does.
+            if (contact?.phone) {
+                const shortDate = formatWallClockShortDate(facts.startAt, locale);
+                const text = [
+                    apptMsg(lang, 'confirmTitle'),
+                    ``,
+                    apptMsg(lang, 'confirmGreeting', { name: contact.name || '' }),
+                    ``,
+                    `📋 *${facts.serviceName}*`,
+                    `🗓️ ${shortDate}`,
+                    `⏰ ${timeStr}`,
+                    facts.location ? apptMsg(lang, 'confirmLocation', { location: facts.location }) : null,
+                    facts.meetingUrl ? apptMsg(lang, 'confirmMeeting', { url: facts.meetingUrl }) : null,
+                    ``,
+                    apptMsg(lang, 'confirmFooter'),
+                ].filter(Boolean).join('\n');
+
+                await this.sendMessage(tenantId, contact, text, {
+                    source: 'appointment_confirmation',
+                    appointmentId: facts.id,
+                });
+            }
+
+            await this.sendAppointmentEmail({
+                schemaName, tenantId, lang, locale, timezone, facts, contact,
+                kind: 'confirmation',
+                dateStr, timeStr,
             });
-            const timeStr = startDate.toLocaleTimeString(locale, {
-                hour: '2-digit', minute: '2-digit', hour12: true,
-            });
-
-            const text = [
-                apptMsg(lang, 'confirmTitle'),
-                ``,
-                apptMsg(lang, 'confirmGreeting', { name: contact.name || '' }),
-                ``,
-                `📋 *${appointment.serviceName}*`,
-                `🗓️ ${dateStr}`,
-                `⏰ ${timeStr}`,
-                appointment.location ? apptMsg(lang, 'confirmLocation', { location: appointment.location }) : null,
-                appointment.meetingUrl ? apptMsg(lang, 'confirmMeeting', { url: appointment.meetingUrl }) : null,
-                ``,
-                apptMsg(lang, 'confirmFooter'),
-            ].filter(Boolean).join('\n');
-
-            await this.sendMessage(tenantId, contact, text, {
-                source: 'appointment_confirmation',
-                appointmentId: appointment.id,
-            });
-
-            // Also send email confirmation if contact has an email address (fire-and-forget)
-            try {
-                if (contact?.email) {
-                    // Check if confirmation emails are enabled for appointments
-                    let emailConfirmationsEnabled = true;
-                    try {
-                        const personaRows = await this.prisma.executeInTenantSchema<any[]>(
-                            schemaName,
-                            `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
-                            []
-                        );
-                        if (personaRows && personaRows.length > 0) {
-                            const config = personaRows[0].config_json || {};
-                            const appointmentsTool = config.tools?.appointments;
-                            if (appointmentsTool && appointmentsTool.emailConfirmations === false) {
-                                emailConfirmationsEnabled = false;
-                            }
-                        }
-                    } catch (err) {
-                        this.logger.error(`Error checking persona settings for appointments: ${err.message}`);
-                    }
-
-                    if (emailConfirmationsEnabled) {
-                        // Reuse the already-resolved customer language (detectedLanguage → tenant.language → 'es').
-                        // customer_name fallback is lang-keyed: same greeting word used in
-                        // WhatsApp channel messages (confirmGreeting already resolved via apptMsg).
-                        const customerNameFallback: Record<string, string> = {
-                            es: 'Cliente',
-                            en: 'Customer',
-                            pt: 'Cliente',
-                            fr: 'Client',
-                        };
-                        await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
-                            customer_name: contact.name || customerNameFallback[lang] || 'Cliente',
-                            service_name: appointment.serviceName,
-                            appointment_date: new Date(appointment.startAt).toLocaleDateString(locale),
-                            appointment_time: new Date(appointment.startAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
-                            location: appointment.location || '',
-                        }, lang);
-                    }
-                }
-            } catch { /* non-critical — channel notification already sent */ }
 
             // Emit event for WebSocket relay to dashboard (handled by ConversationsGateway)
             this.eventEmitter.emit('appointment.ws', { tenantId, type: 'created', appointment });
 
-            this.logger.log(`Sent confirmation for appointment ${appointment.id}`);
+            this.logger.log(`Sent confirmation for appointment ${facts.id}`);
         } catch (err: any) {
             this.logger.error(`Failed to send appointment confirmation: ${err.message}`);
         }
@@ -122,37 +112,239 @@ export class AppointmentNotificationsService {
         const { schemaName, appointment, reason } = payload;
 
         try {
-            const contact = await this.getContactInfo(schemaName, appointment.contactId);
-            if (!contact?.phone) return;
-
             const tenantId = await this.getTenantId(schemaName);
             if (!tenantId) return;
 
+            const contact = await this.getContactInfo(schemaName, appointment.contactId);
+            const facts = await this.getAppointmentFacts(schemaName, appointment);
             const lang = await this.getContactLanguage(schemaName, appointment.contactId, tenantId);
             const locale = LANG_LOCALE[lang] ?? 'es-CO';
+            const timezone = await this.getTenantTimezone(schemaName);
 
-            const startDate = new Date(appointment.startAt);
-            const dateStr = startDate.toLocaleDateString(locale, {
-                weekday: 'long', day: 'numeric', month: 'long',
+            const dateStr = formatWallClockDate(facts.startAt, locale);
+            const timeStr = formatWallClockTime(facts.startAt, locale);
+
+            if (contact?.phone) {
+                const shortDate = formatWallClockShortDate(facts.startAt, locale);
+                const text = [
+                    apptMsg(lang, 'cancelTitle'),
+                    ``,
+                    apptMsg(lang, 'cancelBody', { service: facts.serviceName, date: shortDate }),
+                    reason ? apptMsg(lang, 'cancelReason', { reason }) : null,
+                    ``,
+                    apptMsg(lang, 'cancelFooter'),
+                ].filter(Boolean).join('\n');
+
+                await this.sendMessage(tenantId, contact, text, {
+                    source: 'appointment_cancellation',
+                    appointmentId: facts.id,
+                });
+            }
+
+            await this.sendAppointmentEmail({
+                schemaName, tenantId, lang, locale, timezone, facts, contact,
+                kind: 'cancellation',
+                dateStr, timeStr, reason,
             });
 
-            const text = [
-                apptMsg(lang, 'cancelTitle'),
-                ``,
-                apptMsg(lang, 'cancelBody', { service: appointment.serviceName, date: dateStr }),
-                reason ? apptMsg(lang, 'cancelReason', { reason }) : null,
-                ``,
-                apptMsg(lang, 'cancelFooter'),
-            ].filter(Boolean).join('\n');
-
-            await this.sendMessage(tenantId, contact, text, {
-                source: 'appointment_cancellation',
-                appointmentId: appointment.id,
-            });
-
-            this.logger.log(`Sent cancellation notice for appointment ${appointment.id}`);
+            this.logger.log(`Sent cancellation notice for appointment ${facts.id}`);
         } catch (err) {
             this.logger.error(`Failed to send cancellation notice: ${err.message}`);
+        }
+    }
+
+    /**
+     * Send the customer-facing email. Independent of the channel message on
+     * purpose: a contact captured through a web form has an email and no phone,
+     * and the old code returned before reaching this point, so that customer got
+     * nothing at all.
+     */
+    private async sendAppointmentEmail(args: {
+        schemaName: string;
+        tenantId: string;
+        lang: string;
+        locale: string;
+        timezone: string;
+        facts: AppointmentFacts;
+        contact: { name?: string; email?: string } | null;
+        kind: 'confirmation' | 'cancellation';
+        dateStr: string;
+        timeStr: string;
+        reason?: string;
+    }): Promise<void> {
+        const { schemaName, lang, locale, timezone, facts, contact, kind } = args;
+
+        try {
+            // The address the customer dictated during the booking is as valid as
+            // the one on the contact record — and is often the only one there is.
+            const to = (contact?.email || facts.customerEmail || '').trim();
+            if (!to) return;
+            if (!await this.emailNotificationsEnabled(schemaName)) return;
+
+            const endAt = facts.endAt;
+            const duration = endAt ? formatDuration(lang, durationMinutes(facts.startAt, endAt)) : '';
+            const tzSuffix = timezoneLabel(facts.startAt, timezone, locale);
+
+            const variables: Record<string, string> = {
+                customer_name: contact?.name || facts.customerName || apptMsg(lang, 'customerFallback'),
+                service_name: facts.serviceName,
+                appointment_date: args.dateStr,
+                appointment_time: tzSuffix ? `${args.timeStr} (${tzSuffix})` : args.timeStr,
+                appointment_duration: duration,
+                staff_name: facts.staffName || '',
+                location: facts.location || '',
+                meeting_url: facts.meetingUrl || '',
+            };
+            if (kind === 'cancellation') variables.cancellation_reason = args.reason || '';
+
+            const attachments = this.buildIcsAttachment(args);
+
+            await this.emailTemplates.renderAndSend(
+                schemaName,
+                APPOINTMENT_EMAIL_SLUGS[kind],
+                to,
+                variables,
+                lang,
+                { attachments },
+            );
+        } catch (err: any) {
+            // Non-critical: the channel notification (when there was a phone) already went out.
+            this.logger.warn(`Appointment ${kind} email failed for ${facts.id}: ${err?.message}`);
+        }
+    }
+
+    /**
+     * A .ics so the appointment lands in the customer's own calendar in one tap.
+     * The UID is derived from the appointment id, so the cancellation replaces the
+     * original event instead of adding a second one next to it.
+     */
+    private buildIcsAttachment(args: {
+        timezone: string;
+        facts: AppointmentFacts;
+        contact: { name?: string; email?: string } | null;
+        kind: 'confirmation' | 'cancellation';
+    }) {
+        const { facts, kind, timezone } = args;
+        if (!facts.endAt) return undefined;
+
+        try {
+            const cancelled = kind === 'cancellation';
+            const ics = buildAppointmentIcs({
+                uid: `appointment-${facts.id}@parallly-chat.cloud`,
+                method: cancelled ? 'CANCEL' : 'REQUEST',
+                status: cancelled ? 'CANCELLED' : 'CONFIRMED',
+                // The cancellation must outrank the invite it replaces, otherwise
+                // calendars keep showing the original event.
+                sequence: cancelled ? 1 : 0,
+                startAt: facts.startAt,
+                endAt: facts.endAt,
+                timezone,
+                stamp: new Date(),
+                summary: facts.serviceName,
+                location: facts.location || undefined,
+                url: facts.meetingUrl || undefined,
+                attendeeName: args.contact?.name || facts.customerName || undefined,
+                attendeeEmail: (args.contact?.email || facts.customerEmail || '').trim() || undefined,
+            });
+
+            return [{
+                filename: cancelled ? 'cita-cancelada.ics' : 'cita.ics',
+                content: Buffer.from(ics, 'utf8'),
+                contentType: `text/calendar; charset=utf-8; method=${cancelled ? 'CANCEL' : 'REQUEST'}`,
+            }];
+        } catch (err: any) {
+            this.logger.warn(`Could not build .ics for appointment ${facts.id}: ${err?.message}`);
+            return undefined;
+        }
+    }
+
+    /**
+     * Read the appointment as stored. Falls back to the event payload only when
+     * the row cannot be read, so a notification is never lost over a bad join.
+     */
+    private async getAppointmentFacts(schemaName: string, appointment: any): Promise<AppointmentFacts> {
+        const fromPayload = (): AppointmentFacts => ({
+            id: appointment.id,
+            serviceName: appointment.serviceName,
+            startAt: appointment.startAt,
+            endAt: appointment.endAt ?? null,
+            location: appointment.location ?? null,
+            meetingUrl: appointment.meetingUrl ?? appointment.metadata?.meetingUrl ?? null,
+            staffName: appointment.assignedName ?? null,
+            customerName: appointment.customerName ?? null,
+            customerEmail: appointment.customerEmail ?? null,
+        });
+
+        if (!appointment?.id) return fromPayload();
+
+        try {
+            // The staff join is scoped through the owning tenant on purpose:
+            // tenant-local tables cannot carry an FK to public.users, so every read
+            // of a user must prove the row belongs to this tenant and is active
+            // (same contract as AppointmentsService.getById).
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT a.id, a.service_name, a.start_at, a.end_at, a.location, a.metadata,
+                        a.customer_name, a.customer_email,
+                        u.first_name || ' ' || u.last_name AS staff_name
+                   FROM appointments a
+                   LEFT JOIN public.tenants tenant_owner
+                     ON tenant_owner.schema_name = $1
+                    AND tenant_owner.is_active = true
+                   LEFT JOIN public.users u
+                     ON u.id = a.assigned_to::uuid
+                    AND u.tenant_id = tenant_owner.id
+                    AND u.is_active = true
+                  WHERE a.id = $2::uuid
+                  LIMIT 1`,
+                [schemaName, appointment.id],
+            );
+            const row = rows?.[0];
+            if (!row) return fromPayload();
+
+            return {
+                id: row.id,
+                serviceName: row.service_name || appointment.serviceName || '',
+                startAt: this.toNaive(row.start_at) || appointment.startAt,
+                endAt: this.toNaive(row.end_at),
+                location: row.location || null,
+                meetingUrl: row.metadata?.meetingUrl || appointment.meetingUrl || null,
+                staffName: (row.staff_name || '').trim() || null,
+                customerName: row.customer_name || appointment.customerName || null,
+                customerEmail: row.customer_email || appointment.customerEmail || null,
+            };
+        } catch (err: any) {
+            this.logger.warn(`Could not read appointment ${appointment.id}: ${err?.message}`);
+            return fromPayload();
+        }
+    }
+
+    /**
+     * start_at/end_at are naive wall clocks. The driver may hand them back as a
+     * Date (already carrying those digits in UTC fields) or as a string; both are
+     * normalised to `YYYY-MM-DDTHH:mm:ss` so the formatters stay deterministic.
+     */
+    private toNaive(value: any): string | null {
+        if (!value) return null;
+        if (value instanceof Date) return value.toISOString().slice(0, 19);
+        return String(value).replace(' ', 'T').slice(0, 19);
+    }
+
+    /**
+     * Appointment emails follow the same switch as the channel confirmation:
+     * `agent_personas.config_json.tools.appointments.emailConfirmations`.
+     */
+    private async emailNotificationsEnabled(schemaName: string): Promise<boolean> {
+        try {
+            const personaRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
+                [],
+            );
+            const config = personaRows?.[0]?.config_json || {};
+            return config.tools?.appointments?.emailConfirmations !== false;
+        } catch (err: any) {
+            this.logger.error(`Error checking persona settings for appointments: ${err.message}`);
+            return true;
         }
     }
 
@@ -170,6 +362,20 @@ export class AppointmentNotificationsService {
             SELECT id FROM tenants WHERE schema_name = ${schemaName} LIMIT 1
         `;
         return rows?.[0]?.id || null;
+    }
+
+    /** Same resolution order as AppointmentsService: settings.timezone → business hours → Bogotá. */
+    private async getTenantTimezone(schemaName: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findFirst({
+                where: { schemaName },
+                select: { settings: true },
+            });
+            const settings = (tenant?.settings as any) || {};
+            return settings.timezone || settings.businessHours?.timezone || 'America/Bogota';
+        } catch {
+            return 'America/Bogota';
+        }
     }
 
     /**

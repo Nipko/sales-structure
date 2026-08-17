@@ -1796,6 +1796,11 @@ export class AIToolExecutorService {
                 customerName: args.customerName,
                 customerEmail: args.customerEmail,
                 customerPhone: args.customerPhone,
+                // Without this the confirmation never shows the address: every
+                // listener reads `appointment.location`, and this path — the one
+                // the AI actually uses — used to leave it undefined.
+                location,
+                assignedTo,
                 meetingUrl,
             },
         });

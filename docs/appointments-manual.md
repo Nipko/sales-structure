@@ -247,15 +247,21 @@ El agente IA reserva mediante **tool calling** sobre un motor de reserva **deter
 
 | Evento | Disparador | Destino | Contenido |
 |--------|------------|---------|-----------|
-| Cita creada | `appointment.created` → `AppointmentNotificationsService` | Canal del contacto (WhatsApp/IG/Messenger/Telegram) vía `OutboundQueueService` + email opcional | Confirmación con servicio, fecha, hora, ubicación / enlace de reunión |
-| Cita cancelada | `appointment.cancelled` | Canal del contacto vía `OutboundQueueService` | Aviso de cancelación con motivo |
-| Recordatorio 24 h | Cron `*/15` | **Solo WhatsApp**, plantilla `appointment_reminder` vía `sendTemplate` | Recordatorio con detalles |
+| Cita creada | `appointment.created` → `AppointmentNotificationsService` | Canal del contacto (WhatsApp/IG/Messenger/Telegram) vía `OutboundQueueService` + email | Confirmación con servicio, fecha, hora, ubicación / enlace de reunión |
+| Cita cancelada | `appointment.cancelled` | Canal del contacto vía `OutboundQueueService` + email | Aviso de cancelación con motivo |
+| Recordatorio 24 h | Cron `*/15` | WhatsApp (plantilla `appointment_reminder`) **y** email | Recordatorio con detalles |
 | Recordatorio 2 h | Cron `3,18,33,48` | **Solo WhatsApp**, plantilla `appointment_reminder` | Recordatorio |
 | Comprobación de asistencia | Cron `5,35` | **Solo WhatsApp**, plantilla `attendance_check` | Confirmación de asistencia (no reprograma ni marca no-show) |
 
 **Confirmaciones/cancelaciones**: `OutboundQueueService` (BullMQ, 3 reintentos, rate-limit por plan), resolviendo el canal por `contact.channel_type` y el token por-cuenta vía `ChannelTokenService`. Emiten además `appointment.ws` para el relay WebSocket al dashboard.
 
-**Email de confirmación**: si el contacto tiene email y `agent_personas.config_json.tools.appointments.emailConfirmations` **no** está en `false`, se envía la plantilla `appointment_confirmation_email` (es/en/pt/fr) vía `EmailTemplatesService` (fire-and-forget, no crítico).
+**Emails de cita** (`appointment_confirmation_email`, `appointment_reminder_email`, `appointment_cancellation_email`):
+
+- **Independientes del canal**: el email sale aunque el contacto no tenga teléfono, y la dirección se resuelve `contacts.email` → `appointments.customer_email`. Se omite si `agent_personas.config_json.tools.appointments.emailConfirmations` está en `false`.
+- **Identifican al negocio**: `From: "<Negocio> · vía Parallly" <dirección de plataforma>` y `Reply-To` al email de la empresa. La dirección sigue siendo la de plataforma porque SPF/DKIM están firmados ahí; poner el dominio del tenant rompería DMARC. Con white-label (`settings.whiteLabel.hidePoweredBy`) desaparecen el sufijo y el crédito del pie.
+- **Contenido**: logo + nombre + datos de contacto del negocio, fecha larga (`martes, 9 de diciembre de 2026`), hora con offset, duración, profesional asignado, dirección y botón de reunión. `appointments.notes` **no** se muestra: el camino de la IA guarda ahí el contexto de la conversación.
+- **Adjunto `.ics`** (`appointment-ics.util.ts`): el wall clock naive se resuelve a instante UTC con la zona del tenant. La cancelación reusa el mismo UID con `METHOD:CANCEL` y `SEQUENCE:1` para que el evento desaparezca del calendario del cliente.
+- **Plantillas generadas** desde `appointment-email-layout.ts` (3 estados × 4 idiomas). Los tenants existentes que nunca editaron su plantilla se actualizan solos: `refreshManagedDefaults` sólo pisa filas cuyo HTML es idéntico byte a byte a algo que se sembró (`email-template-legacy-bodies.ts`).
 
 **Recordatorios/asistencia**: se envían solo a contactos `channel_type = 'whatsapp'` y requieren la plantilla de Meta aprobada; si no hay plantilla aprobada, se omite con warning.
 

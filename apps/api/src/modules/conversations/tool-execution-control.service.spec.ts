@@ -49,12 +49,12 @@ function createHarness(identityVerified = true) {
             return found ? [found] : [];
         }
         const statusInMatch = normalized.match(/status IN \(([^)]*)\)/);
-        if (statusInMatch && normalized.includes('AND args_hash = $4')) {
+        if (normalized.startsWith('SELECT') && statusInMatch) {
             const statuses = statusInMatch[1].split(',').map((s: string) => s.trim().replace(/'/g, ''));
             const found = [...state.ledgers].reverse().find((item: any) => (
                 statuses.includes(item.status)
                 && item.tool_name === params[2]
-                && item.args_hash === params[3]
+                && (!normalized.includes('AND args_hash = $4') || item.args_hash === params[3])
             ));
             if (found) state.ledger = found;
             return found ? [found] : [];

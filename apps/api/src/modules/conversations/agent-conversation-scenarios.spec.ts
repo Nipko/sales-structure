@@ -70,10 +70,11 @@ function createTenant() {
                 && l.tool_name === params[2] && l.args_hash === params[3]);
         }
         const statusIn = q.match(/status IN \(([^)]*)\)/);
-        if (statusIn && q.includes('AND args_hash = $4')) {
+        if (q.startsWith('SELECT') && statusIn) {
             const statuses = statusIn[1].split(',').map((s) => s.trim().replace(/'/g, ''));
             return findBy((l) => statuses.includes(l.status)
-                && l.tool_name === params[2] && l.args_hash === params[3]);
+                && l.tool_name === params[2]
+                && (!q.includes('AND args_hash = $4') || l.args_hash === params[3]));
         }
         if (q.includes('(request_source_message_id = $5::uuid OR confirmed_by_message_id = $5::uuid)')) {
             return findBy((l) => l.tool_name === params[2] && l.args_hash === params[3]

@@ -139,6 +139,7 @@ interface ConfirmationClaims {
 }
 
 const AFFIRMATIVE_TOKENS = 'si|confirmo|si confirmo|autorizo|si autorizo|dale|hazlo|ok|okay'
+    + '|perfecto|adelante|reserva|reservalo|procede|de una|claro'
     + '|yes|i confirm|confirm|yes confirm|yes i confirm|go ahead'
     + '|sim|confirmo sim|sim confirmo|autorizo sim|sim autorizo|pode fazer'
     + '|oui|je confirme|confirme|oui je confirme|oui confirme|allez-y';
@@ -1339,6 +1340,23 @@ export class ToolExecutionControlService {
             return this.block('confirmation_context_missing', 'No hay un mensaje del cliente que pueda confirmar la acción.');
         }
 
+        const disposition = classifyExplicitToolConfirmation(latest.content_text);
+        if (latest.id === ledger.confirmation_source_message_id) {
+            if (disposition === 'confirmed') {
+                const updated = await this.query<ExecutionLedgerRow[]>(
+                    request.schemaName,
+                    `UPDATE tool_execution_ledger
+                        SET confirmed_at = NOW(), confirmed_by_message_id = $2::uuid,
+                            status = 'ready', updated_at = NOW()
+                      WHERE id = $1::uuid AND confirmed_at IS NULL
+                      RETURNING *`,
+                    [ledger.id, latest.id],
+                );
+                return { allowed: true, ledger: updated[0] || ledger };
+            }
+            return this.confirmationRequired(ledger.id);
+        }
+
         const expiresAt = ledger.confirmation_expires_at
             ? new Date(ledger.confirmation_expires_at).getTime()
             : 0;
@@ -1359,9 +1377,6 @@ export class ToolExecutionControlService {
             ledger = issued;
             return this.confirmationRequired(ledger.id);
         }
-
-        if (latest.id === ledger.confirmation_source_message_id) return this.confirmationRequired(ledger.id);
-        const disposition = classifyExplicitToolConfirmation(latest.content_text);
         if (disposition === 'rejected') {
             await this.query(
                 request.schemaName,

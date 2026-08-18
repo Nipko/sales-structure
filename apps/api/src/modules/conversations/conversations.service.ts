@@ -21,6 +21,7 @@ import { outboundDedupeId, providerMessageId } from '../../common/utils/provider
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
+import { auditTurnClaim } from '../../common/utils/outcome-claim.util';
 import { CustomerMemoryService } from './customer-memory.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
@@ -2192,6 +2193,7 @@ export class ConversationsService {
             // Vive FUERA del loop: la tool puede correr en la iteración 1 y el texto
             // final producirse en la 2.
             let postToolHandoff: string | null = null;
+            const executedToolsThisTurn: Array<{ name: string; result: any }> = [];
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const hasTools = tools.length > 0;
@@ -2261,6 +2263,7 @@ export class ConversationsService {
                         }
 
                         this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
+                        executedToolsThisTurn.push({ name: tc.function.name, result });
                         turnTrace.add('tool_result', tc.function.name, {
                             ok: !(result && result.error),
                             error: result?.error,
@@ -2577,11 +2580,10 @@ export class ConversationsService {
     }
 
     /**
-     * Output guardrail: if the response states a price the model wasn't given this
-     * turn, do ONE corrective re-generation constrained to context prices. Never
-     * If the corrective pass is still unsafe, emit an event and replace it with a
-     * deterministic localized abstention. An unverified price must never leave the
-     * platform merely because the corrective provider failed.
+     * Output guardrail:
+     * 1. Action claims: ensure past-tense completion claims ("tu reserva está confirmada",
+     *    "pago confirmado", etc.) are only made when a backing write tool succeeded this turn.
+     * 2. Price verification: ensure prices stated in the response exist in context/corpus.
      */
     private async applyOutputGuardrails(
         response: string,
@@ -2590,8 +2592,38 @@ export class ConversationsService {
         allowedTiers: ModelTier[],
         tenantId: string,
         conversationId: string,
+        executedTools?: Array<{ name: string; result: any }>,
     ): Promise<string> {
         if (!response || isErrorFallback(response)) return response;
+
+        // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)
+        const claimAudit = auditTurnClaim(response, executedTools);
+        if (claimAudit.falseClaim) {
+            this.logger.warn(`[Guardrail] Response claimed completed action without backing tool execution — corrective retry: "${response.slice(0, 100)}"`);
+            try {
+                const correctedClaim = await this.llmRouter.execute({
+                    task: 'conversation',
+                    messages: [
+                        ...currentMessages,
+                        { role: 'assistant', content: response },
+                        { role: 'user', content: 'Tu respuesta afirmó que una reserva, cobro, cita o cancelación ya fue confirmada o completada, pero ninguna herramienta ejecutó esa acción con éxito en este turno. Reescribe tu mensaje explicando con total claridad qué paso o confirmación está pendiente para realizar la acción, sin afirmar que ya está confirmada o completada. Devuelve solo el mensaje corregido.' },
+                    ],
+                    systemPrompt,
+                    temperature: 0.3,
+                    allowedTiers,
+                    tenantId,
+                });
+                const fixedClaim = correctedClaim.content?.trim();
+                if (fixedClaim) {
+                    const secondAudit = auditTurnClaim(fixedClaim, executedTools);
+                    if (!secondAudit.falseClaim) {
+                        response = fixedClaim;
+                    }
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Guardrail] False claim corrective retry failed: ${e.message}`);
+            }
+        }
 
         const corpus = systemPrompt + '\n' + (currentMessages || [])
             .map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n');

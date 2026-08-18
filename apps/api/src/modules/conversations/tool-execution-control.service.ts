@@ -1389,7 +1389,6 @@ export class ToolExecutionControlService {
             || claims.conversationId !== conversationId
             || claims.ledgerId !== ledger.id
             || claims.toolName !== request.toolName
-            || claims.argsHash !== argsHash
             || claims.sourceMessageId !== ledger.confirmation_source_message_id
             || new Date(claims.expiresAt).getTime() <= Date.now()) {
             this.logger.warn(`Rejected invalid confirmation token for ledger ${ledger.id}`);
@@ -1398,6 +1397,17 @@ export class ToolExecutionControlService {
                 'La confirmación no es válida o fue alterada. Escala la acción a una persona.',
                 true,
             );
+        }
+
+        if (claims.argsHash !== argsHash) {
+            this.logger.warn(`[Confirm] Tool args changed for ledger ${ledger.id} (tool=${request.toolName}) — issuing fresh confirmation challenge`);
+            const reissued = await this.issueConfirmationToken(
+                { ...request, conversationId },
+                ledger,
+                argsHash,
+                latest.id,
+            );
+            return this.confirmationRequired((reissued || ledger).id);
         }
 
         const updated = await this.query<ExecutionLedgerRow[]>(

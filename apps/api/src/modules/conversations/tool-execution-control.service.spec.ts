@@ -269,6 +269,37 @@ describe('ToolExecutionControlService', () => {
         }
     });
 
+    it('acepta la confirmación como la escribe un cliente real', () => {
+        // El allowlist exigía coincidencia EXACTA, así que "sí, confirmo la
+        // reserva" caía en unclear y el agente volvía a preguntar — el bucle que
+        // hacía imposible cerrar una reserva. Sólo la APERTURA otorga
+        // consentimiento; nada negado ni matizado pasa.
+        for (const value of [
+            'Sí, confirmo la reserva',
+            'confirmo la reserva del Amazon Minimalist',
+            'dale, confirmo',
+            'ok confirmo',
+            'yes, confirm the booking',
+            'sim, confirmo a reserva',
+            'oui, je confirme la reservation',
+        ]) {
+            expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
+        }
+    });
+
+    it('nunca infiere consentimiento de una negación o de un sí matizado', () => {
+        for (const value of [
+            'no confirmo la reserva',
+            'todavía no confirmo',
+            'sí, pero cambiá el monto',
+            'yes, but change the amount',
+            'confirmo? no se',
+            'cancela la reserva',
+        ]) {
+            expect(classifyExplicitToolConfirmation(value)).not.toBe('confirmed');
+        }
+    });
+
     it('treats a comma as a separator so natural confirmations are not re-asked', () => {
         // "sí, confirmo" is how a customer actually confirms in Spanish. Only
         // trailing punctuation used to be stripped, so this landed in 'unclear'

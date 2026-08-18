@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { toTelegramHtml } from '../../../common/utils/channel-text-format.util';
 import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
@@ -89,9 +90,11 @@ export class TelegramAdapter implements IChannelAdapter {
     async sendTextMessage(to: string, text: string, _botId: string, botToken: string): Promise<string> {
         const url = `${this.apiUrl}/bot${botToken}/sendMessage`;
 
-        // parse_mode HTML requires &, <, > escaped — raw LLM text containing any of
-        // them made Telegram reject the message (400) and the reply was lost.
-        const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // parse_mode HTML needs &, <, > escaped — raw text containing any of them
+        // made Telegram reject the message (400) and the reply was lost. The same
+        // pass now also turns the model's Markdown into the tags Telegram parses,
+        // which it was otherwise showing to the customer as literal ** and ##.
+        const safeText = toTelegramHtml(text);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -130,7 +133,9 @@ export class TelegramAdapter implements IChannelAdapter {
             body: JSON.stringify({
                 chat_id: to,
                 [mediaField]: mediaUrl,
-                caption: caption || '',
+                // This caption was sent unescaped: a single '<' in it is a 400
+                // from Telegram and a media message the customer never gets.
+                caption: caption ? toTelegramHtml(caption) : '',
                 parse_mode: 'HTML',
             }),
             signal: AbortSignal.timeout(10_000),

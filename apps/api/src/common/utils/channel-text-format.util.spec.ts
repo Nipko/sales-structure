@@ -1,4 +1,4 @@
-import { formatOutboundText, toWhatsAppFormatting } from './channel-text-format.util';
+import { formatOutboundText, toPlainText, toTelegramHtml, toWhatsAppFormatting } from './channel-text-format.util';
 
 describe('toWhatsAppFormatting', () => {
     describe('bold', () => {
@@ -159,8 +159,20 @@ describe('formatOutboundText', () => {
         expect(formatOutboundText('**Hola**', 'whatsapp')).toBe('*Hola*');
     });
 
-    it('leaves every other channel untouched', () => {
-        for (const channel of ['telegram', 'instagram', 'messenger', 'email', 'sms', 'widget']) {
+    it('formats Telegram as the HTML subset it parses', () => {
+        expect(formatOutboundText('**Hola**', 'telegram')).toBe('<b>Hola</b>');
+    });
+
+    it('strips the markers on channels that render plain text', () => {
+        for (const channel of ['instagram', 'messenger', 'sms', 'widget', 'WebChat']) {
+            expect(formatOutboundText('**Hola**', channel)).toBe('Hola');
+        }
+    });
+
+    it('never touches email or an unknown channel', () => {
+        // Email is composed from HTML templates on its own path, and guessing a
+        // format we have not verified against a provider is how you corrupt it.
+        for (const channel of ['email', 'carrier-pigeon', '']) {
             expect(formatOutboundText('**Hola**', channel)).toBe('**Hola**');
         }
     });
@@ -196,5 +208,57 @@ describe('toWhatsAppFormatting — daños que el formateador no puede causar', (
         for (const degenerate of ['#   ', '##\t', '#']) {
             expect(toWhatsAppFormatting(degenerate)).not.toBe('');
         }
+    });
+});
+
+describe('toTelegramHtml', () => {
+    it('convierte el marcado a las etiquetas que Telegram parsea', () => {
+        expect(toTelegramHtml('Tenemos el **Amazon Minimalist** disponible'))
+            .toBe('Tenemos el <b>Amazon Minimalist</b> disponible');
+        expect(toTelegramHtml('~~agotado~~')).toBe('<s>agotado</s>');
+        expect(toTelegramHtml('## Resumen')).toBe('<b>Resumen</b>');
+    });
+
+    it('escapa ANTES de convertir, así el texto del cliente no puede inyectar etiquetas', () => {
+        // Una etiqueta desbalanceada hace que Telegram rechace el envío con 400
+        // y se pierda la respuesta: lo único que puede quedar como markup es lo
+        // que produjo esta función.
+        const out = toTelegramHtml('El cliente escribió <b>hola</b> y 1 < 2');
+        expect(out).toContain('&lt;b&gt;hola&lt;/b&gt;');
+        expect(out).toContain('1 &lt; 2');
+        expect(out).not.toMatch(/<b>hola<\/b>/);
+    });
+
+    it('escapa las URLs al restaurarlas y no las altera', () => {
+        const out = toTelegramHtml('Pagá en https://checkout.wompi.co/l/x?a=1&b=2');
+        expect(out).toContain('https://checkout.wompi.co/l/x?a=1&amp;b=2');
+    });
+
+    it('preserva el código como <code>/<pre> con su contenido escapado', () => {
+        expect(toTelegramHtml('usá `a < b`')).toBe('usá <code>a &lt; b</code>');
+    });
+
+    it('un título degenerado no puede vaciar el mensaje', () => {
+        expect(toTelegramHtml('#   ')).not.toBe('');
+    });
+});
+
+describe('toPlainText', () => {
+    it('quita los marcadores y conserva las palabras', () => {
+        expect(toPlainText('Tenemos el **Amazon Minimalist** disponible'))
+            .toBe('Tenemos el Amazon Minimalist disponible');
+        expect(toPlainText('- **Apartamento:** Amazon Minimalist'))
+            .toBe('- Apartamento: Amazon Minimalist');
+        expect(toPlainText('## Resumen')).toBe('Resumen');
+    });
+
+    it('no altera una URL ni el texto sin marcado', () => {
+        const url = 'Mirá parallly-chat.cloud/__promo__ ahora';
+        expect(toPlainText(url)).toBe(url);
+        expect(toPlainText('cuesta 3.5 millones, etc.')).toBe('cuesta 3.5 millones, etc.');
+    });
+
+    it('conserva el contenido del código sin las comillas', () => {
+        expect(toPlainText('usá `npm run dev`')).toBe('usá npm run dev');
     });
 });

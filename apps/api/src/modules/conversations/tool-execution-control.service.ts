@@ -138,6 +138,17 @@ interface ConfirmationClaims {
     expiresAt: string;
 }
 
+const AFFIRMATIVE_TOKENS = 'si|confirmo|si confirmo|autorizo|si autorizo|dale|hazlo|ok|okay'
+    + '|yes|i confirm|confirm|yes confirm|yes i confirm|go ahead'
+    + '|sim|confirmo sim|sim confirmo|autorizo sim|sim autorizo|pode fazer'
+    + '|oui|je confirme|confirme|oui je confirme|oui confirme|allez-y';
+const AFFIRMATIVE_EXACT = new RegExp(`^(?:${AFFIRMATIVE_TOKENS})$`);
+/** The same tokens, but as the OPENING of a longer sentence. */
+const AFFIRMATIVE_OPENING = new RegExp(`^(?:${AFFIRMATIVE_TOKENS})\\b`);
+/** Any negation voids consent, wherever it appears. */
+const NEGATION_ANYWHERE = /\b(no|nao|non|not|nunca|never|jamais|cancela|cancelar|cancel|annuler|rechazo|espera|aun|ainda|todavia)\b/;
+/** A qualified yes is not a yes: "sí, pero cambiá el monto" must re-ask. */
+const QUALIFIER_ANYWHERE = /\b(pero|mas|porem|but|mais|aunque|salvo|excepto|solo si|only if)\b/;
 /** Exact, deliberately narrow confirmations in the four supported languages. */
 export function classifyExplicitToolConfirmation(value: unknown): ConfirmationDisposition {
     if (typeof value !== 'string') return 'unclear';
@@ -167,7 +178,21 @@ export function classifyExplicitToolConfirmation(value: unknown): ConfirmationDi
     // blocking the match, "sim, confirmo" / "yes, confirm" / "oui, je confirme"
     // still fell through to 'unclear'. Each addition below is an unambiguous
     // affirmative; nothing qualified or negated is accepted.
-    if (/^(si|confirmo|si confirmo|autorizo|si autorizo|dale|hazlo|ok|okay|yes|i confirm|confirm|yes confirm|yes i confirm|go ahead|sim|confirmo sim|sim confirmo|autorizo sim|sim autorizo|pode fazer|oui|je confirme|confirme|oui je confirme|oui confirme|allez-y)$/.test(normalized)) {
+    if (AFFIRMATIVE_EXACT.test(normalized)) return 'confirmed';
+
+    // Real customers do not answer with a bare token. They write "sí, confirmo
+    // la reserva" or "confirmo la reserva del apartamento", and an
+    // exact-match-only allowlist read every one of those as unclear — so the
+    // agent asked again, and again, and the booking could never complete.
+    //
+    // The opening is still the only thing that can grant consent: the message
+    // must BEGIN with an unambiguous affirmative. Anything that negates or
+    // qualifies, anywhere in the sentence, falls back to unclear — so
+    // "sí, pero cambiá el monto" and "no confirmo la reserva" stay
+    // unconfirmed. Consent is never inferred from a word buried mid-sentence.
+    if (AFFIRMATIVE_OPENING.test(normalized)
+        && !NEGATION_ANYWHERE.test(normalized)
+        && !QUALIFIER_ANYWHERE.test(normalized)) {
         return 'confirmed';
     }
     return 'unclear';
@@ -1287,7 +1312,17 @@ export class ToolExecutionControlService {
             );
             return this.block('action_rejected', 'El cliente rechazó la acción. No la ejecutes.');
         }
-        if (disposition !== 'confirmed') return this.confirmationRequired(ledger.id);
+        if (disposition !== 'confirmed') {
+            // The customer answered and we did not take it as consent. That is the
+            // loop the owner reported ("it keeps asking"), and until now it left no
+            // trace at all. Truncated on purpose: enough to see the phrasing that
+            // was rejected, not enough to dump a conversation into the logs.
+            this.logger.warn(
+                `[Confirm] Not accepted as confirmation for ledger ${ledger.id} `
+                + `(tool=${request.toolName}): "${(latest.content_text || '').slice(0, 80)}"`,
+            );
+            return this.confirmationRequired(ledger.id);
+        }
 
         const claims = this.verifyConfirmationToken(ledger.confirmation_token);
         if (!claims

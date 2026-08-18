@@ -62,6 +62,30 @@ const ITALIC_ASTERISK_MD = /(?<![\w*\ue001])\*(?=\S)([^*\n]*?\S)\*(?![\w*\ue001]
 /** Already WhatsApp-shaped bold: `*Título*` must not be wrapped a second time. */
 const ALREADY_BOLD = /^\*[^*]+\*$/;
 
+
+/**
+ * Shared first pass: strip sentinels and park the spans that no rule may touch.
+ *
+ * Code and URLs are set aside identically for every channel — the reasons are
+ * the same everywhere (verbatim text must stay verbatim, and one altered byte
+ * breaks a link) — so the guarding lives here instead of being re-derived, and
+ * subtly differently, in each transform.
+ */
+function guardSpans(text: string): { out: string; guarded: string[] } {
+    const guarded: string[] = [];
+    const keep = (match: string): string => `${GUARD}${guarded.push(match) - 1}${GUARD}`;
+
+    let out = text.replace(SENTINELS, '');
+    out = out.replace(FENCED_CODE, keep);
+    out = out.replace(INLINE_CODE, keep);
+    out = out.replace(URL, (match) => {
+        const trailing = match.match(URL_TRAILING_PUNCT)?.[0] ?? '';
+        const url = trailing ? match.slice(0, -trailing.length) : match;
+        return url ? keep(url) + trailing : match;
+    });
+    return { out, guarded };
+}
+
 /**
  * Convert Markdown emphasis to WhatsApp's own markup.
  *
@@ -77,21 +101,10 @@ const ALREADY_BOLD = /^\*[^*]+\*$/;
 export function toWhatsAppFormatting(text: string): string {
     if (!text) return text;
 
-    const guarded: string[] = [];
-    const keep = (match: string): string => `${GUARD}${guarded.push(match) - 1}${GUARD}`;
-
-    let out = text.replace(SENTINELS, '');
-
-    out = out.replace(FENCED_CODE, keep);
-    out = out.replace(INLINE_CODE, keep);
-    out = out.replace(URL, (match) => {
-        const trailing = match.match(URL_TRAILING_PUNCT)?.[0] ?? '';
-        const url = trailing ? match.slice(0, -trailing.length) : match;
-        return url ? keep(url) + trailing : match;
-    });
-
+    const { out: parked, guarded } = guardSpans(text);
     // Sampled before the markers are consumed by the rules below.
-    const authoredInMarkdown = MARKDOWN_FINGERPRINT.test(out);
+    const authoredInMarkdown = MARKDOWN_FINGERPRINT.test(parked);
+    let out = parked;
 
     out = out.replace(BOLD_ITALIC_MD, `${BOLD}_$1_${BOLD}`);
     out = out.replace(BOLD_ASTERISK_MD, `${BOLD}$1${BOLD}`);
@@ -115,14 +128,106 @@ export function toWhatsAppFormatting(text: string): string {
     return out.replace(GUARDED_SPAN, (_m, index: string) => guarded[Number(index)]);
 }
 
+const escapeTelegramHtml = (value: string): string => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+/**
+ * Convert Markdown to the HTML subset Telegram accepts with `parse_mode: HTML`.
+ *
+ * Order is load-bearing: the text is entity-escaped FIRST and the tags are
+ * emitted afterwards. Converting first would let a customer's own `<b>` — or
+ * any stray `<` in a message we echo back — reach Telegram as real markup, and
+ * an unbalanced tag makes the API reject the whole send with a 400, losing the
+ * reply. Escaping first means the only tags in the payload are the ones this
+ * function produced.
+ *
+ * Guarded spans are re-escaped on the way out for the same reason: a URL
+ * carrying `&` is invalid HTML otherwise, and Telegram autolinks bare URLs, so
+ * no anchor tag is needed.
+ */
+export function toTelegramHtml(text: string): string {
+    if (!text) return text;
+
+    const { out: parked, guarded } = guardSpans(text);
+    const authoredInMarkdown = MARKDOWN_FINGERPRINT.test(parked);
+
+    let out = escapeTelegramHtml(parked);
+
+    out = out.replace(BOLD_ITALIC_MD, '<b><i>$1</i></b>');
+    out = out.replace(BOLD_ASTERISK_MD, '<b>$1</b>');
+    out = out.replace(BOLD_UNDERSCORE_MD, '<b>$1</b>');
+    out = out.replace(STRIKE_MD, '<s>$1</s>');
+    if (authoredInMarkdown) out = out.replace(ITALIC_ASTERISK_MD, '<i>$1</i>');
+
+    out = out.replace(HEADING_LINE, (line, rawTitle: string) => {
+        const title = rawTitle.trim();
+        // Same reason as WhatsApp: an empty body is a 400 and a lost message.
+        return title ? `<b>${title}</b>` : line;
+    });
+
+    return out.replace(GUARDED_SPAN, (_m, index: string) => {
+        const span = guarded[Number(index)];
+        const fenced = span.match(/^```[^\n]*\n?([\s\S]*?)```$/);
+        if (fenced) return `<pre>${escapeTelegramHtml(fenced[1])}</pre>`;
+        const inline = span.match(/^`([^`\n]+)`$/);
+        if (inline) return `<code>${escapeTelegramHtml(inline[1])}</code>`;
+        return escapeTelegramHtml(span);
+    });
+}
+
+/**
+ * Strip Markdown for channels that render nothing: Instagram, Messenger, the
+ * web chat widget and SMS all show the raw string, so every marker the model
+ * emits is literal noise in front of the customer.
+ *
+ * Only the markers are removed; the words they wrapped stay. Code spans keep
+ * their contents for the same reason (their point is the text, not the fence).
+ */
+export function toPlainText(text: string): string {
+    if (!text) return text;
+
+    const { out: parked, guarded } = guardSpans(text);
+    const authoredInMarkdown = MARKDOWN_FINGERPRINT.test(parked);
+
+    let out = parked;
+    out = out.replace(BOLD_ITALIC_MD, '$1');
+    out = out.replace(BOLD_ASTERISK_MD, '$1');
+    out = out.replace(BOLD_UNDERSCORE_MD, '$1');
+    out = out.replace(STRIKE_MD, '$1');
+    if (authoredInMarkdown) out = out.replace(ITALIC_ASTERISK_MD, '$1');
+
+    out = out.replace(HEADING_LINE, (line, rawTitle: string) => rawTitle.trim() || line);
+
+    return out.replace(GUARDED_SPAN, (_m, index: string) => {
+        const span = guarded[Number(index)];
+        const fenced = span.match(/^```[^\n]*\n?([\s\S]*?)```$/);
+        if (fenced) return fenced[1];
+        const inline = span.match(/^`([^`\n]+)`$/);
+        if (inline) return inline[1];
+        return span;
+    });
+}
+
+/**
+ * Channels whose wire format is plain text: whatever the model wrote is shown
+ * verbatim, so Markdown markers are noise the customer reads.
+ */
+const PLAIN_TEXT_CHANNELS = new Set(['instagram', 'messenger', 'widget', 'web', 'webchat', 'sms']);
+
 /**
  * Format outbound text for a specific channel.
  *
- * Telegram has the same underlying defect (it is sent with `parse_mode: HTML`,
- * so Markdown markers reach the customer literally), but its fix is a different
- * transform — HTML tags applied after entity escaping — and is not covered here.
- * Every other channel renders plain text, so the text is returned untouched.
+ * Email is deliberately absent: it is composed from HTML templates on its own
+ * path, not from model Markdown, so running either transform over it would
+ * damage markup that is already correct. An unknown channel is returned
+ * untouched — never guess a format we have not verified against the provider.
  */
 export function formatOutboundText(text: string, channelType: string): string {
-    return channelType === 'whatsapp' ? toWhatsAppFormatting(text) : text;
+    const channel = String(channelType || '').toLowerCase();
+    if (channel === 'whatsapp') return toWhatsAppFormatting(text);
+    if (channel === 'telegram') return toTelegramHtml(text);
+    if (PLAIN_TEXT_CHANNELS.has(channel)) return toPlainText(text);
+    return text;
 }

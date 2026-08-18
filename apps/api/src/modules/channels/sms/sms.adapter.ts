@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { toPlainText } from '../../../common/utils/channel-text-format.util';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
@@ -85,7 +86,7 @@ export class SmsAdapter implements IChannelAdapter {
         const params = new URLSearchParams({
             To: to,
             From: fromNumber,
-            Body: text,
+            Body: toPlainText(text),
         });
 
         const response = await fetch(url, {
@@ -121,7 +122,7 @@ export class SmsAdapter implements IChannelAdapter {
             From: fromNumber,
             MediaUrl: mediaUrl,
         });
-        if (caption) params.append('Body', caption);
+        if (caption) params.append('Body', toPlainText(caption));
 
         const response = await fetch(url, {
             method: 'POST',

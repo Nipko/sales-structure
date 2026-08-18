@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { toPlainText } from '../../../common/utils/channel-text-format.util';
 import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
@@ -121,7 +122,7 @@ export class MessengerAdapter implements IChannelAdapter {
             },
             body: JSON.stringify({
                 recipient: { id: to },
-                message: { text },
+                message: { text: toPlainText(text) },
                 messaging_type: 'RESPONSE',
             }),
             signal: AbortSignal.timeout(10_000),
@@ -162,7 +163,7 @@ export class MessengerAdapter implements IChannelAdapter {
         if (caption) {
             messages.push({
                 recipient: { id: to },
-                message: { text: caption },
+                message: { text: toPlainText(caption) },
                 messaging_type: 'RESPONSE',
             });
         }

@@ -1170,7 +1170,7 @@ export class AIToolExecutorService {
      * value: the payment backend resolves those from the contact-owned row.
      */
     private payableReference(
-        kind: 'order' | 'tour' | 'food' | 'enrollment',
+        kind: 'order' | 'tour' | 'food' | 'enrollment' | 'property',
         entityId: unknown,
         paymentStatus: unknown,
         resourceStatus?: unknown,
@@ -1192,6 +1192,7 @@ export class AIToolExecutorService {
             tour: ['cancelled', 'refunded'],
             food: ['cancelled', 'refunded'],
             enrollment: ['cancelled', 'dropped', 'refunded'],
+            property: ['cancelled', 'refunded'],
         };
         if (rejectedByKind[kind].includes(normalizedResourceStatus)) return null;
 
@@ -2071,14 +2072,38 @@ export class AIToolExecutorService {
             }));
 
             if (checkIn && checkOut && properties.length > 0) {
+                // Validate the range ONCE, before the loop. It is a property of
+                // the request, not of any listing: when it was only discovered
+                // inside the per-property catch, the same exception repeated for
+                // every property, the list came back empty and the agent told a
+                // traveller "no availability" with the whole catalogue free.
+                // The model corrects itself when handed a typed error.
+                const rangeError = this.validateStayRange(checkIn, checkOut);
+                if (rangeError) {
+                    this.logger.warn(`[Tool] list_properties rejected date range: ${rangeError}`);
+                    return { error: rangeError, checkIn, checkOut };
+                }
+
                 const available: any[] = [];
+                let failures = 0;
                 for (const prop of properties) {
                     try {
                         const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut);
                         if (avail.available) {
                             available.push({ ...prop, totalPrice: avail.totalPrice, nights: avail.nights });
                         }
-                    } catch { /* skip unavailable */ }
+                    } catch (error: any) {
+                        // A single listing failing is genuinely skippable; every
+                        // listing failing is a systemic fault, and reporting it
+                        // as "nothing available" would lose a real booking.
+                        failures++;
+                        this.logger.warn(
+                            `[Tool] list_properties availability check failed for ${prop.id}: ${error.message}`,
+                        );
+                    }
+                }
+                if (failures === properties.length) {
+                    return { error: 'availability_unavailable', checkIn, checkOut };
                 }
                 properties = available;
             }
@@ -2086,8 +2111,28 @@ export class AIToolExecutorService {
             return { properties };
         } catch (e: any) {
             this.logger.warn(`[Tool] list_properties failed: ${e.message}`);
-            return { properties: [] };
+            // Never answer a catalogue failure with an empty catalogue: that
+            // reads to the agent — and then to the customer — as "we have
+            // nothing", which is a lost sale rather than a retryable error.
+            return { error: 'catalog_unavailable' };
         }
+    }
+
+    /**
+     * Shared, provider-independent sanity check for a stay range. Returns a
+     * stable error code the model can act on, or null when the range is usable.
+     */
+    private validateStayRange(checkIn: string, checkOut: string): string | null {
+        const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+        if (!isIsoDate(checkIn) || !isIsoDate(checkOut)) return 'invalid_date_format';
+
+        const start = new Date(`${checkIn}T00:00:00Z`);
+        const end = new Date(`${checkOut}T00:00:00Z`);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'invalid_date_format';
+        // Same-day check-in/check-out is the single most common way this used to
+        // blank the catalogue: a guest asking for "tonight" without a next day.
+        if (end.getTime() <= start.getTime()) return 'checkout_must_be_after_checkin';
+        return null;
     }
 
     /**
@@ -2308,6 +2353,17 @@ export class AIToolExecutorService {
                     currency: booking.currency,
                     status: booking.status,
                     guestName: args.guestName,
+                    paymentStatus: booking.payment_status || 'pending',
+                    // The stay is the vertical's core sale. Without a reference
+                    // the agent could confirm the booking and then had no way to
+                    // charge for it — the guest was told about payment and
+                    // nothing could ever be issued.
+                    payableReference: this.payableReference(
+                        'property',
+                        booking.id,
+                        booking.payment_status || 'pending',
+                        booking.status,
+                    ),
                 },
             };
         } catch (e: any) {
@@ -3953,7 +4009,7 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT pb.id, pb.check_in, pb.check_out, pb.status, pb.total_price, pb.currency,
-                        pb.guest_name, p.name AS property_name
+                        pb.guest_name, pb.payment_status, p.name AS property_name
                  FROM "${schema}".property_bookings pb
                  LEFT JOIN "${schema}".properties p ON p.id = pb.property_id
                  WHERE pb.contact_id = $1::uuid AND pb.status != 'cancelled'
@@ -3970,6 +4026,15 @@ export class AIToolExecutorService {
                     totalPrice: Number(r.total_price || 0),
                     currency: r.currency,
                     guestName: r.guest_name,
+                    paymentStatus: r.payment_status || 'pending',
+                    // Without this the guest could be told about their stay but
+                    // never charged for it: the payment tool needs a reference.
+                    payableReference: this.payableReference(
+                        'property',
+                        r.id,
+                        r.payment_status || 'pending',
+                        r.status,
+                    ),
                 })),
             };
         } catch (e: any) {

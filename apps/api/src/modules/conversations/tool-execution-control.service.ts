@@ -147,13 +147,27 @@ export function classifyExplicitToolConfirmation(value: unknown): ConfirmationDi
         .trim()
         .toLowerCase()
         .replace(/[.!¡¿?]+$/g, '')
-        .replace(/\s+/g, ' ');
+        // Commas and semicolons separate, they do not carry meaning. Only the
+        // trailing punctuation was stripped, so "sí, confirmo" — the most
+        // natural confirmation in Spanish — fell through to 'unclear' and the
+        // agent re-asked, stalling the customer at the payment step. Widening
+        // the separator cannot create a false confirm: the phrase still has to
+        // match the exact allowlist below, and "no, confirmo" normalizes to
+        // "no confirmo", which is in neither list and stays 'unclear'.
+        .replace(/[,;]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     if (!normalized || normalized.length > 120) return 'unclear';
 
     if (/^(no|no lo hagas|cancelar|cancela|rechazo|nao|nao faca|annuler|non|je refuse)$/.test(normalized)) {
         return 'rejected';
     }
-    if (/^(si|confirmo|si confirmo|autorizo|si autorizo|dale|hazlo|ok|okay|yes|i confirm|confirm|go ahead|sim|confirmo sim|autorizo sim|pode fazer|oui|je confirme|confirme|allez-y)$/.test(normalized)) {
+    // Spanish already carried the affirmative-then-verb form ("si confirmo").
+    // The other three languages only had the halves, so once the comma stopped
+    // blocking the match, "sim, confirmo" / "yes, confirm" / "oui, je confirme"
+    // still fell through to 'unclear'. Each addition below is an unambiguous
+    // affirmative; nothing qualified or negated is accepted.
+    if (/^(si|confirmo|si confirmo|autorizo|si autorizo|dale|hazlo|ok|okay|yes|i confirm|confirm|yes confirm|yes i confirm|go ahead|sim|confirmo sim|sim confirmo|autorizo sim|sim autorizo|pode fazer|oui|je confirme|confirme|oui je confirme|oui confirme|allez-y)$/.test(normalized)) {
         return 'confirmed';
     }
     return 'unclear';

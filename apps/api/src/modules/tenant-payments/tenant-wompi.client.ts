@@ -237,18 +237,99 @@ export class TenantWompiClient {
             throw new WompiProviderError('wompi_transaction_lookup_failed', response.status >= 500);
         }
         const payload: any = await response.json().catch(() => null);
-        const transaction = payload?.data;
-        const id = this.optionalString(transaction?.id);
-        const status = this.optionalString(transaction?.status)?.toUpperCase();
-        const currency = this.optionalString(transaction?.currency)?.toUpperCase();
-        const paymentLinkId = this.optionalString(transaction?.payment_link_id);
-        const amountCents = Number(transaction?.amount_in_cents);
-        if (id !== input.transactionId
+        const transaction = this.toCanonicalTransaction(payload?.data, input.environment);
+        if (!transaction || transaction.id !== input.transactionId) {
+            throw new WompiProviderError('invalid_wompi_transaction_response', false);
+        }
+        return transaction;
+    }
+
+    /**
+     * Recovers the transaction Wompi created for one of our payment links when
+     * the commerce event never arrived — a mistyped events secret, an events URL
+     * that was never pasted, or retries exhausted during a deploy.
+     *
+     * This is the only way out of a circular dependency: the settlement path
+     * keys off provider_link_id, but provider_transaction_id was previously
+     * written ONLY by the webhook, so a lost first event left the customer
+     * charged and the order unpaid forever with nothing able to repair it. The
+     * payment link id is known at creation time, so it is the identifier that
+     * survives a lost event.
+     *
+     * Returns null when the link has no transaction yet (nobody paid), which is
+     * the ordinary case and must NOT be treated as an error.
+     */
+    async findTransactionByPaymentLink(input: {
+        providerLinkId: string;
+        publicKey: string;
+        privateKey: string;
+        environment: WompiEnvironment;
+    }): Promise<CanonicalWompiTransaction | null> {
+        if (this.keyEnvironment(input.publicKey, 'public') !== input.environment
+            || this.keyEnvironment(input.privateKey, 'private') !== input.environment) {
+            throw new WompiProviderError('wompi_environment_mismatch', false);
+        }
+
+        let response: Response;
+        try {
+            response = await fetch(
+                `${WOMPI_BASE_URLS[input.environment]}/transactions`
+                + `?payment_link_id=${encodeURIComponent(input.providerLinkId)}`,
+                {
+                    headers: { Authorization: `Bearer ${input.privateKey}` },
+                    signal: AbortSignal.timeout(15_000),
+                },
+            );
+        } catch {
+            throw new WompiProviderError('wompi_transaction_lookup_failed', true);
+        }
+        if (!response.ok) {
+            throw new WompiProviderError('wompi_transaction_lookup_failed', response.status >= 500);
+        }
+        const payload: any = await response.json().catch(() => null);
+        if (!Array.isArray(payload?.data)) {
+            throw new WompiProviderError('invalid_wompi_transaction_list', false);
+        }
+
+        // Filter by payment_link_id ourselves rather than trusting the query
+        // parameter. If the provider ever ignores an unrecognised filter and
+        // returns the merchant's whole transaction list, an unfiltered read
+        // would settle a DIFFERENT customer's order against this intent.
+        const candidates = payload.data
+            .filter((raw: any) => this.optionalString(raw?.payment_link_id) === input.providerLinkId)
+            .map((raw: any) => this.toCanonicalTransaction(raw, input.environment))
+            .filter((transaction: CanonicalWompiTransaction | null): transaction is CanonicalWompiTransaction =>
+                transaction !== null);
+        if (!candidates.length) return null;
+
+        // Never let an older DECLINED attempt close reconciliation while money
+        // actually moved. Approved wins, then in-flight, then newest terminal.
+        const priority = (transaction: CanonicalWompiTransaction) => {
+            if (transaction.status === 'APPROVED') return 3;
+            if (transaction.status === 'PENDING') return 2;
+            return 1;
+        };
+        if (candidates.length > 1) {
+            this.logger.warn(
+                `[Wompi] Payment link ${input.providerLinkId} resolved to ${candidates.length} transactions;`
+                + ' selecting by settlement priority',
+            );
+        }
+        return [...candidates].sort((left, right) => priority(right) - priority(left))[0];
+    }
+
+    private toCanonicalTransaction(raw: any, environment: WompiEnvironment): CanonicalWompiTransaction | null {
+        const id = this.optionalString(raw?.id);
+        const status = this.optionalString(raw?.status)?.toUpperCase();
+        const currency = this.optionalString(raw?.currency)?.toUpperCase();
+        const paymentLinkId = this.optionalString(raw?.payment_link_id);
+        const amountCents = Number(raw?.amount_in_cents);
+        if (!id
             || !['PENDING', 'APPROVED', 'DECLINED', 'VOIDED', 'ERROR'].includes(status || '')
             || currency !== 'COP'
             || !Number.isSafeInteger(amountCents)
             || amountCents <= 0) {
-            throw new WompiProviderError('invalid_wompi_transaction_response', false);
+            return null;
         }
         return {
             id,
@@ -256,7 +337,7 @@ export class TenantWompiClient {
             amountCents,
             currency,
             paymentLinkId,
-            environment: input.environment,
+            environment,
         };
     }
 

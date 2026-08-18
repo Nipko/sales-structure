@@ -193,6 +193,13 @@ export type TenantPaymentProviderConfig = {
     activationReady?: boolean;
     /** The admin explicitly confirmed that the callback URL was installed at the provider. */
     webhookAcknowledged?: boolean;
+    /**
+     * When a webhook from this provider last authenticated. Unlike
+     * `webhookAcknowledged` — which the admin self-declares by clicking
+     * Activate — this is provider evidence. Absent while acknowledged means the
+     * rail looks configured and no event has ever actually arrived.
+     */
+    lastWebhookAt?: string;
     publicKey?: string;
     accountEmail?: string;
     merchantName?: string;

@@ -269,6 +269,20 @@ describe('ToolExecutionControlService', () => {
         }
     });
 
+    it('treats a comma as a separator so natural confirmations are not re-asked', () => {
+        // "sí, confirmo" is how a customer actually confirms in Spanish. Only
+        // trailing punctuation used to be stripped, so this landed in 'unclear'
+        // and the agent asked again — stalling the customer at the payment step.
+        for (const value of ['sí, confirmo', 'Sí, autorizo', 'sim, confirmo', 'oui, je confirme', 'yes; confirm']) {
+            expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
+        }
+        // Widening the separator must not manufacture consent out of a refusal
+        // or a qualified answer: both stay short of the exact allowlist.
+        for (const value of ['no, confirmo', 'sí, pero cambiá el monto', 'no, cancela']) {
+            expect(classifyExplicitToolConfirmation(value)).toBe('unclear');
+        }
+    });
+
     it('issues a signed, argument-bound challenge and cannot execute it in the same turn', async () => {
         const { service, state } = createHarness();
         const request = {
@@ -697,7 +711,14 @@ describe('ToolExecutionControlService', () => {
         expect(state.ledger.status).not.toBe('executing');
     });
 
-    it('fails A2 payment-link creation closed before persistence when no independent identity channel exists', async () => {
+    it('gates payment-link creation on confirmation, not on an identity channel the tenant may not have', async () => {
+        // Regression for the A2 dead-end: create_payment_link used to demand
+        // step-up identity, but the tools that satisfy it are only published
+        // with the insurance toolset. Every other tenant either escalated with
+        // 'identity_unverifiable' or was mailed a code the agent could not
+        // consume, so payment by chat could never complete. At A1 the tool must
+        // still be gated — by the signed confirmation turn — and must still not
+        // reach the provider on the first turn.
         const { service, executeInTenantSchema, chatIdentity } = createHarness(false);
         const result = await service.preflight({
             schemaName,
@@ -709,11 +730,9 @@ describe('ToolExecutionControlService', () => {
             args: { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
         });
 
-        expect(result).toMatchObject({
-            allowed: false,
-            result: { error: 'identity_unverifiable', shouldHandoff: true },
-        });
-        expect(chatIdentity.startVerification).toHaveBeenCalled();
-        expect(executeInTenantSchema).not.toHaveBeenCalled();
+        expect(result.allowed).toBe(false);
+        expect((result as any).result.error).toBe('confirmation_required');
+        expect((result as any).result.shouldHandoff).not.toBe(true);
+        expect(chatIdentity.startVerification).not.toHaveBeenCalled();
     });
 });

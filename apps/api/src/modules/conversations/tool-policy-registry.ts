@@ -170,9 +170,18 @@ const TOOL_POLICY_ENTRIES = [
     })),
     entry('create_payment_link', contactWrite({
         dataClassification: 'sensitive',
-        // A hosted checkout link does not itself move money. It still requires
-        // the A2 identity boundary and a signed confirmation in another turn.
-        assurance: 'A2',
+        // A hosted checkout link does not itself move money: the payer still
+        // authenticates against the provider, and the amount is derived
+        // server-side from the order, never from the model.
+        //
+        // A2 was unreachable in practice. The step-up tools that satisfy it
+        // (request_identity_code / verify_identity_code) are only published to
+        // tenants with the insurance toolset, so every other tenant either hit
+        // "identity not verifiable" and escalated, or got mailed a code the
+        // agent had no way to consume. Payment by chat could never complete.
+        // A1 keeps the central guard, resource ownership and the signed
+        // confirmation turn as the real boundaries.
+        assurance: 'A1',
         assuranceEnforcement: 'central_guard',
         ownership: 'resource_owner',
         idempotency: 'central_ledger',

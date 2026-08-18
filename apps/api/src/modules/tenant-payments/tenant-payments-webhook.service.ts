@@ -99,6 +99,10 @@ export class TenantPaymentsWebhookService {
         if (!matchingCredentials.length) {
             throw new UnauthorizedException('invalid_mercadopago_webhook_signature');
         }
+        // Provider evidence that the notification URL really reaches us, as
+        // opposed to the tenant merely having saved a secret. See
+        // TenantPaymentsService.recordWebhookHeartbeat.
+        await this.tenantPayments.recordWebhookHeartbeat(tenantId, 'mercadopago');
         // Mercado Pago payment ids are numeric. Rejecting a signed but malformed
         // resource id as a permanent no-op avoids turning it into a path segment
         // and avoids a retry storm for a payload that can never be looked up.

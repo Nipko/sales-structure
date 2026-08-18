@@ -37,6 +37,7 @@ function harness(paymentOverrides: Record<string, unknown> = {}, durableStore?: 
             accountId: ACCOUNT,
             environment: 'production',
         }]),
+        recordWebhookHeartbeat: jest.fn().mockResolvedValue(undefined),
     };
     const service = new TenantPaymentsWebhookService(
         prisma as any,

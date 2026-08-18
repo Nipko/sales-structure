@@ -503,7 +503,12 @@ export class PipelineService {
                 for (const opportunity of scoped) {
                     const current = resolveTenantNativeStage(stageCatalog, opportunity.stage);
                     if (current.slug === stage.slug) {
-                        await this.syncExactOpportunityDealTx(query, tenantId, leadId, opportunity.id, current);
+                        // The stored slug may be a generic/vertical alias that
+                        // resolves to `current`; pass it so the locked re-read
+                        // recognises it instead of rejecting the mirror.
+                        await this.syncExactOpportunityDealTx(
+                            query, tenantId, leadId, opportunity.id, current, opportunity.stage,
+                        );
                     }
                 }
             }
@@ -1105,6 +1110,14 @@ export class PipelineService {
         leadId: string,
         opportunityId: string,
         stage: TenantStageMapping,
+        /**
+         * The stage slug the caller actually observed before resolving it. A
+         * vertical tenant stores its own or a generic slug (`listo_para_cierre`)
+         * which resolves to a native stage (`confirmado`), so comparing the raw
+         * column against the RESOLVED slug rejected every legitimate sync and
+         * no vertical tenant could ever mirror a deal.
+         */
+        observedStage?: string | null,
     ): Promise<void> {
         if (!stage.id) throw new Error(`Canonical stage ${stage.slug} has no id`);
         const outcome = resolveTerminalOutcome(stage);
@@ -1120,7 +1133,14 @@ export class PipelineService {
         );
         const opportunity = opportunities?.[0];
         if (!opportunity) throw new BadRequestException(`Opportunity not found: ${opportunityId}`);
-        if (opportunity.stage !== stage.slug) {
+        // The guard exists to catch a CONCURRENT move between the caller's read
+        // and this locked re-read — not to demand that the stored slug already
+        // be canonical. Accept the canonical slug or the exact value the caller
+        // resolved from; anything else really is someone else moving the card.
+        const observed = normalizeStageIdentifier(opportunity.stage || '');
+        const canonical = normalizeStageIdentifier(stage.slug);
+        const expected = normalizeStageIdentifier(observedStage || '');
+        if (observed !== canonical && !(expected && observed === expected)) {
             throw new ConflictException(
                 `Opportunity ${opportunityId} is at ${opportunity.stage}, not canonical stage ${stage.slug}`,
             );
@@ -1243,7 +1263,9 @@ export class PipelineService {
         await this.migrateToMultiPipeline(schema, tenantId);
         const canonicalStage = await this.resolveTenantStage(tenantId, opportunityStage, { schemaName: schema });
         await this.prisma.transactionInTenantSchema(schema, (query) =>
-            this.syncExactOpportunityDealTx(query, tenantId, leadId, opportunityId, canonicalStage),
+            this.syncExactOpportunityDealTx(
+                query, tenantId, leadId, opportunityId, canonicalStage, opportunityStage,
+            ),
         );
     }
 

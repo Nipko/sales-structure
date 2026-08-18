@@ -52,7 +52,22 @@
     "agentIntegrationDescription": "Activa Cobros a clientes en el agente. El modelo sólo envía una referencia cobrable; el backend fija el monto y el agente no dice “pagado” hasta recibir una confirmación canónica.",
     "configureAgent": "Configurar agentes",
     "footnote": "Sin plan, agente y proveedor listos, el agente no ofrece pagar por chat. Los enlaces son de un solo uso, con monto fijo y vencimiento.",
-    "scopeNotice": "Estas credenciales sólo cobran del negocio a sus clientes. Nunca pagan la suscripción de Parallly ni usan las credenciales Wompi de la plataforma."
+    "scopeNotice": "Estas credenciales sólo cobran del negocio a sus clientes. Nunca pagan la suscripción de Parallly ni usan las credenciales Wompi de la plataforma.",
+    "sandboxBadge": "PRUEBAS",
+    "sandboxWarning": "Esta cuenta está en ambiente de pruebas. Los pagos no son reales, pero igual marcan como pagados los pedidos de tu operación. Cambiá a producción antes de cobrarle a un cliente.",
+    "webhookNeverReceived": "Marcaste la URL de eventos como configurada, pero todavía no recibimos ningún evento de este proveedor. Mientras siga así, un cliente puede pagar y el pedido quedar impago. Revisá que la URL esté pegada en el panel del proveedor y que el secreto de eventos sea el correcto.",
+    "webhookLastReceived": "Último evento recibido: {when}",
+    "errors": {
+      "environmentMismatch": "Las llaves no pertenecen todas al mismo ambiente. Revisá que las tres sean de pruebas o las tres de producción.",
+      "merchantUnverifiable": "No pudimos verificar el comercio con esa llave pública. Revisá que sea la de esta cuenta.",
+      "merchantAlreadyLinked": "Esa cuenta de cobro ya está vinculada a otro tenant.",
+      "invalidWompiCredentials": "Las credenciales no son válidas. Revisá llave pública, llave privada y secreto de eventos.",
+      "invalidMercadoPagoCredentials": "Las credenciales no son válidas. Revisá el access token y el secreto del webhook.",
+      "planMissingFeature": "Tu plan no incluye cobros a clientes. Mejorá el plan para habilitarlo.",
+      "concurrentEdit": "Alguien más cambió la configuración de cobros mientras editabas. Recargá la página y volvé a intentar.",
+      "credentialUnreadable": "No pudimos leer las credenciales guardadas. Volvé a ingresarlas.",
+      "unsupportedProvider": "Ese proveedor de cobros no está soportado."
+    }
   },
   "emailVerification": {
     "message": "Tu correo {email} todavía no está verificado.",

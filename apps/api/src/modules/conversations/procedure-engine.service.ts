@@ -68,7 +68,10 @@ export class ProcedureEngineService {
             // query that Prisma logs on every incoming message.
             const reg = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT to_regclass('procedures') AS reg`,
+                // ::text is load-bearing: Prisma cannot deserialize a raw
+                // `regclass` column and throws, so an uncast probe lands in the
+                // catch below and silently disables procedures on every turn.
+                `SELECT to_regclass('procedures')::text AS reg`,
                 [],
             );
             if (reg?.[0]?.reg) {

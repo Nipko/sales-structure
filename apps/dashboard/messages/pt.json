@@ -52,7 +52,22 @@
     "agentIntegrationDescription": "Ative Cobranças de clientes no agente. O modelo envia apenas uma referência cobrável; o backend fixa o valor e o agente nunca diz “pago” antes da confirmação canônica.",
     "configureAgent": "Configurar agentes",
     "footnote": "Sem plano, agente e provedor prontos, o agente não oferece pagamento por chat. Os links são de uso único, valor fixo e com vencimento.",
-    "scopeNotice": "Estas credenciais só cobram dos clientes do negócio. Nunca pagam a assinatura da Parallly nem usam as credenciais Wompi da plataforma."
+    "scopeNotice": "Estas credenciais só cobram dos clientes do negócio. Nunca pagam a assinatura da Parallly nem usam as credenciais Wompi da plataforma.",
+    "sandboxBadge": "TESTE",
+    "sandboxWarning": "Esta conta está em ambiente de testes. Os pagamentos não são reais, mas mesmo assim marcam seus pedidos como pagos. Mude para produção antes de cobrar um cliente.",
+    "webhookNeverReceived": "Você marcou a URL de eventos como configurada, mas ainda não recebemos nenhum evento deste provedor. Enquanto isso continuar, um cliente pode pagar e o pedido ficar como não pago. Verifique se a URL está colada no painel do provedor e se o segredo de eventos é o correto.",
+    "webhookLastReceived": "Último evento recebido: {when}",
+    "errors": {
+      "environmentMismatch": "As chaves não pertencem todas ao mesmo ambiente. Verifique se as três são de teste ou as três de produção.",
+      "merchantUnverifiable": "Não conseguimos verificar o comércio com essa chave pública. Verifique se ela é desta conta.",
+      "merchantAlreadyLinked": "Essa conta de cobrança já está vinculada a outro tenant.",
+      "invalidWompiCredentials": "As credenciais não são válidas. Verifique a chave pública, a chave privada e o segredo de eventos.",
+      "invalidMercadoPagoCredentials": "As credenciais não são válidas. Verifique o access token e o segredo do webhook.",
+      "planMissingFeature": "Seu plano não inclui cobranças a clientes. Faça upgrade para habilitar.",
+      "concurrentEdit": "Outra pessoa alterou a configuração de cobranças enquanto você editava. Recarregue a página e tente de novo.",
+      "credentialUnreadable": "Não conseguimos ler as credenciais salvas. Insira-as novamente.",
+      "unsupportedProvider": "Esse provedor de cobrança não é suportado."
+    }
   },
   "emailVerification": {
     "message": "Seu e-mail {email} ainda não foi verificado.",

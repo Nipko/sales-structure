@@ -52,7 +52,22 @@
     "agentIntegrationDescription": "Activez les encaissements clients sur l’agent. Le modèle envoie uniquement une référence payable ; le backend fixe le montant et l’agent ne dit jamais « payé » avant la confirmation canonique.",
     "configureAgent": "Configurer les agents",
     "footnote": "Sans forfait, agent et prestataire prêts, l’agent ne propose pas de paiement par chat. Les liens sont à usage unique, à montant fixe et avec expiration.",
-    "scopeNotice": "Ces identifiants servent uniquement à encaisser vos clients. Ils ne paient jamais l’abonnement Parallly et n’utilisent pas les identifiants Wompi de la plateforme."
+    "scopeNotice": "Ces identifiants servent uniquement à encaisser vos clients. Ils ne paient jamais l’abonnement Parallly et n’utilisent pas les identifiants Wompi de la plateforme.",
+    "sandboxBadge": "TEST",
+    "sandboxWarning": "Ce compte est en environnement de test. Les paiements ne sont pas réels, mais ils marquent tout de même vos commandes comme payées. Passez en production avant de facturer un client.",
+    "webhookNeverReceived": "Vous avez marqué l'URL d'événements comme configurée, mais nous n'avons encore reçu aucun événement de ce prestataire. Tant que cela dure, un client peut payer et la commande rester impayée. Vérifiez que l'URL est bien collée dans le panneau du prestataire et que le secret d'événements est le bon.",
+    "webhookLastReceived": "Dernier événement reçu : {when}",
+    "errors": {
+      "environmentMismatch": "Les clés n'appartiennent pas toutes au même environnement. Vérifiez que les trois sont de test, ou les trois de production.",
+      "merchantUnverifiable": "Nous n'avons pas pu vérifier le commerçant avec cette clé publique. Vérifiez qu'elle appartient à ce compte.",
+      "merchantAlreadyLinked": "Ce compte de paiement est déjà lié à un autre locataire.",
+      "invalidWompiCredentials": "Les identifiants ne sont pas valides. Vérifiez la clé publique, la clé privée et le secret d’événements.",
+      "invalidMercadoPagoCredentials": "Les identifiants ne sont pas valides. Vérifiez le jeton d’accès et le secret du webhook.",
+      "planMissingFeature": "Votre forfait n'inclut pas les paiements clients. Passez à un forfait supérieur pour l'activer.",
+      "concurrentEdit": "Quelqu'un d'autre a modifié la configuration des paiements pendant votre édition. Rechargez la page et réessayez.",
+      "credentialUnreadable": "Nous n'avons pas pu lire les identifiants enregistrés. Saisissez-les à nouveau.",
+      "unsupportedProvider": "Ce prestataire de paiement n'est pas pris en charge."
+    }
   },
   "emailVerification": {
     "message": "Votre e-mail {email} n’est pas encore vérifié.",

@@ -207,6 +207,20 @@ jobs:
           apps/api/src/modules/push/web-push-isolation.spec.ts
           apps/api/src/modules/push/push.service.spec.ts
           apps/api/src/modules/push/push.service.expo-bounds.spec.ts
+          apps/api/src/modules/prisma/prisma.service.spec.ts
+          apps/api/src/common/utils/sentry-redaction.util.spec.ts
+          apps/api/src/modules/conversations/tool-execution-control.service.spec.ts
+          apps/api/src/modules/conversations/tool-policy-registry.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-payments.service.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-payment-store.service.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-wompi-webhook.service.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-wompi.client.spec.ts
+          apps/api/src/modules/tenant-payments/wompi-event-signature.util.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-payment-credential-crypto.service.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-payment-reconciliation.service.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-payment-resolution.spec.ts
+          apps/api/src/modules/tenant-payments/tenant-payments-webhook.service.spec.ts
+          apps/api/src/modules/pipeline/pipeline-opportunity-mirror-guard.spec.ts
 
       - name: TypeScript check (all apps)
         run: |

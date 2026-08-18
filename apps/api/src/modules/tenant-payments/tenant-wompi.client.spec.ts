@@ -204,3 +204,102 @@ describe('TenantWompiClient hosted payment links', () => {
         });
     });
 });
+
+describe('TenantWompiClient.findTransactionByPaymentLink', () => {
+    const client = () => new TenantWompiClient();
+    const tx = (over: Record<string, unknown> = {}) => ({
+        id: 'txn-1',
+        status: 'APPROVED',
+        currency: 'COP',
+        amount_in_cents: 250_000,
+        payment_link_id: LINK_ID,
+        ...over,
+    });
+    const args = {
+        providerLinkId: LINK_ID,
+        publicKey: PUBLIC_KEY,
+        privateKey: PRIVATE_KEY,
+        environment: 'production' as const,
+    };
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('recovers the approved transaction of a link whose webhook never arrived', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(response({ data: [tx()] }));
+
+        const found = await client().findTransactionByPaymentLink(args);
+
+        expect(found).toMatchObject({ id: 'txn-1', status: 'APPROVED', amountCents: 250_000, paymentLinkId: LINK_ID });
+    });
+
+    it('returns null when nobody has paid the link yet', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(response({ data: [] }));
+        await expect(client().findTransactionByPaymentLink(args)).resolves.toBeNull();
+    });
+
+    it('never settles a transaction belonging to a different payment link', async () => {
+        // If the provider ever ignores the filter and returns the merchant's
+        // whole list, trusting it would credit ANOTHER customer's payment
+        // against this order.
+        jest.spyOn(global, 'fetch').mockResolvedValue(response({
+            data: [tx({ id: 'txn-other', payment_link_id: 'link-someone-else' })],
+        }));
+
+        await expect(client().findTransactionByPaymentLink(args)).resolves.toBeNull();
+    });
+
+    it('prefers APPROVED over an older DECLINED retry on the same link', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(response({
+            data: [tx({ id: 'txn-declined', status: 'DECLINED' }), tx({ id: 'txn-approved', status: 'APPROVED' })],
+        }));
+
+        const found = await client().findTransactionByPaymentLink(args);
+
+        expect(found).toMatchObject({ id: 'txn-approved', status: 'APPROVED' });
+    });
+
+    it('prefers an in-flight PENDING over a DECLINED attempt', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(response({
+            data: [tx({ id: 'txn-declined', status: 'DECLINED' }), tx({ id: 'txn-pending', status: 'PENDING' })],
+        }));
+
+        expect(await client().findTransactionByPaymentLink(args)).toMatchObject({ id: 'txn-pending' });
+    });
+
+    it('rejects a non-list payload instead of reporting "nobody paid"', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(response({ data: { id: 'txn-1' } }));
+        await expect(client().findTransactionByPaymentLink(args))
+            .rejects.toThrow(WompiProviderError);
+    });
+
+    it('drops malformed entries rather than settling an unparseable amount', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(response({
+            data: [tx({ amount_in_cents: 'many' }), tx({ currency: 'USD' })],
+        }));
+        await expect(client().findTransactionByPaymentLink(args)).resolves.toBeNull();
+    });
+
+    it('refuses to use credentials from another environment', async () => {
+        const fetchSpy = jest.spyOn(global, 'fetch');
+        await expect(client().findTransactionByPaymentLink({ ...args, environment: 'sandbox' }))
+            .rejects.toMatchObject({ code: 'wompi_environment_mismatch' });
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('marks a 5xx as ambiguous so the caller retries instead of closing the intent', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(response(null, false, 502));
+        await expect(client().findTransactionByPaymentLink(args))
+            .rejects.toMatchObject({ code: 'wompi_transaction_lookup_failed', ambiguous: true });
+    });
+
+    it('authenticates the merchant-scoped lookup with the private key', async () => {
+        const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(response({ data: [] }));
+
+        await client().findTransactionByPaymentLink(args);
+
+        const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+        expect(url).toContain('production.wompi.co');
+        expect(url).toContain(`payment_link_id=${LINK_ID}`);
+        expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${PRIVATE_KEY}`);
+    });
+});

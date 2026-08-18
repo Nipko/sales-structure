@@ -20,6 +20,38 @@ import { cn } from "@/lib/utils";
 
 const EMPTY_CONFIG: TenantPaymentsConfig = { connected: false, providers: {} };
 
+/**
+ * The backend already answers with a stable `errorCode`; the page used to drop
+ * it and render the bare HTTP message, so every rejection read "Error 400" and
+ * the owner could not tell mixed-environment keys from a plan that lacks the
+ * feature from a concurrent edit. Same pattern as plans/_components/ProvidersTab.
+ */
+const ERROR_KEY_BY_CODE: Record<string, string> = {
+    wompi_environment_mismatch: "errors.environmentMismatch",
+    wompi_merchant_unverifiable: "errors.merchantUnverifiable",
+    wompi_public_key_taken: "errors.merchantAlreadyLinked",
+    mercadopago_account_taken: "errors.merchantAlreadyLinked",
+    invalid_wompi_credentials: "errors.invalidWompiCredentials",
+    invalid_mercadopago_credentials: "errors.invalidMercadoPagoCredentials",
+    customer_payments_not_entitled: "errors.planMissingFeature",
+    payment_provider_changed_before_submission: "errors.concurrentEdit",
+    tenant_payment_credential_decryption_unavailable: "errors.credentialUnreadable",
+    unsupported_payment_provider: "errors.unsupportedProvider",
+};
+
+function errorText(
+    res: { error?: string; errorCode?: string } | null | undefined,
+    t: (key: string) => string,
+    fallbackKey: string,
+): string {
+    const mapped = res?.errorCode ? ERROR_KEY_BY_CODE[res.errorCode] : undefined;
+    if (mapped) return t(mapped);
+    // An unmapped code is still far more useful than "Error 400": show it so a
+    // support conversation has something to go on.
+    if (res?.errorCode) return `${t(fallbackKey)} (${res.errorCode})`;
+    return res?.error || t(fallbackKey);
+}
+
 function projectedProvider(
     config: TenantPaymentsConfig,
     provider: TenantPaymentProvider,
@@ -142,7 +174,7 @@ export default function TenantPaymentsPage() {
             setFeedback({ ok: true, text: t("savedProvider", { provider: t(`providers.${provider}.name`) }) });
             await load();
         } else {
-            setFeedback({ ok: false, text: res?.error || t("invalidCredentials") });
+            setFeedback({ ok: false, text: errorText(res as any, t, "invalidCredentials") });
         }
     }
 
@@ -159,7 +191,7 @@ export default function TenantPaymentsPage() {
             setFeedback({ ok: true, text: t("activatedProvider", { provider: t(`providers.${provider}.name`) }) });
             await load();
         } else {
-            setFeedback({ ok: false, text: res?.error || t("activateFailed") });
+            setFeedback({ ok: false, text: errorText(res as any, t, "activateFailed") });
         }
     }
 
@@ -176,7 +208,7 @@ export default function TenantPaymentsPage() {
             setFeedback({ ok: true, text: t("disconnectedProvider", { provider: t(`providers.${provider}.name`) }) });
             await load();
         } else {
-            setFeedback({ ok: false, text: res?.error || t("disconnectFailed") });
+            setFeedback({ ok: false, text: errorText(res as any, t, "disconnectFailed") });
         }
     }
 
@@ -263,6 +295,12 @@ export default function TenantPaymentsPage() {
                             <h2 className="font-semibold">{t(`providers.${provider}.name`)}</h2>
                             {state.verified && <StatusPill tone="green" text={t("accountVerified")} />}
                             {isActive && state.ready && <StatusPill tone="indigo" text={t("activeForAgent")} />}
+                            {/* Sandbox looked identical to production, so a test
+                                charge could mark a real order as paid with no
+                                visible difference anywhere on the screen. */}
+                            {state.connected && state.environment === "sandbox" && (
+                                <StatusPill tone="amber" text={t("sandboxBadge")} />
+                            )}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                             {state.accountEmail || state.merchantName || t(`providers.${provider}.credentialsHint`)}
@@ -280,6 +318,29 @@ export default function TenantPaymentsPage() {
                         </button>
                     )}
                 </div>
+
+                {/* `webhookAcknowledged` is the tenant's own click, not proof.
+                    Until a delivery actually authenticates, the rail can read
+                    "ready" while every payment silently fails to settle — the
+                    single most expensive way this integration goes wrong. */}
+                {state.webhookAcknowledged && !state.lastWebhookAt && (
+                    <Notice icon={AlertTriangle} className="border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200">
+                        {t("webhookNeverReceived")}
+                    </Notice>
+                )}
+                {state.lastWebhookAt && (
+                    <p className="text-[11px] text-muted-foreground">
+                        {t("webhookLastReceived", {
+                            when: new Date(state.lastWebhookAt).toLocaleString(),
+                        })}
+                    </p>
+                )}
+
+                {state.connected && state.environment === "sandbox" && (
+                    <Notice icon={AlertTriangle} className="border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200">
+                        {t("sandboxWarning")}
+                    </Notice>
+                )}
 
                 {provider === "wompi" ? (
                     <WompiForm

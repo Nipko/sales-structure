@@ -27,8 +27,19 @@ export class TenantWompiWebhookService {
         body: any,
         headerChecksum?: string,
     ): Promise<void> {
-        const credentials = await this.tenantPayments.getWompiCredentials(tenantId, callbackToken);
-        if (!credentials) throw new UnauthorizedException('invalid_wompi_callback_token');
+        const { credentials, decryptionFailed } = await this.tenantPayments
+            .getWompiCredentialsDetailed(tenantId, callbackToken);
+        if (!credentials) {
+            // Our own stored envelope would not open. The caller may well be
+            // Wompi delivering a real approved payment, so this must be a
+            // RETRYABLE 503 — a 401 here tells the provider to give up and the
+            // payment is lost for good. 401 stays reserved for a token that
+            // genuinely matches nothing.
+            if (decryptionFailed) {
+                throw new ServiceUnavailableException('tenant_payment_credential_decryption_unavailable');
+            }
+            throw new UnauthorizedException('invalid_wompi_callback_token');
+        }
 
         // The commerce event URL may receive future Wompi event families. They
         // cannot mutate this ledger and are acknowledged only after the opaque
@@ -46,6 +57,12 @@ export class TenantWompiWebhookService {
         if (!signature.valid || !signature.eventKey) {
             throw new UnauthorizedException(`invalid_wompi_event_signature:${signature.reason || 'unknown'}`);
         }
+
+        // Provider evidence that the events URL really reaches us. Recorded as
+        // soon as the signature verifies — before any settlement outcome —
+        // because "the delivery arrived and authenticated" is exactly the fact
+        // the owner needs, independently of what this particular event decided.
+        await this.tenantPayments.recordWebhookHeartbeat(tenantId, 'wompi');
         const transactionId = String(body?.data?.transaction?.id || '').trim();
         // eslint-disable-next-line no-control-regex
         if (!transactionId || transactionId.length > 255 || /[/?#\u0000-\u001f\\]/.test(transactionId)) {

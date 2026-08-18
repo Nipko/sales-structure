@@ -127,9 +127,14 @@ describe('canonical AI tool policy registry', () => {
             idempotency: 'central_ledger',
             confirmation: 'runtime_enforced',
         });
+        // A1, not A2: the step-up identity tools that satisfy A2 are only
+        // published with the insurance toolset, so A2 made payment by chat
+        // unreachable for every other tenant. The central guard, resource
+        // ownership and the signed confirmation turn remain enforced.
         expect(getToolPolicy('create_payment_link')).toMatchObject({
-            assurance: 'A2',
+            assurance: 'A1',
             assuranceEnforcement: 'central_guard',
+            ownership: 'resource_owner',
             externalEffect: 'provider_write',
             confirmation: 'runtime_enforced',
         });

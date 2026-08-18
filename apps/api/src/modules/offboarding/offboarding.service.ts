@@ -1357,6 +1357,15 @@ export class OffboardingService {
         );
         lease.start();
 
+        // The purging fence is deliberately durable: once the saga has mutated
+        // anything it must outlive this call so a half-purged tenant stays shut
+        // until an operator retries. But a failure BEFORE the first mutation
+        // (classification preflight, external-plan preflight) leaves the tenant
+        // completely intact — keeping a 7-day fence over it would lock a live
+        // tenant out of login and fiscal invoicing over a purge that never
+        // happened. Flipped immediately before the first write.
+        let purgeMutationStarted = false;
+
         try {
             await lease.assertOwned();
             const tenant = await this.prisma.tenant.findUnique({
@@ -1399,7 +1408,10 @@ export class OffboardingService {
             let conversationIds = await this.capturePurgeConversationIds(tenant.schemaName);
 
             // Durable, encrypted saga checkpoint + hot-path access fence.
+            // From here on the tenant is mutated, so the fence must survive a
+            // failure and the operator retries into it.
             await lease.assertOwned();
+            purgeMutationStarted = true;
             const checkpointed = await this.prisma.$executeRawUnsafe(
                 `UPDATE public.tenants
                     SET is_active = false,
@@ -1577,6 +1589,19 @@ export class OffboardingService {
                 usersRevoked: userIds.length,
                 strandedMandate,
             };
+        } catch (error: any) {
+            // Nothing was mutated: the tenant is still whole, so the fence must
+            // not outlive this failed attempt. Releasing it is safe precisely
+            // because no destructive step ran; leaving it would shut a live
+            // tenant out for 7 days over a purge that never started.
+            if (!purgeMutationStarted) {
+                await this.redis.del(tenantPurgingFenceKey(tenantId))
+                    .catch((releaseError: any) => this.logger.error(
+                        `[Purge ${tenantId}] Preflight failed AND the purge fence could not be released: `
+                        + `${releaseError.message}. The tenant stays fenced until the key expires.`,
+                    ));
+            }
+            throw error;
         } finally {
             lease.stop();
             await this.redis.releaseLockToken(lockKey, lockToken)

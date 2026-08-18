@@ -12,6 +12,10 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     // they are deleted before it; payment sources only reference the tenant.
     'billing_charge_attempts', 'billing_credit_ledger', 'billing_payment_sources',
     'billing_subscriptions',
+    // Tenant-owned customer payment credentials. These are encrypted provider
+    // secrets (Wompi private/events keys, MercadoPago access tokens): the purge
+    // must remove them, never retain them like fiscal records.
+    'tenant_payment_provider_configs',
     'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
     'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
     'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',

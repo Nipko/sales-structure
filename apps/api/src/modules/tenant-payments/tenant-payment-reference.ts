@@ -10,7 +10,7 @@ export type TenantPaymentStatus =
     | 'ambiguous';
 
 export interface PaymentReferenceTarget {
-    table: 'orders' | 'tour_bookings' | 'food_orders' | 'enrollments';
+    table: 'orders' | 'tour_bookings' | 'food_orders' | 'enrollments' | 'property_bookings';
     amountExpression: string;
     currencyExpression: string;
     join?: string;
@@ -32,6 +32,16 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
         currencyExpression: 'target.currency',
         rejectedStatuses: ['cancelled', 'refunded'],
         description: entityId => `Pago de reserva de tour ${entityId.slice(0, 8)}`,
+    },
+    // The vacation-rental sale. `total_price` already includes the cleaning fee
+    // (properties.service computes nights x night_price + cleaning_fee), so the
+    // stay is charged exactly once for the amount the guest was quoted.
+    property: {
+        table: 'property_bookings',
+        amountExpression: 'target.total_price',
+        currencyExpression: 'target.currency',
+        rejectedStatuses: ['cancelled', 'refunded'],
+        description: entityId => `Pago de reserva de alojamiento ${entityId.slice(0, 8)}`,
     },
     food: {
         table: 'food_orders',

@@ -4,6 +4,7 @@
  */
 import * as Sentry from '@sentry/nestjs';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import { scrubSentryEvent } from './common/utils/sentry-redaction.util';
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -24,6 +25,12 @@ if (dsn) {
 
         // Don't send PII (personal identifiable information)
         sendDefaultPii: false,
+
+        // The tenant Wompi webhook carries its opaque callback token in the URL
+        // path. sendDefaultPii does not cover it, so strip it from both errors
+        // and sampled transactions before anything leaves the process.
+        beforeSend: (event) => scrubSentryEvent(event),
+        beforeSendTransaction: (event) => scrubSentryEvent(event),
 
         // Filter noisy errors
         ignoreErrors: [

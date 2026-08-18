@@ -3860,6 +3860,14 @@ ALTER TABLE "{{SCHEMA_NAME}}"."service_requests" ADD COLUMN IF NOT EXISTS "oppor
 ALTER TABLE "{{SCHEMA_NAME}}"."food_orders" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+
+-- A property stay is a payable purchase like a tour or a restaurant order, but
+-- property_bookings never carried the column the tenant-owned payment resolver
+-- reads, so a vacation-rental tenant could charge for a tour and NOT for a
+-- stay — the core sale of the whole vertical. Strictly additive with the same
+-- default every other payable table uses.
+ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings"
+    ADD COLUMN IF NOT EXISTS "payment_status" VARCHAR(20) DEFAULT 'pending';
 ALTER TABLE "{{SCHEMA_NAME}}"."orders" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 
 DO $native_evidence_opportunity_fks$

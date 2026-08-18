@@ -26,6 +26,7 @@ import {
 } from './tenant-payment-reference';
 import {
     TenantPaymentStoreService,
+    type CanonicalWompiTransaction,
     type TenantPaymentIntent,
 } from './tenant-payment-store.service';
 import {
@@ -33,6 +34,17 @@ import {
     WompiProviderError,
     type WompiEnvironment,
 } from './tenant-wompi.client';
+
+/**
+ * Why the empty cases are split: "the provider says nobody paid" is evidence
+ * that lets an intent be expired and the reference freed for a new link, while
+ * "we could not reach the provider" proves nothing and must keep the reference
+ * blocked. Collapsing them would eventually expire an order that was paid.
+ */
+export interface TenantPaymentRecoveryResult {
+    outcome: 'settled' | 'no_transaction' | 'unavailable';
+    intent: TenantPaymentIntent | null;
+}
 
 const MP_API = 'https://api.mercadopago.com';
 const MASK = '***' as const;
@@ -107,7 +119,14 @@ export interface TenantPaymentProviderState {
     verifiedAt?: string;
     configRevision?: number;
     activationReady?: boolean;
+    /** Self-declared by the tenant clicking Activate — NOT provider evidence. */
     webhookAcknowledged?: boolean;
+    /**
+     * When a webhook from this provider last authenticated for this tenant.
+     * Undefined with `webhookAcknowledged: true` is the dangerous combination:
+     * the rail looks configured and no event has ever arrived.
+     */
+    lastWebhookAt?: string;
     accessToken?: typeof MASK;
     webhookSecret?: typeof MASK;
     privateKey?: typeof MASK;
@@ -188,6 +207,50 @@ export class TenantPaymentsService {
 
     private cacheKey(tenantId: string) { return `tenant_payments:${tenantId}`; }
 
+    private webhookHeartbeatKey(tenantId: string, provider: TenantPaymentProvider) {
+        return `tenant_payments:webhook_seen:${tenantId}:${provider}`;
+    }
+
+    /**
+     * Records that a webhook delivery for this tenant actually authenticated.
+     *
+     * `webhookAcknowledged` is a self-declaration: it is written by the tenant
+     * clicking "Activate", not by anything the provider did. So the panel could
+     * read "Active and ready" over an event URL nobody ever pasted, and the
+     * owner had no way to tell. This is the counterpart written only by a real
+     * delivery, so the UI can say "you marked it configured, but we have never
+     * received an event".
+     *
+     * Telemetry only: never throws, never blocks ingestion.
+     */
+    async recordWebhookHeartbeat(tenantId: string, provider: TenantPaymentProvider): Promise<void> {
+        try {
+            // 90 days: long enough that a quiet-but-working tenant is not
+            // wrongly flagged, short enough that a rail abandoned months ago
+            // stops claiming it is healthy.
+            await this.redis.set(
+                this.webhookHeartbeatKey(tenantId, provider),
+                new Date().toISOString(),
+                90 * 24 * 60 * 60,
+            );
+        } catch {
+            /* telemetry only — a Redis blip must not reject a real payment */
+        }
+    }
+
+    private async readWebhookHeartbeat(
+        tenantId: string,
+        provider: TenantPaymentProvider,
+    ): Promise<string | undefined> {
+        try {
+            return (await this.redis.get(this.webhookHeartbeatKey(tenantId, provider))) || undefined;
+        } catch {
+            // Unknown is not the same as never: leave it undefined and let the
+            // UI treat "no data" as no claim rather than as an alarm.
+            return undefined;
+        }
+    }
+
     /** Masked, versioned config. No private credential is ever returned. */
     async getConfig(tenantId: string): Promise<TenantPaymentConfig> {
         const stored = await this.readStoredConfig(tenantId);
@@ -234,6 +297,10 @@ export class TenantPaymentsService {
         const wompiWebhookUrl = wompiCallbackToken
             ? this.safeWompiNotificationUrl(tenantId, wompiCallbackToken)
             : undefined;
+        const [mpLastWebhookAt, wompiLastWebhookAt] = await Promise.all([
+            this.readWebhookHeartbeat(tenantId, 'mercadopago'),
+            this.readWebhookHeartbeat(tenantId, 'wompi'),
+        ]);
         const mpState: TenantPaymentProviderState = {
             provider: 'mercadopago',
             connected: mpEnabled && mpCredentialsValid,
@@ -247,6 +314,7 @@ export class TenantPaymentsService {
             configRevision: mp.revision || 0,
             activationReady: mpCredentialsValid && !!mpWebhookSecret,
             webhookAcknowledged: !!mpWebhookSecret,
+            lastWebhookAt: mpLastWebhookAt,
             accessToken: mpAccessToken ? MASK : undefined,
             webhookSecret: mpWebhookSecret ? MASK : undefined,
         };
@@ -271,6 +339,7 @@ export class TenantPaymentsService {
             configRevision: wompi.revision || 0,
             activationReady: wompiConnected && !!wompi.verifiedAt && !!wompi.webhookTokenEnc && !!wompiWebhookUrl,
             webhookAcknowledged: !!wompi.webhookAcknowledgedAt,
+            lastWebhookAt: wompiLastWebhookAt,
             privateKey: wompiPrivateKey ? MASK : undefined,
             eventsSecret: wompiEventsSecret ? MASK : undefined,
         };
@@ -766,9 +835,63 @@ export class TenantPaymentsService {
         eventsSecret: string;
         environment: WompiEnvironment;
     } | null> {
+        return (await this.getWompiCredentialsDetailed(tenantId, callbackToken, revision)).credentials;
+    }
+
+    /**
+     * Same lookup, but says WHY it came back empty.
+     *
+     * "No credentials" has two very different causes that used to be
+     * indistinguishable: the caller presented a token that matches nothing
+     * (a stranger — 401 is correct and final), or our own stored envelope
+     * could not be opened (a key rotation done wrong, a restore from an older
+     * backup — the caller is legitimate and the event must be RETRIED, not
+     * discarded). Collapsing both into a silent 401 meant a genuine approved
+     * payment was thrown away with no log, no counter and no way for the owner
+     * to tell a broken key from a bogus caller.
+     */
+    async getWompiCredentialsDetailed(
+        tenantId: string,
+        callbackToken?: string,
+        revision?: number,
+    ): Promise<{
+        credentials: {
+            publicKey: string;
+            privateKey: string;
+            eventsSecret: string;
+            environment: WompiEnvironment;
+        } | null;
+        /** An envelope exists for this tenant but could not be decrypted. */
+        decryptionFailed: boolean;
+    }> {
+        const result = await this.resolveWompiCredentials(tenantId, callbackToken, revision);
+        if (!result.credentials && result.decryptionFailed) {
+            this.logger.error(
+                `[TenantPayments] Wompi credentials for tenant ${tenantId} are stored but could NOT be `
+                + 'decrypted. This is an encryption-key problem (rotation or restore), not a bad caller: '
+                + 'every commerce event for this tenant is being rejected and payments will not settle.',
+            );
+        }
+        return result;
+    }
+
+    private async resolveWompiCredentials(
+        tenantId: string,
+        callbackToken?: string,
+        revision?: number,
+    ): Promise<{
+        credentials: {
+            publicKey: string;
+            privateKey: string;
+            eventsSecret: string;
+            environment: WompiEnvironment;
+        } | null;
+        decryptionFailed: boolean;
+    }> {
+        let decryptionFailed = false;
         const stored = await this.readStoredConfig(tenantId);
         const config = stored.providers.wompi;
-        if (!config) return null;
+        if (!config) return { credentials: null, decryptionFailed };
         const generations: StoredWompiCredentialGeneration[] = revision === undefined && callbackToken === undefined
             ? [config]
             : [config, ...(Array.isArray(config.history) ? config.history : [])];
@@ -787,7 +910,14 @@ export class TenantPaymentsService {
                 generation.webhookTokenEnc,
                 this.credentialContext(tenantId, 'wompi', generation.environment, 'callback_token'),
             );
-            if (!privateKey || !eventsSecret || !expectedCallback) continue;
+            if (!privateKey || !eventsSecret || !expectedCallback) {
+                // The envelopes are present but at least one would not open —
+                // our key is wrong, not the caller's token.
+                if (generation.privateKeyEnc && generation.eventsSecretEnc && generation.webhookTokenEnc) {
+                    decryptionFailed = true;
+                }
+                continue;
+            }
             if (callbackToken !== undefined && !this.constantTimeEqual(callbackToken, expectedCallback)) continue;
             const environment = this.requireWompiClient().environmentForKeys({
                 publicKey: generation.publicKey,
@@ -796,9 +926,12 @@ export class TenantPaymentsService {
                 environment: generation.environment,
             });
             if (!environment) continue;
-            return { publicKey: generation.publicKey, privateKey, eventsSecret, environment };
+            return {
+                credentials: { publicKey: generation.publicKey, privateKey, eventsSecret, environment },
+                decryptionFailed: false,
+            };
         }
-        return null;
+        return { credentials: null, decryptionFailed };
     }
 
     async isConfigured(tenantId: string): Promise<boolean> {
@@ -908,16 +1041,37 @@ export class TenantPaymentsService {
             && intent.expiresAt
             && intent.expiresAt.getTime() <= Date.now()) {
             if (intent.provider === 'wompi') {
-                await this.reconcileExpiredWompiIntent(input.tenantId, intent);
-            } else {
-                await store.markCreationState(
-                    input.tenantId,
-                    intent.id,
-                    'requires_review',
-                    'mercadopago_expired_link_requires_provider_evidence',
-                    intent.providerLinkId,
-                );
+                const reconciled = await this.reconcileExpiredWompiIntent(input.tenantId, intent) || intent;
+
+                // The provider still considers the link usable (clock skew, or
+                // a longer provider-side expiry). Hand back the link the
+                // customer already has instead of refusing the sale.
+                if (reconciled.status === 'pending' && reconciled.providerLinkId && reconciled.checkoutUrl) {
+                    return this.intentToPaymentLink(reconciled);
+                }
+
+                // Proven unpaid and now expired: the reference is free again,
+                // so a retry can mint a fresh link. Say so explicitly — the
+                // generic 503 gave the agent nothing to act on and the customer
+                // simply could not be charged for that order ever again.
+                if (reconciled.status === 'expired') {
+                    throw new ConflictException({
+                        error: 'payment_link_expired_retry_with_new_link',
+                        status: reconciled.status,
+                    });
+                }
+                throw new ServiceUnavailableException({
+                    error: 'payment_link_expiry_reconciliation_required',
+                    status: reconciled.status,
+                });
             }
+            await store.markCreationState(
+                input.tenantId,
+                intent.id,
+                'requires_review',
+                'mercadopago_expired_link_requires_provider_evidence',
+                intent.providerLinkId,
+            );
             throw new ServiceUnavailableException({ error: 'payment_link_expiry_reconciliation_required' });
         }
         if (intent.providerLinkId && intent.checkoutUrl && intent.status === 'pending') {
@@ -1215,6 +1369,17 @@ export class TenantPaymentsService {
                 }
             }
         }
+        // No provider_transaction_id means the commerce event never arrived —
+        // previously the dead end that left a paid order unpaid forever. The
+        // payment link id survives a lost event, so recover through it before
+        // telling the customer their payment has not been seen.
+        if (intent?.provider === 'wompi'
+            && !intent.providerTransactionId
+            && intent.providerLinkId
+            && intent.status === 'pending') {
+            const recovered = await this.recoverWompiIntentFromProvider(input.tenantId, intent, 'poll');
+            intent = recovered.intent || intent;
+        }
         if (intent?.provider === 'wompi'
             && intent.status === 'pending'
             && intent.expiresAt
@@ -1407,6 +1572,184 @@ export class TenantPaymentsService {
         }
     }
 
+    /**
+     * Settles an intent from provider evidence when the commerce event never
+     * arrived (mistyped events secret, events URL never pasted in the Wompi
+     * dashboard, retries exhausted during a deploy).
+     *
+     * The webhook used to be the ONLY writer of provider_transaction_id, and
+     * the poll path required that same id — so a lost first event left the
+     * customer charged and the order unpaid with nothing able to repair it.
+     * The payment link id is known at creation time, so it is the identifier
+     * that survives a lost event and breaks the circle.
+     *
+     * Returns null when the provider has no transaction for the link, which is
+     * the ordinary "nobody paid yet" case and is not an error.
+     */
+    async recoverWompiIntentFromProvider(
+        tenantId: string,
+        intent: TenantPaymentIntent,
+        source: 'poll' | 'reconciliation',
+    ): Promise<TenantPaymentRecoveryResult> {
+        if (intent.provider !== 'wompi') return { outcome: 'unavailable', intent: null };
+        if (!intent.providerTransactionId && !intent.providerLinkId) {
+            return { outcome: 'unavailable', intent: null };
+        }
+        const credentials = await this.getWompiCredentials(
+            tenantId,
+            undefined,
+            this.intentCredentialRevision(intent),
+        );
+        if (!credentials) return { outcome: 'unavailable', intent: null };
+
+        let transaction: CanonicalWompiTransaction | null = null;
+        try {
+            transaction = intent.providerTransactionId
+                ? await this.requireWompiClient().getTransaction({
+                    transactionId: intent.providerTransactionId,
+                    publicKey: credentials.publicKey,
+                    environment: credentials.environment,
+                })
+                : await this.requireWompiClient().findTransactionByPaymentLink({
+                    providerLinkId: intent.providerLinkId!,
+                    publicKey: credentials.publicKey,
+                    privateKey: credentials.privateKey,
+                    environment: credentials.environment,
+                });
+        } catch (error: any) {
+            this.logger.warn(
+                `Wompi ${source} recovery failed for intent ${intent.id}: ${error.message}`,
+            );
+            return { outcome: 'unavailable', intent: null };
+        }
+        // A successful query that found nothing is PROOF that nobody started a
+        // payment on this link — the distinction that makes it safe to expire
+        // the intent later. A failed query proves nothing and must never be
+        // mistaken for it.
+        if (!transaction) return { outcome: 'no_transaction', intent: null };
+        if (!transaction.paymentLinkId) return { outcome: 'unavailable', intent: null };
+        // Defence in depth: only settle evidence that belongs to THIS intent's
+        // link. A provider that ignored the filter must never cross-credit.
+        if (intent.providerLinkId && transaction.paymentLinkId !== intent.providerLinkId) {
+            this.logger.error(
+                `[TenantPayments] Wompi returned transaction ${transaction.id} for link `
+                + `${transaction.paymentLinkId} while recovering intent ${intent.id} `
+                + `(link ${intent.providerLinkId}); refusing to settle`,
+            );
+            return { outcome: 'unavailable', intent: null };
+        }
+
+        // Deliberately the same `poll:` prefix regardless of which path found
+        // the transaction: the event key IS the idempotency key, so the status
+        // poll and the expiry reconciliation must collapse onto one entry for
+        // the same transaction rather than each recording its own.
+        const eventKey = createHash('sha256')
+            .update(`poll:${transaction.id}:${transaction.status}:${transaction.amountCents}:${transaction.paymentLinkId}`)
+            .digest('hex');
+        try {
+            const settled = await this.requireStore().settleWompiTransaction({
+                tenantId,
+                transaction,
+                eventKey,
+                source: 'poll',
+            });
+            return { outcome: 'settled', intent: settled.intent || null };
+        } catch (error: any) {
+            this.logger.warn(
+                `Wompi ${source} settlement failed for intent ${intent.id}: ${error.message}`,
+            );
+            return { outcome: 'unavailable', intent: null };
+        }
+    }
+
+    /** Payments the ledger refused to settle on its own, for the operator screen. */
+    async listUnresolvedIntents(tenantId: string): Promise<Array<{
+        id: string;
+        provider: TenantPaymentProvider;
+        status: TenantPaymentStatus;
+        canonicalReference: string;
+        amountCents: number;
+        currency: string;
+        description: string;
+        lastError?: string;
+        providerLinkId?: string;
+        providerTransactionId?: string;
+        createdAt?: string;
+    }>> {
+        const intents = await this.requireStore().listUnresolvedIntents(tenantId);
+        return intents.map((intent) => ({
+            id: intent.id,
+            provider: intent.provider,
+            status: intent.status,
+            canonicalReference: intent.canonicalReference,
+            amountCents: intent.amountCents,
+            currency: intent.currency,
+            description: intent.description,
+            lastError: intent.lastError,
+            providerLinkId: intent.providerLinkId,
+            providerTransactionId: intent.providerTransactionId,
+            createdAt: intent.createdAt?.toISOString(),
+        }));
+    }
+
+    /**
+     * Closes one review state, always by asking the provider first.
+     *
+     * The operator cannot choose the outcome. We re-read the provider: if money
+     * really arrived the intent settles as paid exactly as a webhook would, and
+     * if the provider has no transaction at all the reference is released so the
+     * customer can be charged again. An operator who could type "paid" would be
+     * able to mark an order settled that nobody ever paid — which is precisely
+     * the failure this whole module is built to prevent.
+     */
+    async resolveUnresolvedIntent(
+        tenantId: string,
+        intentId: string,
+        reason: string,
+    ): Promise<{ outcome: 'settled' | 'released' | 'still_unresolved'; status: TenantPaymentStatus }> {
+        const trimmedReason = String(reason || '').trim();
+        if (trimmedReason.length < 4 || trimmedReason.length > 300) {
+            throw new BadRequestException({ error: 'resolution_reason_required' });
+        }
+        const store = this.requireStore();
+        const intent = await store.findById(tenantId, intentId);
+        if (!intent) throw new BadRequestException({ error: 'tenant_payment_intent_not_found' });
+        if (!['requires_review', 'ambiguous'].includes(intent.status)) {
+            throw new ConflictException({ error: 'tenant_payment_intent_not_unresolved', status: intent.status });
+        }
+
+        const recovered = await this.recoverWompiIntentFromProvider(tenantId, intent, 'reconciliation');
+        if (recovered.outcome === 'settled' && recovered.intent) {
+            this.logger.log(
+                `[TenantPayments] Review intent ${intentId} settled from provider evidence as `
+                + `'${recovered.intent.status}' (operator reason: ${trimmedReason})`,
+            );
+            return { outcome: 'settled', status: recovered.intent.status };
+        }
+        if (recovered.outcome === 'no_transaction') {
+            const released = await store.discardUnresolvedIntent(
+                tenantId,
+                intentId,
+                `operator_released: ${trimmedReason}`.slice(0, 500),
+            );
+            if (!released) {
+                // Something settled it between our read and this write; the
+                // settlement is authoritative and must not be overwritten.
+                const latest = await store.findById(tenantId, intentId);
+                return { outcome: 'still_unresolved', status: latest?.status || intent.status };
+            }
+            this.logger.warn(
+                `[TenantPayments] Review intent ${intentId} released as expired — provider has no `
+                + `transaction for it (operator reason: ${trimmedReason})`,
+            );
+            return { outcome: 'released', status: released.status };
+        }
+
+        // Provider unreachable. Refuse to guess: leaving it unresolved is the
+        // only safe answer, and the operator can retry.
+        throw new ServiceUnavailableException({ error: 'tenant_payment_provider_evidence_unavailable' });
+    }
+
     private async reconcileExpiredWompiIntent(
         tenantId: string,
         intent: TenantPaymentIntent,
@@ -1431,10 +1774,37 @@ export class TenantPaymentsService {
                 allowInactive: true,
             });
             if (link.active) return intent;
-            // An inactive/expired link does not prove that no bank redirect is
-            // still PENDING, nor that an APPROVED webhook was not lost. Keep
-            // the reference blocked for explicit reconciliation and never
-            // manufacture an `expired` terminal state from local time.
+
+            // An inactive link does not prove nobody paid — an APPROVED event
+            // may simply have been lost. Ask the provider directly BEFORE
+            // blocking the reference: this is the difference between a customer
+            // whose money arrived being marked paid, and being stuck behind a
+            // review state that had no operator surface at all.
+            const recovered = await this.recoverWompiIntentFromProvider(tenantId, intent, 'reconciliation');
+            if (recovered.outcome === 'settled' && recovered.intent && recovered.intent.status !== 'pending') {
+                return recovered.intent;
+            }
+
+            // The provider answered and has NO transaction for this link: the
+            // link died unpaid, which is the most ordinary outcome in chat
+            // commerce (the customer simply did not pay today). Expire it so
+            // the reference leaves the unresolved unique index and the customer
+            // can be given a fresh link. Before this, that everyday case parked
+            // the order in `requires_review` FOREVER with no way to charge it.
+            if (recovered.outcome === 'no_transaction') {
+                await this.requireStore().markCreationState(
+                    tenantId,
+                    intent.id,
+                    'expired',
+                    'wompi_link_expired_without_payment',
+                    intent.providerLinkId,
+                );
+                return { ...intent, status: 'expired', lastError: 'wompi_link_expired_without_payment' };
+            }
+
+            // We could not reach the provider. That proves nothing, so never
+            // manufacture a terminal state from local time — an in-flight bank
+            // redirect can still land.
             await this.requireStore().markCreationState(
                 tenantId,
                 intent.id,

@@ -8,6 +8,8 @@ import { TenantPaymentStoreService } from './tenant-payment-store.service';
 import { TenantWompiClient } from './tenant-wompi.client';
 import { TenantWompiWebhookService } from './tenant-wompi-webhook.service';
 import { TenantPaymentCredentialCryptoService } from './tenant-payment-credential-crypto.service';
+import { TenantPaymentReconciliationService } from './tenant-payment-reconciliation.service';
+import { TenantPaymentEventsListener } from './tenant-payment-events.listener';
 
 /**
  * Cobros del tenant a su cliente final (D3).
@@ -26,9 +28,11 @@ import { TenantPaymentCredentialCryptoService } from './tenant-payment-credentia
         TenantWompiClient,
         TenantWompiWebhookService,
         TenantPaymentCredentialCryptoService,
+        TenantPaymentReconciliationService,
+        TenantPaymentEventsListener,
         WhatsappCryptoService,
     ],
     controllers: [TenantPaymentsController],
-    exports: [TenantPaymentsService, TenantMercadoPagoOperationProvider],
+    exports: [TenantPaymentsService, TenantMercadoPagoOperationProvider, TenantPaymentReconciliationService],
 })
 export class TenantPaymentsModule {}

@@ -23,6 +23,8 @@ export interface TenantPaymentIntent {
     expiresAt?: Date;
     paidAt?: Date;
     lastError?: string;
+    /** Lets the operator screen show how long a payment has been parked. */
+    createdAt?: Date;
 }
 
 interface IntentRow {
@@ -41,6 +43,7 @@ interface IntentRow {
     status: TenantPaymentStatus;
     expires_at: Date | string | null;
     paid_at: Date | string | null;
+    created_at?: Date | string | null;
     last_error: string | null;
 }
 
@@ -324,10 +327,20 @@ export class TenantPaymentStoreService {
         return this.mapIntent(rows[0]);
     }
 
+    /**
+     * `expired` is only reachable with positive provider evidence that no
+     * transaction was ever started on the link. It is deliberately terminal and
+     * — unlike pending/requires_review/ambiguous — sits OUTSIDE the unresolved
+     * reference unique index, which is precisely what frees the order to be
+     * charged again with a fresh link.
+     *
+     * Guarded by `status = 'pending'`, so a settled payment can never be walked
+     * backwards into an expiry by a late sweep.
+     */
     async markCreationState(
         tenantId: string,
         intentId: string,
-        status: 'failed' | 'requires_review' | 'ambiguous',
+        status: 'failed' | 'requires_review' | 'ambiguous' | 'expired',
         error: string,
         providerLinkId?: string,
     ): Promise<void> {
@@ -374,6 +387,98 @@ export class TenantPaymentStoreService {
               WHERE provider = $1 AND provider_link_id = $2
               LIMIT 1`,
             [provider, providerLinkId],
+        );
+        return rows[0] ? this.mapIntent(rows[0]) : null;
+    }
+
+    /**
+     * Wompi intents that were handed to a customer but for which no commerce
+     * event ever arrived: a link exists, yet no provider transaction id was
+     * ever written. Each one is a customer who may have paid while the order
+     * still reads unpaid, so they are the reconciliation sweep's work list.
+     *
+     * `olderThanMinutes` keeps the sweep away from links a customer is paying
+     * right now — the webhook is still the fast path and should win.
+     */
+    async findWompiIntentsAwaitingProviderEvidence(
+        tenantId: string,
+        olderThanMinutes: number,
+        limit = 50,
+    ): Promise<TenantPaymentIntent[]> {
+        const schemaName = await this.ensureForTenant(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<IntentRow[]>(
+            schemaName,
+            `SELECT * FROM tenant_payment_intents
+              WHERE provider = 'wompi'
+                AND status IN ('pending', 'requires_review')
+                AND provider_link_id IS NOT NULL
+                AND provider_transaction_id IS NULL
+                AND created_at < NOW() - ($1 || ' minutes')::interval
+              ORDER BY created_at ASC
+              LIMIT $2`,
+            [String(Math.max(1, Math.floor(olderThanMinutes))), limit],
+        );
+        return (rows || []).map((row) => this.mapIntent(row));
+    }
+
+    /**
+     * Intents parked in a review state. These are the ones the ledger refused to
+     * settle automatically (amount changed between link and payment, a second
+     * distinct charge, provider evidence unavailable at expiry). They were
+     * previously invisible AND unresolvable: no endpoint, no screen, no cron —
+     * the only way out was hand-written SQL in production.
+     */
+    async listUnresolvedIntents(tenantId: string, limit = 100): Promise<TenantPaymentIntent[]> {
+        const schemaName = await this.ensureForTenant(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<IntentRow[]>(
+            schemaName,
+            `SELECT * FROM tenant_payment_intents
+              WHERE status IN ('requires_review', 'ambiguous')
+              ORDER BY created_at DESC
+              LIMIT $1`,
+            [limit],
+        );
+        return (rows || []).map((row) => this.mapIntent(row));
+    }
+
+    async findById(tenantId: string, intentId: string): Promise<TenantPaymentIntent | null> {
+        const schemaName = await this.ensureForTenant(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<IntentRow[]>(
+            schemaName,
+            `SELECT * FROM tenant_payment_intents WHERE id = $1::uuid LIMIT 1`,
+            [intentId],
+        );
+        return rows[0] ? this.mapIntent(rows[0]) : null;
+    }
+
+    /**
+     * Operator-driven close of a review state, restricted to `expired`.
+     *
+     * Deliberately NOT a free-form status write: an operator must never be able
+     * to type "paid" and manufacture money that the provider never confirmed.
+     * Settling as paid stays exclusively with provider evidence, through
+     * settleWompiTransaction. This only releases a reference that provably has
+     * no payment, so the customer can be charged again.
+     *
+     * Guarded on the review states, so a settlement that lands between the
+     * operator's read and this write always wins.
+     */
+    async discardUnresolvedIntent(
+        tenantId: string,
+        intentId: string,
+        reason: string,
+    ): Promise<TenantPaymentIntent | null> {
+        const schemaName = await this.ensureForTenant(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<IntentRow[]>(
+            schemaName,
+            `UPDATE tenant_payment_intents
+                SET status = 'expired',
+                    last_error = $2,
+                    updated_at = NOW()
+              WHERE id = $1::uuid
+                AND status IN ('requires_review', 'ambiguous')
+              RETURNING *`,
+            [intentId, reason.slice(0, 500)],
         );
         return rows[0] ? this.mapIntent(rows[0]) : null;
     }
@@ -917,6 +1022,7 @@ export class TenantPaymentStoreService {
             expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
             paidAt: row.paid_at ? new Date(row.paid_at) : undefined,
             lastError: row.last_error || undefined,
+            createdAt: row.created_at ? new Date(row.created_at) : undefined,
         };
     }
 }

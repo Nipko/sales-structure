@@ -52,7 +52,22 @@
     "agentIntegrationDescription": "Enable Customer payments on the agent. The model only sends a payable reference; the backend fixes the amount and the agent never says “paid” before canonical confirmation.",
     "configureAgent": "Configure agents",
     "footnote": "Unless plan, agent, and provider are ready, the agent will not offer chat payment. Links are single-use, fixed-amount, and expiring.",
-    "scopeNotice": "These credentials only collect money from your customers. They never pay the Parallly subscription or use the platform Wompi credentials."
+    "scopeNotice": "These credentials only collect money from your customers. They never pay the Parallly subscription or use the platform Wompi credentials.",
+    "sandboxBadge": "TEST",
+    "sandboxWarning": "This account is in test mode. Payments are not real, yet they still mark your orders as paid. Switch to production before charging a customer.",
+    "webhookNeverReceived": "You marked the event URL as configured, but we have not received a single event from this provider yet. Until that changes, a customer can pay and the order will stay unpaid. Check that the URL is pasted in the provider dashboard and that the events secret is the right one.",
+    "webhookLastReceived": "Last event received: {when}",
+    "errors": {
+      "environmentMismatch": "The keys do not all belong to the same environment. Make sure all three are test keys, or all three are production keys.",
+      "merchantUnverifiable": "We could not verify the merchant with that public key. Check that it belongs to this account.",
+      "merchantAlreadyLinked": "That payment account is already linked to another tenant.",
+      "invalidWompiCredentials": "The credentials are not valid. Check the public key, private key and events secret.",
+      "invalidMercadoPagoCredentials": "The credentials are not valid. Check the access token and the webhook secret.",
+      "planMissingFeature": "Your plan does not include customer payments. Upgrade to enable it.",
+      "concurrentEdit": "Someone else changed the payment settings while you were editing. Reload the page and try again.",
+      "credentialUnreadable": "We could not read the stored credentials. Please enter them again.",
+      "unsupportedProvider": "That payment provider is not supported."
+    }
   },
   "emailVerification": {
     "message": "Your email {email} is not verified yet.",

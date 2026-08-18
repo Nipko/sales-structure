@@ -27,12 +27,16 @@ function event(transactionId = 'transaction-1') {
 
 function harness() {
     const tenantPayments = {
-        getWompiCredentials: jest.fn().mockResolvedValue({
-            publicKey: 'pub_prod_abcdefghijklmnop',
-            privateKey: 'prv_prod_abcdefghijklmnop',
-            eventsSecret: EVENTS_SECRET,
-            environment: 'production',
+        getWompiCredentialsDetailed: jest.fn().mockResolvedValue({
+            credentials: {
+                publicKey: 'pub_prod_abcdefghijklmnop',
+                privateKey: 'prv_prod_abcdefghijklmnop',
+                eventsSecret: EVENTS_SECRET,
+                environment: 'production',
+            },
+            decryptionFailed: false,
         }),
+        recordWebhookHeartbeat: jest.fn().mockResolvedValue(undefined),
     };
     const wompi = {
         getTransaction: jest.fn().mockResolvedValue({
@@ -161,9 +165,43 @@ describe('TenantWompiWebhookService', () => {
         expect(persistence.events.emit).not.toHaveBeenCalled();
     });
 
+    it('records the webhook heartbeat only once a delivery actually authenticates', async () => {
+        // `webhookAcknowledged` is written by the tenant clicking Activate, so
+        // the panel could claim "ready" over an events URL nobody ever pasted.
+        // The heartbeat is the counterpart, and it must never be written by an
+        // unsigned caller — otherwise it would launder a forged request into
+        // evidence that the rail works.
+        const ok = harness();
+        await ok.service.process(TENANT, TOKEN, event().body);
+        expect(ok.tenantPayments.recordWebhookHeartbeat).toHaveBeenCalledWith(TENANT, 'wompi');
+
+        const forged = harness();
+        await expect(forged.service.process(
+            TENANT,
+            TOKEN,
+            { ...event().body, signature: { checksum: 'nope', properties: [] } },
+        )).rejects.toMatchObject({ status: 401 });
+        expect(forged.tenantPayments.recordWebhookHeartbeat).not.toHaveBeenCalled();
+    });
+
+    it('answers a retryable 503 — not a silent 401 — when our own envelope will not decrypt', async () => {
+        // A key rotation done wrong or a restore from an older backup makes the
+        // stored credential unreadable. The caller is very likely Wompi
+        // delivering a REAL approved payment: a 401 tells it to stop retrying
+        // and the money is never credited. 503 keeps the delivery alive.
+        const brokenKey = harness();
+        brokenKey.tenantPayments.getWompiCredentialsDetailed
+            .mockResolvedValueOnce({ credentials: null, decryptionFailed: true });
+
+        await expect(brokenKey.service.process(TENANT, TOKEN, event().body))
+            .rejects.toMatchObject({ status: 503 });
+        expect(brokenKey.wompi.getTransaction).not.toHaveBeenCalled();
+    });
+
     it('rejects an invalid callback token, environment or signature before provider reads', async () => {
         const invalidToken = harness();
-        invalidToken.tenantPayments.getWompiCredentials.mockResolvedValueOnce(null);
+        invalidToken.tenantPayments.getWompiCredentialsDetailed
+            .mockResolvedValueOnce({ credentials: null, decryptionFailed: false });
         const signed = event();
         await expect(invalidToken.service.process(TENANT, 'wrong', signed.body)).rejects.toMatchObject({ status: 401 });
         expect(invalidToken.wompi.getTransaction).not.toHaveBeenCalled();

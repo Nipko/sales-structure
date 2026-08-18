@@ -56,7 +56,7 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'create_property_booking',
-        description: 'Create a direct booking for a property. Checks availability first.',
+        description: 'Create a direct booking for a property. Checks availability first. Always call this tool to reserve the property before attempting to create any payment link.',
         parameters: {
             type: 'object',
             properties: {

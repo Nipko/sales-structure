@@ -261,8 +261,8 @@ export class PaymentOperationService {
                 ok: false,
                 result: {
                     error: 'payment_ownership_unverified',
-                    shouldHandoff: true,
-                    message: 'No se pudo demostrar que esta compra pertenece al contacto o sigue siendo pagable.',
+                    shouldHandoff: false,
+                    message: 'No se encontró un pedido o reserva pendiente con esa referencia para este contacto. Si el cliente desea reservar, primero debes crear la reserva con la herramienta correspondiente (ej. create_property_booking). No inventes una referencia.',
                 },
             };
         }

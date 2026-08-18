@@ -353,4 +353,20 @@ describe('PropertiesService reservations', () => {
         expect(query.mock.calls[0][0]).toContain('pg_advisory_xact_lock');
         expect(query.mock.calls.some(([sql]) => sql.includes('INSERT INTO property_bookings'))).toBe(false);
     });
+    // Regression: a tool call carrying a slug ("amazon-minimalist") reached the
+    // `::uuid` cast and came back as a raw Postgres 22P02, which the model cannot
+    // correct. The guard lives with the SQL so it covers every caller, not only
+    // the tool that failed in production.
+    it.each([
+        ['a slug', 'amazon-minimalist'],
+        ['an empty string', ''],
+        ['a non-string', 42],
+    ])('getById rejects %s before reaching the ::uuid cast', async (_label, badId) => {
+        const executeInTenantSchema = jest.fn();
+        const { service } = buildService({ executeInTenantSchema });
+
+        await expect(service.getById(schemaName, badId as any))
+            .rejects.toBeInstanceOf(BadRequestException);
+        expect(executeInTenantSchema).not.toHaveBeenCalled();
+    });
 });

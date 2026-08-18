@@ -225,6 +225,13 @@ export type TenantPaymentsConfig = {
     webhookUrl?: string;
     /** Legacy top-level projection of the active provider. */
     webhookConfigured?: boolean;
+    /**
+     * The backend spreads the active provider's state at the top level too, so
+     * these arrive flat. Declared because consumers legitimately read them when
+     * there is no providers map (v1 payloads).
+     */
+    activationReady?: boolean;
+    webhookAcknowledged?: boolean;
     providers?: Partial<Record<TenantPaymentProvider, TenantPaymentProviderConfig>>;
 };
 

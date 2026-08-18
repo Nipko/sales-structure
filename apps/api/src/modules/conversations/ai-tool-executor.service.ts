@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -689,6 +689,15 @@ export class AIToolExecutorService {
             return { success: true, propertyName: p.name, count: media.length, _mediaToSend: media };
         } catch (e: any) {
             this.logger.warn(`[Tool] send_property_image failed: ${e.message}`);
+            // Un id inválido lo puede arreglar el propio modelo, pero solo si el
+            // error le dice qué se espera y de dónde sacarlo: "no se pudo" lo
+            // deja repitiendo el mismo slug.
+            if (e instanceof BadRequestException) {
+                return {
+                    error: 'invalid_property_id',
+                    message: 'propertyId debe ser el UUID de la propiedad, no su nombre. Llamá list_properties para obtenerlo y reintentá.',
+                };
+            }
             return { error: 'No se pudo enviar la imagen de la propiedad.' };
         }
     }
@@ -772,15 +781,32 @@ export class AIToolExecutorService {
      *
      * El tope es 3 y no mas: en WhatsApp cada imagen es un mensaje aparte, y
      * seis notificaciones seguidas se leen como spam, no como catalogo.
+     *
+     * Las relativas se absolutizan en vez de descartarse: MediaService guarda
+     * lo que sube el dueño como ruta (`/api/v1/media/file/...`), asi que
+     * filtrar por `^https?://` dejaba en cero el set de TODO tenant que carga
+     * sus fotos por el panel — y el llamador devuelve un `error` plano, sin
+     * warning, asi que la foto simplemente nunca llegaba y nadie se enteraba.
+     * Lo que no es ni URL http(s) ni ruta local enraizada (`data:`,
+     * `javascript:`, protocol-relative) sigue afuera: esta URL se le entrega
+     * tal cual a Meta/Telegram.
      */
     private toMediaSet(images: unknown, caption?: string, max = 3): Array<{ url: string; caption?: string }> {
         if (!Array.isArray(images)) return [];
-        return images
-            .filter((u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u))
-            .slice(0, max)
-            // Solo la primera lleva epígrafe: repetir el nombre en cada foto
-            // llena la pantalla del cliente con el mismo texto tres veces.
-            .map((url, i) => ({ url, caption: i === 0 ? caption : undefined }));
+        const urls: string[] = [];
+        for (const raw of images) {
+            if (urls.length >= max) break;
+            if (typeof raw !== 'string') continue;
+            const value = raw.trim();
+            const isAbsolute = /^https?:\/\//i.test(value);
+            const isLocalPath = value.startsWith('/') && !value.startsWith('//');
+            if (!isAbsolute && !isLocalPath) continue;
+            const resolved = absoluteMediaUrl(value);
+            if (resolved) urls.push(resolved);
+        }
+        // Solo la primera lleva epígrafe: repetir el nombre en cada foto
+        // llena la pantalla del cliente con el mismo texto tres veces.
+        return urls.map((url, i) => ({ url, caption: i === 0 ? caption : undefined }));
     }
 
     /** Send a real-estate listing's real photos (URLs from the DB, never the LLM). */
@@ -795,6 +821,12 @@ export class AIToolExecutorService {
             return { success: true, listingName: l.name, count: media.length, _mediaToSend: media };
         } catch (e: any) {
             this.logger.warn(`[Tool] send_listing_image failed: ${e.message}`);
+            if (e instanceof BadRequestException) {
+                return {
+                    error: 'invalid_listing_id',
+                    message: 'listingId debe ser el UUID del inmueble, no su nombre. Llamá search_listings para obtenerlo y reintentá.',
+                };
+            }
             return { error: 'No se pudo enviar la imagen del inmueble.' };
         }
     }
@@ -870,13 +902,15 @@ export class AIToolExecutorService {
             );
             if (!rows.length) return { error: 'vehicle_not_found' };
             const v = rows[0];
-            const photos = Array.isArray(v.photos) ? v.photos : [];
-            const url = photos.length ? photos[0] : null;
-            if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+            const caption = `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim() || undefined;
+            // Las fotos del inventario tambien pueden venir del banco de medios,
+            // o sea relativas: se normalizan igual que las de las otras tools.
+            // Sigue yendo UNA sola foto (el auto se muestra de a uno).
+            const [photo] = this.toMediaSet(v.photos, caption, 1);
+            if (!photo) {
                 return { error: 'Ese vehículo no tiene una imagen disponible.' };
             }
-            const caption = `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim() || undefined;
-            return { success: true, vehicle: caption, _mediaToSend: { url, caption } };
+            return { success: true, vehicle: caption, _mediaToSend: photo };
         } catch (e: any) {
             this.logger.warn(`[Tool] send_vehicle_image failed: ${e.message}`);
             return { error: 'No se pudo enviar la imagen del vehículo.' };

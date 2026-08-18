@@ -105,6 +105,11 @@ export class PropertiesService {
     }
 
     async getById(schemaName: string, propertyId: string): Promise<any> {
+        // La validación vive acá, donde vive el `::uuid`, y no en cada llamador:
+        // el id suele venir de una tool call del LLM, que manda el slug o el
+        // nombre. Sin esto Postgres tira 22P02 crudo y el modelo no sabe qué
+        // corregir; con esto todo llamador recibe el mismo error accionable.
+        this.assertUuid(propertyId, 'propertyId');
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT * FROM properties WHERE id = $1::uuid`,

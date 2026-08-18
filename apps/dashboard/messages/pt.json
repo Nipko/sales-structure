@@ -15,6 +15,12 @@
     "accountVerified": "Conta identificada",
     "activeForAgent": "Usado pelo agente",
     "useForAgent": "Usar com o agente",
+    "pendingActivation": "Falta ativar",
+    "finishActivation": "Confirmar e ativar",
+    "activationRequiredTitle": "Falta um passo para o agente poder cobrar",
+    "activationRequiredBody": "Suas chaves já estão salvas e verificadas. Só falta você confirmar que a URL de eventos está colada no painel do {provider}: isso não conseguimos ver daqui, só você pode confirmar. Até lá, o agente não gera links de pagamento.",
+    "activationRequiredStep1": "Copie a URL de eventos abaixo e cole no painel do {provider}. Se já fez isso lá, siga para o passo 2.",
+    "activationRequiredStep2": "Volte aqui e toque em “Confirmar e ativar”. Esse botão é o que liga a cobrança.",
     "wompiActivationConfirm": "Antes de ativar a Wompi, confirme que você copiou a URL de eventos mostrada aqui e a configurou no comércio e ambiente corretos da Wompi. Ela já está configurada?",
     "environment": "Ambiente",
     "sandbox": "Testes (sandbox)",
@@ -3557,6 +3563,8 @@
       "paymentsUpgrade": "Ver planos",
       "paymentsCreateLinks": "Permitir criação de links de pagamento",
       "paymentsCreateLinksDesc": "O agente usa o provedor ativo; nunca escolhe o valor nem considera um link pendente como pago.",
+      "paymentsRailPending": "As credenciais de cobrança já estão cadastradas, mas a cobrança ainda não está ativa: falta o último passo em Cobranças de clientes. Com esta chave ligada, o agente mesmo assim não vai conseguir cobrar.",
+      "paymentsRailMissing": "Você ainda não conectou uma conta de cobranças. Com esta chave ligada, o agente não vai conseguir cobrar até você conectar uma.",
       "paymentsConfigure": "Configurar conta de cobranças"
     },
     "customPrompt": {

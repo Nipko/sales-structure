@@ -15,6 +15,12 @@
     "accountVerified": "Account identified",
     "activeForAgent": "Used by the agent",
     "useForAgent": "Use with the agent",
+    "pendingActivation": "Activation pending",
+    "finishActivation": "Confirm and activate",
+    "activationRequiredTitle": "One step left before the agent can charge",
+    "activationRequiredBody": "Your keys are saved and verified. All that is missing is your confirmation that the events URL is installed in the {provider} panel: we cannot see that from here, so only you can confirm it. Until you do, the agent creates no payment links.",
+    "activationRequiredStep1": "Copy the events URL below and paste it into the {provider} panel. If you already did it there, go to step 2.",
+    "activationRequiredStep2": "Come back here and press “Confirm and activate”. That button is what turns charging on.",
     "wompiActivationConfirm": "Before activating Wompi, confirm that you copied the event URL shown here and configured it in the correct Wompi merchant and environment. Is it configured now?",
     "environment": "Environment",
     "sandbox": "Test (sandbox)",
@@ -3557,6 +3563,8 @@
       "paymentsUpgrade": "Review plans",
       "paymentsCreateLinks": "Allow payment-link creation",
       "paymentsCreateLinksDesc": "The agent uses the active provider; it never chooses the amount or treats a pending link as paid.",
+      "paymentsRailPending": "Payment credentials are loaded, but charging is not active yet: one last step is missing in Customer payments. With this switch on, the agent still will not be able to charge.",
+      "paymentsRailMissing": "You have not connected a payments account yet. With this switch on, the agent will not be able to charge until you connect one.",
       "paymentsConfigure": "Configure payments account"
     },
     "customPrompt": {

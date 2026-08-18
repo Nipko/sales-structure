@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
+import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
 
 const META_GRAPH_VERSION = 'v21.0';
 
@@ -65,7 +66,10 @@ export class WhatsappMessagingService {
       recipient_type: 'individual',
       to: cleanPhone,
       type: 'text',
-      text: { body: text },
+      // Second live WhatsApp route: this service builds its own payload and
+      // never passed through the adapter, so Markdown from any caller reached
+      // the customer raw. Two WhatsApp paths have bitten this repo before.
+      text: { body: toWhatsAppFormatting(text) },
     };
 
     return this.sendToMeta(schemaName, channelId, phoneNumberId, accessToken, payload, undefined, conversationId);
@@ -95,7 +99,10 @@ export class WhatsappMessagingService {
       recipient_type: 'individual',
       to: cleanPhone,
       type: 'interactive',
-      interactive,
+      interactive: {
+        ...interactive,
+        body: { ...interactive.body, text: toWhatsAppFormatting(interactive.body.text) },
+      },
     };
 
     return this.sendToMeta(schemaName, channelId, phoneNumberId, accessToken, payload, undefined, conversationId);
@@ -118,7 +125,7 @@ export class WhatsappMessagingService {
     const cleanPhone = toPhone.replace(/[+\s-]/g, '');
 
     const mediaPayload: any = { link: mediaUrl };
-    if (caption) mediaPayload.caption = caption;
+    if (caption) mediaPayload.caption = toWhatsAppFormatting(caption);
     if (filename && mediaType === 'document') mediaPayload.filename = filename;
 
     const payload = {

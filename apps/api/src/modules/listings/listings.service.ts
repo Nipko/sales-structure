@@ -1,6 +1,15 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertListingUuid(value: unknown): string {
+    if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+        throw new BadRequestException('listingId must be a valid UUID');
+    }
+    return value;
+}
+
 /**
  * Real Estate Listings — long-term sale/rent. Distinct from vacation-rental
  * (short-term stays) so search criteria, fields and operational flow stay
@@ -48,6 +57,11 @@ export class ListingsService {
     }
 
     async getById(schemaName: string, listingId: string): Promise<any | null> {
+        // Mismo hueco que tenía vacation-rental: el id llega de una tool call y
+        // el LLM manda el slug o el nombre. Validar acá, donde vive el `::uuid`,
+        // convierte un 22P02 crudo de Postgres en un error que el modelo puede
+        // corregir solo, y protege a todo llamador y no al que falló hoy.
+        assertListingUuid(listingId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT * FROM real_estate_listings WHERE id = $1::uuid`,

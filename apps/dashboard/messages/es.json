@@ -15,6 +15,12 @@
     "accountVerified": "Cuenta identificada",
     "activeForAgent": "Usado por el agente",
     "useForAgent": "Usar con el agente",
+    "pendingActivation": "Falta activarlo",
+    "finishActivation": "Confirmar y activar",
+    "activationRequiredTitle": "Falta un paso para que el agente pueda cobrar",
+    "activationRequiredBody": "Tus llaves ya quedaron guardadas y verificadas. Lo único que falta es confirmar que la URL de eventos está pegada en el panel de {provider}: eso no lo podemos ver desde acá, sólo vos podés confirmarlo. Hasta que lo hagas, el agente no genera enlaces de pago.",
+    "activationRequiredStep1": "Copiá la URL de eventos de abajo y pegala en el panel de {provider}. Si ya lo hiciste allá, seguí al paso 2.",
+    "activationRequiredStep2": "Volvé acá y tocá «Confirmar y activar». Ese botón es el que enciende el cobro.",
     "wompiActivationConfirm": "Antes de activar Wompi, confirma que copiaste la URL de eventos mostrada aquí y la configuraste en el comercio y ambiente correctos de Wompi. ¿Ya está configurada?",
     "environment": "Ambiente",
     "sandbox": "Pruebas (sandbox)",
@@ -3557,6 +3563,8 @@
       "paymentsUpgrade": "Revisar planes",
       "paymentsCreateLinks": "Permitir crear enlaces de pago",
       "paymentsCreateLinksDesc": "El agente usa el proveedor activo; nunca elige el monto ni da por pagado un enlace pendiente.",
+      "paymentsRailPending": "Ya cargaste credenciales de cobro, pero el cobro todavía no está activo: falta confirmar el último paso en Cobros a tus clientes. Con este interruptor encendido, el agente igual no va a poder cobrar.",
+      "paymentsRailMissing": "Todavía no conectaste una cuenta de cobros. Con este interruptor encendido, el agente no va a poder cobrar hasta que la conectes.",
       "paymentsConfigure": "Configurar cuenta de cobros"
     },
     "customPrompt": {

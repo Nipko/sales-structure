@@ -3,10 +3,21 @@ import { ConfigService } from '@nestjs/config';
 import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
+import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
 
 /**
  * WhatsApp Cloud API adapter
  * Handles incoming webhooks and outbound messages via Meta's Cloud API
+ *
+ * Markdown→WhatsApp conversion lives here, on the last hop before the Cloud API
+ * payload, because every producer of customer-facing text converges on this
+ * adapter — the AI reply through the outbound queue, the human agent (which
+ * calls ChannelGatewayService directly, bypassing the queue), broadcasts and
+ * automations. Doing it in the queue would miss the agent path and would have
+ * to re-discover the channel; doing it here also keeps the stored `messages`
+ * row as the model wrote it, so the inbox and the other channels are untouched.
+ * Meta templates are NOT affected: they are sent by WhatsappMessagingService
+ * with their own placeholder format.
  */
 @Injectable()
 export class WhatsAppAdapter implements IChannelAdapter {
@@ -165,7 +176,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
                 recipient_type: 'individual',
                 to,
                 type: 'text',
-                text: { body: text },
+                text: { body: toWhatsAppFormatting(text) },
             }),
             signal: AbortSignal.timeout(10_000),
         });
@@ -197,7 +208,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
         // Build the per-type media object. Documents carry a filename; audio has no caption.
         const type = ['image', 'document', 'audio', 'video'].includes(mediaType) ? mediaType : 'image';
         const mediaObj: any = { link: mediaUrl };
-        if (type !== 'audio' && caption) mediaObj.caption = caption;
+        if (type !== 'audio' && caption) mediaObj.caption = toWhatsAppFormatting(caption);
         if (type === 'document' && filename) mediaObj.filename = filename;
 
         const response = await fetch(url, {
@@ -346,7 +357,10 @@ export class WhatsAppAdapter implements IChannelAdapter {
             interactive: {
                 type: 'list',
                 header: { type: 'text', text: (sections[0]?.title || 'Options').slice(0, 60) },
-                body: { text: body.slice(0, 1024) },
+                // Row titles/descriptions are deliberately left raw: WhatsApp
+                // renders no markup inside list rows, and they come from the
+                // deterministic booking engine, not from the model.
+                body: { text: toWhatsAppFormatting(body).slice(0, 1024) },
                 action: {
                     button: buttonText.slice(0, 20),
                     sections: sections.map(s => ({
@@ -398,7 +412,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
                 type: 'interactive',
                 interactive: {
                     type: 'button',
-                    body: { text: body.slice(0, 1024) },
+                    body: { text: toWhatsAppFormatting(body).slice(0, 1024) },
                     action: {
                         buttons: buttons.slice(0, 3).map(b => ({
                             type: 'reply',
@@ -446,7 +460,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
         const interactive: any = {
             type: 'flow',
-            body: { text: (body || '').slice(0, 1024) },
+            body: { text: toWhatsAppFormatting(body || '').slice(0, 1024) },
             action: {
                 name: 'flow',
                 parameters: {

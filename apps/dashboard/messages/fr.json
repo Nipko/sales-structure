@@ -15,6 +15,12 @@
     "accountVerified": "Compte identifié",
     "activeForAgent": "Utilisé par l’agent",
     "useForAgent": "Utiliser avec l’agent",
+    "pendingActivation": "Activation en attente",
+    "finishActivation": "Confirmer et activer",
+    "activationRequiredTitle": "Il reste une étape pour que l’agent puisse encaisser",
+    "activationRequiredBody": "Vos clés sont enregistrées et vérifiées. Il ne manque que votre confirmation que l’URL d’événements est bien collée dans le panneau {provider} : nous ne pouvons pas le voir d’ici, vous seul pouvez le confirmer. Sans cela, l’agent ne crée aucun lien de paiement.",
+    "activationRequiredStep1": "Copiez l’URL d’événements ci-dessous et collez-la dans le panneau {provider}. Si c’est déjà fait là-bas, passez à l’étape 2.",
+    "activationRequiredStep2": "Revenez ici et appuyez sur « Confirmer et activer ». C’est ce bouton qui active l’encaissement.",
     "wompiActivationConfirm": "Avant d’activer Wompi, confirmez que vous avez copié l’URL d’événements affichée ici et que vous l’avez configurée dans le bon commerce et le bon environnement Wompi. Est-elle configurée ?",
     "environment": "Environnement",
     "sandbox": "Test (sandbox)",
@@ -3557,6 +3563,8 @@
       "paymentsUpgrade": "Voir les forfaits",
       "paymentsCreateLinks": "Autoriser la création de liens de paiement",
       "paymentsCreateLinksDesc": "L'agent utilise le prestataire actif ; il ne choisit jamais le montant et ne considère jamais un lien en attente comme payé.",
+      "paymentsRailPending": "Vos identifiants d’encaissement sont enregistrés, mais l’encaissement n’est pas encore actif : il manque la dernière étape dans Encaissements clients. Avec cet interrupteur activé, l’agent ne pourra quand même pas encaisser.",
+      "paymentsRailMissing": "Vous n’avez pas encore connecté de compte d’encaissement. Avec cet interrupteur activé, l’agent ne pourra pas encaisser tant que ce ne sera pas fait.",
       "paymentsConfigure": "Configurer le compte d'encaissement"
     },
     "customPrompt": {

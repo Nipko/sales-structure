@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { useTenant } from "@/contexts/TenantContext";
+import { api, type TenantPaymentsConfig } from "@/lib/api";
 import type { PersonaConfig } from "../_types";
 
 interface CapabilitiesSectionProps {
@@ -39,6 +42,32 @@ const VERTICAL_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
   { key: "vehicles",     industries: ["automotriz"],                         icon: Car },
 ];
 
+/**
+ * The toggle below turns green on its own, so an owner whose payment rail is
+ * connected-but-not-activated concludes charging works. It does not: the tool
+ * stops before reaching the provider whenever no provider is active.
+ */
+type PaymentRailStatus = "unknown" | "missing" | "pending" | "live";
+
+function paymentRailStatus(cfg: TenantPaymentsConfig | null): PaymentRailStatus {
+  if (!cfg) return "unknown";
+  const active = cfg.activeProvider || cfg.provider;
+  const activeState = active ? cfg.providers?.[active] : undefined;
+  // V1 payloads projected the active provider flat, without the providers map.
+  const live = !!active && (activeState
+    ? activeState.connected === true && activeState.ready === true
+    : cfg.connected === true && cfg.ready !== false);
+  if (live) return "live";
+  // 'pending' has to mean "only the final confirmation is left", because that is
+  // literally what its copy promises the owner. Keying it on `connected` alone
+  // also caught merchants still missing verification or a callback token, and
+  // told them one step remained when several did — the exact miscommunication
+  // this warning exists to fix.
+  const oneStepLeft = cfg.activationReady === true
+    || Object.values(cfg.providers ?? {}).some((item) => item?.activationReady === true);
+  return oneStepLeft ? "pending" : "missing";
+}
+
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
   const t = useTranslations("agent.capabilities");
   const { features, loading: planLoading } = usePlanLimits();
@@ -47,6 +76,25 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
   const payments = tools.payments || { enabled: false, canCreateLinks: true };
   const customerPaymentsAllowed = features.customerPayments === true;
   const industry = config.industry || "general";
+  const { activeTenantId } = useTenant();
+  const [railStatus, setRailStatus] = useState<PaymentRailStatus>("unknown");
+
+  useEffect(() => {
+    if (!activeTenantId || !customerPaymentsAllowed) return;
+    // Drop the previous tenant's answer before asking about this one: leaving it
+    // would show one tenant's rail warning while looking at another's agent.
+    setRailStatus("unknown");
+    let cancelled = false;
+    void api.getTenantPaymentsConfig(activeTenantId)
+      .then((res) => {
+        if (cancelled) return;
+        setRailStatus(paymentRailStatus(res?.success ? (res.data ?? null) : null));
+      })
+      // Only tenant_admin may read the rail; a supervisor editing the agent must
+      // not be shown a warning we could not verify.
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [activeTenantId, customerPaymentsAllowed]);
 
   const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
   const missingItems: string[] = [];
@@ -500,6 +548,23 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             <Link href="/admin/settings/billing" className="font-semibold underline underline-offset-2">
               {t("paymentsUpgrade")}
             </Link>
+          </div>
+        )}
+
+        {payments.enabled && customerPaymentsAllowed && railStatus !== "unknown" && railStatus !== "live" && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {railStatus === "pending" ? t("paymentsRailPending") : t("paymentsRailMissing")}
+              </p>
+              <Link
+                href="/admin/settings/integrations/payments"
+                className="inline-block mt-1.5 text-xs font-semibold text-indigo-500 hover:underline"
+              >
+                {t("paymentsConfigure")} →
+              </Link>
+            </div>
           </div>
         )}
 

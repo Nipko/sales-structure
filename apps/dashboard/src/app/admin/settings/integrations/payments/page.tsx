@@ -133,6 +133,14 @@ export default function TenantPaymentsPage() {
     const planAllowsPayments = features.customerPayments === true;
     const activeProvider = cfg.activeProvider || cfg.provider;
     const isActive = activeProvider === provider;
+    /**
+     * `ready` additionally requires the owner's own confirmation that the events
+     * URL was installed at the provider — something the backend cannot observe.
+     * Owners who did configure everything at the provider read "credentials
+     * saved" as "done", never find the remaining click, and the rail stays off
+     * with the screen only saying "setup incomplete". Name the missing step.
+     */
+    const activationPending = state.connected && state.activationReady === true && !state.ready;
 
     async function handleSave() {
         if (!activeTenantId || !planAllowsPayments) return;
@@ -279,7 +287,14 @@ export default function TenantPaymentsPage() {
                                 <span className="font-semibold">{t(`providers.${item}.name`)}</span>
                                 <span className="flex items-center gap-1.5">
                                     {itemActive && itemState.ready && <StatusPill tone="indigo" text={t("active")} />}
-                                    {itemState.connected && <StatusPill tone={itemState.ready ? "green" : "amber"} text={itemState.ready ? t("ready") : t("setupIncomplete")} />}
+                                    {itemState.connected && (
+                                        <StatusPill
+                                            tone={itemState.ready ? "green" : "amber"}
+                                            text={itemState.ready
+                                                ? t("ready")
+                                                : (itemState.activationReady === true ? t("pendingActivation") : t("setupIncomplete"))}
+                                        />
+                                    )}
                                 </span>
                             </div>
                             <p className="mt-1.5 text-xs text-muted-foreground">{t(`providers.${item}.description`)}</p>
@@ -295,6 +310,7 @@ export default function TenantPaymentsPage() {
                             <h2 className="font-semibold">{t(`providers.${provider}.name`)}</h2>
                             {state.verified && <StatusPill tone="green" text={t("accountVerified")} />}
                             {isActive && state.ready && <StatusPill tone="indigo" text={t("activeForAgent")} />}
+                            {activationPending && <StatusPill tone="amber" text={t("pendingActivation")} />}
                             {/* Sandbox looked identical to production, so a test
                                 charge could mark a real order as paid with no
                                 visible difference anywhere on the screen. */}
@@ -311,13 +327,47 @@ export default function TenantPaymentsPage() {
                             type="button"
                             onClick={handleActivate}
                             disabled={activating || !(state.activationReady ?? state.ready) || !planAllowsPayments}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-indigo-400"
+                            className={cn(
+                                "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40",
+                                // A pending activation is the one step left before the
+                                // rail works, so it must not read as an optional switch.
+                                activationPending
+                                    ? "bg-amber-600 text-white hover:bg-amber-700"
+                                    : "border border-indigo-500/30 text-indigo-600 hover:bg-indigo-500/10 dark:text-indigo-400",
+                            )}
                         >
                             {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                            {t("useForAgent")}
+                            {activationPending ? t("finishActivation") : t("useForAgent")}
                         </button>
                     )}
                 </div>
+
+                {activationPending && (
+                    <div className="rounded-lg border-2 border-amber-500/50 bg-amber-500/10 p-4 text-[13px] text-amber-900 dark:text-amber-100">
+                        <div className="flex items-start gap-2">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                                <p className="font-semibold">{t("activationRequiredTitle")}</p>
+                                <p className="mt-1 leading-relaxed">
+                                    {t("activationRequiredBody", { provider: t(`providers.${provider}.name`) })}
+                                </p>
+                                <ol className="mt-2 list-decimal space-y-1 pl-5 leading-relaxed">
+                                    <li>{t("activationRequiredStep1", { provider: t(`providers.${provider}.name`) })}</li>
+                                    <li>{t("activationRequiredStep2")}</li>
+                                </ol>
+                                <button
+                                    type="button"
+                                    onClick={handleActivate}
+                                    disabled={activating || !planAllowsPayments}
+                                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                                    {t("finishActivation")}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* `webhookAcknowledged` is the tenant's own click, not proof.
                     Until a delivery actually authenticates, the rail can read
@@ -357,6 +407,7 @@ export default function TenantPaymentsPage() {
                         disabled={!planAllowsPayments}
                         copyWebhook={copyWebhook}
                         copied={copied}
+                        highlightWebhook={activationPending}
                     />
                 ) : (
                     <div className="space-y-4">
@@ -403,7 +454,7 @@ export default function TenantPaymentsPage() {
 function WompiForm({
     t, state, environment, setEnvironment, publicKey, setPublicKey,
     privateKey, setPrivateKey, eventsSecret, setEventsSecret,
-    disabled, copyWebhook, copied,
+    disabled, copyWebhook, copied, highlightWebhook,
 }: {
     t: any;
     state: TenantPaymentProviderConfig;
@@ -418,6 +469,7 @@ function WompiForm({
     disabled: boolean;
     copyWebhook: () => Promise<void>;
     copied: boolean;
+    highlightWebhook: boolean;
 }) {
     return (
         <div className="space-y-4">
@@ -434,7 +486,12 @@ function WompiForm({
             <SecretField label={t("wompiEventsSecret")} value={eventsSecret} onChange={setEventsSecret} placeholder={state.webhookConfigured ? "••••••••••••" : (environment === "production" ? "prod_events_..." : "test_events_...")} disabled={disabled} hint={t("wompiEventsSecretHint")} />
 
             {state.webhookUrl && (
-                <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.06] p-4">
+                <div className={cn(
+                    "rounded-lg border p-4",
+                    highlightWebhook
+                        ? "border-amber-500/50 bg-amber-500/[0.08]"
+                        : "border-violet-500/20 bg-violet-500/[0.06]",
+                )}>
                     <div className="flex items-center gap-2 text-sm font-semibold"><KeyRound className="h-4 w-4 text-violet-500" />{t("wompiWebhookTitle")}</div>
                     <p className="mt-1 text-xs text-muted-foreground">{t("wompiWebhookInstructions")}</p>
                     <div className="mt-3 flex items-center gap-2">

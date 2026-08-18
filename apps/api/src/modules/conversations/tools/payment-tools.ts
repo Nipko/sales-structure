@@ -7,7 +7,7 @@ import { ToolDefinition } from '@parallext/shared';
  */
 export const CREATE_PAYMENT_LINK_TOOL: ToolDefinition = {
     name: 'create_payment_link',
-    description: 'Create a single-use hosted payment link for an existing purchase or booking. IMPORTANT: You can ONLY call this tool AFTER you have already executed a business tool (such as create_property_booking, create_order, book_tour) in this conversation and received a valid payableReference (e.g. property:<uuid> or order:<uuid>). NEVER call this tool before creating the reservation or order. Pass only the exact payableReference string returned by that previous tool.',
+    description: 'Create a single-use hosted payment link for an existing purchase or booking. IMPORTANT: You can ONLY call this tool AFTER you have already executed a business tool (such as create_property_booking, create_order, book_tour) in this conversation and received a valid payableReference (e.g. property:<uuid> or order:<uuid>). NEVER call this tool before creating the reservation or order. Pass only the exact payableReference string returned by that previous tool. A created link is still pending: never say it was paid until get_payment_status returns paid, and never invent or reuse a URL.',
     parameters: {
         type: 'object',
         properties: {

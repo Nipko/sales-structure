@@ -8,6 +8,7 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PersonaService } from '../persona/persona.service';
 import { QualityService, JudgeResult } from '../quality/quality.service';
 import { AgentTestService } from '../conversations/agent-test.service';
+import { auditTurnClaim } from '../../common/utils/outcome-claim.util';
 
 export const SIMULATION_QUEUE = 'agent-simulation';
 export const AGENT_SIMULATION_COMPLETED_EVENT = 'agent.simulation.completed';
@@ -51,6 +52,13 @@ interface ScenarioResult extends ScenarioDef {
     turns: number;
     latencyMs: number;
     error?: string;
+    /**
+     * Turns where the agent told the customer an action was done that the
+     * backend never performed. A scenario can score well on tone and still
+     * contain one of these — it is the most damaging thing the agent can do,
+     * so it is reported separately from the judge's score.
+     */
+    falseClaims?: Array<{ turn: number; reply: string }>;
 }
 
 type ScoredScenarioResult = ScenarioResult & { judge: JudgeResult; error?: undefined };
@@ -485,6 +493,8 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         const transcript: Array<{ role: 'customer' | 'agent'; content: string }> = [];
         const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
+        const falseClaims: Array<{ turn: number; reply: string }> = [];
+
         const askAgent = async (customerMsg: string): Promise<string> => {
             const res = await this.agentTest.test(
                 tenantId,
@@ -493,6 +503,17 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 { disableTools: true },
             );
             const reply = res.reply || '';
+            // The judge grades how the agent SOUNDS. This grades whether it told
+            // the truth. In production the agent announced "¡Tu reserva está
+            // confirmada!" on a turn where the guard had executed nothing, and
+            // the customer left believing they had an apartment — a transcript
+            // that reads beautifully and scores well while being a lie. A claim
+            // of a completed booking, payment or cancellation only counts when a
+            // writing tool actually succeeded in that same turn.
+            const audit = auditTurnClaim(reply, (res as any)?.debug?.toolCalls);
+            if (audit.falseClaim) {
+                falseClaims.push({ turn: Math.floor(transcript.length / 2) + 1, reply: reply.slice(0, 300) });
+            }
             transcript.push({ role: 'customer', content: customerMsg });
             transcript.push({ role: 'agent', content: reply });
             history.push({ role: 'user', content: customerMsg });
@@ -527,6 +548,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             turns: Math.floor(transcript.length / 2),
             latencyMs: Date.now() - startedAt,
             judge,
+            falseClaims: falseClaims.length ? falseClaims : undefined,
         };
     }
 

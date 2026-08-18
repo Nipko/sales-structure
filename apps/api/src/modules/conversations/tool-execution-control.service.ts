@@ -147,6 +147,12 @@ const AFFIRMATIVE_EXACT = new RegExp(`^(?:${AFFIRMATIVE_TOKENS})$`);
 const AFFIRMATIVE_OPENING = new RegExp(`^(?:${AFFIRMATIVE_TOKENS})\\b`);
 /** Any negation voids consent, wherever it appears. */
 const NEGATION_ANYWHERE = /\b(no|nao|non|not|nunca|never|jamais|cancela|cancelar|cancel|annuler|rechazo|espera|aun|ainda|todavia)\b/;
+const NEGATIVE_TOKENS = 'no|no lo hagas|no gracias|nunca|cancelar|cancela|rechazo|mejor no'
+    + '|nao|nao faca|nao obrigado|cancelar isso'
+    + '|not|dont|do not|cancel|never mind|nevermind|no thanks'
+    + '|non|je refuse|annuler|pas maintenant';
+/** A refusal, as the OPENING of whatever the customer wrote. */
+const NEGATIVE_OPENING = new RegExp(`^(?:${NEGATIVE_TOKENS})\\b`);
 /** A qualified yes is not a yes: "sí, pero cambiá el monto" must re-ask. */
 const QUALIFIER_ANYWHERE = /\b(pero|mas|porem|but|mais|aunque|salvo|excepto|solo si|only if)\b/;
 /** Exact, deliberately narrow confirmations in the four supported languages. */
@@ -170,9 +176,14 @@ export function classifyExplicitToolConfirmation(value: unknown): ConfirmationDi
         .trim();
     if (!normalized || normalized.length > 120) return 'unclear';
 
-    if (/^(no|no lo hagas|cancelar|cancela|rechazo|nao|nao faca|annuler|non|je refuse)$/.test(normalized)) {
-        return 'rejected';
-    }
+    // A refusal deserves the same reading as an acceptance. This list was
+    // exact-match only, so "no, mejor no" and "no gracias" — how anyone
+    // actually declines — landed in 'unclear' and the agent asked AGAIN,
+    // leaving the pending operation alive while the customer had already said
+    // no. Opening with a negative is a no, and it is read before any
+    // affirmative: erring toward not executing is the safe direction for an
+    // action that books, charges or cancels.
+    if (NEGATIVE_OPENING.test(normalized)) return 'rejected';
     // Spanish already carried the affirmative-then-verb form ("si confirmo").
     // The other three languages only had the halves, so once the comma stopped
     // blocking the match, "sim, confirmo" / "yes, confirm" / "oui, je confirme"
@@ -198,17 +209,47 @@ export function classifyExplicitToolConfirmation(value: unknown): ConfirmationDi
     return 'unclear';
 }
 
+const CONTROL_KEYS = ['_control', 'confirmationToken', 'approvalTicketId'];
+
+/**
+ * Values that carry no meaning. An absent field and a field explicitly set to
+ * empty describe the same operation, and treating them as different is what
+ * let a re-emitted request masquerade as a new one.
+ */
+function isEmptyValue(value: unknown): boolean {
+    return value === null
+        || value === undefined
+        || (typeof value === 'string' && value.trim() === '');
+}
+
+/**
+ * Canonical form of a single scalar. Case, surrounding blanks, repeated inner
+ * blanks and number-as-string are spelling, not meaning: "2" and 2 are the same
+ * guest count, and "Amazon Minimalist " is the same apartment as its lowercase
+ * twin. Lowercasing is safe here because the only case-sensitive values a tool
+ * receives are tokens, and those are stripped as control keys above.
+ */
+function canonicalScalar(value: unknown): unknown {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim().replace(/\s+/g, ' ');
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+    const lower = trimmed.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+    return lower;
+}
+
 function stableValue(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(stableValue);
     if (value && typeof value === 'object') {
         return Object.fromEntries(
             Object.entries(value as Record<string, unknown>)
-                .filter(([key]) => !['_control', 'confirmationToken', 'approvalTicketId'].includes(key))
+                .filter(([key, item]) => !CONTROL_KEYS.includes(key) && !isEmptyValue(item))
                 .sort(([a], [b]) => a.localeCompare(b))
                 .map(([key, item]) => [key, stableValue(item)]),
         );
     }
-    return value;
+    return canonicalScalar(value);
 }
 
 function sha256(value: string): string {
@@ -860,7 +901,7 @@ export class ToolExecutionControlService {
             return this.block('idempotency_source_missing', 'No hay un mensaje de origen para vincular la acción.');
         }
 
-        let ledger = await this.findContinuableLedger(request, argsHash, latestInbound.id);
+        let ledger = await this.findContinuableLedger(request, argsHash, latestInbound);
         const idempotencyKey = ledger?.idempotency_key
             || this.buildIdempotencyKey(request, argsHash, latestInbound.id);
         if (!ledger) {
@@ -1186,8 +1227,9 @@ export class ToolExecutionControlService {
     private async findContinuableLedger(
         request: ToolExecutionControlRequest & { conversationId?: string },
         argsHash: string,
-        latestInboundMessageId: string,
+        latestInbound: { id: string; content_text: string | null },
     ): Promise<ExecutionLedgerRow | null> {
+        const latestInboundMessageId = latestInbound.id;
         const supplied = request.idempotencyKey?.trim();
         if (supplied && /^[A-Za-z0-9_.:-]{8,128}$/.test(supplied)) {
             const key = this.buildIdempotencyKey(request, argsHash, latestInboundMessageId);
@@ -1212,6 +1254,22 @@ export class ToolExecutionControlService {
             [request.conversationId, request.contactId, request.toolName, argsHash],
         );
         if (pending[0]) return pending[0];
+
+        if (classifyExplicitToolConfirmation(latestInbound.content_text) === 'confirmed') {
+            const settled = await this.query<ExecutionLedgerRow[]>(
+                request.schemaName,
+                `SELECT * FROM tool_execution_ledger
+                  WHERE conversation_id = $1::uuid
+                    AND contact_id = $2::uuid
+                    AND tool_name = $3
+                    AND args_hash = $4
+                    AND status = 'succeeded'
+                  ORDER BY created_at DESC
+                  LIMIT 1`,
+                [request.conversationId, request.contactId, request.toolName, argsHash],
+            );
+            if (settled[0]) return settled[0];
+        }
 
         const sameTurn = await this.query<ExecutionLedgerRow[]>(
             request.schemaName,
@@ -1660,7 +1718,8 @@ export class ToolExecutionControlService {
             result: {
                 error: 'confirmation_required',
                 confirmationId: ledgerId,
-                message: 'Pide al cliente una confirmación explícita. La acción no se ejecutará en este mismo turno.',
+                message: 'NADA se ha ejecutado todavía. No le digas al cliente que está hecho, '
+                    + 'confirmado, reservado ni pagado. Pídele una confirmación explícita y espera su respuesta.',
             },
         };
     }

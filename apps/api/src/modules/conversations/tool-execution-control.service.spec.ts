@@ -39,9 +39,22 @@ function createHarness(identityVerified = true) {
         if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE INDEX')
             || normalized.startsWith('ALTER TABLE') || normalized.startsWith('DO $ddl$')) return [];
 
-        if (normalized.includes("status IN ('awaiting_confirmation', 'awaiting_approval', 'ready', 'executing')")) {
+        if (normalized.includes("AND status = 'succeeded'")) {
             const found = [...state.ledgers].reverse().find((item: any) => (
-                ['awaiting_confirmation', 'awaiting_approval', 'ready', 'executing'].includes(item.status)
+                item.status === 'succeeded'
+                && item.tool_name === params[2]
+                && item.args_hash === params[3]
+            ));
+            if (found) state.ledger = found;
+            return found ? [found] : [];
+        }
+        const statusInMatch = normalized.match(/status IN \(([^)]*)\)/);
+        if (statusInMatch && normalized.includes('AND args_hash = $4')) {
+            const statuses = statusInMatch[1].split(',').map((s: string) => s.trim().replace(/'/g, ''));
+            const found = [...state.ledgers].reverse().find((item: any) => (
+                statuses.includes(item.status)
+                && item.tool_name === params[2]
+                && item.args_hash === params[3]
             ));
             if (found) state.ledger = found;
             return found ? [found] : [];
@@ -49,6 +62,8 @@ function createHarness(identityVerified = true) {
         if (normalized.includes('(request_source_message_id = $5::uuid OR confirmed_by_message_id = $5::uuid)')) {
             const found = [...state.ledgers].reverse().find((item: any) => (
                 [item.request_source_message_id, item.confirmed_by_message_id].includes(params[4])
+                && item.tool_name === params[2]
+                && item.args_hash === params[3]
             ));
             if (found) state.ledger = found;
             return found ? [found] : [];
@@ -308,9 +323,16 @@ describe('ToolExecutionControlService', () => {
             expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
         }
         // Widening the separator must not manufacture consent out of a refusal
-        // or a qualified answer: both stay short of the exact allowlist.
-        for (const value of ['no, confirmo', 'sí, pero cambiá el monto', 'no, cancela']) {
-            expect(classifyExplicitToolConfirmation(value)).toBe('unclear');
+        // or a qualified answer. A qualified yes is still just unclear — the
+        // customer wants something changed, so ask again.
+        expect(classifyExplicitToolConfirmation('sí, pero cambiá el monto')).toBe('unclear');
+        // These two used to be 'unclear' as well, which meant the agent kept
+        // asking someone who had already declined. Opening with a negative is a
+        // refusal: in Spanish "no confirmo" negates the verb, and "no, cancela"
+        // was never ambiguous. For an action that books or charges, reading a
+        // refusal as a refusal is both more accurate and the safe direction.
+        for (const value of ['no, confirmo', 'no, cancela', 'no gracias', 'no, mejor no']) {
+            expect(classifyExplicitToolConfirmation(value)).toBe('rejected');
         }
     });
 

@@ -58,13 +58,13 @@ export class EcommerceController {
     @Get('products')
     @ApiOperation({ summary: 'List synced products' })
     async listProducts(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('status') status?: string,
         @Query('search') search?: string,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
     ) {
-        const result = await this.ecommerce.listProducts(schema, {
+        const result = await this.ecommerce.listProducts(tenantId, {
             status, search,
             limit: limit ? parseInt(limit) : undefined,
             offset: offset ? parseInt(offset) : undefined,
@@ -75,12 +75,12 @@ export class EcommerceController {
     @Get('products/search')
     @ApiOperation({ summary: 'AI-oriented product search' })
     async searchForAI(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('search') search?: string,
         @Query('maxPrice') maxPrice?: string,
         @Query('category') category?: string,
     ) {
-        const products = await this.ecommerce.searchProductsForAI(schema, {
+        const products = await this.ecommerce.searchProductsForAIByTenant(tenantId, {
             search, category,
             maxPrice: maxPrice ? parseInt(maxPrice) : undefined,
         });

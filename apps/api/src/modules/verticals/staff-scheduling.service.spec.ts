@@ -2,27 +2,49 @@ import { BadRequestException } from '@nestjs/common';
 import { StaffSchedulingService } from './staff-scheduling.service';
 
 describe('StaffSchedulingService', () => {
+    const tenantId = '3e8ad32e-a16b-42e6-9634-b8e8cc29292d';
     const schemaName = 'tenant_test';
     let rawQuery: jest.Mock;
+    let tenantQuery: jest.Mock;
     let transactionQuery: jest.Mock;
     let prisma: {
         $queryRawUnsafe: jest.Mock;
+        executeInTenantSchema: jest.Mock;
         transactionInTenantSchema: jest.Mock;
+        getTenantSchemaName: jest.Mock;
+        assertTenantSchemaName: jest.Mock;
     };
     let service: StaffSchedulingService;
 
     beforeEach(() => {
         rawQuery = jest.fn().mockResolvedValue([{ exists: 1 }]);
+        tenantQuery = jest.fn().mockResolvedValue([]);
         transactionQuery = jest.fn().mockResolvedValue([]);
         prisma = {
             $queryRawUnsafe: rawQuery,
+            executeInTenantSchema: tenantQuery,
             transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(transactionQuery)),
+            getTenantSchemaName: jest.fn().mockResolvedValue(schemaName),
+            assertTenantSchemaName: jest.fn(),
         };
         service = new StaffSchedulingService(prisma as any, { del: jest.fn() } as any);
     });
 
+    it('resolves the tenant schema instead of using the tenantId as a schema name', async () => {
+        await service.listStaff(tenantId);
+
+        expect(prisma.getTenantSchemaName).toHaveBeenCalledWith(tenantId);
+        expect(tenantQuery.mock.calls[0][0]).toBe(schemaName);
+        // The DDL path is the only one that still interpolates by hand, so it has
+        // to be the one guarded by the fail-fast assertion.
+        expect(prisma.assertTenantSchemaName).toHaveBeenCalledWith(schemaName);
+        expect(rawQuery.mock.calls.every(([sql]) =>
+            typeof sql !== 'string' || !sql.includes(tenantId),
+        )).toBe(true);
+    });
+
     it('replaces the complete weekly schedule inside one tenant transaction', async () => {
-        await service.setSchedule(schemaName, '11111111-1111-4111-8111-111111111111', [
+        await service.setSchedule(tenantId, '11111111-1111-4111-8111-111111111111', [
             { dayOfWeek: 1, startTime: '09:00', endTime: '13:00' },
             { dayOfWeek: 2, startTime: '10:00:00', endTime: '18:00:00', isActive: false },
         ]);
@@ -65,20 +87,20 @@ describe('StaffSchedulingService', () => {
             committedRows = transactionRows;
         });
 
-        await expect(service.setSchedule(schemaName, '11111111-1111-4111-8111-111111111111', [
+        await expect(service.setSchedule(tenantId, '11111111-1111-4111-8111-111111111111', [
             { dayOfWeek: 1, startTime: '09:00', endTime: '13:00' },
             { dayOfWeek: 2, startTime: '10:00', endTime: '18:00' },
         ])).rejects.toThrow('simulated constraint failure');
 
         expect(committedRows).toEqual(originalRows);
-        expect(rawQuery.mock.calls.some(([sql]) =>
+        expect(tenantQuery.mock.calls.some(([, sql]) =>
             typeof sql === 'string' && sql.includes('DELETE FROM staff_schedules'),
         )).toBe(false);
     });
 
     it('rejects invalid schedule ranges before deleting existing rows', async () => {
         await expect(service.setSchedule(
-            schemaName,
+            tenantId,
             '11111111-1111-4111-8111-111111111111',
             [{ dayOfWeek: 7, startTime: '18:00', endTime: '09:00' }],
         )).rejects.toBeInstanceOf(BadRequestException);
@@ -87,7 +109,7 @@ describe('StaffSchedulingService', () => {
     });
 
     it('replaces all staff-service links atomically', async () => {
-        await service.linkServices(schemaName, '11111111-1111-4111-8111-111111111111', [
+        await service.linkServices(tenantId, '11111111-1111-4111-8111-111111111111', [
             '22222222-2222-4222-8222-222222222222',
             '33333333-3333-4333-8333-333333333333',
         ]);
@@ -99,23 +121,21 @@ describe('StaffSchedulingService', () => {
     });
 
     it('uses the canonical appointment interval columns and the complete service duration', async () => {
-        rawQuery
-            .mockResolvedValueOnce([{ exists: 1 }])
-            .mockResolvedValueOnce([{ id: 'staff-1', name: 'Ana' }]);
+        tenantQuery.mockResolvedValueOnce([{ id: 'staff-1', name: 'Ana' }]);
 
         const result = await service.getAvailableStaff(
-            schemaName,
+            tenantId,
             '22222222-2222-4222-8222-222222222222',
             '2026-08-10', // Monday, independent of the host timezone.
             '09:30',
         );
 
         expect(result).toEqual([{ id: 'staff-1', name: 'Ana' }]);
-        const [sql, serviceId, dayOfWeek, time, date] = rawQuery.mock.calls[1];
-        expect(serviceId).toBe('22222222-2222-4222-8222-222222222222');
-        expect(dayOfWeek).toBe(1);
-        expect(time).toBe('09:30');
-        expect(date).toBe('2026-08-10');
+        const [schema, sql, params] = tenantQuery.mock.calls[0];
+        expect(schema).toBe(schemaName);
+        expect(params).toEqual(['22222222-2222-4222-8222-222222222222', 1, '09:30', '2026-08-10']);
+        // search_path scopes the tables, so no schema may be spelled out here.
+        expect(sql).not.toContain(schemaName);
         expect(sql).toContain('a.assigned_to = sm.id');
         expect(sql).toContain('a.start_at <');
         expect(sql).toContain('a.end_at >');
@@ -137,7 +157,7 @@ describe('StaffSchedulingService', () => {
         ['2026-08-10', '24:00'],
     ])('rejects invalid availability input date=%s time=%s', async (date, time) => {
         await expect(service.getAvailableStaff(
-            schemaName,
+            tenantId,
             '22222222-2222-4222-8222-222222222222',
             date,
             time,
@@ -145,5 +165,6 @@ describe('StaffSchedulingService', () => {
 
         // The only raw query is the idempotent table-presence check.
         expect(rawQuery).toHaveBeenCalledTimes(1);
+        expect(tenantQuery).not.toHaveBeenCalled();
     });
 });

@@ -23,7 +23,7 @@ export class VehicleInventoryController {
     @Get(':tenantId')
     @ApiOperation({ summary: 'List vehicles with optional filters' })
     async listVehicles(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('status') status?: string,
         @Query('search') search?: string,
         @Query('make') make?: string,
@@ -34,7 +34,7 @@ export class VehicleInventoryController {
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
     ) {
-        const result = await this.vehicleService.listVehicles(schema, {
+        const result = await this.vehicleService.listVehicles(tenantId, {
             status, search, make, category, condition,
             minPrice: minPrice ? parseInt(minPrice) : undefined,
             maxPrice: maxPrice ? parseInt(maxPrice) : undefined,
@@ -46,8 +46,8 @@ export class VehicleInventoryController {
 
     @Get(':tenantId/stats')
     @ApiOperation({ summary: 'Get inventory statistics' })
-    async getStats(@CurrentTenant() schema: string) {
-        const stats = await this.vehicleService.getInventoryStats(schema);
+    async getStats(@CurrentTenant() tenantId: string) {
+        const stats = await this.vehicleService.getInventoryStats(tenantId);
         return { success: true, data: stats };
     }
 
@@ -57,7 +57,7 @@ export class VehicleInventoryController {
     @Get(':tenantId/search')
     @ApiOperation({ summary: 'AI-oriented vehicle search' })
     async searchForAI(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('make') make?: string,
         @Query('budgetMax') budgetMax?: string,
         @Query('category') category?: string,
@@ -65,7 +65,7 @@ export class VehicleInventoryController {
         @Query('condition') condition?: string,
         @Query('year') year?: string,
     ) {
-        const vehicles = await this.vehicleService.searchVehiclesForAI(schema, {
+        const vehicles = await this.vehicleService.searchVehiclesForAI(tenantId, {
             make, category, fuelType, condition,
             budgetMax: budgetMax ? parseInt(budgetMax) : undefined,
             year: year ? parseInt(year) : undefined,
@@ -75,8 +75,8 @@ export class VehicleInventoryController {
 
     @Get(':tenantId/:vehicleId')
     @ApiOperation({ summary: 'Get a single vehicle' })
-    async getVehicle(@CurrentTenant() schema: string, @Param('vehicleId') vehicleId: string) {
-        const vehicle = await this.vehicleService.getVehicle(schema, vehicleId);
+    async getVehicle(@CurrentTenant() tenantId: string, @Param('vehicleId') vehicleId: string) {
+        const vehicle = await this.vehicleService.getVehicle(tenantId, vehicleId);
         return { success: true, data: vehicle };
     }
 
@@ -84,11 +84,10 @@ export class VehicleInventoryController {
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Add a vehicle to inventory' })
     async createVehicle(
-        @Param('tenantId') tenantId: string,
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Body() body: any,
     ) {
-        const vehicle = await this.vehicleService.createVehicle(tenantId, schema, body);
+        const vehicle = await this.vehicleService.createVehicle(tenantId, body);
         return { success: true, data: vehicle };
     }
 
@@ -107,47 +106,46 @@ export class VehicleInventoryController {
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Bulk-import vehicles from a parsed CSV/XLSX' })
     async bulkImport(
-        @Param('tenantId') tenantId: string,
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Body() body: { rows?: any[] },
     ) {
-        const data = await bulkImportRows(body?.rows, row => this.vehicleService.createVehicle(tenantId, schema, row));
+        const data = await bulkImportRows(body?.rows, row => this.vehicleService.createVehicle(tenantId, row));
         return { success: true, data };
     }
 
     @Put(':tenantId/:vehicleId')
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a vehicle' })
-    async updateVehicle(@CurrentTenant() schema: string, @Param('vehicleId') vehicleId: string, @Body() body: any) {
-        const vehicle = await this.vehicleService.updateVehicle(schema, vehicleId, body);
+    async updateVehicle(@CurrentTenant() tenantId: string, @Param('vehicleId') vehicleId: string, @Body() body: any) {
+        const vehicle = await this.vehicleService.updateVehicle(tenantId, vehicleId, body);
         return { success: true, data: vehicle };
     }
 
     @Put(':tenantId/:vehicleId/sold')
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Mark a vehicle as sold' })
-    async markSold(@CurrentTenant() schema: string, @Param('vehicleId') vehicleId: string, @Body() body: any) {
-        const vehicle = await this.vehicleService.markSold(schema, vehicleId, body.soldPriceCents, body.buyerContactId);
+    async markSold(@CurrentTenant() tenantId: string, @Param('vehicleId') vehicleId: string, @Body() body: any) {
+        const vehicle = await this.vehicleService.markSold(tenantId, vehicleId, body.soldPriceCents, body.buyerContactId);
         return { success: true, data: vehicle };
     }
 
     @Post(':tenantId/test-drives')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Schedule a test drive' })
-    async scheduleTestDrive(@CurrentTenant() schema: string, @Body() body: any) {
-        const td = await this.vehicleService.scheduleTestDrive(schema, body);
+    async scheduleTestDrive(@CurrentTenant() tenantId: string, @Body() body: any) {
+        const td = await this.vehicleService.scheduleTestDrive(tenantId, body);
         return { success: true, data: td };
     }
 
     @Get(':tenantId/test-drives/list')
     @ApiOperation({ summary: 'List test drives' })
     async listTestDrives(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('vehicleId') vehicleId?: string,
         @Query('status') status?: string,
         @Query('date') date?: string,
     ) {
-        const items = await this.vehicleService.listTestDrives(schema, { vehicleId, status, date });
+        const items = await this.vehicleService.listTestDrives(tenantId, { vehicleId, status, date });
         return { success: true, data: items };
     }
 

@@ -38,7 +38,16 @@ export class ChannelManagerService {
         private readonly http: HttpService,
     ) {}
 
+    /**
+     * Takes an already-resolved schema name (never a tenantId): the DDL below
+     * cannot go through executeInTenantSchema — CREATE TABLE / REFERENCES need
+     * a literal qualifier, not SET LOCAL search_path — so this is the only
+     * place left that interpolates the identifier by hand. The assert is what
+     * turns a wrong argument into a readable 400 instead of a raw 3F000.
+     */
     async ensureTables(schemaName: string): Promise<void> {
+        this.prisma.assertTenantSchemaName(schemaName);
+
         const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'cm_listings'`,
             schemaName,
@@ -141,79 +150,83 @@ export class ChannelManagerService {
         return merged;
     }
 
-    async listListings(schemaName: string): Promise<any[]> {
+    async listListings(tenantId: string): Promise<any[]> {
+        const schemaName = await this.resolveSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT l.*,
-                (SELECT COUNT(*)::int FROM "${schemaName}".cm_reservations r
+                (SELECT COUNT(*)::int FROM cm_reservations r
                  WHERE r.listing_id = l.id AND r.check_out >= CURRENT_DATE AND r.status = 'confirmed') as active_reservations
-            FROM "${schemaName}".cm_listings l
+            FROM cm_listings l
             WHERE l.status != 'deleted'
             ORDER BY l.name
         `);
     }
 
-    async createListing(schemaName: string, data: {
+    async createListing(tenantId: string, data: {
         name: string; address?: string; externalId?: string; provider?: string;
         checkInTime?: string; checkOutTime?: string; maxGuests?: number;
         basePriceCents?: number; currency?: string; propertyId?: string;
     }): Promise<any> {
+        const schemaName = await this.resolveSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".cm_listings
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            INSERT INTO cm_listings
             (external_id, provider, name, address, check_in_time, check_out_time,
              max_guests, base_price_cents, currency, property_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)
             RETURNING *
-        `,
+        `, [
             data.externalId || crypto.randomUUID(), data.provider || 'direct',
             data.name, data.address || null,
             data.checkInTime || '15:00', data.checkOutTime || '11:00',
             data.maxGuests || 4, data.basePriceCents || 0,
             data.currency || 'USD', data.propertyId || null,
-        );
+        ]);
         return rows[0];
     }
 
-    async createReservation(schemaName: string, data: {
+    async createReservation(tenantId: string, data: {
         listingId: string; guestName: string; guestEmail?: string;
         guestPhone?: string; checkIn: string; checkOut: string;
         guests?: number; totalCents?: number; currency?: string;
         source?: string; notes?: string;
     }): Promise<any> {
+        const schemaName = await this.resolveSchemaName(tenantId);
         await this.ensureTables(schemaName);
 
-        const conflicts: any[] = await this.prisma.$queryRawUnsafe(`
-            SELECT 1 FROM "${schemaName}".cm_reservations
+        const conflicts = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            SELECT 1 FROM cm_reservations
             WHERE listing_id = $1::uuid AND status = 'confirmed'
             AND check_in < $3::date AND check_out > $2::date
-        `, data.listingId, data.checkIn, data.checkOut);
+        `, [data.listingId, data.checkIn, data.checkOut]);
 
         if (conflicts.length > 0) throw new BadRequestException('Dates conflict with existing reservation');
 
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".cm_reservations
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            INSERT INTO cm_reservations
             (listing_id, provider, guest_name, guest_email, guest_phone,
              check_in, check_out, guests, total_cents, currency, source, notes)
             VALUES ($1::uuid, 'direct', $2, $3, $4, $5::date, $6::date, $7, $8, $9, $10, $11)
             RETURNING *
-        `,
+        `, [
             data.listingId, data.guestName, data.guestEmail || null,
             data.guestPhone || null, data.checkIn, data.checkOut,
             data.guests || 1, data.totalCents || 0, data.currency || 'USD',
             data.source || 'direct', data.notes || null,
-        );
+        ]);
 
-        if ((await this.getConfigForSchema(schemaName))?.autoBlock) {
+        if ((await this.getConfig(tenantId))?.autoBlock) {
             await this.blockDates(schemaName, data.listingId, data.checkIn, data.checkOut);
         }
 
         return rows[0];
     }
 
-    async listReservations(schemaName: string, filters?: {
+    async listReservations(tenantId: string, filters?: {
         listingId?: string; status?: string; fromDate?: string; toDate?: string;
     }): Promise<any[]> {
+        const schemaName = await this.resolveSchemaName(tenantId);
         await this.ensureTables(schemaName);
         const conditions: string[] = [];
         const params: any[] = [];
@@ -225,18 +238,19 @@ export class ChannelManagerService {
         if (filters?.toDate) { conditions.push(`r.check_in <= $${idx++}::date`); params.push(filters.toDate); }
 
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT r.*, l.name as listing_name
-            FROM "${schemaName}".cm_reservations r
-            JOIN "${schemaName}".cm_listings l ON l.id = r.listing_id
+            FROM cm_reservations r
+            JOIN cm_listings l ON l.id = r.listing_id
             ${where}
             ORDER BY r.check_in ASC
-        `, ...params);
+        `, params);
     }
 
-    async getAvailability(schemaName: string, listingId: string, from: string, to: string): Promise<any[]> {
+    async getAvailability(tenantId: string, listingId: string, from: string, to: string): Promise<any[]> {
+        const schemaName = await this.resolveSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT d::date as date,
                 CASE WHEN a.is_available IS NOT NULL THEN a.is_available
                      WHEN r.id IS NOT NULL THEN false
@@ -245,13 +259,13 @@ export class ChannelManagerService {
                 COALESCE(a.min_nights, 1) as min_nights,
                 r.guest_name as reserved_by
             FROM generate_series($2::date, $3::date, '1 day') d
-            CROSS JOIN "${schemaName}".cm_listings l
-            LEFT JOIN "${schemaName}".cm_availability a ON a.listing_id = l.id AND a.date = d
-            LEFT JOIN "${schemaName}".cm_reservations r ON r.listing_id = l.id
+            CROSS JOIN cm_listings l
+            LEFT JOIN cm_availability a ON a.listing_id = l.id AND a.date = d
+            LEFT JOIN cm_reservations r ON r.listing_id = l.id
                 AND r.status = 'confirmed' AND d >= r.check_in AND d < r.check_out
             WHERE l.id = $1::uuid
             ORDER BY d
-        `, listingId, from, to);
+        `, [listingId, from, to]);
     }
 
     async syncHostaway(tenantId: string): Promise<{ listings: number; reservations: number }> {
@@ -263,7 +277,8 @@ export class ChannelManagerService {
             select: { schemaName: true },
         });
         if (!tenant) throw new NotFoundException('Tenant not found');
-        await this.ensureTables(tenant.schemaName);
+        const schemaName = tenant.schemaName;
+        await this.ensureTables(schemaName);
 
         const tokenResp = await this.http.axiosRef.post('https://api.hostaway.com/v1/accessTokens', {
             grant_type: 'client_credentials',
@@ -280,19 +295,19 @@ export class ChannelManagerService {
         let listingCount = 0;
 
         for (const l of listings) {
-            await this.prisma.$queryRawUnsafe(`
-                INSERT INTO "${tenant.schemaName}".cm_listings
+            await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+                INSERT INTO cm_listings
                 (external_id, provider, name, address, max_guests, base_price_cents, currency, last_synced_at)
                 VALUES ($1, 'hostaway', $2, $3, $4, $5, $6, now())
                 ON CONFLICT (external_id, provider) DO UPDATE SET
                     name = EXCLUDED.name, address = EXCLUDED.address,
                     max_guests = EXCLUDED.max_guests, base_price_cents = EXCLUDED.base_price_cents,
                     last_synced_at = now()
-            `,
+            `, [
                 String(l.id), l.name, l.address || null,
                 l.maxGuests || 4, Math.round((l.basePrice || 0) * 100),
                 l.currencyCode || 'USD',
-            );
+            ]);
             listingCount++;
         }
 
@@ -301,22 +316,22 @@ export class ChannelManagerService {
         let resCount = 0;
 
         for (const r of reservations) {
-            await this.prisma.$queryRawUnsafe(`
-                INSERT INTO "${tenant.schemaName}".cm_reservations
+            await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+                INSERT INTO cm_reservations
                 (listing_id, external_id, provider, guest_name, guest_email, guest_phone,
                  check_in, check_out, guests, total_cents, currency, status, source, synced_at)
                 SELECT l.id, $1, 'hostaway', $2, $3, $4, $5::date, $6::date, $7, $8, $9, $10, $11, now()
-                FROM "${tenant.schemaName}".cm_listings l WHERE l.external_id = $12 AND l.provider = 'hostaway'
+                FROM cm_listings l WHERE l.external_id = $12 AND l.provider = 'hostaway'
                 ON CONFLICT (external_id, provider) DO UPDATE SET
                     guest_name = EXCLUDED.guest_name, check_in = EXCLUDED.check_in,
                     check_out = EXCLUDED.check_out, status = EXCLUDED.status, synced_at = now()
-            `,
+            `, [
                 String(r.id), r.guestName || 'Guest', r.guestEmail || null, r.guestPhone || null,
                 r.arrivalDate, r.departureDate, r.numberOfGuests || 1,
                 Math.round((r.totalPrice || 0) * 100), r.currency || 'USD',
                 r.status || 'confirmed', r.channelName || 'hostaway',
                 String(r.listingMapId),
-            );
+            ]);
             resCount++;
         }
 
@@ -324,20 +339,27 @@ export class ChannelManagerService {
         return { listings: listingCount, reservations: resCount };
     }
 
+    /**
+     * Internal callers already hold a resolved schema name, so this one keeps
+     * taking it instead of paying a second tenant lookup per reservation.
+     */
     private async blockDates(schemaName: string, listingId: string, checkIn: string, checkOut: string): Promise<void> {
-        await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".cm_availability (listing_id, date, is_available)
+        await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            INSERT INTO cm_availability (listing_id, date, is_available)
             SELECT $1::uuid, d::date, false
             FROM generate_series($2::date, ($3::date - interval '1 day'), '1 day') d
             ON CONFLICT (listing_id, date) DO UPDATE SET is_available = false
-        `, listingId, checkIn, checkOut);
+        `, [listingId, checkIn, checkOut]);
     }
 
-    private async getConfigForSchema(schemaName: string): Promise<ChannelManagerConfig | null> {
-        const tenant = await this.prisma.tenant.findFirst({
-            where: { schemaName },
-            select: { settings: true },
-        });
-        return (tenant?.settings as any)?.channelManager || null;
+    /**
+     * The controller hands over a tenantId (that is what @CurrentTenant carries),
+     * so every tenant-scoped entry point converts it here. Passing the id straight
+     * into SQL is what made Postgres look for a schema named like a UUID.
+     */
+    private async resolveSchemaName(tenantId: string): Promise<string> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+        return schemaName;
     }
 }

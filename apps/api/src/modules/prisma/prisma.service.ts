@@ -102,6 +102,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Validate that a schema name is safe for use in SQL.
      * Prevents SQL injection via malicious schema names.
      */
+    /**
+     * Public fail-fast for code paths that must interpolate a schema name into
+     * DDL by hand (CREATE TABLE / REFERENCES cannot go through the search_path
+     * helper, which runs its statement via $queryRawUnsafe).
+     *
+     * Those paths used to be the blind spot: five modules interpolated
+     * `"${schemaName}"` straight into $queryRawUnsafe, bypassing this check
+     * entirely, so passing a tenantId where a schema name belonged surfaced as
+     * a raw Postgres 3F000 from the bottom of the stack instead of a readable
+     * 400 — and five whole features were dead in production without a single
+     * intelligible error.
+     */
+    assertTenantSchemaName(schemaName: string): void {
+        this.validateSchemaName(schemaName);
+    }
+
     private validateSchemaName(schemaName: string): void {
         if (!schemaName || schemaName.length > 63) {
             throw new BadRequestException(

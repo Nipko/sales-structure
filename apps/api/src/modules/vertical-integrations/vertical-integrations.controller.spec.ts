@@ -49,4 +49,20 @@ describe('VerticalIntegrationsController health contract', () => {
         expect(response.data.clientSecret).toBeUndefined();
         expect(JSON.stringify(response)).not.toContain('super-secret');
     });
+
+    // The tenant decorator yields a tenantId, never a schema name. Handing it to
+    // the service as if it were one made every synced-items read die with a
+    // Postgres 3F000 in production.
+    it('hands the synced-items read a tenantId, not a schema name', async () => {
+        const vi = { listItems: jest.fn().mockResolvedValue([]) };
+        const controller = new VerticalIntegrationsController(vi as any);
+
+        await controller.items('11111111-1111-4111-8111-111111111111', 'toast', 'menu_item');
+
+        expect(vi.listItems).toHaveBeenCalledWith(
+            '11111111-1111-4111-8111-111111111111',
+            'toast',
+            'menu_item',
+        );
+    });
 });

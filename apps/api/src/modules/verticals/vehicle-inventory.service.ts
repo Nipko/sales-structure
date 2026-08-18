@@ -11,7 +11,15 @@ export class VehicleInventoryService {
         private readonly throttle: TenantThrottleService,
     ) {}
 
+    /**
+     * Takes an already-resolved schema name because the DDL below interpolates
+     * it by hand: CREATE TABLE / REFERENCES cannot run through the search_path
+     * helper. The assertion is the only thing standing between a caller that
+     * confuses tenantId with schema name and a raw Postgres 3F000.
+     */
     async ensureTables(schemaName: string): Promise<void> {
+        this.prisma.assertTenantSchemaName(schemaName);
+
         const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'vehicles'`,
             schemaName,
@@ -94,11 +102,12 @@ export class VehicleInventoryService {
         this.logger.log(`Vehicle inventory tables created for schema ${schemaName}`);
     }
 
-    async listVehicles(schemaName: string, filters?: {
+    async listVehicles(tenantId: string, filters?: {
         status?: string; search?: string; make?: string; category?: string;
         minPrice?: number; maxPrice?: number; condition?: string;
         limit?: number; offset?: number;
     }): Promise<{ items: any[]; total: number }> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
 
         const conditions: string[] = [];
@@ -136,32 +145,36 @@ export class VehicleInventoryService {
         const offset = requestedOffset;
 
         const countParams = [...params];
-        const countResult: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int as total FROM "${schemaName}".vehicles ${where}`,
-            ...countParams,
+        const countResult = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT COUNT(*)::int as total FROM vehicles ${where}`,
+            countParams,
         );
 
         params.push(limit, offset);
-        const items: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT * FROM "${schemaName}".vehicles ${where}
+        const items = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT * FROM vehicles ${where}
              ORDER BY is_featured DESC, created_at DESC
              LIMIT $${idx++} OFFSET $${idx++}`,
-            ...params,
+            params,
         );
 
         return { items, total: countResult[0]?.total || 0 };
     }
 
-    async getVehicle(schemaName: string, vehicleId: string): Promise<any> {
-        const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT * FROM "${schemaName}".vehicles WHERE id = $1::uuid`,
-            vehicleId,
+    async getVehicle(tenantId: string, vehicleId: string): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT * FROM vehicles WHERE id = $1::uuid`,
+            [vehicleId],
         );
         if (!rows.length) throw new NotFoundException('Vehicle not found');
         return rows[0];
     }
 
-    async createVehicle(tenantId: string, schemaName: string, data: {
+    async createVehicle(tenantId: string, data: {
         make: string; model: string; year: number; trimLevel?: string;
         vin?: string; licensePlate?: string; color?: string;
         fuelType?: string; transmission?: string; mileageKm?: number;
@@ -169,6 +182,7 @@ export class VehicleInventoryService {
         category?: string; features?: string[]; photos?: string[];
         description?: string; location?: string; isFeatured?: boolean;
     }): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
 
         // El gate del plan ahora es por CANTIDAD, no por bandera. Antes
@@ -177,19 +191,20 @@ export class VehicleInventoryService {
         // vertical nacia muerta. Mismo patron que tours/propiedades.
         // Solo cuentan los vehiculos vivos: uno vendido y archivado no debe
         // seguir ocupando cupo.
-        const used: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".vehicles WHERE status <> 'sold'`,
+        const used = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT COUNT(*)::int AS cnt FROM vehicles WHERE status <> 'sold'`,
         );
         await this.throttle.enforcePlanLimit(tenantId, 'maxVehicles', used?.[0]?.cnt || 0, 'vehículos');
 
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".vehicles (
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            INSERT INTO vehicles (
                 make, model, year, trim_level, vin, license_plate, color,
                 fuel_type, transmission, mileage_km, condition, price_cents,
                 currency, category, features, photos, description, location, is_featured
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::text[], $16::text[], $17, $18, $19)
             RETURNING *
-        `,
+        `, [
             data.make, data.model, data.year, data.trimLevel || null,
             data.vin || null, data.licensePlate || null, data.color || null,
             data.fuelType || 'gasoline', data.transmission || 'automatic',
@@ -197,11 +212,12 @@ export class VehicleInventoryService {
             data.currency || 'COP', data.category || 'sedan',
             data.features || [], data.photos || [],
             data.description || null, data.location || null, data.isFeatured ?? false,
-        );
+        ]);
         return rows[0];
     }
 
-    async updateVehicle(schemaName: string, vehicleId: string, data: Record<string, any>): Promise<any> {
+    async updateVehicle(tenantId: string, vehicleId: string, data: Record<string, any>): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const fieldMap: Record<string, string> = {
             make: 'make', model: 'model', year: 'year', trimLevel: 'trim_level',
             vin: 'vin', licensePlate: 'license_plate', color: 'color',
@@ -228,28 +244,31 @@ export class VehicleInventoryService {
         sets.push('updated_at = now()');
         params.push(vehicleId);
 
-        const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schemaName}".vehicles SET ${sets.join(', ')} WHERE id = $${idx}::uuid RETURNING *`,
-            ...params,
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE vehicles SET ${sets.join(', ')} WHERE id = $${idx}::uuid RETURNING *`,
+            params,
         );
         if (!rows.length) throw new NotFoundException('Vehicle not found');
         return rows[0];
     }
 
-    async markSold(schemaName: string, vehicleId: string, soldPriceCents: number, buyerContactId?: string): Promise<any> {
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            UPDATE "${schemaName}".vehicles
+    async markSold(tenantId: string, vehicleId: string, soldPriceCents: number, buyerContactId?: string): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            UPDATE vehicles
             SET status = 'sold', sold_at = CURRENT_DATE, sold_price_cents = $2, buyer_contact_id = $3::uuid, updated_at = now()
             WHERE id = $1::uuid
             RETURNING *
-        `, vehicleId, soldPriceCents, buyerContactId || null);
+        `, [vehicleId, soldPriceCents, buyerContactId || null]);
         if (!rows.length) throw new NotFoundException('Vehicle not found');
         return rows[0];
     }
 
-    async getInventoryStats(schemaName: string): Promise<any> {
+    async getInventoryStats(tenantId: string): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT
                 COUNT(*)::int as total,
                 COUNT(*) FILTER (WHERE status = 'available')::int as available,
@@ -258,35 +277,37 @@ export class VehicleInventoryService {
                 COUNT(*) FILTER (WHERE status = 'maintenance')::int as maintenance,
                 COALESCE(AVG(price_cents) FILTER (WHERE status = 'available'), 0)::int as avg_price_cents,
                 COUNT(DISTINCT make)::int as brands
-            FROM "${schemaName}".vehicles
+            FROM vehicles
         `);
         return rows[0];
     }
 
-    async scheduleTestDrive(schemaName: string, data: {
+    async scheduleTestDrive(tenantId: string, data: {
         vehicleId: string; contactName: string; contactPhone?: string;
         scheduledDate: string; scheduledTime: string; notes?: string;
     }): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
 
-        const conflict: any[] = await this.prisma.$queryRawUnsafe(`
-            SELECT 1 FROM "${schemaName}".test_drives
+        const conflict = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            SELECT 1 FROM test_drives
             WHERE vehicle_id = $1::uuid AND scheduled_date = $2::date AND scheduled_time = $3::time
             AND status NOT IN ('cancelled', 'completed')
-        `, data.vehicleId, data.scheduledDate, data.scheduledTime);
+        `, [data.vehicleId, data.scheduledDate, data.scheduledTime]);
 
         if (conflict.length > 0) throw new BadRequestException('Test drive slot already booked');
 
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".test_drives (vehicle_id, contact_name, contact_phone, scheduled_date, scheduled_time, notes)
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            INSERT INTO test_drives (vehicle_id, contact_name, contact_phone, scheduled_date, scheduled_time, notes)
             VALUES ($1::uuid, $2, $3, $4::date, $5::time, $6)
             RETURNING *
-        `, data.vehicleId, data.contactName, data.contactPhone || null,
-           data.scheduledDate, data.scheduledTime, data.notes || null);
+        `, [data.vehicleId, data.contactName, data.contactPhone || null,
+            data.scheduledDate, data.scheduledTime, data.notes || null]);
         return rows[0];
     }
 
-    async listTestDrives(schemaName: string, filters?: { vehicleId?: string; status?: string; date?: string }): Promise<any[]> {
+    async listTestDrives(tenantId: string, filters?: { vehicleId?: string; status?: string; date?: string }): Promise<any[]> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
         const conditions: string[] = [];
         const params: any[] = [];
@@ -297,19 +318,20 @@ export class VehicleInventoryService {
         if (filters?.date) { conditions.push(`td.scheduled_date = $${idx++}::date`); params.push(filters.date); }
 
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT td.*, v.make, v.model, v.year, v.color
-            FROM "${schemaName}".test_drives td
-            JOIN "${schemaName}".vehicles v ON v.id = td.vehicle_id
+            FROM test_drives td
+            JOIN vehicles v ON v.id = td.vehicle_id
             ${where}
             ORDER BY td.scheduled_date, td.scheduled_time
-        `, ...params);
+        `, params);
     }
 
-    async searchVehiclesForAI(schemaName: string, query: {
+    async searchVehiclesForAI(tenantId: string, query: {
         make?: string; budgetMax?: number; category?: string;
         fuelType?: string; condition?: string; year?: number;
     }): Promise<any[]> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
         const conditions: string[] = [`status = 'available'`];
         const params: any[] = [];
@@ -322,13 +344,13 @@ export class VehicleInventoryService {
         if (query.condition) { conditions.push(`condition = $${idx++}`); params.push(query.condition); }
         if (query.year) { conditions.push(`year >= $${idx++}`); params.push(query.year); }
 
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT id, make, model, year, trim_level, color, fuel_type, transmission,
                    mileage_km, condition, price_cents, currency, category, features, photos[1] as photo
-            FROM "${schemaName}".vehicles
+            FROM vehicles
             WHERE ${conditions.join(' AND ')}
             ORDER BY is_featured DESC, price_cents ASC
             LIMIT 10
-        `, ...params);
+        `, params);
     }
 }

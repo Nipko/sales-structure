@@ -11,7 +11,19 @@ export class StaffSchedulingService {
         private readonly redis: RedisService,
     ) {}
 
-    async ensureTables(schemaName: string): Promise<void> {
+    /**
+     * DDL cannot go through executeInTenantSchema (that helper runs a single
+     * statement via $queryRawUnsafe under SET LOCAL search_path, which is no use
+     * for CREATE TABLE ... REFERENCES). This is the one path that still
+     * interpolates the schema by hand, so it must fail fast on anything that is
+     * not a tenant schema name — a tenantId used to reach Postgres verbatim and
+     * surface as an unreadable 3F000.
+     */
+    private async ensureTables(schemaName: string): Promise<void> {
+        this.prisma.assertTenantSchemaName(schemaName);
+
+        // Catalog probe: the schema travels as a bound parameter against
+        // information_schema, so it is not resolved through search_path.
         const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'staff_members'`,
             schemaName,
@@ -71,9 +83,10 @@ export class StaffSchedulingService {
         this.logger.log(`Staff scheduling tables created for schema ${schemaName}`);
     }
 
-    async listStaff(schemaName: string): Promise<any[]> {
+    async listStaff(tenantId: string): Promise<any[]> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT s.*,
                 COALESCE(json_agg(json_build_object(
                     'dayOfWeek', sc.day_of_week,
@@ -82,30 +95,31 @@ export class StaffSchedulingService {
                     'isActive', sc.is_active
                 )) FILTER (WHERE sc.id IS NOT NULL), '[]') as schedules,
                 COALESCE(json_agg(DISTINCT sl.service_id) FILTER (WHERE sl.service_id IS NOT NULL), '[]') as service_ids
-            FROM "${schemaName}".staff_members s
-            LEFT JOIN "${schemaName}".staff_schedules sc ON sc.staff_id = s.id
-            LEFT JOIN "${schemaName}".staff_service_links sl ON sl.staff_id = s.id
+            FROM staff_members s
+            LEFT JOIN staff_schedules sc ON sc.staff_id = s.id
+            LEFT JOIN staff_service_links sl ON sl.staff_id = s.id
             WHERE s.is_active = true
             GROUP BY s.id
             ORDER BY s.sort_order, s.name
         `);
     }
 
-    async createStaff(schemaName: string, data: {
+    async createStaff(tenantId: string, data: {
         name: string; email?: string; phone?: string;
         role?: string; specialties?: string[];
     }): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".staff_members (name, email, phone, role, specialties)
+        const rows: any[] = await this.prisma.executeInTenantSchema(schemaName, `
+            INSERT INTO staff_members (name, email, phone, role, specialties)
             VALUES ($1, $2, $3, $4, $5::text[])
             RETURNING *
-        `, data.name, data.email || null, data.phone || null,
-           data.role || 'stylist', data.specialties || []);
+        `, [data.name, data.email || null, data.phone || null,
+            data.role || 'stylist', data.specialties || []]);
         return rows[0];
     }
 
-    async updateStaff(schemaName: string, staffId: string, data: Partial<{
+    async updateStaff(tenantId: string, staffId: string, data: Partial<{
         name: string; email: string; phone: string; role: string;
         specialties: string[]; isActive: boolean; sortOrder: number;
     }>): Promise<any> {
@@ -125,24 +139,29 @@ export class StaffSchedulingService {
         sets.push('updated_at = now()');
         params.push(staffId);
 
-        const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schemaName}".staff_members SET ${sets.join(', ')} WHERE id = $${idx}::uuid RETURNING *`,
-            ...params,
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const rows: any[] = await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE staff_members SET ${sets.join(', ')} WHERE id = $${idx}::uuid RETURNING *`,
+            params,
         );
         if (!rows.length) throw new NotFoundException('Staff member not found');
         return rows[0];
     }
 
-    async deleteStaff(schemaName: string, staffId: string): Promise<void> {
-        await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schemaName}".staff_members SET is_active = false WHERE id = $1::uuid`,
-            staffId,
+    async deleteStaff(tenantId: string, staffId: string): Promise<void> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE staff_members SET is_active = false WHERE id = $1::uuid`,
+            [staffId],
         );
     }
 
-    async setSchedule(schemaName: string, staffId: string, schedules: Array<{
+    async setSchedule(tenantId: string, staffId: string, schedules: Array<{
         dayOfWeek: number; startTime: string; endTime: string; isActive?: boolean;
     }>): Promise<void> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
         if (!Array.isArray(schedules)) {
             throw new BadRequestException('Schedules must be an array');
@@ -177,7 +196,8 @@ export class StaffSchedulingService {
         });
     }
 
-    async linkServices(schemaName: string, staffId: string, serviceIds: string[]): Promise<void> {
+    async linkServices(tenantId: string, staffId: string, serviceIds: string[]): Promise<void> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
         if (!Array.isArray(serviceIds)) {
             throw new BadRequestException('serviceIds must be an array');
@@ -200,19 +220,32 @@ export class StaffSchedulingService {
         });
     }
 
-    async getAvailableStaff(schemaName: string, serviceId: string, date: string, time: string): Promise<any[]> {
+    /**
+     * Public entry point: callers hold a tenantId, never a schema name.
+     */
+    async getAvailableStaff(tenantId: string, serviceId: string, date: string, time: string): Promise<any[]> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        return this.getAvailableStaffInSchema(schemaName, serviceId, date, time);
+    }
+
+    /**
+     * Kept separate so any in-process caller that already resolved the tenant
+     * schema (booking engine / AI tools) can reuse the availability rule without
+     * a second lookup, and without tempting a controller to pass a raw id here.
+     */
+    private async getAvailableStaffInSchema(schemaName: string, serviceId: string, date: string, time: string): Promise<any[]> {
         await this.ensureTables(schemaName);
         const dayOfWeek = this.dayOfWeek(date);
         if (!this.isValidTime(time)) {
             throw new BadRequestException('time must use HH:mm or HH:mm:ss');
         }
 
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT sm.id, sm.name, sm.specialties, sm.avatar_url
-            FROM "${schemaName}".staff_members sm
-            JOIN "${schemaName}".staff_service_links sl ON sl.staff_id = sm.id AND sl.service_id = $1::uuid
-            JOIN "${schemaName}".services svc ON svc.id = sl.service_id AND svc.is_active = true
-            JOIN "${schemaName}".staff_schedules ss ON ss.staff_id = sm.id
+            FROM staff_members sm
+            JOIN staff_service_links sl ON sl.staff_id = sm.id AND sl.service_id = $1::uuid
+            JOIN services svc ON svc.id = sl.service_id AND svc.is_active = true
+            JOIN staff_schedules ss ON ss.staff_id = sm.id
                 AND ss.day_of_week = $2 AND ss.is_active = true
                 AND ($4::date + $3::time) >= ($4::date + ss.start_time)
                 AND (
@@ -222,7 +255,7 @@ export class StaffSchedulingService {
                 ) <= ($4::date + ss.end_time)
             WHERE sm.is_active = true
             AND NOT EXISTS (
-                SELECT 1 FROM "${schemaName}".staff_breaks sb
+                SELECT 1 FROM staff_breaks sb
                 WHERE sb.staff_id = sm.id
                   AND sb.date = $4::date
                   AND ($4::date + $3::time) < ($4::date + sb.end_time)
@@ -233,7 +266,7 @@ export class StaffSchedulingService {
                   ) > ($4::date + sb.start_time)
             )
             AND NOT EXISTS (
-                SELECT 1 FROM "${schemaName}".appointments a
+                SELECT 1 FROM appointments a
                 WHERE a.assigned_to = sm.id
                   AND a.status NOT IN ('cancelled', 'no_show')
                   AND a.start_at < (
@@ -244,17 +277,18 @@ export class StaffSchedulingService {
                   AND a.end_at > ($4::date + $3::time)
             )
             ORDER BY sm.sort_order, sm.name
-        `, serviceId, dayOfWeek, time, date);
+        `, [serviceId, dayOfWeek, time, date]);
     }
 
-    async addBreak(schemaName: string, staffId: string, data: {
+    async addBreak(tenantId: string, staffId: string, data: {
         date: string; startTime: string; endTime: string; reason?: string;
     }): Promise<any> {
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".staff_breaks (staff_id, date, start_time, end_time, reason)
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const rows: any[] = await this.prisma.executeInTenantSchema(schemaName, `
+            INSERT INTO staff_breaks (staff_id, date, start_time, end_time, reason)
             VALUES ($1::uuid, $2::date, $3::time, $4::time, $5)
             RETURNING *
-        `, staffId, data.date, data.startTime, data.endTime, data.reason || null);
+        `, [staffId, data.date, data.startTime, data.endTime, data.reason || null]);
         return rows[0];
     }
 

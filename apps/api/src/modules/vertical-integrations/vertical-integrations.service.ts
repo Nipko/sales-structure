@@ -365,6 +365,10 @@ export class VerticalIntegrationsService {
 
     // ── Synced-items table ───────────────────────────────────
     async ensureTables(schemaName: string): Promise<void> {
+        // The Redis key is derived from this value before any SQL runs, so a
+        // tenantId passed where a schema name belongs would poison the cache and
+        // only surface later as a raw Postgres 3F000. Fail readably, here.
+        this.prisma.assertTenantSchemaName(schemaName);
         const cacheKey = `vi_cols:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
         try {
@@ -412,7 +416,19 @@ export class VerticalIntegrationsService {
         );
     }
 
-    async listItems(schemaName: string, provider?: string, itemType?: string, limit = 100): Promise<any[]> {
+    /**
+     * Tenant-facing read. Callers outside this service only ever hold a tenantId,
+     * so the physical schema is resolved here — the controller used to hand the
+     * tenantId straight through as if it were the schema name.
+     */
+    async listItems(tenantId: string, provider?: string, itemType?: string, limit = 100): Promise<any[]> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+        return this.listItemsInSchema(schemaName, provider, itemType, limit);
+    }
+
+    /** For callers that already resolved the schema (AI tool reads, sync). */
+    private async listItemsInSchema(schemaName: string, provider?: string, itemType?: string, limit = 100): Promise<any[]> {
         await this.ensureTables(schemaName);
         const conds: string[] = [];
         const params: any[] = [];
@@ -789,7 +805,7 @@ export class VerticalIntegrationsService {
     async getMenuForAI(tenantId: string, schemaName: string): Promise<any> {
         const gate = await this.getToolGate(tenantId, 'toast');
         if (!gate.allowed) return this.blockedToolResult(gate.health);
-        const rows = await this.listItems(schemaName, 'toast', 'menu_item', 80);
+        const rows = await this.listItemsInSchema(schemaName, 'toast', 'menu_item', 80);
         return {
             items: rows.map((r) => ({
                 name: r.title, group: r.subtitle,
@@ -804,7 +820,7 @@ export class VerticalIntegrationsService {
     async getScheduleForAI(tenantId: string, schemaName: string): Promise<any> {
         const gate = await this.getToolGate(tenantId, 'mindbody');
         if (!gate.allowed) return this.blockedToolResult(gate.health);
-        const rows = await this.listItems(schemaName, 'mindbody', 'class', 80);
+        const rows = await this.listItemsInSchema(schemaName, 'mindbody', 'class', 80);
         // El sync de Mindbody trae una ventana de ~14 días que caduca sola: sin
         // este filtro, a la semana de conectar la IA ofrecía clases que ya
         // habían pasado — el tenant perdía confianza justo después de configurar.
@@ -829,7 +845,7 @@ export class VerticalIntegrationsService {
     async getClinicServicesForAI(tenantId: string, schemaName: string): Promise<any> {
         const gate = await this.getToolGate(tenantId, 'cliniko');
         if (!gate.allowed) return this.blockedToolResult(gate.health);
-        const rows = await this.listItems(schemaName, 'cliniko', 'appointment_type', 80);
+        const rows = await this.listItemsInSchema(schemaName, 'cliniko', 'appointment_type', 80);
         return {
             services: rows.map((r) => ({
                 id: r.external_id, name: r.title, category: r.subtitle,

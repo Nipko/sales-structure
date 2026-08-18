@@ -95,6 +95,12 @@ export class EcommerceService {
     }
 
     async ensureTables(schemaName: string): Promise<void> {
+        // DDL cannot go through executeInTenantSchema (it runs its statement via
+        // $queryRawUnsafe), so the schema name is interpolated by hand below and
+        // this is the only thing standing between a caller that hands over a
+        // tenantId and a raw Postgres 3F000 from the bottom of the stack.
+        this.prisma.assertTenantSchemaName(schemaName);
+
         const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'ecommerce_products'`,
             schemaName,
@@ -169,10 +175,14 @@ export class EcommerceService {
         const products = response.data?.products || [];
         let synced = 0;
 
+        // One transaction for the whole page, not one per product. Routing each
+        // upsert through executeInTenantSchema would open 250 transactions per
+        // Shopify page against PgBouncer for what is a single bulk import.
+        await this.prisma.transactionInTenantSchema(tenant.schemaName, async (query) => {
         for (const p of products) {
             const variant = p.variants?.[0];
-            await this.prisma.$queryRawUnsafe(`
-                INSERT INTO "${tenant.schemaName}".ecommerce_products
+            await query(`
+                INSERT INTO ecommerce_products
                 (external_id, provider, title, description, handle, vendor, product_type,
                  price_cents, currency, compare_at_price_cents, image_url, images, tags, status, inventory_quantity, synced_at)
                 VALUES ($1, 'shopify', $2, $3, $4, $5, $6, $7, 'USD',
@@ -182,7 +192,7 @@ export class EcommerceService {
                     price_cents = EXCLUDED.price_cents, image_url = EXCLUDED.image_url,
                     images = EXCLUDED.images, status = EXCLUDED.status,
                     inventory_quantity = EXCLUDED.inventory_quantity, synced_at = now()
-            `,
+            `, [
                 String(p.id), p.title, p.body_html || '',
                 p.handle || '', p.vendor || '', p.product_type || '',
                 variant ? Math.round(parseFloat(variant.price || '0') * 100) : 0,
@@ -192,9 +202,10 @@ export class EcommerceService {
                 p.tags ? p.tags.split(',').map((t: string) => t.trim()) : [],
                 p.status || 'active',
                 variant?.inventory_quantity || 0,
-            );
+            ]);
             synced++;
         }
+        });
 
         this.logger.log(`Synced ${synced} Shopify products for tenant ${tenantId}`);
         return { synced };
@@ -222,9 +233,11 @@ export class EcommerceService {
         const products = response.data || [];
         let synced = 0;
 
+        // Same reasoning as the Shopify loop above: one transaction per page.
+        await this.prisma.transactionInTenantSchema(tenant.schemaName, async (query) => {
         for (const p of products) {
-            await this.prisma.$queryRawUnsafe(`
-                INSERT INTO "${tenant.schemaName}".ecommerce_products
+            await query(`
+                INSERT INTO ecommerce_products
                 (external_id, provider, title, description, handle, price_cents, currency,
                  compare_at_price_cents, image_url, images, tags, status, inventory_quantity, synced_at)
                 VALUES ($1, 'woocommerce', $2, $3, $4, $5, 'USD', $6, $7, $8::text[], $9::text[], $10, $11, now())
@@ -232,7 +245,7 @@ export class EcommerceService {
                     title = EXCLUDED.title, description = EXCLUDED.description,
                     price_cents = EXCLUDED.price_cents, image_url = EXCLUDED.image_url,
                     status = EXCLUDED.status, inventory_quantity = EXCLUDED.inventory_quantity, synced_at = now()
-            `,
+            `, [
                 String(p.id), p.name, p.description || '',
                 p.slug || '', Math.round(parseFloat(p.price || '0') * 100),
                 p.regular_price ? Math.round(parseFloat(p.regular_price) * 100) : null,
@@ -241,17 +254,19 @@ export class EcommerceService {
                 (p.tags || []).map((t: any) => t.name),
                 p.status || 'publish',
                 p.stock_quantity || 0,
-            );
+            ]);
             synced++;
         }
+        });
 
         this.logger.log(`Synced ${synced} WooCommerce products for tenant ${tenantId}`);
         return { synced };
     }
 
-    async listProducts(schemaName: string, filters?: {
+    async listProducts(tenantId: string, filters?: {
         status?: string; search?: string; limit?: number; offset?: number;
     }): Promise<{ items: any[]; total: number }> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
         const conditions: string[] = [];
         const params: any[] = [];
@@ -264,44 +279,64 @@ export class EcommerceService {
         const limit = filters?.limit || 50;
         const offset = filters?.offset || 0;
 
-        const countResult: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int as total FROM "${schemaName}".ecommerce_products ${where}`,
-            ...params,
+        const countResult = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT COUNT(*)::int as total FROM ecommerce_products ${where}`,
+            params,
         );
 
         params.push(limit, offset);
-        const items: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT * FROM "${schemaName}".ecommerce_products ${where}
+        const items = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT * FROM ecommerce_products ${where}
              ORDER BY synced_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
-            ...params,
+            params,
         );
 
         return { items, total: countResult[0]?.total || 0 };
     }
 
-    async handleCartAbandonment(schemaName: string, data: {
+    async handleCartAbandonment(tenantId: string, data: {
         externalId?: string; provider: string; contactPhone?: string;
         contactEmail?: string; items: any[]; totalCents: number;
         currency?: string; checkoutUrl?: string;
     }): Promise<any> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        const rows: any[] = await this.prisma.$queryRawUnsafe(`
-            INSERT INTO "${schemaName}".abandoned_carts
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
+            INSERT INTO abandoned_carts
             (external_id, provider, contact_phone, contact_email, items, total_cents, currency, checkout_url)
             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
             RETURNING *
-        `,
+        `, [
             data.externalId || null, data.provider,
             data.contactPhone || null, data.contactEmail || null,
             JSON.stringify(data.items), data.totalCents,
             data.currency || 'USD', data.checkoutUrl || null,
-        );
+        ]);
         return rows[0];
+    }
+
+    /**
+     * Tenant-scoped entry point for HTTP callers, which only ever hold a
+     * tenantId. Kept separate from searchProductsForAI because the AI tool
+     * executor already runs with the schema resolved for the whole turn.
+     */
+    async searchProductsForAIByTenant(tenantId: string, query: {
+        search?: string; maxPrice?: number; category?: string;
+    }, options?: { createTablesIfMissing?: boolean }): Promise<any[]> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        return this.searchProductsForAI(schemaName, query, options);
     }
 
     async searchProductsForAI(schemaName: string, query: {
         search?: string; maxPrice?: number; category?: string;
     }, options?: { createTablesIfMissing?: boolean }): Promise<any[]> {
+        // The existence probe below binds the schema as a parameter, so a wrong
+        // value would just return "no catalog" and hand the customer an empty
+        // store instead of an error. Fail loudly before that can happen.
+        this.prisma.assertTenantSchemaName(schemaName);
+
         if (options?.createTablesIfMissing === false) {
             // Agent Test is read-only and runs against the real tenant schema. If
             // ecommerce has never been provisioned, an empty result is safer than
@@ -322,12 +357,12 @@ export class EcommerceService {
         if (query.maxPrice) { conditions.push(`price_cents <= $${idx++}`); params.push(query.maxPrice); }
         if (query.category) { conditions.push(`product_type = $${idx++}`); params.push(query.category); }
 
-        return this.prisma.$queryRawUnsafe(`
+        return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT external_id, title, price_cents, currency, image_url, inventory_quantity, handle
-            FROM "${schemaName}".ecommerce_products
+            FROM ecommerce_products
             WHERE ${conditions.join(' AND ')}
             ORDER BY price_cents ASC
             LIMIT 10
-        `, ...params);
+        `, params);
     }
 }

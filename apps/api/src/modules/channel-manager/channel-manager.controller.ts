@@ -45,51 +45,51 @@ export class ChannelManagerController {
 
     @Get('listings')
     @ApiOperation({ summary: 'List all property listings' })
-    async listListings(@CurrentTenant() schema: string) {
-        const listings = await this.cm.listListings(schema);
+    async listListings(@CurrentTenant() tenantId: string) {
+        const listings = await this.cm.listListings(tenantId);
         return { success: true, data: listings };
     }
 
     @Post('listings')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Create a new listing' })
-    async createListing(@CurrentUser() user: any, @CurrentTenant() schema: string, @Body() body: any) {
-        const existing = await this.cm.listListings(schema);
+    async createListing(@CurrentUser() user: any, @CurrentTenant() tenantId: string, @Body() body: any) {
+        const existing = await this.cm.listListings(tenantId);
         await this.throttle.enforcePlanLimit(user.tenantId, 'maxProperties', existing?.length ?? 0, 'propiedades');
-        const listing = await this.cm.createListing(schema, body);
+        const listing = await this.cm.createListing(tenantId, body);
         return { success: true, data: listing };
     }
 
     @Get('reservations')
     @ApiOperation({ summary: 'List reservations' })
     async listReservations(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('listingId') listingId?: string,
         @Query('status') status?: string,
         @Query('fromDate') fromDate?: string,
         @Query('toDate') toDate?: string,
     ) {
-        const reservations = await this.cm.listReservations(schema, { listingId, status, fromDate, toDate });
+        const reservations = await this.cm.listReservations(tenantId, { listingId, status, fromDate, toDate });
         return { success: true, data: reservations };
     }
 
     @Post('reservations')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a reservation' })
-    async createReservation(@CurrentTenant() schema: string, @Body() body: any) {
-        const reservation = await this.cm.createReservation(schema, body);
+    async createReservation(@CurrentTenant() tenantId: string, @Body() body: any) {
+        const reservation = await this.cm.createReservation(tenantId, body);
         return { success: true, data: reservation };
     }
 
     @Get('availability')
     @ApiOperation({ summary: 'Get availability calendar for a listing' })
     async getAvailability(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('listingId') listingId: string,
         @Query('from') from: string,
         @Query('to') to: string,
     ) {
-        const availability = await this.cm.getAvailability(schema, listingId, from, to);
+        const availability = await this.cm.getAvailability(tenantId, listingId, from, to);
         return { success: true, data: availability };
     }
 

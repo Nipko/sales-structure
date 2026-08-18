@@ -84,10 +84,10 @@ export class VerticalIntegrationsController {
     @Get(':tenantId/items')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async items(
-        @CurrentTenant() schema: string,
+        @CurrentTenant() tenantId: string,
         @Query('provider') provider?: string,
         @Query('type') type?: string,
     ) {
-        return { success: true, data: await this.vi.listItems(schema, provider, type) };
+        return { success: true, data: await this.vi.listItems(tenantId, provider, type) };
     }
 }

@@ -3,9 +3,25 @@ import { promises as dns } from 'node:dns';
 import { EcommerceService } from './ecommerce.service';
 
 describe('EcommerceService Agent Test read-only search', () => {
+    // The catalog SELECT now runs through executeInTenantSchema (which validates
+    // the schema name), so read-only-ness is asserted over both query primitives.
+    //
+    // Each primitive carries the SQL at a different argument index —
+    // $queryRawUnsafe(sql, ...params) vs executeInTenantSchema(schema, sql, params).
+    // The index is declared per mock rather than sniffed from the value: keying
+    // off a literal schema name meant a test using any other schema would have
+    // silently collected the schema name AS the SQL, and the read-only
+    // assertion would then pass while inspecting nothing.
+    const collectSql = (sources: Array<{ mock: jest.Mock; sqlIndex: number }>) =>
+        sources
+            .flatMap(({ mock, sqlIndex }) => mock.mock.calls.map((call) => String(call[sqlIndex])))
+            .join('\n');
+
     it('returns an empty catalog without creating tables when ecommerce is not provisioned', async () => {
         const prisma = {
+            assertTenantSchemaName: jest.fn(),
             $queryRawUnsafe: jest.fn().mockResolvedValueOnce([]),
+            executeInTenantSchema: jest.fn(),
         };
         const service = new EcommerceService(prisma as any, {} as any, {} as any);
 
@@ -16,17 +32,22 @@ describe('EcommerceService Agent Test read-only search', () => {
         );
 
         expect(result).toEqual([]);
+        expect(prisma.assertTenantSchemaName).toHaveBeenCalledWith('tenant_test');
         expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
-        const sqlCalls = prisma.$queryRawUnsafe.mock.calls.map((call) => String(call[0])).join('\n');
+        expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
+        const sqlCalls = collectSql([
+            { mock: prisma.$queryRawUnsafe, sqlIndex: 0 },
+            { mock: prisma.executeInTenantSchema, sqlIndex: 1 },
+        ]);
         expect(sqlCalls).toMatch(/information_schema\.tables/i);
         expect(sqlCalls).not.toMatch(/\b(create|insert|update|delete|alter|drop|truncate)\b/i);
     });
 
     it('uses SELECT-only queries when the ecommerce table already exists', async () => {
         const prisma = {
-            $queryRawUnsafe: jest.fn()
-                .mockResolvedValueOnce([{ exists: 1 }])
-                .mockResolvedValueOnce([{ external_id: 'sku-1', title: 'Camisa' }]),
+            assertTenantSchemaName: jest.fn(),
+            $queryRawUnsafe: jest.fn().mockResolvedValueOnce([{ exists: 1 }]),
+            executeInTenantSchema: jest.fn().mockResolvedValueOnce([{ external_id: 'sku-1', title: 'Camisa' }]),
         };
         const service = new EcommerceService(prisma as any, {} as any, {} as any);
 
@@ -37,8 +58,13 @@ describe('EcommerceService Agent Test read-only search', () => {
         );
 
         expect(result).toHaveLength(1);
-        expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(2);
-        const sqlCalls = prisma.$queryRawUnsafe.mock.calls.map((call) => String(call[0])).join('\n');
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        expect(prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
+        expect(prisma.executeInTenantSchema.mock.calls[0][0]).toBe('tenant_test');
+        const sqlCalls = collectSql([
+            { mock: prisma.$queryRawUnsafe, sqlIndex: 0 },
+            { mock: prisma.executeInTenantSchema, sqlIndex: 1 },
+        ]);
         expect(sqlCalls).toMatch(/select external_id/i);
         expect(sqlCalls).not.toMatch(/\b(create|insert|update|delete|alter|drop|truncate)\b/i);
     });
@@ -58,6 +84,10 @@ describe('EcommerceService outbound URL security', () => {
                 update: jest.fn().mockResolvedValue({}),
             },
             $queryRawUnsafe: jest.fn().mockResolvedValue([{ exists: 1 }]),
+            executeInTenantSchema: jest.fn().mockResolvedValue([]),
+            // The product sync upserts a whole page inside ONE transaction.
+            transactionInTenantSchema: jest.fn(async (_schema: string, cb: any) => cb(jest.fn().mockResolvedValue([]))),
+            assertTenantSchemaName: jest.fn(),
         };
         redis = { del: jest.fn().mockResolvedValue(undefined) };
         http = { axiosRef: { get: jest.fn().mockResolvedValue({ data: { products: [] } }) } };

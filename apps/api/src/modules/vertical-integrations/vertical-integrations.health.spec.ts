@@ -31,6 +31,9 @@ describe('VerticalIntegrationsService health and tool gate', () => {
                 settings.verticalIntegrationHealth[provider] = JSON.parse(json);
                 return 1;
             }),
+            getTenantSchemaName: jest.fn(async () => 'tenant_acme'),
+            assertTenantSchemaName: jest.fn(),
+            executeInTenantSchema: jest.fn(async () => []),
         };
         redis = { del: jest.fn().mockResolvedValue(1) };
         http = {
@@ -89,7 +92,7 @@ describe('VerticalIntegrationsService health and tool gate', () => {
     });
 
     it('blocks AI reads before touching synced data when health is not healthy', async () => {
-        const listItems = jest.spyOn(service, 'listItems').mockResolvedValue([]);
+        const listItems = jest.spyOn(service as any, 'listItemsInSchema').mockResolvedValue([]);
 
         await expect(service.getMenuForAI(TENANT_ID, 'tenant_schema')).resolves.toMatchObject({
             error: 'integration_unavailable',
@@ -109,7 +112,7 @@ describe('VerticalIntegrationsService health and tool gate', () => {
             syncSucceeded: true,
             checkedAt: now.toISOString(),
         }, now);
-        const listItems = jest.spyOn(service, 'listItems').mockResolvedValue([{
+        const listItems = jest.spyOn(service as any, 'listItemsInSchema').mockResolvedValue([{
             title: 'Arepa',
             subtitle: 'Desayunos',
             price_cents: 1200,
@@ -122,6 +125,21 @@ describe('VerticalIntegrationsService health and tool gate', () => {
             items: [{ name: 'Arepa', price: 12 }],
         });
         expect(listItems).toHaveBeenCalledWith('tenant_schema', 'toast', 'menu_item', 80);
+    });
+
+    // The public read takes a tenantId: the controller has no schema name to give,
+    // and passing the tenantId through as one killed the endpoint with a 3F000.
+    it('resolves the physical schema for the tenant-facing item read', async () => {
+        redis.get = jest.fn().mockResolvedValue('1');
+
+        await service.listItems(TENANT_ID, 'toast', 'menu_item');
+
+        expect(prisma.getTenantSchemaName).toHaveBeenCalledWith(TENANT_ID);
+        expect(prisma.executeInTenantSchema).toHaveBeenCalledWith(
+            'tenant_acme',
+            expect.stringContaining('FROM vi_items'),
+            ['toast', 'menu_item', 100],
+        );
     });
 
     it('persists a provider-scoped update once when the same updateId is retried', async () => {

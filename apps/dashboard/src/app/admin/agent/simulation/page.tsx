@@ -45,6 +45,12 @@ interface ScenarioResult {
     } | null;
     turns: number;
     error?: string;
+    /**
+     * Turnos donde el agente le dijo al cliente que algo estaba hecho sin que el
+     * backend lo hiciera. Se muestra aparte del puntaje a propósito: una
+     * conversación puede leerse impecable, sacar 9/10 y ser mentira.
+     */
+    falseClaims?: Array<{ turn: number; reply: string }>;
 }
 
 interface RunDetail extends RunSummary { results: ScenarioResult[]; personaVersion?: number; }
@@ -418,7 +424,12 @@ function RunResults({ run, loading, onOpenScenario, t }: {
                                             : <XCircle size={15} className="text-red-400 inline" />}
                                     </td>
                                     <td className="py-2.5 px-3 text-text-secondary max-w-[220px] truncate text-xs">
-                                        {r.judge?.flags?.length ? r.judge.flags.join("; ") : "—"}
+                                        {r.falseClaims?.length ? (
+                                            <span className="inline-flex items-center gap-1 rounded-md bg-red-500/10 px-1.5 py-0.5 font-medium text-red-500">
+                                                <AlertTriangle size={12} />
+                                                {t("falseClaim", { count: r.falseClaims.length })}
+                                            </span>
+                                        ) : r.judge?.flags?.length ? r.judge.flags.join("; ") : "—"}
                                     </td>
                                     <td className="py-2.5 px-3"><ChevronRight size={14} className="text-muted-foreground" /></td>
                                 </tr>
@@ -460,6 +471,24 @@ function ScenarioDrawer({ scenario, onClose, t }: {
                 </div>
 
                 <div className="p-5 space-y-5">
+                    {/* Va ARRIBA del puntaje a propósito: el juez califica cómo suena
+                        el agente, esto dice si mintió. Una conversación puede sacar
+                        9/10 y haberle prometido al cliente una reserva inexistente. */}
+                    {scenario.falseClaims?.length ? (
+                        <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-3 space-y-2">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-red-500">
+                                <AlertTriangle size={13} />{t("falseClaimTitle")}
+                            </div>
+                            <p className="text-[11px] text-text-secondary">{t("falseClaimHelp")}</p>
+                            {scenario.falseClaims.map((c, i) => (
+                                <div key={i} className="rounded-md bg-white/60 dark:bg-black/20 px-2.5 py-1.5">
+                                    <div className="text-[10px] text-muted-foreground mb-0.5">{t("turnLabel", { turn: c.turn })}</div>
+                                    <div className="text-xs text-text-secondary">{c.reply}</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+
                     {/* Judge scores */}
                     {!scenario.error && judge && (
                         <div className="grid grid-cols-5 gap-2 text-center">

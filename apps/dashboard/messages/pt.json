@@ -10356,6 +10356,10 @@
     "banner": { "loading": "Revisando a qualidade do agente…", "unavailableTitle": "A análise de qualidade não está disponível", "unavailableDescription": "Abra o centro para tentar novamente e revisar a configuração.", "openCenter": "Ver qualidade", "blockers": "Há {count, plural, one {# bloqueio crítico} other {# bloqueios críticos}} a resolver.", "stale": "Os testes ficaram desatualizados após alterações no agente.", "evidence": "Evidência real: {current} de {minimum} interações mínimas.", "current": "A avaliação está atual; revise detalhes e tendências." }
   },
   "simulation": {
+    "falseClaim": "{count, plural, one {# afirmação falsa} other {# afirmações falsas}}",
+    "falseClaimTitle": "Disse ao cliente algo que não aconteceu",
+    "falseClaimHelp": "O agente anunciou uma reserva, uma cobrança ou um cancelamento que o sistema nunca executou. É independente da nota: uma conversa pode parecer impecável e ser mentira.",
+    "turnLabel": "Turno {turn}",
     "title": "Testar agente",
     "subtitle": "Simule conversas reais com seu agente antes de publicá-lo",
     "newRun": "Nova simulação",

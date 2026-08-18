@@ -10356,6 +10356,10 @@
     "banner": { "loading": "Reviewing agent quality…", "unavailableTitle": "Quality analysis is unavailable", "unavailableDescription": "Open the center to retry and review the configuration.", "openCenter": "View quality", "blockers": "There {count, plural, one {is # critical blocker} other {are # critical blockers}} to resolve.", "stale": "Tests became outdated after changes to the agent.", "evidence": "Real evidence: {current} of {minimum} minimum interactions.", "current": "The evaluation is current; review details and trends." }
   },
   "simulation": {
+    "falseClaim": "{count, plural, one {# false claim} other {# false claims}}",
+    "falseClaimTitle": "Told the customer something that never happened",
+    "falseClaimHelp": "The agent announced a booking, a charge or a cancellation the system never performed. This is separate from the score: a conversation can read perfectly and still be a lie.",
+    "turnLabel": "Turn {turn}",
     "title": "Test agent",
     "subtitle": "Simulate real conversations against your agent before going live",
     "newRun": "New simulation",

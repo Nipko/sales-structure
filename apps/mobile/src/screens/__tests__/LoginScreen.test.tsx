@@ -36,6 +36,9 @@ jest.mock('@react-native-google-signin/google-signin', () => ({
     GoogleSignin: { configure: jest.fn() },
     statusCodes: { SIGN_IN_CANCELLED: 'SIGN_IN_CANCELLED' },
 }));
+// @sentry/react-native se publica como ESM y Jest no lo transforma; sin este mock
+// el import en LoginScreen tumba la suite entera con "Unexpected token 'export'".
+jest.mock('@sentry/react-native', () => ({ captureException: jest.fn() }));
 
 describe('LoginScreen', () => {
     beforeEach(() => jest.clearAllMocks());

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import * as Sentry from '@sentry/react-native';
 import { useAuth, TwoFAMethod } from '../contexts/AuthContext';
 import { useI18n } from '../i18n';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
@@ -98,7 +99,16 @@ export function LoginScreen() {
             handleResult(await loginWithGoogle(idToken), t('login.googleError'));
         } catch (e: any) {
             if (e?.code !== statusCodes.SIGN_IN_CANCELLED) {
-                setError(t('login.googleGeneric'));
+                // El codigo de estado se perdia: TODOS los fallos se colapsaban en
+                // el mismo mensaje generico, asi que un DEVELOPER_ERROR (cliente
+                // OAuth de Android mal registrado para el package + SHA-1 de firma)
+                // era indistinguible de un problema de red. Sin el codigo, esto es
+                // indiagnosticable en produccion.
+                const code = e?.code ?? 'unknown';
+                setError(`${t('login.googleGeneric')} (${code})`);
+                Sentry.captureException(e, {
+                    tags: { flow: 'google_signin', google_status_code: String(code) },
+                });
             }
         } finally {
             setGoogleLoading(false);

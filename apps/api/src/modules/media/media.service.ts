@@ -426,6 +426,42 @@ export class MediaService {
     /**
      * Read file from disk for serving
      */
+    /**
+     * El archivo pedido, transcodificando a JPEG cuando hace falta.
+     *
+     * Guardamos todo como WebP porque es lo correcto para la web, pero ningún
+     * canal de mensajería de Meta acepta WebP en un mensaje de imagen. En vez de
+     * migrar lo ya subido o duplicar cada archivo en disco (que además
+     * falsearía la cuota por tenant, que se calcula sobre media_files), se
+     * convierte al vuelo: el pedido llega por `{id}.jpg`, se lee el `{id}.webp`
+     * y se devuelve JPEG. Meta lo baja una sola vez y la respuesta va con
+     * `immutable`, así que Cloudflare lo cachea en el borde.
+     *
+     * El alfa se aplana a blanco: JPEG no tiene transparencia y WhatsApp exige
+     * 8-bit RGB/RGBA.
+     */
+    async readFileForDelivery(tenantId: string, fileName: string): Promise<{ buffer: Buffer; exists: boolean; contentType?: string }> {
+        const direct = this.readFile(tenantId, fileName);
+        if (direct.exists) return direct;
+
+        const asJpeg = /\.(jpe?g)$/i.exec(fileName);
+        if (!asJpeg) return direct;
+
+        const source = this.readFile(tenantId, fileName.replace(/\.(jpe?g)$/i, '.webp'));
+        if (!source.exists) return direct;
+
+        try {
+            const buffer = await sharp(source.buffer)
+                .flatten({ background: '#ffffff' })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+            return { buffer, exists: true, contentType: 'image/jpeg' };
+        } catch (e: any) {
+            this.logger.error(`No se pudo transcodificar ${tenantId}/${fileName} a JPEG: ${e.message}`);
+            return { buffer: Buffer.alloc(0), exists: false };
+        }
+    }
+
     readFile(tenantId: string, fileName: string): { buffer: Buffer; exists: boolean } {
         const safeName = path.basename(fileName);
         const filePath = path.join(this.storagePath, tenantId, safeName);

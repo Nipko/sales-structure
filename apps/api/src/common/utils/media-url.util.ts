@@ -17,3 +17,24 @@ export function absoluteMediaUrl(url?: string | null): string | undefined {
     ).replace(/\/api\/v1\/?$/, '');
     return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
 }
+
+/**
+ * La URL de una imagen en el formato que los canales SÍ aceptan.
+ *
+ * Todo lo que sube el dueño se guarda como WebP (MediaService lo convierte con
+ * sharp), y WebP no sirve para un mensaje de imagen: WhatsApp sólo acepta
+ * image/jpeg e image/png y reserva WebP para stickers; Instagram documenta
+ * png/jpeg. Meta iba a buscar el archivo, lo rechazaba, y el fallo volvía en un
+ * webhook de estado que se descartaba — así que el log decía "Sent" y el
+ * cliente no recibía NINGUNA foto. Nunca.
+ *
+ * Se reescribe sólo la extensión de las rutas servidas por nuestro endpoint de
+ * media: una URL externa (un producto alojado en otro lado) se devuelve intacta,
+ * y un .jpg/.png ya servible también. El endpoint transcodifica a pedido, así
+ * que esto funciona con todo lo que ya está subido, sin migración.
+ */
+export function channelSafeImageUrl(url?: string | null): string | undefined {
+    if (!url) return undefined;
+    if (!/\/media\/file\//i.test(url)) return url;
+    return url.replace(/\.webp(\?|#|$)/i, '.jpg$1');
+}

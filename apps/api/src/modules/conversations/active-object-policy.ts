@@ -43,6 +43,9 @@ export const ACTIVE_OBJECT_EXPOSURE_POLICY: Readonly<Record<ActiveObjectKind, Ac
     real_estate_listing: BOUNDED_A0,
     vehicle: BOUNDED_A0,
     tour_package: BOUNDED_A0,
+    // El alojamiento es dato publico de catalogo, igual que tour_package o vehicle:
+    // nombre y id, nada del huesped. La reserva sigue siendo A1.
+    property: BOUNDED_A0,
     course: BOUNDED_A0,
     enrollment: BOUNDED_A1,
     professional_case: TOOL_ONLY_A2,

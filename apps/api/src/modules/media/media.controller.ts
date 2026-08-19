@@ -131,7 +131,7 @@ export class MediaController {
     ) {
         this.logger.log(`Serve request: tenantId=${tenantId} fileName=${fileName}`);
 
-        const { buffer, exists } = this.mediaService.readFile(tenantId, fileName);
+        const { buffer, exists, contentType: transcoded } = await this.mediaService.readFileForDelivery(tenantId, fileName);
         if (!exists) {
             this.logger.warn(`File not found: ${tenantId}/${fileName}`);
             return res.status(404).json({ message: 'Archivo no encontrado' });
@@ -153,7 +153,7 @@ export class MediaController {
             '.mp4': 'video/mp4', '.3gp': 'video/3gpp', '.mov': 'video/quicktime',
         };
         const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
-        const contentType = EXT_MIME[ext] || 'application/octet-stream';
+        const contentType = transcoded || EXT_MIME[ext] || 'application/octet-stream';
 
         // Allow cross-origin embedding (dashboard is on a different subdomain)
         res.setHeader('Access-Control-Allow-Origin', '*');

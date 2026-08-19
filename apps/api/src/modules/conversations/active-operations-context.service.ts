@@ -440,7 +440,7 @@ export class ActiveOperationsContextService {
     ): Promise<ActiveObjectContextItemV1[]> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT b.id, b.status, b.total_price, b.currency, p.name AS property_name,
+            `SELECT b.id, b.status, b.total_price, b.currency, p.name AS property_name, b.property_id,
                     to_char(b.check_in::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
                     to_char(b.check_out::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ends_at_iso,
                     to_char((b.updated_at AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
@@ -464,6 +464,14 @@ export class ActiveOperationsContextService {
             updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
             amount: nullableNumber(row.total_price),
             currency: currency(row.currency),
+            // De QUE alojamiento es la reserva. Antes solo viajaba el id de la
+            // reserva y el nombre del apartamento, asi que cuando el contrato le
+            // pedia al modelo reusar un identificador, el unico que tenia a mano
+            // era el de la reserva — y lo pasaba como propertyId. La escritura
+            // fallaba con "Property not found" DESPUES del "si" del cliente.
+            subject: row.property_id
+                ? { kind: 'property' as const, id: String(row.property_id), label: safeText(row.property_name, 120) }
+                : undefined,
             detailsTool,
         }));
     }

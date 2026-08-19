@@ -649,6 +649,10 @@ export const ACTIVE_OBJECT_KINDS = [
     'real_estate_listing',
     'vehicle',
     'tour_package',
+    // El alojamiento en si, no la reserva: es el sujeto de un property_booking,
+    // igual que tour_package lo es de un tour_booking. Sin el, el unico id que
+    // veia el agente era el de la reserva y terminaba pasandolo como propertyId.
+    'property',
     'course',
     'enrollment',
     'professional_case',

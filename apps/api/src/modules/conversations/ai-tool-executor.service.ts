@@ -180,6 +180,18 @@ export class AIToolExecutorService {
                     paymentStatus: preparedPaymentLink.paymentStatus,
                 };
             }
+            // Precondiciones ANTES de desafiar al cliente.
+            //
+            // El desafio de confirmacion congela los args tal como los mando el
+            // modelo y recien los ejecuta cuando el cliente dice que si. Sin
+            // esto, un propertyId inventado —bien formado pero inexistente—
+            // pasaba el desafio entero: al huesped se le preguntaba "confirmas
+            // la reserva?", decia que si, y RECIEN AHI el sistema descubria que
+            // el alojamiento no existe. Confirmo dos veces algo que nunca pudo
+            // ocurrir. Es el mismo patron que ya usa create_payment_link arriba.
+            const precondition = await this.assertWritePreconditions(schemaName, toolName, args);
+            if (precondition) return precondition;
+
             controlDecision = await this.toolExecutionControl.preflight({
                 schemaName,
                 tenantId,
@@ -2519,6 +2531,34 @@ export class AIToolExecutorService {
     /**
      * Create a direct property booking. Checks availability first via PropertiesService.
      */
+    /**
+     * Lo que tiene que ser cierto para que valga la pena preguntarle al cliente.
+     *
+     * Devuelve null si se puede seguir, o el resultado de error si no. El mensaje
+     * es para el cliente y por eso no nombra identificadores ni tablas: la
+     * agente tiene `list_properties` para reencontrar el dato, y ahora tambien
+     * el bloque <recent_actions> donde ese id figura.
+     */
+    private async assertWritePreconditions(
+        schemaName: string, toolName: string, args: any,
+    ): Promise<any | null> {
+        if (toolName !== 'create_property_booking') return null;
+        const propertyId = String(args?.propertyId || '').trim();
+        try {
+            const property = await this.propertiesService.getById(schemaName, propertyId);
+            if (property) return null;
+        } catch {
+            // getById valida el formato y tira si no existe: ambos casos son
+            // lo mismo aca — no hay alojamiento al que reservarle.
+        }
+        this.logger.warn(`[Tool] ${toolName} bloqueada antes de confirmar: propertyId "${propertyId.slice(0, 40)}" no existe`);
+        return {
+            error: 'unknown_property',
+            message: 'No pude ubicar ese alojamiento. Verificá cuál es antes de continuar.',
+            retryable: true,
+        };
+    }
+
     private async createPropertyBooking(
         schema: string, contactId: string,
         args: { propertyId: string; checkIn: string; checkOut: string; guestName: string; guestPhone?: string; guests?: number },

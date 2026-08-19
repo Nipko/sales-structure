@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { NormalizedMessage, ChannelType, OutboundMessage } from '@parallext/shared';
 import { WebhookTapService } from './webhook-tap.service';
+import { channelSafeImageUrl } from '../../common/utils/media-url.util';
 
 /**
  * Abstract interface that all channel adapters must implement.
@@ -142,9 +143,17 @@ export class ChannelGatewayService {
             if (outbound.content.mediaUrl) {
                 const mt = outbound.content.type;
                 const mediaType = (mt === 'document' || mt === 'audio' || mt === 'video') ? mt : 'image';
+                // Único borde por el que TODOS los canales reciben la URL, y por
+                // eso el lugar donde se corrige el formato: guardamos WebP y
+                // ningún canal de Meta lo acepta en un mensaje de imagen. Se
+                // hace acá y no en quien arma la URL porque los que la arman son
+                // varios y uno solo alcanza para que el cliente no reciba nada.
+                const mediaUrl = mediaType === 'image'
+                    ? (channelSafeImageUrl(outbound.content.mediaUrl) || outbound.content.mediaUrl)
+                    : outbound.content.mediaUrl;
                 return await adapter.sendMediaMessage(
                     outbound.to,
-                    outbound.content.mediaUrl,
+                    mediaUrl,
                     outbound.content.caption,
                     outbound.channelAccountId,
                     accessToken,

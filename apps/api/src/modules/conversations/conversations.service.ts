@@ -2238,7 +2238,18 @@ export class ConversationsService {
                             pending.toolName, result, userLanguage,
                         );
                         this.recordAgentSignal(tenantId, 'pending_confirmation_executed');
-                        tools = [];
+                        if (toolResultSucceeded(result)) {
+                            tools = [];
+                        } else {
+                            // La operacion fallo DESPUES del "si" del cliente.
+                            // Vaciar todo aca dejaba a la agente sabiendo que
+                            // fallo y sin poder hacer nada al respecto: solo
+                            // prosa, y la conversacion se atascaba. Se conservan
+                            // las lecturas para que pueda encontrar el dato
+                            // correcto en el mismo turno; las escrituras salen
+                            // para que no reintente a ciegas sobre lo mismo.
+                            tools = tools.filter((t: any) => !isBusinessWriteTool(t?.function?.name));
+                        }
                     }
                 }
             } catch (e: any) {
@@ -2544,6 +2555,22 @@ export class ConversationsService {
             }
         } catch {}
 
+        // What the PREVIOUS turns already did. Dropped on a new session with the
+        // rest of the epoch, so it can never resurrect a stale identifier.
+        //
+        // TIENE que quedar ANTES del ensamblado: el assembler lee turnContext de
+        // forma sincrónica y devuelve un string. Esto vivía 30 lineas mas abajo,
+        // o sea que se le colgaba el recuerdo a un objeto YA consumido y el
+        // bloque <recent_actions> no se emitio nunca — mientras la regla 18 del
+        // contrato le ordenaba al modelo reusar identificadores de ahi. El
+        // modelo hacia lo unico que podia: inventarlos.
+        if (!isNewSession) {
+            const priorActions = (conversation.metadata as any)?.toolContext;
+            if (Array.isArray(priorActions) && priorActions.length) {
+                (turnContext as any).recentActions = priorActions.slice(-RECENT_ACTIONS_MAX);
+            }
+        }
+
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.
@@ -2572,15 +2599,6 @@ export class ConversationsService {
             this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);
         } else {
             messages = this.truncateHistory(history || [], userText, systemPrompt, personaMaxTokens);
-        }
-
-        // What the PREVIOUS turns already did. Dropped on a new session with the
-        // rest of the epoch, so it can never resurrect a stale identifier.
-        if (!isNewSession) {
-            const priorActions = (conversation.metadata as any)?.toolContext;
-            if (Array.isArray(priorActions) && priorActions.length) {
-                (turnContext as any).recentActions = priorActions.slice(-RECENT_ACTIONS_MAX);
-            }
         }
 
         // Every write this turn performed, wherever it ran. Declared OUTSIDE the

@@ -181,6 +181,53 @@ export class WhatsappWebhookService {
     }
   }
 
+  /**
+   * Lo que Meta dice que pasó DESPUÉS de aceptar el envío.
+   *
+   * `[Outbound] Sent` sólo significa que la Graph API tomó el pedido. La entrega
+   * real —y sobre todo el rechazo— llega acá, y esto se descartaba entero: se
+   * enviaron meses de fotos en WebP (formato que WhatsApp no acepta para
+   * imágenes), Meta las rechazó una por una, y del lado nuestro todo decía
+   * "Sent". El dueño se enteró probando a mano.
+   *
+   * No se persiste el ciclo completo (sent/delivered/read) a propósito: son
+   * varios webhooks por mensaje y el valor está en el fallo. Se marca el mensaje
+   * como fallido y se loguea el código de Meta, que es lo que permite
+   * diagnosticar sin adivinar.
+   */
+  private async recordDeliveryStatuses(phoneNumberId: string, statuses: any[] | undefined): Promise<void> {
+    const failed = (statuses || []).filter((s: any) => String(s?.status || '').toLowerCase() === 'failed');
+    if (!failed.length) return;
+
+    for (const status of failed) {
+      const error = status?.errors?.[0] || {};
+      this.logger.error(
+        `[WA] Meta RECHAZÓ el mensaje ${status?.id || 'sin-id'} a ${status?.recipient_id || 'desconocido'} ` +
+        `(phone_number_id ${phoneNumberId}): code=${error.code ?? '?'} title="${error.title ?? ''}" ` +
+        `details="${error.error_data?.details ?? error.message ?? ''}"`,
+      );
+    }
+
+    // Marcar en la bandeja. Sin tenant resuelto no se puede, pero el log de
+    // arriba ya salió: el diagnóstico nunca depende de que esto funcione.
+    try {
+      const tenantId = await this.resolveTenantId(phoneNumberId);
+      if (!tenantId) return;
+      const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+      if (!schemaName) return;
+      const ids = failed.map((s: any) => s?.id).filter(Boolean);
+      if (!ids.length) return;
+      await this.prisma.executeInTenantSchema(
+        schemaName,
+        `UPDATE messages SET status = 'failed'
+          WHERE external_id = ANY($1::text[]) AND direction = 'outbound' AND status <> 'failed'`,
+        [ids],
+      );
+    } catch (e: any) {
+      this.logger.warn(`[WA] no se pudo marcar el mensaje fallido: ${e.message}`);
+    }
+  }
+
   private async processMessageEvent(phoneNumberId: string, value: any) {
      this.logger.log(`Processing message event for phone_number_id: ${phoneNumberId}`);
 
@@ -188,6 +235,7 @@ export class WhatsappWebhookService {
      // early return used to be silent — indistinguishable in the logs from a
      // customer message being dropped.
      if (!value?.messages || value.messages.length === 0) {
+         await this.recordDeliveryStatuses(phoneNumberId, value?.statuses);
          this.logger.log(
              `No messages in payload for ${phoneNumberId} ` +
              `(statuses=${value?.statuses?.length ?? 0}) — nothing to process`,

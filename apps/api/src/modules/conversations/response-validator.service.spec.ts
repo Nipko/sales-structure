@@ -7,6 +7,64 @@ import {
 describe('ResponseValidatorService', () => {
     const service = new ResponseValidatorService();
 
+    /**
+     * El caso real del 19-ago: el guardrail descartó la respuesta que confirmaba
+     * una reserva por "precio inventado" — y el precio venía de nuestro backend.
+     *
+     * El directivo de una operación ya ejecutada lleva los importes como texto
+     * plano (`- nightPrice: 180000`), y el validador sólo reconoce los que están
+     * dentro de regiones `<...>` / `{...}` o con la clave entrecomillada. Era
+     * estructuralmente imposible aprobarlo, así que la respuesta correcta se
+     * tiraba y el fail-closed terminaba contándole la reserva al huésped sin su
+     * precio. Se arregla metiendo al corpus el RESULTADO de la herramienta, que
+     * es la fuente de verdad del importe.
+     */
+    const DIRECTIVO = [
+        'Operación ejecutada: create_property_booking',
+        '- id: 8250c251-67f1-4bc2-b42f-f0ecbac76cc2',
+        '- nightPrice: 180000',
+        '- totalPrice: 1080000',
+        '- currency: COP',
+    ].join('\n');
+
+    const RESULTADO_TOOL = JSON.stringify([{
+        name: 'create_property_booking',
+        result: {
+            success: true,
+            booking: {
+                id: '8250c251-67f1-4bc2-b42f-f0ecbac76cc2',
+                nights: 6, nightPrice: 180000, cleaningFee: 0,
+                totalPrice: 1080000, currency: 'COP', status: 'confirmed',
+            },
+        },
+    }]);
+
+    const RESPUESTA = '¡Listo! Tu reserva quedó confirmada: 6 noches a $180.000 por noche, total $1.080.000 COP.';
+
+    it('el directivo por sí solo NO alcanza — así se rompía', () => {
+        const result = service.validatePrices(RESPUESTA, DIRECTIVO);
+
+        // Se documenta el límite real del validador en vez de fingir que no existe:
+        // el formato del directivo no es parseable, y por eso el arreglo va en el corpus.
+        expect(result.ok).toBe(false);
+        expect(result.hallucinatedPrices).toContain(180000);
+    });
+
+    it('con el resultado de la herramienta en el corpus, el precio real se aprueba', () => {
+        const result = service.validatePrices(RESPUESTA, `${DIRECTIVO}\n${RESULTADO_TOOL}`);
+
+        expect(result).toEqual({ ok: true, hallucinatedPrices: [] });
+    });
+
+    it('y sigue atrapando un precio que ninguna herramienta devolvió', () => {
+        const inventado = 'Te lo dejo en $95.000 la noche.';
+
+        const result = service.validatePrices(inventado, `${DIRECTIVO}\n${RESULTADO_TOOL}`);
+
+        expect(result.ok).toBe(false);
+        expect(result.hallucinatedPrices).toContain(95000);
+    });
+
     it('does not authorize a price from an unrelated rule number', () => {
         const result = service.validatePrices('El precio es $15.', 'Reglas universales 1 a 15. Disponible 24/7.');
 

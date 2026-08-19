@@ -22,6 +22,7 @@ import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { auditTurnClaim, toolResultSucceeded } from '../../common/utils/outcome-claim.util';
+import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { CustomerMemoryService } from './customer-memory.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
@@ -2233,6 +2234,25 @@ export class ConversationsService {
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
                             pendingOperationHandoff = `intake:${pending.toolName}`;
+                        } else if (!toolResultSucceeded(result) && isBusinessWriteTool(pending.toolName)) {
+                            // Se escala por RESULTADO, no por declaracion.
+                            //
+                            // El cliente ya dijo que si: la operacion estaba
+                            // validada cuando se lo preguntamos y aun asi fallo.
+                            // Antes esto dependia de que la herramienta pusiera
+                            // `shouldHandoff`, y createPropertyBooking nunca lo
+                            // pone: la reserva fallaba, el modelo escribia
+                            // "dejame revisar el estado de tu reserva" —que no
+                            // afirma nada, asi que el guardrail de falsos exitos
+                            // no lo toca— y el huesped se quedaba esperando un
+                            // pago que no existia, sin que nadie lo rescatara.
+                            pendingOperationHandoff = `failed:${pending.toolName}`;
+                            this.recordAgentSignal(tenantId, 'commit_then_failure');
+                            this.logger.error(
+                                `[Confirm] ${pending.toolName} fallo DESPUES de la confirmacion del cliente ` +
+                                `(ledger ${pending.ledgerId}): ${String(result?.error || result?.message || 'sin motivo')} ` +
+                                `— escalando a humano`,
+                            );
                         }
                         engineProducedText = this.buildExecutedOperationDirective(
                             pending.toolName, result, userLanguage,
@@ -2555,6 +2575,29 @@ export class ConversationsService {
             }
         } catch {}
 
+        // La foto del estado se toma ANTES de resolver el turno, y el bloque de
+        // confirmacion de mas arriba pudo haber creado la reserva desde entonces.
+        // Sin refrescarla, el prompt le llegaba al modelo con un directivo que
+        // decia "ya quedo reservado" y un bloque <active_objects> que lo
+        // desmentia — que es parte de lo que lo empujaba a reservar de nuevo.
+        if (preExecutedTools.some(t => isBusinessWriteTool(t.name) && toolResultSucceeded(t.result))
+            && conversation.contact_id) {
+            try {
+                await this.activeOperationsContext.populateTurnContext(turnContext, {
+                    tenantId,
+                    schemaName,
+                    contactId: conversation.contact_id,
+                    config: config as any,
+                    timezone: turnContext.timezone,
+                    now: new Date(),
+                });
+            } catch (e: any) {
+                // Una foto vieja es peor que ninguna, pero perder el turno es
+                // peor todavia: el directivo ya dice lo que paso.
+                this.logger.warn(`[Pipeline] no se pudo refrescar el estado tras la escritura: ${e.message}`);
+            }
+        }
+
         // What the PREVIOUS turns already did. Dropped on a new session with the
         // rest of the epoch, so it can never resurrect a stale identifier.
         //
@@ -2611,6 +2654,9 @@ export class ConversationsService {
 
         // 4. Execute LLM Call using Router (with tool execution loop)
         try {
+            // El servidor ya cometio una escritura y este turno se la va a
+            // contar al cliente: no es un turno barato aunque no tenga tools.
+            const voicedWrite = preExecutedTools.some(t => isBusinessWriteTool(t.name));
             const MAX_TOOL_ITERATIONS = 5;
             const currentMessages = [...messages] as any[];
             let finalResponse = '';
@@ -2674,6 +2720,7 @@ export class ConversationsService {
                     tools: hasTools ? tools : undefined,
                     allowedTiers,
                     budgetConstrained,
+                    voicedWrite,
                     pinnedModel: turnModel,
                     tenantId,
                     traceContext: {
@@ -2834,7 +2881,14 @@ export class ConversationsService {
                         currentMessages.push({
                             role: 'tool',
                             toolCallId: tc.id,
-                            content: JSON.stringify(res ?? { error: 'tool_failed' }),
+                            // Borde unico por el que un resultado de herramienta
+                            // llega al modelo, y por eso el lugar donde se sanea:
+                            // los handlers devuelven `{ error: e.message }` con el
+                            // texto crudo de la excepcion y el modelo se lo
+                            // parafraseaba al cliente.
+                            content: JSON.stringify(
+                                sanitizeToolResultForModel(res ?? { error: 'tool_failed' }, userLanguage),
+                            ),
                         });
                     });
 
@@ -3322,8 +3376,25 @@ export class ConversationsService {
             }
         }
 
+        // Lo que las herramientas DEVOLVIERON entra al corpus.
+        //
+        // El validador solo reconoce importes dentro de regiones `<...>` o
+        // `{...}`, y el directivo de una operacion ya ejecutada los lleva como
+        // texto plano (`- nightPrice: 180000`). O sea que un precio que produjo
+        // nuestro propio backend era estructuralmente imposible de aprobar: en
+        // el turno que confirmaba la reserva el guardrail descarto la respuesta
+        // correcta por "precio inventado" y, si el reintento volvia a nombrarlo,
+        // el fail-closed le contaba la reserva al huesped SIN su precio.
+        //
+        // El resultado de la tool es la fuente de verdad del importe, asi que va
+        // serializado: no depende del formato del directivo ni de que alguien
+        // recuerde mantener los dos alineados.
+        const executedToolsCorpus = (executedTools || []).length
+            ? '\n' + JSON.stringify(executedTools)
+            : '';
         const corpus = systemPrompt + '\n' + (currentMessages || [])
-            .map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n');
+            .map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n')
+            + executedToolsCorpus;
 
         const check = this.responseValidator.validatePrices(response, corpus);
         if (check.ok) return response;

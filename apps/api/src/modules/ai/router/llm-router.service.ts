@@ -371,6 +371,20 @@ export class LLMRouterService {
          * idea of which tool to call.
          */
         pinnedModel?: { provider: string; model: string };
+        /**
+         * Este turno le esta contando al cliente el resultado de una escritura
+         * ya cometida (una reserva creada, un pedido puesto).
+         *
+         * Las dos protecciones de abajo dependian de `task === 'tool_calling'`,
+         * y el turno que CIERRA la venta no tiene herramientas: el servidor ya
+         * ejecuto la operacion al recibir el "si" y las vacia. Entonces el
+         * mensaje mas importante de la conversacion —"tu reserva quedo
+         * confirmada"— caia en tarea 'conversation', el mensaje del cliente era
+         * "si" (complejidad 0) y el ruteo por valor lo mandaba al modelo mas
+         * barato del catalogo. El comentario de mas abajo ya describia el
+         * riesgo; la excepcion que se escribio no cubria este caso.
+         */
+        voicedWrite?: boolean;
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
 
         const noPersistence = persistenceDisabled(options.executionContext);
@@ -414,7 +428,11 @@ export class LLMRouterService {
             // sale is "sí": it scores ~19, which sent the turn holding the booking
             // to the cheapest model in the chain.
             const toolCallingTurn = options.task === 'tool_calling';
-            if (options.routingFactors && !toolCallingTurn) {
+            // Un turno que vocea una escritura ya cometida se protege igual que
+            // uno con herramientas: lo que esta en juego no es si hay tools, es
+            // si el cliente va a creerle al mensaje.
+            const protectedTurn = toolCallingTurn || options.voicedWrite === true;
+            if (options.routingFactors && !protectedTurn) {
                 const tIdx = candidates.findIndex(c => c.tier === targetTier);
                 if (tIdx > 0) {
                     const [picked] = candidates.splice(tIdx, 1);
@@ -426,7 +444,7 @@ export class LLMRouterService {
             // Tool-calling floor: models good enough to pick a tool and fill its
             // arguments lead; the cheap ones stay as fallback. Stable partition,
             // so the chain's own cost ordering survives inside each group.
-            if (toolCallingTurn && !options.budgetConstrained) {
+            if (protectedTurn && !options.budgetConstrained) {
                 const lead = candidates.filter(c => TOOL_CALLING_LEAD_TIERS.has(c.tier));
                 if (lead.length && lead.length < candidates.length) {
                     candidates = [...lead, ...candidates.filter(c => !TOOL_CALLING_LEAD_TIERS.has(c.tier))];

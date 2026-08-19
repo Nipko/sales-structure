@@ -2241,7 +2241,31 @@ export class ConversationsService {
                     // completion order: we collect into a fixed-index array (matched by
                     // toolCallId) and push in the original toolCalls order afterwards.
                     const contactId = conversation.contact_id || '';
-                    const toolCalls = response.toolCalls;
+                    // Deduplicate identical tool calls in same iteration (D2 fix for 1787112547697 duplicate check_property_availability)
+                    // LLM often requests same check twice; executing twice wastes 2s+ and doubles latency to 9.5s.
+                    const originalToolCalls: any[] = response.toolCalls as any[];
+                    const _seenToolKeys = new Map<string, number>();
+                    const dedupedToolCalls: any[] = [];
+                    const _keyFor = (tc: any): string => {
+                        try {
+                            const args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments || {};
+                            return `${tc.function.name}:${JSON.stringify(Object.keys(args).sort().reduce((o: any, k) => (o[k]=args[k], o), {}))}`;
+                        } catch { return `${tc.function.name}:${tc.id}`; }
+                    };
+                    for (const tc of originalToolCalls) {
+                        const key = _keyFor(tc);
+                        if (_seenToolKeys.has(key)) {
+                            this.logger.warn(`[Pipeline] Deduplicating duplicate tool call ${tc.function.name} ${key} (keeping first)`);
+                            continue;
+                        }
+                        _seenToolKeys.set(key, dedupedToolCalls.length);
+                        dedupedToolCalls.push(tc);
+                    }
+                    if (dedupedToolCalls.length !== originalToolCalls.length) {
+                        this.logger.log(`[Pipeline] Deduped ${originalToolCalls.length - dedupedToolCalls.length} duplicate tool call(s) this iteration`);
+                    }
+                    // Execute only deduped set; fan-out results below maps back to originalToolCalls
+                    const toolCalls = dedupedToolCalls;
 
                     // Run a single tool call: parse args, timeout-guard, isolate errors,
                     // emit its trace, and capture any _mediaToSend marker. Returns the
@@ -2321,13 +2345,16 @@ export class ConversationsService {
                         results = await Promise.all(toolCalls.map((tc: any) => runTool(tc)));
                     }
 
-                    // Append tool results in the ORIGINAL toolCalls order (matched by
-                    // index → toolCallId), independent of completion order above.
-                    toolCalls.forEach((tc: any, i: number) => {
+                    // Fan-out deduped results to original toolCallIds (LLM expects result per toolCallId)
+                    const _resultByKey = new Map<string, any>();
+                    dedupedToolCalls.forEach((tc: any, i: number) => _resultByKey.set(_keyFor(tc), results[i]));
+                    originalToolCalls.forEach((tc: any) => {
+                        const key = _keyFor(tc);
+                        const res = _resultByKey.get(key);
                         currentMessages.push({
                             role: 'tool',
                             toolCallId: tc.id,
-                            content: JSON.stringify(results[i]),
+                            content: JSON.stringify(res ?? { error: 'tool_failed' }),
                         });
                     });
 

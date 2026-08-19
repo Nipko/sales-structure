@@ -1502,6 +1502,14 @@ export class AIToolExecutorService {
             }
         }
 
+        // Slot hold (D3): ofrecer sin reservar es race. Al mostrar slots, pre-reservar 2 min con NX
+        // para que segundo cliente no vea mismo hueco libre y luego falle al crear.
+        for (const s of availableSlots.slice(0, 6)) {
+            const holdKey = `slot:hold:${resolvedServiceId}:${date}:${s.time}`;
+            // Best-effort, no bloquea respuesta; NX evita pisar hold existente
+            this.redis.acquireLockToken(holdKey, 120).catch(() => {});
+        }
+
         // Get user names for the slots
         const userIds = [...new Set(availableSlots.map(s => s.userId).filter(Boolean))];
         let userNames: Record<string, string> = {};

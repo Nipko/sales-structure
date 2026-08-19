@@ -1530,19 +1530,41 @@ export class ConversationsService {
     ) {
         const schemaName = await this.tenantSchema(tenantId);
 
-        const result = externalId
-            ? await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id)
-                 VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered', $3)
-                 ON CONFLICT (external_id) DO NOTHING
-                 RETURNING *`,
-                [conversationId, text, externalId],
-            )
-            : await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status)
-                 VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered') RETURNING *`,
-                [conversationId, text],
-            );
+        const plainInsert = () => this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status)
+             VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered') RETURNING *`,
+            [conversationId, text],
+        );
+
+        let result: any[];
+        if (!externalId) {
+            result = await plainInsert();
+        } else {
+            try {
+                // `uidx_messages_external_id` is a PARTIAL unique index
+                // (WHERE external_id IS NOT NULL), and Postgres only matches a
+                // partial index when ON CONFLICT repeats its predicate. Without
+                // it every reply raised 42P10 and the whole turn failed — the
+                // customer received nothing at all.
+                result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id)
+                     VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered', $3)
+                     ON CONFLICT ("external_id") WHERE "external_id" IS NOT NULL DO NOTHING
+                     RETURNING *`,
+                    [conversationId, text, externalId],
+                );
+            } catch (err: any) {
+                // Same degradation the inbound path already had: a schema whose
+                // index lagged the deploy loses dedupe, never the reply.
+                const code = err?.code || err?.meta?.code;
+                if (code !== '42P10' && !/no unique or exclusion constraint/i.test(err?.message || '')) throw err;
+                this.logger.error(
+                    `[Pipeline] uidx_messages_external_id missing on ${schemaName} — saving the reply without dedupe. ` +
+                    `Re-apply prisma/tenant-schema.sql to this schema.`,
+                );
+                result = await plainInsert();
+            }
+        }
         // Already stored by the interrupted attempt: nothing new to broadcast.
         if (externalId && !result?.[0]) {
             this.logger.warn(`[Pipeline] Outbound ${externalId} already stored — skipping duplicate history row`);

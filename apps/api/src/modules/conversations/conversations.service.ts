@@ -251,7 +251,8 @@ export class ConversationsService {
             );
             return;
         }
-        this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
+        const traceId = providerMessageId(normalizedMsg) || normalizedMsg.id || 'unknown';
+        this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId} trace=${traceId}`);
 
         // Store-only sources: NEVER run an AI turn for them.
         //  - 'waba_echo': a message the BUSINESS sent from its own WhatsApp app

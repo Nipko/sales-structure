@@ -72,7 +72,7 @@ export class InboundQueueService {
         // to tell "enqueued, worker's turn" from "silently dropped here".
         this.logger.log(
             `[Inbound] Enqueued ${msg.channelType} from ${msg.contactId} tenant=${msg.tenantId} ` +
-            `job=${pmid ? sanitizeJobId(`in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`) : 'no-dedupe'}`,
+            `job=${pmid ? sanitizeJobId(`in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`) : 'no-dedupe'} trace=${pmid || 'none'}`,
         );
     }
 }

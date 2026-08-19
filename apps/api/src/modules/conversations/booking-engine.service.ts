@@ -275,6 +275,17 @@ export class BookingEngineService {
     ): Promise<EngineResult> {
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
+        // D3 fix: stale PG booking state (age <=1h) can resucitar ask_name with date vencida.
+        // Validar state.date antes de cualquier intent; si ya pasó, resetear a ask_date.
+        if (state.date && state.date < todayDate) {
+            this.logger.log(`[Engine] Discarding stale state.date ${state.date} < ${todayDate} → reset to ask_date`);
+            state.date = undefined;
+            state.time = undefined;
+            (state as any).slots = undefined;
+            if (state.step && state.step !== 'idle' && state.step !== 'show_services') {
+                state.step = 'ask_date';
+            }
+        }
         // Per-turn signal (NOT persisted): set when the user asks for a time with
         // no nearby available slot, consumed later this same turn. Previously this
         // lived on `state` and leaked into Redis/PG, firing a stale "time

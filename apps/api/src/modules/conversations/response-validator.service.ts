@@ -74,11 +74,19 @@ export class ResponseValidatorService {
         const out: MoneyMention[] = [];
         const regions = text.match(/<[^>]{1,1000}>|\{[^{}]{1,1000}\}/g) || [];
         for (const region of regions) {
-            const price = region.match(/(?:^|[\s,{])["']?(?:price|amount|total|total_amount|totalAmount|total_price|totalPrice)["']?\s*(?:=|:)\s*["']?(\d[\d.,]*)/i)?.[1];
+            const price = region.match(/(?:^|[\s,{])["']?(?:price|amount|total|total_amount|totalAmount|total_price|totalPrice|night_price|nightPrice|cleaning_fee|cleaningFee|totalPrice)["']?\s*(?:=|:)\s*["']?(\d[\d.,]*)/i)?.[1];
             const currency = region.match(/(?:^|[\s,{])["']?currency["']?\s*(?:=|:)\s*["']?([A-Za-z]{3})/i)?.[1];
-            if (!price || !currency) continue;
+            if (!price) continue;
             const amount = this.normalize(price);
-            if (amount != null) out.push({ amount, currency: this.normalizeCurrency(currency) });
+            if (amount != null) out.push({ amount, currency: currency ? this.normalizeCurrency(currency) : undefined });
+        }
+        // Fallback: bare nightPrice/totalPrice numbers anywhere in tool JSON even without currency in same region
+        // (list_properties returns {nightPrice:180000,currency:COP} but region split may separate them)
+        const barePrices = text.match(/"(?:nightPrice|night_price|totalPrice|total_price)"\s*:\s*(\d[\d.,]*)/gi) || [];
+        for (const m of barePrices) {
+            const v = m.match(/(\d[\d.,]*)/)?.[1];
+            const n = v ? this.normalize(v) : null;
+            if (n != null && !out.some(o => o.amount === n)) out.push({ amount: n, currency: undefined });
         }
         return out;
     }

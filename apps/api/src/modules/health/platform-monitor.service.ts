@@ -758,6 +758,168 @@ export class PlatformMonitorService implements OnModuleInit {
         }
     }
 
+    /**
+     * Watches how the AGENT is behaving, not how the infrastructure is.
+     *
+     * Every other check here answers "is the platform up?". These answer "is the
+     * agent telling customers the truth, and answering them at all?" — the
+     * failures that cost the most and showed the least, because a turn that
+     * invents a booking or dies in silence completes its queue job perfectly.
+     *
+     * Counters are written by ConversationsService.recordAgentSignal() as
+     * platform-wide per-day keys (agent:signal:{signal}:{YYYY-MM-DD}) plus a set
+     * of the tenants that contributed, so this reads a bounded number of keys
+     * however many tenants exist. Window: today + yesterday (~24-48h).
+     */
+    @Cron('37 * * * *')
+    async checkAgentReliabilityCron() {
+        await this.cronLock.runExclusive(
+            'platform-monitor.checkAgentReliability',
+            1800,
+            () => this.checkAgentReliability(),
+        );
+    }
+
+    async checkAgentReliability() {
+        try {
+            const days = [0, 1].map((offset) => {
+                const d = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+                return d.toISOString().slice(0, 10);
+            });
+            const total = async (signal: string): Promise<number> => {
+                let sum = 0;
+                for (const day of days) {
+                    sum += Number(await this.redis.get(`agent:signal:${signal}:${day}`) || 0);
+                }
+                return sum;
+            };
+
+            const [claims, silent, committedThenFailed, deferred, confirmed] = await Promise.all([
+                total('claim_unbacked'),
+                total('silent_turn'),
+                total('commit_then_failure'),
+                total('concurrent_turn_deferred'),
+                total('pending_confirmation_executed'),
+            ]);
+
+            // A customer told their booking was done when no tool did it. One is
+            // an anecdote; a stream means the guardrail is firing over and over,
+            // which is something upstream breaking again.
+            const CLAIM_THRESHOLD = 5;
+            // A turn that ended with the customer receiving nothing at all.
+            const SILENT_THRESHOLD = 10;
+            // Something WAS committed and then the turn broke. Rare by nature:
+            // each one is a customer holding a booking nobody confirmed to them.
+            const COMMIT_FAILURE_THRESHOLD = 1;
+            // Second messages that had to wait for the first. Some is normal; a
+            // lot means turns run long enough to collide routinely.
+            const DEFERRED_THRESHOLD = 200;
+
+            const context = `<br><small>Ventana 24-48h. Otras señales del mismo período:`
+                + ` confirmaciones cerradas por el servidor <b>${confirmed}</b>,`
+                + ` turnos diferidos por concurrencia <b>${deferred}</b>,`
+                + ` turnos en silencio <b>${silent}</b>.</small>`;
+
+            if (claims >= CLAIM_THRESHOLD) {
+                await this.alert(
+                    'agent:claim_unbacked',
+                    `${claims} respuestas afirmaron una acción que ninguna herramienta ejecutó`,
+                    `El agente le dijo a un cliente que su reserva, cobro o cita quedaba hecha <b>${claims}</b> veces`
+                    + ` sin que ninguna herramienta lo hubiera hecho, en las últimas 24-48h.<br>`
+                    + ` El guardrail las reescribió antes de enviarlas, así que el cliente no recibió la mentira —`
+                    + ` pero que dispare seguido significa que el modelo intenta cerrar operaciones que no puede`
+                    + ` ejecutar: normalmente porque la herramienta de cierre no llegó a ese turno, o porque la`
+                    + ` vertical no tiene ninguna.<br>`
+                    + ` <b>Dónde mirar:</b> ${await this.topTenantsFor('claim_unbacked', days)}${context}`,
+                    claims,
+                );
+            } else {
+                await this.incidents.resolveByKey('agent:claim_unbacked');
+            }
+
+            if (committedThenFailed >= COMMIT_FAILURE_THRESHOLD) {
+                await this.alert(
+                    'agent:commit_then_failure',
+                    `${committedThenFailed} operación(es) se ejecutaron y el turno murió después`,
+                    `<b>${committedThenFailed}</b> vez/veces se creó algo real —una reserva, un cobro, una cita— y el`
+                    + ` turno falló antes de poder contárselo al cliente.<br>`
+                    + ` El cliente recibió un aviso de que su solicitud quedó registrada, pero <b>nadie le confirmó los`
+                    + ` detalles</b>: conviene revisar esas conversaciones a mano y cerrarlas con una persona.<br>`
+                    + ` <b>Dónde mirar:</b> ${await this.topTenantsFor('commit_then_failure', days)}${context}`,
+                    committedThenFailed,
+                );
+            } else {
+                await this.incidents.resolveByKey('agent:commit_then_failure');
+            }
+
+            if (silent >= SILENT_THRESHOLD) {
+                await this.alert(
+                    'agent:silent_turn',
+                    `${silent} turnos terminaron sin respuesta para el cliente`,
+                    `<b>${silent}</b> mensajes de clientes se procesaron sin que saliera ninguna respuesta en las`
+                    + ` últimas 24-48h.<br>`
+                    + ` Estos turnos completan su trabajo en la cola sin error, así que no aparecen como fallo en`
+                    + ` ningún otro lado. <b>Causas habituales:</b> el agente no tiene persona activa para ese canal,`
+                    + ` o el modelo devolvió vacío.<br>`
+                    + ` <b>Dónde mirar:</b> ${await this.topTenantsFor('silent_turn', days)}${context}`,
+                    silent,
+                );
+            } else {
+                await this.incidents.resolveByKey('agent:silent_turn');
+            }
+
+            if (deferred >= DEFERRED_THRESHOLD) {
+                await this.alert(
+                    'agent:concurrent_turn_deferred',
+                    `${deferred} mensajes esperaron a que terminara el turno anterior`,
+                    `<b>${deferred}</b> mensajes encontraron su conversación ocupada y se reencolaron en las últimas`
+                    + ` 24-48h.<br>`
+                    + ` Reencolar es lo correcto (evita dos respuestas cruzadas), pero este volumen indica que los`
+                    + ` turnos tardan lo suficiente como para chocar de forma rutinaria.<br>`
+                    + ` <b>Qué revisar:</b> latencia del proveedor LLM e iteraciones de herramientas por turno.`
+                    + ` <b>Dónde mirar:</b> ${await this.topTenantsFor('concurrent_turn_deferred', days)}${context}`,
+                    deferred,
+                );
+            } else {
+                await this.incidents.resolveByKey('agent:concurrent_turn_deferred');
+            }
+        } catch (e: any) {
+            this.logger.debug(`Agent-reliability check skipped: ${e.message}`);
+        }
+    }
+
+    /** Names the tenants behind a signal, so the alert points somewhere. */
+    private async topTenantsFor(signal: string, days: string[]): Promise<string> {
+        try {
+            const ids = new Set<string>();
+            for (const day of days) {
+                for (const id of await this.redis.smembers(`agent:signal:${signal}:tenants:${day}`)) {
+                    ids.add(id);
+                }
+            }
+            if (!ids.size) return 'sin tenants identificados';
+
+            const counted = await Promise.all([...ids].map(async (id) => {
+                let count = 0;
+                for (const day of days) {
+                    count += Number(await this.redis.get(`agent:signal:${signal}:${id}:${day}`) || 0);
+                }
+                return { id, count };
+            }));
+            counted.sort((a, b) => b.count - a.count);
+            const top = counted.slice(0, 5);
+
+            const tenants = await this.prisma.tenant.findMany({
+                where: { id: { in: top.map(t => t.id) } },
+                select: { id: true, name: true },
+            });
+            const nameOf = new Map(tenants.map(t => [t.id, t.name]));
+            return top.map(t => `<b>${nameOf.get(t.id) || t.id}</b> (${t.count})`).join(', ');
+        } catch {
+            return 'no se pudo resolver el detalle por tenant';
+        }
+    }
+
     private providerLabel(provider: PaymentProviderName): string {
         const labels: Record<PaymentProviderName, string> = {
             mercadopago: 'MercadoPago',
@@ -1416,6 +1578,9 @@ export class PlatformMonitorService implements OnModuleInit {
             // Con el motor propio nadie cobra en nuestro lugar: un cobro que no se
             // agendó no se recupera solo.
             'billing:engine:charges_not_running',
+            // Se creó algo real —una reserva, un cobro— y el cliente nunca supo
+            // los detalles. Sólo una persona puede cerrar esa conversación.
+            'agent:commit_then_failure',
         ];
         if (key.endsWith(':critical') || CRITICAL_KEYS.includes(key)) {
             return 'critical';

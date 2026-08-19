@@ -38,7 +38,10 @@ import { ECOMMERCE_TOOLS } from './tools/ecommerce-tools';
 import { TenantsService } from '../tenants/tenants.service';
 import {
     agentTestBlockedToolResult,
+    canEvalExecuteWriter,
+    EVAL_WRITABLE_TOOL_NAMES,
     isAgentTestSafeToolName,
+    isEvalWritableToolName,
     resolveAgentTestContactId,
 } from './agent-test-tool-policy';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
@@ -75,7 +78,19 @@ export class AgentTestService {
         tenantId: string,
         agentId: string,
         req: TestAgentRequest,
-        options?: { disableTools?: boolean; evalMode?: boolean; sandboxContactId?: string },
+        options?: {
+            disableTools?: boolean;
+            evalMode?: boolean;
+            sandboxContactId?: string;
+            /**
+             * Sandbox conversation the evaluation gate created for this run. The
+             * central guard binds every write to a conversation and an inbound
+             * message; without one, an audited writer is rejected with
+             * `conversation_context_required` and the gate can never verify that
+             * the booking it asked for actually happened.
+             */
+            sandboxConversationId?: string;
+        },
     ): Promise<TestAgentResponse> {
         const startedAt = Date.now();
 
@@ -198,11 +213,21 @@ export class AgentTestService {
         if (cfgTools?.ecommerce?.enabled === true) tools.push(...ECOMMERCE_TOOLS);
 
         // Agent Test always points at the tenant's real schema. Advertise only the
-        // audited read-only subset, regardless of evalMode. In particular, evalMode
-        // is execution metadata; it is NOT permission to write production data.
-        // Vertical integrations and MCP stay unavailable until they have an isolated
-        // sandbox/read-only contract (see agent-test-tool-policy.ts).
-        const safeTools = tools.filter((t: any) => isAgentTestSafeToolName(t?.name));
+        // audited read-only subset. evalMode alone is execution metadata; it is
+        // NOT permission to write production data. Vertical integrations and MCP
+        // stay unavailable until they have an isolated sandbox/read-only contract
+        // (see agent-test-tool-policy.ts).
+        //
+        // The evaluation gate adds exactly the audited writers, and only when the
+        // run is bound to the eval sandbox contact AND a sandbox conversation to
+        // hang the operation off. Anything less and the writer stays hidden.
+        const evalWritesAllowed = options?.evalMode === true
+            && !!options?.sandboxConversationId
+            && EVAL_WRITABLE_TOOL_NAMES.some(name => canEvalExecuteWriter(name, testContactId));
+        const safeTools = tools.filter((t: any) => (
+            isAgentTestSafeToolName(t?.name)
+            || (evalWritesAllowed && isEvalWritableToolName(t?.name))
+        ));
         tools.length = 0;
         tools.push(...safeTools);
 
@@ -293,15 +318,24 @@ export class AgentTestService {
                         // Do not trust toolCalls merely because the provider returned
                         // them: a model can emit an unadvertised writer or mcp__* name.
                         // Enforce the same default-deny policy at the execution boundary.
-                        const result = isAgentTestSafeToolName(tc.function.name)
+                        const isAuditedEvalWriter = evalWritesAllowed
+                            && canEvalExecuteWriter(tc.function.name, testContactId);
+                        const result = (isAgentTestSafeToolName(tc.function.name) || isAuditedEvalWriter)
                             ? await this.toolExecutor.execute(
                                 schemaName,
                                 tenantId,
                                 testContactId,
                                 tc.function.name,
                                 args,
-                                undefined,
-                                { evalMode: false, readOnly: true, executionContext },
+                                // The audited writer needs the sandbox conversation:
+                                // the central guard refuses to bind a write with
+                                // nowhere to record the confirmation.
+                                isAuditedEvalWriter ? options?.sandboxConversationId : undefined,
+                                {
+                                    evalMode: isAuditedEvalWriter,
+                                    readOnly: !isAuditedEvalWriter,
+                                    executionContext,
+                                },
                             )
                             : agentTestBlockedToolResult(tc.function.name);
                         const dur = Date.now() - tStart;

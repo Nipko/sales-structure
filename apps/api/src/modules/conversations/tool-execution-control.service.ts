@@ -10,7 +10,16 @@ import { RedisService } from '../redis/redis.service';
 import { ChatIdentityService } from './chat-identity.service';
 import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
 
-const CONFIRMATION_TTL_MS = 15 * 60 * 1000;
+/**
+ * A pending confirmation lives as long as the conversation session does.
+ *
+ * At 15 minutes the challenge expired BEFORE the 30-minute new-session cutoff,
+ * so a customer who answered "sí" twenty minutes later was asked to confirm all
+ * over again — the operation was still there, still valid, and the agent acted
+ * as if it had never been proposed. Aligned with the session so both ends of the
+ * conversation agree on when something is stale.
+ */
+const CONFIRMATION_TTL_MS = 30 * 60 * 1000;
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 const APPROVAL_RESUME_LEASE_SECONDS = 90;
 const APPROVAL_RESUME_MAX_ATTEMPTS = 8;
@@ -111,7 +120,7 @@ export interface ToolExecutionControlRequest {
     readOnlyExecution?: boolean;
     authorityEvidence?: {
         kind: 'booking_engine_confirmation';
-        source: 'confirm_yes' | 'flow_response';
+        source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
     };
 }
 
@@ -138,8 +147,13 @@ interface ConfirmationClaims {
     expiresAt: string;
 }
 
+// `reserva` and `reservalo` are imperatives, not answers: "Reserva del 20 al 22
+// para 2 personas" is how a customer OPENS a request, and accepting it as
+// consent executed the booking in the same turn it was proposed — the customer
+// never saw what they were agreeing to. Every token left here is something a
+// person says in reply to a question.
 const AFFIRMATIVE_TOKENS = 'si|confirmo|si confirmo|autorizo|si autorizo|dale|hazlo|ok|okay'
-    + '|perfecto|adelante|reserva|reservalo|procede|de una|claro'
+    + '|perfecto|adelante|procede|de una|claro'
     + '|yes|i confirm|confirm|yes confirm|yes i confirm|go ahead'
     + '|sim|confirmo sim|sim confirmo|autorizo sim|sim autorizo|pode fazer'
     + '|oui|je confirme|confirme|oui je confirme|oui confirme|allez-y';
@@ -210,6 +224,28 @@ export function classifyExplicitToolConfirmation(value: unknown): ConfirmationDi
     return 'unclear';
 }
 
+/**
+ * The customer is asking for ANOTHER one, not asking about the one they have.
+ *
+ * Deliberately narrow, and read only to decide whether a completed operation may
+ * be replayed. "¿ya quedó?" and "gracias" must reuse the booking that exists;
+ * "quiero otra igual" must open a new one.
+ */
+const ANOTHER_OPERATION = new RegExp(
+    '\\b(otra|otro|otras|otros|una mas|uno mas|de nuevo|nuevamente|adicional|tambien quiero)\\b'
+    + '|\\b(another|one more|again|additional|a second)\\b'
+    + '|\\b(mais uma|mais um|outra|outro|novamente)\\b'
+    + '|\\b(une autre|un autre|encore une|a nouveau)\\b',
+);
+export function requestsAnotherOperation(value: unknown): boolean {
+    if (typeof value !== 'string' || !value.trim()) return false;
+    const normalized = value
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase();
+    return ANOTHER_OPERATION.test(normalized);
+}
+
 const CONTROL_KEYS = ['_control', 'confirmationToken', 'approvalTicketId'];
 
 /**
@@ -237,7 +273,59 @@ function canonicalScalar(value: unknown): unknown {
     const lower = trimmed.toLowerCase();
     if (lower === 'true') return true;
     if (lower === 'false') return false;
-    return lower;
+
+    // A date is the same day however it is written. The model re-issues the
+    // confirmed call from the conversation text, so "2026-08-20", "20/08/2026"
+    // and "2026-8-20" arrive on different turns for one booking — and each
+    // spelling produced a different hash, a new ledger and one more "please
+    // confirm" over an operation the customer had already confirmed.
+    const iso = normalizeCalendarDate(lower);
+    if (iso) return iso;
+
+    // Same for a phone number: +57 320 801 07 37, 573208010737 and
+    // (320) 801-0737 are one customer. Only the digits carry meaning.
+    const phone = normalizePhoneLike(trimmed);
+    if (phone) return phone;
+
+    // Accents are spelling too: "José" and "Jose" are the same guest.
+    return lower.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/** `YYYY-MM-DD` when the string is unambiguously one calendar date, else null. */
+function normalizeCalendarDate(value: string): string | null {
+    const iso = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (iso) {
+        const [, y, m, d] = iso;
+        return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    // Day-first is the written convention across the markets we serve; a
+    // four-digit year is required so this can never swallow something else.
+    const dmy = value.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/);
+    if (dmy) {
+        const [, d, m, y] = dmy;
+        if (Number(m) >= 1 && Number(m) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
+            return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+    }
+    return null;
+}
+
+/**
+ * Digits of a FORMATTED phone ("+57 320 801 07 37", "(320) 801-0737"), else null.
+ *
+ * Only strings that carry phone punctuation qualify. A string of bare digits is
+ * left to the numeric branch above, because at this level it is indistinguishable
+ * from an amount — and 1500000 pesos must never be canonicalised as a phone
+ * number. The consequence is narrow and deliberate: "+573208010737" and
+ * "573208010737" still hash differently. Since the server now replays the stored
+ * arguments instead of relying on the model to re-type them, that path barely
+ * matters; merging it would risk mangling money, which does.
+ */
+function normalizePhoneLike(value: string): string | null {
+    if (!/[\s().+-]/.test(value)) return null;
+    if (!/^\+?[\d\s().-]{7,24}$/.test(value)) return null;
+    const digits = value.replace(/\D/g, '');
+    return digits.length >= 7 && digits.length <= 15 ? digits : null;
 }
 
 function stableValue(value: unknown): unknown {
@@ -1256,21 +1344,39 @@ export class ToolExecutionControlService {
         );
         if (pending[0]) return pending[0];
 
-        if (classifyExplicitToolConfirmation(latestInbound.content_text) === 'confirmed') {
-            const settled = await this.query<ExecutionLedgerRow[]>(
-                request.schemaName,
-                `SELECT * FROM tool_execution_ledger
-                  WHERE conversation_id = $1::uuid
-                    AND contact_id = $2::uuid
-                    AND tool_name = $3
-                    AND args_hash = $4
-                    AND status = 'succeeded'
-                  ORDER BY created_at DESC
-                  LIMIT 1`,
-                [request.conversationId, request.contactId, request.toolName, argsHash],
-            );
-            if (settled[0]) return settled[0];
+        // An operation ALREADY completed is not requested again.
+        //
+        // This used to fire only when the customer's last message was a literal
+        // "sí". So the customer who asked "¿ya quedó?" — or just said "gracias" —
+        // got the model re-issuing the write, a brand new ledger, and a request
+        // to confirm a booking that already existed. What makes the replay safe
+        // is that the arguments are identical, not the wording of the question:
+        // the same call, for the same contact, in the same conversation, is the
+        // same operation.
+        //
+        // Unless the customer is explicitly asking for ANOTHER one. That is a new
+        // intention, not a repetition, and the memory of the first booking must
+        // not become a cage the customer cannot buy their way out of. Erring
+        // toward replay everywhere else is deliberate: telling someone their
+        // booking already exists is recoverable in one message, charging them
+        // twice is not.
+        if (requestsAnotherOperation(latestInbound.content_text)) {
+            return null;
         }
+        const settled = await this.query<ExecutionLedgerRow[]>(
+            request.schemaName,
+            `SELECT * FROM tool_execution_ledger
+              WHERE conversation_id = $1::uuid
+                AND contact_id = $2::uuid
+                AND tool_name = $3
+                AND args_hash = $4
+                AND status = 'succeeded'
+                AND updated_at > NOW() - ($5 || ' milliseconds')::interval
+              ORDER BY created_at DESC
+              LIMIT 1`,
+            [request.conversationId, request.contactId, request.toolName, argsHash, String(CONFIRMATION_TTL_MS)],
+        );
+        if (settled[0]) return settled[0];
 
         const sameTurn = await this.query<ExecutionLedgerRow[]>(
             request.schemaName,
@@ -1416,6 +1522,18 @@ export class ToolExecutionControlService {
 
         if (claims.argsHash !== argsHash) {
             this.logger.warn(`[Confirm] Tool args changed for ledger ${ledger.id} (tool=${request.toolName}) — issuing fresh confirmation challenge`);
+            // Asking again forever is the loop from the customer's side. A model
+            // that keeps drifting the arguments will never land on the same hash,
+            // and the customer keeps reading "please confirm" over an operation
+            // they already agreed to. After a few tries this stops being a
+            // confirmation problem and becomes a person's job.
+            if (await this.exceededRechallengeBudget(ledger.id)) {
+                return this.block(
+                    'confirmation_not_converging',
+                    'La confirmación se pidió varias veces sin cerrar. Escala la acción a una persona.',
+                    true,
+                );
+            }
             const reissued = await this.issueConfirmationToken(
                 { ...request, conversationId },
                 ledger,
@@ -1456,9 +1574,20 @@ export class ToolExecutionControlService {
         if (!evidence || request.toolName !== 'create_appointment') {
             return this.block('authority_evidence_invalid', 'La evidencia interna no corresponde a esta acción.', true);
         }
-        const expectedInbound = evidence.source === 'confirm_yes' ? 'confirm_yes' : '__flow_response__';
-        if (String(latest.content_text || '').trim().toLowerCase() !== expectedInbound) {
-            return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
+        // A typed "sí" is the same consent as the button, and on the channels
+        // without interactive buttons it is the ONLY consent available. It is
+        // held to the same evidence: the engine must be parked on `confirm`, the
+        // message must classify as an unambiguous confirmation, and every bound
+        // field below must still match what the customer was shown.
+        if (evidence.source === 'text_confirmation') {
+            if (classifyExplicitToolConfirmation(latest.content_text) !== 'confirmed') {
+                return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
+            }
+        } else {
+            const expectedInbound = evidence.source === 'confirm_yes' ? 'confirm_yes' : '__flow_response__';
+            if (String(latest.content_text || '').trim().toLowerCase() !== expectedInbound) {
+                return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
+            }
         }
 
         const rawState = await this.redis.get(`booking:${conversationId}`).catch(() => null);
@@ -1470,7 +1599,10 @@ export class ToolExecutionControlService {
             return this.block('booking_confirmation_state_invalid', 'El estado de confirmación no es válido.', true);
         }
 
-        const interactive = evidence.source === 'confirm_yes';
+        // Both the button and the typed yes answer the same rendered summary, so
+        // both must find the engine parked on `confirm` with the bound fields
+        // intact. Only the Flow response comes from `waiting_flow`.
+        const interactive = evidence.source === 'confirm_yes' || evidence.source === 'text_confirmation';
         const expectedStep = interactive ? 'confirm' : 'waiting_flow';
         if (state.step !== expectedStep) {
             return this.block('booking_confirmation_state_mismatch', 'La reserva no estaba esperando esta confirmación.', true);
@@ -2151,6 +2283,76 @@ export class ToolExecutionControlService {
         );
     }
 
+    /**
+     * The operation this conversation is waiting on a yes/no for, with the exact
+     * arguments the customer was shown.
+     *
+     * Until now the ONLY way a confirmed operation could execute was for the
+     * model to spontaneously re-issue the identical tool call with byte-identical
+     * arguments, from a history that contains no tool calls at all. When it
+     * answered with prose instead ("¡perfecto, procedo!"), nothing ran; when it
+     * rebuilt the arguments from the text and got a date format or an accent
+     * different, the hash changed and the guard opened a NEW challenge over
+     * something the customer had already confirmed. That is the loop.
+     *
+     * Reading the pending row lets the caller execute the operation itself, the
+     * same way the booking engine has always executed appointments on a button
+     * press. The signed confirmation token, the args hash and the ledger status
+     * remain the authority — this only removes the model from the trigger.
+     */
+    /**
+     * How many times we have re-asked for the same operation, and whether that
+     * is now too many. Counted in Redis (no migration, expires with the session)
+     * and exposed as a metric: a rising re-challenge rate is the earliest signal
+     * that the model is drifting its arguments again.
+     */
+    private async exceededRechallengeBudget(ledgerId: string): Promise<boolean> {
+        const MAX_RECHALLENGES = 3;
+        try {
+            const key = `confirm:rechallenge:${ledgerId}`;
+            const count = await this.redis.incr(key);
+            await this.redis.expire(key, Math.ceil(CONFIRMATION_TTL_MS / 1000));
+            if (count > MAX_RECHALLENGES) {
+                this.logger.warn(`[Confirm] Ledger ${ledgerId} re-challenged ${count} times — giving up on the model closing it`);
+                return true;
+            }
+            return false;
+        } catch {
+            return false; // Redis down must not block a legitimate confirmation
+        }
+    }
+
+    async findPendingConfirmation(
+        schemaName: string,
+        conversationId: string,
+        contactId: string,
+    ): Promise<{ ledgerId: string; toolName: string; args: Record<string, unknown> } | null> {
+        if (!UUID_RE.test(conversationId) || !UUID_RE.test(contactId)) return null;
+        try {
+            const rows = await this.query<ExecutionLedgerRow[]>(
+                schemaName,
+                `SELECT * FROM tool_execution_ledger
+                  WHERE conversation_id = $1::uuid
+                    AND contact_id = $2::uuid
+                    AND status = 'awaiting_confirmation'
+                    AND confirmation_token IS NOT NULL
+                    AND confirmation_expires_at > NOW()
+                  ORDER BY created_at DESC
+                  LIMIT 1`,
+                [conversationId, contactId],
+            );
+            const row = rows?.[0];
+            if (!row) return null;
+            const args = row.request_payload?.args;
+            if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
+            return { ledgerId: row.id, toolName: row.tool_name, args: args as Record<string, unknown> };
+        } catch (error: any) {
+            // A missing control table (tenant that never ran a writer) is normal.
+            this.logger.debug(`[Confirm] pending lookup skipped: ${error?.message || 'unknown'}`);
+            return null;
+        }
+    }
+
     private query<T = any[]>(schemaName: string, sql: string, params: any[] = []): Promise<T> {
         return this.prisma.executeInTenantSchema<T>(schemaName, sql, params);
     }
@@ -2165,8 +2367,26 @@ export class ToolExecutionControlService {
             result: {
                 error,
                 message,
-                ...(shouldHandoff ? { shouldHandoff: true } : {}),
+                // `shouldHandoff` carries two unrelated meanings. An intake tool
+                // sets it because the DOMAIN needs a person (a claim, a gas leak).
+                // The guard sets it because a TECHNICAL invariant failed — an
+                // unsigned token, an expired lease, an idempotency conflict — and
+                // the pipeline escalated the customer to a human queue for an
+                // internal problem they never asked about. Marking the origin
+                // lets the caller tell them apart.
+                ...(shouldHandoff ? { shouldHandoff: true, controlBlocked: true } : {}),
             },
         };
     }
 }
+
+/**
+ * Technical blocks that DO deserve a person, because money or capacity may have
+ * moved and only a human can reconcile it. Everything else the guard blocks is
+ * an internal problem the customer should never be escalated for.
+ */
+export const CONTROL_ERRORS_REQUIRING_HUMAN: ReadonlySet<string> = new Set([
+    'reconciliation_required',
+    'execution_lease_expired',
+    'approval_required',
+]);

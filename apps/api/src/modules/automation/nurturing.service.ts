@@ -207,11 +207,17 @@ export class NurturingService {
             let totalResolved = 0;
             for (const tenant of tenants) {
                 try {
+                    // `waiting_human` was excluded, so a conversation escalated to
+                    // a person nobody ever picked up stayed open forever with the
+                    // AI muted: every later message from that customer was stored
+                    // in silence. Three days without a human is not a handoff in
+                    // progress, it is an abandoned one — resolving it hands the
+                    // customer back to an agent that will at least answer.
                     const result = await this.prisma.executeInTenantSchema<any[]>(
                         tenant.schema_name,
                         `UPDATE conversations
                          SET status = 'resolved', resolved_at = NOW()
-                         WHERE status = 'active'
+                         WHERE status IN ('active', 'waiting_human')
                            AND updated_at < NOW() - INTERVAL '72 hours'
                            AND id NOT IN (
                                SELECT DISTINCT conversation_id FROM messages

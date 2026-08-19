@@ -211,6 +211,17 @@ export interface EngineResult {
     state: BookingState;
     text?: string;
     /**
+     * Writes this engine performed on its own, reported so the caller's output
+     * guardrail can tell a real confirmation from an invented one.
+     *
+     * The engine calls `create_appointment` itself, outside the LLM tool loop, so
+     * the turn's executed-tool list was empty and every truthful "your
+     * appointment is booked" was audited as a false claim and rewritten to say
+     * the booking was still pending — in front of a customer who had just been
+     * booked.
+     */
+    executedTools?: Array<{ name: string; result: any }>;
+    /**
      * The booking flow hit a dead end that only a human can solve (agenda never
      * configured, tool failure). Same contract as ProcedureEngineService: the
      * engine only FLAGS it, the caller runs HandoffService.executeHandoff().
@@ -745,14 +756,29 @@ export class BookingEngineService {
         }
 
         // ── Have service + date → check availability ──
-        if (state.serviceId && state.date && (!state.slots || !state.slots.length)) {
+        //
+        // Unless the customer is confirming a slot they already picked. A state
+        // parked on `confirm` has a time; if its `slots` list was lost (Redis
+        // expired and the PG backup was rehydrated without it), a typed "sí"
+        // fell into this branch and answered a confirmation with a fresh list of
+        // times. The button never hit it because it short-circuits earlier.
+        const confirmingChosenSlot = state.step === 'confirm' && !!state.time && intent.isConfirmation;
+        if (state.serviceId && state.date && (!state.slots || !state.slots.length) && !confirmingChosenSlot) {
             return this.checkAvailability(schemaName, tenantId, contactId, state, L);
         }
 
         // ── Have service + date + time → collect info or confirm ──
         if (state.serviceId && state.date && state.time) {
             if (intent.isConfirmation && state.customerName && state.customerEmail) {
-                return this.createBooking(schemaName, tenantId, contactId, state, L, conversationId);
+                // The customer typed their confirmation instead of tapping the
+                // button. Same consent, same evidence: without it the central
+                // guard opened its OWN confirmation challenge and the customer
+                // read "Error al crear la cita: confirmation_required" and had to
+                // say yes twice — always on Telegram/Instagram/Messenger/widget,
+                // which have no confirm button at all.
+                return this.createBooking(
+                    schemaName, tenantId, contactId, state, L, conversationId, 'text_confirmation',
+                );
             }
             return this.collectMissingInfo(state, L);
         }
@@ -921,7 +947,7 @@ export class BookingEngineService {
         state: BookingState,
         lang: string,
         conversationId: string | undefined,
-        confirmationSource?: 'confirm_yes' | 'flow_response',
+        confirmationSource?: 'confirm_yes' | 'flow_response' | 'text_confirmation',
     ): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
 
@@ -943,6 +969,13 @@ export class BookingEngineService {
                 return {
                     handled: true, state,
                     text: msg(lang, 'booked', { service: state.serviceName || '', date: state.date || '', time: state.time || '', name: state.customerName || '', email: state.customerEmail || '' }),
+                    // The appointment exists — saying so is the truth, not a claim
+                    // without backing. Reported as an idempotent replay so the
+                    // output guardrail does not rewrite it into "still pending".
+                    executedTools: [{
+                        name: 'create_appointment',
+                        result: { success: true, idempotentReplay: true, appointmentId: existing[0].id },
+                    }],
                 };
             }
         } catch (err) {
@@ -961,10 +994,11 @@ export class BookingEngineService {
                 source: confirmationSource,
             },
         } : undefined);
+        const executedTools = [{ name: 'create_appointment', result }];
         if (result?.success) {
             state.step = 'booked';
             return {
-                handled: true, state,
+                handled: true, state, executedTools,
                 text: msg(lang, 'booked', { service: state.serviceName || '', date: state.date || '', time: state.time || '', name: state.customerName || '', email: state.customerEmail || '' }),
             };
         }
@@ -973,9 +1007,9 @@ export class BookingEngineService {
         // way to leak the internal error code into the customer's chat.
         const fatal = this.unrecoverableToolError(result);
         if (fatal) {
-            return this.escalateToHuman(state, lang, 'bookingFailedHandoff', `booking_failed:${fatal}`);
+            return { ...this.escalateToHuman(state, lang, 'bookingFailedHandoff', `booking_failed:${fatal}`), executedTools };
         }
-        return { handled: true, state, text: msg(lang, 'bookingError', { error: result?.error || 'Unknown' }) };
+        return { handled: true, state, executedTools, text: msg(lang, 'bookingError', { error: result?.error || 'Unknown' }) };
     }
 
     // ── Re-prompt current step (mid-flow protection) ──

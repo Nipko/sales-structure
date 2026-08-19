@@ -28,7 +28,8 @@ export class EmotionService {
     ];
 
     detect(text: string, history?: string[]): AffectiveState {
-        const lower = (text || '').toLowerCase();
+        const raw = text || '';
+        const lower = raw.toLowerCase();
         const hist = (history || []).join(' ').toLowerCase();
         const combined = `${lower} ${hist}`.slice(0, 2000);
 
@@ -39,7 +40,10 @@ export class EmotionService {
 
         // Repeated question or exclamation indicates frustration
         const repeatQuestion = (lower.match(/\?/g) || []).length >= 2 ? 0.2 : 0;
-        const capsRatio = lower.length > 20 ? (lower.replace(/[^A-Z]/g, '').length / lower.length) : 0;
+        // Measured on the ORIGINAL text. This counted capitals in a string that
+        // had already been lowercased, so the ratio was always 0 and SHOUTING —
+        // one of the clearest signs of an angry customer — never registered.
+        const capsRatio = raw.length > 20 ? (raw.replace(/[^A-Z]/g, '').length / raw.length) : 0;
         const capsBoost = capsRatio > 0.3 ? 0.2 : 0;
 
         const frustration = Math.min(1, frustCount * 0.35 + repeatQuestion + capsBoost + (lower.includes('!') ? 0.15 : 0));

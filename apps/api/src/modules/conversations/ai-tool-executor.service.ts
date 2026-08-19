@@ -18,6 +18,8 @@ import { EducationService } from '../education/education.service';
 import { InsuranceService } from '../insurance/insurance.service';
 import { HomeServicesService } from '../home-services/home-services.service';
 import { PhotographyService } from '../photography/photography.service';
+import { OrdersService } from '../orders/orders.service';
+import { VehicleInventoryService } from '../verticals/vehicle-inventory.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
@@ -26,7 +28,11 @@ import { absoluteMediaUrl } from '../../common/utils/media-url.util';
 import { ChatIdentityService } from './chat-identity.service';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
-import { agentTestBlockedToolResult, isAgentTestSafeToolName } from './agent-test-tool-policy';
+import {
+    agentTestBlockedToolResult,
+    canEvalExecuteWriter,
+    isAgentTestSafeToolName,
+} from './agent-test-tool-policy';
 import { isRegisteredStaticTool } from './tool-policy-registry';
 import {
     ToolExecutionControlService,
@@ -79,6 +85,12 @@ export class AIToolExecutorService {
         private readonly toolExecutionControl: ToolExecutionControlService,
         private readonly paymentOperations: PaymentOperationService,
         private readonly photographyService: PhotographyService,
+        // Optional like the control services above: the seven specs that build
+        // this executor by hand pass positional stubs, and a handler that guards
+        // its own wiring is better than breaking every one of them. Both are
+        // real providers in ConversationsModule, so production always has them.
+        private readonly ordersService?: OrdersService,
+        private readonly vehicleInventory?: VehicleInventoryService,
     ) { }
 
     /**
@@ -105,7 +117,7 @@ export class AIToolExecutorService {
             /** Server-origin evidence; never populated from LLM arguments. */
             authorityEvidence?: {
                 kind: 'booking_engine_confirmation';
-                source: 'confirm_yes' | 'flow_response';
+                source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
             };
         },
     ): Promise<any> {
@@ -124,7 +136,17 @@ export class AIToolExecutorService {
             // Persistence-disabled execution is a capability boundary, not a
             // hint. A future caller cannot reach a writer by skipping the
             // AgentTestService advertisement filter.
-            if (persistenceDisabled(opts?.executionContext) && !isAgentTestSafeToolName(toolName)) {
+            //
+            // The one exception is the evaluation gate, and it is not a loophole:
+            // the tool must be one of the audited writers AND the run must be
+            // bound to the eval sandbox contact, whose rows the gate deletes
+            // afterwards. Without it the gate could never verify that a booking
+            // actually happened — which is the only thing it exists to check.
+            const evalWriterAllowed = opts?.evalMode === true
+                && canEvalExecuteWriter(toolName, contactId);
+            if (persistenceDisabled(opts?.executionContext)
+                && !isAgentTestSafeToolName(toolName)
+                && !evalWriterAllowed) {
                 return agentTestBlockedToolResult(toolName);
             }
 
@@ -167,7 +189,11 @@ export class AIToolExecutorService {
                 conversationId,
                 channelType: opts?.channelType,
                 idempotencyKey: opts?.idempotencyKey,
-                readOnlyExecution: persistenceDisabled(opts?.executionContext),
+                // The audited eval writer runs the FULL guard — ledger,
+                // confirmation, idempotency — because that machinery is exactly
+                // what the gate needs to exercise. Read-only execution would
+                // short-circuit it and verify nothing.
+                readOnlyExecution: persistenceDisabled(opts?.executionContext) && !evalWriterAllowed,
                 authorityEvidence: opts?.authorityEvidence,
             });
             if (!controlDecision.allowed) {
@@ -242,6 +268,12 @@ export class AIToolExecutorService {
 
                 case 'send_vehicle_image':
                     return this.sendVehicleImage(schemaName, args.vehicleId);
+
+                case 'schedule_test_drive':
+                    return this.scheduleTestDrive(tenantId, args);
+
+                case 'place_catalog_order':
+                    return this.placeCatalogOrder(tenantId, schemaName, contactId, conversationId, args);
 
                 case 'search_faqs':
                     return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext);
@@ -869,6 +901,130 @@ export class AIToolExecutorService {
     }
 
     /** Full details of one vehicle (query-directa). */
+    /**
+     * Books a test drive — the dealership's actual sale step.
+     *
+     * `scheduleTestDrive` has existed in the vehicle service for months, with its
+     * own slot-conflict check, and was never exposed to the agent. So automotive
+     * tenants had an agent that could search, describe and photograph a car and
+     * then had nothing to close with: it said "te agendo la prueba" and nothing
+     * was recorded anywhere.
+     */
+    private static readonly UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    private async scheduleTestDrive(tenantId: string, args: any): Promise<any> {
+        const UUID_RE = AIToolExecutorService.UUID_PATTERN;
+        if (!this.vehicleInventory) {
+            return { error: 'test_drive_unavailable', message: 'La agenda de pruebas de manejo no está disponible.' };
+        }
+        const vehicleId = String(args?.vehicleId || '');
+        if (!UUID_RE.test(vehicleId)) return { error: 'vehicle_not_found' };
+        const contactName = String(args?.contactName || '').trim();
+        if (!contactName) return { error: 'contact_name_required', message: 'Falta el nombre de quien va a manejar.' };
+        const scheduledDate = String(args?.scheduledDate || '').trim();
+        const scheduledTime = String(args?.scheduledTime || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) return { error: 'invalid_date', message: 'La fecha debe ser YYYY-MM-DD.' };
+        if (!/^\d{2}:\d{2}$/.test(scheduledTime)) return { error: 'invalid_time', message: 'La hora debe ser HH:MM.' };
+        try {
+            const drive = await this.vehicleInventory.scheduleTestDrive(tenantId, {
+                vehicleId,
+                contactName,
+                contactPhone: args?.contactPhone ? String(args.contactPhone) : undefined,
+                scheduledDate,
+                scheduledTime,
+                notes: args?.notes ? String(args.notes).slice(0, 500) : undefined,
+            });
+            return {
+                success: true,
+                testDrive: {
+                    id: drive?.id,
+                    vehicleId,
+                    date: scheduledDate,
+                    time: scheduledTime,
+                    status: drive?.status || 'scheduled',
+                },
+            };
+        } catch (e: any) {
+            // A taken slot is a normal outcome, not a failure to hide: the agent
+            // must offer another time instead of claiming the drive is booked.
+            this.logger.warn(`[Tool] schedule_test_drive failed: ${e.message}`);
+            return { error: 'slot_unavailable', message: e?.message || 'Ese horario ya está tomado.' };
+        }
+    }
+
+    /**
+     * Creates a real order from catalog products.
+     *
+     * `place_order` belongs to the restaurant toolset, so a retail tenant had a
+     * catalog it could search, price and photograph — and no way to sell from it.
+     * The agent answered "listo, tu pedido quedó registrado" and no order existed.
+     *
+     * Prices are never taken from the model: only productId and quantity cross
+     * the boundary, and the server prices the line from the catalog.
+     */
+    private async placeCatalogOrder(
+        tenantId: string,
+        schema: string,
+        contactId: string,
+        conversationId: string | undefined,
+        args: any,
+    ): Promise<any> {
+        const UUID_RE = AIToolExecutorService.UUID_PATTERN;
+        if (!this.ordersService) {
+            return { error: 'orders_unavailable', message: 'La toma de pedidos no está disponible.' };
+        }
+        const rawItems = Array.isArray(args?.items) ? args.items : [];
+        if (!rawItems.length) return { error: 'items_required', message: 'Falta qué productos quiere el cliente.' };
+        if (rawItems.length > 50) return { error: 'too_many_items' };
+
+        const items: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; currency?: string }> = [];
+        for (const raw of rawItems) {
+            const productId = String(raw?.productId || '');
+            const quantity = Math.floor(Number(raw?.quantity));
+            if (!UUID_RE.test(productId)) return { error: 'product_not_found', productId };
+            if (!Number.isFinite(quantity) || quantity < 1) return { error: 'invalid_quantity', productId };
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, name, price, currency, stock FROM "${schema}".products
+                  WHERE id = $1::uuid AND is_active = true LIMIT 1`,
+                productId,
+            );
+            const product = rows?.[0];
+            if (!product) return { error: 'product_not_found', productId };
+            items.push({
+                productId,
+                productName: product.name,
+                quantity,
+                unitPrice: Number(product.price || 0),
+                currency: product.currency || undefined,
+            });
+        }
+
+        try {
+            const order = await this.ordersService.createOrder(tenantId, {
+                contactId: UUID_RE.test(contactId) ? contactId : null,
+                conversationId: conversationId && UUID_RE.test(conversationId) ? conversationId : null,
+                status: 'pending',
+                notes: args?.notes ? String(args.notes).slice(0, 1000) : undefined,
+                items,
+            });
+            const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+            return {
+                success: true,
+                order: {
+                    id: order?.id,
+                    status: 'pending',
+                    itemCount: items.length,
+                    total,
+                    currency: items[0]?.currency,
+                    payableReference: this.payableReference('order', String(order?.id), 'pending', 'pending'),
+                },
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] place_catalog_order failed: ${e.message}`);
+            return { error: 'order_failed', message: e?.message || 'No se pudo registrar el pedido.' };
+        }
+    }
+
     private async getVehicleDetails(schema: string, vehicleId: string): Promise<any> {
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vehicleId || '')) {
             return { error: 'vehicle_not_found' };

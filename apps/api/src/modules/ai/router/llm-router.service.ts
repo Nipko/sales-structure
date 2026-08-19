@@ -69,6 +69,27 @@ const FALLBACK_CHAINS: Record<TaskType, string[]> = {
 
 const ALL_TIERS: ModelTier[] = ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
 
+/**
+ * Tiers that may LEAD a tool-calling turn.
+ *
+ * Deciding which tool to call, with which arguments, across several turns, is
+ * the hardest thing we ask a model to do and the place where a weak one does
+ * the most damage: it picks the wrong tool, drifts the arguments so the
+ * confirmation hash no longer matches, or answers in prose while the customer
+ * waits for a booking. Public multi-turn tool benchmarks put the budget models
+ * we were leading with (deepseek-chat, gpt-4.1-mini) in the mid-thirties, far
+ * under the standard tier.
+ *
+ * This is an ORDERING, not a gate: cheaper tiers stay in the chain as fallback,
+ * and the monthly-budget circuit breaker still overrides it (see
+ * `budgetConstrained`), so a tenant that blew its LLM budget keeps replying on
+ * the cheap models instead of being cut off.
+ */
+const TOOL_CALLING_LEAD_TIERS: ReadonlySet<ModelTier> = new Set<ModelTier>([
+    'tier_1_premium',
+    'tier_2_standard',
+]);
+
 @Injectable()
 export class LLMRouterService {
     private readonly logger = new Logger(LLMRouterService.name);
@@ -110,15 +131,24 @@ export class LLMRouterService {
         return `llm:health:${provider}:open`;
     }
 
-    private affinityKey(conversationId: string): string {
-        return `llm:affinity:${conversationId}`;
+    /**
+     * Affinity is per (conversation, task).
+     *
+     * With a single key per conversation, the model chosen for a two-word
+     * greeting — routed to the cheapest tier by the value score — was pinned
+     * ahead of everything for the next half hour, including the turn that had to
+     * pick a tool and fill its arguments. Conversation and tool calling are
+     * different jobs and keep different caches warm.
+     */
+    private affinityKey(conversationId: string, task?: TaskType): string {
+        return task ? `llm:affinity:${conversationId}:${task}` : `llm:affinity:${conversationId}`;
     }
 
     /** Sticky provider:model for a conversation. Fails open (null) on any Redis error. */
-    private async getAffinity(conversationId?: string): Promise<{ provider: string; model: string } | null> {
+    private async getAffinity(conversationId?: string, task?: TaskType): Promise<{ provider: string; model: string } | null> {
         if (!conversationId) return null;
         try {
-            const raw = await this.redis.get(this.affinityKey(conversationId));
+            const raw = await this.redis.get(this.affinityKey(conversationId, task));
             if (!raw) return null;
             const idx = raw.indexOf(':');
             if (idx <= 0) return null;
@@ -127,10 +157,15 @@ export class LLMRouterService {
     }
 
     /** Persist/refresh the sticky provider:model. Never throws — affinity is best-effort. */
-    private async setAffinity(conversationId: string | undefined, provider: string, model: string): Promise<void> {
+    private async setAffinity(
+        conversationId: string | undefined,
+        provider: string,
+        model: string,
+        task?: TaskType,
+    ): Promise<void> {
         if (!conversationId) return;
         try {
-            await this.redis.set(this.affinityKey(conversationId), `${provider}:${model}`, this.AFFINITY_TTL_SEC);
+            await this.redis.set(this.affinityKey(conversationId, task), `${provider}:${model}`, this.AFFINITY_TTL_SEC);
         } catch { /* best-effort */ }
     }
 
@@ -323,6 +358,19 @@ export class LLMRouterService {
         tenantId?: string;
         traceContext?: { conversationId?: string; kbSources?: string[]; stage?: string };
         executionContext?: ServiceExecutionContext;
+        /**
+         * The tenant is over its monthly LLM budget. Cheap models lead again —
+         * the circuit breaker outranks the tool-calling floor, because replying
+         * on a weaker model beats not replying at all.
+         */
+        budgetConstrained?: boolean;
+        /**
+         * Keep this exact provider+model for this call. The tool loop pins the
+         * model chosen on its first iteration so a mid-turn failover cannot hand
+         * the second half of the same turn to a different model with a different
+         * idea of which tool to call.
+         */
+        pinnedModel?: { provider: string; model: string };
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
 
         const noPersistence = persistenceDisabled(options.executionContext);
@@ -360,12 +408,29 @@ export class LLMRouterService {
             // Callers that omit them (nurturing drip, customer-memory extraction) get a
             // neutral composite (50 → tier_3) which is NOT their chain's natural head, so
             // reordering would silently bias them toward gemini-flash. Keep their order.
-            if (options.routingFactors) {
+            //
+            // Never on a tool-calling turn. The score reads ticket value, sentiment
+            // and complexity off the CURRENT message, and the message that closes a
+            // sale is "sí": it scores ~19, which sent the turn holding the booking
+            // to the cheapest model in the chain.
+            const toolCallingTurn = options.task === 'tool_calling';
+            if (options.routingFactors && !toolCallingTurn) {
                 const tIdx = candidates.findIndex(c => c.tier === targetTier);
                 if (tIdx > 0) {
                     const [picked] = candidates.splice(tIdx, 1);
                     candidates.unshift(picked);
                     this.logger.debug(`[LLM] Value-routing composite=${composite} → ${targetTier} (${picked.id})`);
+                }
+            }
+
+            // Tool-calling floor: models good enough to pick a tool and fill its
+            // arguments lead; the cheap ones stay as fallback. Stable partition,
+            // so the chain's own cost ordering survives inside each group.
+            if (toolCallingTurn && !options.budgetConstrained) {
+                const lead = candidates.filter(c => TOOL_CALLING_LEAD_TIERS.has(c.tier));
+                if (lead.length && lead.length < candidates.length) {
+                    candidates = [...lead, ...candidates.filter(c => !TOOL_CALLING_LEAD_TIERS.has(c.tier))];
+                    this.logger.debug(`[LLM] Tool-calling floor → leading with ${candidates[0].id}`);
                 }
             }
 
@@ -376,13 +441,27 @@ export class LLMRouterService {
             // unconfigured, breaker open, or context too small) it's silently absent
             // and normal tier order applies. Never overrides the breaker.
             const convId = options.traceContext?.conversationId;
-            const affinity = noPersistence ? null : await this.getAffinity(convId);
+            const affinity = noPersistence ? null : await this.getAffinity(convId, options.task);
             if (affinity) {
                 const stickyIdx = candidates.findIndex(c => c.provider === affinity.provider && c.id === affinity.model);
                 if (stickyIdx > 0) {
                     const [sticky] = candidates.splice(stickyIdx, 1);
                     candidates.unshift(sticky);
                     this.logger.debug(`[LLM] Sticky routing — pinned ${sticky.id} (${sticky.provider}) for conv ${convId}`);
+                }
+            }
+
+            // A model pinned by the caller wins over everything above: inside one
+            // turn the tool loop must stay on the model that made the first
+            // decision, or the second half of the turn is reasoned by someone
+            // else about tool calls it never made.
+            if (options.pinnedModel) {
+                const pinIdx = candidates.findIndex(c => (
+                    c.provider === options.pinnedModel!.provider && c.id === options.pinnedModel!.model
+                ));
+                if (pinIdx > 0) {
+                    const [pin] = candidates.splice(pinIdx, 1);
+                    candidates.unshift(pin);
                 }
             }
 
@@ -409,7 +488,7 @@ export class LLMRouterService {
                     // warmth) — but NOT when it was an out-of-plan escalation, or the sticky
                     // would keep pinning a premium model ahead of healthy in-plan ones.
                     if (!noPersistence && !escalated) {
-                        this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
+                        this.setAffinity(convId, candidate.provider, candidate.id, options.task).catch(() => {});
                     }
                     if (accountOperationalUsage) {
                         this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));

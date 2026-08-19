@@ -21,7 +21,7 @@ import { outboundDedupeId, providerMessageId } from '../../common/utils/provider
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
-import { auditTurnClaim } from '../../common/utils/outcome-claim.util';
+import { auditTurnClaim, toolResultSucceeded } from '../../common/utils/outcome-claim.util';
 import { CustomerMemoryService } from './customer-memory.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
@@ -41,7 +41,7 @@ import { PETS_TOOLS } from './tools/pets-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { GYMS_TOOLS } from './tools/gyms-tools';
 import { EDUCATION_TOOLS } from './tools/education-tools';
-import { INSURANCE_TOOLS } from './tools/insurance-tools';
+import { IDENTITY_STEP_UP_TOOLS, INSURANCE_TOOLS } from './tools/insurance-tools';
 import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS, PROFESSIONAL_SERVICES_TOOLS } from './tools/tier3-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -57,7 +57,17 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaProcessingService } from '../media-processing/media-processing.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
-import { toolBatchRequiresSequentialExecution, toolRequiresSequentialExecution } from './tool-policy-registry';
+import {
+    isBusinessWriteTool,
+    isConfirmableWriteTool,
+    toolBatchRequiresSequentialExecution,
+    toolRequiresSequentialExecution,
+} from './tool-policy-registry';
+import {
+    CONTROL_ERRORS_REQUIRING_HUMAN,
+    ToolExecutionControlService,
+    classifyExplicitToolConfirmation,
+} from './tool-execution-control.service';
 import { ActiveOperationsContextService } from './active-operations-context.service';
 import { ToolRetrievalService } from './tool-retrieval.service';
 import { EmotionService } from './emotion.service';
@@ -74,6 +84,50 @@ const DEFAULT_RESPONSE_RESERVE_TOKENS = 1_500;  // when persona doesn't pin maxT
 const HISTORY_SAFETY_MARGIN_TOKENS = 2_000;     // chars/4 underestimates JSON/emoji/non-latin
 const HISTORY_MAX_TOKENS = 8_000;               // cap: ~32k chars (~2.6× the old 12k-char budget)
 const CHARS_PER_TOKEN = 4;                       // repo-wide token estimator (chars/4)
+/** How many of the turn's tool outcomes are carried into the next turn. */
+const RECENT_ACTIONS_MAX = 6;
+
+/**
+ * The order in which each industry actually closes its sale.
+ *
+ * `<guidance>` has been in the prompt assembler for months and nothing outside a
+ * spec ever filled it, so the agent knew the vertical's vocabulary but not its
+ * sequence: it offered to book before checking availability, quoted without
+ * looking the product up, and enrolled students into schedules it had not read.
+ * One line per industry, naming the real tools, because a model follows a
+ * concrete sequence far better than an abstract instruction to "be careful".
+ *
+ * Gated by the tools the tenant actually has enabled: guidance that names a tool
+ * the agent cannot call is worse than no guidance at all.
+ */
+const VERTICAL_FLOW_GUIDANCE: Array<{
+    industry: string;
+    requires: string;
+    guidance: string;
+}> = [
+    { industry: 'turismo', requires: 'properties', guidance: 'Para una estadía: list_properties → check_property_availability para las fechas exactas → resumí precio total y fechas → pedí confirmación → create_property_booking. Nunca ofrezcas una propiedad sin haber verificado esas fechas.' },
+    { industry: 'turismo', requires: 'tours', guidance: 'Para un paquete: search_packages → check_package_availability para la fecha de salida → resumí precio y cupos → pedí confirmación → create_tour_booking.' },
+    { industry: 'restaurantes', requires: 'restaurants', guidance: 'Para un pedido: get_menu → armá el pedido con el cliente → repetí los ítems, el total y la dirección → pedí confirmación → place_order. Para una mesa usá el flujo de reservas de agenda.' },
+    { industry: 'gimnasios', requires: 'gyms', guidance: 'Para una clase: get_class_schedule → verificá que el contacto tenga membresía con get_my_membership → pedí confirmación → book_class. Si no es socio, ofrecé get_membership_plans antes de intentar reservar.' },
+    { industry: 'education', requires: 'education', guidance: 'Para una inscripción: get_courses → get_course_schedule del curso elegido → resumí curso, horario y precio → pedí confirmación → enroll_student.' },
+    { industry: 'seguros', requires: 'insurance', guidance: 'Para cotizar: get_insurance_plans → pedí sólo los datos que falten → calculate_quote y presentá el resultado. Para un reclamo, file_claim requiere verificar identidad primero (request_identity_code y verify_identity_code).' },
+    { industry: 'servicios_hogar', requires: 'homeServices', guidance: 'Para una solicitud: entendé el problema y la dirección → resumí lo que vas a registrar → create_service_request. Después del registro la conversación pasa a una persona del equipo.' },
+    { industry: 'fotografia', requires: 'photography', guidance: 'Para una sesión: list_photo_packages → send_portfolio si el cliente quiere ver trabajo previo → check_date_availability de la fecha → request_photo_quote.' },
+    { industry: 'inmobiliaria', requires: 'realEstate', guidance: 'Para una visita: search_listings → get_listing_details del inmueble concreto → send_listing_image si ayuda → agendá la visita dejando SIEMPRE registrado de qué inmueble se trata.' },
+    { industry: 'automotriz', requires: 'vehicles', guidance: 'Para una prueba de manejo: search_vehicles → get_vehicle_details del vehículo concreto → send_vehicle_image si ayuda → acordá día y hora → schedule_test_drive. Si el horario está tomado, ofrecé otro; nunca digas que quedó agendada sin que schedule_test_drive haya tenido éxito.' },
+    { industry: 'veterinaria', requires: 'pets', guidance: 'Registrá la mascota con register_pet antes de agendar (list_pets_for_contact primero para no duplicarla). Ante señales de urgencia usá triage_pet_emergency de inmediato.' },
+    { industry: 'retail', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock antes de prometer disponibilidad → send_product_image si ayuda → confirmá qué y cuántos → place_catalog_order. Los precios salen del catálogo: vos sólo pasás productId y cantidad.' },
+    { industry: 'otro', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock → confirmá qué y cuántos → place_catalog_order. Nunca digas que el pedido quedó registrado sin que place_catalog_order haya tenido éxito.' },
+];
+
+function verticalFlowGuidance(industry: unknown, tools: any): string | undefined {
+    if (typeof industry !== 'string' || !industry) return undefined;
+    const enabled = (key: string) => tools?.[key]?.enabled === true;
+    const lines = VERTICAL_FLOW_GUIDANCE
+        .filter(entry => entry.industry === industry && enabled(entry.requires))
+        .map(entry => entry.guidance);
+    return lines.length ? lines.join(' ') : undefined;
+}
 // Returned when the LLM pipeline errors out. Sent to the customer but NOT counted
 // as a successful AI response (no monthly-quota increment, no message_sent event).
 // i18n'd like HANDOFF_MSG — errorFallbackText(lang) picks the customer's language.
@@ -138,6 +192,56 @@ const HANDOFF_MSG: Record<string, {
 };
 const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_MSG.es;
 
+// Directive templates for an operation the SERVER executed after the customer
+// confirmed. Deterministic layer, so i18n'd here like HANDOFF_MSG. The failure
+// wording is deliberate: the model is told not to claim success, because the
+// whole point of executing server-side is that the outcome is no longer a guess.
+const EXECUTED_OPERATION_MSG: Record<string, { done: string; doneNoDetails: string; failed: string }> = {
+    es: {
+        done: 'La operación que el cliente acaba de confirmar YA quedó realizada. Confírmasela con naturalidad usando estos datos reales:',
+        doneNoDetails: 'La operación que el cliente acaba de confirmar YA quedó realizada. Confírmasela con naturalidad.',
+        failed: 'La operación NO se pudo completar. Explícaselo al cliente con claridad, NO afirmes que quedó hecha, y ofrécele una alternativa concreta. Motivo interno (no lo cites textualmente): {reason}',
+    },
+    en: {
+        done: 'The operation the customer just confirmed HAS been completed. Confirm it naturally using these real details:',
+        doneNoDetails: 'The operation the customer just confirmed HAS been completed. Confirm it naturally.',
+        failed: 'The operation could NOT be completed. Explain it clearly, do NOT claim it is done, and offer a concrete alternative. Internal reason (do not quote it verbatim): {reason}',
+    },
+    pt: {
+        done: 'A operação que o cliente acabou de confirmar JÁ foi realizada. Confirme com naturalidade usando estes dados reais:',
+        doneNoDetails: 'A operação que o cliente acabou de confirmar JÁ foi realizada. Confirme com naturalidade.',
+        failed: 'A operação NÃO pôde ser concluída. Explique com clareza, NÃO afirme que está feita e ofereça uma alternativa concreta. Motivo interno (não cite textualmente): {reason}',
+    },
+    fr: {
+        done: "L'opération que le client vient de confirmer A ÉTÉ réalisée. Confirmez-la naturellement avec ces données réelles :",
+        doneNoDetails: "L'opération que le client vient de confirmer A ÉTÉ réalisée. Confirmez-la naturellement.",
+        failed: "L'opération n'a PAS pu être effectuée. Expliquez-le clairement, n'affirmez PAS qu'elle est faite et proposez une alternative concrète. Raison interne (ne la citez pas telle quelle) : {reason}",
+    },
+};
+
+// Sent when the model insists on claiming an action that no tool performed, and
+// the corrective rewrite also insisted. Better a flat, honest sentence than a
+// confident lie about a booking that does not exist.
+const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
+    es: 'Todavía no puedo darte esa acción por confirmada: no me consta que se haya completado. Déjame verificarlo y te confirmo en un momento.',
+    en: 'I cannot treat that as done yet: I have no confirmation that it completed. Let me check and get back to you in a moment.',
+    pt: 'Ainda não posso considerar isso concluído: não tenho confirmação de que foi finalizado. Vou verificar e já te confirmo.',
+    fr: "Je ne peux pas encore considérer cela comme fait : je n'ai pas de confirmation que l'opération a abouti. Je vérifie et je reviens vers vous.",
+};
+const unverifiedClaimFallbackText = (lang?: string) =>
+    UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
+
+// The turn broke AFTER something real was committed. The generic error would
+// have the customer believe nothing happened and ask for it all over again.
+const PARTIAL_SUCCESS_MSG: Record<string, string> = {
+    es: 'Tu solicitud quedó registrada correctamente, pero tuve un problema al terminar de responderte. No la repitas: alguien del equipo la revisa y te confirma los detalles enseguida.',
+    en: 'Your request was recorded successfully, but I ran into a problem finishing my reply. Please do not send it again: someone from the team is checking it and will confirm the details shortly.',
+    pt: 'Sua solicitação foi registrada corretamente, mas tive um problema ao terminar de responder. Não repita: alguém da equipe está verificando e confirma os detalhes em breve.',
+    fr: "Votre demande a bien été enregistrée, mais j'ai eu un problème pour terminer ma réponse. Ne la renvoyez pas : quelqu'un de l'équipe vérifie et vous confirmera les détails sous peu.",
+};
+const partialSuccessText = (lang?: string) =>
+    PARTIAL_SUCCESS_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || PARTIAL_SUCCESS_MSG.es;
+
 // Deterministic replies to appointment reminder / attendance buttons (not persona
 // copy) — i18n'd here like HANDOFF_MSG. Keyed by 2-letter language; falls back to es.
 const APPOINTMENT_REPLIES: Record<string, {
@@ -197,6 +301,17 @@ const DEBOUNCE_MS = 800;
  */
 const turnDoneKey = (tenantId: string, providerMsgId: string) => `turn:done:${tenantId}:${providerMsgId}`;
 
+/**
+ * The reply a turn decided on, stored before the first bubble is sent.
+ *
+ * A turn that dies mid-send (deploy restart, PgBouncer blip) is retried, and the
+ * retry used to ask the LLM again — producing different words and a different
+ * number of bubbles. The first bubble was dropped by its job id and the rest
+ * were not, so the customer read the opening of one answer followed by the
+ * middle of another. Same lifetime as `turn:done`.
+ */
+const turnReplyKey = (tenantId: string, providerMsgId: string) => `turn:reply:${tenantId}:${providerMsgId}`;
+
 @Injectable()
 export class ConversationsService {
     private readonly logger = new Logger(ConversationsService.name);
@@ -239,6 +354,7 @@ export class ConversationsService {
         private paymentOperations: PaymentOperationService,
         private toolRetrieval: ToolRetrievalService,
         private emotionService: EmotionService,
+        private toolExecutionControl: ToolExecutionControlService,
     ) {}
 
     /**
@@ -354,7 +470,23 @@ export class ConversationsService {
                 if (lockToken) break;
             }
             if (!lockToken) {
-                this.logger.warn(`[Pipeline] Could not acquire lock for conversation ${conversation.id} after waiting — processing anyway`);
+                // Processing anyway meant two LLM turns on one conversation:
+                // tools executed twice (two bookings, two orders), the booking
+                // state overwritten by whichever finished last, and two replies
+                // crossing in the customer's chat. With real turns running 10-60s
+                // this was ordinary, not exotic — a second message 800ms after
+                // the first is already past the burst window.
+                //
+                // Throwing hands the message back to BullMQ, which retries it
+                // with backoff: it lands in the NEXT turn, in order, once. The
+                // burst this turn had already merged goes back to the buffer
+                // first, or the retry would answer only the last fragment.
+                if (combined !== undefined && combined !== null) {
+                    await this.restoreBurst(normalizedMsg, combined);
+                }
+                this.recordAgentSignal(tenantId, 'concurrent_turn_deferred');
+                this.logger.warn(`[Pipeline] Could not acquire lock for conversation ${conversation.id} after waiting — re-queueing instead of running a concurrent turn`);
+                throw new Error(`conversation_locked:${conversation.id}`);
             }
         }
         // Heartbeat: keep the lock alive while we process so a turn that legitimately
@@ -454,6 +586,7 @@ export class ConversationsService {
         this.logger.log(`[Pipeline] Persona loaded: ${config?.persona?.name || 'default'} (mode: ${(config as any)?._mode || 'wizard'})`);
 
         if (!config) {
+            this.recordAgentSignal(tenantId, 'silent_turn');
             this.logger.error(`No active persona found for tenant ${tenantId}`);
             return;
         }
@@ -485,6 +618,7 @@ export class ConversationsService {
         //                         the customer finally gets an answer; anything
         //                         that attempt already sent is dropped by the
         //                         outbound dedupeId, so no duplicate reaches them.
+        let resumedReply: string | null = null;
         const saved = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
         if (saved.duplicate) {
             const dupPmid = providerMessageId(normalizedMsg);
@@ -496,6 +630,17 @@ export class ConversationsService {
                 return;
             }
             this.logger.warn(`[Pipeline] Resuming interrupted turn for ${dupPmid} (message already stored)`);
+            // What the interrupted attempt had already decided to say. Without
+            // it the retry called the LLM again and got a DIFFERENT wording with
+            // a different number of bubbles: bubble 0 was deduped by its job id
+            // and bubbles 1..n were not, so the customer received the first half
+            // of one answer followed by the second half of another.
+            if (dupPmid) {
+                resumedReply = await this.redis.get(turnReplyKey(tenantId, dupPmid)).catch(() => null);
+                if (resumedReply) {
+                    this.logger.warn(`[Pipeline] Reusing the reply the interrupted attempt had already produced for ${dupPmid}`);
+                }
+            }
         }
         const inboundMessageId = saved.id;
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
@@ -567,15 +712,33 @@ export class ConversationsService {
 
             if (isYes || isNo) {
                 try {
+                    // An attendance answer answers the attendance QUESTION.
+                    //
+                    // "Sí" is the most common word in these conversations, and
+                    // for 48 hours after a follow-up this shortcut swallowed
+                    // every one of them: a customer saying yes to something the
+                    // agent had just asked got "¡gracias por confirmar tu
+                    // asistencia!" and their real message never reached the AI.
+                    // The follow-up is a WhatsApp template, so its wording is not
+                    // in our hands — but its timing is: it went out when the
+                    // appointment row was flagged, so only the FIRST inbound
+                    // after that flag can be answering it.
                     const pendingAppt = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                        `SELECT id, service_name FROM appointments
-                         WHERE contact_id = $1::uuid
-                           AND status IN ('pending', 'confirmed')
-                           AND no_show_followed_up = true
-                           AND end_at < NOW()
-                           AND end_at > NOW() - INTERVAL '48 hours'
-                         ORDER BY end_at DESC LIMIT 1`,
-                        [contact.id],
+                        `SELECT a.id, a.service_name FROM appointments a
+                         WHERE a.contact_id = $1::uuid
+                           AND a.status IN ('pending', 'confirmed')
+                           AND a.no_show_followed_up = true
+                           AND a.end_at < NOW()
+                           AND a.end_at > NOW() - INTERVAL '48 hours'
+                           AND NOT EXISTS (
+                               SELECT 1 FROM messages m
+                                WHERE m.conversation_id = $2::uuid
+                                  AND m.direction = 'inbound'
+                                  AND m.created_at > a.updated_at
+                                  AND ($3::uuid IS NULL OR m.id <> $3::uuid)
+                           )
+                         ORDER BY a.end_at DESC LIMIT 1`,
+                        [contact.id, conversation.id, inboundMessageId || null],
                     );
                     if (pendingAppt?.length > 0) {
                         const apptId = pendingAppt[0].id;
@@ -692,7 +855,16 @@ export class ConversationsService {
             personaResolution,
         );
         this.logger.log(`[Pipeline] Generating AI response...`);
-        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours, inboundMessageId);
+        const response = resumedReply
+            || await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours, inboundMessageId);
+
+        // Persist the decision BEFORE any of it goes out, so a crash between the
+        // first bubble and the last one is resumed with the same words instead of
+        // a freshly generated answer stitched onto the old one.
+        const replyPmid = providerMessageId(normalizedMsg);
+        if (response && !resumedReply && replyPmid && !isErrorFallback(response)) {
+            await this.redis.set(turnReplyKey(tenantId, replyPmid), response, 86400).catch(() => {});
+        }
 
         // Auto-progress signals from the RESOLVED inbound text (post audio/image processing,
         // set by generateResponse on normalizedMsg) so voice-note / image purchase intent
@@ -740,14 +912,19 @@ export class ConversationsService {
                 const chunks = this.splitResponseIntoChunks(response);
                 const CHUNK_GAP_MS = 1200;
                 this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
+                const turnPmid = providerMessageId(normalizedMsg) || normalizedMsg.id || '';
                 for (let i = 0; i < chunks.length; i++) {
                     await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS, `reply:${i}`);
-                    await this.saveAiMessage(tenantId, conversation.id, chunks[i], normalizedMsg.channelType);
+                    await this.saveAiMessage(
+                        tenantId, conversation.id, chunks[i], normalizedMsg.channelType,
+                        turnPmid ? `out:${turnPmid}:reply:${i}` : undefined,
+                    );
                 }
                 this.logger.log(`[Pipeline] Response sent and saved`);
             }
         } else {
             this.logger.warn(`[Pipeline] No response generated — customer gets no reply`);
+            this.recordAgentSignal(tenantId, 'silent_turn');
         }
 
         // 8. Auto-progress pipeline stage based on conversation signals
@@ -923,6 +1100,47 @@ export class ConversationsService {
                 `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage) VALUES ($1::uuid, $2, $3, 'active', 'greeting') RETURNING *`,
                 [contactIdStr, msg.channelType, msg.channelAccountId],
             ).then(res => res[0]);
+
+            // A returning customer is not a stranger.
+            //
+            // History is read per conversation, so once the previous one was
+            // resolved (the 72h cron does this routinely) the customer came back
+            // three days later to an agent with a blank slate: "¿quedó mi
+            // reserva?" met "¿me das tu nombre?". Carrying the tail of the last
+            // conversation forward is enough for the agent to pick up the thread;
+            // the booking itself still comes from <active_objects>.
+            try {
+                const previous = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT m.direction, m.content_text
+                       FROM messages m
+                       JOIN conversations c ON c.id = m.conversation_id
+                      WHERE c.contact_id = $1::uuid
+                        AND c.id <> $2::uuid
+                        AND m.content_text IS NOT NULL
+                        AND m.created_at > NOW() - INTERVAL '30 days'
+                      ORDER BY m.created_at DESC
+                      LIMIT 6`,
+                    [contactIdStr, String(conversation.id)],
+                );
+                if (previous?.length) {
+                    const carried = previous.reverse().map((m: any) => ({
+                        direction: m.direction,
+                        content_text: String(m.content_text || '').slice(0, 400),
+                    }));
+                    await this.prisma.executeInTenantSchema(schemaName,
+                        `UPDATE conversations
+                            SET metadata = jsonb_set(
+                                COALESCE(metadata, '{}'::jsonb), '{carriedContext}', $2::jsonb, true
+                            )
+                          WHERE id = $1::uuid`,
+                        [String(conversation.id), JSON.stringify(carried)],
+                    );
+                    conversation.metadata = { ...(conversation.metadata || {}), carriedContext: carried };
+                    this.logger.log(`[Pipeline] Carried ${carried.length} message(s) of context from the contact's previous conversation`);
+                }
+            } catch (e: any) {
+                this.logger.debug(`Carried-context lookup skipped: ${e.message}`);
+            }
 
             // Create an opportunity only if the lead doesn't already have an active one
             const existingOpp = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -1297,14 +1515,39 @@ export class ConversationsService {
         return { id: result[0]?.id as string | undefined, duplicate: false };
     }
 
-    private async saveAiMessage(tenantId: string, conversationId: string, text: string, channelType?: string) {
+    private async saveAiMessage(
+        tenantId: string,
+        conversationId: string,
+        text: string,
+        channelType?: string,
+        /**
+         * Stable identity of this outbound within its turn (the same string used
+         * as the send's dedupe key). A retried turn re-saved every chunk it had
+         * already stored, so the history the model reads back showed the agent
+         * answering the same message twice — and then it behaved accordingly.
+         */
+        externalId?: string,
+    ) {
         const schemaName = await this.tenantSchema(tenantId);
 
-        const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status)
-             VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered') RETURNING *`,
-            [conversationId, text],
-        );
+        const result = externalId
+            ? await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id)
+                 VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered', $3)
+                 ON CONFLICT (external_id) DO NOTHING
+                 RETURNING *`,
+                [conversationId, text, externalId],
+            )
+            : await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status)
+                 VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered') RETURNING *`,
+                [conversationId, text],
+            );
+        // Already stored by the interrupted attempt: nothing new to broadcast.
+        if (externalId && !result?.[0]) {
+            this.logger.warn(`[Pipeline] Outbound ${externalId} already stored — skipping duplicate history row`);
+            return;
+        }
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
             [conversationId],
@@ -1543,7 +1786,19 @@ export class ConversationsService {
         if (isNewSession) {
             this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
             try {
-                await this.redis.del(`booking:${conversation.id}`);
+                // One session, one epoch. Each of these used to expire on its own
+                // clock (booking 1h, procedure 1h, affinity 30m, confirmation
+                // 15m), so a customer coming back after 35 minutes met an agent
+                // that had forgotten the booking but was still walking them
+                // through step 4 of a procedure, on a model pinned by a turn that
+                // no longer existed. What ends, ends together.
+                await Promise.all([
+                    this.redis.del(`booking:${conversation.id}`),
+                    this.redis.del(`procedure:${conversation.id}`),
+                    this.redis.del(`llm:affinity:${conversation.id}`),
+                    this.redis.del(`llm:affinity:${conversation.id}:conversation`),
+                    this.redis.del(`llm:affinity:${conversation.id}:tool_calling`),
+                ]);
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' - 'bookingState' - 'bookingStateUpdatedAt' WHERE id = $1::uuid`,
                     [conversation.id],
@@ -1712,6 +1967,22 @@ export class ConversationsService {
                     targetAudiences: bizGoals.audiences.length ? bizGoals.audiences : undefined,
                 };
             }
+
+            // Cómo se cierra la venta en esta industria. El assembler ya sabía
+            // imprimir <guidance> desde hace meses, pero NADIE lo poblaba fuera de
+            // un spec: el agente conocía los sustantivos de la vertical y no el
+            // orden de las herramientas, así que ofrecía reservar antes de
+            // consultar disponibilidad, o cotizaba sin buscar el producto.
+            const guidance = verticalFlowGuidance(
+                (turnContext.verticalContext as any)?.industry,
+                (config.tools ?? (config as any)?.tools) as any,
+            );
+            if (guidance) {
+                turnContext.verticalContext = {
+                    ...(turnContext.verticalContext || {}),
+                    industryGuidance: guidance,
+                };
+            }
         } catch (e: any) {
             this.logger.debug(`Vertical context lookup skipped: ${e.message}`);
         }
@@ -1723,6 +1994,12 @@ export class ConversationsService {
         let tools: any[] = [];
         let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata);
         let engineProducedText: string | null = null;
+        // Writes performed OUTSIDE the LLM tool loop (booking engine, server-side
+        // confirmation). Without these the output guardrail audits a real booking
+        // as an invented one and rewrites the reply to say it is still pending.
+        let engineExecutedTools: Array<{ name: string; result: any }> = [];
+        // An escalation asked for by a tool executed outside the loop.
+        let pendingOperationHandoff: string | null = null;
 
         // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
         // message is the ANSWER to that field — give the procedure engine priority
@@ -1818,6 +2095,11 @@ export class ConversationsService {
 
                     // ═══ PHASE 3: EXPRESS — LLM voices the engine's output naturally ═══
                     engineProducedText = engineResult.text || null;
+                    // The appointment the engine just created; reported so the
+                    // claim guardrail knows "your appointment is booked" is true.
+                    if (engineResult.executedTools?.length) {
+                        engineExecutedTools = [...engineExecutedTools, ...engineResult.executedTools];
+                    }
                     tools = []; // NO TOOLS for express phase
                     await this.persistBookingState(schemaName, conversation.id, engineResult.state);
 
@@ -1880,6 +2162,65 @@ export class ConversationsService {
                 }
             } catch (e: any) {
                 this.logger.warn(`[Procedure] engine error (non-fatal): ${e.message}`);
+            }
+        }
+
+        // 4c. THE CUSTOMER SAID YES — the server executes, not the model.
+        //
+        // Every write gated by a confirmation used to depend on the model
+        // spontaneously re-issuing the identical call with byte-identical
+        // arguments, out of a history that carries no tool calls. When it
+        // answered in prose nothing ran and the customer was told it was done;
+        // when it rebuilt the arguments and a date format or an accent differed,
+        // the hash changed and the guard asked for confirmation AGAIN over
+        // something already confirmed. Both are the loop the owner reported.
+        //
+        // The booking engine never had this problem because it executes the
+        // appointment itself on a button press. This does the same for every
+        // other operation: read the pending row, run it with the arguments the
+        // customer was actually shown, and let the LLM voice the outcome. The
+        // signed token, the args hash and the ledger status stay in charge.
+        let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
+        if (!engineProducedText
+            && conversation.contact_id
+            && classifyExplicitToolConfirmation(userText) === 'confirmed') {
+            try {
+                const pending = await this.toolExecutionControl.findPendingConfirmation(
+                    schemaName, conversation.id, conversation.contact_id,
+                );
+                if (pending) {
+                    this.logger.log(`[Confirm] Customer confirmed — executing pending ${pending.toolName} server-side (ledger ${pending.ledgerId})`);
+                    const result = await this.withTimeout(
+                        this.toolExecutor.execute(
+                            schemaName, tenantId, conversation.contact_id, pending.toolName,
+                            pending.args, conversation.id, { channelType: msg.channelType },
+                        ),
+                        TOOL_TIMEOUT_MS,
+                        pending.toolName,
+                    );
+                    if (result?._mediaToSend) delete result._mediaToSend;
+                    // Still asking for confirmation means the token expired
+                    // between the lookup and the call. Say nothing here and let
+                    // the normal turn run: inventing an outcome is exactly the
+                    // failure this block exists to prevent.
+                    if (result?.error === 'confirmation_required') {
+                        this.logger.warn(`[Confirm] Pending ${pending.toolName} still requires confirmation — falling through to the normal turn`);
+                    } else {
+                        preExecutedTools = [...preExecutedTools, { name: pending.toolName, result }];
+                        if (result?.shouldHandoff === true
+                            && (result.controlBlocked !== true
+                                || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
+                            pendingOperationHandoff = `intake:${pending.toolName}`;
+                        }
+                        engineProducedText = this.buildExecutedOperationDirective(
+                            pending.toolName, result, userLanguage,
+                        );
+                        this.recordAgentSignal(tenantId, 'pending_confirmation_executed');
+                        tools = [];
+                    }
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Confirm] Server-side confirmation failed (non-fatal): ${e.message}`);
             }
         }
 
@@ -1979,6 +2320,20 @@ export class ConversationsService {
         if (cfgTools?.insurance?.enabled === true) {
             tools = [...tools, ...INSURANCE_TOOLS];
         }
+        // The identity step-up is the only key to the A2-guarded reads. It used
+        // to ship only with the insurance toolset, so a clinic could book an
+        // appointment and then had no way to read it back — the record was
+        // guarded and the key was not published. Any agent holding an A2 read
+        // gets the key.
+        const needsIdentityStepUp = cfgTools?.insurance?.enabled === true
+            || cfgTools?.appointments?.enabled === true
+            || cfgTools?.treatments?.enabled === true
+            || cfgTools?.professionalServices?.enabled === true;
+        if (needsIdentityStepUp) {
+            for (const tool of IDENTITY_STEP_UP_TOOLS) {
+                if (!tools.some(t => t?.name === tool.name)) tools = [...tools, tool];
+            }
+        }
         if (cfgTools?.homeServices?.enabled === true) {
             tools = [...tools, ...HOME_SERVICES_TOOLS];
         }
@@ -1992,13 +2347,20 @@ export class ConversationsService {
             tools = [...tools, ...PROFESSIONAL_SERVICES_TOOLS];
         }
 
-        // D2: Tool retrieval — reduce 71 → 10 most relevant (Gorilla >30 tools <60% without retrieval)
-        // Reduces context bloat (~10k tokens → ~1.5k) and duplicate hallucination (D2 fix for b638)
+        // D2: Tool retrieval — keep the turn's toolset small (Gorilla: >30 tools
+        // degrades selection). Relevance is scored against the CURRENT message,
+        // which is why the writers are pinned: the message that closes a sale is
+        // "sí", it matches nothing, and the unpinned version handed the model the
+        // appointment family while `create_property_booking` — the tool the
+        // pending confirmation was waiting on — was cut from the turn.
         if (!engineProducedText && tools.length > 10) {
             const retrievalQuery = `${userText || (msg as any).resolvedText || ''} ${turnContext.verticalContext?.industry || ''} ${bookingState.step || ''}`;
             const before = tools.length;
-            tools = this.toolRetrieval.retrieveRelevantTools(retrievalQuery, tools, 10);
-            this.logger.log(`[ToolRetrieval] ${before} → ${tools.length} tools for query "${retrievalQuery.slice(0,80)}"`);
+            const pinned = new Set(
+                tools.filter(t => isConfirmableWriteTool(t?.name)).map(t => t.name as string),
+            );
+            tools = this.toolRetrieval.retrieveRelevantTools(retrievalQuery, tools, 10, pinned);
+            this.logger.log(`[ToolRetrieval] ${before} → ${tools.length} tools (${pinned.size} pinned) for query "${retrievalQuery.slice(0,80)}"`);
         }
 
         // When the booking/procedure engine produced a directive, the LLM must
@@ -2135,7 +2497,17 @@ export class ConversationsService {
             `SELECT direction, content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 31`,
             [conversation.id],
         );
-        const history = (historyDesc || []).slice(1).reverse();
+        let history = (historyDesc || []).slice(1).reverse();
+
+        // The tail of the customer's PREVIOUS conversation, when this one was
+        // opened because the old one had been auto-resolved. Prepended so the
+        // agent picks up the thread instead of greeting a stranger who is asking
+        // about the booking it made for them last week.
+        const carriedContext = (conversation.metadata as any)?.carriedContext;
+        if (Array.isArray(carriedContext) && carriedContext.length && history.length <= carriedContext.length) {
+            history = [...carriedContext, ...history];
+            this.logger.log(`[Pipeline] Prepended ${carriedContext.length} carried message(s) from the previous conversation`);
+        }
 
         // Anti-repetition: tell the LLM how many messages exist in this conversation.
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
@@ -2180,6 +2552,23 @@ export class ConversationsService {
             messages = this.truncateHistory(history || [], userText, systemPrompt, personaMaxTokens);
         }
 
+        // What the PREVIOUS turns already did. Dropped on a new session with the
+        // rest of the epoch, so it can never resurrect a stale identifier.
+        if (!isNewSession) {
+            const priorActions = (conversation.metadata as any)?.toolContext;
+            if (Array.isArray(priorActions) && priorActions.length) {
+                (turnContext as any).recentActions = priorActions.slice(-RECENT_ACTIONS_MAX);
+            }
+        }
+
+        // Every write this turn performed, wherever it ran. Declared OUTSIDE the
+        // try because the catch below needs it: an exception thrown AFTER a
+        // booking was created (a guardrail retry timing out, a media send
+        // failing) used to answer "estoy teniendo problemas técnicos" and lose
+        // all trace of the tool — so the next turn had no idea the reservation
+        // existed and either denied it or made it again.
+        const executedToolsThisTurn: Array<{ name: string; result: any }> = [];
+
         // 4. Execute LLM Call using Router (with tool execution loop)
         try {
             const MAX_TOOL_ITERATIONS = 5;
@@ -2199,11 +2588,15 @@ export class ConversationsService {
             // keeps replying — just on cheaper models — until the month rolls over.
             const llmBudgetUsdCents = typeof planFeatures.llmCostBudgetUsdCents === 'number'
                 ? planFeatures.llmCostBudgetUsdCents : -1;
+            // Also tells the router to stand down its tool-calling floor: over
+            // budget, replying on a weaker model beats not replying.
+            let budgetConstrained = false;
             if (llmBudgetUsdCents > 0) {
                 const spentUsdCents = await this.throttle.getLlmSpendUsdCents(tenantId);
                 if (spentUsdCents >= llmBudgetUsdCents) {
                     const clamped = allowedTiers.filter(t => t === 'tier_3_efficient' || t === 'tier_4_budget');
                     allowedTiers = clamped.length ? clamped : ['tier_4_budget'];
+                    budgetConstrained = true;
                     this.logger.warn(
                         `[LLM budget] tenant ${tenantId} over monthly LLM budget ` +
                         `($${(spentUsdCents / 100).toFixed(2)}/$${(llmBudgetUsdCents / 100).toFixed(2)}) — ` +
@@ -2215,8 +2608,14 @@ export class ConversationsService {
             // Escalada pedida por una tool de intake durante el turno (ver runTool).
             // Vive FUERA del loop: la tool puede correr en la iteración 1 y el texto
             // final producirse en la 2.
-            let postToolHandoff: string | null = null;
-            const executedToolsThisTurn: Array<{ name: string; result: any }> = [];
+            let postToolHandoff: string | null = pendingOperationHandoff;
+            executedToolsThisTurn.push(...preExecutedTools);
+
+            // The model that made the first decision of this turn. Every later
+            // iteration stays on it: a mid-turn failover left the second half of
+            // the turn to a different model reasoning about tool calls it never
+            // made, with its own idea of what to do next.
+            let turnModel: { provider: string; model: string } | undefined;
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const hasTools = tools.length > 0;
@@ -2234,6 +2633,8 @@ export class ConversationsService {
                     routingFactors,
                     tools: hasTools ? tools : undefined,
                     allowedTiers,
+                    budgetConstrained,
+                    pinnedModel: turnModel,
                     tenantId,
                     traceContext: {
                         conversationId: conversation.id,
@@ -2243,6 +2644,11 @@ export class ConversationsService {
                         stage: engineProducedText ? 'booking' : 'conversation',
                     },
                 });
+
+                const chosen = response.routingDecision?.selectedModel;
+                if (!turnModel && chosen?.provider && chosen?.id) {
+                    turnModel = { provider: String(chosen.provider), model: chosen.id };
+                }
 
                 // Check if LLM wants to call tools
                 if (response.toolCalls?.length && hasTools) {
@@ -2343,8 +2749,19 @@ export class ConversationsService {
                         // el humano recibía la conversación sin el intake que la propia
                         // vertical construyó para eso. Ahora la tool corre primero y la
                         // escalada ocurre después, con los datos ya registrados.
-                        if (result && result.shouldHandoff === true) {
+                        // ...pero SOLO cuando lo pide el dominio. El guard central
+                        // marca `controlBlocked` cuando lo que falló es un
+                        // invariante técnico (token sin firmar, lease vencido,
+                        // conflicto de idempotencia): eso se arregla del lado
+                        // nuestro, no mandando al cliente a una cola humana por un
+                        // problema interno que él nunca vio. Las excepciones son
+                        // las que pueden haber movido plata o cupo.
+                        if (result && result.shouldHandoff === true
+                            && (result.controlBlocked !== true
+                                || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
                             postToolHandoff = postToolHandoff || `intake:${tc.function.name}`;
+                        } else if (result?.controlBlocked === true) {
+                            this.logger.warn(`[Pipeline] Control block on ${tc.function.name} (${result.error}) — handled internally, not escalated`);
                         }
                         return result;
                     };
@@ -2423,6 +2840,7 @@ export class ConversationsService {
             // whole message thread (history + tool results) — everything the model saw.
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
+                executedToolsThisTurn, userLanguage,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
 
@@ -2472,6 +2890,16 @@ export class ConversationsService {
                 }
             }
 
+            // What this turn actually did, kept for the next one.
+            //
+            // The history the model reads back is text only: its own tool calls
+            // and their results vanish at the end of the turn. So it re-listed
+            // the same properties every turn, re-checked availability it had just
+            // checked, and — worse — lost the payable reference that
+            // `create_property_booking` had returned, which the payment link then
+            // had to be invented from.
+            await this.persistToolContext(schemaName, conversation.id, executedToolsThisTurn);
+
             turnTrace.add('decision', 'final_response', {
                 finalResponseLength: finalResponse?.length || 0,
                 mediaCount: mediaToSend.length,
@@ -2483,6 +2911,24 @@ export class ConversationsService {
             return finalResponse;
         } catch (e: any) {
             this.logger.error(`[Pipeline] LLM call FAILED: ${e.message}`, e.stack);
+
+            // Something was already done for this customer before the turn broke.
+            // The generic "I had a problem, could you repeat that?" is a lie by
+            // omission here: the booking exists, the payment link was issued, and
+            // the customer — told nothing happened — asks for it again.
+            const committed = executedToolsThisTurn.filter(
+                t => (isBusinessWriteTool(t.name) || t.name.startsWith('mcp__')) && toolResultSucceeded(t.result),
+            );
+            if (committed.length) {
+                this.logger.error(`[Pipeline] Turn failed AFTER committing ${committed.map(t => t.name).join(', ')} — telling the customer the truth instead of the generic error`);
+                this.recordAgentSignal(tenantId, 'commit_then_failure');
+                turnTrace.add('decision', 'error_after_commit', {
+                    error: e?.message,
+                    committed: committed.map(t => t.name),
+                });
+                try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
+                return partialSuccessText(userLanguage);
+            }
 
             // Increment failed attempts for handoff threshold
             await this.prisma.executeInTenantSchema(schemaName,
@@ -2573,7 +3019,90 @@ export class ConversationsService {
         if (parts.length > 1) {
             this.logger.log(`[Debounce] Flushed ${parts.length} messages as one turn for ${msg.contactId}`);
         }
-        return (parts.length ? parts : [text]).join('\n').trim() || text;
+        // Consecutive identical lines collapse. A turn that had to give its lock
+        // back returns its merged burst to the buffer, and the retry appends its
+        // own text again — the last fragment would otherwise be read twice.
+        const joined = (parts.length ? parts : [text]).join('\n');
+        const lines = joined.split('\n');
+        const deduped = lines.filter((line, i) => i === 0 || line.trim() !== lines[i - 1].trim());
+        return deduped.join('\n').trim() || text;
+    }
+
+    /**
+     * Stores a compact record of what the tools returned this turn, so the next
+     * turn knows what has already been looked up and what was already created.
+     *
+     * Deliberately small: names, outcome and a handful of identifying fields.
+     * This is a memory of ACTIONS, not a cache of payloads — enough for the model
+     * to stop repeating itself and to reuse an identifier it was given, not
+     * enough to become another context-bloat problem.
+     */
+    private async persistToolContext(
+        schemaName: string,
+        conversationId: string,
+        executed: Array<{ name: string; result: any }>,
+    ): Promise<void> {
+        if (!executed.length) return;
+        try {
+            const entries = executed.slice(-RECENT_ACTIONS_MAX).map(t => ({
+                tool: t.name,
+                ok: toolResultSucceeded(t.result),
+                facts: this.describeOperationResult(t.result).slice(0, 400) || undefined,
+            }));
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations
+                    SET metadata = jsonb_set(
+                        jsonb_set(COALESCE(metadata, '{}'::jsonb), '{toolContext}', $2::jsonb),
+                        '{toolContextUpdatedAt}', to_jsonb(NOW()::text)
+                    )
+                  WHERE id = $1::uuid`,
+                [conversationId, JSON.stringify(entries)],
+            );
+        } catch (e: any) {
+            this.logger.warn(`[Pipeline] Could not persist tool context (non-fatal): ${e.message}`);
+        }
+    }
+
+    /**
+     * Counts something worth knowing about how the agent behaved.
+     *
+     * These are the four numbers nobody had: how often the agent claimed an
+     * action no tool performed, how often a turn ended with the customer getting
+     * nothing, how often a second message had to wait for the first, and how
+     * often the server closed a confirmation the model would have dropped.
+     * Cheap Redis counters keyed by day, read by the Ops Center.
+     */
+    private recordAgentSignal(tenantId: string, signal: string): void {
+        const day = new Date().toISOString().slice(0, 10);
+        const tenantKey = `agent:signal:${signal}:${tenantId}:${day}`;
+        // Platform-wide total and the set of tenants that contributed to it.
+        // The Ops Center needs a bounded, deterministic set of keys to read on
+        // every tick: scanning `agent:signal:*` would grow with the tenant base
+        // and is exactly the kind of check that gets disabled when it gets slow.
+        const totalKey = `agent:signal:${signal}:${day}`;
+        const tenantsKey = `agent:signal:${signal}:tenants:${day}`;
+        const TTL = 8 * 86400;
+        Promise.all([
+            this.redis.incr(tenantKey).then(() => this.redis.expire(tenantKey, TTL)),
+            this.redis.incr(totalKey).then(() => this.redis.expire(totalKey, TTL)),
+            this.redis.sadd(tenantsKey, tenantId).then(() => this.redis.expire(tenantsKey, TTL)),
+        ]).catch(() => { /* metrics must never break a turn */ });
+    }
+
+    /**
+     * Puts an already-merged burst back where the next attempt will find it.
+     *
+     * Used when a turn has to give up its slot (the conversation is busy): the
+     * fragments were drained from the buffer before the lock was attempted, so
+     * without this the retry would answer only the last message of the burst.
+     */
+    private async restoreBurst(msg: NormalizedMessage, combinedText: string): Promise<void> {
+        if (!combinedText.trim()) return;
+        const base = `buf:conv:${msg.tenantId}:${msg.channelType}:${msg.contactId}`;
+        try {
+            await this.redis.rpush(`${base}:msgs`, combinedText);
+            await this.redis.expire(`${base}:msgs`, 60);
+        } catch { /* best-effort: the retry still carries its own text */ }
     }
 
     /**
@@ -2635,6 +3164,64 @@ export class ConversationsService {
      *    "pago confirmado", etc.) are only made when a backing write tool succeeded this turn.
      * 2. Price verification: ensure prices stated in the response exist in context/corpus.
      */
+    /**
+     * Turns the raw result of a server-executed operation into the directive the
+     * LLM voices.
+     *
+     * The model never sees the tool result here, so it cannot narrate an outcome
+     * of its own: it receives the facts the backend produced and a sentence
+     * telling it whether the deed happened. On failure it is explicitly told not
+     * to claim success — the failure mode this whole block exists to remove.
+     */
+    private buildExecutedOperationDirective(
+        toolName: string,
+        result: any,
+        lang?: string,
+    ): string {
+        const L = (lang || 'es').slice(0, 2).toLowerCase();
+        const T = EXECUTED_OPERATION_MSG[L] || EXECUTED_OPERATION_MSG.es;
+        const succeeded = !!result && !result.error && result.success !== false;
+        if (!succeeded) {
+            const reason = String(result?.message || result?.error || 'unknown').slice(0, 200);
+            return T.failed.replace('{reason}', reason);
+        }
+        const facts = this.describeOperationResult(result);
+        return facts ? `${T.done}\n${facts}` : T.doneNoDetails;
+    }
+
+    /**
+     * Flattens a tool result into `- field: value` lines the model can read out.
+     * Only primitives, one nested level, control fields dropped, values capped —
+     * a directive is not a place to dump a payload.
+     */
+    private describeOperationResult(result: any): string {
+        const SKIP = new Set([
+            'success', 'error', 'retryable', 'message', 'shouldHandoff',
+            'idempotentReplay', 'confirmationId', 'ledgerId', 'raw',
+        ]);
+        const lines: string[] = [];
+        const push = (key: string, value: unknown) => {
+            if (lines.length >= 10) return;
+            if (value === null || value === undefined || value === '') return;
+            if (typeof value === 'object') return;
+            const text = String(value).slice(0, 160);
+            if (!text.trim()) return;
+            lines.push(`- ${key}: ${text}`);
+        };
+        for (const [key, value] of Object.entries(result || {})) {
+            if (key.startsWith('_') || SKIP.has(key)) continue;
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                for (const [k2, v2] of Object.entries(value as Record<string, unknown>)) {
+                    if (k2.startsWith('_') || SKIP.has(k2)) continue;
+                    push(k2, v2);
+                }
+                continue;
+            }
+            push(key, value);
+        }
+        return lines.join('\n');
+    }
+
     private async applyOutputGuardrails(
         response: string,
         systemPrompt: string,
@@ -2643,12 +3230,24 @@ export class ConversationsService {
         tenantId: string,
         conversationId: string,
         executedTools?: Array<{ name: string; result: any }>,
+        lang?: string,
     ): Promise<string> {
         if (!response || isErrorFallback(response)) return response;
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)
-        const claimAudit = auditTurnClaim(response, executedTools);
+        //
+        // `isBackingTool` comes from the canonical policy registry rather than a
+        // name pattern: the pattern missed place_order, book_class,
+        // enroll_student, register_pet and file_claim, so a real sale closed by
+        // any of those was audited as invented. Unknown/MCP tools that succeeded
+        // count as backing — we cannot prove they did nothing, and calling a real
+        // booking a lie is the more expensive mistake.
+        const isBackingTool = (name: string) => (
+            isBusinessWriteTool(name) || name.startsWith('mcp__')
+        );
+        const claimAudit = auditTurnClaim(response, executedTools, { isBackingTool });
         if (claimAudit.falseClaim) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked');
             this.logger.warn(`[Guardrail] Response claimed completed action without backing tool execution — corrective retry: "${response.slice(0, 100)}"`);
             try {
                 const correctedClaim = await this.llmRouter.execute({
@@ -2664,14 +3263,22 @@ export class ConversationsService {
                     tenantId,
                 });
                 const fixedClaim = correctedClaim.content?.trim();
-                if (fixedClaim) {
-                    const secondAudit = auditTurnClaim(fixedClaim, executedTools);
-                    if (!secondAudit.falseClaim) {
-                        response = fixedClaim;
-                    }
+                const secondAudit = fixedClaim
+                    ? auditTurnClaim(fixedClaim, executedTools, { isBackingTool })
+                    : null;
+                if (secondAudit && !secondAudit.falseClaim) {
+                    response = fixedClaim as string;
+                } else {
+                    // The rewrite insisted (or never came back). Sending the
+                    // ORIGINAL was the old behaviour and it means shipping the
+                    // very sentence we just proved false — a customer walking
+                    // away believing they hold a reservation that does not exist.
+                    this.logger.warn('[Guardrail] Corrective rewrite still claimed an unbacked action — replacing with the deterministic fallback');
+                    response = unverifiedClaimFallbackText(lang);
                 }
             } catch (e: any) {
                 this.logger.warn(`[Guardrail] False claim corrective retry failed: ${e.message}`);
+                response = unverifiedClaimFallbackText(lang);
             }
         }
 
@@ -2712,12 +3319,22 @@ export class ConversationsService {
     }
 
     /**
-     * Split a long reply into at most 3 balanced bubbles on paragraph boundaries.
-     * Short or single-paragraph replies are returned as-is (never split mid-text),
-     * so the common case is unchanged.
+     * One turn, one message — unless the text genuinely does not fit.
+     *
+     * Splitting every reply over 600 characters into two or three bubbles cost
+     * us three ways. The bubbles are separate queue jobs ordered only by a delay,
+     * so one retried send arrives after the bubble that followed it and the
+     * customer reads the answer out of order. Each bubble is a separate service
+     * message, which Meta bills individually from October 2026, so a chatty
+     * agent costs three times a concise one. And a wall of text arriving in
+     * pieces reads as an agent talking over itself, not as a person.
+     *
+     * The threshold now exists only to stay under the channel's own limit
+     * (WhatsApp rejects a body over 4096 characters), which is a real constraint
+     * rather than a stylistic one.
      */
     private splitResponseIntoChunks(text: string): string[] {
-        const MIN_LEN_TO_CHUNK = 600;
+        const MIN_LEN_TO_CHUNK = 3500;
         const MAX_CHUNKS = 3;
         if (!text || text.length <= MIN_LEN_TO_CHUNK) return [text];
 
@@ -2810,14 +3427,21 @@ export class ConversationsService {
 
         // Objetos por vertical: la tool encendida sola no alcanza (una peluquería
         // canina con `pets` no debe perder el motor por decir "turno").
+        //
+        // En los CUATRO idiomas que atendemos. Con el patrón sólo en español, un
+        // cliente que escribía "book a room", "reservar uma aula" o "réserver une
+        // chambre" nunca cedía el turno: el motor de citas genéricas se quedaba
+        // con la conversación y la vertical perdía justo sus herramientas de
+        // venta — el hotel no podía cotizar la habitación ni el gimnasio inscribir
+        // en la clase.
         const VERTICAL_OBJECTS: Array<{ tool: string; re: RegExp }> = [
-            { tool: 'gyms', re: /\b(clase|clases|entrenamiento|spinning|yoga|crossfit|funcional|pilates|zumba|cupo)\b/i },
-            { tool: 'tours', re: /\b(tour|tours|excursi[óo]n|salida|paseo|city ?tour)\b/i },
-            { tool: 'properties', re: /\b(habitaci[óo]n|habitaciones|noche|noches|alojamiento|hosped|cabaña|apartamento completo)\b/i },
-            { tool: 'realEstate', re: /\b(propiedad|propiedades|inmueble|apartamento|apto|casa|local|lote|visita)\b/i },
-            { tool: 'restaurants', re: /\b(mesa|mesas|comensal|comensales|personas|pedido|domicilio|delivery|carta|men[úu])\b/i },
-            { tool: 'education', re: /\b(curso|cursos|clase|inscripci[óo]n|matr[íi]cula|cohorte|nivel|examen)\b/i },
-            { tool: 'vehicles', re: /\b(auto|carro|veh[íi]culo|camioneta|moto|prueba de manejo|test drive)\b/i },
+            { tool: 'gyms', re: /\b(clase|clases|entrenamiento|spinning|yoga|crossfit|funcional|pilates|zumba|cupo|class|classes|workout|training|aula|aulas|treino|cours|s[ée]ance)\b/i },
+            { tool: 'tours', re: /\b(tour|tours|excursi[óo]n|salida|paseo|city ?tour|excursion|trip|passeio|excurs[ãa]o|visite|circuit)\b/i },
+            { tool: 'properties', re: /\b(habitaci[óo]n|habitaciones|noche|noches|alojamiento|hosped|cabaña|apartamento completo|room|rooms|night|nights|stay|lodging|quarto|quartos|noite|noites|hospedagem|chambre|chambres|nuit|nuits|s[ée]jour)\b/i },
+            { tool: 'realEstate', re: /\b(propiedad|propiedades|inmueble|apartamento|apto|casa|local|lote|visita|property|properties|listing|viewing|house|im[óo]vel|apartamento|visita|propri[ée]t[ée]|logement|bien immobilier)\b/i },
+            { tool: 'restaurants', re: /\b(mesa|mesas|comensal|comensales|personas|pedido|domicilio|delivery|carta|men[úu]|table|tables|order|takeaway|menu|mesa|pedido|card[áa]pio|entrega|commande|carte)\b/i },
+            { tool: 'education', re: /\b(curso|cursos|clase|inscripci[óo]n|matr[íi]cula|cohorte|nivel|examen|course|courses|enroll|enrolment|enrollment|tuition|curso|matr[íi]cula|inscri[çc][ãa]o|cours|inscription)\b/i },
+            { tool: 'vehicles', re: /\b(auto|carro|veh[íi]culo|camioneta|moto|prueba de manejo|test drive|car|cars|vehicle|suv|truck|carro|ve[íi]culo|voiture|v[ée]hicule|essai)\b/i },
         ];
 
         const mentionsVerticalObject = VERTICAL_OBJECTS.some(v => on(v.tool) && v.re.test(userText));
@@ -2937,9 +3561,17 @@ export class ConversationsService {
         // (token + heartbeat), so two quick widget messages don't process in parallel.
         const lockKey = `lock:conv:${conversationId}`;
         let lockToken = await this.redis.acquireLockToken(lockKey, 30);
-        for (let i = 0; i < 4 && !lockToken; i++) {
-            await new Promise(r => setTimeout(r, 500));
+        // 2 seconds of patience against turns that routinely take 10-60s: the
+        // widget gave up almost immediately and ran a second turn on top of the
+        // first. Wait for a realistic turn, and if the conversation is still busy
+        // say so instead of answering twice.
+        for (let i = 0; i < 30 && !lockToken; i++) {
+            await new Promise(r => setTimeout(r, 1000));
             lockToken = await this.redis.acquireLockToken(lockKey, 30);
+        }
+        if (!lockToken) {
+            this.logger.warn(`[Widget] Conversation ${conversationId} still busy after waiting — refusing to run a concurrent turn`);
+            throw new Error(`conversation_locked:${conversationId}`);
         }
         let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
         if (lockToken) {

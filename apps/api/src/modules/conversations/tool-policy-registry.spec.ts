@@ -31,15 +31,15 @@ describe('canonical AI tool policy registry', () => {
         /\bcase\s+'([^']+)'/g,
     );
 
-    it('covers exactly the 93 definitions and 93 executor branches', () => {
+    it('covers exactly the 95 definitions and 95 executor branches', () => {
         const expected = [...new Set(definitionNames)].sort();
         const executed = [...new Set(executorNames)].sort();
         const registered = [...STATIC_TOOL_NAMES].sort();
 
-        expect(definitionNames).toHaveLength(93);
-        expect(expected).toHaveLength(93);
-        expect(executed).toHaveLength(93);
-        expect(registered).toHaveLength(93);
+        expect(definitionNames).toHaveLength(95);
+        expect(expected).toHaveLength(95);
+        expect(executed).toHaveLength(95);
+        expect(registered).toHaveLength(95);
         expect(registered).toEqual(expected);
         expect(registered).toEqual(executed);
     });

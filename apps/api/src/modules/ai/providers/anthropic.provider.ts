@@ -164,10 +164,21 @@ export class AnthropicProvider implements ILLMProvider {
 
             const anthropicRole = msg.role === 'assistant' ? 'assistant' : 'user';
 
-            if (formatted.length > 0 && formatted[formatted.length - 1].role === anthropicRole) {
+            if (formatted.length > 0 && formatted[formatted.length - 1].role === anthropicRole
+                && !(msg.toolCalls && msg.toolCalls.length > 0)) {
                 const prevMsg = formatted[formatted.length - 1];
                 if (typeof prevMsg.content === 'string') {
                     prevMsg.content += '\n\n' + msg.content;
+                } else if (Array.isArray(prevMsg.content)) {
+                    // The previous message is a block array (a tool_use or a
+                    // tool_result). Merging into it used to be a silent DROP: the
+                    // string branch did not match, no else existed, and the whole
+                    // message vanished — leaving tool_use blocks with no matching
+                    // result, which Anthropic rejects with a 400. Append as one
+                    // more block instead of losing it.
+                    if (msg.content) prevMsg.content.push({ type: 'text', text: msg.content });
+                } else {
+                    prevMsg.content = msg.content;
                 }
             } else {
                 let content: any = msg.content;

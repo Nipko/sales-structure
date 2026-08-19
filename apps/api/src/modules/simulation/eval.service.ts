@@ -299,14 +299,26 @@ export class EvalService {
     /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
     private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean) {
         if (hasActions) await this.cleanupSandbox(schema); // start from a clean slate
+        // A scenario that asserts side-effects runs on a real sandbox
+        // conversation: the guard binds writes to one, and reads the customer's
+        // latest inbound message to decide whether they confirmed.
+        const sandboxConversationId = hasActions ? await this.ensureSandboxConversation(schema) : undefined;
         const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
         const lines: string[] = [];
         for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
+            if (sandboxConversationId) {
+                await this.recordSandboxInbound(schema, sandboxConversationId, msg);
+            }
             const res = await this.agentTest.test(
                 tenantId, agentId,
                 { message: msg, conversationHistory: [...history] },
                 hasActions
-                    ? { disableTools: false, evalMode: true, sandboxContactId: EVAL_SANDBOX_CONTACT_ID }
+                    ? {
+                        disableTools: false,
+                        evalMode: true,
+                        sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
+                        sandboxConversationId,
+                    }
                     : { disableTools: true },
             );
             const reply = res?.reply || '';
@@ -392,6 +404,62 @@ export class EvalService {
         for (const t of VERIFIABLE_TABLES) {
             await this.prisma.executeInTenantSchema(schema,
                 `DELETE FROM "${schema}".${t} WHERE contact_id = $1::uuid`, [EVAL_SANDBOX_CONTACT_ID]).catch(() => {});
+        }
+        // The conversation the writer needed to bind to, its messages, and the
+        // execution ledger rows the guard wrote. Ordered child-first so foreign
+        // keys never block the rollback.
+        for (const sql of [
+            `DELETE FROM "${schema}".tool_execution_ledger WHERE contact_id = $1::uuid`,
+            `DELETE FROM "${schema}".messages WHERE conversation_id IN (
+                 SELECT id FROM "${schema}".conversations WHERE contact_id = $1::uuid
+             )`,
+            `DELETE FROM "${schema}".conversations WHERE contact_id = $1::uuid`,
+        ]) {
+            await this.prisma.executeInTenantSchema(schema, sql, [EVAL_SANDBOX_CONTACT_ID]).catch(() => {});
+        }
+    }
+
+    /**
+     * The sandbox conversation an audited writer can hang its operation off.
+     *
+     * The central guard binds every write to a conversation and to the inbound
+     * message that requested it. Agent Test has neither, so the gate's writers
+     * were rejected with `conversation_context_required` and every scenario with
+     * expected actions failed for a reason that had nothing to do with the agent.
+     */
+    private async ensureSandboxConversation(schema: string): Promise<string | undefined> {
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `INSERT INTO conversations (contact_id, channel_type, status, stage)
+                 VALUES ($1::uuid, 'web_widget', 'active', 'greeting')
+                 RETURNING id::text`,
+                [EVAL_SANDBOX_CONTACT_ID]);
+            return rows?.[0]?.id;
+        } catch (e: any) {
+            this.logger.warn(`[Eval] ensureSandboxConversation failed: ${e.message}`);
+            return undefined;
+        }
+    }
+
+    /**
+     * Records the customer's line as a real inbound message.
+     *
+     * Not decoration: the confirmation guard reads the latest inbound message to
+     * decide whether the customer consented, so a scenario that says "sí" must
+     * have that "sí" on the conversation for the writer to be allowed through.
+     */
+    private async recordSandboxInbound(
+        schema: string,
+        conversationId: string,
+        text: string,
+    ): Promise<void> {
+        try {
+            await this.prisma.executeInTenantSchema(schema,
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, created_at)
+                 VALUES ($1::uuid, 'inbound', 'text', $2, 'delivered', NOW())`,
+                [conversationId, text]);
+        } catch (e: any) {
+            this.logger.warn(`[Eval] recordSandboxInbound failed: ${e.message}`);
         }
     }
 

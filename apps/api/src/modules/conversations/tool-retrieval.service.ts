@@ -16,18 +16,47 @@ export class ToolRetrievalService {
 
     /**
      * Score and filter candidate tools to topK most relevant for this turn.
+     *
+     * `pinned` tools are ALWAYS kept, whatever they score. That is not a tuning
+     * knob, it is a correctness requirement: relevance is computed from the
+     * customer's current message, and the message that closes a sale is "sí" —
+     * two characters, dropped by the tokenizer, matching nothing. Every tool
+     * then scored zero and the fallback returned the first ten by registration
+     * order (the appointment family), so `create_property_booking`,
+     * `place_order`, `enroll_student` and `book_class` vanished from the exact
+     * turn where they had to run, and the confirmation could never execute.
+     *
      * @param query user text + vertical context + booking state
      * @param candidates all enabled tools for tenant (flag-filtered)
      * @param topK max tools to return (10)
+     * @param pinned tool names that must survive the cut
      */
-    retrieveRelevantTools(query: string, candidates: ToolDefinition[], topK = MAX_TOOLS_PER_TURN): ToolDefinition[] {
-        if (!query || !candidates.length) return candidates;
-        if (candidates.length <= topK) return candidates;
+    retrieveRelevantTools(
+        query: string,
+        candidates: ToolDefinition[],
+        topK = MAX_TOOLS_PER_TURN,
+        pinned?: ReadonlySet<string>,
+    ): ToolDefinition[] {
+        if (!candidates.length) return candidates;
+
+        const mustKeep = pinned?.size
+            ? candidates.filter(t => pinned.has(t.name))
+            : [];
+        // The pinned set is small and bounded (the tenant's confirmable writers),
+        // but it must never squeeze the reads out entirely: the budget grows
+        // instead of the reads shrinking to nothing.
+        const budget = Math.max(topK, mustKeep.length + Math.ceil(topK / 2));
+        if (candidates.length <= budget) return candidates;
+
+        const optional = mustKeep.length
+            ? candidates.filter(t => !pinned!.has(t.name))
+            : candidates;
+        const slots = budget - mustKeep.length;
 
         const queryTokens = this.tokenize(query);
-        if (!queryTokens.length) return candidates.slice(0, topK);
+        if (!query || !queryTokens.length) return [...mustKeep, ...optional.slice(0, slots)];
 
-        const scored = candidates.map(tool => {
+        const scored = optional.map(tool => {
             const descTokens = this.tokenize(`${tool.name} ${tool.description} ${JSON.stringify(tool.parameters || {})}`);
             // BM25-ish: overlap + length norm
             const overlap = queryTokens.filter(t => descTokens.some(d => d.includes(t) || t.includes(d))).length;
@@ -38,20 +67,21 @@ export class ToolRetrievalService {
         });
 
         scored.sort((a, b) => b.score - a.score);
-        const filtered = scored.filter(s => s.score >= MIN_SCORE).slice(0, topK);
-        // If nothing scores, keep at least topK generic (booking/catalog/knowledge always useful)
-        const result = filtered.length ? filtered.map(s => s.tool) : scored.slice(0, topK).map(s => s.tool);
+        const filtered = scored.filter(s => s.score >= MIN_SCORE).slice(0, slots);
+        // If nothing scores, keep at least `slots` generic (booking/catalog/knowledge always useful)
+        const result = filtered.length ? filtered.map(s => s.tool) : scored.slice(0, slots).map(s => s.tool);
 
         // Always keep core tools if they were in candidates: they are the safety net
         const coreNames = new Set(['search_knowledge_base', 'search_faqs', 'get_policy', 'list_services']);
-        for (const c of candidates) {
-            if (coreNames.has(c.name) && !result.some(r => r.name === c.name) && result.length < topK) {
+        for (const c of optional) {
+            if (coreNames.has(c.name) && !result.some(r => r.name === c.name) && result.length < slots) {
                 result.push(c);
             }
         }
 
-        this.logger.debug(`[ToolRetrieval] ${candidates.length} → ${result.length} for query "${query.slice(0, 60)}"`);
-        return result.slice(0, topK);
+        const final = [...mustKeep, ...result.slice(0, slots)];
+        this.logger.debug(`[ToolRetrieval] ${candidates.length} → ${final.length} (${mustKeep.length} pinned) for query "${query.slice(0, 60)}"`);
+        return final;
     }
 
     private tokenize(text: string): string[] {

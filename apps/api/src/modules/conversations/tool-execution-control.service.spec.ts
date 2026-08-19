@@ -315,6 +315,24 @@ describe('ToolExecutionControlService', () => {
         }
     });
 
+    it('does not read an imperative request as consent to execute it', () => {
+        // "Reserva del 20 al 22 para 2 personas" is how a customer OPENS a
+        // request. Accepting it as consent let the writer run in the very turn
+        // the operation was proposed, so the booking happened without the
+        // customer ever seeing what they were agreeing to.
+        for (const value of [
+            'Reserva del 20 al 22 para 2 personas',
+            'reservalo para el sábado',
+            'Reserva una mesa para cuatro',
+        ]) {
+            expect(classifyExplicitToolConfirmation(value)).not.toBe('confirmed');
+        }
+        // Answers to a question stay answers.
+        for (const value of ['dale', 'perfecto', 'adelante', 'de una', 'sí, confirmo']) {
+            expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
+        }
+    });
+
     it('treats a comma as a separator so natural confirmations are not re-asked', () => {
         // "sí, confirmo" is how a customer actually confirms in Spanish. Only
         // trailing punctuation used to be stripped, so this landed in 'unclear'
@@ -764,6 +782,114 @@ describe('ToolExecutionControlService', () => {
         expect(state.ledger.status).not.toBe('executing');
     });
 
+    // A typed "sí" is the only consent available on Telegram, Instagram,
+    // Messenger and the web widget — none of them render the confirm button. The
+    // engine sent no evidence for it, so the central guard opened its own
+    // challenge and the customer read "Error al crear la cita:
+    // confirmation_required" and had to confirm twice.
+    it('accepts a typed confirmation with the same binding the button requires', async () => {
+        const { service, state } = createHarness();
+        state.latestMessage = { id: firstMessageId, content_text: 'Sí, confirmo la cita' };
+        state.bookingState = {
+            step: 'confirm',
+            serviceId: 'service-1',
+            date: '2026-08-10',
+            time: '10:00',
+            staffId: 'staff-1',
+            customerName: 'Ana',
+            customerEmail: 'ana@example.com',
+        };
+
+        const result = await service.preflight({
+            schemaName,
+            tenantId,
+            contactId,
+            conversationId,
+            toolName: 'create_appointment',
+            args: {
+                serviceId: 'service-1',
+                date: '2026-08-10',
+                time: '10:00',
+                staffId: 'staff-1',
+                customerName: 'Ana',
+                customerEmail: 'ana@example.com',
+            },
+            authorityEvidence: { kind: 'booking_engine_confirmation', source: 'text_confirmation' },
+        });
+
+        expect(result).toMatchObject({ allowed: true, ledgerId });
+        expect(state.ledger.confirmed_by_message_id).toBe(firstMessageId);
+    });
+
+    it('refuses a typed confirmation that is not an unambiguous yes', async () => {
+        const { service, state } = createHarness();
+        state.latestMessage = { id: firstMessageId, content_text: 'sí, pero cambiá la hora' };
+        state.bookingState = {
+            step: 'confirm',
+            serviceId: 'service-1',
+            date: '2026-08-10',
+            time: '10:00',
+            customerName: 'Ana',
+            customerEmail: 'ana@example.com',
+        };
+
+        const result = await service.preflight({
+            schemaName,
+            tenantId,
+            contactId,
+            conversationId,
+            toolName: 'create_appointment',
+            args: {
+                serviceId: 'service-1',
+                date: '2026-08-10',
+                time: '10:00',
+                customerName: 'Ana',
+                customerEmail: 'ana@example.com',
+            },
+            authorityEvidence: { kind: 'booking_engine_confirmation', source: 'text_confirmation' },
+        });
+
+        expect(result).toMatchObject({
+            allowed: false,
+            result: { error: 'authority_evidence_invalid' },
+        });
+        expect(state.ledger?.status).not.toBe('executing');
+    });
+
+    it('refuses a typed confirmation when the engine is not parked on the confirm step', async () => {
+        const { service, state } = createHarness();
+        state.latestMessage = { id: firstMessageId, content_text: 'confirmo' };
+        state.bookingState = {
+            step: 'ask_email',
+            serviceId: 'service-1',
+            date: '2026-08-10',
+            time: '10:00',
+            customerName: 'Ana',
+            customerEmail: 'ana@example.com',
+        };
+
+        const result = await service.preflight({
+            schemaName,
+            tenantId,
+            contactId,
+            conversationId,
+            toolName: 'create_appointment',
+            args: {
+                serviceId: 'service-1',
+                date: '2026-08-10',
+                time: '10:00',
+                customerName: 'Ana',
+                customerEmail: 'ana@example.com',
+            },
+            authorityEvidence: { kind: 'booking_engine_confirmation', source: 'text_confirmation' },
+        });
+
+        expect(result).toMatchObject({
+            allowed: false,
+            result: { error: 'booking_confirmation_state_mismatch' },
+        });
+    });
+
     it('gates payment-link creation on confirmation, not on an identity channel the tenant may not have', async () => {
         // Regression for the A2 dead-end: create_payment_link used to demand
         // step-up identity, but the tools that satisfy it are only published
@@ -787,5 +913,31 @@ describe('ToolExecutionControlService', () => {
         expect((result as any).result.error).toBe('confirmation_required');
         expect((result as any).result.shouldHandoff).not.toBe(true);
         expect(chatIdentity.startVerification).not.toHaveBeenCalled();
+    });
+
+    // `shouldHandoff` used to mean two unrelated things: an intake tool asking
+    // for a person (a claim, a gas leak) and the guard hitting a technical
+    // invariant. The pipeline could not tell them apart, so a customer whose
+    // confirmation token failed to verify was pushed into a human queue for an
+    // internal problem they never saw.
+    it('marks its own technical blocks so the pipeline can tell them from a domain escalation', async () => {
+        const { service, state } = createHarness();
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes' };
+        state.bookingState = { step: 'ask_email', serviceId: 'service-1' };
+
+        const result = await service.preflight({
+            schemaName,
+            tenantId,
+            contactId,
+            conversationId,
+            toolName: 'create_appointment',
+            args: { serviceId: 'service-1', date: '2026-08-10', time: '10:00' },
+            authorityEvidence: { kind: 'booking_engine_confirmation', source: 'confirm_yes' },
+        });
+
+        expect(result).toMatchObject({
+            allowed: false,
+            result: { shouldHandoff: true, controlBlocked: true },
+        });
     });
 });

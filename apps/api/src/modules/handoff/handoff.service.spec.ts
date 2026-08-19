@@ -76,6 +76,7 @@ describe('HandoffService structured handoff', () => {
             templates as any,
             llm as any,
             aiResolution as any,
+            { runExclusive: jest.fn() } as any,
         );
         jest.spyOn(service as any, 'tryAutoAssign').mockResolvedValue(null);
         return { service, prisma, redis, events, llm, aiResolution };
@@ -207,6 +208,7 @@ describe('HandoffService canonical auto-assignment event', () => {
             {} as any,
             {} as any,
             {} as any,
+            { runExclusive: jest.fn() } as any,
         );
         return { service, prisma, events, query, order };
     }

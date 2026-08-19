@@ -76,19 +76,53 @@ export interface TurnClaimAudit {
 }
 
 /**
+ * Fallback recogniser for tools that commit something, used when the caller does
+ * not supply the canonical registry predicate.
+ *
+ * The original `^(create|cancel|…)_` prefix list silently missed every writer
+ * that does not start with one of those verbs — `place_order`, `book_class`,
+ * `enroll_student`, `register_pet`, `file_claim`, `apply_discount`,
+ * `freeze_membership`, `calculate_quote` — which is most of what the vertical
+ * toolsets actually close a sale with. A booking that really happened would then
+ * be audited as a lie.
+ */
+const BACKING_TOOL_NAME = new RegExp(
+    '^(create|cancel|reschedule|update|confirm|charge|refund|place|book|enroll'
+    + '|register|file|apply|freeze|calculate|request|schedule|submit)_'
+    + '|^get_placement_test_link$',
+);
+
+export interface TurnClaimAuditOptions {
+    /**
+     * Canonical "this tool commits a business change" predicate. Callers inside
+     * the API pass the tool-policy registry so the audit tracks the real writer
+     * set instead of a name heuristic.
+     */
+    isBackingTool?: (name: string) => boolean;
+}
+
+/**
  * Audit one turn: what the agent said against what the backend did.
  *
  * Only calls to tools that change something count as backing. A successful
  * availability lookup does not make "your booking is confirmed" true.
+ *
+ * The asymmetry matters. Denying a booking that DID happen pushes the customer
+ * back into confirming something already paid for — the loop the owner reported
+ * — while letting one exotic claim through costs a single wrong sentence. So an
+ * unknown tool (MCP, opaque) that succeeded counts as backing: we cannot prove
+ * it did nothing, and the safe direction here is to believe the backend.
  */
 export function auditTurnClaim(
     reply: unknown,
     toolCalls: Array<{ name?: string; result?: unknown }> | undefined,
+    options: TurnClaimAuditOptions = {},
 ): TurnClaimAudit {
     const claimed = claimsCompletedAction(reply);
+    const isBacking = options.isBackingTool || ((name: string) => BACKING_TOOL_NAME.test(name));
     const backed = (toolCalls || []).some((call) => (
         typeof call?.name === 'string'
-        && /^(create|cancel|reschedule|update|confirm|charge|refund)_/.test(call.name)
+        && isBacking(call.name)
         && toolResultSucceeded(call.result)
     ));
     return { claimed, backed, falseClaim: claimed && !backed };

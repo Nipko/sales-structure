@@ -96,6 +96,19 @@ export const INSURANCE_TOOLS: ToolDefinition[] = [
             required: ['quoteId'],
         },
     },
+];
+
+/**
+ * Two-step identity verification.
+ *
+ * Lives apart from the insurance toolset because it is not an insurance
+ * feature: it is the ONLY way to satisfy the A2 step-up that guards appointment
+ * reads in health, legal and clinical-veterinary practices. Published only with
+ * the insurance tools, those verticals had a guarded record and no key — the
+ * agent could not answer "what time was my appointment?" for a booking it had
+ * just made. Same tools, published wherever an A2 read exists.
+ */
+export const IDENTITY_STEP_UP_TOOLS: ToolDefinition[] = [
     // Verificación de identidad en dos pasos. Reemplaza al pedido de cédula que
     // las plantillas hacían y el contrato base del prompt prohibía: en vez de
     // que el cliente DECLARE quién es, lo prueba con un código que le llega por

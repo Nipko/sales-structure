@@ -309,6 +309,30 @@ export class ToursService {
             const pkg = packages?.[0];
             if (!pkg) throw new NotFoundException('Package not found');
 
+            // The same contact, the same package, the same departure: one booking.
+            //
+            // Capacity is only enforced when the operator loaded a tour_inventory
+            // row; without one the seats are unlimited, so nothing stopped a
+            // re-issued call from writing a second identical reservation. The
+            // appointment path has had this guard for months — the tour path was
+            // simply never given one.
+            const duplicate = canonicalContactId ? await query<any[]>(
+                `SELECT id FROM tour_bookings
+                  WHERE contact_id = $1::uuid
+                    AND package_id = $2::uuid
+                    AND departure_date = $3::date
+                    AND status NOT IN ('cancelled')
+                  LIMIT 1`,
+                [canonicalContactId, data.packageId, data.departureDate],
+            ) : [];
+            if (duplicate?.length) {
+                throw new BadRequestException({
+                    error: 'duplicate_tour_booking',
+                    bookingId: duplicate[0].id,
+                    message: 'Este contacto ya tiene una reserva para ese paquete y esa fecha.',
+                });
+            }
+
             const inventory = await query<any[]>(
                 `SELECT * FROM tour_inventory
                   WHERE package_id = $1::uuid

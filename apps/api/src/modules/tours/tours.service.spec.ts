@@ -65,6 +65,7 @@ describe('ToursService booking contact integrity', () => {
                     child_discount_pct: 0,
                 }];
             }
+            if (sql.includes('FROM tour_bookings')) return [];
             if (sql.includes('FROM tour_inventory')) return [];
             if (sql.includes('INSERT INTO tour_bookings')) {
                 expect(params?.[2]).toBe(contactId);
@@ -80,6 +81,9 @@ describe('ToursService booking contact integrity', () => {
             expect.stringContaining('FROM contacts'),
             expect.stringContaining('FROM opportunities o'),
             expect.stringContaining('FROM tour_packages'),
+            // The duplicate guard runs before any seat is claimed, so a repeat
+            // request cannot decrement inventory on its way to being rejected.
+            expect.stringContaining('FROM tour_bookings'),
             expect.stringContaining('FROM tour_inventory'),
             expect.stringContaining('INSERT INTO tour_bookings'),
         ]);
@@ -129,6 +133,7 @@ describe('ToursService booking contact integrity', () => {
             if (sql.includes('FROM tour_packages')) {
                 return [{ id: packageId, is_active: true, price: 100, currency: 'COP', child_discount_pct: 50 }];
             }
+            if (sql.includes('FROM tour_bookings')) return [];
             if (sql.includes('FROM tour_inventory')) return [];
             if (sql.includes('INSERT INTO tour_bookings')) {
                 expect(params?.slice(10, 13)).toEqual([3, 1, 2]);
@@ -146,6 +151,29 @@ describe('ToursService booking contact integrity', () => {
         })).resolves.toBe(stored);
     });
 
+    // Seats are only enforced when the operator loaded a tour_inventory row.
+    // Without one the capacity is unlimited, so a re-issued call wrote a second
+    // identical reservation and the customer was booked — and charged — twice.
+    // The appointment path has had this guard for months; the tour path had none.
+    it('refuses a second identical booking for the same contact, package and departure', async () => {
+        const existing = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' };
+        const execute = jest.fn(async (_schema: string, sql: string) => {
+            if (sql.includes('FROM contacts')) return [{ id: contactId }];
+            if (sql.includes('FROM opportunities o')) return [];
+            if (sql.includes('FROM tour_packages')) {
+                return [{ id: packageId, is_active: true, price: 100, currency: 'COP', child_discount_pct: 0 }];
+            }
+            if (sql.includes('FROM tour_bookings')) return [existing];
+            if (sql.includes('FROM tour_inventory')) return [];
+            if (sql.includes('INSERT INTO tour_bookings')) throw new Error('should never insert a duplicate');
+            throw new Error(`Unexpected SQL: ${sql}`);
+        });
+        const { service } = buildService(execute);
+
+        await expect(service.createBooking(schemaName, input)).rejects.toThrow();
+        expect(execute.mock.calls.some(([, sql]) => sql.includes('INSERT INTO tour_bookings'))).toBe(false);
+    });
+
     it('keeps the inventory claim and booking insert in one transaction without compensation', async () => {
         const inventoryId = '44444444-4444-4444-8444-444444444444';
         const execute = jest.fn(async (_schema: string, sql: string) => {
@@ -154,6 +182,7 @@ describe('ToursService booking contact integrity', () => {
             if (sql.includes('FROM tour_packages')) {
                 return [{ id: packageId, is_active: true, price: 100, currency: 'COP', child_discount_pct: 0 }];
             }
+            if (sql.includes('FROM tour_bookings')) return [];
             if (sql.includes('FROM tour_inventory')) {
                 expect(sql).toContain('FOR UPDATE');
                 return [{ id: inventoryId, available_seats: 4, price_override: null }];

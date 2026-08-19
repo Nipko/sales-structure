@@ -132,6 +132,9 @@ const TOOL_POLICY_ENTRIES = [
     entry('get_product', publicRead({ agentTestAllowed: true })),
     entry('check_stock', publicRead({ agentTestAllowed: true })),
     entry('send_product_image', mediaWrite()),
+    // Retail's closing step: the catalog could be searched and priced but never
+    // sold from, so the agent announced orders that did not exist.
+    entry('place_catalog_order', contactWrite({ downstreamEffects: ['notification'] })),
     entry('list_active_offers', publicRead({ agentTestAllowed: true })),
     entry('search_faqs', publicRead({
         effect: 'conditional_write',
@@ -243,10 +246,20 @@ const TOOL_POLICY_ENTRIES = [
     entry('search_vehicles', publicRead({ agentTestAllowed: true })),
     entry('get_vehicle_details', publicRead({ agentTestAllowed: true })),
     entry('send_vehicle_image', mediaWrite()),
+    // The dealership's closing step. Confirmation required: it commits a slot on
+    // a real showroom calendar and a salesperson's time.
+    entry('schedule_test_drive', contactWrite({
+        idempotency: 'state_guarded',
+        downstreamEffects: ['notification'],
+    })),
 
     // Pets and veterinary
     entry('list_pets_for_contact', sensitiveRead({ agentTestAllowed: true })),
-    entry('register_pet', contactWrite({ dataClassification: 'sensitive' })),
+    // Registering a pet commits nothing and costs nothing: asking "¿confirmas que
+    // registre a tu perro?" is friction the customer reads as the agent stalling,
+    // and if the model then fails to re-issue the call the record is never
+    // created at all. The ledger still makes it idempotent.
+    entry('register_pet', contactWrite({ dataClassification: 'sensitive', confirmation: 'not_required' })),
     entry('get_vaccination_status', stepUpSensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
     entry('triage_pet_emergency', publicRead({
         effect: 'conditional_write',
@@ -285,7 +298,11 @@ const TOOL_POLICY_ENTRIES = [
 
     // Insurance and identity step-up
     entry('get_insurance_plans', publicRead({ agentTestAllowed: true })),
-    entry('calculate_quote', contactWrite({ dataClassification: 'sensitive' })),
+    // A quote is a price, not a purchase. Gating it behind a confirmation turn
+    // made the agent ask permission to answer the question it had just been
+    // asked — and the quote often never arrived, because closing the loop
+    // depended on the model re-issuing the call.
+    entry('calculate_quote', contactWrite({ dataClassification: 'sensitive', confirmation: 'not_required' })),
     entry('check_policy_status', stepUpSensitiveRead({
         effect: 'conditional_write',
         ownership: 'resource_owner',
@@ -325,7 +342,12 @@ const TOOL_POLICY_ENTRIES = [
     entry('list_photo_packages', publicRead({ agentTestAllowed: true })),
     entry('send_portfolio', mediaWrite()),
     entry('check_date_availability', publicRead({ agentTestAllowed: true })),
-    entry('request_photo_quote', contactWrite({ downstreamEffects: ['domain_event', 'notification'] })),
+    // Asking for a quote is the customer's own request; confirming it back to
+    // them adds a turn and risks losing it. Same reasoning as calculate_quote.
+    entry('request_photo_quote', contactWrite({
+        confirmation: 'not_required',
+        downstreamEffects: ['domain_event', 'notification'],
+    })),
     entry('cancel_photo_session', contactWrite({ ownership: 'resource_owner', idempotency: 'state_guarded' })),
     entry('get_case_status', stepUpSensitiveRead({ agentTestAllowed: true })),
 ] as const;
@@ -365,6 +387,35 @@ export function getToolPolicy(name: unknown): ToolPolicy | undefined {
 
 export function isRegisteredStaticTool(name: unknown): name is string {
     return typeof name === 'string' && Object.prototype.hasOwnProperty.call(TOOL_POLICY_REGISTRY, name);
+}
+
+/**
+ * Tools whose success means a business fact now exists: a booking, an order, an
+ * enrolment, a quote, a payment link, a cancellation.
+ *
+ * This is the canonical answer to "may the agent say it is done?". Reads and
+ * conditional writes (a FAQ lookup that touches a counter) are excluded, and so
+ * is outbound media: sending a photo does not make a reservation true. An
+ * unknown or opaque tool is NOT classified here — the caller decides, because
+ * the safe default differs by use (claims believe it, concurrency does not).
+ */
+export function isBusinessWriteTool(name: unknown): boolean {
+    if (typeof name !== 'string') return false;
+    const policy = TOOL_POLICY_REGISTRY[name];
+    if (!policy) return false;
+    return policy.effect === 'write' && policy.dataClassification !== 'public';
+}
+
+/**
+ * Business writers whose execution is gated behind an explicit customer
+ * confirmation. These are the tools a pending `tool_execution_ledger` row can be
+ * waiting on, so they must never be dropped from a turn's toolset: without the
+ * tool the model cannot re-issue the call, and the confirmation can never
+ * complete.
+ */
+export function isConfirmableWriteTool(name: unknown): boolean {
+    if (!isBusinessWriteTool(name)) return false;
+    return TOOL_POLICY_REGISTRY[name as string].confirmation === 'runtime_enforced';
 }
 
 /**

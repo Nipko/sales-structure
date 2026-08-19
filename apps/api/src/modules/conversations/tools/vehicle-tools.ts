@@ -43,4 +43,22 @@ export const VEHICLE_TOOLS: ToolDefinition[] = [
             required: ['vehicleId'],
         },
     },
+    // The dealership's actual sale step. Without it the agent could search,
+    // describe and photograph a car and then had nothing to close with: it
+    // announced "te agendo la prueba de manejo" and nothing was ever recorded.
+    {
+        name: 'schedule_test_drive',
+        description: 'Book a test drive for a specific vehicle. This is how a test drive actually gets recorded — never tell the customer their test drive is scheduled unless this succeeded. Call it only after the customer chose a vehicle (vehicleId from search_vehicles) and agreed on a day and time. If the slot is taken the call fails and you must offer another time.',
+        parameters: {
+            type: 'object',
+            properties: {
+                vehicleId: { type: 'string', description: 'Vehicle UUID returned by search_vehicles' },
+                contactName: { type: 'string', description: 'Full name of the person who will drive' },
+                scheduledDate: { type: 'string', description: 'Date in YYYY-MM-DD' },
+                scheduledTime: { type: 'string', description: 'Time in HH:MM (24h), local to the dealership' },
+                notes: { type: 'string', description: 'Anything the team should know (optional)' },
+            },
+            required: ['vehicleId', 'contactName', 'scheduledDate', 'scheduledTime'],
+        },
+    },
 ];

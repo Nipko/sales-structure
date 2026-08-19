@@ -51,6 +51,33 @@ export const CATALOG_TOOLS: ToolDefinition[] = [
             required: ['productId'],
         },
     },
+    // The catalog's missing sale step. A retail tenant could search, price and
+    // photograph a product and then had NOTHING to close with: `place_order`
+    // belongs to the restaurant toolset, so the agent said "listo, tu pedido
+    // quedó registrado" and no order ever existed.
+    {
+        name: 'place_catalog_order',
+        description: 'Create a real order for catalog products. This is the only way an order actually gets recorded — never tell the customer their order is placed unless this succeeded. Call it after the customer confirmed WHAT they want and HOW MANY. Prices come from the catalog, never from you: pass the productId and quantity and the server prices it.',
+        parameters: {
+            type: 'object',
+            properties: {
+                items: {
+                    type: 'array',
+                    description: 'Products the customer is ordering',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            productId: { type: 'string', description: 'Product UUID from search_products/get_product' },
+                            quantity: { type: 'number', description: 'How many units (minimum 1)' },
+                        },
+                        required: ['productId', 'quantity'],
+                    },
+                },
+                notes: { type: 'string', description: 'Delivery address, preferences or anything the team must know (optional)' },
+            },
+            required: ['items'],
+        },
+    },
 ];
 
 /**

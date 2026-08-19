@@ -101,6 +101,16 @@ export function activeObjectPolicyFor(
     return ACTIVE_OBJECT_EXPOSURE_POLICY[kind];
 }
 
+/**
+ * Sensitive records never enter the prompt — not even to say one exists.
+ *
+ * In a health, legal or clinical-veterinary practice the mere existence of an
+ * appointment is information about the person, so the reviewed A2 tool is the
+ * only way to read it. The agent's blindness to a booking it just made is real
+ * (see FT-7) but the answer is to make that tool REACHABLE — the identity
+ * step-up is now published wherever appointments are — not to leak the record
+ * into every prompt.
+ */
 export function filterActiveObjectsForPrompt(
     items: readonly ActiveObjectContextItemV1[],
     context?: ActiveObjectPolicyContext,

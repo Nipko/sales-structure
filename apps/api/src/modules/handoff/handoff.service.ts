@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { CronLockService } from '../redis/cron-lock.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
@@ -22,6 +24,14 @@ import {
     parseLlmHandoffSummary,
     sanitizeHandoffText,
 } from './handoff-summary.util';
+
+/**
+ * How long an escalated conversation may sit with nobody answering before the
+ * agent is allowed to speak again. Long enough that a team on a normal shift is
+ * never interrupted; short enough that a customer is not left in silence for a
+ * day because a handoff fired at closing time.
+ */
+const UNATTENDED_HANDOFF_MINUTES = 180;
 
 export interface HandoffResult {
     handoffId: string;
@@ -66,6 +76,7 @@ export class HandoffService {
         private emailTemplates: EmailTemplatesService,
         private llmRouter: LLMRouterService,
         private aiResolutionService: AiResolutionService,
+        private cronLock: CronLockService,
     ) {}
 
     /**
@@ -387,6 +398,94 @@ export class HandoffService {
         this.eventEmitter.emit('handoff.completed', { tenantId, conversationId });
 
         this.logger.log(`Handoff completed for conversation ${conversationId}, returned to AI`);
+    }
+
+    /**
+     * Hands back to the AI the conversations a person never picked up.
+     *
+     * `waiting_human` mutes the agent, and nothing but a human action ever
+     * cleared it. The 72h auto-resolve could not help either: it only fires when
+     * NOBODY has written in three days, so a customer who keeps writing into an
+     * unattended handoff was silenced indefinitely — every message stored, none
+     * answered, no alert anywhere.
+     *
+     * Only conversations where the customer is still writing and no agent ever
+     * replied are returned. A handoff a person is actually working is left alone.
+     */
+    @Cron('*/10 * * * *')
+    async returnUnattendedHandoffsCron(): Promise<void> {
+        await this.cronLock.runExclusive(
+            'handoff.returnUnattendedHandoffs',
+            300,
+            () => this.returnUnattendedHandoffs(),
+            { prefer: 'api' },
+        );
+    }
+
+    async returnUnattendedHandoffs(): Promise<void> {
+        try {
+            const tenants = await this.prisma.tenant.findMany({
+                where: { isActive: true },
+                select: { id: true, schemaName: true },
+            });
+            for (const tenant of tenants) {
+                try {
+                    await this.returnUnattendedHandoffsForTenant(tenant.id, tenant.schemaName);
+                } catch (e: any) {
+                    this.logger.warn(`[Handoff] Unattended sweep failed for ${tenant.id}: ${e.message}`);
+                }
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Handoff] Unattended sweep failed: ${e.message}`);
+        }
+    }
+
+    private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string): Promise<void> {
+        const stranded = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT c.id
+               FROM conversations c
+              WHERE c.status = 'waiting_human'
+                AND c.metadata->'handoff'->>'startedAt' IS NOT NULL
+                AND (c.metadata->'handoff'->>'startedAt')::timestamptz
+                    < NOW() - ($1 || ' minutes')::interval
+                AND COALESCE(c.metadata->'handoff'->>'returnedToAi', 'false') <> 'true'
+                -- nobody from the team ever answered
+                AND NOT EXISTS (
+                    SELECT 1 FROM messages m
+                     WHERE m.conversation_id = c.id
+                       AND m.direction = 'outbound'
+                       AND m.metadata->>'source' = 'agent'
+                       AND m.created_at > (c.metadata->'handoff'->>'startedAt')::timestamptz
+                )
+                -- ...and the customer is still waiting on an answer
+                AND EXISTS (
+                    SELECT 1 FROM messages m
+                     WHERE m.conversation_id = c.id
+                       AND m.direction = 'inbound'
+                       AND m.created_at > (c.metadata->'handoff'->>'startedAt')::timestamptz
+                )
+              LIMIT 50`,
+            [String(UNATTENDED_HANDOFF_MINUTES)],
+        );
+        if (!stranded?.length) return;
+
+        for (const row of stranded) {
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations
+                    SET status = 'active',
+                        assigned_to = NULL,
+                        metadata = jsonb_set(
+                            COALESCE(metadata, '{}'::jsonb),
+                            '{handoff,returnedToAi}', 'true'::jsonb, true
+                        ),
+                        updated_at = NOW()
+                  WHERE id = $1::uuid AND status = 'waiting_human'`,
+                [row.id],
+            );
+            await this.redis.del(`handoff:${tenantId}:${row.id}`).catch(() => {});
+            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, conversationId: row.id });
+        }
+        this.logger.warn(`[Handoff] Returned ${stranded.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
     }
 
     /**

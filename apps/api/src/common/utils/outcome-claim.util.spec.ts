@@ -76,4 +76,49 @@ describe('auditTurnClaim', () => {
         expect(auditTurnClaim('Tu reserva está confirmada', []).falseClaim).toBe(true);
         expect(auditTurnClaim('Tu reserva está confirmada', undefined).falseClaim).toBe(true);
     });
+
+    it('reconoce como respaldo a los escritores que no empiezan por un verbo conocido', () => {
+        // El prefijo `^(create|cancel|…)_` dejaba fuera a place_order,
+        // book_class, enroll_student, register_pet, file_claim y apply_discount:
+        // es decir, la forma en que cierran la venta casi todas las verticales.
+        // Una venta real quedaba auditada como mentira y se reescribía diciéndole
+        // al cliente que faltaba confirmar algo que ya estaba hecho.
+        for (const name of [
+            'place_order', 'book_class', 'enroll_student', 'register_pet',
+            'file_claim', 'apply_discount', 'freeze_membership', 'calculate_quote',
+        ]) {
+            const audit = auditTurnClaim('Listo, quedó reservado', [{ name, result: { success: true } }]);
+            expect({ name, falseClaim: audit.falseClaim }).toEqual({ name, falseClaim: false });
+        }
+    });
+
+    it('acepta el predicado canónico del registro cuando el llamador lo aporta', () => {
+        const isBackingTool = (name: string) => name === 'place_order';
+
+        expect(auditTurnClaim(
+            'Tu pedido quedó confirmado',
+            [{ name: 'place_order', result: { success: true } }],
+            { isBackingTool },
+        ).falseClaim).toBe(false);
+
+        // Con el mismo predicado, una lectura sigue sin respaldar nada.
+        expect(auditTurnClaim(
+            'Tu pedido quedó confirmado',
+            [{ name: 'get_menu', result: { success: true } }],
+            { isBackingTool },
+        ).falseClaim).toBe(true);
+    });
+
+    it('cree al backend cuando la herramienta es opaca y tuvo éxito', () => {
+        // Negarle al cliente una reserva que SÍ ocurrió lo devuelve al bucle de
+        // confirmación; dejar pasar una frase de una tool MCP desconocida cuesta
+        // una oración. La dirección segura acá es creerle al backend.
+        const isBackingTool = (name: string) => name.startsWith('mcp__');
+        const audit = auditTurnClaim(
+            'Tu reserva está confirmada',
+            [{ name: 'mcp__pms__create_stay', result: { success: true, id: 'st-9' } }],
+            { isBackingTool },
+        );
+        expect(audit.falseClaim).toBe(false);
+    });
 });

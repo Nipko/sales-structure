@@ -19,7 +19,7 @@ export const AGENT_TEST_SAFE_TOOL_NAMES: readonly string[] = Object.freeze(
 );
 
 export const AGENT_TEST_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000a9e7';
-const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
+export const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
 const ALLOWED_SANDBOX_CONTACT_IDS = new Set([
     AGENT_TEST_SANDBOX_CONTACT_ID,
     EVAL_SANDBOX_CONTACT_ID,
@@ -27,6 +27,40 @@ const ALLOWED_SANDBOX_CONTACT_IDS = new Set([
 
 export function isAgentTestSafeToolName(name: unknown): name is string {
     return typeof name === 'string' && TOOL_POLICY_REGISTRY[name]?.agentTestAllowed === true;
+}
+
+/**
+ * Writers the evaluation gate may actually execute, against the eval sandbox
+ * contact and nothing else.
+ *
+ * The gate was designed to assert real side-effects ("after this conversation an
+ * appointment must exist") and could never pass: the only executable surface was
+ * read-only, so every scenario with expected actions failed for a reason that had
+ * nothing to do with the agent. A permanent false failure is worse than no gate,
+ * because it teaches everyone to ignore it.
+ *
+ * Membership is earned, not assumed. A tool enters this list only once its
+ * handler honours `evalMode` (suppressing calendar sync, notifications and
+ * domain events) AND its table is in the eval service's cleanup allowlist, so a
+ * verified run leaves nothing behind. Today that is exactly one tool.
+ */
+export const EVAL_WRITABLE_TOOL_NAMES: readonly string[] = Object.freeze([
+    'create_appointment',
+]);
+const EVAL_WRITABLE_TOOLS = new Set(EVAL_WRITABLE_TOOL_NAMES);
+
+export function isEvalWritableToolName(name: unknown): name is string {
+    return typeof name === 'string' && EVAL_WRITABLE_TOOLS.has(name);
+}
+
+/**
+ * The eval gate may execute this tool right now: it is an audited writer AND the
+ * run is bound to the eval sandbox contact. Both halves are required — the flag
+ * alone is execution metadata, never permission to write a tenant's real data.
+ */
+export function canEvalExecuteWriter(name: unknown, contactId?: string): boolean {
+    return isEvalWritableToolName(name)
+        && contactId?.toLowerCase() === EVAL_SANDBOX_CONTACT_ID;
 }
 
 /**

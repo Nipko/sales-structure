@@ -13,6 +13,7 @@ import { EvalService } from './eval.service';
 import { EvalController } from './eval.controller';
 import { EvalAutorunListener, EVAL_GATE_QUEUE } from './eval-autorun.listener';
 import { EvalGateProcessor } from './eval-gate.processor';
+import { WatchtowerService } from './watchtower.service';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
@@ -31,7 +32,7 @@ import { EvalGateProcessor } from './eval-gate.processor';
         BullModule.registerQueue({ name: SIMULATION_QUEUE }),
         BullModule.registerQueue({ name: EVAL_GATE_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalGateProcessor],
+    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalGateProcessor, WatchtowerService],
     controllers: [SimulationController, EvalController],
     exports: [SimulationService, EvalService],
 })

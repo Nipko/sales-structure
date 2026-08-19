@@ -1864,6 +1864,7 @@ export const api = {
     getPropertyCalendar: (tenantId: string, propertyId: string, month: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/calendar?month=${month}`),
     listPropertyBookings: (tenantId: string, propertyId: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/bookings`),
     createPropertyBooking: (tenantId: string, propertyId: string, data: any) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/bookings`, data),
+    cancelPropertyBooking: (tenantId: string, bookingId: string) => apiPut(`/vacation-rental/${tenantId}/bookings/${bookingId}/cancel`, {}),
     listPropertyFeeds: (tenantId: string, propertyId: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/feeds`),
     addPropertyFeed: (tenantId: string, propertyId: string, data: any) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/feeds`, data),
     updatePropertyFeed: (tenantId: string, feedId: string, data: any) => apiPut(`/vacation-rental/${tenantId}/feeds/${feedId}`, data),

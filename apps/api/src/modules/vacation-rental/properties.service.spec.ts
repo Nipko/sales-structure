@@ -97,6 +97,64 @@ describe('PropertiesService reservations', () => {
         ]);
     });
 
+    it('says who booked: the calendar carries the origin and the guest name', async () => {
+        // La píldora de origen salía vacía porque leía una columna `source` que
+        // `property_bookings` nunca tuvo, y el día reservado no decía nada de
+        // quién lo ocupó. Nada lo miraba, así que duró meses.
+        const executeInTenantSchema = jest.fn().mockResolvedValue([
+            {
+                id: '33333333-3333-4333-8333-333333333333',
+                check_in: '2026-08-10',
+                check_out: '2026-08-12',
+                source: 'direct',
+                summary: 'Ana Gómez',
+                date_range_semantics: 2,
+                origin: 'agent',
+            },
+            {
+                id: '44444444-4444-4444-8444-444444444444',
+                check_in: '2026-08-20',
+                check_out: '2026-08-22',
+                source: 'Airbnb',
+                summary: 'Reserved',
+                date_range_semantics: 1,
+                origin: null,
+            },
+        ]);
+        const { service } = buildService({ executeInTenantSchema });
+
+        const calendar = await service.getCalendar(schemaName, propertyId, '2026-08');
+
+        const ownBooking = calendar.find((day) => day.date === '2026-08-11');
+        expect(ownBooking).toMatchObject({ status: 'booked', origin: 'agent', summary: 'Ana Gómez' });
+        // Lo importado sigue sin origen propio: su procedencia es `source`.
+        expect(calendar.find((day) => day.date === '2026-08-21')).toMatchObject({
+            status: 'blocked',
+            source: 'Airbnb',
+            origin: null,
+        });
+
+        const sql = executeInTenantSchema.mock.calls[0][1];
+        // El origen se deriva de `conversation_id`: sólo el agente lo escribe.
+        expect(sql).toContain("CASE WHEN conversation_id IS NOT NULL THEN 'agent' ELSE 'manual' END");
+        expect(sql).toContain('guest_name as summary');
+        // `source` sigue siendo 'direct' para las propias: de ese literal
+        // depende que el día se pinte 'booked' y no 'blocked'.
+        expect(sql).toContain("'direct' as source");
+    });
+
+    it('derives the booking origin in both listings', async () => {
+        const executeInTenantSchema = jest.fn().mockResolvedValue([]);
+        const { service } = buildService({ executeInTenantSchema });
+
+        await service.listBookings(schemaName, propertyId);
+        await service.listUpcomingBookings(schemaName, '2026-08-19');
+
+        const [perProperty, upcoming] = executeInTenantSchema.mock.calls.map((c: any[]) => c[1]);
+        expect(perProperty).toContain("CASE WHEN conversation_id IS NOT NULL THEN 'agent' ELSE 'manual' END AS origin");
+        expect(upcoming).toContain("CASE WHEN b.conversation_id IS NOT NULL THEN 'agent' ELSE 'manual' END AS origin");
+    });
+
     it('keeps the dashboard manual picker inclusive and supports a one-day block', async () => {
         const block = { id: '55555555-5555-4555-8555-555555555555' };
         const query = jest.fn(async (sql: string, _params?: unknown[]) => {

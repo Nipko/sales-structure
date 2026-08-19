@@ -71,6 +71,34 @@ PARALLLY_SUPER_ADMIN_TOKEN="$JWT" \
 
 **Difference between paths:** API path also calls Meta/Telegram/Instagram/Twilio to unsubscribe webhooks and cancels the payment-provider subscription. SQL fallback skips that — Meta might keep firing webhooks until you clean it up manually in their console, and an active MP/Stripe subscription may stay open.
 
+### 1.1b Dejar un chat en cero para probar el agente
+
+Borrar la conversación desde la bandeja **no** deja el chat limpio: `deleteConversation`
+elimina mensajes, notas y la fila de la conversación, y deja vivo justo lo que
+contamina la prueba siguiente — estado del motor de reservas en Redis,
+confirmaciones pendientes en `tool_execution_ledger` (que un "sí" posterior puede
+ejecutar), afinidad de modelo pegada a la conversación, memoria del cliente, y el
+`carriedContext` que hace que una conversación NUEVA arranque leyendo la cola de la
+anterior.
+
+```bash
+./infra/scripts/reset-chat.sh <TENANT_UUID> --phone 573208010737
+```
+
+Acepta `--phone`, `--contact <uuid>` o `--conversation <uuid>`; pide confirmación
+salvo con `--yes`. Borra **todas** las conversaciones del contacto (no sólo la
+última) porque el contexto heredado se toma del contacto. **No** borra el contacto
+ni sus reservas/citas ya creadas: son datos reales del negocio. Si la prueba dejó
+reservas basura, `--purge-bookings` las elimina de `property_bookings`,
+`tour_bookings` y `appointments`.
+
+Limpia en Redis: `booking:`, `procedure:`, `handoff:`, `lock:conv:`, las tres
+claves de `llm:affinity:`, `turn:done:*`, `turn:reply:*`, `buf:conv:*` y los cachés
+por tenant (`booking:services:`, `vertical:`, `bizgoals:`). En Postgres: ledger,
+notas, mensajes, oportunidades sin reserva viva, conversaciones, las tres tablas de
+memoria (`conversation_memory`, `customer_memories`, `customer_memory_facts`) y el
+lead si no quedó atado a una oportunidad.
+
 ### 1.2 Suspend / cancel a tenant (reversible)
 
 ```bash

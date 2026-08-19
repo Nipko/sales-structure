@@ -17,6 +17,19 @@ import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evid
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Quién creó la reserva. `property_bookings` no guarda un `source` — las
+ * estadías importadas de Airbnb/Booking viven en `ical_blocks`, con su propio
+ * `source` —, así que el dueño veía una etiqueta de origen vacía y no podía
+ * distinguir lo que hizo el agente de lo que cargó él a mano.
+ *
+ * El dato ya estaba: sólo el agente pasa `conversation_id` al reservar
+ * (`createBooking` lo recibe del turno; el alta manual del panel no lo manda).
+ * Se deriva en la consulta en lugar de agregar una columna: no hay migración,
+ * y las filas viejas quedan clasificadas igual que las nuevas.
+ */
+const BOOKING_ORIGIN_SQL = `CASE WHEN conversation_id IS NOT NULL THEN 'agent' ELSE 'manual' END`;
+
 interface StayRange {
     checkIn: string;
     checkOut: string;
@@ -251,15 +264,17 @@ export class PropertiesService {
         // Fetch intervals that overlap the half-open month range.
         const blocks = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, check_in, check_out, source, summary, date_range_semantics FROM ical_blocks
+            `SELECT id, check_in, check_out, source, summary, date_range_semantics,
+                    NULL::text as origin FROM ical_blocks
              WHERE property_id = $1::uuid AND is_deleted = false
                AND check_in < $3::date
                AND CASE WHEN date_range_semantics < 2
                         THEN check_out >= $2::date
                         ELSE check_out > $2::date END
              UNION ALL
-             SELECT id, check_in, check_out, 'direct' as source, NULL as summary,
-                    2::smallint as date_range_semantics
+             SELECT id, check_in, check_out, 'direct' as source, guest_name as summary,
+                    2::smallint as date_range_semantics,
+                    ${BOOKING_ORIGIN_SQL} as origin
                FROM property_bookings
              WHERE property_id = $1::uuid AND status != 'cancelled'
                AND check_in < $3::date AND check_out > $2::date`,
@@ -277,6 +292,7 @@ export class PropertiesService {
             let source: string | null = null;
             let blockId: string | null = null;
             let summary: string | null = null;
+            let origin: string | null = null;
 
             for (const block of blocks || []) {
                 const bIn = new Date(block.check_in).toISOString().split('T')[0];
@@ -289,11 +305,12 @@ export class PropertiesService {
                     source = block.source;
                     blockId = block.id;
                     summary = block.summary || null;
+                    origin = block.origin || null;
                     break;
                 }
             }
 
-            calendar.push({ date: dateStr, status, source, blockId, summary });
+            calendar.push({ date: dateStr, status, source, blockId, summary, origin });
         }
 
         return calendar;
@@ -534,7 +551,8 @@ export class PropertiesService {
     async listBookings(schemaName: string, propertyId: string): Promise<any[]> {
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM property_bookings WHERE property_id = $1::uuid ORDER BY check_in DESC`,
+            `SELECT *, ${BOOKING_ORIGIN_SQL} AS origin
+               FROM property_bookings WHERE property_id = $1::uuid ORDER BY check_in DESC`,
             [propertyId],
         );
     }
@@ -549,7 +567,8 @@ export class PropertiesService {
         const validFromDate = this.assertDateOnly(fromDate, 'from');
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT b.*, p.name as property_name
+            `SELECT b.*, p.name as property_name,
+                    CASE WHEN b.conversation_id IS NOT NULL THEN 'agent' ELSE 'manual' END AS origin
                FROM property_bookings b
                LEFT JOIN properties p ON p.id = b.property_id
               WHERE b.status != 'cancelled' AND b.check_out > $1::date

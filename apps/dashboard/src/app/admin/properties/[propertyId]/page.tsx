@@ -64,6 +64,8 @@ interface CalendarDay {
   source?: string;
   blockId?: string;
   summary?: string | null;
+  /** Sólo en reservas propias: 'agent' si la cerró el agente, 'manual' si la cargó el anfitrión. */
+  origin?: string | null;
 }
 
 interface Booking {
@@ -72,7 +74,14 @@ interface Booking {
   check_in: string;
   check_out: string;
   status: string;
-  source: string;
+  /**
+   * Quién la creó. El backend lo deriva de `conversation_id`, que sólo existe
+   * cuando la reserva salió de un chat: 'agent' = la cerró el agente, 'manual'
+   * = la cargó el anfitrión desde el panel. Las de Airbnb/Booking no viven en
+   * esta tabla (son bloqueos de calendario), por eso acá sólo hay dos valores.
+   */
+  origin?: string;
+  conversation_id?: string | null;
   total_price: number;
   currency: string;
 }
@@ -837,6 +846,10 @@ function CalendarTab({
   const [blockSaving, setBlockSaving] = useState(false);
   const [unblockTarget, setUnblockTarget] = useState<{ blockId: string; date: string; source: string | null } | null>(null);
   const [unblockError, setUnblockError] = useState<string | null>(null);
+  // Reserva propia sobre la que se hizo click en el calendario.
+  const [bookingTarget, setBookingTarget] = useState<{ bookingId: string; date: string; guest: string | null; origin: string | null } | null>(null);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingCancelling, setBookingCancelling] = useState(false);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -873,6 +886,13 @@ function CalendarTab({
   }
 
   function handleDayClick(cell: any) {
+    // Una reserva propia era un callejón sin salida: el día se pintaba ocupado
+    // y no había forma de ver quién era ni de cancelarla desde acá.
+    if (cell.status === "booked" && cell.blockId) {
+      setBookingError(null);
+      setBookingTarget({ bookingId: cell.blockId, date: cell.date, guest: cell.summary || null, origin: cell.origin || null });
+      return;
+    }
     if (cell.status === "past" || cell.status === "booked") return;
 
     // Imported blocks are unblockable too — an OTA that stops exporting an
@@ -941,6 +961,22 @@ function CalendarTab({
     loadCalendar();
   }
 
+  async function handleCancelBooking() {
+    if (!bookingTarget) return;
+    setBookingError(null);
+    setBookingCancelling(true);
+    // apiPut envuelve el error del backend como {success:false} con HTTP 200:
+    // sin este chequeo el modal se cerraría "bien" sin haber cancelado nada.
+    const res = await api.cancelPropertyBooking(tenantId, bookingTarget.bookingId);
+    setBookingCancelling(false);
+    if (!res.success) {
+      setBookingError(res.error || tcCommon("errorSaving"));
+      return;
+    }
+    setBookingTarget(null);
+    loadCalendar();
+  }
+
   function isInRange(date: string): boolean {
     if (!rangeStart) return false;
     const end = rangeEnd || hoverDate || rangeStart;
@@ -962,14 +998,14 @@ function CalendarTab({
 
   const dayMap = new Map(days.map(d => [d.date, d]));
 
-  const cells: { day: number; date: string; status: string; source?: string; blockId?: string; summary?: string | null }[] = [];
+  const cells: { day: number; date: string; status: string; source?: string; blockId?: string; summary?: string | null; origin?: string | null }[] = [];
   for (let i = 0; i < startDow; i++) cells.push({ day: 0, date: "", status: "" });
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const entry = dayMap.get(dateStr);
     let status: string = entry?.status || "available";
     if (dateStr < todayStr) status = "past";
-    cells.push({ day: d, date: dateStr, status, source: entry?.source, blockId: entry?.blockId, summary: entry?.summary });
+    cells.push({ day: d, date: dateStr, status, source: entry?.source, blockId: entry?.blockId, summary: entry?.summary, origin: entry?.origin });
   }
 
   const DOW_LABELS = [t("dowSun"), t("dowMon"), t("dowTue"), t("dowWed"), t("dowThu"), t("dowFri"), t("dowSat")];
@@ -1060,7 +1096,11 @@ function CalendarTab({
                 bg = "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500";
               }
 
-              const sourceLabel = c.source === 'direct' ? null
+              // Una reserva propia mostraba la celda sin etiqueta: el anfitrión
+              // veía el día ocupado sin saber quién lo ocupó. Ahora dice si la
+              // cerró el agente o si la cargó él.
+              const sourceLabel = c.source === 'direct'
+                  ? (c.origin === 'agent' ? t("originAgent") : t("originManual"))
                 : c.source === 'Manual' ? 'Manual'
                 : c.source; // 'Airbnb', 'Booking', 'Vrbo', etc.
               const tooltip = c.summary
@@ -1188,6 +1228,56 @@ function CalendarTab({
           </div>
         </div>
       )}
+
+      {/* Detalle de una reserva propia: quién la hizo y cómo cancelarla */}
+      {bookingTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 w-full max-w-sm shadow-xl">
+            <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-3">{t("bookingDetail")}</h4>
+            <dl className="text-sm space-y-1.5 mb-4">
+              <div className="flex justify-between gap-3">
+                <dt className="text-neutral-500 dark:text-neutral-400">{t("name")}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-100 text-right">{bookingTarget.guest || "-"}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-neutral-500 dark:text-neutral-400">{t("date")}</dt>
+                <dd className="text-neutral-900 dark:text-neutral-100 text-right">{bookingTarget.date}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-neutral-500 dark:text-neutral-400">{t("bookedBy")}</dt>
+                <dd className="text-right">
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                    bookingTarget.origin === "agent"
+                      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"
+                      : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+                  }`}>
+                    {bookingTarget.origin === "agent" ? t("originAgent") : t("originManual")}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("cancelBookingHint")}</p>
+            {bookingError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mb-3 break-words">{bookingError}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setBookingTarget(null); setBookingError(null); }}
+                className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                {tcCommon("close")}
+              </button>
+              <button
+                onClick={handleCancelBooking}
+                disabled={bookingCancelling}
+                className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {bookingCancelling ? tcCommon("saving") : t("cancelBooking")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1209,10 +1299,29 @@ function BookingsTab({
 }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     loadBookings();
   }, [tenantId, propertyId]);
+
+  async function handleCancel() {
+    if (!cancelTarget) return;
+    setCancelError(null);
+    setCancelling(true);
+    // El endpoint existía desde el principio y ninguna pantalla lo llamaba.
+    // apiPut devuelve {success:false} con HTTP 200, así que hay que mirarlo.
+    const res = await api.cancelPropertyBooking(tenantId, cancelTarget.id);
+    setCancelling(false);
+    if (!res.success) {
+      setCancelError(res.error || tc("errorSaving"));
+      return;
+    }
+    setCancelTarget(null);
+    loadBookings();
+  }
 
   async function loadBookings() {
     setLoading(true);
@@ -1250,8 +1359,9 @@ function BookingsTab({
             <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("name")}</th>
             <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("checkIn")}</th>
             <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("checkOut")}</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("feedSource")}</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("bookedBy")}</th>
             <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{tc("status")}</th>
+            <th className="text-right py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400" />
           </tr>
         </thead>
         <tbody>
@@ -1261,8 +1371,15 @@ function BookingsTab({
               <td className="py-2.5 px-3 text-neutral-600 dark:text-neutral-300">{formatDate(b.check_in)}</td>
               <td className="py-2.5 px-3 text-neutral-600 dark:text-neutral-300">{formatDate(b.check_out)}</td>
               <td className="py-2.5 px-3">
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
-                  {b.source}
+                {/* Antes acá se leía `b.source`, una columna que esta tabla nunca
+                    tuvo: la píldora salía vacía y el dueño no sabía si la
+                    reserva la había cerrado el agente o la había cargado él. */}
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                  b.origin === "agent"
+                    ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"
+                    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+                }`}>
+                  {b.origin === "agent" ? t("originAgent") : t("originManual")}
                 </span>
               </td>
               <td className="py-2.5 px-3">
@@ -1273,13 +1390,59 @@ function BookingsTab({
                     ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                     : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                 }`}>
-                  {b.status}
+                  {b.status === "confirmed" ? t("statusConfirmed")
+                    : b.status === "cancelled" ? t("statusCancelled")
+                    : b.status === "pending" ? t("statusPending")
+                    : b.status}
                 </span>
+              </td>
+              <td className="py-2.5 px-3 text-right">
+                {b.status !== "cancelled" && (
+                  <button
+                    onClick={() => { setCancelError(null); setCancelTarget(b); }}
+                    className="px-2.5 py-1 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    {t("cancelBooking")}
+                  </button>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {cancelTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 w-full max-w-xs shadow-xl">
+            <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-2">{t("cancelBooking")}</h4>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">
+              {t("cancelBookingConfirm", {
+                guest: cancelTarget.guest_name || "-",
+                checkIn: formatDate(cancelTarget.check_in),
+              })}
+            </p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("cancelBookingHint")}</p>
+            {cancelError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mb-3 break-words">{cancelError}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setCancelTarget(null); setCancelError(null); }}
+                className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                {tc("close")}
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {cancelling ? tc("saving") : t("cancelBooking")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

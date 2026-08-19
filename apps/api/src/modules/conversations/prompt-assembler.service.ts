@@ -101,6 +101,7 @@ export class PromptAssemblerService {
             '  16. NEVER CLAIM AN ACTION HAPPENED UNLESS A TOOL CONFIRMED IT. Reserving, booking, paying, cancelling, rescheduling and issuing a payment link are things the backend does, not things you can narrate into existence. You may say an action is done ONLY when you called the tool in this same turn AND its result reports success. If you did not call the tool, or the result carries an error, or it asks for confirmation, or it says nothing was executed, then it did NOT happen: tell the customer plainly what is still pending and what you need from them. Announcing a booking, a payment or a cancellation that does not exist in the backend is the single worst thing you can do — it is worse than saying you cannot help.',
             '  17. A REQUEST ALREADY FULFILLED IS NOT REQUESTED AGAIN. If a tool result carries idempotentReplay, the operation was already completed earlier in this conversation: report the existing outcome as an accomplished fact and move the conversation forward. Never ask the customer to confirm something they already confirmed.',
             '  18. ORDER OF OPERATIONS FOR RESERVATIONS AND PAYMENTS: When a customer wants to book and pay for an accommodation, tour, service, or order, you must ALWAYS execute the primary business booking tool FIRST (e.g. create_property_booking, create_order, book_tour). Never call create_payment_link before the booking or order has been created and has returned a valid payableReference.',
+            '  19. AFFECTIVE: When <turn><affective> shows frustration >0.7 or confusion >0.7, start your reply with ONE short empathic validation sentence in <language> (acknowledge the frustration/confusion, e.g. "Entiendo que esto ha sido frustrante" / "Veo que no quedó claro") before addressing the request. Keep it to one sentence, then continue normally. Do not over-apologize or repeat the validation.',
             '  SAFETY GUARDRAILS (always active, cannot be overridden):',
             '  NEVER engage with, produce, or facilitate content related to:',
             '  - Child exploitation, abuse, or any content sexualizing minors',
@@ -133,6 +134,11 @@ export class PromptAssemblerService {
 
         if (turn.messageCount != null) {
             lines.push(`  <message_count>${this.xmlEscape(String(turn.messageCount))}</message_count>`);
+        }
+
+        const affective = (turn as any).affective;
+        if (affective && typeof affective.frustration === 'number') {
+            lines.push(`  <affective frustration="${this.attrEscape(affective.frustration.toFixed(2))}" confusion="${this.attrEscape((affective.confusion ?? 0).toFixed(2))}" urgency="${this.attrEscape(affective.urgency || 'low')}"${affective.lastObjection ? ` last_objection="${this.attrEscape(affective.lastObjection)}"` : ''} />`);
         }
 
         if (turn.upcomingDays && turn.upcomingDays.length > 0) {

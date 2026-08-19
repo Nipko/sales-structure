@@ -60,6 +60,7 @@ import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { toolBatchRequiresSequentialExecution, toolRequiresSequentialExecution } from './tool-policy-registry';
 import { ActiveOperationsContextService } from './active-operations-context.service';
 import { ToolRetrievalService } from './tool-retrieval.service';
+import { EmotionService } from './emotion.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
@@ -237,6 +238,7 @@ export class ConversationsService {
         private activeOperationsContext: ActiveOperationsContextService,
         private paymentOperations: PaymentOperationService,
         private toolRetrieval: ToolRetrievalService,
+        private emotionService: EmotionService,
     ) {}
 
     /**
@@ -2138,6 +2140,15 @@ export class ConversationsService {
         // Anti-repetition: tell the LLM how many messages exist in this conversation.
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
         turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message (excluded from history above)
+
+        // D6 affective detection (Hume EVI style) — before assemble so it enters <turn>
+        try {
+            const affective = this.emotionService.detect(userText, (history || []).slice(-3).map((h: any) => h.content_text));
+            (turnContext as any).affective = affective;
+            if (affective.frustration > 0.5 || affective.confusion > 0.5) {
+                this.logger.log(`[Affective] frustration=${affective.frustration.toFixed(2)} confusion=${affective.confusion.toFixed(2)} urgency=${affective.urgency} trace=${providerMessageId(msg) || 'none'}`);
+            }
+        } catch {}
 
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;

@@ -52,6 +52,7 @@ import { ChatIdentityService } from './chat-identity.service';
 import { AgentTestRateLimitGuard } from './agent-test-rate-limit.guard';
 import { AgentTestRequestGuard } from './agent-test-request.guard';
 import { ActiveOperationsContextService } from './active-operations-context.service';
+import { ToolRetrievalService } from './tool-retrieval.service';
 import { ToolExecutionControlService } from './tool-execution-control.service';
 import { PAYMENT_OPERATION_PROVIDER, PaymentOperationService } from './payment-operation.service';
 import { ToolApprovalController } from './tool-approval.controller';
@@ -122,6 +123,7 @@ import { TenantMercadoPagoOperationProvider } from '../tenant-payments/tenant-me
         PromptAssemblerService,
         LanguageDetectorService,
         ActiveOperationsContextService,
+        ToolRetrievalService,
         AgentTestService,
         AgentTestRateLimitGuard,
         AgentTestRequestGuard,

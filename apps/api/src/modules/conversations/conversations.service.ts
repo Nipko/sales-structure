@@ -59,6 +59,7 @@ import { MediaProcessingService } from '../media-processing/media-processing.ser
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { toolBatchRequiresSequentialExecution, toolRequiresSequentialExecution } from './tool-policy-registry';
 import { ActiveOperationsContextService } from './active-operations-context.service';
+import { ToolRetrievalService } from './tool-retrieval.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
@@ -235,6 +236,7 @@ export class ConversationsService {
         private attributionService: AttributionService,
         private activeOperationsContext: ActiveOperationsContextService,
         private paymentOperations: PaymentOperationService,
+        private toolRetrieval: ToolRetrievalService,
     ) {}
 
     /**
@@ -1986,6 +1988,15 @@ export class ConversationsService {
         }
         if (cfgTools?.professionalServices?.enabled === true) {
             tools = [...tools, ...PROFESSIONAL_SERVICES_TOOLS];
+        }
+
+        // D2: Tool retrieval — reduce 71 → 10 most relevant (Gorilla >30 tools <60% without retrieval)
+        // Reduces context bloat (~10k tokens → ~1.5k) and duplicate hallucination (D2 fix for b638)
+        if (!engineProducedText && tools.length > 10) {
+            const retrievalQuery = `${userText || (msg as any).resolvedText || ''} ${turnContext.verticalContext?.industry || ''} ${bookingState.step || ''}`;
+            const before = tools.length;
+            tools = this.toolRetrieval.retrieveRelevantTools(retrievalQuery, tools, 10);
+            this.logger.log(`[ToolRetrieval] ${before} → ${tools.length} tools for query "${retrievalQuery.slice(0,80)}"`);
         }
 
         // When the booking/procedure engine produced a directive, the LLM must

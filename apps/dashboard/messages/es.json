@@ -6455,6 +6455,8 @@
     "cancelBooking": "Cancelar reserva",
     "cancelBookingConfirm": "¿Cancelar la reserva de {guest} del {checkIn}?",
     "cancelBookingHint": "Las fechas quedan libres de inmediato. La reserva no se borra: queda como cancelada en el historial.",
+    "cancelBookingOtaWarning": "Ojo: un calendario iCal sólo puede bloquear fechas, nunca reabrirlas. Airbnb suele liberarlas solo, pero en Booking.com hay que abrirlas a mano desde Abrir/cerrar habitaciones.",
+    "feedOwnEchoWarning": "{source} nos está devolviendo eventos que exportamos nosotros. Casi siempre es que en esta conexión se pegó la URL de exportación de Parallly en vez de la de {source}. Los descartamos, pero mientras siga así esta conexión no trae nada real.",
     "importUrl": "URL del calendario iCal",
     "invalidIcalUrl": "La URL debe ser pública y terminar en .ics (ej: https://www.airbnb.com/calendar/ical/12345.ics)",
     "addFeedHowToTitle": "¿Cómo conectar tu calendario?",

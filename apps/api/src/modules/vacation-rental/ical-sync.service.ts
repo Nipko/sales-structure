@@ -12,6 +12,31 @@ import {
     safeAxiosOptions,
 } from '../../common/utils/safe-outbound-url.util';
 
+/**
+ * Dominio con el que firmamos los UID que exportamos.
+ *
+ * Import y export lo comparten A PROPOSITO. Si el export cambia de dominio y el
+ * import sigue mirando el viejo, volvemos a tragarnos nuestro propio reflejo y
+ * nada lo nota hasta que un bloqueo se vuelve inmortal meses despues.
+ */
+const OWN_UID_DOMAIN = 'parallly-chat.cloud';
+/**
+ * Literal a proposito, no derivado de la constante: construirlo con RegExp
+ * exige escapar el punto y ya se rompio una vez en silencio (un punto sin
+ * escapar sigue "funcionando" y ademas acepta dominios ajenos). Un test de
+ * contrato verifica que siga reconociendo lo que el export firma.
+ */
+const OWN_UID_RE = /@parallly-chat\.cloud\s*$/i;
+
+/**
+ * ¿Este UID lo firmamos nosotros? Exportado para que un test pueda cerrar el
+ * contrato contra el feed REAL que produce generateFeed, en vez de repetir el
+ * literal y quedarse verde mientras el export usa otro dominio.
+ */
+export function isOwnExportedUid(uid: unknown): boolean {
+    return typeof uid === 'string' && OWN_UID_RE.test(uid);
+}
+
 export interface IcalSyncResult {
     imported: number;
     deleted: number;
@@ -27,10 +52,16 @@ export interface IcalSyncResult {
     holdMinutesLeft: number;
     /** Another run already had this feed locked; nothing was done. */
     skipped: boolean;
+    /**
+     * VEVENTs que la OTA nos devolvio y que habiamos exportado nosotros. Se
+     * descartan: ingerirlos crea un bloqueo que se auto-sostiene.
+     */
+    ownEcho: number;
 }
 
 const EMPTY_RESULT: IcalSyncResult = {
     imported: 0, deleted: 0, empty: false, pendingSweep: 0, holdMinutesLeft: 0, skipped: false,
+    ownEcho: 0,
 };
 
 @Injectable()
@@ -221,6 +252,7 @@ export class IcalSyncService {
             const events = await ical.async.parseICS(body);
             const now = new Date();
             let imported = 0;
+            let ownEcho = 0;
             const seenUids = new Set<string>();
             const feedRanges: Array<{ checkIn: string; checkOut: string }> = [];
 
@@ -229,6 +261,26 @@ export class IcalSyncService {
                 const vevent = event as any;
                 const uid = vevent.uid;
                 if (!uid) continue;
+
+                // Nunca ingerir nuestro propio reflejo.
+                //
+                // Exportamos un solo .ics a todas las OTAs, y ahi va tambien lo
+                // que importamos de las demas. Si una OTA reexporta lo que le
+                // mandamos, importarlo lo convierte en fila NUESTRA, que
+                // volvemos a publicar bajo otro UID; la OTA lo ve volver y lo
+                // mantiene. A partir de ahi el bloqueo se sostiene solo: el
+                // tombstone solo alcanza lo que el feed dejo de traer, y el feed
+                // nunca deja de traerlo porque se lo estamos dando nosotros.
+                // Cancelar la reserva no lo toca.
+                //
+                // Se descarta ANTES de seenUids y de feedRanges: no debe contar
+                // como cobertura del feed (taparia una anomalia real) y debe
+                // quedar 'stale' para que el barrido limpie los ecos que ya
+                // hayan entrado.
+                if (isOwnExportedUid(uid)) {
+                    ownEcho++;
+                    continue;
+                }
 
                 seenUids.add(uid);
 
@@ -317,6 +369,16 @@ export class IcalSyncService {
                     checkOut: new Date(b.check_out).toISOString().slice(0, 10),
                 })),
             );
+            // Un feed que nos devuelve nuestros propios eventos tiene el enlace
+            // mal puesto, y esa causa es mas accionable que el sintoma de
+            // cobertura que suele venir con ella. Por eso gana la prioridad.
+            const anomaly = ownEcho > 0 ? 'own_echo' : coverage.anomaly;
+            if (ownEcho > 0) {
+                this.logger.warn(
+                    `Feed ${feedId} (${feed.source}) nos devolvio ${ownEcho} evento(s) que exportamos ` +
+                    `nosotros; se descartan. Revisar que la URL importada sea la de la OTA y no la nuestra.`,
+                );
+            }
             if (coverage.anomaly) {
                 // El cuerpo va en el log a propósito: la primera vez que pasó
                 // hubo que pedirle la URL al dueño para poder verlo.
@@ -379,12 +441,12 @@ export class IcalSyncService {
                    sweep_hold_since = CASE WHEN $2::boolean THEN COALESCE(sweep_hold_since, NOW()) ELSE NULL END,
                    last_sync_anomaly = $4
                  WHERE id = $3::uuid`,
-                [imported, holding, feedId, coverage.anomaly],
+                [imported, holding, feedId, anomaly],
             );
 
             this.logger.log(
                 `Synced feed ${feedId} (${feed.source}): ${imported} imported, ${deleted} deleted` +
-                (holding ? `, ${stale} held` : ''),
+                (holding ? `, ${stale} held` : '') + (ownEcho ? `, ${ownEcho} own echo skipped` : ''),
             );
             return {
                 imported,
@@ -393,6 +455,7 @@ export class IcalSyncService {
                 pendingSweep: holding ? stale : 0,
                 holdMinutesLeft: holding ? holdMinutesLeft : 0,
                 skipped: false,
+                ownEcho,
             };
         } catch (error: any) {
             // Update feed with error
@@ -534,7 +597,7 @@ export class IcalSyncService {
                 summary: 'BLOCKED',
                 status: ICalEventStatus.CONFIRMED,
             });
-            evt.uid(`block-${block.id}@parallly-chat.cloud`);
+            evt.uid(`block-${block.id}@${OWN_UID_DOMAIN}`);
         }
 
         // Add direct bookings
@@ -546,7 +609,7 @@ export class IcalSyncService {
                 summary: 'BLOCKED',
                 status: ICalEventStatus.CONFIRMED,
             });
-            evt.uid(`booking-${booking.id}@parallly-chat.cloud`);
+            evt.uid(`booking-${booking.id}@${OWN_UID_DOMAIN}`);
         }
 
         return calendar.toString();

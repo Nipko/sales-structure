@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { formatDateOnly } from "@/lib/local-timestamp";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav, type TabItem } from "@/components/ui/tab-nav";
@@ -1257,6 +1258,9 @@ function CalendarTab({
               </div>
             </dl>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("cancelBookingHint")}</p>
+            {feeds.length > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{t("cancelBookingOtaWarning")}</p>
+            )}
             {bookingError && (
               <p className="text-xs text-red-600 dark:text-red-400 mb-3 break-words">{bookingError}</p>
             )}
@@ -1302,9 +1306,14 @@ function BookingsTab({
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  // Si hay OTAs conectadas por iCal, cancelar aca NO alcanza: ver el aviso.
+  const [hasFeeds, setHasFeeds] = useState(false);
 
   useEffect(() => {
     loadBookings();
+    api.listPropertyFeeds(tenantId, propertyId).then((res) => {
+      setHasFeeds(Boolean(res.success && Array.isArray(res.data) && res.data.length > 0));
+    });
   }, [tenantId, propertyId]);
 
   async function handleCancel() {
@@ -1330,10 +1339,9 @@ function BookingsTab({
     setLoading(false);
   }
 
-  const formatDate = (s: string) => {
-    try { return new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return s; }
-  };
+  // check_in/check_out son DATE: dia de calendario, no instante. Formatearlos
+  // en la zona del navegador los corria un dia hacia atras (ver formatDateOnly).
+  const formatDate = (s: string) => formatDateOnly(s);
 
   if (loading) {
     return (
@@ -1422,6 +1430,9 @@ function BookingsTab({
               })}
             </p>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("cancelBookingHint")}</p>
+            {hasFeeds && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{t("cancelBookingOtaWarning")}</p>
+            )}
             {cancelError && (
               <p className="text-xs text-red-600 dark:text-red-400 mb-3 break-words">{cancelError}</p>
             )}
@@ -1734,6 +1745,18 @@ function FeedsTab({
                     <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 px-2.5 py-2">
                       <p className="text-[11px] text-red-700 dark:text-red-400">
                         {t("feedNoCoverageWarning", { source: f.source })}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* La OTA nos devuelve eventos que exportamos nosotros. Casi
+                      siempre es que en esta conexión se pegó NUESTRA URL en vez
+                      de la de la OTA. Los descartamos al importar, pero mientras
+                      esté así esa conexión no trae nada real. */}
+                  {f.last_sync_anomaly === "own_echo" && (
+                    <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 px-2.5 py-2">
+                      <p className="text-[11px] text-red-700 dark:text-red-400">
+                        {t("feedOwnEchoWarning", { source: f.source })}
                       </p>
                     </div>
                   )}

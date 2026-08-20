@@ -29,6 +29,7 @@ export * from './effective-capability-contract';
 
 // ---- Navigation semantics: two objects never share a label ----
 export * from './navigation-semantics';
+export * from './agent-skillset-policy';
 
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';

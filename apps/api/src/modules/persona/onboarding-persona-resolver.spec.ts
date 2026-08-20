@@ -117,9 +117,6 @@ describe('versioned onboarding persona resolver', () => {
         ['automotriz', 'taller', 'sales', 'tpl_automotriz_servicio'],
         ['turismo', 'tours', 'support', 'tpl_turismo_tours'],
         ['gimnasios', 'yoga_pilates', 'sales', 'tpl_gimnasio_clases'],
-        ['seguros', 'broker', 'support', 'tpl_seguros_cotizador'],
-        ['servicios_profesionales', 'abogados', 'support', 'tpl_legal_consulta'],
-        ['fotografia', 'bodas', 'support', 'tpl_foto_reservas'],
     ])('preserves shipped subtype choice and reports a %s/%s goal conflict', (industry, subType, goal, expected) => {
         const resolution = resolve(industry, subType, [goal]);
         expect(resolution).toEqual(expect.objectContaining({
@@ -128,6 +125,37 @@ describe('versioned onboarding persona resolver', () => {
             matchedGoal: goal,
             gaps: expect.arrayContaining(['subtype_goal_conflict']),
         }));
+    });
+
+    /**
+     * Cinco entradas de sub-tipo apuntaban al MISMO template que el default de
+     * su vertical: no aportaban nada del sub-tipo y aun así ganaban, así que el
+     * dueño marcaba "posventa" en el alta y recibía igual el guion de reservas
+     * o de consulta inicial. Sin contenido propio no hay conflicto que reportar
+     * — hay una decisión del dueño que se estaba ignorando.
+     */
+    it.each([
+        ['seguros', 'broker', 'support', 'tpl_seguros_postventa'],
+        ['seguros', 'aseguradora', 'reminders', 'tpl_seguros_postventa'],
+        ['servicios_profesionales', 'abogados', 'support', 'tpl_legal_seguimiento'],
+        ['fotografia', 'bodas', 'support', 'tpl_foto_entrega'],
+        ['restaurantes', 'casual_dining', 'sales', 'tpl_restaurante_delivery'],
+    ])('lets the goal through when the %s/%s entry adds nothing', (industry, subType, goal, expected) => {
+        const resolution = resolve(industry, subType, [goal]);
+        expect(resolution.templateId).toBe(expected);
+        expect(resolution.source).toBe('goal');
+        expect(resolution.gaps).not.toContain('subtype_goal_conflict');
+    });
+
+    /** Sin meta que la contradiga, la entrada sigue resolviendo como siempre. */
+    it.each([
+        ['seguros', 'broker', 'tpl_seguros_cotizador'],
+        ['servicios_profesionales', 'abogados', 'tpl_legal_consulta'],
+        ['fotografia', 'bodas', 'tpl_foto_reservas'],
+    ])('keeps the %s/%s mapping when no goal points elsewhere', (industry, subType, expected) => {
+        const resolution = resolve(industry, subType, []);
+        expect(resolution.templateId).toBe(expected);
+        expect(resolution.source).toBe('subtype');
     });
 
     it('inherits the existing multi-goal priority independent of checkbox order', () => {

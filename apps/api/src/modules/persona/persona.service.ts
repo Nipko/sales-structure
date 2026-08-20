@@ -5,7 +5,13 @@ import { TenantsService } from '../tenants/tenants.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yaml from 'js-yaml';
-import { TenantConfig } from '@parallext/shared';
+import {
+    TenantConfig,
+    resolveAgentSkillset,
+    skillsetGuidanceFor,
+    skillsetPolicyForIndustry,
+} from '@parallext/shared';
+import { normalizeRequiredFields } from './required-fields.util';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
@@ -150,10 +156,36 @@ export class PersonaService {
         const customPrompt = config.customPrompt ?? (config as any)._customPrompt;
 
         if (editorMode === 'prompt' && typeof customPrompt === 'string' && customPrompt.trim().length > 0) {
-            return `<persona>\n${escapeXmlText(customPrompt.trim())}\n</persona>`;
+            // El prompt libre reemplaza la VOZ, no las barreras. Antes devolvía
+            // solo el texto del dueño, y con eso desaparecían los temas
+            // prohibidos, los disparadores de handoff, el horario y la regla de
+            // no-pitch: pasar el editor a modo libre apagaba en silencio las
+            // protecciones sectoriales que nadie recordaba haber encendido.
+            const invariants = this.buildInvariantBlock(config, tenantBusinessHours);
+            const body = escapeXmlText(customPrompt.trim());
+            return invariants
+                ? `<persona>\n${body}\n${invariants}\n</persona>`
+                : `<persona>\n${body}\n</persona>`;
         }
 
         return this.buildGuidedPersonaBlock(config, tenantBusinessHours);
+    }
+
+    /**
+     * Lo que sobrevive a cualquier personalización.
+     *
+     * Un prompt escrito a mano puede cambiar el nombre, el tono y las reglas del
+     * negocio. No puede borrar a quién hay que derivar, de qué no se habla, en
+     * qué horario se atiende, ni la regla de no vender sobre una consulta
+     * sensible.
+     */
+    private buildInvariantBlock(config: TenantConfig, tenantBusinessHours?: any): string {
+        const lines: string[] = [];
+        this.pushForbiddenTopics(lines, config.behavior);
+        this.pushHandoffTriggers(lines, config.behavior);
+        this.pushBusinessHours(lines, config.hours, tenantBusinessHours);
+        this.pushSkillset(lines, config);
+        return lines.join('\n');
     }
 
     /**
@@ -194,40 +226,59 @@ export class PersonaService {
             lines.push('  </rules>');
         }
 
-        // Forbidden topics
-        if (behavior?.forbiddenTopics?.length > 0) {
-            lines.push('  <forbidden_topics>');
-            behavior.forbiddenTopics.forEach((topic) => {
-                lines.push(`    <topic>${escapeXmlText(topic)}</topic>`);
-            });
-            lines.push('  </forbidden_topics>');
-        }
+        this.pushForbiddenTopics(lines, behavior);
+        this.pushHandoffTriggers(lines, behavior);
+        this.pushRequiredInformation(lines, config);
+        this.pushBusinessHours(lines, hours, tenantBusinessHours);
+        this.pushSkillset(lines, config);
 
-        // Handoff triggers
-        if (behavior?.handoffTriggers?.length > 0) {
-            lines.push('  <handoff_triggers>');
-            behavior.handoffTriggers.forEach((trigger) => {
-                lines.push(`    <trigger>${escapeXmlText(trigger)}</trigger>`);
-            });
-            lines.push('  </handoff_triggers>');
-        }
+        lines.push('</persona>');
+        return lines.join('\n');
+    }
 
-        // Required fields — only when appointments tool is NOT active
+    // ── Bloques del prompt de persona ───────────────────────────────
+    // Viven en métodos propios porque el prompt libre reemplaza unos y
+    // conserva otros; con todo escrito en línea, cambiar el modo del editor
+    // borraba las protecciones sin que nadie lo notara.
+
+    private pushForbiddenTopics(lines: string[], behavior: any): void {
+        if (!(behavior?.forbiddenTopics?.length > 0)) return;
+        lines.push('  <forbidden_topics>');
+        behavior.forbiddenTopics.forEach((topic: string) => {
+            lines.push(`    <topic>${escapeXmlText(topic)}</topic>`);
+        });
+        lines.push('  </forbidden_topics>');
+    }
+
+    private pushHandoffTriggers(lines: string[], behavior: any): void {
+        if (!(behavior?.handoffTriggers?.length > 0)) return;
+        lines.push('  <handoff_triggers>');
+        behavior.handoffTriggers.forEach((trigger: string) => {
+            lines.push(`    <trigger>${escapeXmlText(trigger)}</trigger>`);
+        });
+        lines.push('  </handoff_triggers>');
+    }
+
+    private pushRequiredInformation(lines: string[], config: TenantConfig): void {
         const toolsCfg = (config.tools ?? (config as any)?.tools) as any;
-        const appointmentsEnabled = toolsCfg?.appointments?.enabled === true;
-        if (behavior?.requiredFields && Object.keys(behavior.requiredFields).length > 0 && !appointmentsEnabled) {
-            lines.push('  <required_information>');
-            for (const [context, fields] of Object.entries(behavior.requiredFields)) {
-                if (!Array.isArray(fields)) continue;
-                lines.push(`    <context name="${escapeXmlAttribute(context)}">`);
-                fields.forEach((f) => {
-                    lines.push(`      <field name="${escapeXmlAttribute(f.field)}">${escapeXmlText(f.question)}</field>`);
-                });
-                lines.push('    </context>');
-            }
-            lines.push('  </required_information>');
+        const requiredFields = normalizeRequiredFields(config.behavior?.requiredFields, {
+            language: config.language,
+            appointmentsEnabled: toolsCfg?.appointments?.enabled === true,
+        });
+        const contexts = Object.entries(requiredFields);
+        if (!contexts.length) return;
+        lines.push('  <required_information>');
+        for (const [context, fields] of contexts) {
+            lines.push(`    <context name="${escapeXmlAttribute(context)}">`);
+            fields.forEach((f) => {
+                lines.push(`      <field name="${escapeXmlAttribute(f.field)}">${escapeXmlText(f.question)}</field>`);
+            });
+            lines.push('    </context>');
         }
+        lines.push('  </required_information>');
+    }
 
+    private pushBusinessHours(lines: string[], hours: any, tenantBusinessHours?: any): void {
         // Business hours: prefer tenant-level settings, fall back to agent schedule
         if (tenantBusinessHours) {
             lines.push('  <business_hours>');
@@ -269,38 +320,54 @@ export class PersonaService {
             }
             lines.push('  </business_hours>');
         }
+    }
 
-        // Skillset (T2.17) — sales / support / both, plus upsell behavior.
-        const skillset = (config as any).skillset || 'both';
+    /**
+     * Skillset (T2.17) — vender, atender o las dos, mas el comportamiento de
+     * upsell.
+     *
+     * Dos correcciones respecto de la version anterior. El default era `both`
+     * para TODOS, asi que una recepcion medica, una psicologa, un estudio
+     * juridico, una veterinaria y una financiera recibian una orden de vender
+     * que nadie eligio; ahora el default sale del rubro y la eleccion explicita
+     * del dueno lo sigue pisando. Y los textos estaban en ingles dentro de un
+     * bloque cuyo resto viene en el idioma del tenant, lo que empuja al modelo
+     * a contestar en el idioma equivocado.
+     */
+    private pushSkillset(lines: string[], config: TenantConfig): void {
+        const policy = skillsetPolicyForIndustry(config.industry);
+        const skillset = resolveAgentSkillset((config as any).skillset, config.industry);
+        const guidance = skillsetGuidanceFor(config.language);
         const upsell = (config as any).upsell as { enabled?: boolean; intensity?: string; maxDiscountPercent?: number } | undefined;
+
         lines.push('  <skillset>');
         lines.push(`    <mode>${escapeXmlText(skillset)}</mode>`);
         if (skillset === 'sales' || skillset === 'both') {
-            lines.push(`    <sales>${escapeXmlText('Act as a consultative salesperson: identify the customer\'s real need, recommend only matching products present in the turn catalog or returned by recommend_products, explain relevant benefits, and guide toward an appropriate next action. Never invent products or prices.')}</sales>`);
+            lines.push(`    <sales>${escapeXmlText(guidance.sales)}</sales>`);
         }
         if (skillset === 'support' || skillset === 'both') {
-            lines.push(`    <support>${escapeXmlText('Act as an expert support agent: answer accurately and empathetically, use recent orders or get_order_status for order follow-up, and escalate when appropriate.')}</support>`);
+            lines.push(`    <support>${escapeXmlText(guidance.support)}</support>`);
         }
         if (skillset === 'both') {
-            lines.push(`    <balance>${escapeXmlText('Balance sales and support: resolve the customer\'s need first, then connect it to a useful recommendation or purchase step only when natural. Never force a sale when the customer only needs help.')}</balance>`);
+            lines.push(`    <balance>${escapeXmlText(guidance.balance)}</balance>`);
+        }
+        // No es un default: es un invariante del rubro. Vale incluso si el dueno
+        // eligio `sales`, porque lo que prohibe no es vender sino abrir una
+        // venta sobre un sintoma, una urgencia o un reclamo.
+        if (policy.noPitch) {
+            lines.push(`    <no_pitch>${escapeXmlText(guidance.noPitch)}</no_pitch>`);
         }
         if (upsell?.enabled && (skillset === 'sales' || skillset === 'both')) {
-            const intensity = upsell.intensity || 'subtle';
-            const intensityText: Record<string, string> = {
-                subtle: 'Suggest complementary items only when they fit naturally, without insisting.',
-                moderate: 'Proactively offer one relevant complement or upgrade per conversation when it adds value.',
-                aggressive: 'Actively look for relevant upsell and cross-sell opportunities while remaining tactful.',
-            };
-            lines.push(`    <upsell intensity="${escapeXmlAttribute(intensity)}">${escapeXmlText(intensityText[intensity] || intensityText.subtle)}</upsell>`);
+            const intensity = (upsell.intensity || 'subtle') as 'subtle' | 'moderate' | 'aggressive';
+            const text = guidance.upsell[intensity] || guidance.upsell.subtle;
+            lines.push(`    <upsell intensity="${escapeXmlAttribute(intensity)}">${escapeXmlText(text)}</upsell>`);
             if (typeof upsell.maxDiscountPercent === 'number' && upsell.maxDiscountPercent > 0) {
                 lines.push(`    <max_discount_percent>${upsell.maxDiscountPercent}</max_discount_percent>`);
             }
         }
         lines.push('  </skillset>');
-
-        lines.push('</persona>');
-        return lines.join('\n');
     }
+
 
     /**
      * Get persona config version history

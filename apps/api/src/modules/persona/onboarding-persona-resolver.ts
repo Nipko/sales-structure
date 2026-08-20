@@ -327,7 +327,17 @@ export function resolveOnboardingPersonaTemplate(input: {
         // Compatibility fence for all other profiles. When a shipped subtype
         // choice conflicts with a goal, surface that product decision instead
         // of silently choosing a winner.
-        if (subtypeTemplateId) {
+        //
+        // Una entrada de sub-tipo que apunta al MISMO template que el default
+        // de la vertical no aporta nada del sub-tipo y, sin embargo, ganaba:
+        // devolvía `source: 'subtype'` y bloqueaba la plantilla que la meta
+        // habría elegido. Cinco perfiles quedaban así — `casual_dining`,
+        // `abogados`, `broker`, `aseguradora` y `bodas`: el dueño marcaba
+        // "posventa" o "soporte" en el alta y recibía igual el guion de
+        // reservas o de consulta inicial. Documentar el mapeo está bien; que
+        // ese mapeo pise una decisión del dueño sin agregar contenido, no.
+        const subtypeAddsNothing = subtypeTemplateId === policy.defaultTemplateId;
+        if (subtypeTemplateId && !(subtypeAddsNothing && goalTemplateId && goalTemplateId !== subtypeTemplateId)) {
             if (!availableVertical.has(subtypeTemplateId)) {
                 throw new Error(`Onboarding persona subtype template is unavailable: ${industry}/${subType}/${subtypeTemplateId}`);
             }

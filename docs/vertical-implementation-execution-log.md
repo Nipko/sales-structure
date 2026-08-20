@@ -597,3 +597,48 @@ jest src/app.bootstrap.spec.ts               → 1/1 ✅ (DI limpio)
 jest apps/api      → 2564 passed / 285 suites, 0 fallos
 jest apps/dashboard → 161 passed / 20 suites, 0 fallos
 ```
+
+### U18 — P0 §8.3 · Prompt correctness: lo que el prompt efectivo decía y lo que nadie quiso decir
+
+**Fase 2/3 · Épica F · Paquete "Prompt correctness"**
+
+Cuatro defectos del prompt efectivo, cada uno con su propia manera de ser invisible.
+
+**1. Personalizar el agente apagaba las protecciones del rubro.**
+
+`buildSystemPrompt` en modo libre devolvía **solo** el texto del dueño. Con eso desaparecían los temas prohibidos, los disparadores de handoff, el horario y el skillset: una clínica que escribía su propio prompt perdía "no des diagnósticos" y "derivá una urgencia" sin que nada lo dijera. El defecto es peor que un olvido porque el dueño cree que sumó, no que restó.
+
+**ADR-025 — El prompt libre reemplaza la voz, no las barreras.**
+El texto propio sustituye identidad, personalidad y reglas —eso es lo que el dueño quiere cambiar—; los temas prohibidos, el handoff, el horario y el skillset se re-emiten siempre. Los cuatro bloques pasaron a métodos propios porque ahora los comparten dos caminos; escritos en línea, cambiar el modo del editor los borraba sin que nadie lo notara.
+
+**2. `both` por defecto era una orden de vender que nadie eligió.**
+
+El renderer usaba `both` cuando no había configuración e inyectaba con él una instrucción de venta consultiva y otra de "conectá la consulta con una recomendación". Así una recepción médica, una psicóloga, un estudio jurídico, una veterinaria y una financiera recibían una orden de vender — en conversaciones que empiezan con un síntoma, una deuda, un siniestro o un juicio.
+
+**ADR-026 — El default sale del rubro; la regla de no-pitch no es un default.**
+`skillsetPolicyForIndustry` marca cinco rubros como *care-first* (salud, veterinaria, finanzas, seguros, servicios profesionales) con default `support`. El criterio no es "regulado": es que la conversación típica arranca con un problema de la persona y no con una intención de compra. Si el dueño elige `sales` explícitamente, **se respeta** — es su negocio. Lo que no se negocia es `<no_pitch>`: no se abre una venta sobre un síntoma, una urgencia o un reclamo, se elija lo que se elija. Se puede hablar de precios cuando los preguntan.
+
+**3. Las instrucciones venían en inglés.**
+
+`Act as a consultative salesperson…` dentro de un bloque cuyo resto —nombre, rol, reglas, temas prohibidos— viene en el idioma del tenant. Un prompt mezclado empuja al modelo a contestar en el idioma equivocado. Las cuatro guías (`sales`, `support`, `balance`, `no_pitch`) más los tres niveles de upsell viven ahora en `agent-skillset-policy.ts` en es/en/pt/fr. Sin idioma declarado cae al **español**, que es el mercado de la plataforma, no al inglés, que no lo es para nadie.
+
+**4. Ningún `requiredField` vertical llegaba nunca al prompt.**
+
+Trece plantillas guardaban `{ name: { required: true } }`; el contrato es `Record<contexto, RequiredField[]>` y el renderer salta lo que no es arreglo. Se descartaban en silencio. Y aunque la forma hubiera sido correcta, **la sección entera se suprimía con Agenda activa**, que es el caso de casi todas esas plantillas.
+
+**ADR-027 — Normalizar la forma heredada; suprimir por campo, no por sección.**
+`normalizeRequiredFields` acepta las dos formas y traduce la vieja con preguntas de identidad que ya son iguales en todos los rubros (nombre, teléfono, correo) en cuatro idiomas. Una clave heredada sin pregunta escrita **se descarta**: inventarle una pregunta al dueño sería ponerle palabras al agente. Y con Agenda activa se suprimen sólo los campos que el motor determinista ya pregunta (`name`, `phone`) en vez de tirar todo, así que un correo o un NIT declarado por la plantilla sí llega.
+
+**5. Cinco entradas de sub-tipo pisaban la meta del dueño sin aportar nada.**
+
+`casual_dining`, `abogados`, `broker`, `aseguradora` y `bodas` apuntaban al **mismo** template que el default de su vertical. Aun así devolvían `source: 'subtype'` y bloqueaban la plantilla que la meta habría elegido: el dueño marcaba "posventa" en el alta y recibía igual el guion de reservas o de consulta inicial. Ahora una entrada que no difiere del default deja pasar la meta, y sin meta que la contradiga resuelve como siempre. Documentar el mapeo está bien; que pise una decisión del dueño sin agregar contenido, no.
+
+**Pruebas** — `prompt-invariants.spec.ts` (19 casos): el prompt libre conserva prohibidos/handoff/horario/skillset/no-pitch y **sí** reemplaza identidad y reglas; texto vacío cae al bloque guiado; los cinco rubros care-first no reciben orden de vender; retail sí; una elección explícita se respeta y no-pitch igual se emite; un valor que no es skillset se ignora. `required-fields`: la forma heredada se traduce en los 4 idiomas, con Agenda sólo se cae lo que el motor pregunta, un contrato bien formado no se toca, una clave sin pregunta escrita se descarta, la basura no rompe, y el campo **llega al prompt** — que es lo que nunca pasaba. Más `onboarding-persona-resolver.spec.ts`, cuya tabla afirmaba que las cinco entradas vacías debían ganar, y `persona-prompt-escaping.spec.ts`, cuya prueba afirmaba que la guía venía **siempre en inglés**.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard)  → exit 0
+jest src/app.bootstrap.spec.ts               → 1/1 ✅ (DI limpio)
+jest apps/api      → 2588 passed / 286 suites, 0 fallos
+jest apps/dashboard → 161 passed / 20 suites, 0 fallos
+```

@@ -1,8 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { holdStillAliveSql, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
+import {
+    paymentConfirmedText,
+    PaymentOutcomeNotifierService,
+} from '../conversations/payment-outcome-notifier.service';
+import { PushService } from '../push/push.service';
 
 /**
  * Cierra el lazo: el huésped pagó, la estadía se confirma.
@@ -25,6 +30,11 @@ export class BookingPaymentListener {
     constructor(
         private readonly prisma: PrismaService,
         private readonly events: EventEmitter2,
+        // Opcional a propósito: si el módulo de avisos no está disponible, la
+        // reserva se confirma igual. Perder el mensaje es malo; perder la
+        // confirmación del pago sería mucho peor.
+        @Optional() private readonly notifier?: PaymentOutcomeNotifierService,
+        @Optional() private readonly push?: PushService,
     ) {}
 
     @OnEvent('tenant_payment.succeeded')
@@ -37,7 +47,7 @@ export class BookingPaymentListener {
 
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, property_id, check_in, check_out, status, contact_id
+                `SELECT id, property_id, check_in, check_out, status, contact_id, conversation_id
                    FROM property_bookings WHERE id = $1::uuid`,
                 [event.entityId],
             );
@@ -76,6 +86,17 @@ export class BookingPaymentListener {
                     `[Pago] la reserva ${booking.id} se pagó pero las fechas ya se ocuparon ` +
                     `(propiedad ${booking.property_id}, ${booking.check_in} a ${booking.check_out}) — requiere intervención`,
                 );
+                // Cobrado y sin lugar es lo más caro que puede pasar acá, y hasta
+                // ahora la única huella era esta línea de log: nadie se
+                // enteraba. Al huésped NO se le escribe solo — la decisión de
+                // reubicar o devolver es del dueño y tiene que tomarla una
+                // persona— pero el dueño tiene que saberlo ya.
+                await this.push?.sendToTenantRole(event.tenantId, 'tenant_admin', {
+                    title: 'Un pago entró sin disponibilidad',
+                    body: `Se acreditó un pago para el ${booking.check_in} al ${booking.check_out} `
+                        + 'pero las fechas ya se ocuparon. Hay que reubicar o devolver.',
+                    tag: `paid-no-room-${booking.id}`,
+                }).catch(() => { /* el aviso es best-effort; el log ya quedó */ });
                 this.events.emit('property_booking.paid_but_unavailable', {
                     tenantId: event.tenantId,
                     bookingId: booking.id,
@@ -97,6 +118,17 @@ export class BookingPaymentListener {
             if (!updated?.[0]) return;
 
             this.logger.log(`[Pago] reserva ${booking.id} confirmada tras acreditarse el pago`);
+            // Confirmar en la base no es confirmarle al huésped. Sin este aviso
+            // pagaba, Wompi le decía "listo" y de nosotros no recibía nada.
+            await this.notifier?.notifyCustomer({
+                tenantId: event.tenantId,
+                conversationId: booking.conversation_id,
+                contactId: booking.contact_id,
+                text: paymentConfirmedText(undefined, 'tu reserva'),
+                // Derivado de la reserva, no del reintento: el webhook llega
+                // varias veces y el huésped no puede recibir tres veces lo mismo.
+                dedupeId: `pay-ok-property-${booking.id}`,
+            });
             this.events.emit('property_booking.confirmed_by_payment', {
                 tenantId: event.tenantId,
                 bookingId: booking.id,

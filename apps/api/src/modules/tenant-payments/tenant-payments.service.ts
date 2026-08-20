@@ -66,6 +66,27 @@ const TENANT_PAYMENT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
  */
 const CAPACITY_HOLDING_KINDS: ReadonlySet<string> = new Set(['property', 'appointment']);
 
+/**
+ * Tipos de pago que NO pueden convivir con una retención de 15 minutos.
+ *
+ * `ticket` es el efectivo (Efecty, Baloto y compañía): genera un cupón que se
+ * paga en un punto físico, y Mercado Pago recomienda dejarle **al menos 3 días**.
+ * Con la fecha retenida un cuarto de hora eso no cierra por ningún lado, y hay
+ * algo peor que la incomodidad: si el cliente paga el cupón después del
+ * vencimiento, MP **le devuelve la plata al pagador**. El cliente creería haber
+ * reservado, al dueño no le entró nada y las fechas ya se liberaron.
+ *
+ * Por eso se excluye SOLO cuando hay retención: para un pedido o una factura,
+ * pagar en efectivo a los tres días es perfectamente válido y se sigue
+ * ofreciendo.
+ *
+ * La lista es corta a propósito. `ticket` es el único tipo offline que la
+ * documentación nombra; el catálogo real de cada cuenta se consulta con
+ * `GET /v1/payment_methods` usando el token del tenant. Inventar ids acá sería
+ * arriesgar un 400 que dejaría al tenant sin poder cobrar.
+ */
+const OFFLINE_PAYMENT_TYPE_IDS: readonly string[] = ['ticket'];
+
 class MercadoPagoProviderError extends Error {
     constructor(
         public readonly code: string,
@@ -1206,10 +1227,14 @@ export class TenantPaymentsService {
 
         let knownMercadoPagoLinkId: string | undefined;
         try {
-            // `expiresAt` is deliberately NOT forwarded: unlike Wompi, the Mercado
-            // Pago preference carries no remote expiry here, so the local date only
-            // drives the requires_review sweep — it never proves the link is dead.
+            // El vencimiento SÍ se reenvía cuando hay cupo retenido: sin eso el
+            // enlace de MP sobrevivía a las fechas que guardaba e invitaba a
+            // pagar algo que ya no existía. Para lo que no retiene nada (un
+            // pedido, una factura) se sigue sin mandar vencimiento remoto: ahí
+            // las 24h locales sólo alimentan el barrido de requires_review y
+            // acortarlas no le sirve a nadie.
             const link = await this.createMercadoPagoLink(input.tenantId, {
+                ...(holdsCapacity ? { expiresAt, excludeOfflineMethods: true } : {}),
                 amountCents: owned.amountCents,
                 currency: owned.currency,
                 description: owned.description,
@@ -1500,6 +1525,9 @@ export class TenantPaymentsService {
             externalReference: string;
             payerEmail?: string;
             idempotencyKey?: string;
+            /** Sólo se mandan cuando hay cupo retenido; ver OFFLINE_PAYMENT_TYPE_IDS. */
+            expiresAt?: Date;
+            excludeOfflineMethods?: boolean;
         },
     ): Promise<PaymentLink> {
         const token = await this.getMercadoPagoAccessToken(tenantId);
@@ -1525,6 +1553,18 @@ export class TenantPaymentsService {
             external_reference: input.externalReference,
             ...(input.payerEmail ? { payer: { email: input.payerEmail } } : {}),
             notification_url: this.mpNotificationUrl(tenantId),
+            // La preferencia vence con la retención, igual que el link de Wompi.
+            // MP documenta `expires` + `expiration_date_to` en ISO 8601.
+            ...(input.expiresAt
+                ? { expires: true, expiration_date_to: input.expiresAt.toISOString() }
+                : {}),
+            ...(input.excludeOfflineMethods
+                ? {
+                    payment_methods: {
+                        excluded_payment_types: OFFLINE_PAYMENT_TYPE_IDS.map(id => ({ id })),
+                    },
+                }
+                : {}),
         });
         let response: Response;
         try {

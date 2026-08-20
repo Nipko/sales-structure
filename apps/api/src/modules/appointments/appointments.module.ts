@@ -13,6 +13,8 @@ import { EmailTemplatesModule } from '../email-templates/email-templates.module'
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { IdentityModule } from '../identity/identity.module';
 import { AppointmentPaymentListener } from './appointment-payment.listener';
+import { PushModule } from '../push/push.module';
+import { PaymentOutcomeNotifierService } from '../conversations/payment-outcome-notifier.service';
 
 @Module({
     imports: [
@@ -20,6 +22,7 @@ import { AppointmentPaymentListener } from './appointment-payment.listener';
         EmailTemplatesModule,
         WhatsappModule,
         IdentityModule,
+        PushModule,
     ],
     controllers: [AppointmentsController, CalendarCallbackController, PublicBookingController],
     providers: [
@@ -28,6 +31,9 @@ import { AppointmentPaymentListener } from './appointment-payment.listener';
         // Cada vertical sabe qué significa "confirmar" lo suyo; el módulo de
         // cobros no necesita conocer a ninguna.
         AppointmentPaymentListener,
+        // Explícito: al ser @Optional en el listener, no registrarlo no rompe
+        // nada — el cliente simplemente nunca se entera de que su pago entró.
+        PaymentOutcomeNotifierService,
     ],
     exports: [AppointmentsService, ServicesService, CalendarIntegrationService, CalendarSyncOutboxService],
 })

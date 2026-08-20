@@ -1,17 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { holdStillAliveSql, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
+import { PushService } from '../push/push.service';
+import {
+    paymentConfirmedText,
+    PaymentOutcomeNotifierService,
+} from '../conversations/payment-outcome-notifier.service';
 
 /**
  * El cliente pagó la seña: la cita se confirma y recién ahí entra a la agenda.
  *
- * Como el turno NO se bloquea mientras no se paga (decisión del dueño), dos
- * personas pueden pedir el mismo horario sin pagar y las dos pagar. El primero
- * que acredite se queda con el turno; el segundo llega a un horario ocupado y
- * eso no se puede resolver solo — hay plata cobrada y no hay turno, así que va
- * a un humano.
+ * El turno queda RETENIDO 15 minutos mientras el cliente paga, así que la
+ * carrera normal ya no existe. Pero la retención vence: si el pago se acredita
+ * tarde, el segundo puede haberse quedado con el horario. Ahí hay plata cobrada
+ * y no hay turno, y eso no se resuelve solo — va a una persona.
  *
  * La cita entra al calendario del profesional acá y no al crearse: sincronizar
  * una cita impaga le taparía la agenda con algo que todavía está a la venta.
@@ -23,6 +27,10 @@ export class AppointmentPaymentListener {
     constructor(
         private readonly prisma: PrismaService,
         private readonly events: EventEmitter2,
+        // Opcionales: si faltan, la cita se confirma igual. Perder el aviso es
+        // malo; perder la confirmación del pago sería mucho peor.
+        @Optional() private readonly notifier?: PaymentOutcomeNotifierService,
+        @Optional() private readonly push?: PushService,
     ) {}
 
     @OnEvent('tenant_payment.succeeded')
@@ -35,7 +43,7 @@ export class AppointmentPaymentListener {
 
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, service_id, assigned_to, start_at, end_at, status, contact_id
+                `SELECT id, service_id, assigned_to, start_at, end_at, status, contact_id, conversation_id
                    FROM appointments WHERE id = $1::uuid`,
                 [event.entityId],
             );
@@ -75,6 +83,14 @@ export class AppointmentPaymentListener {
                     `[Pago] la cita ${appointment.id} se pagó pero el horario ya se ocupó ` +
                     `(${appointment.start_at}) — requiere intervención`,
                 );
+                // Al cliente NO se le escribe solo: reprogramar o devolver es una
+                // decisión del negocio. Al dueño sí, y ya.
+                await this.push?.sendToTenantRole(event.tenantId, 'tenant_admin', {
+                    title: 'Un pago entró sin turno disponible',
+                    body: `Se acreditó un pago para el turno del ${appointment.start_at} `
+                        + 'pero el horario ya se ocupó. Hay que reprogramar o devolver.',
+                    tag: `paid-no-slot-${appointment.id}`,
+                }).catch(() => { /* best-effort: el log ya quedó */ });
                 this.events.emit('appointment.paid_but_unavailable', {
                     tenantId: event.tenantId,
                     appointmentId: appointment.id,
@@ -100,6 +116,14 @@ export class AppointmentPaymentListener {
             if (!confirmed) return;
 
             this.logger.log(`[Pago] cita ${appointment.id} confirmada tras acreditarse el pago`);
+            // Confirmar en la base no es confirmarle al cliente.
+            await this.notifier?.notifyCustomer({
+                tenantId: event.tenantId,
+                conversationId: appointment.conversation_id,
+                contactId: appointment.contact_id,
+                text: paymentConfirmedText(undefined, 'tu cita'),
+                dedupeId: `pay-ok-appointment-${appointment.id}`,
+            });
             this.events.emit('appointment.confirmed_by_payment', {
                 tenantId: event.tenantId,
                 appointmentId: appointment.id,

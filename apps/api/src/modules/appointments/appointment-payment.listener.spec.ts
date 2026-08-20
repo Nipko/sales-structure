@@ -45,7 +45,11 @@ function buildListener(appointment: any, taken: any[] = []) {
     // y que la cita entre a la agenda se asegura verificando la llamada.
     const enqueue = jest.spyOn(CalendarSyncOutboxService, 'enqueueWithTransaction')
         .mockResolvedValue(undefined as any);
-    const listener = new AppointmentPaymentListener(prisma as any, events as any);
+    const notifier = { notifyCustomer: jest.fn(async () => true) };
+    const push = { sendToTenantRole: jest.fn(async () => 1) };
+    const listener = new AppointmentPaymentListener(
+        prisma as any, events as any, notifier as any, push as any,
+    );
     for (const level of ['log', 'warn', 'error'] as const) {
         jest.spyOn((listener as any).logger, level).mockImplementation(() => undefined);
     }

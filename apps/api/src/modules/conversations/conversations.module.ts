@@ -62,6 +62,7 @@ import { ToolApprovalController } from './tool-approval.controller';
 import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
 import { TenantPaymentsModule } from '../tenant-payments/tenant-payments.module';
 import { TenantMercadoPagoOperationProvider } from '../tenant-payments/tenant-mercadopago-operation.provider';
+import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
 
 @Module({
     imports: [
@@ -110,6 +111,7 @@ import { TenantMercadoPagoOperationProvider } from '../tenant-payments/tenant-me
         }),
     ],
     providers: [
+        ExpiredHoldSweeperService,
         ConversationsService,
         ConversationsGateway,
         AIToolExecutorService,

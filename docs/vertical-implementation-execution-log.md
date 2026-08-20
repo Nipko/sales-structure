@@ -433,3 +433,31 @@ npx jest --testPathPattern=bootstrap        → 1/1 ✅ (DI limpio)
 npx jest --maxWorkers=2 (suite completa)    → 2516 passed / 280 suites, 0 fallos
 ```
 
+### U13 — P0 §6.1 · El falso menú "Reservas": dos objetos no comparten etiqueta
+
+**Fase 2/4 · Épica D · Paquete "Turismo semántico"**
+
+`/admin/pipeline` es el Kanban del CRM — oportunidades con etapas. Las definiciones verticales lo renombraban con el nombre de un objeto operativo **real** en ocho industrias:
+
+| Vertical | Se llamaba | El objeto real vive en |
+|---|---|---|
+| Turismo | **Reservas** | `property_bookings` / `tour_bookings` |
+| Restaurantes | **Reservas** | reserva de mesa + `food_orders` |
+| Servicios del hogar | **Solicitudes** | `service_requests` |
+| Seguros (×2) | **Cotizaciones** | `insurance_quotes` |
+| Educación (×2) | **Inscripciones** | inscripción real a curso |
+| Belleza | **Citas** | `appointments` |
+| Finanzas | **Solicitudes** | — (promesa sin objeto) |
+| Profesionales | **Casos** | — (promete matter management inexistente) |
+
+El costo no es cosmético. Un agente que busca las reservas de hoy abre un **embudo de ventas**; el objeto que necesita está en otro lado y muchas veces detrás de un permiso que no tiene. La auditoría encontró esto intentando hallar una reserva en Turismo y no pudiendo — y eso disparó toda la revisión.
+
+**ADR-016 — Allowlist de vocabulario comercial, no denylist de sustantivos operativos.**
+Una denylist crece cada vez que una vertical gana un objeto, y el día que se atrasa es el día que se publica una colisión. `CRM_FUNNEL_LABELS` declara lo que el embudo **puede** llamarse en los 4 idiomas; `OPERATIONAL_OBJECT_LABELS` documenta lo que cada palabra ya significa. Mientras las dos listas sean disjuntas —verificado en CI— pasar la primera prueba implica pasar la segunda.
+
+**10 etiquetas renombradas** a `Oportunidades`/`Opportunities`/`Oportunidades`/`Opportunités`. Las que **ya** eran comerciales no se tocaron: `Negociaciones` (inmobiliaria, automotriz), `Ventas` (retail), `Seguimiento` (salud, veterinaria) — renombrarlas habría sido perder lenguaje del rubro sin ganar nada.
+
+**Pruebas** — `navigation-semantics.spec.ts` (7 casos): hay etiquetas que revisar (si llega a cero, alguien borró los overrides en vez de arreglarlos); toda etiqueta usa vocabulario comercial; ninguna nombra un objeto operativo; las dos listas son disjuntas en los 4 idiomas; **todo override tiene las 4 traducciones** (uno incompleto deja al tenant viendo español dentro de una interfaz en otro idioma); las verticales del hallazgo quedaron corregidas; las que ya estaban bien no se tocaron.
+
+**Verificación:** `tsc` exit 0 · suite completa **2523 passed / 281 suites**.
+

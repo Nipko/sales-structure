@@ -27,6 +27,9 @@ export * from './subtype-experience-profile';
 // ---- Effective agent capability: subtype x agent x plan x readiness ----
 export * from './effective-capability-contract';
 
+// ---- Navigation semantics: two objects never share a label ----
+export * from './navigation-semantics';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
 

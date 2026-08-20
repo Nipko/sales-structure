@@ -188,7 +188,7 @@ const MODA_BELLEZA: VerticalDefinition = {
     sidebar: {
         labelOverrides: {
             crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' },
-            pipeline: { es: 'Citas', en: 'Appointments', pt: 'Agendamentos', fr: 'Rendez-vous' },
+            pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' },
             appointments: { es: 'Agenda', en: 'Schedule', pt: 'Agenda', fr: 'Agenda' },
         },
         hiddenItems: [],
@@ -334,7 +334,7 @@ const RESTAURANTES: VerticalDefinition = {
     sidebar: {
         labelOverrides: {
             crm: { es: 'Comensales', en: 'Diners', pt: 'Clientes', fr: 'Convives' },
-            pipeline: { es: 'Reservas', en: 'Reservations', pt: 'Reservas', fr: 'Réservations' },
+            pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' },
             appointments: { es: 'Reservaciones', en: 'Bookings', pt: 'Reservas', fr: 'Réservations' },
         },
         hiddenItems: ['inventory', 'catalog', 'orders'],
@@ -467,7 +467,7 @@ const TURISMO: VerticalDefinition = {
         { name: { es: 'Excursión medio día', en: 'Half day excursion', pt: 'Excursão meio dia', fr: 'Excursion demi-journée' }, description: { es: 'Excursión de medio día con transporte', en: 'Half day excursion with transport', pt: 'Excursão meio dia com transporte', fr: 'Excursion demi-journée avec transport' }, durationMinutes: 240, price: 150000, currency: 'COP', category: 'tours' },
     ],
     businessHours: { schedule: { mon: '08:00-19:00', tue: '08:00-19:00', wed: '08:00-19:00', thu: '08:00-19:00', fri: '08:00-19:00', sat: '09:00-16:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar la jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horário.', fr: 'Nous sommes fermés.' } },
-    sidebar: { labelOverrides: { crm: { es: 'Viajeros', en: 'Travelers', pt: 'Viajantes', fr: 'Voyageurs' }, pipeline: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Réservations' }, appointments: { es: 'Itinerarios', en: 'Itineraries', pt: 'Itinerários', fr: 'Itinéraires' } }, hiddenItems: ['appointments'] },
+    sidebar: { labelOverrides: { crm: { es: 'Viajeros', en: 'Travelers', pt: 'Viajantes', fr: 'Voyageurs' }, pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' }, appointments: { es: 'Itinerarios', en: 'Itineraries', pt: 'Itinerários', fr: 'Itinéraires' } }, hiddenItems: ['appointments'] },
     dashboard: { kpis: [
         { key: 'leadsToday', label: { es: 'Consultas Hoy', en: 'Inquiries Today', pt: 'Consultas Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'Plane', color: '#1abc9c' },
         { key: 'tourBookingsToday', label: { es: 'Reservas Hoy', en: 'Bookings Today', pt: 'Reservas Hoje', fr: 'Réservations Aujourd\'hui' }, icon: 'Calendar', color: '#3498db' },
@@ -510,7 +510,7 @@ const EDUCATION: VerticalDefinition = {
         { name: { es: 'Test de nivel', en: 'Placement test', pt: 'Teste de nível', fr: 'Test de niveau' }, description: { es: 'Evaluación de nivel para ubicación', en: 'Level assessment for placement', pt: 'Avaliação de nível para classificação', fr: 'Évaluation de niveau pour le placement' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'evaluacion' },
     ],
     businessHours: { schedule: { mon: '07:00-20:00', tue: '07:00-20:00', wed: '07:00-20:00', thu: '07:00-20:00', fri: '07:00-20:00', sat: '08:00-14:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar la jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horário.', fr: 'Nous sommes fermés.' } },
-    sidebar: { labelOverrides: { crm: { es: 'Estudiantes', en: 'Students', pt: 'Estudantes', fr: 'Étudiants' }, pipeline: { es: 'Inscripciones', en: 'Enrollments', pt: 'Inscrições', fr: 'Inscriptions' } }, hiddenItems: [] },
+    sidebar: { labelOverrides: { crm: { es: 'Estudiantes', en: 'Students', pt: 'Estudantes', fr: 'Étudiants' }, pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' } }, hiddenItems: [] },
     dashboard: { kpis: [
         { key: 'leadsToday', label: { es: 'Interesados Hoy', en: 'Inquiries Today', pt: 'Interessados Hoje', fr: 'Intéressés Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
         { key: 'enrollmentsToday', label: { es: 'Matrículas Hoy', en: 'Enrollments Today', pt: 'Matrículas Hoje', fr: 'Inscriptions Aujourd\'hui' }, icon: 'GraduationCap', color: '#2ecc71' },
@@ -572,7 +572,7 @@ const FINANZAS = createGenericVertical('finanzas', {
         { name: { es: 'Aprobado', en: 'Approved', pt: 'Aprovado', fr: 'Approuvé' }, slug: 'aprobado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won' },
         { name: { es: 'Rechazado', en: 'Rejected', pt: 'Rejeitado', fr: 'Rejeté' }, slug: 'rechazado', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost' },
     ] },
-    sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Solicitudes', en: 'Applications', pt: 'Solicitações', fr: 'Demandes' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
+    sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
     bookingEnabled: true,
     // Los KPIs genéricos ("Leads Hoy", "Leads Calientes") usan contadores que
     // existen y funcionan, pero con la etiqueta de otro negocio: acá no entran
@@ -633,7 +633,7 @@ const SERVICIOS_PROFESIONALES = createGenericVertical('servicios_profesionales',
         { name: { es: 'Completado', en: 'Completed', pt: 'Completado', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won' },
         { name: { es: 'Declinado', en: 'Declined', pt: 'Recusado', fr: 'Décliné' }, slug: 'declinado', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost' },
     ] },
-    sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Casos', en: 'Cases', pt: 'Casos', fr: 'Dossiers' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
+    sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
     bookingEnabled: true,
     // Un despacho no cuenta "leads calientes": cuenta consultas que entraron,
     // reuniones agendadas y qué proporción de casos termina tomándose.
@@ -827,7 +827,7 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
     sidebar: {
         labelOverrides: {
             crm: { es: 'Clientes', en: 'Customers', pt: 'Clientes', fr: 'Clients' },
-            pipeline: { es: 'Solicitudes', en: 'Requests', pt: 'Solicitações', fr: 'Demandes' },
+            pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' },
         },
         hiddenItems: ['appointments'],
     },
@@ -1012,7 +1012,7 @@ const FOTOGRAFIA: VerticalDefinition = {
         schedule: { mon: '09:00-18:00', tue: '09:00-18:00', wed: '09:00-18:00', thu: '09:00-18:00', fri: '09:00-18:00', sat: '09:00-15:00' },
         afterHoursMessage: { es: 'Fuera de horario, te respondo pronto.', en: 'After hours, will respond soon.', pt: 'Fora do horário.', fr: 'Hors horaires.' },
     },
-    sidebar: { labelOverrides: { pipeline: { es: 'Cotizaciones', en: 'Quotes', pt: 'Cotações', fr: 'Devis' } }, hiddenItems: [] },
+    sidebar: { labelOverrides: { pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' } }, hiddenItems: [] },
     dashboard: {
         kpis: [
             { key: 'leadsToday', label: { es: 'Consultas Hoy', en: 'Inquiries Today', pt: 'Consultas Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'Camera', color: '#3498db' },
@@ -1096,7 +1096,7 @@ const SEGUROS: VerticalDefinition = {
     sidebar: {
         labelOverrides: {
             crm: { es: 'Asegurados', en: 'Policyholders', pt: 'Segurados', fr: 'Assurés' },
-            pipeline: { es: 'Cotizaciones', en: 'Quotes', pt: 'Cotações', fr: 'Devis' },
+            pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' },
         },
         hiddenItems: [],
     },
@@ -1186,7 +1186,7 @@ const GIMNASIOS: VerticalDefinition = {
     sidebar: {
         labelOverrides: {
             crm: { es: 'Miembros', en: 'Members', pt: 'Alunos', fr: 'Membres' },
-            pipeline: { es: 'Inscripciones', en: 'Enrollments', pt: 'Matrículas', fr: 'Inscriptions' },
+            pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' },
             appointments: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Réservations' },
         },
         hiddenItems: [],

@@ -240,6 +240,8 @@ describe('PropertiesService reservations', () => {
             if (sql.includes('SELECT * FROM properties')) return [property];
             if (sql.includes(') conflicts LIMIT 1')) return [];
             if (sql.includes('INSERT INTO property_bookings')) return [booking];
+            // Guarda de duplicado por contacto: sin filas = no hay duplicado.
+            if (sql.includes('SELECT id FROM property_bookings')) return [];
             throw new Error(`Unexpected SQL: ${sql}`);
         });
         const transactionInTenantSchema = jest.fn(
@@ -284,6 +286,8 @@ describe('PropertiesService reservations', () => {
             if (sql.includes('SELECT * FROM properties')) return [property];
             if (sql.includes(') conflicts LIMIT 1')) return [];
             if (sql.includes('INSERT INTO property_bookings')) return [booking];
+            // Guarda de duplicado por contacto: sin filas = no hay duplicado.
+            if (sql.includes('SELECT id FROM property_bookings')) return [];
             throw new Error(`Unexpected SQL: ${sql}`);
         });
         const { service } = buildService({

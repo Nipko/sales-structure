@@ -448,6 +448,7 @@ export class PropertiesService {
         // the xact lock; the loser observes the winner before it can insert.
         const created = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             const canonicalContactId = await requireTenantContact(query, contactId);
+
             const opportunityId = await resolveNativeEvidenceOpportunity(query, {
                 contactId: canonicalContactId,
                 conversationId: data.conversationId,
@@ -463,6 +464,33 @@ export class PropertiesService {
                 [propertyId],
             );
             const property = propertyRows?.[0];
+
+            // Duplicado del MISMO contacto. El chequeo de conflictos de abajo
+            // mira la propiedad, no la persona: si el agente reemite la llamada
+            // —un reintento, un "sí" repetido— la segunda reserva se solapa con
+            // la primera y el conflicto la rechaza… salvo que sean fechas
+            // distintas o el modelo proponga otro alojamiento. Tours tiene esta
+            // guarda desde hace meses; alojamiento nunca la tuvo.
+            //
+            // Va DENTRO de la transacción y después del advisory lock, si no dos
+            // llamadas simultáneas la esquivan las dos.
+            const duplicate = canonicalContactId ? await query<any[]>(
+                `SELECT id FROM property_bookings
+                  WHERE contact_id = $1::uuid
+                    AND property_id = $2::uuid
+                    AND check_in = $3::date
+                    AND check_out = $4::date
+                    AND status NOT IN ('cancelled', 'expired')
+                  LIMIT 1`,
+                [canonicalContactId, propertyId, stay.checkIn, stay.checkOut],
+            ) : [];
+            if (duplicate?.length) {
+                throw new BadRequestException({
+                    error: 'duplicate_property_booking',
+                    bookingId: duplicate[0].id,
+                    message: 'Este contacto ya tiene una reserva para ese alojamiento y esas fechas.',
+                });
+            }
             this.assertPropertyBookable(property);
 
             const minNights = Number(property.min_nights ?? 1);

@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { PropertiesService } from './properties.service';
 import { BookingPaymentListener } from './booking-payment.listener';
 import { PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
@@ -201,5 +203,63 @@ describe('el cobro cierra el lazo', () => {
         await listener.onPaid({ tenantId, kind: 'tour', entityId: bookingId });
 
         expect(executeInTenantSchema).not.toHaveBeenCalled();
+    });
+});
+
+describe('el mismo contacto no reserva dos veces lo mismo', () => {
+    const contactoUuid = 'cccccccc-2222-4a2b-9c3d-000000000009';
+
+    it('rechaza el duplicado exacto en vez de crear una segunda reserva', async () => {
+        // Tours tiene esta guarda desde hace meses; alojamiento nunca la tuvo.
+        // El chequeo de conflictos mira la PROPIEDAD, no la persona, así que un
+        // reintento del agente —o un "sí" repetido— podía escribir dos veces.
+        const { service, query } = buildService({ ...BASE_PROPERTY });
+        query.mockImplementation(async (sql: string) => {
+            if (sql.includes('FROM contacts WHERE id')) return [{ id: contactoUuid }];
+            if (sql.includes('SELECT id FROM property_bookings')) return [{ id: 'ya-existe' }];
+            if (sql.includes('FROM properties WHERE id')) return [{ ...BASE_PROPERTY }];
+            return [];
+        });
+
+        await expect(service.createBooking(schemaName, propertyId, {
+            contactId: contactoUuid, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
+        } as any)).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'duplicate_property_booking' }),
+        });
+    });
+
+    it('sin contacto no hay a quién deduplicar, y se deja pasar', async () => {
+        // Matiz deliberado: una reserva cargada a mano sin contacto no tiene
+        // persona por la cual agrupar. La protección ahí es el solapamiento de
+        // fechas, no esta guarda.
+        const { service, query } = buildService({ ...BASE_PROPERTY });
+        query.mockImplementation(async (sql: string) => {
+            if (sql.includes('SELECT id FROM property_bookings')) return [{ id: 'no-deberia-consultarse' }];
+            if (sql.includes('FROM properties WHERE id')) return [{ ...BASE_PROPERTY }];
+            return [];
+        });
+
+        // Lo que importa es que NO sea rechazada por duplicado; que la creación
+        // termine o no depende del resto del mock y no es lo que se prueba acá.
+        const err = await service.createBooking(schemaName, propertyId, {
+            contactId: null, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
+        } as any).catch(e => e);
+
+        expect(err?.response?.error).not.toBe('duplicate_property_booking');
+    });
+
+    it('la guarda corre después del lock, si no dos llamadas la esquivan juntas', () => {
+        const src = readFileSync(resolve(__dirname, 'properties.service.ts'), 'utf8');
+        const lock = src.indexOf('pg_advisory_xact_lock', src.indexOf('const created = await this.prisma.transactionInTenantSchema'));
+        const guard = src.indexOf('duplicate_property_booking');
+        expect(lock).toBeGreaterThan(0);
+        expect(guard).toBeGreaterThan(lock);
+    });
+
+    it('una reserva cancelada o vencida no cuenta como duplicado', () => {
+        // El huésped tiene que poder volver a reservar lo que canceló.
+        const src = readFileSync(resolve(__dirname, 'properties.service.ts'), 'utf8');
+        const q = src.slice(src.indexOf('SELECT id FROM property_bookings'), src.indexOf('duplicate_property_booking'));
+        expect(q).toContain("status NOT IN ('cancelled', 'expired')");
     });
 });

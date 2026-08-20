@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { VerticalsService } from './verticals.service';
 import { VerticalsController } from './verticals.controller';
 import { StaffSchedulingService } from './staff-scheduling.service';
@@ -10,12 +10,15 @@ import { OperatingCurrencyService } from './operating-currency.service';
 import { TemporalCapacityContractService } from './temporal-capacity-contract.service';
 import { StaffOperationsModelService } from './staff-operations-model.service';
 import { VerticalMigrationService } from './vertical-migration.service';
+import { TenantsModule } from '../tenants/tenants.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { EmailModule } from '../email/email.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule, EmailModule],
+    // TenantsModule aporta el resolutor regional: el perfil efectivo tiene que
+    // decir en qué mercado opera el tenant, no solo qué vertical eligió.
+    imports: [PrismaModule, RedisModule, EmailModule, forwardRef(() => TenantsModule)],
     controllers: [VerticalsController, StaffSchedulingController, VehicleInventoryController],
     providers: [
         VerticalsService,

@@ -21,6 +21,9 @@ export * from './tenant-regional-profile';
 // ---- Country language behaviour packs (recognition, not generation) ----
 export * from './country-language-pack';
 
+// ---- The single registry for what a subtype is ----
+export * from './subtype-experience-profile';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
 

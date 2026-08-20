@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, Optional } 
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
 import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
@@ -9,6 +10,9 @@ import {
     listVerticalCapabilityConfigurations,
     ResolvedVerticalCapabilityManifest,
     resolveVerticalCapabilityManifest,
+    resolveSubtypeExperienceProfile,
+    resolveVerticalProductPolicy,
+    subtypeProfileId,
     TenantVerticalConfig,
     VerticalCapability,
     VERTICAL_CAPABILITY_MANIFEST,
@@ -390,6 +394,9 @@ export class VerticalsService {
         private readonly redis: RedisService,
         private readonly throttle: TenantThrottleService,
         @Optional() private readonly events?: EventEmitter2,
+        // Optional so the many specs that build this service by hand keep
+        // working; the effective profile simply omits the regional block.
+        @Optional() private readonly regionalProfile?: RegionalProfileService,
     ) {}
 
     /** Read-only operational contract consumed by API and dashboard clients. */
@@ -418,6 +425,75 @@ export class VerticalsService {
         } catch (error: any) {
             throw new BadRequestException(error?.message || 'Invalid vertical capability selection');
         }
+    }
+
+    /**
+     * Everything the platform believes about one tenant's product, in one read.
+     *
+     * Before this, answering "what is this business and what may it promise"
+     * meant asking four subsystems that each kept their own opinion: the
+     * manifest knew capabilities, the product policy knew certification, the
+     * subtype registry knows commercial scope, and the regional resolver knows
+     * the market. Support, marketing and the migration tooling each guessed
+     * from whichever one they happened to import.
+     *
+     * Deliberately read-only and derived — it stores nothing, so it can never
+     * become a fifth opinion that drifts from the four.
+     */
+    async getEffectiveProfile(tenantId: string): Promise<Record<string, unknown>> {
+        const config = await this.getVerticalConfig(tenantId);
+        if (!config?.industry) {
+            throw new BadRequestException('El tenant no tiene una vertical configurada.');
+        }
+
+        const profile = resolveSubtypeExperienceProfile(config.industry, config.subType);
+        const policy = resolveVerticalProductPolicy(profile.industry);
+        const regional = this.regionalProfile
+            ? await this.regionalProfile.resolve(tenantId).catch(() => null)
+            : null;
+
+        return {
+            profileVersion: profile.version,
+            manifestVersion: profile.manifestVersion,
+            requestedId: subtypeProfileId(config.industry, config.subType),
+            id: profile.id,
+            // A migrated id keeps working; saying so is what stops a support
+            // agent from "fixing" a tenant onto the wrong product.
+            migratedFrom: profile.id !== subtypeProfileId(config.industry, config.subType)
+                ? subtypeProfileId(config.industry, config.subType)
+                : undefined,
+            migrationNote: profile.migrationNote,
+            commercial: {
+                strategy: profile.strategy,
+                scope: profile.scope,
+                wave: profile.wave,
+                commercialisable: profile.commercialisable,
+                blockedReason: profile.blockedReason,
+                exclusions: profile.exclusions,
+                certificationState: policy.certificationState,
+                deepMarketingAllowed: policy.deepMarketingAllowed,
+                nextCertificationGate: policy.nextCertificationGate,
+            },
+            capability: profile.capability,
+            audit: {
+                benchmark: profile.benchmark,
+                primaryGap: profile.primaryGap,
+                readiness: profile.auditedReadiness,
+                demand: profile.auditedDemand,
+                confidence: profile.auditConfidence,
+                alerts: profile.alerts,
+            },
+            regional: regional && {
+                operatingCountry: regional.operatingCountry,
+                billingCountry: regional.billingCountry,
+                currency: regional.operatingCurrency,
+                timezone: regional.timezone,
+                locale: regional.locale,
+                countryPackId: regional.countryPackId,
+                countryPackStatus: regional.countryPackStatus,
+                conflicts: regional.conflicts,
+            },
+        };
     }
 
     /**

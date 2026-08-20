@@ -91,6 +91,24 @@ export class VerticalsController {
         };
     }
 
+    /**
+     * One read for "what is this business and what may it promise".
+     *
+     * Support, marketing and the migration tooling used to derive that from
+     * whichever subsystem they happened to import, and those subsystems did not
+     * agree. This is derived on every call, so it can never become another
+     * stored opinion that drifts.
+     */
+    @Get(':tenantId/effective-profile')
+    @UseGuards(TenantGuard)
+    @ApiOperation({ summary: 'Resolve the effective subtype profile, capability, commercial scope and market' })
+    async getEffectiveProfile(@Param('tenantId') tenantId: string) {
+        return {
+            success: true,
+            data: await this.verticalsService.getEffectiveProfile(tenantId),
+        };
+    }
+
     @Get(':tenantId')
     @UseGuards(TenantGuard)
     @ApiOperation({ summary: 'Get vertical config for a tenant' })

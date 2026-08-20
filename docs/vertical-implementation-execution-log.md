@@ -357,3 +357,43 @@ npx jest --maxWorkers=2          → 2483 passed / 278 suites, 0 fallos
 
 **Estado acumulado:** `tsc` limpio en las 5 apps · **2483 tests verdes, 0 fallos** · 0 regresiones introducidas.
 
+---
+
+## 4. Fase 1 — Contratos compartidos
+
+### U11 — Registro único `SubtypeExperienceProfile` + puerta de CI de los 76 perfiles
+
+**Fase 1 · Épica A (gobierno y taxonomía) · Gate 1**
+
+El selector ofrecía 75 subtipos sobre unos **27 perfiles efectivos**: una etiqueta que el tenant elegía en el alta y que casi no cambiaba nada río abajo. Y cada superficie contestaba por su cuenta "qué es este negocio" — el manifiesto sabía capacidades, el resolver de persona sabía una plantilla, el sidebar sabía rutas, marketing sabía un claim, y ninguno coincidía.
+
+**ADR-011 — El registro compone; no duplica.**
+`SubtypeExperienceProfile` **no** repite lo que el manifiesto ya posee (capabilities, tool groups, objeto primario, rutas, readiness, assurance): eso se **compone** en `resolve()`, así que un cambio aterriza en un solo lugar. Acá vive lo que el manifiesto no opina: hasta dónde se puede **vender** el perfil, si se puede vender, qué **no** promete y la evidencia auditada detrás de esa decisión. El propio plan registra el riesgo de "explosión de 76 forks" (§14): en el momento en que una diferencia puede vivir en un componente compartido, no puede vivir en 76 entradas.
+
+**Nuevo:** `packages/shared/src/subtype-experience-profile.ts` — los 76 perfiles con `strategy` (`build|integrate|hybrid|define|migrate|stop`), `wave` 0-4, `scope` comercial (`captacion|calificacion|cotizacion|coordinacion|operacion_ligera|operacion_integrada`), alertas de auditoría verbatim, benchmark, brecha principal, puntajes auditados y **exclusiones explícitas** por vertical. Generado desde `vertical-subtype-scorecard-2026-08.csv` para no transcribir 76 filas a mano, que es la clase de error que nadie ve en revisión.
+
+**ADR-012 — Migrar no es bloquear.**
+`veterinaria/peluqueria_canina` estaba marcado `stop` **y** tenía alias a `pet_services/peluqueria`: las dos cosas se contradicen. Un id migrado **sí** es vendible — como la experiencia que siempre debió ser. Se agrega `strategy: 'migrate'` con `migratesTo` y `migrationNote`, y `commercialisable` sigue al perfil **resuelto**, no al id pedido. Lo detectó la prueba de contrato, no una lectura.
+
+**ADR-013 — `fotografia/wedding_planner` NO se aliasa.**
+Es la decisión opuesta a grooming y por la misma razón: Event Planning todavía no existe como industria, así que no hay a dónde mandarlo con honestidad. Apuntarlo de vuelta a fotografía recrearía la clasificación errónea que un alias debería arreglar. Queda `stop` con el motivo señalando Event Planning.
+
+**8 perfiles bloqueados con motivo de párrafo** (no de una línea, que no le explica nada a quien lo hereda): construcción, fintech, marketplace, consultoría TI, aseguradora, seguros/salud, wedding planner y farmacia*.
+\* farmacia queda `hybrid/ola 1` — el writer ya funciona (U1); la alerta STOP del audit era por el flujo Rx, cubierto por sus exclusiones.
+
+**Endpoint** `GET /verticals/:tenantId/effective-profile` — una sola lectura de qué es el negocio y qué puede prometer: id pedido vs resuelto, migración, alcance comercial, estado de certificación, exclusiones, capability del manifiesto, evidencia de auditoría y perfil regional con sus conflictos. **Derivado en cada llamada**, nunca almacenado: así no puede convertirse en una quinta opinión que se desincroniza de las otras cuatro.
+
+**Puerta de CI** — `subtype-experience-profile.spec.ts` (20 casos):
+- **Conteos canónicos:** 18 verticales, 75 subtipos + `otro` = 76; el registro cubre **exactamente** las configuraciones del manifiesto, sin agrupar hermanos ni inventar subtipos.
+- **Honestidad comercial:** todo perfil declara estrategia/ola/alcance/referente/exclusiones; un bloqueado siempre dice por qué (>80 caracteres); solo un bloqueado lleva motivo; las 5 taxonomías ambiguas están bloqueadas y grooming resuelve a Pet Services.
+- **Alcance vs objeto:** un perfil que promete `operacion_*` no puede tener `lead` como objeto primario — vender "operación" sobre un embudo es la confusión que el plan prohíbe.
+- **MISCLASS acotado:** taller, agencia de viajes, universitaria, arquitectos y foto de producto heredan el producto de otro subtipo; eso limita la **profundidad** que pueden prometer, no su existencia. Ninguno puede venderse como operación de lo que confunde.
+- **Composición:** resuelve del manifiesto vivo; **no guarda copia** de capabilities/routes/toolGroups/readiness; un id desconocido **falla** en vez de caer a un perfil por defecto; los alias legacy resuelven y los ids pre-manifiesto (`boutique`, `tienda`, `delivery`) no vuelven al selector.
+- **Sin divergencia capacidad↔tools↔policy:** todo grupo del manifiesto mapea a una capability, **publica tools reales** (un grupo vacío es una capacidad prometida que nadie puede usar), todas tienen policy central, y **ningún writer se publica sin confirmación, idempotencia ni assurance**.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared)          → exit 0
+npx jest --maxWorkers=2 (suite completa) → 2503 passed / 279 suites, 0 fallos
+```
+

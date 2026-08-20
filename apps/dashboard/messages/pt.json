@@ -6499,6 +6499,8 @@
     "syncNow": "Sincronizar agora",
     "lastSync": "Ultima sincronizacao",
     "exportUrl": "URL de exportacao",
+    "exportUrlForFeed": "URL para colar em {source} (não devolve os bloqueios dela mesma)",
+    "exportUrlGenericWarning": "Esta URL devolve a cada plataforma os seus próprios bloqueios. Use a URL de cada conexão, abaixo.",
     "exportUrlDesc": "Copie esta URL e cole no Airbnb/Booking para sincronizar",
     "checkInInstructions": "Instrucoes de check-in",
     "houseRules": "Regras da casa",

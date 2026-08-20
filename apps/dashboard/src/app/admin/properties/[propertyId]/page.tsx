@@ -99,6 +99,8 @@ interface Feed {
   feed_name: string;
   source: string;
   import_url: string;
+  /** Identifica a esta OTA en la URL de exportación, para no devolverle lo suyo. */
+  export_token?: string | null;
   last_sync_at: string | null;
   events_imported: number;
   last_sync_status: string | null;
@@ -1628,6 +1630,11 @@ function FeedsTab({
       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
         <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("exportUrl")}</p>
         <p className="text-xs text-neutral-400 dark:text-neutral-500 mb-3">{t("exportUrlDesc")}</p>
+        {/* Esta URL sigue funcionando, pero le devuelve a cada OTA sus propios
+            bloqueos. La de abajo, por conexión, no. */}
+        {feeds.some(f => f.export_token) && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{t("exportUrlGenericWarning")}</p>
+        )}
         <div className="flex items-center gap-2">
           <input
             readOnly
@@ -1769,6 +1776,32 @@ function FeedsTab({
                     <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400 break-words">
                       {f.last_sync_error}
                     </p>
+                  )}
+
+                  {/* La URL que hay que pegar EN ESTA OTA. A diferencia de la
+                      general, no le devuelve sus propios bloqueos — por eso en
+                      el calendario de Airbnb aparecían reservas "Por Parallly"
+                      que en realidad eran de Airbnb. */}
+                  {f.export_token && (
+                    <div className="mt-2">
+                      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1">
+                        {t("exportUrlForFeed", { source: f.source })}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          readOnly
+                          value={`${exportUrl}/${f.export_token}`}
+                          className="flex-1 px-2 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-300 font-mono"
+                        />
+                        <button
+                          onClick={() => navigator.clipboard.writeText(`${exportUrl}/${f.export_token}`)}
+                          className="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                          title="Copy"
+                        >
+                          <Copy size={13} className="text-neutral-500" />
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {/* Distinto del hold: ese frena una CAÍDA brusca. Esto avisa

@@ -554,7 +554,19 @@ export class IcalSyncService {
     /**
      * Generate .ics feed for a property (export to Airbnb/Booking)
      */
-    async generateFeed(schemaName: string, propertyId: string): Promise<string> {
+    /**
+     * El calendario que se le publica a UNA OTA.
+     *
+     * `excludeFeedId` es la capa B: a cada OTA se le oculta lo que ella misma nos
+     * mandó. Con una sola URL para todas, Airbnb recibía de vuelta sus propios
+     * bloqueos con nuestra etiqueta —de ahí los "Por Parallly" en su calendario—
+     * y no había forma de que distinguiera lo suyo de lo nuestro.
+     *
+     * Sin el parámetro se comporta como siempre. Es deliberado: las URLs que el
+     * dueño ya pegó en las extranets tienen que seguir funcionando, porque
+     * romperlas lo dejaría con el calendario ciego hasta que las cambie a mano.
+     */
+    async generateFeed(schemaName: string, propertyId: string, excludeFeedId?: string): Promise<string> {
         // Load property info
         const properties = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -566,8 +578,12 @@ export class IcalSyncService {
         // Load all blocks + bookings
         const blocks = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, check_in, check_out, source, summary, date_range_semantics FROM ical_blocks
-             WHERE property_id = $1::uuid AND is_deleted = false`,
+            excludeFeedId
+                ? `SELECT id, check_in, check_out, source, summary, date_range_semantics FROM ical_blocks
+                    WHERE property_id = $1::uuid AND is_deleted = false
+                      AND (feed_id IS NULL OR feed_id <> $2::uuid)`
+                : `SELECT id, check_in, check_out, source, summary, date_range_semantics FROM ical_blocks
+                    WHERE property_id = $1::uuid AND is_deleted = false`,
             [propertyId],
         );
 

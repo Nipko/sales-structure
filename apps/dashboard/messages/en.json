@@ -6499,6 +6499,8 @@
     "syncNow": "Sync now",
     "lastSync": "Last sync",
     "exportUrl": "Export URL",
+    "exportUrlForFeed": "URL to paste into {source} (it won't echo back its own blocks)",
+    "exportUrlGenericWarning": "This URL echoes each platform's own blocks back to it. Use the per-connection URL below.",
     "exportUrlDesc": "Copy this URL and paste it in Airbnb/Booking to sync",
     "checkInInstructions": "Check-in instructions",
     "houseRules": "House rules",

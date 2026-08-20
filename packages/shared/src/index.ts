@@ -31,6 +31,9 @@ export * from './effective-capability-contract';
 export * from './navigation-semantics';
 export * from './agent-skillset-policy';
 
+// ---- Plan gating for navigation: no visible option that ends in 403 ----
+export * from './navigation-plan-gate';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
 

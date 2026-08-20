@@ -357,6 +357,7 @@
       "managed": "Managed",
       "fiscalAdmin": "Electronic invoicing"
     },
+    "planLocked": "Not included in your plan",
     "expandSidebar": "Expand",
     "collapseSidebar": "Collapse",
     "novedades": "What's new"

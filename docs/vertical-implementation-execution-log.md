@@ -642,3 +642,28 @@ jest src/app.bootstrap.spec.ts               → 1/1 ✅ (DI limpio)
 jest apps/api      → 2588 passed / 286 suites, 0 fallos
 jest apps/dashboard → 161 passed / 20 suites, 0 fallos
 ```
+
+### U19 — P0 §8.3 · Ninguna opción visible termina en 403
+
+**Fase 2/4 · Épica D/G · Paquetes "Plan/readiness" y "Catálogo/pedidos"**
+
+**El menú no sabía qué plan tiene el tenant.** `canAccessDashboardNavigationPath` decidía por rol y por vertical, y por nada más. El backend sí gatea: `@RequireFeature` y `isFeatureEnabled` devuelven `feature_not_available` con 403. El resultado era una opción visible que al hacer clic no llevaba a ningún lado, y el dueño no aprendía que existe un plan que la incluye — aprendía que la aplicación falla.
+
+**ADR-028 — Candado, no ocultamiento.**
+Esconder la opción cumple la letra del criterio y pierde el producto: el dueño no se entera nunca de que la capacidad existe. La opción se muestra con candado y **cambia de destino**: lleva a Facturación en vez de a la pantalla que va a rechazarlo. La promesa del menú se cumple siempre, y el rótulo dice por qué.
+
+**ADR-029 — Desconocido no es denegado.**
+Si la consulta del plan no volvió, `navigationPlanDecision` devuelve `unknown` y no bloquea nada. Esconder medio menú porque una consulta falló es peor que un clic que rebota, y el backend enforza igual — no se abre ningún permiso al fallar abierto acá. Sólo un `false` **conocido** bloquea. Las claves de cupo se leen como las escribe el plan: `0` bloquea, `-1` es ilimitado.
+
+**Alcance deliberadamente chico:** sólo entran las rutas cuyo backend gatea la pantalla **entera** (`/admin/vehicles` → `vehicleInventory`, `/admin/settings/integrations/web-chat` → `widget`, `/admin/settings/recall` → `recall`). Una página donde el plan apaga una pestaña o un botón no entra: ahí la pantalla sirve igual y esconderla sería peor. Una prueba de contrato exige que toda ruta del mapa exista en el registro de navegación, así que el mapa no puede envejecer en silencio.
+
+**Catálogo/pedidos — la superficie de lectura, verificada.** La auditoría contó ocho perfiles que crean pedido; farmacia era el que no publicaba `/admin/orders` (U17). `catalog-order-surface.spec.ts` recorre las 76 configuraciones, toma las que declaran `catalog_search` y exige que **todas** publiquen Inventario **y** Pedidos. El writer ya era transaccional con snapshot del catálogo bloqueado, así que un cliente no puede bajar un precio ni inventar stock.
+
+**Pruebas** — `navigation-plan-gate.spec.ts` (9 casos): el mapa sólo apunta a rutas reales; una ruta sin gate no se toca; `false` bloquea; `true` abre; los cuatro sabores de "no se sabe" reportan `unknown` y no `locked`; los cupos numéricos se leen bien; query string y barra final no confunden; un path que no es string no rompe. Más `catalog-order-surface.spec.ts` (9 casos, uno por perfil de catálogo).
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard)  → exit 0
+jest apps/api      → 2597 passed / 287 suites, 0 fallos
+jest apps/dashboard → 172 passed / 21 suites, 0 fallos
+```

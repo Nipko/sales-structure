@@ -12,6 +12,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
+import { navigationPlanDecision } from "@parallext/shared";
 import { defaultLandingForRole } from "@/lib/roles";
 import { useQualityHealth } from "@/contexts/QualityHealthContext";
 import { getQualityAttentionCount } from "@/lib/quality-health";
@@ -98,6 +99,7 @@ import {
   LifeBuoy,
   BedDouble,
   Tags,
+  Lock,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -107,13 +109,15 @@ interface NavItemDef {
   labelKey: string;
   href?: string;
   icon: LucideIcon;
-  children?: { labelKey: string; href: string; capability?: keyof ReturnType<typeof useRole> }[];
+  children?: { labelKey: string; href: string; capability?: keyof ReturnType<typeof useRole>; planLocked?: boolean }[];
   /** Capability flag from useRole that gates visibility. Omit = always visible. */
   capability?: keyof ReturnType<typeof useRole>;
   /** Capability-backed vertical surface. Omit = visible for every vertical. */
   verticalItem?: VerticalDashboardItem;
   /** Accent color for primary/important items. Omit = neutral grey. */
   accent?: string;
+  /** El plan del tenant no incluye esta pantalla: candado y ruta a Facturación. */
+  planLocked?: boolean;
 }
 
 interface NavSectionDef {
@@ -468,7 +472,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
 
   const pathname = usePathname();
   const currentNavigationLocation = useCurrentNavigationLocation();
-  const { user, verticalConfig } = useAuth();
+  const { user, verticalConfig, planFeatures } = useAuth();
   const roleCtx = useRole();
   const { summary: qualityHealthSummary } = useQualityHealth();
   const { favorites } = useNavigationPreferences();
@@ -708,6 +712,19 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     return hasVerticalDashboardItem(verticalDashboard, item);
   };
 
+  /**
+   * Una opción que el plan no incluye no se esconde: se muestra con candado y
+   * lleva a Facturación.
+   *
+   * Esconderla haría que el dueño no se entere de que existe; dejarla como
+   * está la hace terminar en un 403 que se lee como que la aplicación falla.
+   * El destino cambia, así que la promesa del menú se cumple siempre.
+   */
+  const applyPlanGate = <T extends { href: string }>(item: T): T & { planLocked?: boolean } => {
+    if (navigationPlanDecision(item.href, planFeatures) !== 'locked') return item;
+    return { ...item, href: '/admin/settings/billing', planLocked: true };
+  };
+
   const canNavigatePath = (href: string): boolean => Boolean(roleCtx.role) && (
     canAccessDashboardNavigationPath(
       href,
@@ -741,11 +758,12 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
       const children = item.children
         ?.filter(child => !hiddenItems?.includes(child.labelKey))
         ?.filter(child => checkCapability(child.capability))
-        ?.filter(child => canNavigatePath(child.href));
+        ?.filter(child => canNavigatePath(child.href))
+        ?.map(applyPlanGate);
 
       // A destination remains useful even when all of its optional children are gated.
       if (item.children && !item.href && children?.length === 0) return visibleItems;
-      visibleItems.push({ ...item, children });
+      visibleItems.push({ ...applyPlanGate(item as NavItemDef & { href: string }), children });
       return visibleItems;
     }, []);
 
@@ -927,6 +945,12 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           )}
         </span>
         {expanded && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
+        {/* El candado dice por qué el destino no es el que el nombre promete:
+            el plan no la incluye, así que el enlace lleva a Facturación en vez
+            de a un 403. */}
+        {expanded && item.planLocked && (
+          <Lock size={12} aria-label={tNav("planLocked")} className="shrink-0 text-neutral-400 dark:text-neutral-500" />
+        )}
         {expanded && item.labelKey === "incidents" && criticalCount > 0 && (
           <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
             {criticalCount}

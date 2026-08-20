@@ -357,6 +357,7 @@
       "managed": "Gérés",
       "fiscalAdmin": "Facturation électronique"
     },
+    "planLocked": "Non inclus dans votre offre",
     "expandSidebar": "Agrandir",
     "collapseSidebar": "Réduire",
     "novedades": "Nouveautés"

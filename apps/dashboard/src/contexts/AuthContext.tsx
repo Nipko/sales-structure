@@ -65,6 +65,13 @@ interface AuthContextType {
     isAuthenticated: boolean;
     verticalConfig: any | null;
     isVerticalConfigLoading: boolean;
+    /**
+     * Las features del plan del tenant, para que el menú no ofrezca una
+     * pantalla que el backend va a rechazar con 403. `null` significa "todavía
+     * no se sabe", que NO es lo mismo que "no la tenés": mientras no se sepa,
+     * no se bloquea nada.
+     */
+    planFeatures: Record<string, unknown> | null;
     login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
     googleLogin: (idToken: string, rememberMe?: boolean) => Promise<GoogleLoginResult>;
     complete2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup' | 'sms', rememberMe?: boolean, trustDevice?: boolean, deviceInfo?: any) => Promise<LoginResult & { deviceTrustToken?: string }>;
@@ -99,6 +106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [showWarning, setShowWarning] = useState(false);
     const [showSessionConflict, setShowSessionConflict] = useState(false);
     const [verticalConfig, setVerticalConfig] = useState<any | null>(null);
+    const [planFeatures, setPlanFeatures] = useState<Record<string, unknown> | null>(null);
+    const planFeaturesTenantRef = useRef<string | null>(null);
     const [isVerticalConfigLoading, setIsVerticalConfigLoading] = useState(false);
     const router = useRouter();
     const pathname = usePathname();
@@ -176,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         }
                     }
                     fetchVerticalConfig(parsed.tenantId);
+                    fetchPlanFeatures(parsed.tenantId);
                 }
             } catch {
                 localStorage.removeItem("accessToken");
@@ -337,6 +347,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    /**
+     * Features del plan. Se piden junto con la config vertical porque las dos
+     * deciden lo mismo: qué entra al menú. Un fallo deja `null` a propósito —
+     * esconder medio menú porque una consulta no volvió es peor que un clic que
+     * rebota, y el backend enforza igual.
+     */
+    const fetchPlanFeatures = useCallback(async (tenantId: string) => {
+        if (planFeaturesTenantRef.current !== tenantId) {
+            planFeaturesTenantRef.current = null;
+            setPlanFeatures(null);
+        }
+        try {
+            const token = localStorage.getItem("accessToken");
+            if (!token) return;
+            const res = await fetch(`${API_URL}/persona/${tenantId}/plan-features`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data?.success && data.data && typeof data.data === 'object') {
+                planFeaturesTenantRef.current = tenantId;
+                setPlanFeatures(data.data as Record<string, unknown>);
+            }
+        } catch {
+            // Sin plan conocido no se bloquea nada.
+        }
+    }, []);
+
     // ── Auth methods ──
 
     const getRedirectPath = useCallback((userData: User): string => {
@@ -384,6 +422,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (data.data.user.tenantId) {
                 fetchVerticalConfig(data.data.user.tenantId);
+                fetchPlanFeatures(data.data.user.tenantId);
             }
 
             return { success: true, redirect: getRedirectPath(data.data.user) };
@@ -430,6 +469,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (data.data.user.tenantId) {
                 fetchVerticalConfig(data.data.user.tenantId);
+                fetchPlanFeatures(data.data.user.tenantId);
             }
 
             return { success: true, redirect: getRedirectPath(data.data.user) };
@@ -464,6 +504,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (data.data.user.tenantId) {
                 fetchVerticalConfig(data.data.user.tenantId);
+                fetchPlanFeatures(data.data.user.tenantId);
             }
 
             return { success: true, redirect: getRedirectPath(data.data.user), deviceTrustToken: data.data.deviceTrustToken };
@@ -567,6 +608,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isLoading,
                 isAuthenticated,
                 verticalConfig,
+                planFeatures,
                 isVerticalConfigLoading,
                 login,
                 googleLogin,

@@ -10,7 +10,7 @@ export type TenantPaymentStatus =
     | 'ambiguous';
 
 export interface PaymentReferenceTarget {
-    table: 'orders' | 'tour_bookings' | 'food_orders' | 'enrollments' | 'property_bookings';
+    table: 'orders' | 'tour_bookings' | 'food_orders' | 'enrollments' | 'property_bookings' | 'appointments';
     amountExpression: string;
     currencyExpression: string;
     join?: string;
@@ -38,10 +38,25 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
     // stay is charged exactly once for the amount the guest was quoted.
     property: {
         table: 'property_bookings',
-        amountExpression: 'target.total_price',
+        // `amount_due` es lo que hay que pagar PARA CONFIRMAR, que no siempre es
+        // el total: cuando el dueño configuró un anticipo, cobrar `total_price`
+        // le sacaría al huésped el 100% de algo que se le ofreció al 30%.
+        // NULL cuando se cobra todo, y ahí manda el total de siempre.
+        amountExpression: 'COALESCE(target.amount_due, target.total_price)',
         currencyExpression: 'target.currency',
         rejectedStatuses: ['cancelled', 'refunded'],
         description: entityId => `Pago de reserva de alojamiento ${entityId.slice(0, 8)}`,
+    },
+    // La venta más común de la plataforma (salud, belleza, estética) y la única
+    // que no se podía cobrar: no existía el tipo. El importe sale del servicio,
+    // salvo que la cita lleve una seña fijada en `amount_due`.
+    appointment: {
+        table: 'appointments',
+        amountExpression: 'COALESCE(target.amount_due, service.price)',
+        currencyExpression: 'service.currency',
+        join: 'LEFT JOIN services service ON service.id = target.service_id',
+        rejectedStatuses: ['cancelled', 'no_show', 'completed'],
+        description: entityId => `Pago de cita ${entityId.slice(0, 8)}`,
     },
     food: {
         table: 'food_orders',

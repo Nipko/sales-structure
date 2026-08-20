@@ -2579,6 +2579,14 @@ export class AIToolExecutorService {
 
             return {
                 success: true,
+                // La estadía existe pero NO está confirmada: el dueño exige pago
+                // y el cupo sigue a la venta. Va al tope del resultado porque de
+                // acá salen la directiva del turno y el guardrail de reclamos —
+                // sin esto el agente decía "quedó confirmada" sobre algo que
+                // nadie pagó.
+                awaitingPayment: (booking as any).awaitingPayment === true,
+                amountDueToConfirm: (booking as any).amountDueToConfirm,
+                paymentChoice: (booking as any).paymentChoice,
                 booking: {
                     id: booking.id,
                     propertyId: args.propertyId,

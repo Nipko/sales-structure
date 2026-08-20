@@ -5,11 +5,15 @@ import { VacationRentalController } from './vacation-rental.controller';
 import { IcalFeedController } from './ical-feed.controller';
 import { IcalExportPublicController } from './ical-export-public.controller';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
+import { BookingPaymentListener } from './booking-payment.listener';
 
 @Module({
     imports: [EmailTemplatesModule],
     controllers: [VacationRentalController, IcalFeedController, IcalExportPublicController],
-    providers: [PropertiesService, IcalSyncService],
+    // El listener del cobro vive acá y no en tenant-payments: cada vertical
+    // sabe qué significa "confirmar" lo suyo, y así el módulo de cobros no
+    // necesita conocer a ninguna.
+    providers: [PropertiesService, IcalSyncService, BookingPaymentListener],
     exports: [PropertiesService, IcalSyncService],
 })
 export class VacationRentalModule {}

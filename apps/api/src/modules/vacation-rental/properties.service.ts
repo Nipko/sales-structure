@@ -13,6 +13,11 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import {
+    OCCUPANCY_EXCLUDED_SQL,
+    PENDING_PAYMENT_STATUS,
+    resolvePaymentPolicy,
+} from '../../common/utils/payment-policy.util';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -227,11 +232,17 @@ export class PropertiesService {
                            ELSE check_out > $2::date END
                 UNION ALL
                 SELECT 'direct' as source, check_in, check_out FROM property_bookings
-                WHERE property_id = $1::uuid AND status != 'cancelled'
+                WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
                   AND check_in < $3::date AND check_out > $2::date
             ) conflicts LIMIT 1`,
             [propertyId, stay.checkIn, stay.checkOut],
         );
+
+        const totalPrice = Number(property.night_price) * stay.nights + Number(property.cleaning_fee);
+        // La política viaja con la disponibilidad porque es lo que el agente
+        // necesita ANTES de confirmar: si hay que pagar, no puede decir
+        // "confirmada" — tiene que decir que queda pendiente y mandar el enlace.
+        const paymentPolicy = resolvePaymentPolicy(property, totalPrice);
 
         return {
             available: !conflicts || conflicts.length === 0,
@@ -239,9 +250,12 @@ export class PropertiesService {
             nightPrice: Number(property.night_price),
             nights: stay.nights,
             cleaningFee: Number(property.cleaning_fee),
-            totalPrice: Number(property.night_price) * stay.nights + Number(property.cleaning_fee),
+            totalPrice,
             currency: property.currency,
             minNights: property.min_nights,
+            requiresPaymentToConfirm: paymentPolicy.requiresPayment,
+            amountDueToConfirm: paymentPolicy.dueAmount,
+            paymentChoice: paymentPolicy.customerChooses ? 'deposit_or_full' : undefined,
         };
     }
 
@@ -276,7 +290,7 @@ export class PropertiesService {
                     2::smallint as date_range_semantics,
                     ${BOOKING_ORIGIN_SQL} as origin
                FROM property_bookings
-             WHERE property_id = $1::uuid AND status != 'cancelled'
+             WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
                AND check_in < $3::date AND check_out > $2::date`,
             [propertyId, startDate, nextMonthStart],
         );
@@ -354,7 +368,7 @@ export class PropertiesService {
                                 ELSE check_out > $2::date END
                     UNION ALL
                     SELECT 'direct' AS source FROM property_bookings
-                     WHERE property_id = $1::uuid AND status != 'cancelled'
+                     WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
                        AND check_in < $3::date AND check_out > $2::date
                  ) conflicts LIMIT 1`,
                 [propertyId, checkIn, requestedCheckOut],
@@ -452,7 +466,7 @@ export class PropertiesService {
                                ELSE check_out > $2::date END
                     UNION ALL
                     SELECT 'direct' as source, check_in, check_out FROM property_bookings
-                    WHERE property_id = $1::uuid AND status != 'cancelled'
+                    WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
                       AND check_in < $3::date AND check_out > $2::date
                  ) conflicts LIMIT 1`,
                 [propertyId, stay.checkIn, stay.checkOut],
@@ -467,22 +481,35 @@ export class PropertiesService {
             const nightPrice = Number(property.night_price ?? 0);
             const cleaningFee = Number(property.cleaning_fee ?? 0);
             const totalPrice = nightPrice * stay.nights + cleaningFee;
+            // Si el dueño exige pago para confirmar, la estadía nace pendiente y
+            // NO ocupa la fecha (decisión del dueño: gana el que pague primero).
+            // El listener del cobro la confirma, revalidando disponibilidad.
+            const policy = resolvePaymentPolicy(property, totalPrice);
+            const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS : 'confirmed';
+            // Sólo cuando es un anticipo: el resolvedor de cobros lee esta
+            // columna con COALESCE, así que dejarla en NULL cobra el total.
+            const amountDue = policy.requiresPayment
+                && policy.dueAmount != null
+                && policy.dueAmount < totalPrice
+                ? policy.dueAmount : null;
             const rows = await query<any[]>(
                 `INSERT INTO property_bookings
                  (property_id, contact_id, opportunity_id, conversation_id, guest_name, guest_email, guest_phone,
-                  guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, status)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, 'confirmed')
+                  guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, status,
+                  amount_due)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17)
                  RETURNING *`,
                 [
                     propertyId,
                     canonicalContactId, opportunityId, data.conversationId || null,
                     data.guestName, data.guestEmail || null, data.guestPhone || null,
                     guestsCount, stay.checkIn, stay.checkOut,
-                    stay.nights, nightPrice, cleaningFee, totalPrice, property.currency,
+                    stay.nights, nightPrice, cleaningFee, totalPrice, property.currency, status,
+                    amountDue,
                 ],
             );
             if (!rows?.[0]) throw new Error('Property booking was not created');
-            return { booking: rows[0], property };
+            return { booking: rows[0], property, policy };
         });
 
         const booking = created.booking;
@@ -532,7 +559,16 @@ export class PropertiesService {
             this.logger.warn(`Booking confirmation email failed: ${e.message}`);
         }
 
-        return booking;
+        // La política viaja con la reserva porque quien la lee —la herramienta,
+        // y a través de ella el agente— tiene que saber que esto NO está
+        // confirmado todavía. Sin esto el agente decía "quedó confirmada" sobre
+        // una estadía que nadie pagó y que ni siquiera ocupa la fecha.
+        return {
+            ...booking,
+            awaitingPayment: created.policy.requiresPayment,
+            amountDueToConfirm: created.policy.requiresPayment ? created.policy.dueAmount : undefined,
+            paymentChoice: created.policy.customerChooses ? 'deposit_or_full' : undefined,
+        };
     }
 
     async cancelBooking(schemaName: string, bookingId: string): Promise<void> {

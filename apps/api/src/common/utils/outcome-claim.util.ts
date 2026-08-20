@@ -124,6 +124,12 @@ export function auditTurnClaim(
         typeof call?.name === 'string'
         && isBacking(call.name)
         && toolResultSucceeded(call.result)
+        // Escrita pero NO confirmada: el dueño exige pago y el cupo sigue a la
+        // venta. La operación existe —por eso `toolResultSucceeded` es true— y
+        // aun asi no respalda un "quedó confirmada": sin esta linea el guardrail
+        // avalaba exactamente la mentira que la politica de pago existe para
+        // evitar.
+        && (call.result as any)?.awaitingPayment !== true
     ));
     return { claimed, backed, falseClaim: claimed && !backed };
 }

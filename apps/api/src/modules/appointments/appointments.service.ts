@@ -17,6 +17,11 @@ import {
     wallClockEpoch,
 } from './appointment-capacity.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import {
+    OCCUPANCY_EXCLUDED_SQL,
+    PENDING_PAYMENT_STATUS,
+    resolvePaymentPolicy,
+} from '../../common/utils/payment-policy.util';
 
 export interface Appointment {
     id: string;
@@ -328,6 +333,10 @@ export class AppointmentsService {
 
         const id = randomUUID();
         let canonicalServiceName = data.serviceName;
+        // Se declara fuera de la transacción porque el llamador necesita saber
+        // si la cita quedó pendiente de pago: es lo que impide que el agente
+        // diga "tu cita quedó confirmada" sobre algo que nadie pagó.
+        let policy = resolvePaymentPolicy(null, 0);
         try {
             await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 const contactIdUuid = await requireTenantContact(query, requestedContactId);
@@ -344,23 +353,39 @@ export class AppointmentsService {
                     endAt,
                 });
                 canonicalServiceName = service.name;
+                // Si el servicio exige pago para confirmarse, la cita nace
+                // pendiente y NO ocupa el turno (decisión del dueño: gana quien
+                // pague primero). El estado se pasa explícito porque el default
+                // de la columna es 'pending', que significa otra cosa —
+                // "agendada, falta que el negocio la confirme"— y sí ocupa.
+                policy = resolvePaymentPolicy(service, service?.price);
+                const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS : 'pending';
+                const amountDue = policy.requiresPayment
+                    && policy.dueAmount != null
+                    && policy.dueAmount < policy.totalAmount
+                    ? policy.dueAmount : null;
                 await query(
                     `INSERT INTO appointments
                         (id, contact_id, opportunity_id, conversation_id, assigned_to, service_id, service_name,
                          start_at, end_at, location, notes, metadata, customer_name,
-                         customer_phone, customer_email, source, created_at, updated_at)
+                         customer_phone, customer_email, source, status, amount_due, created_at, updated_at)
                      VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $7,
                              $8::timestamp, $9::timestamp, $10, $11, $12::jsonb, $13,
-                             $14, $15, $16, NOW(), NOW())`,
+                             $14, $15, $16, $17, $18, NOW(), NOW())`,
                     [
                         id, contactIdUuid, opportunityId, conversationIdUuid, assignedToUuid, serviceIdUuid,
                         canonicalServiceName, startAt, endAt, data.location || null,
                         data.notes || null, JSON.stringify(data.metadata || {}),
                         data.customerName || null, data.customerPhone || null,
                         data.customerEmail || null, data.source || 'manual',
+                        status, amountDue,
                     ],
                 );
-                await this.calendarOutbox.enqueueWithQuery(query, id, 'upsert');
+                // Una cita impaga no se sincroniza al calendario del profesional:
+                // taparía su agenda con algo que todavía está a la venta.
+                if (!policy.requiresPayment) {
+                    await this.calendarOutbox.enqueueWithQuery(query, id, 'upsert');
+                }
             });
         } catch (error) {
             if (error instanceof AppointmentSlotConflictError) {
@@ -384,7 +409,15 @@ export class AppointmentsService {
         // Emit event for WhatsApp confirmation
         this.eventEmitter.emit('appointment.created', { schemaName, appointment });
 
-        return appointment;
+        // La política viaja con la cita: quien la lee —la herramienta, y a
+        // través de ella el agente— tiene que saber que esto NO está confirmado
+        // y que el turno sigue disponible para otros hasta que entre el pago.
+        return {
+            ...appointment,
+            awaitingPayment: policy.requiresPayment,
+            amountDueToConfirm: policy.requiresPayment ? policy.dueAmount : undefined,
+            paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
+        } as Appointment;
     }
 
     async update(schemaName: string, appointmentId: string, data: {
@@ -807,7 +840,7 @@ export class AppointmentsService {
         // Filter out existing appointments on that date
         const existing = await this.prisma.executeInTenantSchema(schemaName,
             `SELECT assigned_to, start_at, end_at FROM appointments
-             WHERE start_at::date = $1::date AND status NOT IN ('cancelled')`,
+             WHERE start_at::date = $1::date AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})`,
             [date],
         ) as any[];
 
@@ -843,7 +876,7 @@ export class AppointmentsService {
         let sql = `
             SELECT COUNT(*) as cnt FROM appointments
             WHERE assigned_to = $1::uuid
-              AND status NOT IN ('cancelled')
+              AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
               AND start_at < $3::timestamp
               AND end_at > $2::timestamp
         `;
@@ -999,7 +1032,7 @@ export class AppointmentsService {
         // 3. Get existing appointments
         const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT assigned_to, service_id, start_at, end_at FROM appointments
-             WHERE start_at::date = $1::date AND status NOT IN ('cancelled')`, [dateStr],
+             WHERE start_at::date = $1::date AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})`, [dateStr],
         );
 
         // 4. Generate slots

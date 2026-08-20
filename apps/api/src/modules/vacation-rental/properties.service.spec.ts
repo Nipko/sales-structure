@@ -252,7 +252,7 @@ describe('PropertiesService reservations', () => {
             guestsCount: 2,
             checkIn: '2026-08-10',
             checkOut: '2026-08-12',
-        })).resolves.toBe(booking);
+        })).resolves.toMatchObject(booking);
 
         expect(transactionInTenantSchema).toHaveBeenCalledWith(schemaName, expect.any(Function));
         expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
@@ -295,7 +295,7 @@ describe('PropertiesService reservations', () => {
             guestName: 'Ana',
             checkIn: '2026-08-10',
             checkOut: '2026-08-11',
-        })).resolves.toBe(booking);
+        })).resolves.toMatchObject(booking);
 
         expect(String(query.mock.calls[0][0])).toContain('FROM contacts');
         const insertCall = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO property_bookings'))!;

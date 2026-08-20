@@ -327,11 +327,29 @@ describe('TenantPaymentsService', () => {
     it('rejects a malformed or unsupported reference before querying a tenant schema', async () => {
         const { service, prisma } = harness();
 
-        await expect(service.resolveOwnedReference(TENANT, CONTACT, `appointment:${ORDER}`)).resolves.toBeNull();
+        // 'appointment' dejó de servir como ejemplo de tipo no soportado: las
+        // citas ahora se cobran (son la venta más común de la plataforma y eran
+        // la única entidad vendible sin riel de pago). Se usa uno que de verdad
+        // no existe.
+        await expect(service.resolveOwnedReference(TENANT, CONTACT, `membership:${ORDER}`)).resolves.toBeNull();
         await expect(service.resolveOwnedReference(TENANT, CONTACT, 'order:not-a-uuid')).resolves.toBeNull();
 
         expect(prisma.getTenantSchemaName).not.toHaveBeenCalled();
         expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('acepta una cita como referencia pagable', async () => {
+        const { service, prisma } = harness();
+
+        await service.resolveOwnedReference(TENANT, CONTACT, `appointment:${ORDER}`);
+
+        // Lo que importa es que llegue a consultar el schema: el tipo existe.
+        expect(prisma.getTenantSchemaName).toHaveBeenCalled();
+        expect(prisma.executeInTenantSchema).toHaveBeenCalledWith(
+            'tenant_schema',
+            expect.stringContaining('appointments'),
+            [ORDER, CONTACT],
+        );
     });
 
     it('creates a tenant-owned Checkout Pro preference with a recoverable operation id', async () => {

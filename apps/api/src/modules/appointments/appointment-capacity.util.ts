@@ -1,3 +1,5 @@
+import { OCCUPANCY_EXCLUDED_SQL } from '../../common/utils/payment-policy.util';
+
 export type AppointmentTenantQuery = <T = unknown>(sql: string, params?: unknown[]) => Promise<T>;
 
 export class AppointmentSlotConflictError extends Error {
@@ -31,6 +33,12 @@ export interface ActiveAppointmentService {
     id: string;
     name: string;
     maxConcurrent: number;
+    /** Precio del servicio y política de pago, leídos bajo el mismo lock. */
+    price?: unknown;
+    currency?: unknown;
+    payment_policy?: unknown;
+    deposit_percent?: unknown;
+    deposit_amount?: unknown;
 }
 
 export function localDatePart(value: string): string {
@@ -96,7 +104,12 @@ export async function lockAndAssertAppointmentCapacity(
     }
 
     const services = await query<any[]>(
-        `SELECT id, name, COALESCE(max_concurrent, 1)::int AS max_concurrent
+        // La política de pago viaja con el servicio bloqueado, en la misma
+        // consulta que ya decide la capacidad: quien crea la cita necesita saber
+        // si nace confirmada o pendiente de pago, y pedirla aparte abriría una
+        // ventana entre el bloqueo y la lectura.
+        `SELECT id, name, COALESCE(max_concurrent, 1)::int AS max_concurrent,
+                price, currency, payment_policy, deposit_percent, deposit_amount
          FROM services
          WHERE id = $1::uuid AND is_active = true
          LIMIT 1
@@ -112,7 +125,7 @@ export async function lockAndAssertAppointmentCapacity(
         const staffConflict = await query<any[]>(
             `SELECT id
              FROM appointments
-             WHERE status NOT IN ('cancelled')
+             WHERE status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
                AND start_at < $1::timestamp
                AND end_at > $2::timestamp
                AND assigned_to = $3::uuid
@@ -128,7 +141,7 @@ export async function lockAndAssertAppointmentCapacity(
     const occupancy = await query<Array<{ occupied: number }>>(
         `SELECT COUNT(*)::int AS occupied
          FROM appointments
-         WHERE status NOT IN ('cancelled')
+         WHERE status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
            AND start_at < $1::timestamp
            AND end_at > $2::timestamp
            AND service_id = $3::uuid
@@ -144,5 +157,10 @@ export async function lockAndAssertAppointmentCapacity(
         id: services[0].id,
         name: services[0].name,
         maxConcurrent,
+        price: services[0].price,
+        currency: services[0].currency,
+        payment_policy: services[0].payment_policy,
+        deposit_percent: services[0].deposit_percent,
+        deposit_amount: services[0].deposit_amount,
     };
 }

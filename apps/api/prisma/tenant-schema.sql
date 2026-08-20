@@ -3870,6 +3870,68 @@ ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings"
     ADD COLUMN IF NOT EXISTS "payment_status" VARCHAR(20) DEFAULT 'pending';
 ALTER TABLE "{{SCHEMA_NAME}}"."orders" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 
+-- =====================================================================
+-- Política de confirmación por ítem vendible
+-- =====================================================================
+-- El dueño decide, POR PRODUCTO O SERVICIO, si confirmarlo exige pago. Sin
+-- esto el agente confirmaba todo al instante y recién después salía a buscar el
+-- enlace de pago — le decía al huésped "tu reserva quedó confirmada" y después
+-- le pedía que pagara, que es exactamente al revés.
+--
+--   payment_policy:  'none'    — se confirma sin pago (comportamiento actual)
+--                    'full'    — exige el total
+--                    'deposit' — exige un anticipo
+--                    'any'     — el cliente elige entre total y anticipo
+--   deposit_percent: 1-100, el anticipo como % del total
+--   deposit_amount:  anticipo de monto fijo (gana sobre el porcentaje si están
+--                    los dos, para que el dueño pueda fijar "50.000 y listo")
+--
+-- Sin CHECK a propósito: `ADD CONSTRAINT` no admite IF NOT EXISTS y un deploy
+-- que corre dos veces fallaría. La validación vive en la capa de servicio, que
+-- además puede explicar el error.
+--
+-- Estrictamente aditivo y con default 'none': un tenant que no toque nada se
+-- comporta igual que antes.
+--
+-- `amount_due` en la operación es lo que vuelve REAL al anticipo: el resolvedor
+-- de cobros del tenant saca el importe de `total_price`, así que sin esta
+-- columna un "anticipo del 30%" habría cobrado el 100% — una mentira peor que
+-- no ofrecer anticipos. Queda NULL cuando se cobra todo.
+ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings"
+    ADD COLUMN IF NOT EXISTS "amount_due" DECIMAL(15,2);
+
+-- Una cita es lo que más se vende en la plataforma (salud, belleza, estética) y
+-- era la única entidad vendible sin `payment_status`: el resolvedor de cobros
+-- del tenant no tenía dónde escribir, así que una cita no se podía cobrar. Con
+-- esto y el tipo pagable 'appointment' se puede exigir seña para confirmar.
+--
+-- OJO con el vocabulario: el default de `appointments.status` es 'pending', que
+-- significa "agendada, falta que el negocio la confirme" y SÍ ocupa el turno.
+-- 'pending_payment' es otra cosa y no ocupa nada. No se conflacionan.
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments"
+    ADD COLUMN IF NOT EXISTS "payment_status" VARCHAR(20) DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS "amount_due" DECIMAL(15,2);
+DO $payment_policy_columns$
+DECLARE
+    sellable TEXT;
+BEGIN
+    FOREACH sellable IN ARRAY ARRAY['properties', 'services', 'tour_packages', 'products', 'courses']
+    LOOP
+        IF EXISTS (
+            SELECT 1 FROM information_schema.tables
+             WHERE table_schema = '{{SCHEMA_NAME}}' AND table_name = sellable
+        ) THEN
+            EXECUTE format(
+                'ALTER TABLE %I.%I
+                    ADD COLUMN IF NOT EXISTS payment_policy VARCHAR(16) DEFAULT ''none'',
+                    ADD COLUMN IF NOT EXISTS deposit_percent SMALLINT,
+                    ADD COLUMN IF NOT EXISTS deposit_amount DECIMAL(15,2)',
+                '{{SCHEMA_NAME}}', sellable);
+        END IF;
+    END LOOP;
+END
+$payment_policy_columns$;
+
 DO $native_evidence_opportunity_fks$
 DECLARE
     evidence_table TEXT;

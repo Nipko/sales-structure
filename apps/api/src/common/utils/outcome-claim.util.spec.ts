@@ -121,4 +121,27 @@ describe('auditTurnClaim', () => {
         );
         expect(audit.falseClaim).toBe(false);
     });
+    it('una operación escrita pero pendiente de pago NO respalda un "confirmada"', () => {
+        // El dueño exigió pago para confirmar y el cupo sigue a la venta. La
+        // escritura ocurrió —por eso el resultado dice success— y aun así
+        // afirmar que quedó confirmada es exactamente la mentira que la
+        // política de pago existe para evitar.
+        const audit = auditTurnClaim(
+            'Listo, tu reserva quedó confirmada del 13 al 19 de noviembre.',
+            [{ name: 'create_property_booking', result: { success: true, awaitingPayment: true, booking: { id: 'b1' } } }],
+        );
+
+        expect(audit.claimed).toBe(true);
+        expect(audit.backed).toBe(false);
+        expect(audit.falseClaim).toBe(true);
+    });
+
+    it('la misma operación ya pagada sí lo respalda', () => {
+        const audit = auditTurnClaim(
+            'Listo, tu reserva quedó confirmada del 13 al 19 de noviembre.',
+            [{ name: 'create_property_booking', result: { success: true, awaitingPayment: false, booking: { id: 'b1' } } }],
+        );
+
+        expect(audit.falseClaim).toBe(false);
+    });
 });

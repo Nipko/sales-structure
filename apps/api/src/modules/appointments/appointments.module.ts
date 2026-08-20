@@ -12,6 +12,7 @@ import { ChannelsModule } from '../channels/channels.module';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { IdentityModule } from '../identity/identity.module';
+import { AppointmentPaymentListener } from './appointment-payment.listener';
 
 @Module({
     imports: [
@@ -24,6 +25,9 @@ import { IdentityModule } from '../identity/identity.module';
     providers: [
         AppointmentsService, ServicesService, CalendarIntegrationService,
         CalendarSyncOutboxService, AppointmentRemindersService, AppointmentNotificationsService,
+        // Cada vertical sabe qué significa "confirmar" lo suyo; el módulo de
+        // cobros no necesita conocer a ninguna.
+        AppointmentPaymentListener,
     ],
     exports: [AppointmentsService, ServicesService, CalendarIntegrationService, CalendarSyncOutboxService],
 })

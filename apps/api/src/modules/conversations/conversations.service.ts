@@ -197,26 +197,30 @@ const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).to
 // confirmed. Deterministic layer, so i18n'd here like HANDOFF_MSG. The failure
 // wording is deliberate: the model is told not to claim success, because the
 // whole point of executing server-side is that the outcome is no longer a guess.
-const EXECUTED_OPERATION_MSG: Record<string, { done: string; doneNoDetails: string; failed: string }> = {
+const EXECUTED_OPERATION_MSG: Record<string, { done: string; doneNoDetails: string; failed: string; awaitingPayment: string }> = {
     es: {
         done: 'La operación que el cliente acaba de confirmar YA quedó realizada. Confírmasela con naturalidad usando estos datos reales:',
         doneNoDetails: 'La operación que el cliente acaba de confirmar YA quedó realizada. Confírmasela con naturalidad.',
         failed: 'La operación NO se pudo completar. Explícaselo al cliente con claridad, NO afirmes que quedó hecha, y ofrécele una alternativa concreta. Motivo interno (no lo cites textualmente): {reason}',
+        awaitingPayment: 'La solicitud quedó registrada pero NO está confirmada: este ítem requiere pago para confirmarse, y las fechas siguen disponibles para otros hasta que el pago se acredite. NO digas que quedó confirmada ni reservada. Decile con naturalidad qué falta pagar y pasale el enlace de pago. Datos reales:',
     },
     en: {
         done: 'The operation the customer just confirmed HAS been completed. Confirm it naturally using these real details:',
         doneNoDetails: 'The operation the customer just confirmed HAS been completed. Confirm it naturally.',
         failed: 'The operation could NOT be completed. Explain it clearly, do NOT claim it is done, and offer a concrete alternative. Internal reason (do not quote it verbatim): {reason}',
+        awaitingPayment: 'The request was recorded but is NOT confirmed: this item requires payment to be confirmed, and the dates stay available to others until the payment clears. Do NOT say it is confirmed or booked. Tell them naturally what is left to pay and send the payment link. Real details:',
     },
     pt: {
         done: 'A operação que o cliente acabou de confirmar JÁ foi realizada. Confirme com naturalidade usando estes dados reais:',
         doneNoDetails: 'A operação que o cliente acabou de confirmar JÁ foi realizada. Confirme com naturalidade.',
         failed: 'A operação NÃO pôde ser concluída. Explique com clareza, NÃO afirme que está feita e ofereça uma alternativa concreta. Motivo interno (não cite textualmente): {reason}',
+        awaitingPayment: 'A solicitação foi registrada mas NÃO está confirmada: este item exige pagamento para se confirmar, e as datas seguem disponíveis para outros até o pagamento ser compensado. NÃO diga que está confirmada nem reservada. Diga com naturalidade o que falta pagar e envie o link de pagamento. Dados reais:',
     },
     fr: {
         done: "L'opération que le client vient de confirmer A ÉTÉ réalisée. Confirmez-la naturellement avec ces données réelles :",
         doneNoDetails: "L'opération que le client vient de confirmer A ÉTÉ réalisée. Confirmez-la naturellement.",
         failed: "L'opération n'a PAS pu être effectuée. Expliquez-le clairement, n'affirmez PAS qu'elle est faite et proposez une alternative concrète. Raison interne (ne la citez pas telle quelle) : {reason}",
+        awaitingPayment: "La demande a été enregistrée mais n'est PAS confirmée : cet article exige un paiement pour être confirmé, et les dates restent disponibles pour d'autres jusqu'à ce que le paiement soit encaissé. Ne dites PAS qu'elle est confirmée ni réservée. Dites naturellement ce qu'il reste à payer et envoyez le lien de paiement. Données réelles :",
     },
 };
 
@@ -3280,6 +3284,12 @@ export class ConversationsService {
             return T.failed.replace('{reason}', reason);
         }
         const facts = this.describeOperationResult(result);
+        // La operación se escribió, pero el dueño exige pago para confirmarla y
+        // el cupo sigue a la venta. "Realizada" y "confirmada" no son lo mismo:
+        // sin esta rama el agente cerraba la venta que todavia no ocurrio.
+        if (result?.awaitingPayment === true) {
+            return facts ? `${T.awaitingPayment}\n${facts}` : T.awaitingPayment;
+        }
         return facts ? `${T.done}\n${facts}` : T.doneNoDetails;
     }
 

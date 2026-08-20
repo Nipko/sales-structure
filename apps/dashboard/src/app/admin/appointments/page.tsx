@@ -39,6 +39,7 @@ import {
   AlertTriangle,
   RefreshCw,
 } from "lucide-react";
+import { readPaymentPolicy } from "@/components/payments/payment-policy-fields";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -209,6 +210,9 @@ export default function AppointmentsPage() {
     locationType: "in_person",
     locationAddress: "",
     meetingLink: "",
+    paymentPolicy: "none" as "none" | "full" | "deposit" | "any",
+    depositPercent: null as number | null,
+    depositAmount: null as number | null,
   });
   const [savingService, setSavingService] = useState(false);
 
@@ -733,7 +737,7 @@ export default function AppointmentsPage() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: "", duration: 30, durationMax: null, durationType: "fixed", buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, rebookAfterDays: null, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "" });
+    setServiceForm({ name: "", duration: 30, durationMax: null, durationType: "fixed", buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, rebookAfterDays: null, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "", paymentPolicy: "none", depositPercent: null, depositAmount: null });
     setShowServiceModal(true);
   };
 
@@ -754,6 +758,8 @@ export default function AppointmentsPage() {
       locationType: (svc as any).locationType || (svc as any).location_type || "in_person",
       locationAddress: (svc as any).locationAddress || (svc as any).location_address || "",
       meetingLink: (svc as any).meetingLink || (svc as any).meeting_link || "",
+      // Sin esto, editar un servicio con anticipo lo devolvia a "sin pago".
+      ...readPaymentPolicy(svc),
     });
     setShowServiceModal(true);
   };

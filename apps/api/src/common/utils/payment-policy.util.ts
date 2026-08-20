@@ -107,6 +107,65 @@ export function resolvePaymentPolicy(
     };
 }
 
+/**
+ * Valida lo que el dueño mandó desde el panel y lo normaliza a columnas.
+ *
+ * La validación vive acá y no en un CHECK de la base porque `ADD CONSTRAINT` no
+ * admite `IF NOT EXISTS` y un deploy que corre dos veces fallaría — y porque un
+ * mensaje explicando qué falta vale más que un 23514.
+ *
+ * Devuelve `error` en vez de tirar para que cada servicio lance la excepción de
+ * su framework sin que este archivo dependa de ninguno.
+ */
+export function validatePaymentPolicyInput(data: {
+    paymentPolicy?: unknown;
+    depositPercent?: unknown;
+    depositAmount?: unknown;
+}): { error?: string; values: { payment_policy?: string; deposit_percent?: number | null; deposit_amount?: number | null } } {
+    const values: { payment_policy?: string; deposit_percent?: number | null; deposit_amount?: number | null } = {};
+
+    if (data.paymentPolicy !== undefined) {
+        const mode = String(data.paymentPolicy ?? '').trim().toLowerCase();
+        if (!MODES.has(mode)) {
+            return { error: `La política de pago debe ser una de: ${[...MODES].join(', ')}.`, values };
+        }
+        values.payment_policy = mode;
+    }
+
+    const readOptionalNumber = (raw: unknown): number | null | undefined => {
+        if (raw === undefined) return undefined;
+        if (raw === null || raw === '') return null;
+        const n = toNumber(raw);
+        return n === null ? NaN : n;
+    };
+
+    const percent = readOptionalNumber(data.depositPercent);
+    if (percent !== undefined) {
+        if (percent !== null && (Number.isNaN(percent) || percent <= 0 || percent > 100)) {
+            return { error: 'El anticipo por porcentaje debe estar entre 1 y 100.', values };
+        }
+        values.deposit_percent = percent;
+    }
+
+    const amount = readOptionalNumber(data.depositAmount);
+    if (amount !== undefined) {
+        if (amount !== null && (Number.isNaN(amount) || amount <= 0)) {
+            return { error: 'El anticipo de monto fijo debe ser mayor que cero.', values };
+        }
+        values.deposit_amount = amount;
+    }
+
+    // Pedir anticipo sin decir cuánto se acepta en la base (una fila vieja
+    // degrada a cobrar el total), pero desde el panel se rechaza: el dueño cree
+    // que configuró un anticipo y le estaríamos cobrando todo al cliente.
+    const needsDeposit = values.payment_policy === 'deposit' || values.payment_policy === 'any';
+    if (needsDeposit && !values.deposit_percent && !values.deposit_amount) {
+        return { error: 'Para pedir un anticipo hay que indicar el porcentaje o el monto.', values };
+    }
+
+    return { values };
+}
+
 /** Lo que se le cuenta al agente para que sepa cómo proceder antes de confirmar. */
 export function describePaymentPolicy(policy: ResolvedPaymentPolicy): string | undefined {
     if (!policy.requiresPayment) return undefined;

@@ -1,4 +1,31 @@
 {
+  "paymentPolicy": {
+    "title": "How it gets confirmed",
+    "subtitle": "Decide whether the agent can confirm it right away or has to charge first.",
+    "mode": {
+      "none": {
+        "label": "No payment",
+        "help": "The agent confirms it on the spot. This is how it works today."
+      },
+      "full": {
+        "label": "Full payment",
+        "help": "Confirmed only once the customer pays in full."
+      },
+      "deposit": {
+        "label": "Deposit",
+        "help": "Confirmed with a deposit; the rest stays pending."
+      },
+      "any": {
+        "label": "Deposit or full",
+        "help": "The customer chooses how much to pay to confirm."
+      }
+    },
+    "depositPercent": "Deposit (%)",
+    "depositAmount": "Deposit (fixed amount)",
+    "depositHint": "If you fill both, the fixed amount wins.",
+    "depositRequired": "Set the deposit percentage or amount. Without it the customer would be charged the full price.",
+    "slotNotHeld": "Until it is paid, the date stays available to others: first to pay wins. If someone pays and there is no room left, we will tell you so you can decide."
+  },
   "tenantPayments": {
     "title": "Charge your customers",
     "subtitle": "Connect Wompi or Mercado Pago to collect orders, deposits, and bookings with verified links",

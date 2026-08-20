@@ -4,6 +4,10 @@ import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Tag, X, Save, MapPin, Video, Globe, Clock, Timer, Infinity } from "lucide-react";
 import { Service, DURATION_PRESETS, SERVICE_COLORS, type DurationType } from "./shared";
+import {
+  PaymentPolicyFields,
+  type PaymentPolicyMode,
+} from "@/components/payments/payment-policy-fields";
 
 interface ServiceForm {
   name: string;
@@ -21,6 +25,10 @@ interface ServiceForm {
   locationType: string;
   locationAddress: string;
   meetingLink: string;
+  /** Si confirmar este servicio exige pago, y de cuánto. */
+  paymentPolicy: PaymentPolicyMode;
+  depositPercent: number | null;
+  depositAmount: number | null;
 }
 
 interface ServiceModalProps {
@@ -214,6 +222,20 @@ export default function ServiceModal({
               </div>
             </div>
           </div>
+
+          {/* Cómo se confirma: va pegado al precio porque el anticipo se
+              calcula sobre él, y porque es la decisión que cambia lo que el
+              agente le puede decir al cliente. */}
+          <PaymentPolicyFields
+            value={{
+              paymentPolicy: form.paymentPolicy,
+              depositPercent: form.depositPercent,
+              depositAmount: form.depositAmount,
+            }}
+            onChange={(next) => onChange({ ...form, ...next })}
+            currencySymbol="$"
+            inputCls="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
 
           {/* Color picker */}
           <div>

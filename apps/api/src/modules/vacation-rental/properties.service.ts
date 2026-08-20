@@ -15,6 +15,7 @@ import {
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 import {
     describePaymentPolicy,
+    validatePaymentPolicyInput,
     OCCUPANCY_EXCLUDED_SQL,
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
@@ -176,6 +177,17 @@ export class PropertiesService {
             minNights: 'min_nights', checkInTime: 'check_in_time', checkOutTime: 'check_out_time',
             houseRules: 'house_rules', checkInInstructions: 'check_in_instructions', isActive: 'is_active',
         };
+
+        // La política de confirmación viaja aparte porque se valida: un
+        // "anticipo" sin monto le cobraría el total al huésped creyendo el dueño
+        // que configuró una seña.
+        const policy = validatePaymentPolicyInput(data);
+        if (policy.error) throw new BadRequestException(policy.error);
+        for (const [dbKey, value] of Object.entries(policy.values)) {
+            sets.push(`"${dbKey}" = $${idx}`);
+            params.push(value);
+            idx++;
+        }
 
         const timeCols = new Set(['check_in_time', 'check_out_time']);
         for (const [jsKey, dbKey] of Object.entries(fields)) {

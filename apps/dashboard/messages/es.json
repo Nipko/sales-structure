@@ -1,4 +1,31 @@
 {
+  "paymentPolicy": {
+    "title": "Cómo se confirma",
+    "subtitle": "Decide si el agente puede confirmarlo directo o tiene que cobrar antes.",
+    "mode": {
+      "none": {
+        "label": "Sin pago",
+        "help": "El agente lo confirma en el momento. Es como funciona hoy."
+      },
+      "full": {
+        "label": "Pago total",
+        "help": "Se confirma sólo cuando el cliente paga el total."
+      },
+      "deposit": {
+        "label": "Anticipo",
+        "help": "Se confirma con una seña; el resto queda pendiente."
+      },
+      "any": {
+        "label": "Anticipo o total",
+        "help": "El cliente elige cuánto pagar para confirmar."
+      }
+    },
+    "depositPercent": "Anticipo (%)",
+    "depositAmount": "Anticipo (monto fijo)",
+    "depositHint": "Si cargás los dos, manda el monto fijo.",
+    "depositRequired": "Indicá el porcentaje o el monto del anticipo. Sin eso se le cobraría el total al cliente.",
+    "slotNotHeld": "Mientras no se pague, la fecha sigue disponible para otros: gana quien pague primero. Si alguien paga y ya no hay lugar, te avisamos para que decidas."
+  },
   "tenantPayments": {
     "title": "Cobros a tus clientes",
     "subtitle": "Conecta Wompi o Mercado Pago para cobrar pedidos, anticipos y reservas con enlaces verificados",

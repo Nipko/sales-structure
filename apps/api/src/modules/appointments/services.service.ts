@@ -10,6 +10,7 @@ import {
 } from '../../common/utils/commercial-units.util';
 import { assertActiveTenantUser } from './tenant-user-scope.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { validatePaymentPolicyInput } from '../../common/utils/payment-policy.util';
 
 export type DurationType = 'fixed' | 'flexible' | 'open';
 
@@ -31,6 +32,10 @@ export interface BookableService {
     /** Cada cuantos dias conviene volver por este servicio. null = usa el default. */
     rebookAfterDays: number | null;
     requiredFields: string[];
+    /** Si confirmar exige pago: none | full | deposit | any. */
+    paymentPolicy: string;
+    depositPercent: number | null;
+    depositAmount: number | null;
 }
 
 @Injectable()
@@ -82,15 +87,23 @@ export class ServicesService {
             throw new BadRequestException('durationMinutesMax must be greater than or equal to durationMinutes');
         }
         const currency = normalizeCurrencyCode(data.currency);
+        const createPolicy = validatePaymentPolicyInput(data as any);
+        if (createPolicy.error) throw new BadRequestException(createPolicy.error);
         try {
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, created_at, updated_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, NOW(), NOW())`,
+                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, NOW(), NOW())`,
                 [id, data.name, data.description || null, duration,
                  buffer, data.price || 0, currency, data.color || '#6c5ce7',
                  data.category || null, data.maxConcurrent || 1,
                  JSON.stringify(data.requiredFields || []),
-                 durationType, durationMax, data.rebookAfterDays ?? null],
+                 durationType, durationMax, data.rebookAfterDays ?? null,
+                 // Si el modal muestra la politica al crear, descartarla en
+                 // silencio seria mentirle al dueno: cree que configuro una sena
+                 // y el agente confirmaria gratis.
+                 createPolicy.values.payment_policy ?? 'none',
+                 createPolicy.values.deposit_percent ?? null,
+                 createPolicy.values.deposit_amount ?? null],
             );
         } catch (e: any) {
             // uidx_services_name (tenant-schema.sql): el motor de reservas lista los
@@ -166,6 +179,12 @@ export class ServicesService {
         // 0 o vacio = "no aplica" y se guarda NULL, no 0: un 0 haria que el
         // evaluador temporal reclame la re-reserva el mismo dia de la cita.
         if (data.rebookAfterDays !== undefined) { sets.push(`rebook_after_days = $${idx++}`); params.push(Number(data.rebookAfterDays) > 0 ? Number(data.rebookAfterDays) : null); }
+        const policy = validatePaymentPolicyInput(data as any);
+        if (policy.error) throw new BadRequestException(policy.error);
+        for (const [dbKey, value] of Object.entries(policy.values)) {
+            sets.push(`${dbKey} = $${idx++}`);
+            params.push(value);
+        }
         sets.push(`updated_at = NOW()`);
 
         params.push(serviceId);
@@ -266,6 +285,11 @@ export class ServicesService {
             maxConcurrent: row.max_concurrent || 1,
             rebookAfterDays: row.rebook_after_days ?? null,
             requiredFields: row.required_fields || [],
+            // Sin esto el panel no puede mostrar lo que el dueno ya configuro y
+            // cada guardado lo pisaria con el default.
+            paymentPolicy: row.payment_policy || 'none',
+            depositPercent: row.deposit_percent ?? null,
+            depositAmount: row.deposit_amount != null ? Number(row.deposit_amount) : null,
         };
     }
 

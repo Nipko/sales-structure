@@ -5,6 +5,11 @@ import { useParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { formatDateOnly } from "@/lib/local-timestamp";
+import {
+  PaymentPolicyFields,
+  readPaymentPolicy,
+  type PaymentPolicyValue,
+} from "@/components/payments/payment-policy-fields";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav, type TabItem } from "@/components/ui/tab-nav";
@@ -272,6 +277,9 @@ function InfoTab({
   }
 
   const [form, setForm] = useState(coerceProperty(property));
+  // La política vive aparte del resto del formulario: es lo único que decide si
+  // el agente puede confirmar o tiene que cobrar antes.
+  const [policy, setPolicy] = useState<PaymentPolicyValue>(readPaymentPolicy(property));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -306,6 +314,9 @@ function InfoTab({
       minNights: form.min_nights,
       amenities: form.amenities,
       isActive: form.is_active,
+      paymentPolicy: policy.paymentPolicy,
+      depositPercent: policy.depositPercent,
+      depositAmount: policy.depositAmount,
     });
     if (res.success) {
       setSaved(true);
@@ -387,6 +398,15 @@ function InfoTab({
         <NumberField label={t("cleaningFee")} min={0} value={form.cleaning_fee} onChange={(v) => setForm({ ...form, cleaning_fee: v })} className={inputCls} prefix={currencySymbol} />
         <NumberField label={t("minNights")} min={1} value={form.min_nights} onChange={(v) => setForm({ ...form, min_nights: v })} className={inputCls} />
       </div>
+
+      {/* Cómo se confirma: con o sin pago. Va pegado al precio porque el
+          anticipo se calcula sobre él. */}
+      <PaymentPolicyFields
+        value={policy}
+        onChange={setPolicy}
+        currencySymbol={currencySymbol}
+        inputCls={inputCls}
+      />
 
       {/* Amenities by category */}
       <div>

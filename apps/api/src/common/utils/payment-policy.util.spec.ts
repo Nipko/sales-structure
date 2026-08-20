@@ -1,4 +1,8 @@
-import { describePaymentPolicy, resolvePaymentPolicy } from './payment-policy.util';
+import {
+    describePaymentPolicy,
+    resolvePaymentPolicy,
+    validatePaymentPolicyInput,
+} from './payment-policy.util';
 
 describe('la política de confirmación que configura el dueño', () => {
     it('sin configurar, se confirma como siempre', () => {
@@ -84,5 +88,44 @@ describe('la política de confirmación que configura el dueño', () => {
         for (const texto of [anticipo, total, ambas]) {
             expect(texto).toContain('No la des por confirmada');
         }
+    });
+});
+describe('lo que el panel manda se valida antes de guardarlo', () => {
+    it('acepta los cuatro modos', () => {
+        for (const mode of ['none', 'full', 'deposit', 'any']) {
+            const input: any = { paymentPolicy: mode };
+            if (mode === 'deposit' || mode === 'any') input.depositPercent = 30;
+            expect(validatePaymentPolicyInput(input).error).toBeUndefined();
+        }
+    });
+
+    it('rechaza un modo inventado en vez de guardarlo', () => {
+        // Si entrara a la base, el resolvedor lo trataria como 'none' y el dueno
+        // creeria que exige pago cuando el agente confirma gratis.
+        expect(validatePaymentPolicyInput({ paymentPolicy: 'obligatorio' }).error).toBeTruthy();
+    });
+
+    it('rechaza pedir anticipo sin decir cuanto', () => {
+        // Es el error caro: sin monto se le cobraria el TOTAL al cliente.
+        expect(validatePaymentPolicyInput({ paymentPolicy: 'deposit' }).error).toMatch(/anticipo/i);
+        expect(validatePaymentPolicyInput({ paymentPolicy: 'any' }).error).toMatch(/anticipo/i);
+    });
+
+    it('rechaza porcentajes imposibles y montos en cero', () => {
+        expect(validatePaymentPolicyInput({ paymentPolicy: 'deposit', depositPercent: 0 }).error).toBeTruthy();
+        expect(validatePaymentPolicyInput({ paymentPolicy: 'deposit', depositPercent: 101 }).error).toBeTruthy();
+        expect(validatePaymentPolicyInput({ paymentPolicy: 'deposit', depositAmount: 0 }).error).toBeTruthy();
+        expect(validatePaymentPolicyInput({ paymentPolicy: 'deposit', depositPercent: 'mucho' }).error).toBeTruthy();
+    });
+
+    it('deja limpiar el anticipo mandando vacio', () => {
+        const out = validatePaymentPolicyInput({ paymentPolicy: 'full', depositPercent: '', depositAmount: null });
+        expect(out.error).toBeUndefined();
+        expect(out.values).toEqual({ payment_policy: 'full', deposit_percent: null, deposit_amount: null });
+    });
+
+    it('no toca nada cuando el formulario no mando la politica', () => {
+        // Un guardado que solo cambia el nombre no puede resetear el cobro.
+        expect(validatePaymentPolicyInput({})).toEqual({ values: {} });
     });
 });

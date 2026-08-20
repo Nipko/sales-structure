@@ -1,4 +1,31 @@
 {
+  "paymentPolicy": {
+    "title": "Comment ça se confirme",
+    "subtitle": "Décidez si l'agent peut confirmer tout de suite ou doit encaisser avant.",
+    "mode": {
+      "none": {
+        "label": "Sans paiement",
+        "help": "L'agent confirme immédiatement. C'est le fonctionnement actuel."
+      },
+      "full": {
+        "label": "Paiement total",
+        "help": "Confirmé seulement quand le client paie la totalité."
+      },
+      "deposit": {
+        "label": "Acompte",
+        "help": "Confirmé avec un acompte ; le reste demeure dû."
+      },
+      "any": {
+        "label": "Acompte ou total",
+        "help": "Le client choisit combien payer pour confirmer."
+      }
+    },
+    "depositPercent": "Acompte (%)",
+    "depositAmount": "Acompte (montant fixe)",
+    "depositHint": "Si vous remplissez les deux, le montant fixe l'emporte.",
+    "depositRequired": "Indiquez le pourcentage ou le montant de l'acompte. Sans cela, le client paierait la totalité.",
+    "slotNotHeld": "Tant que ce n'est pas payé, la date reste disponible pour d'autres : le premier qui paie l'emporte. Si quelqu'un paie et qu'il n'y a plus de place, nous vous prévenons pour que vous décidiez."
+  },
   "tenantPayments": {
     "title": "Encaisser vos clients",
     "subtitle": "Connectez Wompi ou Mercado Pago pour encaisser commandes, acomptes et réservations avec des liens vérifiés",

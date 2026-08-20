@@ -19,41 +19,15 @@ export class IcalExportPublicController {
         private readonly icalSyncService: IcalSyncService,
     ) {}
 
-    @Get(':tenantId/properties/:propertyId/ical')
-    @ApiOperation({ summary: 'Public iCal export for a property (no auth, UUID-protected)' })
-    async getCalendar(
-        @Param('tenantId') tenantId: string,
-        @Param('propertyId') propertyId: string,
-        @Res() res: Response,
-    ) {
-        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'read');
-        if (!entitlement.allowed) throw new NotFoundException('Tenant not found');
-        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        if (!schemaName) throw new NotFoundException('Tenant not found');
-
-        const props = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT 1 FROM properties WHERE id = $1::uuid AND is_active = true LIMIT 1`,
-            [propertyId],
-        );
-        if (!props?.length) throw new NotFoundException('Property not found');
-
-        const ics = await this.icalSyncService.generateFeed(schemaName, propertyId);
-
-        res.set({
-            'Content-Type': 'text/calendar; charset=utf-8',
-            'Content-Disposition': `attachment; filename="calendar.ics"`,
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-        });
-        res.send(ics);
-    }
-
     /**
      * Calendario para UNA OTA: no le devuelve lo que ella misma nos mandó.
      *
-     * La ruta sin token sigue viva y sirve el calendario completo. Es a propósito:
-     * las URLs que el dueño ya pegó en Airbnb y Booking no se pueden romper sin
-     * dejarlo con el calendario ciego. Migra cuando pueda, feed por feed.
+     * Es la ÚNICA ruta de exportación. La versión sin token —que servía el
+     * calendario entero a cualquiera que supiera el id de la propiedad— se
+     * eliminó por decisión del dueño: mientras existiera, una URL vieja pegada
+     * en una extranet seguía devolviéndole a esa OTA sus propios bloqueos sin
+     * que nadie pudiera notarlo. Ahora, si una URL quedó sin migrar, falla de
+     * frente en vez de mentir en silencio.
      */
     @Get(':tenantId/properties/:propertyId/ical/:exportToken')
     @ApiOperation({ summary: 'Public iCal export scoped to one OTA (excludes its own blocks)' })

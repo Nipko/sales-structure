@@ -1519,10 +1519,11 @@ function FeedsTab({
   const [syncResults, setSyncResults] = useState<
     Record<string, { imported?: number; deleted?: number; empty?: boolean; pendingSweep?: number; holdMinutesLeft?: number; skipped?: boolean; error?: string }>
   >({});
-  const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({ name: "", source: "Airbnb", import_url: "" });
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
 
+  // Prefijo. La URL real de cada conexión le agrega su token: sin token no
+  // hay ruta, porque la exportación general se eliminó.
   const exportUrl = `${BASE_URL}/vacation-rental/${tenantId}/properties/${propertyId}/ical`;
 
   useEffect(() => {
@@ -1604,11 +1605,6 @@ function FeedsTab({
     });
   }
 
-  function copyExportUrl() {
-    navigator.clipboard.writeText(exportUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   const formatDate = (s: string | null) => {
     if (!s) return "-";
@@ -1626,29 +1622,15 @@ function FeedsTab({
 
   return (
     <div className="space-y-6">
-      {/* Export URL */}
+      {/* La URL general se eliminó: cada conexión tiene la suya, más abajo.
+          Mostrar una sola para todas era lo que le devolvía a cada OTA sus
+          propios bloqueos. Si todavía no hay conexiones no hay URL que dar, y
+          decirlo es mejor que mostrar una que devuelve 404. */}
       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
         <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("exportUrl")}</p>
-        <p className="text-xs text-neutral-400 dark:text-neutral-500 mb-3">{t("exportUrlDesc")}</p>
-        {/* Esta URL sigue funcionando, pero le devuelve a cada OTA sus propios
-            bloqueos. La de abajo, por conexión, no. */}
-        {feeds.some(f => f.export_token) && (
-          <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{t("exportUrlGenericWarning")}</p>
-        )}
-        <div className="flex items-center gap-2">
-          <input
-            readOnly
-            value={exportUrl}
-            className="flex-1 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs text-neutral-600 dark:text-neutral-300 font-mono"
-          />
-          <button
-            onClick={copyExportUrl}
-            className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-            title="Copy"
-          >
-            {copied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} className="text-neutral-500" />}
-          </button>
-        </div>
+        <p className="text-xs text-neutral-400 dark:text-neutral-500">
+          {feeds.length > 0 ? t("exportUrlPerFeedHint") : t("exportUrlNeedsFeed")}
+        </p>
       </div>
 
       {/* Feeds list */}
@@ -1677,12 +1659,10 @@ function FeedsTab({
                 <li>{t("addFeedStep2")}</li>
                 <li>{t("addFeedStep3")}</li>
               </ol>
-              <p className="mt-2 text-[11px] opacity-80">
-                {t("addFeedExportHint")}{" "}
-                <button onClick={copyExportUrl} className="underline hover:no-underline font-medium">
-                  {t("copyExportUrl")}
-                </button>
-              </p>
+              {/* Ya no se ofrece copiar una URL general: no existe. La de esta
+                  conexión recién se puede copiar cuando la conexión existe,
+                  porque su token nace con ella. */}
+              <p className="mt-2 text-[11px] opacity-80">{t("addFeedExportHintAfterSave")}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

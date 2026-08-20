@@ -47,7 +47,12 @@ describe('la ruta pública', () => {
         expect(notFound).toBeLessThan(generate);
     });
 
-    it('la ruta vieja sigue sirviendo el calendario completo', () => {
-        expect(CONTROLLER).toContain("@Get(':tenantId/properties/:propertyId/ical')");
+    it('la ruta SIN token ya no existe', () => {
+        // Eliminada por decisión del dueño. Mientras existiera, una URL vieja
+        // pegada en una extranet seguía devolviéndole a esa OTA sus propios
+        // bloqueos sin que nadie pudiera notarlo. Ahora una URL sin migrar
+        // falla de frente en vez de mentir en silencio.
+        expect(CONTROLLER).not.toContain("@Get(':tenantId/properties/:propertyId/ical')");
+        expect((CONTROLLER.match(/@Get\(/g) || []).length).toBe(1);
     });
 });

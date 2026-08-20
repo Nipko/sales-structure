@@ -73,6 +73,7 @@ import {
   Activity,
   TrendingUp,
   ShieldCheck,
+  Wallet,
   HardDrive,
   Siren,
   Gauge,
@@ -290,6 +291,10 @@ const tenantSections: NavSectionDef[] = [
           { labelKey: "reportBuilder", href: "/admin/report-builder" },
         ]
       },
+      // Ventas va con `canManageBilling`, no con analitica: son los ingresos
+      // del negocio, no una metrica operativa. Un agente no tiene por que
+      // verlos.
+      { labelKey: "sales", href: "/admin/sales", icon: Wallet, capability: "canManageBilling" },
       { labelKey: "agentQuality", href: "/admin/agent/quality", icon: ShieldCheck, capability: "canSeeGlobalAnalytics", accent: "text-emerald-500 dark:text-emerald-400" },
       { labelKey: "agentAnalytics", href: "/admin/agent-analytics", icon: Gauge, capability: "canSeeGlobalAnalytics" },
     ],

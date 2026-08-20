@@ -84,6 +84,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "agentAnalytics", pattern: "/admin/agent-analytics", titleKey: "nav.items.agentAnalytics", scope: "tenant" },
   { id: "attribution", pattern: "/admin/attribution", titleKey: "nav.items.attribution", scope: "tenant" },
   { id: "reportBuilder", pattern: "/admin/report-builder", titleKey: "nav.items.reportBuilder", scope: "tenant" },
+  { id: "sales", pattern: "/admin/sales", titleKey: "nav.items.sales", scope: "tenant" },
   { id: "identity", pattern: "/admin/identity", titleKey: "nav.items.identity", scope: "tenant" },
   { id: "compliance", pattern: "/admin/compliance", titleKey: "nav.items.compliance", scope: "tenant" },
   { id: "featureRequests", pattern: "/admin/feature-requests", titleKey: "nav.items.featureRequests", scope: "shared" },

@@ -212,6 +212,20 @@ export type TenantPaymentProviderConfig = {
     eventsSecret?: "***";
 };
 
+/** Un anticipo NO es una venta cobrada: por eso son cuatro números y no uno. */
+export interface SalesMoneySummary {
+    currency: string;
+    collectedCents: number;
+    refundedCents: number;
+    netCents: number;
+    fromDepositsCents: number;
+    fromFullPaymentsCents: number;
+    outstandingCents: number;
+    inProgressCents: number;
+    lostCents: number;
+    counts: { paid: number; withDeposit: number; inProgress: number; lost: number };
+}
+
 export type TenantPaymentsConfig = {
     version?: 2;
     provider?: TenantPaymentProvider;
@@ -1425,6 +1439,15 @@ export const api = {
     // ─── Cobros del tenant a SU cliente final (no confundir con billing, que
     // es lo que el tenant nos paga a nosotros) ───
     getTenantPaymentsConfig: (tenantId: string) => apiGet<TenantPaymentsConfig>(`/tenant-payments/${tenantId}/config`),
+
+    /** Cómo va el negocio en plata: cobrado, por cobrar, en proceso y perdido. */
+    getSalesSummary: (tenantId: string, start?: string, end?: string) => {
+        const qs = new URLSearchParams();
+        if (start) qs.set('start', start);
+        if (end) qs.set('end', end);
+        const suffix = qs.toString() ? `?${qs.toString()}` : '';
+        return apiGet<SalesMoneySummary[]>(`/tenant-payments/${tenantId}/sales-summary${suffix}`);
+    },
     setTenantPaymentsConfig: (
         tenantId: string,
         data: TenantPaymentConfigInput | { accessToken?: string; publicKey?: string; webhookSecret?: string },

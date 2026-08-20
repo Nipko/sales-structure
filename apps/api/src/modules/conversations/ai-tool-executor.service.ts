@@ -50,6 +50,10 @@ import {
 } from '../appointments/appointment-capacity.util';
 import { requireTenantContact } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import {
+    describePaymentPolicy,
+    resolvePaymentPolicy,
+} from '../../common/utils/payment-policy.util';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -1434,22 +1438,37 @@ export class AIToolExecutorService {
 
     private async listServices(schema: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max
+            `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max,
+                    payment_policy, deposit_percent, deposit_amount
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
         );
 
         return {
-            services: rows.map(s => ({
-                id: s.id,
-                name: s.name,
-                description: s.description,
-                durationMinutes: s.duration_minutes,
-                durationMinutesMax: s.duration_minutes_max || null,
-                durationType: s.duration_type || 'fixed',
-                price: Number(s.price || 0),
-                currency: s.currency || 'COP',
-            })),
+            services: rows.map(s => {
+                // La política de pago viaja con el servicio, no después.
+                //
+                // En alojamiento el agente ya la recibía al consultar
+                // disponibilidad; en citas no la veía en ningún lado y se
+                // enteraba de que había que cobrar DESPUÉS de crear la cita —
+                // justo el orden invertido que este trabajo vino a arreglar.
+                const policy = resolvePaymentPolicy(s, s.price);
+                return {
+                    id: s.id,
+                    name: s.name,
+                    description: s.description,
+                    durationMinutes: s.duration_minutes,
+                    durationMinutesMax: s.duration_minutes_max || null,
+                    durationType: s.duration_type || 'fixed',
+                    price: Number(s.price || 0),
+                    currency: s.currency || 'COP',
+                    // Los flags dicen QUÉ pasa; la nota dice CÓMO proceder.
+                    requiresPaymentToConfirm: policy.requiresPayment,
+                    amountDueToConfirm: policy.dueAmount,
+                    paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
+                    paymentNote: describePaymentPolicy(policy),
+                };
+            }),
         };
     }
 

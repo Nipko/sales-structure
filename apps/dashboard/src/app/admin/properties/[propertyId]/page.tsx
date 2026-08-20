@@ -87,6 +87,8 @@ interface Booking {
    * esta tabla (son bloqueos de calendario), por eso acá sólo hay dos valores.
    */
   origin?: string;
+  /** Hasta cuándo están comprometidas las fechas mientras el huésped paga. */
+  hold_expires_at?: string | null;
   conversation_id?: string | null;
   total_price: number;
   currency: string;
@@ -1411,21 +1413,34 @@ function BookingsTab({
                 </span>
               </td>
               <td className="py-2.5 px-3">
+                {/* `pending_payment` y `expired` caían al final de esta cadena y
+                    se imprimían crudos: el dueño veía el slug de la base en su
+                    pantalla y no entendía qué pasaba con esas fechas. */}
                 <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
                   b.status === "confirmed"
                     ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                     : b.status === "cancelled"
                     ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    : b.status === "expired"
+                    ? "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
                     : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                 }`}>
                   {b.status === "confirmed" ? t("statusConfirmed")
                     : b.status === "cancelled" ? t("statusCancelled")
+                    : b.status === "pending_payment" ? t("statusHeld")
+                    : b.status === "expired" ? t("statusExpired")
                     : b.status === "pending" ? t("statusPending")
                     : b.status}
                 </span>
+                {/* Una retención sin reloj a la vista no le sirve de nada al
+                    dueño: lo que necesita saber es si esas fechas todavía están
+                    comprometidas o ya volvieron a la venta. */}
+                {b.status === "pending_payment" && b.hold_expires_at && (
+                  <HoldNotice expiresAt={b.hold_expires_at} />
+                )}
               </td>
               <td className="py-2.5 px-3 text-right">
-                {b.status !== "cancelled" && (
+                {b.status !== "cancelled" && b.status !== "expired" && (
                   <button
                     onClick={() => { setCancelError(null); setCancelTarget(b); }}
                     className="px-2.5 py-1 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -1951,6 +1966,41 @@ function CheckInTab({
 /* ------------------------------------------------------------------ */
 /*  Reusable: NumberField (lets users clear the value & retype)        */
 /* ------------------------------------------------------------------ */
+
+/**
+ * El reloj de una retención, fuera del render.
+ *
+ * Comparar contra `Date.now()` mientras se renderiza es impuro: el servidor
+ * calcula un valor y el cliente otro, y React lo marca como desajuste de
+ * hidratación. Además una retención dura quince minutos — mostrar un estado
+ * congelado hasta que el dueño recargue la página sería inútil justo cuando más
+ * importa. Se resuelve después de montar y se revisa cada treinta segundos.
+ */
+function HoldNotice({ expiresAt }: { expiresAt: string }) {
+  const t = useTranslations("properties");
+  const [lapsed, setLapsed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const check = () => setLapsed(new Date(expiresAt).getTime() <= Date.now());
+    check();
+    const id = setInterval(check, 30_000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  // Hasta que monta no se afirma nada: decir "venció" y corregirse un instante
+  // después es peor que no decir nada.
+  if (lapsed === null) return null;
+
+  return (
+    <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+      {lapsed
+        ? t("holdLapsed")
+        : t("heldUntil", {
+            time: new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          })}
+    </p>
+  );
+}
 
 function NumberField({
   label, min, value, onChange, className, prefix,

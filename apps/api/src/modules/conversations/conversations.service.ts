@@ -3311,18 +3311,47 @@ export class ConversationsService {
         const SKIP = new Set([
             'success', 'error', 'retryable', 'message', 'shouldHandoff',
             'idempotentReplay', 'confirmationId', 'ledgerId', 'raw',
+            // Fontaneria interna. El 19-ago la directiva del enlace de pago
+            // llego con `operationId`, `payableReference`, `linkCreated` y
+            // `linkStatus` sepultando al unico dato que el huesped necesitaba
+            // —la URL—, y el modelo termino ignorando la directiva entera.
+            // Tampoco tiene por que ver identificadores nuestros.
+            'operationId', 'payableReference', 'paymentIntentId',
+            'executionLedgerId', 'providerOperationId', 'provider',
+            'linkCreated', 'linkStatus', 'requiresNewConfirmation',
         ]);
         const lines: string[] = [];
+        // La plata viaja en centavos por dentro y NUNCA puede salir asi.
+        // `amountCents: 72000000` son 720.000 COP: si el modelo lo vocea tal
+        // cual le dice al huesped setenta y dos millones. Se convierte a la
+        // unidad real y se le pone la moneda al lado.
+        const currency = String((result as any)?.currency || '').toUpperCase();
+        // Si la moneda ya viaja pegada al importe, repetirla sola es una linea
+        // menos de directiva util. Solo se suprime cuando de verdad se uso.
+        const currencyConsumed = !!currency
+            && Object.keys(result || {}).some(k => /cents$/i.test(k));
+        const renderMoney = (cents: unknown): string | null => {
+            const n = typeof cents === 'number' ? cents : Number(cents);
+            if (!Number.isFinite(n)) return null;
+            const amount = (n / 100).toLocaleString('es-CO', { maximumFractionDigits: 2 });
+            return currency ? `${amount} ${currency}` : amount;
+        };
         const push = (key: string, value: unknown) => {
             if (lines.length >= 10) return;
             if (value === null || value === undefined || value === '') return;
             if (typeof value === 'object') return;
+            if (/cents$/i.test(key)) {
+                const money = renderMoney(value);
+                if (money) lines.push(`- ${key.replace(/cents$/i, '').trim() || 'importe'}: ${money}`);
+                return;
+            }
             const text = String(value).slice(0, 160);
             if (!text.trim()) return;
             lines.push(`- ${key}: ${text}`);
         };
         for (const [key, value] of Object.entries(result || {})) {
             if (key.startsWith('_') || SKIP.has(key)) continue;
+            if (key === 'currency' && currencyConsumed) continue;
             if (value && typeof value === 'object' && !Array.isArray(value)) {
                 for (const [k2, v2] of Object.entries(value as Record<string, unknown>)) {
                     if (k2.startsWith('_') || SKIP.has(k2)) continue;

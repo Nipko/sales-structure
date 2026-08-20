@@ -584,7 +584,11 @@ export class IcalSyncService {
                       AND (feed_id IS NULL OR feed_id <> $2::uuid)`
                 : `SELECT id, check_in, check_out, source, summary, date_range_semantics FROM ical_blocks
                     WHERE property_id = $1::uuid AND is_deleted = false`,
-            [propertyId],
+            // Los parámetros siguen a la consulta ELEGIDA. Quedaron en
+            // `[propertyId]` mientras el SQL con exclusión pedía `$2`, y Postgres
+            // rechazó cada pedido de Airbnb con un 500: no pudo conectar el
+            // calendario.
+            excludeFeedId ? [propertyId, excludeFeedId] : [propertyId],
         );
 
         const bookings = await this.prisma.executeInTenantSchema<any[]>(

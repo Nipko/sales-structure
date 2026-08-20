@@ -14,6 +14,10 @@ import {
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 import {
+    LodgingSorResolution,
+    LodgingSourceOfTruthService,
+} from '../channel-manager/lodging-source-of-truth.service';
+import {
     describePaymentPolicy,
     validatePaymentPolicyInput,
     holdStillAliveSql,
@@ -52,7 +56,70 @@ export class PropertiesService {
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
         private readonly emailTemplates: EmailTemplatesService,
+        // Optional so the many specs that build this service by hand keep
+        // working. When absent the tenant behaves as Channel-Manager-free,
+        // which is what a tenant without the integration is.
+        private readonly lodgingSor?: LodgingSourceOfTruthService,
     ) {}
+
+    /**
+     * Who owns this unit's calendar right now. `local` when there is no
+     * resolver wired or no Channel Manager connection — that is the ordinary
+     * case, not a degraded one.
+     */
+    private async resolveSor(
+        tenantId: string | undefined,
+        schemaName: string,
+        propertyId: string,
+    ): Promise<LodgingSorResolution> {
+        const fallback: LodgingSorResolution = {
+            sor: 'local', connected: false, stale: false, health: 'unknown',
+        };
+        if (!this.lodgingSor || !tenantId) return fallback;
+        try {
+            return await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId);
+        } catch (error: any) {
+            this.logger.warn(`[Lodging] SoR resolution failed: ${error?.message}`);
+            return fallback;
+        }
+    }
+
+    /**
+     * Nights the Channel Manager already sold for this unit.
+     *
+     * Read from the local mirror, never from the provider API: an availability
+     * question must not depend on a third party being up. Freshness is reported
+     * separately so the agent can say the calendar may be behind instead of
+     * pretending certainty.
+     */
+    private async channelManagerConflicts(
+        schemaName: string,
+        listingId: string,
+        checkIn: string,
+        checkOut: string,
+    ): Promise<Array<{ source: string; check_in: string; check_out: string }>> {
+        try {
+            return await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT COALESCE(source, provider, 'channel_manager') AS source,
+                        check_in::text AS check_in,
+                        check_out::text AS check_out
+                   FROM cm_reservations
+                  WHERE listing_id = $1::uuid
+                    AND status NOT IN ('cancelled', 'declined', 'expired')
+                    AND check_in < $3::date
+                    AND check_out > $2::date
+                  LIMIT 1`,
+                [listingId, checkIn, checkOut],
+            );
+        } catch (error: any) {
+            // A mirror we cannot read is not an empty mirror. Surfacing this as
+            // "no conflicts" is exactly the double booking this guard exists to
+            // prevent, so report it as a blocking conflict instead.
+            this.logger.warn(`[Lodging] cm_reservations read failed: ${error?.message}`);
+            return [{ source: 'channel_manager_unreadable', check_in: checkIn, check_out: checkOut }];
+        }
+    }
 
     private assertDateOnly(value: unknown, field: string): string {
         if (typeof value !== 'string' || !DATE_ONLY_PATTERN.test(value)) {
@@ -227,11 +294,18 @@ export class PropertiesService {
      * Check if a property is available for given dates.
      * Checks both ical_blocks (external) and property_bookings (direct).
      */
-    async checkAvailability(schemaName: string, propertyId: string, checkIn: string, checkOut: string): Promise<any> {
+    async checkAvailability(
+        schemaName: string,
+        propertyId: string,
+        checkIn: string,
+        checkOut: string,
+        tenantId?: string,
+    ): Promise<any> {
         this.assertUuid(propertyId, 'propertyId');
         const stay = this.validateStayRange(checkIn, checkOut);
         const property = await this.getById(schemaName, propertyId);
         this.assertPropertyBookable(property);
+        const sor = await this.resolveSor(tenantId, schemaName, propertyId);
 
         // Hotel semantics: both persisted and requested ranges are half-open.
         // A departure on D therefore does not conflict with a new arrival on D.
@@ -252,15 +326,34 @@ export class PropertiesService {
             [propertyId, stay.checkIn, stay.checkOut],
         );
 
+        // A unit bridged to a Channel Manager has a second registry of sold
+        // nights. Reading only the local one is how the agent offered a night
+        // Hostaway had already sold.
+        const externalConflicts = sor.sor === 'channel_manager' && sor.listingId
+            ? await this.channelManagerConflicts(schemaName, sor.listingId, stay.checkIn, stay.checkOut)
+            : [];
+
         const totalPrice = Number(property.night_price) * stay.nights + Number(property.cleaning_fee);
         // La política viaja con la disponibilidad porque es lo que el agente
         // necesita ANTES de confirmar: si hay que pagar, no puede decir
         // "confirmada" — tiene que decir que queda pendiente y mandar el enlace.
         const paymentPolicy = resolvePaymentPolicy(property, totalPrice);
 
+        const allConflicts = [...(conflicts || []), ...externalConflicts];
+
         return {
-            available: !conflicts || conflicts.length === 0,
-            conflictSource: conflicts?.[0]?.source || null,
+            available: allConflicts.length === 0,
+            conflictSource: allConflicts[0]?.source || null,
+            // The agent must be able to say where this answer comes from and
+            // how old it is; a Channel Manager mirror is not a live PMS read.
+            source: sor.sor === 'channel_manager' ? 'channel_manager' : 'tenant_db',
+            asOf: sor.lastSyncedAt || new Date().toISOString(),
+            stale: sor.sor === 'channel_manager' ? sor.stale : false,
+            health: sor.health,
+            // When the PMS owns the calendar, no conversational writer may
+            // close this stay — say so here so the tool never promises it.
+            canBookDirectly: sor.sor === 'local',
+            writerBlockedReason: sor.writerBlockedReason ?? null,
             nightPrice: Number(property.night_price),
             nights: stay.nights,
             cleaningFee: Number(property.cleaning_fee),
@@ -434,6 +527,21 @@ export class PropertiesService {
         this.assertUuid(propertyId, 'propertyId');
         if (!data || typeof data !== 'object') {
             throw new BadRequestException('Booking payload is required');
+        }
+
+        // Fail closed when the Channel Manager owns this unit. There is no
+        // write-back to the PMS yet, so a local row here is a booking the host's
+        // real calendar never learns about — a double booking with extra steps.
+        // Blocking is the honest outcome until write-back is certified.
+        const sor = await this.resolveSor(data.tenantId, schemaName, propertyId);
+        if (sor.sor === 'channel_manager') {
+            throw new ConflictException({
+                error: 'channel_manager_owns_calendar',
+                provider: sor.provider,
+                asOf: sor.lastSyncedAt ?? null,
+                stale: sor.stale,
+                message: 'Este alojamiento se administra desde el channel manager del negocio. La reserva la confirma el equipo.',
+            });
         }
         const contactId = assertOptionalContactId(data.contactId);
         if (data.conversationId != null) this.assertUuid(data.conversationId, 'conversationId');

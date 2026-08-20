@@ -3,6 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import type { ProcedureDefinition, ProcedureStep, ProcedureRunState } from '@parallext/shared';
+import { procedureAuthorizedToolNames } from './agent-tool-registry';
+import {
+    interpolateProcedureArgs,
+    type ProcedureSlotSpec,
+} from './procedure-slot-interpolation';
 
 export interface ProcedureProcessResult {
     handled: boolean;
@@ -12,6 +17,23 @@ export interface ProcedureProcessResult {
     handoff?: boolean;
     handoffReason?: string;
     procedureName?: string;
+}
+
+/**
+ * The agent this procedure is running for.
+ *
+ * Without it the engine ran every active procedure of the tenant against every
+ * conversation and handed the executor any tool name a step happened to
+ * contain — so a procedure authored for the restaurant fired inside a gym
+ * conversation, and a step could call a tool the agent had switched off.
+ */
+export interface ProcedureAgentContext {
+    /** Tenant vertical. A procedure tagged for another vertical never matches. */
+    industry?: string;
+    subType?: string;
+    /** The agent's saved tool config, used to compile tool steps. */
+    toolsConfig?: unknown;
+    channelType?: string;
 }
 
 const STATE_TTL = 3600; // 1h
@@ -75,9 +97,13 @@ export class ProcedureEngineService {
                 [],
             );
             if (reg?.[0]?.reg) {
+                // `vertical` is selected because it is a filter, not decoration:
+                // it was stored on every procedure and read by nothing, so a
+                // procedure authored for one vertical triggered on a keyword
+                // match in any conversation of the tenant.
                 const rows = await this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
-                    `SELECT id, name, trigger, steps, version FROM procedures WHERE status = 'active'`,
+                    `SELECT id, name, trigger, steps, version, vertical FROM procedures WHERE status = 'active'`,
                     [],
                 );
                 procs = (rows || []).map((r) => ({
@@ -87,6 +113,7 @@ export class ProcedureEngineService {
                     steps: Array.isArray(r.steps) ? r.steps : [],
                     status: 'active' as const,
                     version: Number(r.version) || 1,
+                    vertical: r.vertical || undefined,
                 }));
             }
         } catch {
@@ -106,7 +133,7 @@ export class ProcedureEngineService {
         try {
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, name, trigger, steps, status, version FROM procedures WHERE id = $1::uuid`,
+                `SELECT id, name, trigger, steps, status, version, vertical FROM procedures WHERE id = $1::uuid`,
                 [id],
             );
             const r = rows?.[0];
@@ -118,10 +145,27 @@ export class ProcedureEngineService {
                 steps: Array.isArray(r.steps) ? r.steps : [],
                 status: r.status,
                 version: Number(r.version) || 1,
+                // Selected on the resume path too: a procedure re-tagged to
+                // another vertical mid-conversation must be abandoned, not
+                // carried on because the resume query forgot to ask.
+                vertical: r.vertical || undefined,
             };
         } catch {
             return null;
         }
+    }
+
+    /**
+     * A procedure with no `vertical` is horizontal and applies everywhere. One
+     * that names a vertical applies only there — matched against the industry
+     * or the subtype, because authors tag with whichever they think in.
+     */
+    private appliesToVertical(procedure: ProcedureDefinition, agent?: ProcedureAgentContext): boolean {
+        const tagged = String((procedure as any).vertical || '').trim().toLowerCase();
+        if (!tagged) return true;
+        const industry = String(agent?.industry || '').trim().toLowerCase();
+        const subType = String(agent?.subType || '').trim().toLowerCase();
+        return tagged === industry || tagged === subType;
     }
 
     private matchTrigger(procs: ProcedureDefinition[], userText: string): ProcedureDefinition | null {
@@ -147,19 +191,25 @@ export class ProcedureEngineService {
         conversationId: string,
         contactId: string,
         userText: string,
+        agent?: ProcedureAgentContext,
     ): Promise<ProcedureProcessResult> {
         let state = await this.getState(conversationId);
         let procedure: ProcedureDefinition | null = null;
 
         if (state) {
             procedure = await this.loadProcedureById(schemaName, state.procedureId);
-            // If the procedure was deleted, deactivated, or re-versioned, abandon cleanly.
-            if (!procedure || procedure.status !== 'active' || procedure.version !== state.version) {
+            // Deleted, deactivated, re-versioned — or re-tagged to a vertical
+            // this agent does not serve. Abandon cleanly in every case.
+            if (!procedure
+                || procedure.status !== 'active'
+                || procedure.version !== state.version
+                || !this.appliesToVertical(procedure, agent)) {
                 await this.clearState(conversationId);
                 return { handled: false };
             }
         } else {
-            const active = await this.loadActiveProcedures(tenantId, schemaName);
+            const active = (await this.loadActiveProcedures(tenantId, schemaName))
+                .filter((candidate) => this.appliesToVertical(candidate, agent));
             const matched = this.matchTrigger(active, userText);
             if (!matched || !matched.steps.length) return { handled: false };
             procedure = matched;
@@ -204,9 +254,55 @@ export class ProcedureEngineService {
             }
 
             if (step.type === 'tool') {
+                const toolName = String(step.config.tool || '');
+                // Compile against the agent, not against the string the author
+                // typed. A procedure could name any tool and the engine handed it
+                // straight to the executor, so a step could run a family the
+                // agent had switched off.
+                if (!this.toolStepAuthorized(toolName, agent)) {
+                    this.logger.warn(
+                        `[Procedure] step "${step.id}" names "${toolName}", outside this agent's authorised tools — escalating`,
+                    );
+                    await this.clearState(conversationId);
+                    return {
+                        handled: true,
+                        completed: false,
+                        text: 'Esta parte del procedimiento necesita una herramienta que este agente no tiene habilitada. Pasá la conversación a una persona del equipo.',
+                        handoff: true,
+                        handoffReason: `procedure_tool_not_authorized:${toolName || 'unknown'}`,
+                        procedureName: procedure.name,
+                    };
+                }
+
+                // Everything the customer answered lives in `collected` and used
+                // to never reach the tool: args were passed verbatim, so a step
+                // that asked for an order number called `get_order_status` with
+                // `{}` — or worse, with the literal `"{{ order_id }}"`.
+                const rendered = interpolateProcedureArgs(
+                    step.config.args,
+                    state.collected,
+                    (step.config as any).slots as Record<string, ProcedureSlotSpec> | undefined,
+                );
+                if (!rendered.ok) {
+                    this.logger.warn(
+                        `[Procedure] step "${step.id}" args unresolved (missing: ${rendered.missing.join(', ') || 'none'};`
+                        + ` invalid: ${rendered.invalid.map(i => i.arg).join(', ') || 'none'})`,
+                    );
+                    await this.saveState(conversationId, state);
+                    return {
+                        handled: true,
+                        completed: false,
+                        text: rendered.invalid.length
+                            ? 'Alguno de los datos que me diste no tiene el formato que necesito. Pedile al cliente que lo confirme antes de seguir.'
+                            : 'Me falta un dato para completar este paso. Pedíselo al cliente antes de seguir.',
+                        procedureName: procedure.name,
+                    };
+                }
+
                 try {
                     const result = await this.toolExecutor.execute(
-                        schemaName, tenantId, contactId, step.config.tool || '', step.config.args || {}, conversationId,
+                        schemaName, tenantId, contactId, toolName, rendered.args, conversationId,
+                        { channelType: agent?.channelType },
                     );
                     if (result?.error) {
                         const explicitlyRejected = ['action_rejected', 'approval_rejected'].includes(result.error);
@@ -232,14 +328,14 @@ export class ProcedureEngineService {
                             text: result.message || 'La acción todavía no puede completarse.',
                             handoff: result.shouldHandoff === true,
                             handoffReason: result.shouldHandoff === true
-                                ? `procedure_tool_control:${step.config.tool || 'unknown'}`
+                                ? `procedure_tool_control:${toolName || 'unknown'}`
                                 : undefined,
                             procedureName: procedure.name,
                         };
                     }
                     if (step.config.saveAs) state.collected[step.config.saveAs] = result;
                 } catch (e: any) {
-                    this.logger.warn(`[Procedure] tool ${step.config.tool} failed: ${e.message}`);
+                    this.logger.warn(`[Procedure] tool ${toolName} failed: ${e.message}`);
                     if (step.config.saveAs) state.collected[step.config.saveAs] = { error: true };
                     await this.saveState(conversationId, state);
                     return {
@@ -297,6 +393,19 @@ export class ProcedureEngineService {
             completed: true,
             procedureName: procedure.name,
         };
+    }
+
+    /**
+     * Whether this agent may run the named tool.
+     *
+     * Without an agent context we cannot tell an authorised tool from an
+     * arbitrary one, so nothing is authorised. A procedure that stops is
+     * recoverable; one that runs a tool the tenant switched off is not.
+     */
+    private toolStepAuthorized(toolName: string, agent?: ProcedureAgentContext): boolean {
+        if (!toolName) return false;
+        if (!agent || agent.toolsConfig === undefined) return false;
+        return procedureAuthorizedToolNames(agent.toolsConfig).has(toolName);
     }
 
     private nextStepId(procedure: ProcedureDefinition, currentId: string | null): string | null {

@@ -45,12 +45,32 @@ export function looksInternal(message: unknown): boolean {
 /**
  * Devuelve el resultado tal cual cuando la operación salió bien: ahí el payload
  * ES el dato de negocio que el modelo necesita para responder.
+ *
+ * También limpia el campo `error` cuando trae prosa técnica. Los ~50 handlers
+ * que hacen `return { error: e.message }` ponen el texto crudo del driver ahí,
+ * no en `message`, así que el saneo original —que solo miraba `message`— los
+ * dejaba pasar enteros: `relation "tenant_x.orders" does not exist` viajaba al
+ * modelo, que se lo parafraseaba al cliente. Se reemplaza por un código
+ * estable, que es sobre lo que el modelo tiene que razonar, y el detalle queda
+ * en los logs, que es donde sirve.
  */
 export function sanitizeToolResultForModel(result: any, lang?: string): any {
     if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
     if (!result.error) return result;
-    if (!looksInternal(result.message)) return result;
 
     const L = (lang || 'es').slice(0, 2).toLowerCase();
-    return { ...result, message: NEUTRAL_REASON[L] || NEUTRAL_REASON.es };
+    const neutral = NEUTRAL_REASON[L] || NEUTRAL_REASON.es;
+    let sanitized = result;
+
+    if (looksInternal(result.error)) {
+        sanitized = {
+            ...sanitized,
+            error: 'tool_failed',
+            message: looksInternal(sanitized.message) || !sanitized.message ? neutral : sanitized.message,
+        };
+    }
+    if (looksInternal(sanitized.message)) {
+        sanitized = { ...sanitized, message: neutral };
+    }
+    return sanitized;
 }

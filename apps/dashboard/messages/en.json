@@ -3587,6 +3587,10 @@
       "vt_photography_desc": "Show photo packages, check available dates and request quotes",
       "vt_professionalServices_title": "Case status",
       "vt_professionalServices_desc": "Look up which stage the client’s case is in, without asking for a reference they do not have",
+      "vt_vehicleRentals_title": "Vehicle rentals",
+      "vt_vehicleRentals_desc": "Check availability by date, reserve a vehicle, and view or cancel the customer’s rentals",
+      "vt_petBoarding_title": "Daycare and boarding",
+      "vt_petBoarding_desc": "Book daycare or boarding stays against real capacity, and view or cancel the customer’s",
       "vt_vehicles_title": "Vehicles",
       "vt_vehicles_desc": "Search the vehicle inventory, view details and send car photos",
       "skillsetTitle": "Agent skillset",
@@ -3640,12 +3644,25 @@
       "noRag": "No RAG results",
       "args": "Arguments",
       "result": "Result",
+      "noContract": "This run did not report a tool contract.",
+      "contractSummary": "Production would publish {resolved} tools for this agent; {executable} can run here.",
+      "contractRegional": "Operating country {country} · currency {currency} · pack {pack} ({status})",
+      "executable": "executable",
+      "resolvedOnly": "resolved only",
+      "reason": {
+        "executable": "Runs exactly as it does in production.",
+        "writer_blocked_in_test": "Writes real business data: the test resolves it but does not run it.",
+        "external_effect_blocked_in_test": "Calls a third party: not run from a test.",
+        "step_up_unavailable_in_test": "Needs a verification code that cannot reach a test conversation.",
+        "not_approved": "Has no reviewed policy, so it does not run in production either."
+      },
       "tabs": {
         "prompt": "System Prompt",
         "tools": "Tools",
         "rag": "RAG",
         "metrics": "Metrics",
-        "turn": "Turn Context"
+        "turn": "Turn Context",
+        "contract": "Contract"
       },
       "metric": {
         "model": "Model",

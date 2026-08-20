@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import {
+    authorizesEffect,
+    normalizeCustomerIntent,
+} from '../../common/conversation/intent-normalizer';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 
 /**
@@ -51,9 +55,17 @@ export class IntentInterpreterService {
         todayDate: string,
         upcomingDays: Array<{ date: string; weekday: string; label?: string }>,
         tenantId?: string,
+        /**
+         * Operating country for the country pack. Passed per call, never stored:
+         * this service is a singleton shared by every tenant, and holding one
+         * tenant's country on `this` would leak it into the next tenant's turn.
+         */
+        operatingCountry?: string | null,
     ): Promise<InterpretedIntent> {
         // First try deterministic extraction (fast, no LLM cost)
-        const deterministicResult = this.deterministicExtract(userText, currentBookingStep, availableServices, todayDate, upcomingDays);
+        const deterministicResult = this.deterministicExtract(
+            userText, currentBookingStep, availableServices, todayDate, upcomingDays, operatingCountry,
+        );
         if (deterministicResult) {
             this.logger.log(`[Interpret] Deterministic: intent=${deterministicResult.intent} service=${deterministicResult.serviceMentioned || '-'} date=${deterministicResult.dateMentioned || '-'}`);
             return deterministicResult;
@@ -78,6 +90,7 @@ export class IntentInterpreterService {
         services: string[],
         todayDate: string,
         upcoming: Array<{ date: string; weekday: string; label?: string }>,
+            operatingCountry?: string | null,
     ): InterpretedIntent | null {
         const t = text.toLowerCase().trim();
         const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -101,23 +114,38 @@ export class IntentInterpreterService {
         const emailMatch = t.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
         if (emailMatch) base.emailProvided = emailMatch[0];
 
-        // ── Detect confirmation (set flag but DON'T return yet — continue extracting) ──
-        if (/^(si|sí|yes|ok|confirmo|confirmar|confirma|confirmado|dale|listo|perfecto|claro|correcto|de acuerdo|por supuesto|sure|oui|sim|va|vamos|eso|exacto)\b/i.test(t)) {
+        // ── Detect confirmation / negation / cancellation ──
+        //
+        // This used to be its own regex, and it was the WIDEST of four
+        // disagreeing lists: it accepted `listo`, `correcto`, `va`, `eso` and
+        // `exacto`, which the central guard did not. A customer typing `listo`
+        // made this interpreter set `isConfirmation`, the booking engine called
+        // `createBooking(..., 'text_confirmation')`, and the guard then re-read
+        // the same word, returned `unclear` and escalated. The customer said yes
+        // and got handed to a human.
+        //
+        // Booking a slot is `transactional`, not `high_impact`: a contextual yes
+        // is how people actually confirm an appointment. The same word still
+        // cannot authorise a charge, because that path asks with a stricter
+        // effect against this very classifier.
+        const normalizedIntent = normalizeCustomerIntent(t, {
+            country: operatingCountry,
+            answeringExplicitQuestion: true,
+        });
+        if (authorizesEffect(normalizedIntent, 'transactional', { answeringExplicitQuestion: true })) {
             base.isConfirmation = true;
             base.intent = 'confirm';
         }
 
-        // ── Detect negation / cancellation ──
-        // Cancellation can appear AFTER an affirmative ("sí, mejor no", "sí, cancela"),
-        // which previously matched the confirmation regex above and booked the
-        // appointment. Check explicit cancel phrases ANYWHERE and let them override
-        // a confirmation; keep the bare "no/nah" anchored to the start to avoid
-        // false positives like "sí, no hay problema".
-        const cancelAnywhere = /\b(mejor no|ya no|cancela|cancelar|cancel|olvidalo|olvídalo|dejalo|déjalo|mejor nada|nada de eso)\b/i.test(t);
-        const leadingNo = /^(no|nop|nope|nah)\b/i.test(t);
-        if (cancelAnywhere || leadingNo) {
+        // Cancellation can appear AFTER an affirmative ("sí, mejor no", "sí,
+        // cancela"), which the old confirmation regex matched and booked. The
+        // shared classifier already resolves cancel before affirm, so this only
+        // has to honour the verdict.
+        if (normalizedIntent.intent === 'cancel'
+            || normalizedIntent.intent === 'reject'
+            || normalizedIntent.intent === 'opt_out') {
             base.isNegation = true;
-            base.isConfirmation = false; // override any earlier confirmation match
+            base.isConfirmation = false;
             base.intent = 'cancel';
             return base;
         }

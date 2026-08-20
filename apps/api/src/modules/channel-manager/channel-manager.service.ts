@@ -1,8 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import * as crypto from 'crypto';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface ChannelManagerConfig {
     provider: 'hostaway' | 'guesty' | 'ical' | 'direct';
@@ -343,6 +345,86 @@ export class ChannelManagerService {
      * Internal callers already hold a resolved schema name, so this one keeps
      * taking it instead of paying a second tenant lookup per reservation.
      */
+    /**
+     * Bridge a Parallly property to a Channel Manager listing, or unbridge it.
+     *
+     * This mapping is the switch that decides who owns the unit's calendar, so
+     * it is deliberate and one-to-one: a listing already bound to another
+     * property is rejected rather than silently re-pointed, because a wrong
+     * mapping makes the conversational writer refuse the wrong units — or worse,
+     * allow the wrong ones.
+     */
+    async mapListingToProperty(
+        tenantId: string,
+        listingId: string,
+        propertyId: string | null,
+    ): Promise<any> {
+        const schemaName = await this.resolveSchemaName(tenantId);
+        await this.ensureTables(schemaName);
+        if (!UUID_PATTERN.test(listingId || '')) {
+            throw new BadRequestException('listingId must be a valid UUID');
+        }
+        if (propertyId !== null && !UUID_PATTERN.test(propertyId || '')) {
+            throw new BadRequestException('propertyId must be a valid UUID or null');
+        }
+
+        const listings = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id FROM cm_listings WHERE id = $1::uuid LIMIT 1`,
+            [listingId],
+        );
+        if (!listings?.length) throw new NotFoundException('Listing not found');
+
+        if (propertyId) {
+            const properties = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id FROM properties WHERE id = $1::uuid LIMIT 1`,
+                [propertyId],
+            );
+            if (!properties?.length) throw new NotFoundException('Property not found');
+
+            const clash = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id FROM cm_listings
+                  WHERE property_id = $1::uuid AND id <> $2::uuid
+                  LIMIT 1`,
+                [propertyId, listingId],
+            );
+            if (clash?.length) {
+                throw new ConflictException({
+                    error: 'property_already_mapped',
+                    listingId: clash[0].id,
+                    message: 'Ese alojamiento ya está enlazado a otra publicación del channel manager.',
+                });
+            }
+        }
+
+        const updated = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE cm_listings SET property_id = $2::uuid WHERE id = $1::uuid RETURNING *`,
+            [listingId, propertyId],
+        );
+        // The writer gate reads this mapping through a 60s cache; drop it so the
+        // change takes effect on the next turn instead of the next minute.
+        await this.redis.del(`lodging:sor:${tenantId}:${propertyId}`).catch(() => undefined);
+        return updated?.[0] ?? null;
+    }
+
+    /** Properties bridged to a listing, for the mapping screen and audits. */
+    async listMappings(tenantId: string): Promise<any[]> {
+        const schemaName = await this.resolveSchemaName(tenantId);
+        await this.ensureTables(schemaName);
+        return this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT l.id AS listing_id, l.name AS listing_name, l.provider,
+                    l.external_id, l.last_synced_at, l.property_id,
+                    p.name AS property_name
+               FROM cm_listings l
+               LEFT JOIN properties p ON p.id = l.property_id
+              ORDER BY l.name ASC`,
+        );
+    }
+
     private async blockDates(schemaName: string, listingId: string, checkIn: string, checkOut: string): Promise<void> {
         await this.prisma.executeInTenantSchema<any[]>(schemaName, `
             INSERT INTO cm_availability (listing_id, date, is_available)

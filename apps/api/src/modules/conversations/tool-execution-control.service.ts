@@ -8,6 +8,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChatIdentityService } from './chat-identity.service';
+import type { ConfirmationEffect } from '@parallext/shared';
+import {
+    classifyConfirmation,
+    confirmationEffectForPolicy,
+} from '../../common/conversation/intent-normalizer';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
 
 /**
@@ -122,6 +128,16 @@ export interface ToolExecutionControlRequest {
         kind: 'booking_engine_confirmation';
         source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
     };
+    /**
+     * Reviewed approval for an external MCP tool, resolved by the caller. When
+     * absent the guard resolves it itself; either way an unapproved remote tool
+     * is refused.
+     */
+    mcpApproval?: {
+        effect: string;
+        requiresConfirmation: boolean;
+        requiresHumanApproval: boolean;
+    } | null;
 }
 
 export type ToolExecutionControlDecision =
@@ -147,81 +163,33 @@ interface ConfirmationClaims {
     expiresAt: string;
 }
 
-// `reserva` and `reservalo` are imperatives, not answers: "Reserva del 20 al 22
-// para 2 personas" is how a customer OPENS a request, and accepting it as
-// consent executed the booking in the same turn it was proposed — the customer
-// never saw what they were agreeing to. Every token left here is something a
-// person says in reply to a question.
-const AFFIRMATIVE_TOKENS = 'si|confirmo|si confirmo|autorizo|si autorizo|dale|hazlo|ok|okay'
-    + '|perfecto|adelante|procede|de una|claro'
-    + '|yes|i confirm|confirm|yes confirm|yes i confirm|go ahead'
-    + '|sim|confirmo sim|sim confirmo|autorizo sim|sim autorizo|pode fazer'
-    + '|oui|je confirme|confirme|oui je confirme|oui confirme|allez-y';
-const AFFIRMATIVE_EXACT = new RegExp(`^(?:${AFFIRMATIVE_TOKENS})$`);
-/** The same tokens, but as the OPENING of a longer sentence. */
-const AFFIRMATIVE_OPENING = new RegExp(`^(?:${AFFIRMATIVE_TOKENS})\\b`);
-/** Any negation voids consent, wherever it appears. */
-const NEGATION_ANYWHERE = /\b(no|nao|non|not|nunca|never|jamais|cancela|cancelar|cancel|annuler|rechazo|espera|aun|ainda|todavia)\b/;
-const NEGATIVE_TOKENS = 'no|no lo hagas|no gracias|nunca|cancelar|cancela|rechazo|mejor no'
-    + '|nao|nao faca|nao obrigado|cancelar isso'
-    + '|not|dont|do not|cancel|never mind|nevermind|no thanks'
-    + '|non|je refuse|annuler|pas maintenant';
-/** A refusal, as the OPENING of whatever the customer wrote. */
-const NEGATIVE_OPENING = new RegExp(`^(?:${NEGATIVE_TOKENS})\\b`);
-/** A qualified yes is not a yes: "sí, pero cambiá el monto" must re-ask. */
-const QUALIFIER_ANYWHERE = /\b(pero|mas|porem|but|mais|aunque|salvo|excepto|solo si|only if)\b/;
-/** Exact, deliberately narrow confirmations in the four supported languages. */
-export function classifyExplicitToolConfirmation(value: unknown): ConfirmationDisposition {
+/**
+ * Whether the customer's reply authorises the pending action.
+ *
+ * Delegates to the shared normaliser so this guard, the booking engine, the
+ * intent interpreter and the RAG rewrite stop disagreeing about the same words.
+ * Four lists diverged on fourteen tokens: `listo` — the most common Colombian
+ * yes — was in three of them and NOT in this one, the only one that gates
+ * money. A customer typing it made the booking engine call the writer, and this
+ * guard then rejected the same word and escalated.
+ *
+ * `effect` is what keeps both directions honest. A contextual yes advances an
+ * appointment and can never authorise a charge; an acknowledgement (`ok`,
+ * `perfecto`) only counts at all when it ANSWERS the challenge, and even then
+ * never for money. Defaults to `high_impact`, so a caller that forgets to say
+ * what is pending gets the strictest reading.
+ */
+export function classifyExplicitToolConfirmation(
+    value: unknown,
+    options: { effect?: ConfirmationEffect; country?: string | null } = {},
+): ConfirmationDisposition {
     if (typeof value !== 'string') return 'unclear';
-    const normalized = value
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase()
-        .replace(/[.!¡¿?]+$/g, '')
-        // Commas and semicolons separate, they do not carry meaning. Only the
-        // trailing punctuation was stripped, so "sí, confirmo" — the most
-        // natural confirmation in Spanish — fell through to 'unclear' and the
-        // agent re-asked, stalling the customer at the payment step. Widening
-        // the separator cannot create a false confirm: the phrase still has to
-        // match the exact allowlist below, and "no, confirmo" normalizes to
-        // "no confirmo", which is in neither list and stays 'unclear'.
-        .replace(/[,;]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (!normalized || normalized.length > 120) return 'unclear';
-
-    // A refusal deserves the same reading as an acceptance. This list was
-    // exact-match only, so "no, mejor no" and "no gracias" — how anyone
-    // actually declines — landed in 'unclear' and the agent asked AGAIN,
-    // leaving the pending operation alive while the customer had already said
-    // no. Opening with a negative is a no, and it is read before any
-    // affirmative: erring toward not executing is the safe direction for an
-    // action that books, charges or cancels.
-    if (NEGATIVE_OPENING.test(normalized)) return 'rejected';
-    // Spanish already carried the affirmative-then-verb form ("si confirmo").
-    // The other three languages only had the halves, so once the comma stopped
-    // blocking the match, "sim, confirmo" / "yes, confirm" / "oui, je confirme"
-    // still fell through to 'unclear'. Each addition below is an unambiguous
-    // affirmative; nothing qualified or negated is accepted.
-    if (AFFIRMATIVE_EXACT.test(normalized)) return 'confirmed';
-
-    // Real customers do not answer with a bare token. They write "sí, confirmo
-    // la reserva" or "confirmo la reserva del apartamento", and an
-    // exact-match-only allowlist read every one of those as unclear — so the
-    // agent asked again, and again, and the booking could never complete.
-    //
-    // The opening is still the only thing that can grant consent: the message
-    // must BEGIN with an unambiguous affirmative. Anything that negates or
-    // qualifies, anywhere in the sentence, falls back to unclear — so
-    // "sí, pero cambiá el monto" and "no confirmo la reserva" stay
-    // unconfirmed. Consent is never inferred from a word buried mid-sentence.
-    if (AFFIRMATIVE_OPENING.test(normalized)
-        && !NEGATION_ANYWHERE.test(normalized)
-        && !QUALIFIER_ANYWHERE.test(normalized)) {
-        return 'confirmed';
-    }
-    return 'unclear';
+    return classifyConfirmation(value, {
+        effect: options.effect ?? 'high_impact',
+        country: options.country,
+        // Every call site reads the message that answers a pending challenge.
+        answeringExplicitQuestion: true,
+    });
 }
 
 /**
@@ -384,6 +352,10 @@ export class ToolExecutionControlService {
         private readonly config: ConfigService,
         private readonly chatIdentity: ChatIdentityService,
         private readonly redis: RedisService,
+        // Optional so the many specs that build this guard by hand keep working.
+        // Without it the pan-regional base applies, which is the correct
+        // fallback: a national reading we cannot resolve must not be guessed.
+        private readonly regionalProfile?: RegionalProfileService,
     ) {}
 
     async decideApprovalTicket(input: {
@@ -934,11 +906,27 @@ export class ToolExecutionControlService {
         const policy = getToolPolicy(request.toolName);
         if (!policy) return this.block('unknown_tool', 'La herramienta no está registrada.');
         if (request.toolName.startsWith('mcp__')) {
-            return this.block(
-                'opaque_tool_not_approved',
-                'La herramienta externa no tiene controles revisados y no puede ejecutarse.',
-                true,
-            );
+            // The publication side (`conversations.service`) and this guard must
+            // read the SAME approval, or one of them is lying: publishing what
+            // cannot execute produces dead ends, and executing what was never
+            // published would let a Procedure or a stale prompt smuggle a remote
+            // call past review. Absent an approval, this stays blocked.
+            // Fail closed: no approval resolved by the caller means no approval.
+            const approval = request.mcpApproval ?? null;
+            if (!approval) {
+                return this.block(
+                    'opaque_tool_not_approved',
+                    'La herramienta externa no tiene controles revisados y no puede ejecutarse.',
+                    true,
+                );
+            }
+            if (approval.effect !== 'read' && !approval.requiresConfirmation) {
+                return this.block(
+                    'opaque_tool_not_approved',
+                    'La herramienta externa no tiene política de confirmación y no puede ejecutarse.',
+                    true,
+                );
+            }
         }
         if (policy.assuranceEnforcement === 'missing'
             || policy.idempotency === 'missing'
@@ -1432,6 +1420,23 @@ export class ToolExecutionControlService {
         return rows[0] || null;
     }
 
+    /**
+     * Operating country for the country pack, or null for the regional base.
+     *
+     * Never throws: a confirmation must not depend on a profile lookup being
+     * up. Falling back to the pan-regional aliases loses national readings, not
+     * safety — the effect gate is unchanged either way.
+     */
+    private async resolveOperatingCountry(tenantId: string): Promise<string | null> {
+        if (!this.regionalProfile) return null;
+        try {
+            const profile = await this.regionalProfile.resolve(tenantId);
+            return profile.operatingCountry.value;
+        } catch {
+            return null;
+        }
+    }
+
     private async resolveConfirmation(
         request: ToolExecutionControlRequest,
         ledger: ExecutionLedgerRow,
@@ -1446,7 +1451,18 @@ export class ToolExecutionControlService {
             return this.block('confirmation_context_missing', 'No hay un mensaje del cliente que pueda confirmar la acción.');
         }
 
-        const disposition = classifyExplicitToolConfirmation(latest.content_text);
+        // How strong a yes this needs comes from the tool's own policy, so a
+        // charge and an appointment are not held to the same bar in either
+        // direction: money demands explicit words, a booking accepts the
+        // contextual yes people actually type.
+        // The country pack decides how a national expression reads. Without it
+        // `ya po` and `hágale` are just unknown words, and the customer who
+        // answered clearly gets asked again.
+        const operatingCountry = await this.resolveOperatingCountry(request.tenantId);
+        const disposition = classifyExplicitToolConfirmation(latest.content_text, {
+            effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
+            country: operatingCountry,
+        });
         if (latest.id === ledger.confirmation_source_message_id) {
             if (disposition === 'confirmed') {
                 const updated = await this.query<ExecutionLedgerRow[]>(
@@ -1580,7 +1596,10 @@ export class ToolExecutionControlService {
         // message must classify as an unambiguous confirmation, and every bound
         // field below must still match what the customer was shown.
         if (evidence.source === 'text_confirmation') {
-            if (classifyExplicitToolConfirmation(latest.content_text) !== 'confirmed') {
+            if (classifyExplicitToolConfirmation(latest.content_text, {
+                effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
+                country: await this.resolveOperatingCountry(request.tenantId),
+            }) !== 'confirmed') {
                 return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
             }
         } else {

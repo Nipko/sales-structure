@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TenantsService } from './tenants.service';
+import { RegionalProfileService } from './regional-profile.service';
 import { TenantsController } from './tenants.controller';
 import { PlatformStatusController } from './platform-status.controller';
 import { AIModule } from '../ai/ai.module';
@@ -25,7 +26,7 @@ import { InvitationsModule } from '../invitations/invitations.module';
         InvitationsModule,
     ],
     controllers: [TenantsController, PlatformStatusController],
-    providers: [TenantsService],
-    exports: [TenantsService],
+    providers: [TenantsService, RegionalProfileService],
+    exports: [TenantsService, RegionalProfileService],
 })
 export class TenantsModule { }

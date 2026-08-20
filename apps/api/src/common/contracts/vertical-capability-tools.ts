@@ -22,5 +22,7 @@ export const VERTICAL_TOOL_CAPABILITY: Readonly<Record<VerticalToolGroup, Vertic
     insurance: 'insurance_operations',
     homeServices: 'service_requests',
     petServices: 'pet_services',
+    vehicleRentals: 'vehicle_rentals',
+    petBoarding: 'pet_boarding',
     photography: 'photo_sessions',
 };

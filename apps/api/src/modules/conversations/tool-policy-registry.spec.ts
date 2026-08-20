@@ -31,17 +31,30 @@ describe('canonical AI tool policy registry', () => {
         /\bcase\s+'([^']+)'/g,
     );
 
-    it('covers exactly the 95 definitions and 95 executor branches', () => {
+    // 95 static tools + the 9 resource-rental tools that gave `automotriz/alquiler`,
+    // `pet_services/guarderia` and `pet_services/hotel` a conversational writer
+    // over the engine that already existed. The literal is deliberate: a tool
+    // appearing without a policy, an executor branch or a definition is the drift
+    // this test exists to catch.
+    const STATIC_TOOL_COUNT = 104;
+
+    it('covers exactly the definitions, executor branches and policies with no drift', () => {
         const expected = [...new Set(definitionNames)].sort();
         const executed = [...new Set(executorNames)].sort();
         const registered = [...STATIC_TOOL_NAMES].sort();
 
-        expect(definitionNames).toHaveLength(95);
-        expect(expected).toHaveLength(95);
-        expect(executed).toHaveLength(95);
-        expect(registered).toHaveLength(95);
+        expect(definitionNames).toHaveLength(STATIC_TOOL_COUNT);
+        expect(expected).toHaveLength(STATIC_TOOL_COUNT);
+        expect(executed).toHaveLength(STATIC_TOOL_COUNT);
+        expect(registered).toHaveLength(STATIC_TOOL_COUNT);
         expect(registered).toEqual(expected);
         expect(registered).toEqual(executed);
+        expect(registered).toEqual(expect.arrayContaining([
+            'check_vehicle_rental_availability', 'create_vehicle_rental',
+            'list_my_vehicle_rentals', 'get_vehicle_rental', 'cancel_vehicle_rental',
+            'create_pet_boarding', 'list_my_pet_boardings',
+            'get_pet_boarding', 'cancel_pet_boarding',
+        ]));
     });
 
     it('makes every Agent Test tool an explicit static read-only execution policy', () => {

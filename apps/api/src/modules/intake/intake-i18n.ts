@@ -174,6 +174,13 @@ export const OPT_OUT_INTAKE_PATTERNS: RegExp[] = [
  */
 export function isOptOutMessage(text: string): boolean {
     if (!text) return false;
-    const trimmed = text.trim();
-    return OPT_OUT_INTAKE_PATTERNS.some(p => p.test(trimmed));
+    // The patterns are written WITHOUT accents, and the input was tested raw —
+    // so `não me contate` and `cancelar inscrição`, the ordinary spellings,
+    // never matched. A withdrawal of consent that goes unheard is a compliance
+    // failure, not a cosmetic one.
+    const normalized = text
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .trim();
+    return OPT_OUT_INTAKE_PATTERNS.some(p => p.test(normalized));
 }

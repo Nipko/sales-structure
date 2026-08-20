@@ -3587,6 +3587,10 @@
       "vt_photography_desc": "Mostrar paquetes fotográficos, verificar fechas disponibles y solicitar cotización",
       "vt_professionalServices_title": "Casos del despacho",
       "vt_professionalServices_desc": "Consultar en qué etapa va el caso del cliente sin pedirle un número que no tiene",
+      "vt_vehicleRentals_title": "Alquiler de vehículos",
+      "vt_vehicleRentals_desc": "Consultar disponibilidad por fechas, reservar un vehículo, ver y cancelar los alquileres del cliente",
+      "vt_petBoarding_title": "Guardería y hotel",
+      "vt_petBoarding_desc": "Reservar estadías de guardería u hotel contra el cupo real, y ver o cancelar las del cliente",
       "vt_vehicles_title": "Vehículos",
       "vt_vehicles_desc": "Buscar en el inventario de vehículos, ver detalles y enviar fotos del auto",
       "skillsetTitle": "Habilidades del agente",
@@ -3640,12 +3644,25 @@
       "noRag": "Sin resultados de RAG",
       "args": "Argumentos",
       "result": "Resultado",
+      "noContract": "Esta corrida no reportó el contrato de herramientas.",
+      "contractSummary": "Producción publicaría {resolved} herramientas para este agente; acá se pueden ejecutar {executable}.",
+      "contractRegional": "País operativo {country} · moneda {currency} · pack {pack} ({status})",
+      "executable": "ejecutable",
+      "resolvedOnly": "solo resuelta",
+      "reason": {
+        "executable": "Se ejecuta igual que en producción.",
+        "writer_blocked_in_test": "Escribe datos reales del negocio: la prueba la resuelve pero no la ejecuta.",
+        "external_effect_blocked_in_test": "Llama a un tercero: no se ejecuta desde una prueba.",
+        "step_up_unavailable_in_test": "Necesita un código de verificación que no llega a una conversación de prueba.",
+        "not_approved": "No tiene política revisada, así que tampoco se ejecuta en producción."
+      },
       "tabs": {
         "prompt": "System Prompt",
         "tools": "Tools",
         "rag": "RAG",
         "metrics": "Métricas",
-        "turn": "Turn Context"
+        "turn": "Turn Context",
+        "contract": "Contrato"
       },
       "metric": {
         "model": "Modelo",

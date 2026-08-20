@@ -12,6 +12,15 @@ export * from './vertical-builder-contract';
 export * from './automation-trigger-contract';
 export * from './agent-quality-contract';
 
+// ---- Read semantics for agent tools (empty vs stale vs error) ----
+export * from './tool-read-result';
+
+// ---- Operating identity, separated from billing identity ----
+export * from './tenant-regional-profile';
+
+// ---- Country language behaviour packs (recognition, not generation) ----
+export * from './country-language-pack';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
 
@@ -343,6 +352,25 @@ export interface ToolsConfig {
         enabled: boolean;
         emailConfirmations?: boolean;
     };
+    /**
+     * Vehicle inventory tools. Dashboard and runtime have always read this key;
+     * it was simply missing from the shared contract, so every consumer had to
+     * widen the type by hand.
+     */
+    vehicles?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    /** Vehicle rental writer over `resource_rentals` (`automotriz/alquiler`). */
+    vehicleRentals?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    /** Daycare / boarding writer over `resource_rentals` (`pet_services`). */
+    petBoarding?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
     photography?: {
         enabled: boolean;
         emailConfirmations?: boolean;
@@ -627,6 +655,18 @@ export interface RetrievedKnowledgeItem {
     title?: string;
     content: string;
     metadata?: Record<string, unknown>;
+    /**
+     * Provenance for regulated sources.
+     *
+     * A regulatory answer without the issuing authority and its validity window
+     * cannot be audited after the fact — and "the rule says X" is only checkable
+     * if we know WHICH rule, from whom, and whether it was in force.
+     */
+    jurisdiction?: string;
+    authority?: string;
+    validFrom?: string;
+    validTo?: string;
+    isRegulated?: boolean;
 }
 
 // ---- Versioned active domain-object context ----
@@ -754,9 +794,35 @@ export interface ActiveObjectsContextV1 {
 /** Versioned union: append V2 here instead of mutating the V1 wire contract. */
 export type ActiveObjectsContext = ActiveObjectsContextV1;
 
+/**
+ * The regional facts a turn runs under.
+ *
+ * Kept as a small, typed block rather than a pile of loose fields, and
+ * deliberately NOT a list of idioms: the prompt receives terms it may generate
+ * and the pack's identity, while recognition of local expressions happens in a
+ * deterministic normaliser before the model sees anything. Injecting hundreds
+ * of regionalisms into a system prompt teaches caricature, not comprehension.
+ */
+export interface TurnRegionalContext {
+    /** Where the BUSINESS operates. Not where it pays us. */
+    operatingCountry: string;
+    /** ISO 4217. Currency this business quotes in. */
+    currency: string;
+    /** BCP 47, e.g. `es-CO`. */
+    locale: string;
+    /** `usted` | `tu` | `vos` | `voce` | `senhor_senhora`. */
+    addressForm: string;
+    countryPackId: string;
+    countryPackVersion: string;
+    /** `draft` packs must not be presented as certified market coverage. */
+    countryPackStatus: string;
+}
+
 export interface TurnContext {
     language: string;
     timezone: string;
+    /** Operating country, currency, locale and form of address for this turn. */
+    regional?: TurnRegionalContext;
     now: string;
     upcomingDays: Array<{ date: string; weekday: string; label?: string }>;
     businessHoursStatus: 'open' | 'closed' | 'unknown';
@@ -860,6 +926,28 @@ export interface TestAgentToolCall {
     durationMs: number;
 }
 
+/**
+ * Agent Test tool parity.
+ *
+ * The test environment resolves the SAME contract production would publish and
+ * then says, per tool, whether it may run it here. It used to advertise a
+ * smaller toolset with no indication that it was smaller, so an owner could
+ * test an agent and ship something whose real contract they had never seen.
+ */
+export interface TestAgentToolParity {
+    resolvedCount: number;
+    executableCount: number;
+    tools: Array<{
+        name: string;
+        resolved: true;
+        executableInTest: boolean;
+        /** `executable`, `writer_blocked_in_test`, `step_up_unavailable_in_test`, … */
+        reason: string;
+        effect?: string;
+        assurance?: string;
+    }>;
+}
+
 export interface TestAgentDebugInfo {
     systemPrompt: string;
     toolCalls: TestAgentToolCall[];
@@ -869,6 +957,10 @@ export interface TestAgentDebugInfo {
     model: string;
     latencyMs: number;
     turnContext: TurnContext;
+    /** Production's contract vs what this environment may execute. */
+    toolParity?: TestAgentToolParity;
+    /** Operating identity the run used, so a wrong clock is visible. */
+    regional?: TurnRegionalContext | null;
 }
 
 export interface TestAgentResponse {

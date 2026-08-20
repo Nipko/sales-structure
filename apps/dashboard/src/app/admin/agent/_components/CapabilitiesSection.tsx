@@ -40,6 +40,8 @@ const VERTICAL_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
   { key: "photography",  industries: ["fotografia"],                         icon: Camera },
   { key: "professionalServices", industries: ["servicios_profesionales"],    icon: Briefcase },
   { key: "vehicles",     industries: ["automotriz"],                         icon: Car },
+  { key: "vehicleRentals", industries: ["automotriz"],                       icon: Car },
+  { key: "petBoarding",  industries: ["pet_services", "servicios_mascotas"], icon: Home },
 ];
 
 /**
@@ -388,6 +390,12 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             ecommerce: "",
             payments: "",
             vehicles: "",
+            // Los alquileres y las estadías confirman por chat, con ruta humana
+            // a /admin/resource-rentals; todavía no hay plantilla de correo
+            // propia, y ofrecer el toggle sin consumidor es el control muerto
+            // que la auditoría marcó en 7.9.
+            vehicleRentals: "",
+            petBoarding: "",
             orders: "order_confirmation"
           };
           const templateSlug = slugMap[key];

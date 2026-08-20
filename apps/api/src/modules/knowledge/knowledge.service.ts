@@ -661,6 +661,21 @@ export class KnowledgeService {
             rerank?: boolean;
             rerankTopN?: number;
             executionContext?: ServiceExecutionContext;
+            /**
+             * Operating country of the tenant this turn belongs to.
+             *
+             * A document marked `is_regulated` is EXCLUDED when its jurisdiction
+             * is a different country, rather than merely down-ranked. Language
+             * was the only signal retrieval had, and only as a ranking boost —
+             * so Colombian regulation answered a Mexican tenant's customer,
+             * confidently and with a citation. In health, finance, insurance and
+             * legal that is a wrong answer with a source attached.
+             *
+             * Absent, no regulated document is returned at all: answering a
+             * regulatory question without knowing the jurisdiction is the
+             * failure this filter exists to prevent.
+             */
+            jurisdiction?: string | null;
         },
     ): Promise<any[]> {
         const schema = await this.tenantSchema(tenantId);
@@ -679,26 +694,49 @@ export class KnowledgeService {
         // Fusion for ordering. The BM25 pool is best-effort — empty if search_tsv
         // isn't backfilled yet or the query has no matching lexemes; then RRF
         // degrades gracefully to vector-only.
+        // The jurisdiction gate. Non-regulated documents are unaffected — most
+        // of a tenant's knowledge base is its own copy, which applies wherever
+        // it operates. A regulated one must match the operating country AND be
+        // in force today: an expired norm cited as current is its own kind of
+        // wrong answer.
+        const jurisdiction = (options?.jurisdiction || '').trim().toUpperCase() || null;
+        const REGULATED_GATE = `
+                   AND (
+                       COALESCE(kd.is_regulated, false) = false
+                       OR (
+                           $JURISDICTION$::text IS NOT NULL
+                           AND (kd.jurisdiction IS NULL OR kd.jurisdiction = $JURISDICTION$::text)
+                           AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
+                           AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)
+                       )
+                   )`;
+        const DOC_COLUMNS = `kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
+                        kd.jurisdiction AS doc_jurisdiction, kd.authority AS doc_authority,
+                        kd.valid_from AS doc_valid_from, kd.valid_to AS doc_valid_to,
+                        COALESCE(kd.is_regulated, false) AS doc_is_regulated`;
+
         const [vectorPool, tsPool] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
-                        kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
+                        ${DOC_COLUMNS},
                         (ke.embedding <=> $1::vector) AS distance
                  FROM knowledge_embeddings ke
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
                  WHERE kd.status = 'ready'
+                 ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$3')}
                  ORDER BY ke.embedding <=> $1::vector
                  LIMIT $2`,
-                [embeddingStr, poolSize]),
+                [embeddingStr, poolSize, jurisdiction]),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
-                        kd.title AS title, kd.id AS document_id, kd.language AS doc_language
+                        ${DOC_COLUMNS}
                  FROM knowledge_embeddings ke
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
                  WHERE kd.status = 'ready' AND ke.search_tsv @@ plainto_tsquery($1::regconfig, $2)
+                 ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$4')}
                  ORDER BY ts_rank(ke.search_tsv, plainto_tsquery($1::regconfig, $2)) DESC
                  LIMIT $3`,
-                [regconfig, query, poolSize]).catch(() => [] as any[]),
+                [regconfig, query, poolSize, jurisdiction]).catch(() => [] as any[]),
         ]);
 
         const RRF_K = 60;

@@ -71,6 +71,8 @@ export type VerticalToolGroup =
     | 'insurance'
     | 'homeServices'
     | 'petServices'
+    | 'vehicleRentals'
+    | 'petBoarding'
     | 'photography';
 
 export type VerticalPrimaryObject =
@@ -89,6 +91,8 @@ export type VerticalPrimaryObject =
     | 'membership'
     | 'insurance_policy'
     | 'service_request'
+    | 'vehicle_rental'
+    | 'pet_boarding'
     | 'photo_session';
 
 export type VerticalRoutePath =
@@ -132,6 +136,7 @@ export type VerticalReadinessKey =
     | 'membership_plans'
     | 'insurance_plans'
     | 'service_catalog'
+    | 'boarding_capacity'
     | 'photo_sessions';
 
 export type VerticalDomainEvent =
@@ -561,7 +566,13 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             alquiler: {
                 ...APPOINTMENT_PATCH_REMOVAL,
                 addCapabilities: ['vehicle_rentals'],
+                // La capability y la ruta existian desde siempre; el grupo de
+                // tools no. El agente veia el objeto en el menu y no tenia con
+                // que reservarlo, asi que la conversacion terminaba en handoff.
+                addToolGroups: ['vehicleRentals'],
+                primaryObject: 'vehicle_rental',
                 addRoutes: ['/admin/resource-rentals'],
+                addReadiness: ['vehicle_inventory'],
             },
         },
     },
@@ -806,12 +817,18 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             guarderia: {
                 ...APPOINTMENT_PATCH_REMOVAL,
                 addCapabilities: ['pet_boarding'],
+                addToolGroups: ['petBoarding'],
+                primaryObject: 'pet_boarding',
                 addRoutes: ['/admin/resource-rentals'],
+                addReadiness: ['boarding_capacity'],
             },
             hotel: {
                 ...APPOINTMENT_PATCH_REMOVAL,
                 addCapabilities: ['pet_boarding'],
+                addToolGroups: ['petBoarding'],
+                primaryObject: 'pet_boarding',
                 addRoutes: ['/admin/resource-rentals'],
+                addReadiness: ['boarding_capacity'],
             },
         },
     },

@@ -92,7 +92,7 @@ export class VacationRentalController {
     ) {
         if (!checkIn || !checkOut) throw new BadRequestException('checkIn and checkOut query params are required');
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.propertiesService.checkAvailability(schemaName, propertyId, checkIn, checkOut);
+        const data = await this.propertiesService.checkAvailability(schemaName, propertyId, checkIn, checkOut, tenantId);
         return { success: true, data };
     }
 
@@ -176,7 +176,10 @@ export class VacationRentalController {
         @Body() body: any,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.propertiesService.createBooking(schemaName, propertyId, body);
+        // tenantId travels with the payload so the writer can ask who owns this
+        // unit's calendar. A body-supplied tenantId is ignored: the route param
+        // is the authenticated one.
+        const data = await this.propertiesService.createBooking(schemaName, propertyId, { ...body, tenantId });
         return { success: true, data };
     }
 

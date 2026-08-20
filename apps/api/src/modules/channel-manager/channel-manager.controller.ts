@@ -93,6 +93,25 @@ export class ChannelManagerController {
         return { success: true, data: availability };
     }
 
+    @Get('mappings')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: 'List which properties are bridged to a channel-manager listing' })
+    async listMappings(@CurrentTenant() tenantId: string) {
+        const mappings = await this.cm.listMappings(tenantId);
+        return { success: true, data: mappings };
+    }
+
+    @Put('mappings')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Bridge (or unbridge) a property to a channel-manager listing' })
+    async mapListing(@CurrentTenant() tenantId: string, @Body() body: any) {
+        const propertyId = body?.propertyId === null || body?.propertyId === undefined
+            ? null
+            : String(body.propertyId);
+        const mapping = await this.cm.mapListingToProperty(tenantId, String(body?.listingId || ''), propertyId);
+        return { success: true, data: mapping };
+    }
+
     @Post('sync/hostaway')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Sync listings and reservations from Hostaway' })

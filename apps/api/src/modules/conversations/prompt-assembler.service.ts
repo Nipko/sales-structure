@@ -130,6 +130,20 @@ export class PromptAssemblerService {
 
         lines.push(`  <language>${this.xmlEscape(turn.language)}</language>`);
         lines.push(`  <timezone>${this.xmlEscape(turn.timezone)}</timezone>`);
+        // Country, currency and form of address travel as DATA, never as a list
+        // of idioms to imitate. `<business><country>` is free text the tenant
+        // typed; this is the resolved operating identity that tools, formats and
+        // jurisdiction filters use, so the model and the backend agree.
+        if (turn.regional) {
+            const r = turn.regional;
+            lines.push('  <regional>');
+            lines.push(`    <operating_country>${this.xmlEscape(r.operatingCountry)}</operating_country>`);
+            lines.push(`    <currency>${this.xmlEscape(r.currency)}</currency>`);
+            lines.push(`    <locale>${this.xmlEscape(r.locale)}</locale>`);
+            lines.push(`    <address_form>${this.xmlEscape(r.addressForm)}</address_form>`);
+            lines.push(`    <country_pack id="${this.attrEscape(r.countryPackId)}" version="${this.attrEscape(r.countryPackVersion)}" status="${this.attrEscape(r.countryPackStatus)}" />`);
+            lines.push('  </regional>');
+        }
         lines.push(`  <now>${this.xmlEscape(turn.now)}</now>`);
         lines.push(`  <business_hours_status>${this.xmlEscape(turn.businessHoursStatus)}</business_hours_status>`);
 
@@ -335,6 +349,13 @@ export class PromptAssemblerService {
             attrs.push(`score="${item.score.toFixed(3)}"`);
         }
         if (item.title) attrs.push(`title="${this.attrEscape(item.title)}"`);
+        // A regulated source states whose rule it is and when it applies, so the
+        // model can attribute it instead of asserting it as timeless fact.
+        if (item.isRegulated) attrs.push('regulated="true"');
+        if (item.jurisdiction) attrs.push(`jurisdiction="${this.attrEscape(item.jurisdiction)}"`);
+        if (item.authority) attrs.push(`authority="${this.attrEscape(item.authority)}"`);
+        if (item.validFrom) attrs.push(`valid_from="${this.attrEscape(item.validFrom)}"`);
+        if (item.validTo) attrs.push(`valid_to="${this.attrEscape(item.validTo)}"`);
         // Escape the content: KB items can come from crawled third-party URLs and
         // must be treated as untrusted DATA. Without escaping, `</item>`,
         // `<directive>` or similar in the content could break out of the XML and

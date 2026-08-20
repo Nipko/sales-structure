@@ -34,6 +34,22 @@ export interface PaymentRuntimeCapability {
     /** Existing local/provider state can still be read after downgrade. */
     statusAvailable: boolean;
     activeProvider?: string;
+    /**
+     * Whether the bound provider can actually apply a discount.
+     *
+     * `apply_discount` was advertised from a saved toggle while the only live
+     * provider supports payment links and nothing else, so every call ended in
+     * `handoffUnavailable`. The agent offered a discount it could never grant.
+     * Publication now follows this flag, so the tool reappears by itself the
+     * day a provider implements it.
+     */
+    discountsAvailable: boolean;
+    /**
+     * Ceiling the tenant configured for the agent. Enforced server-side: the
+     * persona's `maxDiscountPercent` only ever reached the prompt, so the model
+     * could ask for the backend's full 1–30 range regardless.
+     */
+    maxDiscountPercent?: number;
 }
 
 export interface CanonicalPayable {
@@ -94,7 +110,14 @@ export interface DiscountProviderRequest {
 export interface PaymentOperationProvider {
     readonly id: string;
     /** Provider/account readiness only; plan entitlement is applied by this service. */
-    getRuntimeCapability?(tenantId: string): Promise<Omit<PaymentRuntimeCapability, 'planEnabled'>>;
+    /**
+     * Provider-side readiness only. `planEnabled` is the platform's decision and
+     * `discountsAvailable` is derived from `supports('discount')` here, so a
+     * provider cannot claim a money capability it did not implement.
+     */
+    getRuntimeCapability?(tenantId: string): Promise<
+        Omit<PaymentRuntimeCapability, 'planEnabled' | 'discountsAvailable' | 'maxDiscountPercent'>
+    >;
     /** A bound adapter may deliberately expose only a subset of money actions. */
     supports?(kind: PaymentOperationKind): boolean;
     /** Mandatory ownership check before any money/provider side effect. */
@@ -192,6 +215,7 @@ export class PaymentOperationService {
                 configured: false,
                 ready: false,
                 statusAvailable: false,
+                discountsAvailable: false,
             };
         }
         try {
@@ -204,6 +228,11 @@ export class PaymentOperationService {
                 statusAvailable: Boolean(this.provider.getPaymentStatus)
                     && providerCapability.statusAvailable === true,
                 activeProvider: providerCapability.activeProvider,
+                // Not inferred from `ready`: a provider can be perfectly healthy
+                // for checkout links and have no discount operation at all.
+                discountsAvailable: planEnabled
+                    && this.supports('discount')
+                    && providerCapability.ready === true,
             };
         } catch {
             return {
@@ -211,6 +240,7 @@ export class PaymentOperationService {
                 configured: false,
                 ready: false,
                 statusAvailable: false,
+                discountsAvailable: false,
             };
         }
     }
@@ -496,11 +526,29 @@ export class PaymentOperationService {
         contactId: string,
         executionLedgerId: string,
         args: Record<string, unknown>,
+        /** Tenant ceiling from `upsell.maxDiscountPercent`. */
+        maxPercent?: number,
     ): Promise<Record<string, unknown>> {
         const percent = Math.round(Number(args.percent));
         const reason = this.boundedText(args.reason, 500);
-        if (!Number.isSafeInteger(percent) || percent <= 0 || percent > 30) {
-            return { error: 'invalid_discount', message: 'El descuento debe ser un entero entre 1 y 30.' };
+        // The platform ceiling and the tenant's own ceiling are different
+        // limits. The tenant's used to live only in the prompt, which means the
+        // model could ignore it and the backend would happily accept 30%.
+        const configuredMax = Number.isSafeInteger(maxPercent as number) ? Number(maxPercent) : undefined;
+        if (configuredMax !== undefined && configuredMax <= 0) {
+            return {
+                error: 'discounts_disabled',
+                message: 'Este negocio no autoriza descuentos por chat.',
+                shouldHandoff: true,
+            };
+        }
+        const ceiling = Math.min(30, configuredMax ?? 30);
+        if (!Number.isSafeInteger(percent) || percent <= 0 || percent > ceiling) {
+            return {
+                error: 'invalid_discount',
+                maxPercent: ceiling,
+                message: `El descuento debe ser un entero entre 1 y ${ceiling}.`,
+            };
         }
         const intent = await this.createIntent(schemaName, executionLedgerId, 'discount', {
             percent,

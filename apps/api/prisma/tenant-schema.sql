@@ -348,6 +348,34 @@ ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents"
     ADD COLUMN IF NOT EXISTS "language" VARCHAR(10) DEFAULT 'auto',
     ADD COLUMN IF NOT EXISTS "version" INTEGER DEFAULT 1;
 
+-- ---- Knowledge Documents: jurisdiction, authority and validity ----
+--
+-- Retrieval had language and nothing else, and language was only a ranking
+-- boost, never a filter. So a Colombian regulation answered a Mexican tenant's
+-- customer because both documents are `es` — and it answered confidently, with
+-- a citation. In health, finance, insurance and legal that is not a relevance
+-- problem, it is a wrong answer with a source attached.
+--
+-- NULL means "not declared", which for a general document is correct and
+-- harmless: only documents marked `is_regulated` are filtered hard.
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents"
+    -- ISO 3166-1 alpha-2 the document applies to. NULL = applies anywhere.
+    ADD COLUMN IF NOT EXISTS "jurisdiction" VARCHAR(2),
+    -- Who issued it: DIAN, SIC, PROFECO, ANVISA, the tenant itself…
+    ADD COLUMN IF NOT EXISTS "authority" VARCHAR(120),
+    ADD COLUMN IF NOT EXISTS "valid_from" DATE,
+    ADD COLUMN IF NOT EXISTS "valid_to" DATE,
+    -- When true, a jurisdiction mismatch EXCLUDES the document instead of
+    -- down-ranking it. Off by default so nothing existing changes silently.
+    ADD COLUMN IF NOT EXISTS "is_regulated" BOOLEAN DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_kd_jurisdiction_{{SCHEMA_NAME}}
+    ON "{{SCHEMA_NAME}}"."knowledge_documents" ("jurisdiction")
+    WHERE "status" = 'ready';
+CREATE INDEX IF NOT EXISTS idx_kd_regulated_{{SCHEMA_NAME}}
+    ON "{{SCHEMA_NAME}}"."knowledge_documents" ("is_regulated")
+    WHERE "is_regulated" = true AND "status" = 'ready';
+
 -- ---- Knowledge Document Versions ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_document_versions" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

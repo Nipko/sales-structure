@@ -134,6 +134,9 @@ describe('PaymentOperationService provider-neutral contract', () => {
             ready: true,
             statusAvailable: true,
             activeProvider: 'wompi',
+            // El plan caído apaga los descuentos aunque el proveedor los declare:
+            // es una acción de dinero y sigue el mismo gate que la creación.
+            discountsAvailable: false,
         });
         expect(provider.getRuntimeCapability).toHaveBeenCalledWith(tenantId);
     });
@@ -151,6 +154,7 @@ describe('PaymentOperationService provider-neutral contract', () => {
             configured: false,
             ready: false,
             statusAvailable: false,
+            discountsAvailable: false,
         });
     });
 

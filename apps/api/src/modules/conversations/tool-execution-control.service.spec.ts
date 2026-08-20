@@ -328,8 +328,19 @@ describe('ToolExecutionControlService', () => {
             expect(classifyExplicitToolConfirmation(value)).not.toBe('confirmed');
         }
         // Answers to a question stay answers.
-        for (const value of ['dale', 'perfecto', 'adelante', 'de una', 'sí, confirmo']) {
+        for (const value of ['adelante', 'sí, confirmo']) {
             expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
+        }
+
+        // Un sí contextual avanza una operación, pero NO autoriza dinero.
+        //
+        // `dale`, `perfecto` y `de una` significan "seguí" tanto como "acepto",
+        // y antes confirmaban cualquier cosa — incluido un cobro. La fuerza vive
+        // en el alias y el EFECTO de lo pendiente decide si alcanza, así que
+        // ahora cierran una cita y no pueden autorizar un cargo.
+        for (const value of ['dale', 'perfecto', 'de una']) {
+            expect(classifyExplicitToolConfirmation(value, { effect: 'transactional' })).toBe('confirmed');
+            expect(classifyExplicitToolConfirmation(value, { effect: 'high_impact' })).toBe('unclear');
         }
     });
 

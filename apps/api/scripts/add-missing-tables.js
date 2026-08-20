@@ -706,6 +706,15 @@ function buildSQL(s) {
     // -- Knowledge Phase 4: language + versioning
     `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "language" VARCHAR(10) DEFAULT 'auto'`,
     `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "version" INTEGER DEFAULT 1`,
+
+    // -- Jurisdiction, authority and validity for regulated sources.
+    // Retrieval filtered on nothing but `status='ready'`, so a Colombian
+    // regulation answered a Mexican tenant's customer with a citation attached.
+    `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "jurisdiction" VARCHAR(2)`,
+    `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "authority" VARCHAR(120)`,
+    `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "valid_from" DATE`,
+    `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "valid_to" DATE`,
+    `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "is_regulated" BOOLEAN DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS "${s}"."knowledge_document_versions" (
       "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
       "document_id" UUID,

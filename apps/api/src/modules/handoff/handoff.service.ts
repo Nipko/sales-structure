@@ -8,7 +8,9 @@ import { EmailService } from '../email/email.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
+import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import {
+    normalizeForIntent,
     ConversationAssignedEvent,
     NormalizedMessage,
     StructuredHandoffSummary,
@@ -83,9 +85,19 @@ export class HandoffService {
      * Evaluate if a conversation should be escalated to a human agent.
      * Returns the reason string if handoff should trigger, null otherwise.
      */
-    shouldHandoff(message: string, conversation: any, config: TenantConfig): string | null {
+    shouldHandoff(
+        message: string,
+        conversation: any,
+        config: TenantConfig,
+        /** Operating country, so national ways of asking for a person are heard. */
+        operatingCountry?: string | null,
+    ): string | null {
         const triggers = config.behavior?.handoffTriggers || [];
-        const text = message.toLowerCase();
+        // Accent-stripped, because the raw `toLowerCase()` meant `devolución`
+        // and `devolucion` each had to be listed by hand — and `pésimo` was
+        // listed twice for the same reason, while every other accented word was
+        // simply missed.
+        const text = normalizeForIntent(message);
 
         // Decision categories — each can be toggled per tenant via
         // config.behavior.handoffCategories ({ complaint:false } disables it).
@@ -95,21 +107,37 @@ export class HandoffService {
         const categoriesCfg = (config.behavior as any)?.handoffCategories as Record<string, boolean> | undefined;
         const enabled = (cat: string) => !categoriesCfg || categoriesCfg[cat] !== false;
 
-        // 1. Explicit request for a human
-        const humanKeywords = [
-            'hablar con un humano', 'agente humano', 'persona real',
-            'hablar con alguien', 'operador', 'asesor humano',
-            'quiero hablar con una persona', 'talk to a human', 'human agent',
-        ];
-        if (enabled('human_request') && humanKeywords.some(kw => text.includes(kw))) {
-            return 'human_request';
+        // 1. Explicit request for a human.
+        //
+        // This was a nine-phrase list in Spanish and English with no accent
+        // handling — no Portuguese `atendente`, no French `conseiller`, and no
+        // bare `asesor`, which is how most of the region asks. It now shares the
+        // classifier with the booking engine and the execution guard, so the
+        // same words mean the same thing everywhere.
+        if (enabled('human_request')) {
+            const intent = normalizeCustomerIntent(message, {
+                country: operatingCountry,
+                // A request for a person arrives inside a complaint, not as a
+                // single word, so the length ceiling for confirmations must not
+                // silence it.
+                maxLength: Number.MAX_SAFE_INTEGER,
+            });
+            if (intent.intent === 'request_human' && intent.confidence !== 'low') {
+                return 'human_request';
+            }
         }
 
         // 2. Complaint / frustration
+        // Accent-stripped by `normalizeForIntent` above, so each word appears
+        // once and Portuguese/French forms can be added without duplicating.
         const complaintKeywords = [
-            'queja', 'reclamo', 'molesto', 'furioso', 'inaceptable',
-            'devolucion', 'devolución', 'reembolso', 'pésimo', 'pesimo', 'horrible', 'terrible',
+            'queja', 'reclamo', 'reclamacion', 'molesto', 'furioso', 'inaceptable',
+            'devolucion', 'reembolso', 'pesimo', 'horrible', 'terrible',
             'no funciona', 'estafa', 'demanda', 'abogado',
+            // Portuguese
+            'reclamacao', 'reembolso', 'pessimo', 'golpe', 'nao funciona', 'advogado',
+            // French
+            'plainte', 'remboursement', 'inacceptable', 'ne fonctionne pas', 'avocat',
         ];
         if (enabled('complaint') && complaintKeywords.some(kw => text.includes(kw))) {
             return 'complaint';
@@ -118,8 +146,10 @@ export class HandoffService {
         // 3. Out-of-policy discount / price negotiation — route to someone who can
         // approve, instead of letting the AI improvise a discount.
         const discountKeywords = [
-            'descuento', 'rebaja', 'mas barato', 'más barato', 'precio especial',
+            'descuento', 'rebaja', 'mas barato', 'precio especial',
             'me lo dejas', 'me lo deja en', 'oferta especial', 'mejor precio', 'hacer precio',
+            // Portuguese / French
+            'desconto', 'mais barato', 'melhor preco', 'remise', 'moins cher',
         ];
         if (enabled('discount_request') && discountKeywords.some(kw => text.includes(kw))) {
             return 'discount_request';

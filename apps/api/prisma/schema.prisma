@@ -37,6 +37,28 @@ model Tenant {
   operatingCurrency         String?   @map("operating_currency") @db.VarChar(3)
   operatingCurrencyLockedAt DateTime? @map("operating_currency_locked_at")
 
+  /// Operating identity — WHERE THE BUSINESS OPERATES, which is a different
+  /// question from where it pays us. `billingCountry` below governs price, tax
+  /// and payment rail; these govern terminology, phone normalisation, currency,
+  /// date formats and which regulatory sources the agent may cite. A Colombian
+  /// company can bill from Colombia and run a hotel in Mexico whose guests are
+  /// neither. NULL means "not declared" — never a guess — and the resolver
+  /// falls back explicitly with recorded provenance.
+  operatingCountry    String? @map("operating_country") @db.VarChar(2)
+  operatingTimezone   String? @map("operating_timezone") @db.VarChar(64)
+  /// BCP 47 conversational locale (`es-CO`, `pt-BR`), distinct from `language`.
+  defaultLocale       String? @map("default_locale") @db.VarChar(35)
+  /// ISO 3166-1 alpha-2 region for E.164 phone parsing.
+  phoneRegion         String? @map("phone_region") @db.VarChar(2)
+  addressSchemaId     String? @map("address_schema_id") @db.VarChar(16)
+  countryPackId       String? @map("country_pack_id") @db.VarChar(16)
+  countryPackVersion  String? @map("country_pack_version") @db.VarChar(16)
+  /// Where each regional value came from, so a wrong value is distinguishable
+  /// from a chosen one.
+  regionalProvenance  Json    @default("{}") @map("regional_provenance")
+
+  regionalIdentityReviews RegionalIdentityReview[]
+
   // Billing — denormalized hot-path fields. Source of truth for full
   // subscription state is the BillingSubscription row linked via the
   // one-to-one relation below. These columns exist so the rate limiter and
@@ -173,6 +195,35 @@ model ChannelAccount {
   @@unique([channelType, accountId])
   @@index([tenantId])
   @@map("channel_accounts")
+  @@schema("public")
+}
+
+// ---- Regional identity discrepancies awaiting a human decision ----
+//
+// Billing country, business-info country, agent timezone and phone prefixes
+// disagree for real tenants today. Rewriting them automatically would silently
+// change a tenant's product — and for phone numbers historically normalised to
+// +57, a "correction" can merge two different people into one contact. Every
+// disagreement becomes a row here instead.
+model RegionalIdentityReview {
+  id         String    @id @default(uuid())
+  tenantId   String    @map("tenant_id")
+  /// operating_country | timezone | currency | locale | phone_region
+  field      String    @db.VarChar(32)
+  /// Competing values with the source each came from.
+  candidates Json      @default("[]")
+  suggested  String?   @db.VarChar(64)
+  status     String    @default("pending") @db.VarChar(16)
+  resolvedBy String?   @map("resolved_by") @db.VarChar(200)
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status, createdAt])
+  @@map("regional_identity_reviews")
   @@schema("public")
 }
 

@@ -16,6 +16,10 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     // secrets (Wompi private/events keys, MercadoPago access tokens): the purge
     // must remove them, never retain them like fiscal records.
     'tenant_payment_provider_configs',
+    // Open questions about a tenant's operating country/timezone/currency.
+    // They exist only to be answered by a human, so once the tenant is gone
+    // they are noise, not evidence — deleted, not retained.
+    'regional_identity_reviews',
     'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
     'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
     'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',

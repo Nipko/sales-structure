@@ -28,26 +28,11 @@ import {
 } from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { CustomerMemoryService } from './customer-memory.service';
-import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
-import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
-import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
-import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
-import { ECOMMERCE_TOOLS, APPLY_DISCOUNT_TOOL } from './tools/ecommerce-tools';
 import { GET_RESTAURANT_MENU_TOOL, GET_FITNESS_SCHEDULE_TOOL, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL } from './tools/vertical-integration-tools';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
 import { AttributionService } from '../attribution/attribution.service';
-import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
-import { TOURS_TOOLS } from './tools/tours-tools';
-import { TREATMENT_TOOLS } from './tools/treatment-tools';
-import { LISTINGS_TOOLS } from './tools/listings-tools';
-import { VEHICLE_TOOLS } from './tools/vehicle-tools';
-import { PETS_TOOLS } from './tools/pets-tools';
-import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
-import { GYMS_TOOLS } from './tools/gyms-tools';
-import { EDUCATION_TOOLS } from './tools/education-tools';
-import { IDENTITY_STEP_UP_TOOLS, INSURANCE_TOOLS } from './tools/insurance-tools';
-import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS, PROFESSIONAL_SERVICES_TOOLS } from './tools/tier3-tools';
+import { identityStepUpToolNames, identityStepUpToolsFor } from './identity-step-up-registration';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
@@ -56,7 +41,9 @@ import { PromptAssemblerService } from './prompt-assembler.service';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
-import { paymentToolsForRuntime } from './payment-tool-registration';
+import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
+import { staticToolsForAgentConfig } from './agent-tool-registry';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -364,6 +351,9 @@ export class ConversationsService {
         private toolRetrieval: ToolRetrievalService,
         private emotionService: EmotionService,
         private toolExecutionControl: ToolExecutionControlService,
+        // Optional so the specs that build this orchestrator by hand keep
+        // compiling; the turn falls back to the previous behaviour when absent.
+        private regionalProfile?: RegionalProfileService,
     ) {}
 
     /**
@@ -1892,7 +1882,15 @@ export class ConversationsService {
                 [conversation.id, JSON.stringify({ detectedLanguage })],
             ).catch(() => { /* non-blocking */ });
         }
-        const tz = bizHours?.timezone || config.hours?.timezone || 'America/Bogota';
+        // The turn's clock comes from the tenant's OPERATING identity, not from
+        // a Colombian literal. `America/Bogota` was the last resort in four
+        // separate places, so a Mexican restaurant computed "hoy" and "mañana"
+        // in Bogota time and told guests the wrong day.
+        const regional = await this.regionalProfile?.resolve(tenantId).catch(() => null);
+        const tz = bizHours?.timezone
+            || config.hours?.timezone
+            || regional?.timezone.value
+            || 'America/Bogota';
         const now = new Date();
         const businessHoursStatus: 'open' | 'closed' = this.isWithinBusinessHours(config, bizHours) ? 'open' : 'closed';
 
@@ -1903,6 +1901,18 @@ export class ConversationsService {
         const turnContext: TurnContext = {
             language: userLanguage,
             timezone: tz,
+            // One resolved operating identity for the whole turn: prompt,
+            // formats, tool arguments and jurisdiction filters read the same
+            // country instead of each inferring its own from a different signal.
+            regional: regional ? {
+                operatingCountry: regional.operatingCountry.value,
+                currency: regional.operatingCurrency.value,
+                locale: regional.locale.value,
+                addressForm: regional.addressForm.value,
+                countryPackId: regional.countryPackId,
+                countryPackVersion: regional.countryPackVersion,
+                countryPackStatus: regional.countryPackStatus,
+            } : undefined,
             now: now.toISOString(),
             upcomingDays: this.promptAssembler.computeUpcomingDays(now, tz, 8),
             businessHoursStatus,
@@ -2091,6 +2101,7 @@ export class ConversationsService {
             const upcoming = turnContext.upcomingDays || [];
             const intent = await this.intentInterpreter.interpret(
                 userText, bookingState.step, serviceNames, todayISO, upcoming, tenantId,
+                regional?.operatingCountry.value,
             );
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 
@@ -2203,6 +2214,12 @@ export class ConversationsService {
             try {
                 const procResult = await this.procedureEngine.process(
                     schemaName, tenantId, conversation.id, conversation.contact_id || '', userText,
+                    {
+                        industry: turnContext.verticalContext?.industry,
+                        subType: turnContext.verticalContext?.subType,
+                        toolsConfig: (config.tools ?? (config as any)?.tools) ?? {},
+                        channelType: msg.channelType,
+                    },
                 );
                 if (procResult.handled) {
                     tools = [];
@@ -2252,7 +2269,11 @@ export class ConversationsService {
                     const result = await this.withTimeout(
                         this.toolExecutor.execute(
                             schemaName, tenantId, conversation.contact_id, pending.toolName,
-                            pending.args, conversation.id, { channelType: msg.channelType },
+                            pending.args, conversation.id, {
+                                channelType: msg.channelType,
+                                maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
+                                jurisdiction: regional?.operatingCountry.value,
+                            },
                         ),
                         TOOL_TIMEOUT_MS,
                         pending.toolName,
@@ -2313,47 +2334,41 @@ export class ConversationsService {
             }
         }
 
-        // Register catalog + knowledge + CRM tools based on feature flags on the agent.
+        // Every static tool family this agent's config authorises, resolved from
+        // the ONE registry that the procedure engine and Agent Test also compile
+        // against. This was an inline chain of `if (cfgTools?.x?.enabled)`
+        // duplicated in three places — which is exactly why a Procedure could
+        // call a family the agent had switched off and Agent Test could
+        // advertise a different set than production.
+        //
+        // Plan, quota, provider health and readiness are NOT decided here: the
+        // money families below and the central guard apply those per turn, so a
+        // tool can be authorised by config and still be refused at execution.
         const cfgTools = (config.tools ?? (config as any)?.tools) as any;
-        if (cfgTools?.appointments?.enabled === true) {
-            tools = [...tools, ...APPOINTMENT_TOOLS];
-        }
-        if (cfgTools?.catalog?.enabled === true) {
-            tools = [...tools, ...CATALOG_TOOLS];
-        }
-        if (cfgTools?.faqs?.enabled === true) {
-            tools = [...tools, FAQ_TOOL];
-        }
-        if (cfgTools?.policies?.enabled === true) {
-            tools = [...tools, POLICY_TOOL];
-        }
-        if (cfgTools?.knowledge?.enabled === true) {
-            tools = [...tools, KB_TOOL];
-        }
-        if (cfgTools?.offers?.enabled === true) {
-            tools = [...tools, OFFER_TOOL];
-        }
-        if (cfgTools?.orders?.enabled === true) {
-            tools = [...tools, ORDER_TOOL];
-        }
-        if (cfgTools?.crm?.enabled === true) {
-            tools = [...tools, CUSTOMER_CONTEXT_TOOL];
-        }
-        // E-commerce dual-skillset tools (T2.17)
-        if (cfgTools?.ecommerce?.enabled === true) {
-            tools = [...tools, ...ECOMMERCE_TOOLS];
-            if (cfgTools.ecommerce.canApplyDiscount === true) {
-                tools = [...tools, APPLY_DISCOUNT_TOOL];
-            }
-        }
+        tools = [...tools, ...staticToolsForAgentConfig(cfgTools)];
 
         // Customer checkout is independent from ecommerce and fails closed on
         // every turn. A saved agent toggle alone never advertises a money tool:
         // the runtime plan and the tenant-owned provider must both be ready.
-        if (cfgTools?.payments?.enabled === true) {
+        // The discount tool shares this gate because it is a money action too:
+        // it was published from a saved toggle while the only live provider
+        // supports payment links and nothing else, so every call the model made
+        // ended in an apology and a handoff.
+        const needsPaymentCapability = cfgTools?.payments?.enabled === true
+            || cfgTools?.ecommerce?.canApplyDiscount === true;
+        if (needsPaymentCapability) {
             try {
                 const capability = await this.paymentOperations.getRuntimeCapability(tenantId);
-                tools = [...tools, ...paymentToolsForRuntime(cfgTools.payments, capability)];
+                if (cfgTools?.payments?.enabled === true) {
+                    tools = [...tools, ...paymentToolsForRuntime(cfgTools.payments, capability)];
+                }
+                tools = [...tools, ...discountToolsForRuntime(
+                    {
+                        canApplyDiscount: cfgTools?.ecommerce?.canApplyDiscount,
+                        maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
+                    },
+                    capability,
+                )];
             } catch (error: any) {
                 this.logger.warn(`[TenantPayments] capability unavailable for ${tenantId}: ${error?.message || 'unknown'}`);
             }
@@ -2371,70 +2386,32 @@ export class ConversationsService {
             this.logger.debug(`[T3.19] vertical integration tool gating skipped: ${e.message}`);
         }
 
-        // External MCP tools (T3.20) — tools discovered from the tenant's connected
-        // MCP servers (cached 5min). Namespaced mcp__{server}__{tool}. Guarded.
+        // External MCP tools (T3.20). Discovery is not authorisation: the model
+        // only ever sees tools whose effect, confirmation and human-approval
+        // policy a person reviewed and signed. Publishing everything a server
+        // reported while the central guard rejected every `mcp__*` call was a
+        // dead end the model kept walking into.
         try {
-            const { tools: mcpTools } = await this.mcpClient.listRemoteTools(tenantId);
+            const { tools: mcpTools, discoveredCount, approvedCount } =
+                await this.mcpClient.listPublishableTools(tenantId);
             if (mcpTools.length) tools = [...tools, ...mcpTools];
+            if (discoveredCount > approvedCount) {
+                this.logger.debug(
+                    `[MCP] ${discoveredCount - approvedCount} tool(s) connected for inspection but not approved for the agent`,
+                );
+            }
         } catch (e: any) {
             this.logger.debug(`[T3.20] MCP tool registration skipped: ${e.message}`);
         }
-        if (cfgTools?.properties?.enabled === true) {
-            tools = [...tools, ...VACATION_RENTAL_TOOLS];
-        }
-        if (cfgTools?.tours?.enabled === true) {
-            tools = [...tools, ...TOURS_TOOLS];
-        }
-        if (cfgTools?.treatments?.enabled === true) {
-            tools = [...tools, ...TREATMENT_TOOLS];
-        }
-        if (cfgTools?.realEstate?.enabled === true) {
-            tools = [...tools, ...LISTINGS_TOOLS];
-        }
-        if (cfgTools?.vehicles?.enabled === true) {
-            tools = [...tools, ...VEHICLE_TOOLS];
-        }
-        if (cfgTools?.pets?.enabled === true) {
-            tools = [...tools, ...PETS_TOOLS];
-        }
-        if (cfgTools?.restaurants?.enabled === true) {
-            tools = [...tools, ...RESTAURANTS_TOOLS];
-        }
-        if (cfgTools?.gyms?.enabled === true) {
-            tools = [...tools, ...GYMS_TOOLS];
-        }
-        if (cfgTools?.education?.enabled === true) {
-            tools = [...tools, ...EDUCATION_TOOLS];
-        }
-        if (cfgTools?.insurance?.enabled === true) {
-            tools = [...tools, ...INSURANCE_TOOLS];
-        }
-        // The identity step-up is the only key to the A2-guarded reads. It used
-        // to ship only with the insurance toolset, so a clinic could book an
-        // appointment and then had no way to read it back — the record was
-        // guarded and the key was not published. Any agent holding an A2 read
-        // gets the key.
-        const needsIdentityStepUp = cfgTools?.insurance?.enabled === true
-            || cfgTools?.appointments?.enabled === true
-            || cfgTools?.treatments?.enabled === true
-            || cfgTools?.professionalServices?.enabled === true;
-        if (needsIdentityStepUp) {
-            for (const tool of IDENTITY_STEP_UP_TOOLS) {
-                if (!tools.some(t => t?.name === tool.name)) tools = [...tools, tool];
-            }
-        }
-        if (cfgTools?.homeServices?.enabled === true) {
-            tools = [...tools, ...HOME_SERVICES_TOOLS];
-        }
-        if (cfgTools?.petServices?.enabled === true) {
-            tools = [...tools, ...PET_SERVICES_TOOLS];
-        }
-        if (cfgTools?.photography?.enabled === true) {
-            tools = [...tools, ...PHOTOGRAPHY_TOOLS];
-        }
-        if (cfgTools?.professionalServices?.enabled === true) {
-            tools = [...tools, ...PROFESSIONAL_SERVICES_TOOLS];
-        }
+
+        // The identity step-up is the only key to the A2-guarded reads, and it
+        // is derived from the tools actually published this turn — not from a
+        // hand-kept list of four families. Any A2 tool outside that list (a
+        // rental's check-in instructions, a groomer's vaccination status, a case
+        // status) made the guard send a code the agent had no tool to consume:
+        // the customer typed it into a conversation that could not read it.
+        // Derivation runs last, after every family, so it sees the real set.
+        tools = [...tools, ...identityStepUpToolsFor(tools)];
 
         // D2: Tool retrieval — keep the turn's toolset small (Gorilla: >30 tools
         // degrades selection). Relevance is scored against the CURRENT message,
@@ -2448,6 +2425,13 @@ export class ConversationsService {
             const pinned = new Set(
                 tools.filter(t => isConfirmableWriteTool(t?.name)).map(t => t.name as string),
             );
+            // The OTP pair is not a confirmable writer, so the writer pin missed
+            // it — and the cut could drop `verify_identity_code` on exactly the
+            // turn the customer typed their code. Two slots buy back a dead end
+            // that only shows up once a tenant has many tools enabled.
+            for (const name of identityStepUpToolNames()) {
+                if (tools.some(t => t?.name === name)) pinned.add(name);
+            }
             tools = this.toolRetrieval.retrieveRelevantTools(retrievalQuery, tools, 10, pinned);
             this.logger.log(`[ToolRetrieval] ${before} → ${tools.length} tools (${pinned.size} pinned) for query "${retrievalQuery.slice(0,80)}"`);
         }
@@ -2501,6 +2485,11 @@ export class ConversationsService {
                         similarityThreshold: searchThreshold,
                         conversationId: conversation.id,
                         language: userLanguage,
+                        // Regulated sources are filtered by the tenant's operating
+                        // country, not by language. Two countries sharing a
+                        // language is exactly how a Colombian norm ended up
+                        // answering a Mexican customer.
+                        jurisdiction: regional?.operatingCountry.value,
                         // Opt-in LLM reranker (adds latency/cost) — off unless the agent enables it.
                         rerank: (config as any).llm?.kbReranker === true,
                     },
@@ -2520,6 +2509,13 @@ export class ConversationsService {
                             score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
                             title: r.title,
                             content: r.chunk_text,
+                            // Carried through so a regulatory answer can be
+                            // attributed and audited, not just asserted.
+                            isRegulated: r.doc_is_regulated === true || undefined,
+                            jurisdiction: r.doc_jurisdiction || undefined,
+                            authority: r.doc_authority || undefined,
+                            validFrom: r.doc_valid_from ? String(r.doc_valid_from).slice(0, 10) : undefined,
+                            validTo: r.doc_valid_to ? String(r.doc_valid_to).slice(0, 10) : undefined,
                         })) as RetrievedKnowledgeItem[];
                         this.logger.log(`RAG: Injected ${retrieved.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
                     }
@@ -2830,7 +2826,11 @@ export class ConversationsService {
                                 ? JSON.parse(tc.function.arguments)
                                 : (tc.function.arguments || {});
                             result = await this.withTimeout(
-                                this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, { channelType: msg.channelType }),
+                                this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, {
+                                    channelType: msg.channelType,
+                                    maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
+                                    jurisdiction: regional?.operatingCountry.value,
+                                }),
                                 TOOL_TIMEOUT_MS,
                                 tc.function.name,
                             );
@@ -4126,8 +4126,10 @@ export class ConversationsService {
             previousLanguage || configuredLanguage,
         );
         const businessHours = await this.loadTenantBusinessHours(tenantId);
+        const widgetRegional = await this.regionalProfile?.resolve(tenantId).catch(() => null);
         const timezone = businessHours?.timezone
             || config.hours?.timezone
+            || widgetRegional?.timezone.value
             || 'America/Bogota';
         const now = new Date();
         const turnContext: TurnContext & Record<string, any> = {

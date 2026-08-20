@@ -90,6 +90,8 @@ const PRIMARY_OBJECT_ROUTE: Readonly<Record<VerticalPrimaryObject, VerticalRoute
     membership: '/admin/memberships',
     insurance_policy: '/admin/insurance',
     service_request: '/admin/service-requests',
+    vehicle_rental: '/admin/resource-rentals',
+    pet_boarding: '/admin/resource-rentals',
     photo_session: '/admin/photo-sessions',
 };
 

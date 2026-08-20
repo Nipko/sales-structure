@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -39,10 +39,65 @@ export class McpController {
         return { success: true, data: await this.mcpClient.testServer(tenantId, id) };
     }
 
+    /**
+     * Every tool the connected servers expose, each labelled with whether the
+     * agent may actually run it.
+     *
+     * The dashboard used to show this list as the agent's capabilities while
+     * the runtime refused all of them. `authorizedForAgent` is what makes
+     * "connected for inspection, not authorised for the AI" visible instead of
+     * something the owner discovers from a customer complaint.
+     */
     @Get(':tenantId/tools')
     @Roles('super_admin', 'tenant_admin')
     async tools(@Param('tenantId') tenantId: string) {
-        const { tools } = await this.mcpClient.listRemoteTools(tenantId);
-        return { success: true, data: tools.map((t) => ({ name: t.name, description: t.description })) };
+        const [{ tools }, approvals] = await Promise.all([
+            this.mcpClient.listRemoteTools(tenantId),
+            this.mcpClient.listApprovals(tenantId),
+        ]);
+        const byName = new Map(
+            approvals.map((approval) => [`mcp__${approval.serverId}__${approval.toolName}`, approval]),
+        );
+        const data = tools.map((t) => {
+            const approval = byName.get(String(t.name));
+            const authorized = !!approval && (approval.effect === 'read' || approval.requiresConfirmation);
+            return {
+                name: t.name,
+                description: t.description,
+                authorizedForAgent: authorized,
+                effect: approval?.effect ?? null,
+                requiresConfirmation: approval?.requiresConfirmation ?? null,
+                requiresHumanApproval: approval?.requiresHumanApproval ?? null,
+                approvedBy: approval?.approvedBy ?? null,
+                approvedAt: approval?.approvedAt ?? null,
+            };
+        });
+        return {
+            success: true,
+            data,
+            meta: {
+                discovered: data.length,
+                authorizedForAgent: data.filter((t) => t.authorizedForAgent).length,
+            },
+        };
+    }
+
+    @Get(':tenantId/tool-approvals')
+    @Roles('super_admin', 'tenant_admin')
+    async listApprovals(@Param('tenantId') tenantId: string) {
+        return { success: true, data: await this.mcpClient.listApprovals(tenantId) };
+    }
+
+    /**
+     * Record or revoke the human review that authorises one remote tool.
+     * `approvedBy` comes from the authenticated user, never from the body: an
+     * audit trail a caller can forge is not an audit trail.
+     */
+    @Put(':tenantId/tool-approvals')
+    @Roles('super_admin', 'tenant_admin')
+    async setApproval(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
+        const approvedBy = req?.user?.email || req?.user?.id || 'unknown';
+        const data = await this.mcpClient.setApproval(tenantId, { ...body, approvedBy });
+        return { success: true, data };
     }
 }

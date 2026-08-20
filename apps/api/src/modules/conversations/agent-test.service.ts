@@ -14,27 +14,20 @@ import { BusinessInfoService } from '../business-info/business-info.service';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { LanguageDetectorService } from './language-detector.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
-import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
-import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
-import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
-import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
-import { TOURS_TOOLS } from './tools/tours-tools';
-import { TREATMENT_TOOLS } from './tools/treatment-tools';
-import { LISTINGS_TOOLS } from './tools/listings-tools';
-import { VEHICLE_TOOLS } from './tools/vehicle-tools';
-import { PETS_TOOLS } from './tools/pets-tools';
-import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
-import { GYMS_TOOLS } from './tools/gyms-tools';
-import { EDUCATION_TOOLS } from './tools/education-tools';
-import { INSURANCE_TOOLS } from './tools/insurance-tools';
+import { staticToolsForAgentConfig } from './agent-tool-registry';
+import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
+import { identityStepUpToolsFor } from './identity-step-up-registration';
+import { buildToolParityReport } from './agent-test-parity';
 import {
-    HOME_SERVICES_TOOLS,
-    PET_SERVICES_TOOLS,
-    PHOTOGRAPHY_TOOLS,
-    PROFESSIONAL_SERVICES_TOOLS,
-} from './tools/tier3-tools';
-import { ECOMMERCE_TOOLS } from './tools/ecommerce-tools';
+    GET_RESTAURANT_MENU_TOOL,
+    GET_FITNESS_SCHEDULE_TOOL,
+    LIST_CLINIC_SERVICES_TOOL,
+    CHECK_CLINIC_AVAILABILITY_TOOL,
+} from './tools/vertical-integration-tools';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { PaymentOperationService } from './payment-operation.service';
+import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
+import { McpClientService } from '../mcp/mcp-client.service';
 import { TenantsService } from '../tenants/tenants.service';
 import {
     agentTestBlockedToolResult,
@@ -72,6 +65,14 @@ export class AgentTestService {
         private readonly tenantsService: TenantsService,
         private readonly throttle: TenantThrottleService,
         private readonly activeOperationsContext: ActiveOperationsContextService,
+        // Optional: the specs build this service by hand, and a test that loses
+        // a family is better than a test that cannot start. Every one of these
+        // is a real provider in ConversationsModule, so production always
+        // resolves the full contract.
+        private readonly regionalProfile?: RegionalProfileService,
+        private readonly paymentOperations?: PaymentOperationService,
+        private readonly verticalIntegrations?: VerticalIntegrationsService,
+        private readonly mcpClient?: McpClientService,
     ) {}
 
     async test(
@@ -106,7 +107,11 @@ export class AgentTestService {
         // subset of live runtime state, not a claim of full production parity.
         const configuredLanguage = config.language || 'es-CO';
         const detectedLanguage = this.languageDetector.detect(req.message, configuredLanguage);
-        const tz = config.hours?.timezone || 'America/Bogota';
+        // Resolved once and reused: the clock, the currency and the jurisdiction
+        // gate all have to be the ones production would use, or the test is
+        // measuring a different agent.
+        const regional = await this.regionalProfile?.resolve(tenantId).catch(() => null);
+        const tz = config.hours?.timezone || regional?.timezone.value || 'America/Bogota';
         const now = new Date();
 
         const turnContext: TurnContext = {
@@ -120,6 +125,22 @@ export class AgentTestService {
                 name: 'Test User',
             },
         };
+
+        // Same operating identity as live. Without it the test ran on a
+        // Colombian clock and a Colombian currency whatever the tenant was, so
+        // its answers about "mañana" and prices were not the ones production
+        // would give.
+        if (regional) {
+            turnContext.regional = {
+                operatingCountry: regional.operatingCountry.value,
+                currency: regional.operatingCurrency.value,
+                locale: regional.locale.value,
+                addressForm: regional.addressForm.value,
+                countryPackId: regional.countryPackId,
+                countryPackVersion: regional.countryPackVersion,
+                countryPackStatus: regional.countryPackStatus,
+            };
+        }
 
         // Same read-only, ownership-scoped operational context as production.
         await this.activeOperationsContext.populateTurnContext(turnContext, {
@@ -163,7 +184,14 @@ export class AgentTestService {
                         tenantId,
                         req.message,
                         topK,
-                        { similarityThreshold, executionContext },
+                        {
+                            similarityThreshold,
+                            executionContext,
+                            // Same jurisdiction gate as live: a test that can
+                            // read another country's regulated sources proves
+                            // nothing about what production will answer.
+                            jurisdiction: regional?.operatingCountry.value,
+                        },
                     );
                     for (const r of results) {
                         ragHits.push({
@@ -187,30 +215,57 @@ export class AgentTestService {
         // execute dozens of scenarios without ever writing to production
         // (no real appointments/orders created, no events emitted).
         const cfgTools = options?.disableTools ? null : ((config.tools ?? (config as any)?.tools) as any);
-        const tools: any[] = [];
-        if (cfgTools?.appointments?.enabled === true) tools.push(...APPOINTMENT_TOOLS);
-        if (cfgTools?.catalog?.enabled === true) tools.push(...CATALOG_TOOLS);
-        if (cfgTools?.faqs?.enabled === true) tools.push(FAQ_TOOL);
-        if (cfgTools?.policies?.enabled === true) tools.push(POLICY_TOOL);
-        if (cfgTools?.knowledge?.enabled === true) tools.push(KB_TOOL);
-        if (cfgTools?.offers?.enabled === true) tools.push(OFFER_TOOL);
-        if (cfgTools?.orders?.enabled === true) tools.push(ORDER_TOOL);
-        if (cfgTools?.crm?.enabled === true) tools.push(CUSTOMER_CONTEXT_TOOL);
-        if (cfgTools?.properties?.enabled === true) tools.push(...VACATION_RENTAL_TOOLS);
-        if (cfgTools?.tours?.enabled === true) tools.push(...TOURS_TOOLS);
-        if (cfgTools?.treatments?.enabled === true) tools.push(...TREATMENT_TOOLS);
-        if (cfgTools?.realEstate?.enabled === true) tools.push(...LISTINGS_TOOLS);
-        if (cfgTools?.vehicles?.enabled === true) tools.push(...VEHICLE_TOOLS);
-        if (cfgTools?.pets?.enabled === true) tools.push(...PETS_TOOLS);
-        if (cfgTools?.restaurants?.enabled === true) tools.push(...RESTAURANTS_TOOLS);
-        if (cfgTools?.gyms?.enabled === true) tools.push(...GYMS_TOOLS);
-        if (cfgTools?.education?.enabled === true) tools.push(...EDUCATION_TOOLS);
-        if (cfgTools?.insurance?.enabled === true) tools.push(...INSURANCE_TOOLS);
-        if (cfgTools?.homeServices?.enabled === true) tools.push(...HOME_SERVICES_TOOLS);
-        if (cfgTools?.petServices?.enabled === true) tools.push(...PET_SERVICES_TOOLS);
-        if (cfgTools?.photography?.enabled === true) tools.push(...PHOTOGRAPHY_TOOLS);
-        if (cfgTools?.professionalServices?.enabled === true) tools.push(...PROFESSIONAL_SERVICES_TOOLS);
-        if (cfgTools?.ecommerce?.enabled === true) tools.push(...ECOMMERCE_TOOLS);
+        // Same registry as production. This block used to be its own copy of the
+        // family list, so a tool family added to the pipeline silently never
+        // appeared in Agent Test — a test that cannot see a tool cannot catch a
+        // regression in it.
+        const tools: any[] = [...staticToolsForAgentConfig(cfgTools)];
+
+        // Resolution parity with production. These four families were simply
+        // ABSENT from Agent Test, so an owner could test an agent and ship
+        // something whose real contract they had never seen. They are resolved
+        // here and reported; whether the test may RUN them is a separate
+        // question, answered per tool below.
+        try {
+            const capability = await this.paymentOperations?.getRuntimeCapability(tenantId);
+            if (capability) {
+                if (cfgTools?.payments?.enabled === true) {
+                    tools.push(...paymentToolsForRuntime(cfgTools.payments, capability));
+                }
+                tools.push(...discountToolsForRuntime(
+                    {
+                        canApplyDiscount: cfgTools?.ecommerce?.canApplyDiscount,
+                        maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
+                    },
+                    capability,
+                ));
+            }
+        } catch (e: any) {
+            this.logger.debug(`[Test] payment capability unavailable: ${e.message}`);
+        }
+        try {
+            const connected = await this.verticalIntegrations?.getConnectedProviders(tenantId);
+            if (connected?.toast) tools.push(GET_RESTAURANT_MENU_TOOL);
+            if (connected?.mindbody) tools.push(GET_FITNESS_SCHEDULE_TOOL);
+            if (connected?.cliniko) tools.push(LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL);
+        } catch (e: any) {
+            this.logger.debug(`[Test] vertical integration gating skipped: ${e.message}`);
+        }
+        try {
+            const mcp = await this.mcpClient?.listPublishableTools(tenantId);
+            if (mcp?.tools?.length) tools.push(...mcp.tools);
+        } catch (e: any) {
+            this.logger.debug(`[Test] MCP tool resolution skipped: ${e.message}`);
+        }
+        // The OTP pair is derived from the A2 tools actually resolved, exactly
+        // as production does — so a test can show that a guarded read has its
+        // key, which is the failure this environment most needs to surface.
+        tools.push(...identityStepUpToolsFor(tools));
+
+        // What production would publish vs what this environment may execute.
+        // The gap is the report: a tool that quietly disappears teaches the
+        // operator that it does not exist.
+        const toolParity = buildToolParityReport(tools);
 
         // Agent Test always points at the tenant's real schema. Advertise only the
         // audited read-only subset. evalMode alone is execution metadata; it is
@@ -381,6 +436,15 @@ export class AgentTestService {
                 model,
                 latencyMs,
                 turnContext,
+                // What production would publish for this agent, and which of
+                // those the test may actually run. Without this the operator
+                // saw a smaller toolset with no indication it was smaller, and
+                // shipped an agent whose real contract they had never seen.
+                toolParity,
+                // The operating identity the run used, so a wrong clock or
+                // currency in a test is visible instead of being blamed on the
+                // model.
+                regional: turnContext.regional ?? null,
             },
         };
     }

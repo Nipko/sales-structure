@@ -3587,6 +3587,10 @@
       "vt_photography_desc": "Afficher les forfaits photo, vérifier les dates disponibles et demander un devis",
       "vt_professionalServices_title": "Suivi des dossiers",
       "vt_professionalServices_desc": "Consulter l’étape du dossier du client sans lui demander une référence qu’il n’a pas",
+      "vt_vehicleRentals_title": "Location de véhicules",
+      "vt_vehicleRentals_desc": "Vérifier la disponibilité par dates, réserver un véhicule, consulter ou annuler les locations du client",
+      "vt_petBoarding_title": "Garderie et pension",
+      "vt_petBoarding_desc": "Réserver des séjours en garderie ou pension selon la capacité réelle, consulter ou annuler ceux du client",
       "vt_vehicles_title": "Véhicules",
       "vt_vehicles_desc": "Rechercher dans l'inventaire de véhicules, voir les détails et envoyer des photos",
       "skillsetTitle": "Compétences de l'agent",
@@ -3640,12 +3644,25 @@
       "noRag": "Aucun résultat RAG",
       "args": "Arguments",
       "result": "Résultat",
+      "noContract": "Cette exécution n'a pas rapporté de contrat d'outils.",
+      "contractSummary": "La production publierait {resolved} outils pour cet agent ; {executable} peuvent s'exécuter ici.",
+      "contractRegional": "Pays d'exploitation {country} · devise {currency} · pack {pack} ({status})",
+      "executable": "exécutable",
+      "resolvedOnly": "résolu seulement",
+      "reason": {
+        "executable": "S'exécute comme en production.",
+        "writer_blocked_in_test": "Écrit de vraies données : le test le résout mais ne l'exécute pas.",
+        "external_effect_blocked_in_test": "Appelle un tiers : non exécuté depuis un test.",
+        "step_up_unavailable_in_test": "Nécessite un code de vérification qui ne peut pas atteindre une conversation de test.",
+        "not_approved": "N'a pas de politique revue, donc ne s'exécute pas non plus en production."
+      },
       "tabs": {
         "prompt": "System Prompt",
         "tools": "Outils",
         "rag": "RAG",
         "metrics": "Métriques",
-        "turn": "Turn Context"
+        "turn": "Turn Context",
+        "contract": "Contrat"
       },
       "metric": {
         "model": "Modèle",

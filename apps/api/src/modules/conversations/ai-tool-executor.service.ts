@@ -20,10 +20,19 @@ import { HomeServicesService } from '../home-services/home-services.service';
 import { PhotographyService } from '../photography/photography.service';
 import { OrdersService } from '../orders/orders.service';
 import { VehicleInventoryService } from '../verticals/vehicle-inventory.service';
+import { ResourceRentalsService } from '../resource-rentals/resource-rentals.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
-import type { PolicyType } from '@parallext/shared';
+import { TOOL_READ_ERROR_CODES, type PolicyType } from '@parallext/shared';
+import {
+    readEmpty,
+    readFailed,
+    readNotConfigured,
+    readOk,
+    readProviderDown,
+    readUnauthorized,
+} from '../../common/contracts/tool-read-result.util';
 import { absoluteMediaUrl } from '../../common/utils/media-url.util';
 import { ChatIdentityService } from './chat-identity.service';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
@@ -95,6 +104,7 @@ export class AIToolExecutorService {
         // real providers in ConversationsModule, so production always has them.
         private readonly ordersService?: OrdersService,
         private readonly vehicleInventory?: VehicleInventoryService,
+        private readonly resourceRentals?: ResourceRentalsService,
     ) { }
 
     /**
@@ -123,6 +133,18 @@ export class AIToolExecutorService {
                 kind: 'booking_engine_confirmation';
                 source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
             };
+            /**
+             * Tenant discount ceiling (`upsell.maxDiscountPercent`). Comes from
+             * the persona config, never from the model: the prompt-only version
+             * was advice the model could ignore.
+             */
+            maxDiscountPercent?: number;
+            /**
+             * Operating country. Regulated knowledge of another jurisdiction is
+             * excluded rather than down-ranked — an answer about the wrong
+             * country's rules is wrong even when it is fluent and cited.
+             */
+            jurisdiction?: string | null;
         },
     ): Promise<any> {
         this.logger.log(`[Tool] Executing: ${toolName}`);
@@ -196,6 +218,14 @@ export class AIToolExecutorService {
             const precondition = await this.assertWritePreconditions(schemaName, toolName, args);
             if (precondition) return precondition;
 
+            // An external MCP tool carries no policy of its own, so the guard
+            // needs the reviewed approval record. Resolved here because this is
+            // the only place that already holds the MCP client; an unresolved
+            // approval stays null and the guard refuses.
+            const mcpApproval = toolName.startsWith('mcp__') && this.mcpClient?.getApproval
+                ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
+                : null;
+
             controlDecision = await this.toolExecutionControl.preflight({
                 schemaName,
                 tenantId,
@@ -205,6 +235,7 @@ export class AIToolExecutorService {
                 conversationId,
                 channelType: opts?.channelType,
                 idempotencyKey: opts?.idempotencyKey,
+                mcpApproval,
                 // The audited eval writer runs the FULL guard — ledger,
                 // confirmation, idempotency — because that machinery is exactly
                 // what the gate needs to exercise. Read-only execution would
@@ -298,7 +329,9 @@ export class AIToolExecutorService {
                     return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext);
 
                 case 'search_knowledge_base':
-                    return this.searchKnowledgeBase(tenantId, args.query, args.limit, opts?.executionContext);
+                    return this.searchKnowledgeBase(
+                        tenantId, args.query, args.limit, opts?.executionContext, opts?.jurisdiction,
+                    );
 
                 case 'list_customer_orders':
                     return this.listCustomerOrders(schemaName, contactId, args.limit, args.status);
@@ -332,6 +365,7 @@ export class AIToolExecutorService {
                         contactId,
                         controlDecision.ledgerId,
                         args,
+                        opts?.maxDiscountPercent,
                     );
 
                 case 'create_payment_link':
@@ -380,10 +414,10 @@ export class AIToolExecutorService {
 
                 // ── Vacation Rental tools ───────────────────────────
                 case 'list_properties':
-                    return this.listProperties(schemaName, args.guests, args.checkIn, args.checkOut);
+                    return this.listProperties(schemaName, args.guests, args.checkIn, args.checkOut, tenantId);
 
                 case 'check_property_availability':
-                    return this.checkPropertyAvailability(schemaName, args.propertyId, args.checkIn, args.checkOut, args.guests);
+                    return this.checkPropertyAvailability(schemaName, args.propertyId, args.checkIn, args.checkOut, args.guests, tenantId);
 
                 case 'get_property_details':
                     return this.getPropertyDetails(schemaName, args.propertyId);
@@ -392,7 +426,7 @@ export class AIToolExecutorService {
                     return this.getCheckInInstructions(schemaName, contactId, args.propertyId);
 
                 case 'create_property_booking':
-                    return this.createPropertyBooking(schemaName, contactId, args as any, conversationId);
+                    return this.createPropertyBooking(schemaName, contactId, args as any, conversationId, tenantId);
 
                 case 'cancel_property_booking':
                     return this.cancelPropertyBooking(schemaName, contactId, args.bookingId, args.reason);
@@ -572,6 +606,34 @@ export class AIToolExecutorService {
                 case 'check_daycare_availability':
                     return this.checkDaycareAvailabilityTool(schemaName, args);
 
+                // ── Resource rentals (vehículo / guardería-hotel) ────
+                case 'check_vehicle_rental_availability':
+                    return this.checkVehicleRentalAvailability(schemaName, args);
+
+                case 'create_vehicle_rental':
+                    return this.createVehicleRental(schemaName, contactId, args);
+
+                case 'list_my_vehicle_rentals':
+                    return this.listMyResourceRentals(schemaName, contactId, 'vehicle_rental');
+
+                case 'get_vehicle_rental':
+                    return this.getResourceRental(schemaName, contactId, args.rentalId, 'vehicle_rental');
+
+                case 'cancel_vehicle_rental':
+                    return this.cancelResourceRental(schemaName, contactId, args.rentalId, 'vehicle_rental', args.reason);
+
+                case 'create_pet_boarding':
+                    return this.createPetBoarding(schemaName, contactId, args);
+
+                case 'list_my_pet_boardings':
+                    return this.listMyResourceRentals(schemaName, contactId, 'pet_boarding');
+
+                case 'get_pet_boarding':
+                    return this.getResourceRental(schemaName, contactId, args.boardingId, 'pet_boarding');
+
+                case 'cancel_pet_boarding':
+                    return this.cancelResourceRental(schemaName, contactId, args.boardingId, 'pet_boarding', args.reason);
+
                 case 'check_date_availability':
                     return this.checkDateAvailabilityTool(schemaName, args);
 
@@ -614,7 +676,14 @@ export class AIToolExecutorService {
 
     /**
      * Search products by natural-language query. Hits the `products` table in
-     * the tenant schema. Falls back to courses if products table is empty.
+     * the tenant schema.
+     *
+     * Two defects used to live here. The availability predicate was built and
+     * then dropped by a `conds.slice(0, -1)`, so the agent offered products the
+     * tenant had switched off. And an empty product table fell through to a
+     * `courses` lookup, which handed a pharmacy or a parts store a list of
+     * classes. A catalog search now answers about the catalog, or says nothing
+     * matched — and a query that throws says so instead of returning zero rows.
      */
     private async searchProducts(schema: string, query: string, limit = 5, category?: string): Promise<any> {
         const q = `%${query}%`;
@@ -630,52 +699,28 @@ export class AIToolExecutorService {
         params.push(limit);
         const sql = `SELECT id, name, description, category, price, currency, stock, is_available, images
                      FROM "${schema}".products
-                     WHERE ${conds.slice(0, -1).join(' AND ')}
+                     WHERE ${conds.join(' AND ')}
                      ORDER BY name ASC
                      LIMIT $${params.length}`;
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...params);
-            if (rows.length > 0) {
-                return {
-                    products: rows.map(p => ({
-                        id: p.id,
-                        name: p.name,
-                        description: p.description,
-                        category: p.category,
-                        price: Number(p.price || 0),
-                        currency: p.currency || 'COP',
-                        stock: p.stock ?? null,
-                        isAvailable: !!p.is_available,
-                    })),
-                };
-            }
-        } catch (e: any) {
-            this.logger.warn(`[Tool] search_products products table missing or empty: ${e.message}`);
-        }
-        // Fallback: search courses
-        try {
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, description, price, currency, duration_hours, modality
-                 FROM "${schema}".courses
-                 WHERE is_active = true AND (name ILIKE $1 OR description ILIKE $1)
-                 ORDER BY name ASC LIMIT $2`,
-                q, limit,
-            );
-            return {
-                products: rows.map(c => ({
-                    id: c.id,
-                    name: c.name,
-                    description: c.description,
-                    category: 'course',
-                    price: Number(c.price || 0),
-                    currency: c.currency || 'COP',
-                    durationHours: c.duration_hours,
-                    modality: c.modality,
-                    isAvailable: true,
+            return readOk({
+                products: rows.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description,
+                    category: p.category,
+                    price: Number(p.price || 0),
+                    currency: p.currency || 'COP',
+                    stock: p.stock ?? null,
+                    isAvailable: !!p.is_available,
                 })),
-            };
-        } catch {
-            return { products: [] };
+            });
+        } catch (e: any) {
+            this.logger.warn(`[Tool] search_products failed: ${e.message}`);
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar el catálogo en este momento.',
+            });
         }
     }
 
@@ -999,13 +1044,31 @@ export class AIToolExecutorService {
             const quantity = Math.floor(Number(raw?.quantity));
             if (!UUID_RE.test(productId)) return { error: 'product_not_found', productId };
             if (!Number.isFinite(quantity) || quantity < 1) return { error: 'invalid_quantity', productId };
+            // `is_active` never existed on this table: the column is
+            // `is_available`. Every call threw before reaching OrdersService, so
+            // eight catalog-selling profiles could search and price a product and
+            // never record a single order.
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, price, currency, stock FROM "${schema}".products
-                  WHERE id = $1::uuid AND is_active = true LIMIT 1`,
+                `SELECT id, name, price, currency, stock, is_available FROM "${schema}".products
+                  WHERE id = $1::uuid LIMIT 1`,
                 productId,
             );
             const product = rows?.[0];
             if (!product) return { error: 'product_not_found', productId };
+            if (product.is_available === false) {
+                return { error: 'product_unavailable', productId, productName: product.name };
+            }
+            // Stock NULL means the tenant does not track units for this product.
+            // Only an explicit number can be short.
+            if (product.stock !== null && product.stock !== undefined && Number(product.stock) < quantity) {
+                return {
+                    error: 'insufficient_stock',
+                    productId,
+                    productName: product.name,
+                    available: Number(product.stock),
+                    requested: quantity,
+                };
+            }
             items.push({
                 productId,
                 productName: product.name,
@@ -1100,17 +1163,24 @@ export class AIToolExecutorService {
             );
             if (rows.length > 0) {
                 const p = rows[0];
-                return {
+                return readOk({
                     id: p.id,
                     name: p.name,
                     stock: p.stock ?? null,
                     inStock: p.stock == null ? p.is_available : Number(p.stock) > 0,
-                };
+                });
             }
         } catch (e: any) {
+            // The catch used to fall through to "Product not found", so a broken
+            // query told the customer the product does not exist. Losing a sale
+            // to an outage is bad; telling the customer we do not sell the thing
+            // is worse, because they leave and do not come back.
             this.logger.warn(`[Tool] check_stock failed: ${e.message}`);
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar el inventario en este momento.',
+            });
         }
-        return { error: 'Product not found' };
+        return readEmpty({ product: null }, { message: 'No encontré ese producto en el catálogo.' });
     }
 
     // ── Knowledge tools ──────────────────────────────────────
@@ -1158,7 +1228,9 @@ export class AIToolExecutorService {
      * already resolved from the conversation. Returns a compact view.
      */
     private async listCustomerOrders(schema: string, contactId: string, limit = 5, status?: string): Promise<any> {
-        if (!contactId) return { orders: [], error: 'No contact resolved for this conversation.' };
+        if (!contactId) {
+            return readUnauthorized({ message: 'Necesito identificar al cliente para ver sus pedidos.' });
+        }
         try {
             const conds: string[] = ['contact_id = $1::uuid'];
             const params: any[] = [contactId];
@@ -1175,7 +1247,7 @@ export class AIToolExecutorService {
                  LIMIT $${params.length}`,
                 ...params,
             );
-            return {
+            return readOk({
                 orders: rows.map(o => ({
                     id: o.id,
                     status: o.status,
@@ -1186,10 +1258,16 @@ export class AIToolExecutorService {
                     items: Array.isArray(o.items) ? o.items : [],
                     createdAt: o.created_at,
                 })),
-            };
+            });
         } catch (e: any) {
+            // `{orders: []}` after an exception had neither `error` nor
+            // `success: false`, so the outcome guard read it as a successful
+            // read and the agent said "no tenés pedidos" about a query that
+            // threw. This is the canonical case for the read contract.
             this.logger.warn(`[Tool] list_customer_orders failed: ${e.message}`);
-            return { orders: [] };
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar los pedidos en este momento.',
+            });
         }
     }
 
@@ -1211,7 +1289,7 @@ export class AIToolExecutorService {
                  LIMIT $1`,
                 limit,
             );
-            return {
+            return readOk({
                 offers: rows.map(o => ({
                     id: o.id,
                     type: o.offer_type,
@@ -1221,10 +1299,12 @@ export class AIToolExecutorService {
                     validFrom: o.valid_from,
                     validTo: o.valid_to,
                 })),
-            };
+            });
         } catch (e: any) {
             this.logger.warn(`[Tool] list_active_offers failed: ${e.message}`);
-            return { offers: [] };
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar las promociones en este momento.',
+            });
         }
     }
 
@@ -1234,8 +1314,15 @@ export class AIToolExecutorService {
      * still gets a basic contact profile.
      */
     private async getCustomerContext(schema: string, contactId: string): Promise<any> {
-        if (!contactId) return { error: 'No contact resolved for this conversation.' };
+        if (!contactId) {
+            return readUnauthorized({ message: 'No tengo identificado al cliente de esta conversación.' });
+        }
 
+        // The contact row is the spine of this answer. When its query fails the
+        // whole result used to degrade to `{contact: null, lead: null,
+        // opportunitiesCount: 0}` with no error at all — a total database
+        // outage read as "brand-new customer", and the agent greeted a
+        // ten-year client as a stranger.
         let contact: any = null;
         try {
             const cRows: any[] = await this.prisma.$queryRawUnsafe(
@@ -1246,7 +1333,16 @@ export class AIToolExecutorService {
             contact = cRows[0] || null;
         } catch (e: any) {
             this.logger.warn(`[Tool] get_customer_context contacts lookup failed: ${e.message}`);
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar la ficha del cliente en este momento.',
+            });
         }
+
+        // Leads and opportunities are genuinely optional — a tenant may not use
+        // the CRM at all — but "we could not read them" and "there are none"
+        // are still different answers, so the degradation is reported instead
+        // of being indistinguishable from an empty pipeline.
+        const partial: string[] = [];
 
         let lead: any = null;
         try {
@@ -1256,18 +1352,22 @@ export class AIToolExecutorService {
                 contactId,
             );
             lead = lRows[0] || null;
-        } catch { /* Leads are optional for a contact context response. */ }
+        } catch { partial.push('lead'); }
 
-        let opportunitiesCount = 0;
+        let opportunitiesCount: number | null = 0;
         try {
             const oRows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT COUNT(*)::int AS cnt FROM "${schema}".opportunities WHERE contact_id = $1::uuid`,
                 contactId,
             );
             opportunitiesCount = Number(oRows[0]?.cnt || 0);
-        } catch { /* Opportunities are optional for a contact context response. */ }
+        } catch {
+            partial.push('opportunities');
+            opportunitiesCount = null;
+        }
 
-        return {
+        return readOk({
+            unreadable: partial.length ? partial : undefined,
             contact: contact ? {
                 id: contact.id,
                 name: contact.name,
@@ -1282,7 +1382,9 @@ export class AIToolExecutorService {
                 lastName: lead.last_name,
             } : null,
             opportunitiesCount,
-        };
+        }, {
+            health: partial.length ? 'degraded' : 'healthy',
+        });
     }
 
     // ── E-commerce dual-skillset tools (T2.17) ──────────
@@ -1412,27 +1514,41 @@ export class AIToolExecutorService {
         query: string,
         limit = 5,
         executionContext?: ServiceExecutionContext,
+        /** Operating country, so regulated sources of other countries stay out. */
+        jurisdiction?: string | null,
     ): Promise<any> {
         try {
             const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext);
-            if (!hasKnowledge) return { chunks: [] };
+            // "El negocio no cargó base de conocimiento" y "la búsqueda no
+            // encontró nada" son respuestas distintas, y ninguna de las dos es
+            // "la consulta falló".
+            if (!hasKnowledge) {
+                return readEmpty({ chunks: [] }, {
+                    message: 'Este negocio todavía no cargó base de conocimiento.',
+                });
+            }
             const results = await this.knowledgeService.searchRelevant(
                 tenantId,
                 query,
                 limit,
-                { executionContext },
+                { executionContext, jurisdiction },
             );
-            return {
+            return readOk({
                 chunks: (results || []).map((r: any) => ({
                     id: r.id ?? r.document_id,
                     title: r.title,
                     content: r.chunk_text,
                     score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
                 })),
-            };
+            });
         } catch (e: any) {
+            // Un RAG caído devolvía `{chunks: []}`, indistinguible de "no hay
+            // nada sobre eso" — así el agente contestaba de memoria sobre una
+            // política que no pudo leer.
             this.logger.warn(`[Tool] search_knowledge_base failed: ${e.message}`);
-            return { chunks: [] };
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar la base de conocimiento en este momento.',
+            });
         }
     }
 
@@ -2266,7 +2382,7 @@ export class AIToolExecutorService {
     /**
      * List active properties, optionally filtering by guest capacity.
      */
-    private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string): Promise<any> {
+    private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string, tenantId?: string): Promise<any> {
         try {
             const conds: string[] = ['is_active = true'];
             const params: any[] = [];
@@ -2317,7 +2433,7 @@ export class AIToolExecutorService {
                 let failures = 0;
                 for (const prop of properties) {
                     try {
-                        const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut);
+                        const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut, tenantId);
                         if (avail.available) {
                             available.push({ ...prop, totalPrice: avail.totalPrice, nights: avail.nights });
                         }
@@ -2368,10 +2484,10 @@ export class AIToolExecutorService {
      * Check availability and pricing for a specific property + date range.
      */
     private async checkPropertyAvailability(
-        schema: string, propertyId: string, checkIn: string, checkOut: string, guests?: number,
+        schema: string, propertyId: string, checkIn: string, checkOut: string, guests?: number, tenantId?: string,
     ): Promise<any> {
         try {
-            const avail = await this.propertiesService.checkAvailability(schema, propertyId, checkIn, checkOut);
+            const avail = await this.propertiesService.checkAvailability(schema, propertyId, checkIn, checkOut, tenantId);
 
             // If guest count provided, verify capacity
             if (guests && avail.available) {
@@ -2384,10 +2500,21 @@ export class AIToolExecutorService {
                 }
             }
 
+            // When the business runs its own channel manager, availability is a
+            // mirror and the stay cannot be closed here. Saying so is the only
+            // honest answer: the alternative is a booking the PMS never sees.
+            if (avail.canBookDirectly === false) {
+                return {
+                    ...avail,
+                    message: 'Este alojamiento se administra desde el channel manager del negocio. Podés informar disponibilidad, pero la reserva la confirma el equipo — no la des por hecha.',
+                };
+            }
             return avail;
         } catch (e: any) {
             this.logger.warn(`[Tool] check_property_availability failed: ${e.message}`);
-            return { error: e.message };
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar la disponibilidad de ese alojamiento en este momento.',
+            });
         }
     }
 
@@ -2582,9 +2709,11 @@ export class AIToolExecutorService {
         schema: string, contactId: string,
         args: { propertyId: string; checkIn: string; checkOut: string; guestName: string; guestPhone?: string; guests?: number },
         conversationId?: string,
+        tenantId?: string,
     ): Promise<any> {
         try {
             const booking = await this.propertiesService.createBooking(schema, args.propertyId, {
+                tenantId: tenantId || null,
                 contactId: contactId || null,
                 conversationId: conversationId || null,
                 guestName: args.guestName,
@@ -2632,8 +2761,29 @@ export class AIToolExecutorService {
                 },
             };
         } catch (e: any) {
+            const detail = typeof e?.response === 'object' && e.response ? e.response : {};
+            // The business runs its own channel manager for this unit. That is
+            // not a failure to hide behind a generic error: it is a real answer
+            // the guest needs, and the turn must escalate instead of retrying.
+            if (detail.error === 'channel_manager_owns_calendar') {
+                return {
+                    error: 'channel_manager_owns_calendar',
+                    shouldHandoff: true,
+                    provider: detail.provider ?? null,
+                    asOf: detail.asOf ?? null,
+                    stale: detail.stale === true,
+                    message: 'Este alojamiento se administra desde el sistema del negocio. Decile al huésped que el equipo confirma la reserva y pasá la conversación — no la des por confirmada.',
+                };
+            }
+            if (detail.error === 'duplicate_property_booking') {
+                return {
+                    error: 'duplicate_property_booking',
+                    bookingId: detail.bookingId ?? null,
+                    message: detail.message || 'Ese huésped ya tiene una reserva para esas fechas.',
+                };
+            }
             this.logger.warn(`[Tool] create_property_booking failed: ${e.message}`);
-            return { error: e.message };
+            return { error: 'booking_failed', message: 'No pude registrar la reserva en este momento.' };
         }
     }
 
@@ -3783,7 +3933,9 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { requests: [], error: e.message };
+            // Sin la colección vacía: devolver `[]` junto al error hacía que el
+            // modelo leyera "no hay nada" de una consulta que falló.
+            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
         }
     }
 
@@ -3915,105 +4067,350 @@ export class AIToolExecutorService {
     /**
      * Guardería / hotel de mascotas: ¿hay lugar del check-in al check-out?
      *
-     * Antes esto y `check_date_availability` (fotografía) compartían UN handler
-     * que ignoraba casi todo lo que su propio schema promete: tomaba
-     * `date || checkIn`, descartaba `checkOut` y `petSize`, no miraba
-     * `blocked_dates` pese al comentario que decía que sí, y decidía con
-     * `taken < 5` — una constante escrita en el código, sin ninguna relación
-     * con la capacidad que valida `create_appointment` al reservar.
+     * Esta lectura contaba la ocupación en `appointments` mientras la reserva
+     * real se escribe en `resource_rentals`, que es donde viven los locks, el
+     * solapamiento por mascota y la capacidad por noche, y lo que muestra
+     * `/admin/resource-rentals`. Dos contadores distintos sobre el mismo cupo
+     * significaban que el cliente podía escuchar "sí hay lugar" y recibir un
+     * rechazo en el mismo turno.
      *
-     * Las dos consecuencias eran visibles para el cliente: preguntaba por una
-     * estadía del 12 al 18 y el bot respondía mirando sólo el 12; y el bot
-     * afirmaba que había lugar y en el mismo turno la reserva fallaba, porque
-     * cada uno contaba distinto.
-     *
-     * Ahora la capacidad sale de la MISMA fuente que la reserva
-     * (`services.max_concurrent`) y se evalúa día por día en todo el rango.
+     * Ahora delega en `ResourceRentalsService.checkAvailability`, que ejecuta
+     * las MISMAS consultas que el writer. Si alguna vez divergen es porque
+     * alguien cambió una de las dos en ese servicio, no aquí.
      */
     private async checkDaycareAvailabilityTool(schemaName: string, args: any): Promise<any> {
-        try {
-            const checkIn = args.checkIn || args.date;
-            if (!checkIn) return { error: 'checkIn is required' };
-            // Estadía de un día si no dan salida. El rango es inclusivo del
-            // check-in y exclusivo del check-out: la noche que se va no ocupa.
-            const checkOut = args.checkOut || checkIn;
+        if (!this.resourceRentals) {
+            return readNotConfigured('tenant_db', {
+                message: 'La reserva de guardería no está disponible en este momento.',
+            });
+        }
+        const checkIn = args?.checkIn || args?.date;
+        if (!checkIn) return { error: 'checkIn is required' };
+        // Estadía de un día si no dan salida. El rango es medio abierto: la
+        // noche en que se va no ocupa cupo.
+        const checkOut = args?.checkOut && args.checkOut !== checkIn
+            ? args.checkOut
+            : this.nextDayIso(checkIn);
+        if (!checkOut) return { error: 'Invalid date range: checkOut must be after checkIn.' };
 
-            const start = new Date(`${checkIn}T00:00:00Z`);
-            const end = new Date(`${checkOut}T00:00:00Z`);
-            if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
-                return { error: 'Invalid date range: checkOut must be on or after checkIn.' };
-            }
-            const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000));
-            if (nights > 60) return { error: 'Stay is too long to quote automatically — offer to connect with the team.' };
-
-            // Capacidad real del servicio de alojamiento. Se resuelve por
-            // categoría porque es lo que el bootstrap siembra (guarderia/hotel).
+        // El servicio de alojamiento se resuelve por categoría, que es lo que
+        // siembra el bootstrap (guarderia/hotel). El id explícito gana.
+        let serviceId = typeof args?.serviceId === 'string' ? args.serviceId : null;
+        if (!serviceId) {
             const svcRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, name, COALESCE(max_concurrent, 1) AS max_concurrent
-                 FROM services
+                `SELECT id FROM services
                  WHERE is_active = true AND category IN ('guarderia', 'hotel')
-                 ORDER BY max_concurrent DESC LIMIT 1`,
-            ).catch(() => [] as any[]);
-            const capacity = Number(svcRows[0]?.max_concurrent || 0);
-            if (!capacity) {
-                return {
-                    available: false,
-                    message: 'This business has no daycare/boarding service configured yet. Do NOT promise availability — offer to connect the customer with the team.',
-                };
+                 ORDER BY COALESCE(max_concurrent, 1) DESC, name ASC
+                 LIMIT 1`,
+            ).catch(() => null);
+            if (!svcRows) {
+                return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                    message: 'No pude consultar la disponibilidad de la guardería en este momento.',
+                });
             }
-            const serviceIds = svcRows.map(s => s.id);
+            serviceId = svcRows[0]?.id ?? null;
+        }
+        if (!serviceId) {
+            return readEmpty({ available: false }, {
+                message: 'This business has no daycare/boarding service configured yet. Do NOT promise availability — offer to connect the customer with the team.',
+            });
+        }
 
-            const days: string[] = [];
-            for (let i = 0; i < nights; i++) {
-                const d = new Date(start);
-                d.setUTCDate(d.getUTCDate() + i);
-                days.push(d.toISOString().slice(0, 10));
-            }
-
-            // Días que el dueño bloqueó en el panel (user_id NULL = todo cerrado).
-            const blocked = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT DISTINCT blocked_date::text AS d FROM blocked_dates
-                 WHERE blocked_date = ANY($1::date[]) AND user_id IS NULL`,
-                [days],
-            ).catch(() => [] as any[]);
-            const blockedSet = new Set(blocked.map(b => b.d));
-
-            // Ocupación por día, contando SOLO el servicio de alojamiento.
-            const occupied = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT start_at::date::text AS d, COUNT(*)::int AS cnt
-                 FROM appointments
-                 WHERE status IN ('confirmed', 'pending')
-                   AND start_at::date = ANY($1::date[])
-                   AND service_id = ANY($2::uuid[])
-                 GROUP BY 1`,
-                [days, serviceIds],
-            ).catch(() => [] as any[]);
-            const byDay = new Map(occupied.map(o => [o.d, Number(o.cnt)]));
-
-            const full = days.filter(d => blockedSet.has(d) || (byDay.get(d) || 0) >= capacity);
-            const available = full.length === 0;
-
-            return {
-                checkIn,
-                checkOut,
-                nights,
-                capacity,
-                unavailableDates: full,
-                available,
-                // petSize se recibe y NO se usa para decidir: la capacidad del
-                // schema no distingue tamaños. Decirlo evita que el modelo
+        try {
+            const result = await this.resourceRentals.checkAvailability(schemaName, {
+                type: 'pet_boarding',
+                serviceId,
+                startDate: checkIn,
+                endDate: checkOut,
+            });
+            return readOk({
+                serviceId,
+                checkIn: result.startDate,
+                checkOut: result.endDate,
+                nights: result.nights,
+                capacity: result.capacity ?? null,
+                available: result.available,
+                fullNight: result.fullNight ?? null,
+                reason: result.reason ?? null,
+                // petSize se recibe y NO se usa para decidir: el modelo de
+                // capacidad no distingue tamaños. Decirlo evita que el agente
                 // invente una respuesta sobre el perro grande.
                 petSizeConsidered: false,
-                message: available
-                    ? `Space available for all ${nights} night(s).`
-                    : `No space on: ${full.join(', ')}. Offer other dates. If the customer asks about pet size or special needs, say the team confirms that directly — you cannot check it.`,
+                message: result.available
+                    ? `Space available for all ${result.nights} night(s).`
+                    : `No space for the full range (${result.reason || 'no_capacity'}). Offer other dates. If the customer asks about pet size or special needs, say the team confirms that directly — you cannot check it.`,
+            });
+        } catch (e: any) {
+            const status = e?.status ?? e?.getStatus?.();
+            if (status === 400 || status === 404) {
+                return { error: 'invalid_boarding_request', message: 'Revisá las fechas y el servicio antes de consultar el cupo.' };
+            }
+            this.logger.warn(`[Tool] check_daycare_availability failed: ${e.message}`);
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar la disponibilidad de la guardería en este momento.',
+            });
+        }
+    }
+
+    // ── Resource rentals ─────────────────────────────────────
+    //
+    // Alquiler de vehículos y guardería/hotel de mascotas comparten un único
+    // registro (`resource_rentals`) con locks, solapamiento y capacidad por
+    // noche. Estos handlers son la única puerta conversacional a ese registro:
+    // antes el motor existía, la web lo mostraba y el agente sólo podía
+    // derivar a un humano.
+
+    private async checkVehicleRentalAvailability(schemaName: string, args: any): Promise<any> {
+        if (!this.resourceRentals) {
+            return readNotConfigured('tenant_db', {
+                message: 'El alquiler de vehículos no está disponible en este momento.',
+            });
+        }
+        try {
+            const result = await this.resourceRentals.checkAvailability(schemaName, {
+                type: 'vehicle_rental',
+                resourceId: args?.vehicleId,
+                startDate: args?.startDate,
+                endDate: args?.endDate,
+            });
+            return readOk({
+                vehicleId: args?.vehicleId,
+                startDate: result.startDate,
+                endDate: result.endDate,
+                days: result.nights,
+                available: result.available,
+                reason: result.reason ?? null,
+                conflictStart: result.conflictStart ?? null,
+                conflictEnd: result.conflictEnd ?? null,
+                message: result.available
+                    ? `Vehicle is free for those ${result.nights} day(s).`
+                    : 'Vehicle is not free for that range. Offer other dates or another vehicle — do NOT promise it.',
+            });
+        } catch (e: any) {
+            return this.rentalReadFailure(e, 'check_vehicle_rental_availability');
+        }
+    }
+
+    private async createVehicleRental(schemaName: string, contactId: string, args: any): Promise<any> {
+        if (!this.resourceRentals) {
+            return { error: 'rentals_unavailable', message: 'El alquiler de vehículos no está disponible.' };
+        }
+        if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
+            return { error: 'contact_required', message: 'Necesito identificar al cliente antes de reservar.' };
+        }
+        const driverName = String(args?.driverName || '').trim();
+        if (!driverName) {
+            return { error: 'driver_required', message: 'Falta el nombre de quien va a conducir.' };
+        }
+        try {
+            const rental = await this.resourceRentals.create(schemaName, {
+                type: 'vehicle_rental',
+                resourceId: args?.vehicleId,
+                contactId,
+                customerName: driverName.slice(0, 255),
+                customerPhone: args?.driverPhone ? String(args.driverPhone).slice(0, 50) : undefined,
+                startDate: args?.startDate,
+                endDate: args?.endDate,
+                notes: args?.notes ? String(args.notes).slice(0, 1000) : undefined,
+            });
+            return {
+                success: true,
+                rental: this.projectRental(rental),
+                humanRoute: `/admin/resource-rentals?type=vehicle_rental&rentalId=${rental?.id}`,
             };
         } catch (e: any) {
-            return { error: e.message };
+            return this.rentalWriteFailure(e, 'create_vehicle_rental');
         }
+    }
+
+    private async createPetBoarding(schemaName: string, contactId: string, args: any): Promise<any> {
+        if (!this.resourceRentals) {
+            return { error: 'rentals_unavailable', message: 'La reserva de guardería no está disponible.' };
+        }
+        if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
+            return { error: 'contact_required', message: 'Necesito identificar al tutor antes de reservar.' };
+        }
+        try {
+            const rental = await this.resourceRentals.create(schemaName, {
+                type: 'pet_boarding',
+                resourceId: args?.petId,
+                serviceId: args?.serviceId,
+                contactId,
+                startDate: args?.startDate,
+                endDate: args?.endDate,
+                notes: args?.notes ? String(args.notes).slice(0, 1000) : undefined,
+            });
+            return {
+                success: true,
+                boarding: this.projectRental(rental),
+                humanRoute: `/admin/resource-rentals?type=pet_boarding&rentalId=${rental?.id}`,
+            };
+        } catch (e: any) {
+            return this.rentalWriteFailure(e, 'create_pet_boarding');
+        }
+    }
+
+    private async listMyResourceRentals(
+        schemaName: string,
+        contactId: string,
+        type: 'vehicle_rental' | 'pet_boarding',
+    ): Promise<any> {
+        if (!this.resourceRentals) {
+            return readNotConfigured('tenant_db');
+        }
+        if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
+            return readUnauthorized({ message: 'Necesito identificar al cliente para ver sus reservas.' });
+        }
+        try {
+            const rows = await this.resourceRentals.list(schemaName, {
+                type,
+                contactId,
+                activeOnly: true,
+                limit: 10,
+            });
+            const key = type === 'vehicle_rental' ? 'rentals' : 'boardings';
+            return readOk({ [key]: rows.map(row => this.projectRental(row)) });
+        } catch (e: any) {
+            return this.rentalReadFailure(e, `list_my_${type}`);
+        }
+    }
+
+    private async getResourceRental(
+        schemaName: string,
+        contactId: string,
+        rentalId: string,
+        type: 'vehicle_rental' | 'pet_boarding',
+    ): Promise<any> {
+        if (!this.resourceRentals) {
+            return readNotConfigured('tenant_db');
+        }
+        if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
+            return readUnauthorized({ message: 'Necesito identificar al cliente para ver esa reserva.' });
+        }
+        try {
+            const rental = await this.resourceRentals.getById(schemaName, rentalId);
+            // Ownership y tipo se verifican antes de devolver nada: una reserva
+            // de otro cliente no debe entrar al contexto del modelo ni siquiera
+            // para descartarla después.
+            if (!rental
+                || rental.rental_type !== type
+                || String(rental.contact_id || '').toLowerCase() !== String(contactId).toLowerCase()) {
+                return readEmpty({ rental: null }, {
+                    message: 'No encontré esa reserva a nombre de este cliente.',
+                });
+            }
+            return readOk({ rental: this.projectRental(rental) });
+        } catch (e: any) {
+            return this.rentalReadFailure(e, 'get_resource_rental');
+        }
+    }
+
+    private async cancelResourceRental(
+        schemaName: string,
+        contactId: string,
+        rentalId: string,
+        type: 'vehicle_rental' | 'pet_boarding',
+        reason?: string,
+    ): Promise<any> {
+        if (!this.resourceRentals) {
+            return { error: 'rentals_unavailable' };
+        }
+        if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
+            return { error: 'contact_required', message: 'Necesito identificar al cliente antes de cancelar.' };
+        }
+        try {
+            const existing = await this.resourceRentals.getById(schemaName, rentalId);
+            if (!existing || existing.rental_type !== type) {
+                return { error: 'rental_not_found', message: 'No encontré esa reserva.' };
+            }
+            const cancelled = await this.resourceRentals.cancelForContact(
+                schemaName, rentalId, contactId, reason,
+            );
+            return {
+                success: true,
+                rental: this.projectRental(cancelled),
+                humanRoute: `/admin/resource-rentals?type=${type}&rentalId=${rentalId}`,
+            };
+        } catch (e: any) {
+            return this.rentalWriteFailure(e, 'cancel_resource_rental');
+        }
+    }
+
+    /** Canonical shape the model sees for any rental, whatever its type. */
+    private projectRental(row: any): any {
+        if (!row) return null;
+        const startDate = String(row.start_date instanceof Date
+            ? row.start_date.toISOString().slice(0, 10)
+            : row.start_date || '').slice(0, 10);
+        const endDate = String(row.end_date instanceof Date
+            ? row.end_date.toISOString().slice(0, 10)
+            : row.end_date || '').slice(0, 10);
+        return {
+            id: row.id,
+            type: row.rental_type,
+            status: row.status,
+            startDate,
+            endDate,
+            resourceId: row.resource_id,
+            resourceName: row.resource_name || row.pet_name || null,
+            serviceName: row.service_name || null,
+            notes: row.notes || null,
+        };
+    }
+
+    /**
+     * A rejected rental is not the same as a broken one.
+     *
+     * Conflicts (vehicle taken, no capacity, pet already boarded) are real
+     * answers the agent must relay so the customer can pick other dates; only
+     * an unexpected failure becomes an opaque error.
+     */
+    private rentalWriteFailure(e: any, toolName: string): any {
+        const status = e?.status ?? e?.getStatus?.();
+        const response = e?.response;
+        const detail = typeof response === 'object' && response ? response : {};
+        if (status === 409) {
+            return {
+                error: 'rental_conflict',
+                conflictStart: detail.conflictStart ?? null,
+                conflictEnd: detail.conflictEnd ?? null,
+                fullNight: detail.fullNight ?? null,
+                capacity: detail.capacity ?? null,
+                message: 'Ese rango ya no está disponible. Ofrecé otras fechas — no confirmes la reserva.',
+            };
+        }
+        if (status === 403) {
+            return { error: 'not_your_rental', message: 'Esa reserva es de otro cliente.' };
+        }
+        if (status === 404) {
+            return { error: 'rental_resource_not_found', message: 'No encontré ese recurso.' };
+        }
+        if (status === 400) {
+            return { error: 'invalid_rental_request', message: 'Faltan datos o las fechas no son válidas.' };
+        }
+        this.logger.warn(`[Tool] ${toolName} failed: ${e?.message}`);
+        return { error: 'rental_failed', message: 'No pude registrar la reserva en este momento.' };
+    }
+
+    private rentalReadFailure(e: any, toolName: string): any {
+        const status = e?.status ?? e?.getStatus?.();
+        if (status === 400 || status === 404) {
+            return readEmpty({ available: false }, { message: 'No encontré ese recurso con esos datos.' });
+        }
+        this.logger.warn(`[Tool] ${toolName} failed: ${e?.message}`);
+        return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+            message: 'No pude consultar la disponibilidad en este momento.',
+        });
+    }
+
+    /** `YYYY-MM-DD` + 1 día, o null si la fecha no es válida. */
+    private nextDayIso(date: string): string | null {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return null;
+        const parsed = new Date(`${date}T00:00:00.000Z`);
+        if (Number.isNaN(parsed.getTime())) return null;
+        parsed.setUTCDate(parsed.getUTCDate() + 1);
+        return parsed.toISOString().slice(0, 10);
     }
 
     /**
@@ -4303,7 +4700,9 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { bookings: [], error: e.message };
+            // Sin la colección vacía: devolver `[]` junto al error hacía que el
+            // modelo leyera "no hay nada" de una consulta que falló.
+            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
         }
     }
 
@@ -4362,7 +4761,9 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { bookings: [], error: e.message };
+            // Sin la colección vacía: devolver `[]` junto al error hacía que el
+            // modelo leyera "no hay nada" de una consulta que falló.
+            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
         }
     }
 
@@ -4459,7 +4860,9 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { orders: [], error: e.message };
+            // Sin la colección vacía: devolver `[]` junto al error hacía que el
+            // modelo leyera "no hay nada" de una consulta que falló.
+            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
         }
     }
 
@@ -4566,7 +4969,9 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { enrollments: [], error: e.message };
+            // Sin la colección vacía: devolver `[]` junto al error hacía que el
+            // modelo leyera "no hay nada" de una consulta que falló.
+            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
         }
     }
 
@@ -4602,7 +5007,9 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
-            return { claims: [], error: e.message };
+            // Sin la colección vacía: devolver `[]` junto al error hacía que el
+            // modelo leyera "no hay nada" de una consulta que falló.
+            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
         }
     }
 

@@ -42,6 +42,7 @@ import { InsuranceModule } from '../insurance/insurance.module';
 import { HomeServicesModule } from '../home-services/home-services.module';
 import { PhotographyModule } from '../photography/photography.module';
 import { OrdersModule } from '../orders/orders.module';
+import { ResourceRentalsModule } from '../resource-rentals/resource-rentals.module';
 import { VerticalsModule } from '../verticals/verticals.module';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
 import { EcommerceModule } from '../ecommerce/ecommerce.module';
@@ -93,6 +94,7 @@ import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
         HomeServicesModule,
         PhotographyModule,
         OrdersModule,
+        ResourceRentalsModule,
         VerticalsModule,
         EcommerceModule,
         VerticalIntegrationsModule,

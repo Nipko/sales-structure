@@ -32,6 +32,8 @@ const ALL_TOOL_FLAGS = {
     insurance: { enabled: true },
     homeServices: { enabled: true },
     petServices: { enabled: true },
+    vehicleRentals: { enabled: true },
+    petBoarding: { enabled: true },
     photography: { enabled: true },
     professionalServices: { enabled: true },
 };

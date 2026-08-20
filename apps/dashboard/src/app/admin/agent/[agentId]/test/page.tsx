@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
-import { ArrowLeft, Send, Wrench, Search, FileCode, Activity, RotateCcw, Bot, User, Loader2 } from "lucide-react";
+import { ArrowLeft, Send, Wrench, Search, FileCode, Activity, RotateCcw, Bot, User, Loader2, ShieldCheck } from "lucide-react";
 
 type Turn = {
     role: "user" | "assistant";
@@ -23,9 +23,34 @@ type DebugInfo = {
     model: string;
     latencyMs: number;
     turnContext: Record<string, unknown>;
+    /**
+     * Lo que producción publicaría para este agente, y cuáles de esas puede
+     * ejecutar el entorno de prueba. Antes la prueba mostraba un toolset más
+     * chico sin decir que lo era, así que el dueño publicaba un agente cuyo
+     * contrato real nunca había visto.
+     */
+    toolParity?: {
+        resolvedCount: number;
+        executableCount: number;
+        tools: Array<{
+            name: string;
+            executableInTest: boolean;
+            reason: string;
+            effect?: string;
+            assurance?: string;
+        }>;
+    };
+    regional?: {
+        operatingCountry: string;
+        currency: string;
+        locale: string;
+        addressForm: string;
+        countryPackId: string;
+        countryPackStatus: string;
+    } | null;
 };
 
-type DebugTab = "prompt" | "tools" | "rag" | "metrics" | "turn";
+type DebugTab = "prompt" | "tools" | "contract" | "rag" | "metrics" | "turn";
 
 export default function TestAgentPage() {
     const params = useParams();
@@ -199,6 +224,7 @@ export default function TestAgentPage() {
                             {([
                                 { key: "prompt", label: t("tabs.prompt"), icon: FileCode },
                                 { key: "tools", label: t("tabs.tools"), icon: Wrench },
+                                { key: "contract", label: t("tabs.contract"), icon: ShieldCheck },
                                 { key: "rag", label: t("tabs.rag"), icon: Search },
                                 { key: "metrics", label: t("tabs.metrics"), icon: Activity },
                                 { key: "turn", label: t("tabs.turn"), icon: FileCode },
@@ -253,6 +279,57 @@ export default function TestAgentPage() {
                                             </pre>
                                         </div>
                                     ))
+                                )}
+                            </div>
+                        ) : debugTab === "contract" ? (
+                            <div className="space-y-3">
+                                {!selectedDebug.toolParity ? (
+                                    <p className="text-xs text-neutral-500">{t("noContract")}</p>
+                                ) : (
+                                    <>
+                                        <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-3">
+                                            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                                                {t("contractSummary", {
+                                                    resolved: selectedDebug.toolParity.resolvedCount,
+                                                    executable: selectedDebug.toolParity.executableCount,
+                                                })}
+                                            </p>
+                                            {selectedDebug.regional && (
+                                                <p className="mt-2 text-[10px] text-neutral-500">
+                                                    {t("contractRegional", {
+                                                        country: selectedDebug.regional.operatingCountry,
+                                                        currency: selectedDebug.regional.currency,
+                                                        pack: selectedDebug.regional.countryPackId,
+                                                        status: selectedDebug.regional.countryPackStatus,
+                                                    })}
+                                                </p>
+                                            )}
+                                        </div>
+                                        {selectedDebug.toolParity.tools.map(tool => (
+                                            <div
+                                                key={tool.name}
+                                                className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-3"
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                                                        {tool.name}
+                                                    </span>
+                                                    <span
+                                                        className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                                            tool.executableInTest
+                                                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                                                : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                                        }`}
+                                                    >
+                                                        {tool.executableInTest ? t("executable") : t("resolvedOnly")}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-[10px] text-neutral-500">
+                                                    {t(`reason.${tool.reason}` as never)}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </>
                                 )}
                             </div>
                         ) : debugTab === "rag" ? (

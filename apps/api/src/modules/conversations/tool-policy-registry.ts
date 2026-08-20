@@ -339,6 +339,35 @@ const TOOL_POLICY_ENTRIES = [
     // Pet services, photography and professional cases
     entry('list_pet_services', publicRead({ agentTestAllowed: true })),
     entry('check_daycare_availability', publicRead({ agentTestAllowed: true })),
+
+    // Resource rentals — vehículo y guardería/hotel de mascotas.
+    // El motor (`ResourceRentalsService`) ya existía con locks, solapamiento y
+    // capacidad por noche; lo que faltaba era la puerta conversacional. Los
+    // writers usan `state_guarded` porque el propio servicio revalida
+    // disponibilidad bajo lock dentro de la transacción que escribe.
+    entry('check_vehicle_rental_availability', publicRead({ agentTestAllowed: true })),
+    entry('create_vehicle_rental', contactWrite({
+        idempotency: 'state_guarded',
+        downstreamEffects: ['domain_event'],
+    })),
+    entry('list_my_vehicle_rentals', contactRead({ agentTestAllowed: true })),
+    entry('get_vehicle_rental', contactRead({ ownership: 'resource_owner', agentTestAllowed: true })),
+    entry('cancel_vehicle_rental', contactWrite({
+        ownership: 'resource_owner',
+        idempotency: 'state_guarded',
+        downstreamEffects: ['domain_event'],
+    })),
+    entry('create_pet_boarding', contactWrite({
+        idempotency: 'state_guarded',
+        downstreamEffects: ['domain_event'],
+    })),
+    entry('list_my_pet_boardings', contactRead({ agentTestAllowed: true })),
+    entry('get_pet_boarding', contactRead({ ownership: 'resource_owner', agentTestAllowed: true })),
+    entry('cancel_pet_boarding', contactWrite({
+        ownership: 'resource_owner',
+        idempotency: 'state_guarded',
+        downstreamEffects: ['domain_event'],
+    })),
     entry('list_photo_packages', publicRead({ agentTestAllowed: true })),
     entry('send_portfolio', mediaWrite()),
     entry('check_date_availability', publicRead({ agentTestAllowed: true })),

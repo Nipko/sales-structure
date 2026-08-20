@@ -284,9 +284,17 @@ export class OrdersService {
                 if (!product || product.is_available === false) {
                     throw new ConflictException('One or more products are unavailable');
                 }
-                const stock = Number(product.stock || 0);
-                if (!Number.isInteger(stock) || stock < quantity) {
-                    throw new ConflictException(`Insufficient stock for ${product.name || productId}`);
+                // A NULL stock means the tenant does not track units for this
+                // product — a pharmacy's OTC shelf, a made-to-order item, a
+                // service sold from the catalog. Treating NULL as zero made
+                // every such order fail with "insufficient stock", which is the
+                // same dead end as having no writer at all. Only an explicit
+                // number can be short.
+                if (product.stock !== null && product.stock !== undefined) {
+                    const stock = Number(product.stock);
+                    if (!Number.isInteger(stock) || stock < quantity) {
+                        throw new ConflictException(`Insufficient stock for ${product.name || productId}`);
+                    }
                 }
                 const price = Number(product.price);
                 if (!Number.isFinite(price) || price < 0) {
@@ -328,8 +336,7 @@ export class OrdersService {
             for (const [productId, quantity] of requested) {
                 const product = byId.get(productId);
                 const unitPrice = Number(product.price);
-                const previousStock = Number(product.stock);
-                const newStock = previousStock - quantity;
+                const tracksStock = product.stock !== null && product.stock !== undefined;
                 await query(
                     `INSERT INTO order_items (
                         id, order_id, product_id, product_name,
@@ -339,6 +346,12 @@ export class OrdersService {
                      )`,
                     [orderId, productId, product.name, quantity, unitPrice, unitPrice * quantity],
                 );
+                // Untracked products have no units to move: decrementing would
+                // turn NULL into NULL and the guard below would read that as a
+                // stock conflict on a product that never had stock.
+                if (!tracksStock) continue;
+                const previousStock = Number(product.stock);
+                const newStock = previousStock - quantity;
                 const updated = await query<any[]>(
                     `UPDATE products
                         SET stock = stock - $2, updated_at = NOW()

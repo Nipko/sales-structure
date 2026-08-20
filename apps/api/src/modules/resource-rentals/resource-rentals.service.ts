@@ -56,6 +56,10 @@ export class ResourceRentalsService {
             type?: string;
             status?: string;
             resourceId?: string;
+            /** Scopes the list to one customer. Required by the agent's `list_my_*` reads. */
+            contactId?: string;
+            /** Excludes rentals already cancelled/returned/checked out. */
+            activeOnly?: boolean;
             from?: string;
             to?: string;
             limit?: number;
@@ -79,6 +83,17 @@ export class ResourceRentalsService {
             const resourceId = this.assertUuid(filters.resourceId, 'resourceId');
             conditions.push(`r.resource_id = $${index++}::uuid`);
             params.push(resourceId);
+        }
+        // Ownership is a filter, not a post-read check: a conversation must never
+        // load another customer's rentals into the model's context first and
+        // discard them afterwards.
+        if (filters.contactId) {
+            const contactId = this.assertUuid(filters.contactId, 'contactId');
+            conditions.push(`r.contact_id = $${index++}::uuid`);
+            params.push(contactId);
+        }
+        if (filters.activeOnly) {
+            conditions.push(`r.status NOT IN ('cancelled', 'returned', 'checked_out')`);
         }
 
         const from = filters.from ? this.assertDateOnly(filters.from, 'from') : undefined;
@@ -173,6 +188,212 @@ export class ResourceRentalsService {
             contactId,
             createdBy,
         );
+    }
+
+    /** Single rental with its resource labels. Returns null when it does not exist. */
+    async getById(schemaName: string, rentalId: string): Promise<any | null> {
+        const id = this.assertUuid(rentalId, 'rentalId');
+        const found = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT r.*,
+                    CASE
+                        WHEN r.rental_type = 'vehicle_rental'
+                            THEN CONCAT_WS(' ', v.make, v.model, v.year::text)
+                        ELSE p.name
+                    END AS resource_name,
+                    s.name AS service_name,
+                    s.category AS service_category
+             FROM resource_rentals r
+             LEFT JOIN vehicles v
+               ON r.rental_type = 'vehicle_rental' AND v.id = r.resource_id
+             LEFT JOIN pets p
+               ON r.rental_type = 'pet_boarding' AND p.id = r.resource_id
+             LEFT JOIN services s ON s.id = r.service_id
+             WHERE r.id = $1::uuid
+             LIMIT 1`,
+            [id],
+        );
+        return found?.[0] ?? null;
+    }
+
+    /**
+     * Answers "is this free?" with the SAME predicates the writer enforces.
+     *
+     * The conversational read and the actual reservation used to count from
+     * different tables — the agent quoted capacity from `appointments` while the
+     * booking was written to `resource_rentals` — so a customer could be told
+     * there was room and be refused in the same turn. Availability now derives
+     * from the writer's own overlap and per-night capacity queries; if they ever
+     * disagree it is because someone changed one of them here.
+     */
+    async checkAvailability(
+        schemaName: string,
+        input: {
+            type: string;
+            /** Vehicle id for `vehicle_rental`. Optional for boarding. */
+            resourceId?: string;
+            /** Boarding service id. Required for `pet_boarding`. */
+            serviceId?: string;
+            startDate: string;
+            endDate: string;
+        },
+    ): Promise<{
+        available: boolean;
+        type: ResourceRentalType;
+        startDate: string;
+        endDate: string;
+        nights: number;
+        capacity?: number;
+        reason?: string;
+        conflictStart?: string;
+        conflictEnd?: string;
+        fullNight?: string;
+    }> {
+        const type = this.assertRentalType(input?.type);
+        const range = this.assertRange(input?.startDate, input?.endDate);
+
+        if (type === 'vehicle_rental') {
+            const vehicleId = this.assertUuid(input?.resourceId, 'resourceId');
+            const vehicles = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, status FROM vehicles WHERE id = $1::uuid LIMIT 1`,
+                [vehicleId],
+            );
+            if (!vehicles?.length) throw new NotFoundException('Vehicle not found');
+            if (vehicles[0].status !== 'available') {
+                return { available: false, type, ...range, reason: 'vehicle_not_available' };
+            }
+            const overlaps = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT start_date::text AS start_date, end_date::text AS end_date
+                 FROM resource_rentals
+                 WHERE rental_type = 'vehicle_rental'
+                   AND resource_id = $1::uuid
+                   AND status IN ('reserved', 'picked_up')
+                   AND start_date < $3::date
+                   AND end_date > $2::date
+                 ORDER BY start_date ASC
+                 LIMIT 1`,
+                [vehicleId, range.startDate, range.endDate],
+            );
+            if (overlaps?.length) {
+                return {
+                    available: false,
+                    type,
+                    ...range,
+                    reason: 'already_rented',
+                    conflictStart: overlaps[0].start_date,
+                    conflictEnd: overlaps[0].end_date,
+                };
+            }
+            return { available: true, type, ...range };
+        }
+
+        const serviceId = this.assertUuid(input?.serviceId, 'serviceId');
+        const services = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, category, max_concurrent, is_active
+             FROM services WHERE id = $1::uuid LIMIT 1`,
+            [serviceId],
+        );
+        const service = services?.[0];
+        if (!service) throw new NotFoundException('Boarding service not found');
+        if (service.is_active !== true) {
+            return { available: false, type, ...range, reason: 'service_inactive' };
+        }
+        const category = String(service.category || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+        if (!['hotel', 'guarderia'].includes(category)) {
+            return { available: false, type, ...range, reason: 'service_not_boarding' };
+        }
+        const capacity = Number(service.max_concurrent);
+        if (!Number.isInteger(capacity) || capacity < 1) {
+            return { available: false, type, ...range, reason: 'capacity_not_configured' };
+        }
+        const fullNights = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `WITH requested_nights AS (
+                SELECT generate_series(
+                    $2::date,
+                    ($3::date - INTERVAL '1 day')::date,
+                    INTERVAL '1 day'
+                )::date AS night
+             )
+             SELECT n.night::text AS night, COUNT(r.id)::int AS occupied
+             FROM requested_nights n
+             LEFT JOIN resource_rentals r
+               ON r.rental_type = 'pet_boarding'
+              AND r.service_id = $1::uuid
+              AND r.status IN ('reserved', 'checked_in')
+              AND r.start_date <= n.night
+              AND r.end_date > n.night
+             GROUP BY n.night
+             HAVING COUNT(r.id) >= $4::int
+             ORDER BY n.night
+             LIMIT 1`,
+            [serviceId, range.startDate, range.endDate, capacity],
+        );
+        if (fullNights?.length) {
+            return {
+                available: false,
+                type,
+                ...range,
+                capacity,
+                reason: 'no_capacity',
+                fullNight: fullNights[0].night,
+            };
+        }
+        return { available: true, type, ...range, capacity };
+    }
+
+    /**
+     * Cancellation asked for by the customer in a conversation.
+     *
+     * `transition` requires a staff role because it is the dashboard's path.
+     * The customer's authority is different and narrower: they may cancel their
+     * own reservation and nothing else, so ownership is verified inside the same
+     * transaction that writes the status.
+     */
+    async cancelForContact(
+        schemaName: string,
+        rentalId: string,
+        contactId: string,
+        reason?: string,
+    ): Promise<any> {
+        const id = this.assertUuid(rentalId, 'rentalId');
+        const owner = this.assertUuid(contactId, 'contactId');
+
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const rows = await query<any[]>(
+                `SELECT * FROM resource_rentals WHERE id = $1::uuid FOR UPDATE`,
+                [id],
+            );
+            const rental = rows?.[0];
+            if (!rental) throw new NotFoundException('Resource rental not found');
+            if (String(rental.contact_id || '').toLowerCase() !== owner.toLowerCase()) {
+                throw new ForbiddenException('This reservation belongs to another customer');
+            }
+            const currentStatus = this.assertKnownStatus(rental.status);
+            if (currentStatus === 'cancelled') return rental;
+            if (TERMINAL_STATUSES.has(currentStatus)) {
+                throw new ConflictException(`Rental is terminal in status ${currentStatus}`);
+            }
+
+            const note = reason ? String(reason).slice(0, 500) : null;
+            const updated = await query<any[]>(
+                `UPDATE resource_rentals
+                    SET status = 'cancelled',
+                        notes = CASE WHEN $2::text IS NULL THEN notes
+                                     ELSE CONCAT_WS(E'\n', notes, $2::text) END,
+                        updated_at = NOW()
+                  WHERE id = $1::uuid
+                RETURNING *`,
+                [id, note ? `Cancelación del cliente: ${note}` : null],
+            );
+            return updated[0];
+        });
     }
 
     async transition(

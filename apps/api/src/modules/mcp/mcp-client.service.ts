@@ -4,6 +4,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import type { ToolDefinition } from '@parallext/shared';
 import { prepareSafeHttpsTarget, safeAxiosOptions } from '../../common/utils/safe-outbound-url.util';
+import {
+    approvedMcpToolNames,
+    findMcpApproval,
+    McpToolApproval,
+    readMcpApprovals,
+} from './mcp-tool-approval';
+import { MCP_EFFECTS_REQUIRING_CONFIRMATION, ToolEffectDeclaration } from './mcp-approval.types';
 
 export interface McpServerConfig {
     id: string;          // short slug used in tool-name prefix
@@ -17,6 +24,18 @@ interface DiscoveredTools {
     tools: ToolDefinition[];
     /** registered (prefixed) tool name → { serverId, realName } */
     map: Record<string, { serverId: string; realName: string }>;
+}
+
+/**
+ * What the agent may actually be offered, separated from what a server exposes.
+ * `discovered` is everything the connection reports (inspection); `tools` is the
+ * approved subset (execution). Keeping both lets the dashboard show an honest
+ * "connected for inspection, not authorised for the AI".
+ */
+export interface PublishableMcpTools {
+    tools: ToolDefinition[];
+    discoveredCount: number;
+    approvedCount: number;
 }
 
 const DISCOVERY_TTL = 300;
@@ -118,6 +137,124 @@ export class McpClientService {
         const result = { tools, map };
         await this.redis.setJson(cacheKey, result, DISCOVERY_TTL);
         return result;
+    }
+
+    /**
+     * Tools the agent may be shown this turn.
+     *
+     * Discovery is not authorisation. Every tool a server reports used to be
+     * advertised to the model while the central guard rejected all of them, so
+     * the model chased a capability that could never fire. Now only tools with
+     * an explicit, reviewed approval are published — which for a tenant that has
+     * approved nothing means an empty list, and the agent never mentions them.
+     */
+    async listPublishableTools(tenantId: string): Promise<PublishableMcpTools> {
+        const { tools } = await this.listRemoteTools(tenantId);
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const approved = approvedMcpToolNames(tenant?.settings);
+        const publishable = tools.filter(tool => approved.has(String(tool.name)));
+        return {
+            tools: publishable,
+            discoveredCount: tools.length,
+            approvedCount: publishable.length,
+        };
+    }
+
+    /** The approval record backing one registered tool name, if any. */
+    async getApproval(tenantId: string, registeredName: string): Promise<McpToolApproval | null> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        return findMcpApproval(tenant?.settings, registeredName);
+    }
+
+    /** Approvals as stored, for the dashboard's review screen. */
+    async listApprovals(tenantId: string): Promise<McpToolApproval[]> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        return readMcpApprovals(tenant?.settings);
+    }
+
+    /**
+     * Record or revoke a human's approval of one remote tool.
+     *
+     * Approving a non-read effect without confirmation is rejected outright
+     * rather than stored and quietly ignored: an owner who ticks "let the AI
+     * charge my customers" and sees it saved would reasonably believe it works.
+     */
+    async setApproval(
+        tenantId: string,
+        input: {
+            serverId: string;
+            toolName: string;
+            effect: ToolEffectDeclaration;
+            requiresConfirmation: boolean;
+            requiresHumanApproval?: boolean;
+            approvedBy: string;
+            notes?: string;
+            revoke?: boolean;
+        },
+    ): Promise<McpToolApproval[]> {
+        const serverId = String(input?.serverId || '').trim();
+        const toolName = String(input?.toolName || '').trim();
+        if (!serverId || !toolName) throw new BadRequestException('serverId y toolName son obligatorios');
+
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        if (!tenant) throw new NotFoundException('Tenant not found');
+        const settings = (tenant.settings as any) || {};
+        const current = readMcpApprovals(settings)
+            .filter(entry => !(entry.serverId === serverId && entry.toolName === toolName));
+
+        if (input.revoke) {
+            await this.persistApprovals(tenantId, settings, current);
+            return current;
+        }
+
+        const servers = await this.listServers(tenantId);
+        if (!servers.some(server => server.id === serverId)) {
+            throw new NotFoundException('Servidor MCP no encontrado');
+        }
+        const effect = input.effect;
+        if (!effect) throw new BadRequestException('effect es obligatorio');
+        if (MCP_EFFECTS_REQUIRING_CONFIRMATION.includes(effect) && input.requiresConfirmation !== true) {
+            throw new BadRequestException(
+                'Una herramienta que escribe, cobra, notifica o es irreversible necesita confirmación del cliente.',
+            );
+        }
+        if (!String(input.approvedBy || '').trim()) {
+            throw new BadRequestException('approvedBy es obligatorio para auditar la aprobación');
+        }
+
+        const approval: McpToolApproval = {
+            serverId,
+            toolName,
+            effect,
+            requiresConfirmation: input.requiresConfirmation === true,
+            requiresHumanApproval: input.requiresHumanApproval === true,
+            approvedBy: String(input.approvedBy).slice(0, 200),
+            approvedAt: new Date().toISOString(),
+            notes: input.notes ? String(input.notes).slice(0, 1000) : undefined,
+        };
+        const next = [...current, approval];
+        await this.persistApprovals(tenantId, settings, next);
+        return next;
+    }
+
+    private async persistApprovals(tenantId: string, settings: any, approvals: McpToolApproval[]): Promise<void> {
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { settings: { ...settings, mcpToolApprovals: approvals } as any },
+        });
+        await this.redis.del(`mcp:tools:${tenantId}`).catch(() => {});
     }
 
     async callRemoteTool(tenantId: string, registeredName: string, args: Record<string, any>): Promise<any> {

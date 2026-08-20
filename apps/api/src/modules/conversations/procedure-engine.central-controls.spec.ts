@@ -63,6 +63,11 @@ describe('ProcedureEngine central writer controls', () => {
             conversationId,
             contactId,
             'confirm',
+            // El motor ahora compila cada paso contra el agente: sin este
+            // contrato ningún paso `tool` puede ejecutarse. `refund_payment` se
+            // autoriza porque el tenant tiene pagos habilitados y el paso está
+            // escrito a mano, no elegido por el modelo.
+            { toolsConfig: { payments: { enabled: true } } },
         );
 
         expect(result).toMatchObject({
@@ -78,6 +83,7 @@ describe('ProcedureEngine central writer controls', () => {
             'refund_payment',
             { paymentReference: 'pay-1' },
             conversationId,
+            { channelType: undefined },
         );
         expect(getSavedState()).toMatchObject({
             currentStepId: 'writer',

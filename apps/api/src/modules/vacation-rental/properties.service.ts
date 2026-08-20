@@ -14,6 +14,7 @@ import {
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 import {
+    describePaymentPolicy,
     OCCUPANCY_EXCLUDED_SQL,
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
@@ -256,6 +257,10 @@ export class PropertiesService {
             requiresPaymentToConfirm: paymentPolicy.requiresPayment,
             amountDueToConfirm: paymentPolicy.dueAmount,
             paymentChoice: paymentPolicy.customerChooses ? 'deposit_or_full' : undefined,
+            // Los flags le dicen QUÉ pasa; esto le dice CÓMO proceder. Va en
+            // texto porque es lo que el modelo obedece: "no la des por
+            // confirmada hasta que el pago esté acreditado".
+            paymentNote: describePaymentPolicy(paymentPolicy),
         };
     }
 

@@ -16,7 +16,8 @@ import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evid
 import {
     describePaymentPolicy,
     validatePaymentPolicyInput,
-    OCCUPANCY_EXCLUDED_SQL,
+    holdStillAliveSql,
+    PAYMENT_HOLD_MS,
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
@@ -245,7 +246,7 @@ export class PropertiesService {
                            ELSE check_out > $2::date END
                 UNION ALL
                 SELECT 'direct' as source, check_in, check_out FROM property_bookings
-                WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
+                WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
                   AND check_in < $3::date AND check_out > $2::date
             ) conflicts LIMIT 1`,
             [propertyId, stay.checkIn, stay.checkOut],
@@ -307,7 +308,7 @@ export class PropertiesService {
                     2::smallint as date_range_semantics,
                     ${BOOKING_ORIGIN_SQL} as origin
                FROM property_bookings
-             WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
+             WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
                AND check_in < $3::date AND check_out > $2::date`,
             [propertyId, startDate, nextMonthStart],
         );
@@ -385,7 +386,7 @@ export class PropertiesService {
                                 ELSE check_out > $2::date END
                     UNION ALL
                     SELECT 'direct' AS source FROM property_bookings
-                     WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
+                     WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
                        AND check_in < $3::date AND check_out > $2::date
                  ) conflicts LIMIT 1`,
                 [propertyId, checkIn, requestedCheckOut],
@@ -483,7 +484,7 @@ export class PropertiesService {
                                ELSE check_out > $2::date END
                     UNION ALL
                     SELECT 'direct' as source, check_in, check_out FROM property_bookings
-                    WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
+                    WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
                       AND check_in < $3::date AND check_out > $2::date
                  ) conflicts LIMIT 1`,
                 [propertyId, stay.checkIn, stay.checkOut],
@@ -499,10 +500,19 @@ export class PropertiesService {
             const cleaningFee = Number(property.cleaning_fee ?? 0);
             const totalPrice = nightPrice * stay.nights + cleaningFee;
             // Si el dueño exige pago para confirmar, la estadía nace pendiente y
-            // NO ocupa la fecha (decisión del dueño: gana el que pague primero).
+            // con las fechas RETENIDAS por 15 minutos mientras el huésped paga.
             // El listener del cobro la confirma, revalidando disponibilidad.
+            //
+            // La retención es la única forma de que la promesa sea cierta: sin
+            // ella el huésped recibía un enlace, pagaba, y podía encontrarse con
+            // que las fechas se habían ido mientras pagaba. Vencida la
+            // retención el cupo se libera solo, por reloj, sin depender de que
+            // ningún proceso corra.
             const policy = resolvePaymentPolicy(property, totalPrice);
             const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS : 'confirmed';
+            const holdExpiresAt = policy.requiresPayment
+                ? new Date(Date.now() + PAYMENT_HOLD_MS)
+                : null;
             // Sólo cuando es un anticipo: el resolvedor de cobros lee esta
             // columna con COALESCE, así que dejarla en NULL cobra el total.
             const amountDue = policy.requiresPayment
@@ -513,8 +523,8 @@ export class PropertiesService {
                 `INSERT INTO property_bookings
                  (property_id, contact_id, opportunity_id, conversation_id, guest_name, guest_email, guest_phone,
                   guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, status,
-                  amount_due)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17)
+                  amount_due, hold_expires_at)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18)
                  RETURNING *`,
                 [
                     propertyId,
@@ -522,7 +532,7 @@ export class PropertiesService {
                     data.guestName, data.guestEmail || null, data.guestPhone || null,
                     guestsCount, stay.checkIn, stay.checkOut,
                     stay.nights, nightPrice, cleaningFee, totalPrice, property.currency, status,
-                    amountDue,
+                    amountDue, holdExpiresAt,
                 ],
             );
             if (!rows?.[0]) throw new Error('Property booking was not created');

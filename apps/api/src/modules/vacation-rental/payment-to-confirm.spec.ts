@@ -79,16 +79,52 @@ describe('la estadía nace pendiente cuando el dueño exige pago', () => {
         expect(inserted[0].params[15]).toBe(PENDING_PAYMENT_STATUS);
     });
 
-    it('una estadía pendiente no ocupa la fecha en ningún camino', async () => {
+    it('una estadía pendiente OCUPA la fecha mientras la retención sigue viva', async () => {
+        // Invariante invertido a propósito (ago 2026). Antes una estadía impaga
+        // no ocupaba nada: gana el que pague primero. El dueño lo revirtió
+        // porque así la promesa era vacía — el huésped recibía un enlace, pagaba
+        // y podía encontrarse con que las fechas se habían ido mientras pagaba.
+        //
+        // Ahora ocupa, pero por RELOJ: vencidos los 15 minutos deja de ocupar
+        // sin que nadie corra nada.
         const { service, query } = buildService({ ...BASE_PROPERTY, payment_policy: 'full' });
 
         await service.createBooking(schemaName, propertyId, {
             contactId: null, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
         } as any);
 
-        // El chequeo de conflictos de la propia creación.
         const conflictSql = query.mock.calls.map(([sql]) => sql).find(s => s.includes(') conflicts LIMIT 1'));
-        expect(conflictSql).toContain(`NOT IN ('cancelled', '${PENDING_PAYMENT_STATUS}')`);
+        expect(conflictSql).toContain('hold_expires_at > NOW()');
+        // La lista de estados ya no decide: si vuelve, la retención se ignora.
+        expect(conflictSql).not.toContain(`NOT IN ('cancelled', '${PENDING_PAYMENT_STATUS}')`);
+    });
+
+    it('la estadía nace con la retención puesta', async () => {
+        const { service, inserted } = buildService({ ...BASE_PROPERTY, payment_policy: 'full' });
+
+        const antes = Date.now();
+        await service.createBooking(schemaName, propertyId, {
+            contactId: null, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
+        } as any);
+
+        const hold = inserted[0].params[17] as Date;
+        expect(hold).toBeInstanceOf(Date);
+        // 15 minutos hacia adelante, con margen para la latencia del test.
+        const minutos = (hold.getTime() - antes) / 60000;
+        expect(minutos).toBeGreaterThan(14);
+        expect(minutos).toBeLessThanOrEqual(15.5);
+    });
+
+    it('sin pago obligatorio no se retiene nada', async () => {
+        // Una reserva que se confirma al instante no necesita reloj: ya ocupa
+        // por estado. Ponerle retención sólo confundiría al barrido.
+        const { service, inserted } = buildService({ ...BASE_PROPERTY, payment_policy: 'none' });
+
+        await service.createBooking(schemaName, propertyId, {
+            contactId: null, guestName: 'Nir', checkIn: '2026-11-13', checkOut: '2026-11-16',
+        } as any);
+
+        expect(inserted[0].params[17]).toBeNull();
     });
 });
 

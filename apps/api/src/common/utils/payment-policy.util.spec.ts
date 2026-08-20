@@ -84,9 +84,14 @@ describe('la política de confirmación que configura el dueño', () => {
             resolvePaymentPolicy({ payment_policy: 'any', deposit_percent: 30 }, 1000),
         );
         expect(ambas).toContain('puede abonar');
-        // Lo que nunca puede faltar: la instrucción de no dar por confirmado.
         for (const texto of [anticipo, total, ambas]) {
-            expect(texto).toContain('No la des por confirmada');
+            // Lo que nunca puede faltar: la instrucción de no dar por confirmado…
+            expect(texto).toContain('No lo des por confirmado');
+            // …y la retención, que es la única promesa concreta que el sistema
+            // sí cumple. Sin decirla, el cliente no sabe que tiene 15 minutos ni
+            // por qué apurarse, y la retención no le sirve de nada.
+            expect(texto).toContain('15 minutos');
+            expect(texto).toContain('vuelve a quedar disponible');
         }
     });
 });

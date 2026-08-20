@@ -15,7 +15,7 @@ import { google, calendar_v3 } from 'googleapis';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { Client as GraphClient } from '@microsoft/microsoft-graph-client';
 import * as crypto from 'crypto';
-import { OCCUPANCY_EXCLUDED_SQL } from '../../common/utils/payment-policy.util';
+import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 
 type CalendarProvider = 'google' | 'microsoft';
 type AssignmentType = 'staff' | 'service' | 'general';
@@ -1114,7 +1114,7 @@ export class CalendarIntegrationService {
                  WHERE calendar_integration_id = $1::uuid
                    AND (
                        calendar_sync_state NOT IN ('deleted', 'not_configured')
-                       OR (start_at > NOW() AND status NOT IN ('cancelled', 'completed', 'no_show', ${OCCUPANCY_EXCLUDED_SQL}))
+                       OR (start_at > NOW() AND Nonestatus NOT IN ('cancelled', 'completed', 'no_show') AND ${holdStillAliveSql()})
                    )) AS owned_appointments,
                 (SELECT COUNT(*)::int FROM calendar_sync_outbox
                  WHERE integration_id = $1::uuid

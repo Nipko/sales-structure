@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
-import { OCCUPANCY_EXCLUDED_SQL, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
+import { holdStillAliveSql, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
 
 /**
  * El cliente pagó la seña: la cita se confirma y recién ahí entra a la agenda.
@@ -53,7 +53,7 @@ export class AppointmentPaymentListener {
                 schemaName,
                 `SELECT 1 FROM appointments a
                   WHERE a.id <> $1::uuid
-                    AND a.status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
+                    AND a.status NOT IN ('cancelled') AND ${holdStillAliveSql('a')}
                     AND a.start_at < $3::timestamp AND a.end_at > $2::timestamp
                     AND (
                         ($4::uuid IS NOT NULL AND a.assigned_to = $4::uuid)

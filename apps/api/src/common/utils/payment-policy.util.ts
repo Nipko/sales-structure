@@ -22,13 +22,40 @@ export type PaymentPolicyMode = 'none' | 'full' | 'deposit' | 'any';
 export const PENDING_PAYMENT_STATUS = 'pending_payment';
 
 /**
- * Estados que NO cuentan como cupo ocupado, listos para intercalar en un `NOT IN`.
+ * Lo que se le publica a las OTAs: sólo lo pagado y firme.
  *
- * Es una constante de compilación —nunca entra nada del usuario acá— y vive al
- * lado del estado para que la consulta y la lógica no se separen: si mañana se
- * agrega otro estado que no ocupa, se agrega en un solo lugar.
+ * Una retención de 15 minutos NO sale al feed. Publicarla sería ruido —Airbnb y
+ * Booking releen cada varios minutos, así que el bloqueo llegaría cuando ya
+ * venció— y ensuciaría el calendario del dueño con huecos que aparecen y
+ * desaparecen. La retención protege contra nuestras propias reservas
+ * simultáneas; la carrera contra una OTA es inherente al polling del iCal y ya
+ * existía.
  */
-export const OCCUPANCY_EXCLUDED_SQL = `'${PENDING_PAYMENT_STATUS}'`;
+export const EXPORT_EXCLUDED_SQL = `'${PENDING_PAYMENT_STATUS}'`;
+
+/** Cuánto se le guardan las fechas al cliente mientras paga. */
+export const PAYMENT_HOLD_MS = 15 * 60 * 1000;
+
+/**
+ * Una operación impaga ocupa cupo SOLO mientras la retención sigue viva.
+ *
+ * Reemplaza a la lista de "estados que no ocupan": el estado ya no alcanza,
+ * porque un `pending_payment` de hace treinta segundos y uno de hace dos horas
+ * significan cosas opuestas. El primero es una promesa vigente —le dijimos al
+ * cliente que le guardábamos las fechas— y el segundo es basura.
+ *
+ * La caducidad es **por tiempo, no por estado**: nadie tiene que correr un cron
+ * para liberar el cupo. Si el barrido muere, las fechas se liberan igual. Un
+ * `hold_expires_at` en NULL nunca ocupa, que es lo que mantiene compatibles a
+ * las filas anteriores a la retención.
+ *
+ * Es una constante de compilación: `alias` sólo lo escribe el llamador, nunca
+ * el usuario.
+ */
+export function holdStillAliveSql(alias = ''): string {
+    const a = alias ? `${alias}.` : '';
+    return `(${a}status <> '${PENDING_PAYMENT_STATUS}' OR ${a}hold_expires_at > NOW())`;
+}
 
 const MODES: ReadonlySet<string> = new Set(['none', 'full', 'deposit', 'any']);
 
@@ -169,14 +196,21 @@ export function validatePaymentPolicyInput(data: {
 /** Lo que se le cuenta al agente para que sepa cómo proceder antes de confirmar. */
 export function describePaymentPolicy(policy: ResolvedPaymentPolicy): string | undefined {
     if (!policy.requiresPayment) return undefined;
+    const minutes = Math.round(PAYMENT_HOLD_MS / 60000);
+    // La retención es una promesa concreta que el sistema SÍ cumple, así que hay
+    // que decirla: es lo que convierte "pagá y ojalá quede" en "te lo guardo".
+    // Y es lo que justifica la urgencia sin inventar presión de venta.
+    const hold = ` Decile que le guardamos el cupo ${minutes} minutos mientras paga, y que pasado ese rato `
+        + `vuelve a quedar disponible para otros.`;
+    const notYet = ' No lo des por confirmado hasta que el pago esté acreditado.';
+
     if (policy.customerChooses) {
         return `Para confirmar hace falta pagar: el cliente puede abonar ${policy.dueAmount} como anticipo `
-            + `o ${policy.totalAmount} completo. No la des por confirmada hasta que el pago esté acreditado.`;
+            + `o ${policy.totalAmount} completo.${notYet}${hold}`;
     }
     if (policy.dueAmount != null && policy.dueAmount < policy.totalAmount) {
-        return `Para confirmar hace falta un anticipo de ${policy.dueAmount} (de un total de ${policy.totalAmount}). `
-            + `No la des por confirmada hasta que el pago esté acreditado.`;
+        return `Para confirmar hace falta un anticipo de ${policy.dueAmount} (de un total de ${policy.totalAmount}).`
+            + `${notYet}${hold}`;
     }
-    return `Para confirmar hace falta pagar ${policy.totalAmount}. `
-        + `No la des por confirmada hasta que el pago esté acreditado.`;
+    return `Para confirmar hace falta pagar ${policy.totalAmount}.${notYet}${hold}`;
 }

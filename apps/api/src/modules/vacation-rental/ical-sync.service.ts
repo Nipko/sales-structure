@@ -6,7 +6,7 @@ import * as ical from 'node-ical';
 import ICalGenerator, { ICalCalendarMethod, ICalEventStatus } from 'ical-generator';
 import axios from 'axios';
 import { assessFeedCoverage, COVERAGE_HORIZON_DAYS } from './feed-coverage.util';
-import { OCCUPANCY_EXCLUDED_SQL } from '../../common/utils/payment-policy.util';
+import { EXPORT_EXCLUDED_SQL } from '../../common/utils/payment-policy.util';
 import {
     type PinnedHttpsTarget,
     prepareSafeHttpsTarget,
@@ -578,7 +578,7 @@ export class IcalSyncService {
             // todavía está a la venta, y un iCal sólo puede cerrar — nunca
             // reabre. El día que se pague, el siguiente feed la lleva.
             `SELECT id, check_in, check_out FROM property_bookings
-             WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})`,
+             WHERE property_id = $1::uuid AND status NOT IN ('cancelled', ${EXPORT_EXCLUDED_SQL})`,
             [propertyId],
         );
 

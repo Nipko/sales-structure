@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
-import { OCCUPANCY_EXCLUDED_SQL, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
+import { holdStillAliveSql, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
 
 /**
  * Cierra el lazo: el huésped pagó, la estadía se confirma.
@@ -63,7 +63,7 @@ export class BookingPaymentListener {
                     SELECT check_in, check_out FROM property_bookings
                      WHERE property_id = $1::uuid
                        AND id <> $4::uuid
-                       AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
+                       AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
                        AND check_in < $3::date AND check_out > $2::date
                  ) c LIMIT 1`,
                 [booking.property_id, booking.check_in, booking.check_out, booking.id],

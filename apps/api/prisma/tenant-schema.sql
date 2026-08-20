@@ -3911,6 +3911,29 @@ ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings"
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments"
     ADD COLUMN IF NOT EXISTS "payment_status" VARCHAR(20) DEFAULT 'pending',
     ADD COLUMN IF NOT EXISTS "amount_due" DECIMAL(15,2);
+
+-- =====================================================================
+-- RETENCIÓN: las fechas quedan guardadas mientras el cliente paga
+-- =====================================================================
+-- Decisión del dueño (ago 2026), que revierte la anterior de "no bloquea nada
+-- hasta el pago": sin retención la promesa no es promesa — el huésped recibe un
+-- enlace, paga, y puede encontrarse con que las fechas se fueron mientras
+-- pagaba. Ahora se le dice "te las guardo 15 minutos" y se cumple.
+--
+-- `hold_expires_at` es el reloj de esa promesa. Una operación en
+-- 'pending_payment' ocupa cupo SOLO mientras esta fecha esté en el futuro; al
+-- vencer deja de ocupar sin que nadie tenga que correr nada. Por eso la
+-- caducidad es por tiempo y no por un estado que un cron tenga que escribir: si
+-- el cron muere, las fechas se liberan igual.
+--
+-- NULL = sin retención. Es deliberado y es lo que hace segura la migración: las
+-- filas 'pending_payment' que ya existen siguen sin ocupar cupo, exactamente
+-- como hasta hoy, porque `NULL > NOW()` no es verdadero.
+ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings"
+    ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
+
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments"
+    ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
 DO $payment_policy_columns$
 DECLARE
     sellable TEXT;

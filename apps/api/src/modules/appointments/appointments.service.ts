@@ -18,7 +18,8 @@ import {
 } from './appointment-capacity.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 import {
-    OCCUPANCY_EXCLUDED_SQL,
+    holdStillAliveSql,
+    PAYMENT_HOLD_MS,
     PENDING_PAYMENT_STATUS,
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
@@ -354,12 +355,15 @@ export class AppointmentsService {
                 });
                 canonicalServiceName = service.name;
                 // Si el servicio exige pago para confirmarse, la cita nace
-                // pendiente y NO ocupa el turno (decisión del dueño: gana quien
-                // pague primero). El estado se pasa explícito porque el default
+                // pendiente y con el turno RETENIDO 15 minutos mientras el
+                // cliente paga. El estado se pasa explícito porque el default
                 // de la columna es 'pending', que significa otra cosa —
                 // "agendada, falta que el negocio la confirme"— y sí ocupa.
                 policy = resolvePaymentPolicy(service, service?.price);
                 const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS : 'pending';
+                const holdExpiresAt = policy.requiresPayment
+                    ? new Date(Date.now() + PAYMENT_HOLD_MS)
+                    : null;
                 const amountDue = policy.requiresPayment
                     && policy.dueAmount != null
                     && policy.dueAmount < policy.totalAmount
@@ -368,17 +372,17 @@ export class AppointmentsService {
                     `INSERT INTO appointments
                         (id, contact_id, opportunity_id, conversation_id, assigned_to, service_id, service_name,
                          start_at, end_at, location, notes, metadata, customer_name,
-                         customer_phone, customer_email, source, status, amount_due, created_at, updated_at)
+                         customer_phone, customer_email, source, status, amount_due, hold_expires_at, created_at, updated_at)
                      VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $7,
                              $8::timestamp, $9::timestamp, $10, $11, $12::jsonb, $13,
-                             $14, $15, $16, $17, $18, NOW(), NOW())`,
+                             $14, $15, $16, $17, $18, $19, NOW(), NOW())`,
                     [
                         id, contactIdUuid, opportunityId, conversationIdUuid, assignedToUuid, serviceIdUuid,
                         canonicalServiceName, startAt, endAt, data.location || null,
                         data.notes || null, JSON.stringify(data.metadata || {}),
                         data.customerName || null, data.customerPhone || null,
                         data.customerEmail || null, data.source || 'manual',
-                        status, amountDue,
+                        status, amountDue, holdExpiresAt,
                     ],
                 );
                 // Una cita impaga no se sincroniza al calendario del profesional:
@@ -840,7 +844,7 @@ export class AppointmentsService {
         // Filter out existing appointments on that date
         const existing = await this.prisma.executeInTenantSchema(schemaName,
             `SELECT assigned_to, start_at, end_at FROM appointments
-             WHERE start_at::date = $1::date AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})`,
+             WHERE start_at::date = $1::date AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}`,
             [date],
         ) as any[];
 
@@ -876,7 +880,7 @@ export class AppointmentsService {
         let sql = `
             SELECT COUNT(*) as cnt FROM appointments
             WHERE assigned_to = $1::uuid
-              AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})
+              AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
               AND start_at < $3::timestamp
               AND end_at > $2::timestamp
         `;
@@ -1032,7 +1036,7 @@ export class AppointmentsService {
         // 3. Get existing appointments
         const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT assigned_to, service_id, start_at, end_at FROM appointments
-             WHERE start_at::date = $1::date AND status NOT IN ('cancelled', ${OCCUPANCY_EXCLUDED_SQL})`, [dateStr],
+             WHERE start_at::date = $1::date AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}`, [dateStr],
         );
 
         // 4. Generate slots

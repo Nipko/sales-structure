@@ -303,6 +303,8 @@
       "settings": "Configurações",
       "tenants": "Tenants",
       "financials": "Financeiro",
+      "stays": "Reservas",
+      "tourBookings": "Reservas de tours",
       "properties": "Propriedades",
       "tours": "Passeios e Pacotes",
       "listings": "Imóveis",
@@ -449,6 +451,8 @@
       "crmAnalytics": "Analíticos CRM",
       "featureRequests": "Melhorias",
       "financials": "Finanças",
+      "stays": "Reservas",
+      "tourBookings": "Reservas de tours",
       "properties": "Propriedades",
       "tours": "Passeios e Pacotes",
       "landings": "Landing Pages",
@@ -9125,6 +9129,50 @@
     "changePlanSuccess": "Plano alterado com sucesso",
     "compPlanDaysInvalid": "Dias devem ser entre 1 e 3650",
     "compPlanReasonRequired": "Motivo é obrigatório para auditoria"
+  },
+  "stays": {
+    "title": "Reservas",
+    "subtitle": "Todas as estadias de todas as acomodações, com origem e status",
+    "searchPlaceholder": "Buscar por hóspede, e-mail ou telefone",
+    "allStatuses": "Todos os status",
+    "empty": "Ainda não há estadias registradas.",
+    "loadFailed": "Não foi possível carregar as reservas. Tente novamente.",
+    "noGuest": "Sem hóspede",
+    "nights": "{count} noites",
+    "pagination": "Página {page} de {pages} · {total} reservas",
+    "col": {
+      "guest": "Hóspede",
+      "property": "Acomodação",
+      "dates": "Datas",
+      "status": "Status",
+      "origin": "Origem",
+      "total": "Total"
+    },
+    "status": {
+      "confirmed": "Confirmada",
+      "pending": "Pendente",
+      "pending_payment": "Aguardando pagamento",
+      "cancelled": "Cancelada"
+    },
+    "origin": { "agent": "Agente", "manual": "Manual" }
+  },
+  "tourBookings": {
+    "title": "Reservas de tours",
+    "subtitle": "As saídas de cada dia com seus viajantes, sem abrir o pacote",
+    "searchPlaceholder": "Buscar por viajante, telefone ou tour",
+    "allStatuses": "Todos os status",
+    "empty": "Ainda não há reservas de tours.",
+    "loadFailed": "Não foi possível carregar as reservas. Tente novamente.",
+    "noCustomer": "Sem viajante",
+    "noDate": "Sem data",
+    "travellers": "{count} viajantes",
+    "status": {
+      "confirmed": "Confirmada",
+      "reserved": "Reservada",
+      "pending_payment": "Aguardando pagamento",
+      "cancelled": "Cancelada"
+    },
+    "origin": { "agent": "Agente", "manual": "Manual" }
   },
   "serviceRequests": {
     "title": "Solicitações de serviço",

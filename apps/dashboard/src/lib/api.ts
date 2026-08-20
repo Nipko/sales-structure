@@ -1886,6 +1886,18 @@ export const api = {
     getPropertyAvailability: (tenantId: string, propertyId: string, checkIn: string, checkOut: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/availability?checkIn=${checkIn}&checkOut=${checkOut}`),
     getPropertyCalendar: (tenantId: string, propertyId: string, month: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/calendar?month=${month}`),
     listPropertyBookings: (tenantId: string, propertyId: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/bookings`),
+    /**
+     * El registro global de estadías. Antes solo existía la lista por
+     * propiedad, así que para encontrar una reserva había que abrir primero el
+     * alojamiento — y un agente, que no administra el catálogo, no llegaba.
+     */
+    listStays: (tenantId: string, params: Record<string, string | number | undefined> = {}) => {
+        const query = Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== '' && v !== null)
+            .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+            .join('&');
+        return apiGet(`/vacation-rental/${tenantId}/stays${query ? `?${query}` : ''}`);
+    },
     createPropertyBooking: (tenantId: string, propertyId: string, data: any) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/bookings`, data),
     cancelPropertyBooking: (tenantId: string, bookingId: string) => apiPut(`/vacation-rental/${tenantId}/bookings/${bookingId}/cancel`, {}),
     listPropertyFeeds: (tenantId: string, propertyId: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/feeds`),

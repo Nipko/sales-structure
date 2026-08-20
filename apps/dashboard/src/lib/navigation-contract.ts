@@ -125,6 +125,10 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "propertyDetail", pattern: "/admin/properties/:propertyId", titleKey: "navigation.routes.propertyDetail", scope: "tenant", parentId: "properties", dynamicTitleParam: "propertyId" },
   { id: "resourceRentals", pattern: "/admin/resource-rentals", titleKey: "nav.items.resourceRentals", scope: "tenant" },
   { id: "serviceRequests", pattern: "/admin/service-requests", titleKey: "nav.items.serviceRequests", scope: "tenant" },
+  // Registros operativos. No cuelgan de su catálogo: se llega a ellos desde el
+  // menú, no desde la ficha del alojamiento o del paquete que los configura.
+  { id: "stays", pattern: "/admin/stays", titleKey: "nav.items.stays", scope: "tenant" },
+  { id: "tourBookings", pattern: "/admin/tour-bookings", titleKey: "nav.items.tourBookings", scope: "tenant" },
   { id: "tours", pattern: "/admin/tours", titleKey: "nav.items.tours", scope: "tenant" },
   { id: "tourDetail", pattern: "/admin/tours/:packageId", titleKey: "navigation.routes.tourDetail", scope: "tenant", parentId: "tours", dynamicTitleParam: "packageId" },
   { id: "treatmentPlans", pattern: "/admin/treatment-plans", titleKey: "nav.items.treatmentPlans", scope: "tenant" },

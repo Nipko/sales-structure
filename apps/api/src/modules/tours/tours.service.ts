@@ -257,9 +257,15 @@ export class ToursService {
         const params = packageId ? [packageId] : [];
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT b.*, p.name AS package_name, p.duration_type, p.duration_value
+            // El nombre del contacto es el respaldo cuando la reserva la cerró el
+             // agente en una conversación: ahí `guest_name` puede venir vacío y la
+             // salida quedaba con un viajero sin nombre en el manifiesto.
+             `SELECT b.*, p.name AS package_name, p.duration_type, p.duration_value,
+                     c.name AS contact_name,
+                     CASE WHEN b.conversation_id IS NOT NULL THEN 'agent' ELSE 'manual' END AS origin
              FROM tour_bookings b
              JOIN tour_packages p ON p.id = b.package_id
+             LEFT JOIN contacts c ON c.id = b.contact_id
              ${where}
              ORDER BY b.departure_date DESC, b.created_at DESC`,
             params,

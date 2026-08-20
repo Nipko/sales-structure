@@ -303,6 +303,8 @@
       "settings": "Settings",
       "tenants": "Tenants",
       "financials": "Financials",
+      "stays": "Stays",
+      "tourBookings": "Tour bookings",
       "properties": "Properties",
       "tours": "Tours & Packages",
       "listings": "Listings",
@@ -449,6 +451,8 @@
       "crmAnalytics": "CRM Analytics",
       "featureRequests": "Improvements",
       "financials": "Financials",
+      "stays": "Stays",
+      "tourBookings": "Tour bookings",
       "properties": "Properties",
       "tours": "Tours & Packages",
       "landings": "Landing Pages",
@@ -9125,6 +9129,50 @@
     "changePlanSuccess": "Plan changed successfully",
     "compPlanDaysInvalid": "Days must be between 1 and 3650",
     "compPlanReasonRequired": "Reason is required for audit"
+  },
+  "stays": {
+    "title": "Stays",
+    "subtitle": "Every stay across every unit, with its origin and status",
+    "searchPlaceholder": "Search by guest, email or phone",
+    "allStatuses": "All statuses",
+    "empty": "No stays recorded yet.",
+    "loadFailed": "Could not load the bookings. Please try again.",
+    "noGuest": "No guest",
+    "nights": "{count} nights",
+    "pagination": "Page {page} of {pages} · {total} bookings",
+    "col": {
+      "guest": "Guest",
+      "property": "Unit",
+      "dates": "Dates",
+      "status": "Status",
+      "origin": "Origin",
+      "total": "Total"
+    },
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending",
+      "pending_payment": "Awaiting payment",
+      "cancelled": "Cancelled"
+    },
+    "origin": { "agent": "Agent", "manual": "Manual" }
+  },
+  "tourBookings": {
+    "title": "Tour bookings",
+    "subtitle": "Each day's departures and their travellers, without opening the package",
+    "searchPlaceholder": "Search by traveller, phone or tour",
+    "allStatuses": "All statuses",
+    "empty": "No tour bookings yet.",
+    "loadFailed": "Could not load the bookings. Please try again.",
+    "noCustomer": "No traveller",
+    "noDate": "No date",
+    "travellers": "{count} travellers",
+    "status": {
+      "confirmed": "Confirmed",
+      "reserved": "Reserved",
+      "pending_payment": "Awaiting payment",
+      "cancelled": "Cancelled"
+    },
+    "origin": { "agent": "Agent", "manual": "Manual" }
   },
   "serviceRequests": {
     "title": "Service requests",

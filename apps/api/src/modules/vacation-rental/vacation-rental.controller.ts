@@ -156,6 +156,34 @@ export class VacationRentalController {
         return { success: true, data };
     }
 
+    /**
+     * The global stay register.
+     *
+     * Deliberately NOT behind the catalogue permission: managing units and
+     * operating reservations are different jobs, and an agent who books a stay
+     * in a conversation must be able to see it afterwards.
+     */
+    @Get(':tenantId/stays')
+    @ApiOperation({ summary: 'List every stay across every unit, with filters, history and pagination' })
+    async listAllBookings(
+        @Param('tenantId') tenantId: string,
+        @Query('status') status?: string,
+        @Query('propertyId') propertyId?: string,
+        @Query('from') from?: string,
+        @Query('to') to?: string,
+        @Query('search') search?: string,
+        @Query('limit') limit?: string,
+        @Query('offset') offset?: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.propertiesService.listAllBookings(schemaName, {
+            status, propertyId, from, to, search,
+            limit: limit ? Number(limit) : undefined,
+            offset: offset ? Number(offset) : undefined,
+        });
+        return { success: true, data };
+    }
+
     @Get(':tenantId/properties/:propertyId/bookings')
     @ApiOperation({ summary: 'List bookings for a property' })
     async listBookings(

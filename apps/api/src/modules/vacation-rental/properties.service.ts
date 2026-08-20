@@ -776,4 +776,91 @@ export class PropertiesService {
             [validFromDate],
         );
     }
+
+    /**
+     * Every stay, across every unit — the register a host actually works from.
+     *
+     * The only global read was `listUpcomingBookings`, capped at 200 future
+     * rows with no filters and no history, and the dashboard never called it.
+     * To find a booking a host had to open a property card and then its
+     * Reservas tab, which is why the audit could not find one at all — and why
+     * an agent, who is not allowed to manage the property catalogue, could not
+     * reach a reservation their own conversation had created.
+     */
+    async listAllBookings(
+        schemaName: string,
+        filters: {
+            status?: string;
+            propertyId?: string;
+            /** Stays overlapping this window. Half-open, like every other range. */
+            from?: string;
+            to?: string;
+            /** Guest name, email or phone. */
+            search?: string;
+            limit?: number;
+            offset?: number;
+        } = {},
+    ): Promise<{ bookings: any[]; total: number; limit: number; offset: number }> {
+        const conditions: string[] = [];
+        const params: any[] = [];
+
+        if (filters.status) {
+            const status = String(filters.status).trim().toLowerCase();
+            if (!/^[a-z_]{1,30}$/.test(status)) {
+                throw new BadRequestException('status must be a simple identifier');
+            }
+            conditions.push(`b.status = $${params.length + 1}`);
+            params.push(status);
+        }
+        if (filters.propertyId) {
+            this.assertUuid(filters.propertyId, 'propertyId');
+            conditions.push(`b.property_id = $${params.length + 1}::uuid`);
+            params.push(filters.propertyId);
+        }
+        if (filters.from) {
+            const from = this.assertDateOnly(filters.from, 'from');
+            conditions.push(`b.check_out > $${params.length + 1}::date`);
+            params.push(from);
+        }
+        if (filters.to) {
+            const to = this.assertDateOnly(filters.to, 'to');
+            conditions.push(`b.check_in < $${params.length + 1}::date`);
+            params.push(to);
+        }
+        if (filters.search) {
+            const term = `%${String(filters.search).trim().slice(0, 80)}%`;
+            conditions.push(
+                `(b.guest_name ILIKE $${params.length + 1}`
+                + ` OR b.guest_email ILIKE $${params.length + 1}`
+                + ` OR b.guest_phone ILIKE $${params.length + 1})`,
+            );
+            params.push(term);
+        }
+
+        const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        const limit = Math.min(Math.max(Number(filters.limit) || 50, 1), 200);
+        const offset = Math.max(Number(filters.offset) || 0, 0);
+
+        const totalRows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT COUNT(*)::int AS total FROM property_bookings b ${where}`,
+            params,
+        );
+
+        const bookings = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT b.*, p.name AS property_name, p.city AS property_city,
+                    ${BOOKING_ORIGIN_SQL} AS origin,
+                    c.name AS contact_name
+               FROM property_bookings b
+               LEFT JOIN properties p ON p.id = b.property_id
+               LEFT JOIN contacts c ON c.id = b.contact_id
+               ${where}
+              ORDER BY b.check_in DESC, b.created_at DESC
+              LIMIT ${limit} OFFSET ${offset}`,
+            params,
+        );
+
+        return { bookings, total: Number(totalRows?.[0]?.total ?? 0), limit, offset };
+    }
 }

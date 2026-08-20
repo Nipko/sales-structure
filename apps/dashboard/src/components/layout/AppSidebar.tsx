@@ -96,6 +96,7 @@ import {
   Sparkles,
   Receipt,
   LifeBuoy,
+  BedDouble,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -254,6 +255,12 @@ const tenantSections: NavSectionDef[] = [
     defaultExpanded: true,
     items: [
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, verticalItem: "appointments", capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },
+      // Operational registers — the object an agent works from every day. They
+      // sit ABOVE their catalogue on purpose: to find a booking a host used to
+      // have to open a property card first, and an agent could not open it at
+      // all.
+      { labelKey: "stays", href: "/admin/stays", icon: BedDouble, verticalItem: "stays", capability: "canHandleConversations", accent: "text-sky-500 dark:text-sky-400" },
+      { labelKey: "tourBookings", href: "/admin/tour-bookings", icon: Compass, verticalItem: "tourBookings", capability: "canHandleConversations", accent: "text-teal-500 dark:text-teal-400" },
       // Catalog management — supervisor+ (agents don't manage catalogs, they only operate)
       { labelKey: "properties", href: "/admin/properties", icon: Home, verticalItem: "properties", capability: "canEditPipeline" },
       { labelKey: "tours", href: "/admin/tours", icon: Compass, verticalItem: "tours", capability: "canEditPipeline" },

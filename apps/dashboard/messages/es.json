@@ -303,6 +303,8 @@
       "settings": "Configuración",
       "tenants": "Empresas",
       "financials": "Finanzas",
+      "stays": "Reservas",
+      "tourBookings": "Reservas de tours",
       "properties": "Propiedades",
       "tours": "Tours y Paquetes",
       "listings": "Inmuebles",
@@ -449,6 +451,8 @@
       "crmAnalytics": "Analíticas CRM",
       "featureRequests": "Mejoras",
       "financials": "Finanzas",
+      "stays": "Reservas",
+      "tourBookings": "Reservas de tours",
       "properties": "Propiedades",
       "tours": "Tours y Paquetes",
       "landings": "Landing Pages",
@@ -9125,6 +9129,50 @@
     "changePlanSuccess": "Plan cambiado correctamente",
     "compPlanDaysInvalid": "Los días deben ser entre 1 y 3650",
     "compPlanReasonRequired": "El motivo es obligatorio para auditoría"
+  },
+  "stays": {
+    "title": "Reservas",
+    "subtitle": "Todas las estadías de todos los alojamientos, con su origen y su estado",
+    "searchPlaceholder": "Buscar por huésped, correo o teléfono",
+    "allStatuses": "Todos los estados",
+    "empty": "Todavía no hay estadías registradas.",
+    "loadFailed": "No se pudieron cargar las reservas. Intentá de nuevo.",
+    "noGuest": "Sin huésped",
+    "nights": "{count} noches",
+    "pagination": "Página {page} de {pages} · {total} reservas",
+    "col": {
+      "guest": "Huésped",
+      "property": "Alojamiento",
+      "dates": "Fechas",
+      "status": "Estado",
+      "origin": "Origen",
+      "total": "Total"
+    },
+    "status": {
+      "confirmed": "Confirmada",
+      "pending": "Pendiente",
+      "pending_payment": "Espera pago",
+      "cancelled": "Cancelada"
+    },
+    "origin": { "agent": "Agente", "manual": "Manual" }
+  },
+  "tourBookings": {
+    "title": "Reservas de tours",
+    "subtitle": "Las salidas de cada día con sus viajeros, sin abrir el paquete",
+    "searchPlaceholder": "Buscar por viajero, teléfono o tour",
+    "allStatuses": "Todos los estados",
+    "empty": "Todavía no hay reservas de tours.",
+    "loadFailed": "No se pudieron cargar las reservas. Intentá de nuevo.",
+    "noCustomer": "Sin viajero",
+    "noDate": "Sin fecha",
+    "travellers": "{count} viajeros",
+    "status": {
+      "confirmed": "Confirmada",
+      "reserved": "Reservada",
+      "pending_payment": "Espera pago",
+      "cancelled": "Cancelada"
+    },
+    "origin": { "agent": "Agente", "manual": "Manual" }
   },
   "serviceRequests": {
     "title": "Solicitudes de servicio",

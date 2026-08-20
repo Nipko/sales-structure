@@ -109,6 +109,12 @@ export type VerticalRoutePath =
     | '/admin/vehicles'
     | '/admin/resource-rentals'
     | '/admin/tours'
+    // Operational registers, separate from the catalogue that configures them.
+    // Managing units and operating reservations are different jobs with
+    // different permissions; collapsing them is what put a booking behind the
+    // catalogue permission an agent does not have.
+    | '/admin/tour-bookings'
+    | '/admin/stays'
     | '/admin/properties'
     | '/admin/courses'
     | '/admin/memberships'
@@ -595,7 +601,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['tour_booking'],
                 addToolGroups: ['tours'],
                 primaryObject: 'tour_package',
-                addRoutes: ['/admin/tours'],
+                addRoutes: ['/admin/tour-bookings', '/admin/tours'],
                 addReadiness: ['tour_packages'],
             },
             tours: {
@@ -603,7 +609,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['tour_booking'],
                 addToolGroups: ['tours'],
                 primaryObject: 'tour_package',
-                addRoutes: ['/admin/tours'],
+                addRoutes: ['/admin/tour-bookings', '/admin/tours'],
                 addReadiness: ['tour_packages'],
             },
             hotel: {
@@ -611,7 +617,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['nightly_booking'],
                 addToolGroups: ['properties'],
                 primaryObject: 'property_booking',
-                addRoutes: ['/admin/properties'],
+                addRoutes: ['/admin/stays', '/admin/properties'],
                 addReadiness: ['properties'],
             },
             alquiler_vacacional: {
@@ -619,7 +625,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['nightly_booking'],
                 addToolGroups: ['properties'],
                 primaryObject: 'property_booking',
-                addRoutes: ['/admin/properties'],
+                addRoutes: ['/admin/stays', '/admin/properties'],
                 addReadiness: ['properties'],
             },
         },

@@ -303,6 +303,8 @@
       "settings": "Paramètres",
       "tenants": "Tenants",
       "financials": "Finances",
+      "stays": "Séjours",
+      "tourBookings": "Réservations de tours",
       "properties": "Proprietes",
       "tours": "Tours et Forfaits",
       "listings": "Annonces",
@@ -449,6 +451,8 @@
       "crmAnalytics": "Analytiques CRM",
       "featureRequests": "Améliorations",
       "financials": "Finances",
+      "stays": "Séjours",
+      "tourBookings": "Réservations de tours",
       "properties": "Propriétés",
       "tours": "Tours et Forfaits",
       "landings": "Pages d'Atterrissage",
@@ -9125,6 +9129,50 @@
     "changePlanSuccess": "Plan changé avec succès",
     "compPlanDaysInvalid": "Les jours doivent être entre 1 et 3650",
     "compPlanReasonRequired": "Le motif est obligatoire pour audit"
+  },
+  "stays": {
+    "title": "Séjours",
+    "subtitle": "Tous les séjours de tous les logements, avec leur origine et leur statut",
+    "searchPlaceholder": "Rechercher par client, e-mail ou téléphone",
+    "allStatuses": "Tous les statuts",
+    "empty": "Aucun séjour enregistré pour le moment.",
+    "loadFailed": "Impossible de charger les réservations. Réessayez.",
+    "noGuest": "Sans client",
+    "nights": "{count} nuits",
+    "pagination": "Page {page} sur {pages} · {total} réservations",
+    "col": {
+      "guest": "Client",
+      "property": "Logement",
+      "dates": "Dates",
+      "status": "Statut",
+      "origin": "Origine",
+      "total": "Total"
+    },
+    "status": {
+      "confirmed": "Confirmé",
+      "pending": "En attente",
+      "pending_payment": "Paiement attendu",
+      "cancelled": "Annulé"
+    },
+    "origin": { "agent": "Agent", "manual": "Manuel" }
+  },
+  "tourBookings": {
+    "title": "Réservations de tours",
+    "subtitle": "Les départs de chaque jour et leurs voyageurs, sans ouvrir le forfait",
+    "searchPlaceholder": "Rechercher par voyageur, téléphone ou tour",
+    "allStatuses": "Tous les statuts",
+    "empty": "Aucune réservation de tour pour le moment.",
+    "loadFailed": "Impossible de charger les réservations. Réessayez.",
+    "noCustomer": "Sans voyageur",
+    "noDate": "Sans date",
+    "travellers": "{count} voyageurs",
+    "status": {
+      "confirmed": "Confirmé",
+      "reserved": "Réservé",
+      "pending_payment": "Paiement attendu",
+      "cancelled": "Annulé"
+    },
+    "origin": { "agent": "Agent", "manual": "Manuel" }
   },
   "serviceRequests": {
     "title": "Demandes de service",

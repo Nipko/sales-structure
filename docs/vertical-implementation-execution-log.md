@@ -461,3 +461,37 @@ Una denylist crece cada vez que una vertical gana un objeto, y el día que se at
 
 **Verificación:** `tsc` exit 0 · suite completa **2523 passed / 281 suites**.
 
+
+### U14 — P0 §6.1 · Los dos registros que no existían: estadías y salidas
+
+**Fase 2/4 · Épica D · Paquete "Turismo semántico"**
+
+U13 corrigió la **etiqueta**. Faltaba el objeto: la auditoría no encontró una reserva en Turismo porque no había dónde buscarla. `/admin/properties` y `/admin/tours` son **catálogos** —la ficha del alojamiento, el paquete que se vende—, y la reserva vivía anidada dentro de la ficha, detrás del permiso de catálogo. El recorrido para encontrar la salida de mañana era: abrir el producto que la vende, entrar a su pestaña, y ser supervisor.
+
+**ADR-017 — El registro operativo se separa de su catálogo, y va primero.**
+Administrar unidades y operar reservas son dos trabajos con dos permisos. `/admin/stays` y `/admin/tour-bookings` son ítems propios de navegación, por encima de `/admin/properties` y `/admin/tours`, y viven en `canHandleConversations` mientras el catálogo se queda en `canEditPipeline`: quien cerró una estadía en una conversación tiene que poder encontrarla después.
+
+**Lo que ya existía y nadie alcanzaba** — `GET /tours/:tenantId/bookings` estaba escrito, sin `@Roles`, desde hacía meses; ninguna pantalla lo llamaba. Del lado de alojamiento no había lectura global: `listAllBookings` (nueva) agrega filtros por estado/unidad/rango/búsqueda, total y paginación, con rango **semiabierto** igual que disponibilidad, `LEFT JOIN contacts` para el nombre de respaldo y `origin` derivado de `conversation_id`.
+
+**Dos defectos que aparecieron al construir la pantalla, no en la auditoría:**
+
+1. **La consulta de tours no daba nombre a quien reservó.** `listBookings` seleccionaba `b.*` sin unir `contacts`. Una salida reservada por el agente en una conversación puede no tener `guest_name` escrito a mano: el manifiesto habría listado viajeros sin nombre. Ahora une contactos y expone `origin`.
+2. **Los alias del cliente no eran las columnas de la tabla.** La página se escribió contra `customer_name` / `customer_phone`; en `tour_bookings` las columnas son `guest_name` / `guest_phone`. Un alias equivocado no rompe nada visible desde el backend — la pantalla se dibuja entera y muestra **"Sin viajero" en cada fila** con los datos correctos abajo. Es el mismo modo de falla que "error leído como vacío", y por eso las columnas que la pantalla lee ahora se afirman **contra la consulta**, no del lado del cliente.
+
+**Formatos regionales** — la pantalla de estadías formateaba fechas y moneda con `es-CO` fijo. La app corre en cuatro idiomas; ahora usa el locale activo.
+
+**Puertas que el ítem nuevo tuvo que atravesar** (las tres las encontró la suite, no una revisión):
+- `navigation-contract.ts` — toda página bajo `/admin` necesita entrada en el registro canónico o el breadcrumb muestra el slug crudo.
+- `roles.ts` — deny-by-default: sin regla explícita la página queda inalcanzable para todos. Ambas incluyen `tenant_agent`, a diferencia de sus catálogos.
+- `vertical-dashboard-resolver` — el manifiesto suma `/admin/stays` a los subtipos de alojamiento y `/admin/tour-bookings` a los de tours.
+
+**i18n** — dos namespaces (`stays`, `tourBookings`) + etiqueta de menú + breadcrumb, en es/en/pt/fr. Un estado que el backend agregue mañana se muestra crudo antes que romper la fila: la reserva sigue siendo legible.
+
+**Pruebas** — `stay-register.spec.ts` (7 casos): lectura completa con unidad, contacto de respaldo y autor; conteo caído leído como cero; **todo filtro parametrizado** con placeholders en orden y rango semiabierto; estado/uuid/fecha inválidos rechazados (incluye intento de inyección); tamaño de página acotado arriba y abajo; el manifiesto de tours expone las columnas que muestra; filtro por paquete como uuid. Más los tres contratos de navegación que ahora cubren las rutas nuevas.
+
+**Verificación**
+```
+npx tsc --noEmit (api + dashboard)  → exit 0
+jest apps/api      → 2530 passed / 282 suites, 0 fallos
+jest apps/dashboard → 161 passed / 20 suites, 0 fallos
+```

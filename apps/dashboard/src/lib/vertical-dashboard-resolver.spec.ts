@@ -14,7 +14,11 @@ import {
 
 const OPERATIONAL_ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, VerticalDashboardItem>>> = {
   "/admin/appointments": "appointments",
+  // El registro operativo va junto a su catálogo: una vertical que vende
+  // estadías o salidas tiene que exponer las dos cosas, no solo la ficha.
+  "/admin/stays": "stays",
   "/admin/properties": "properties",
+  "/admin/tour-bookings": "tourBookings",
   "/admin/tours": "tours",
   "/admin/listings": "listings",
   "/admin/vehicles": "vehicles",
@@ -73,10 +77,13 @@ describe("resolveVerticalDashboard", () => {
   });
 
   it("resolves subtype-sensitive tourism, pharmacy and dark-kitchen navigation", () => {
-    expect(resolveCanonical("turismo", "hotel").visibleItems).toEqual(["properties"]);
-    expect(resolveCanonical("turismo", "alquiler_vacacional").visibleItems).toEqual(["properties"]);
-    expect(resolveCanonical("turismo", "agencia_viajes").visibleItems).toEqual(["tours"]);
-    expect(resolveCanonical("turismo", "tours").visibleItems).toEqual(["tours"]);
+    // El registro va PRIMERO que su catálogo: es el objeto que se trabaja todos
+    // los días, y encontrar una reserva no puede exigir abrir antes el producto
+    // que la vende.
+    expect(resolveCanonical("turismo", "hotel").visibleItems).toEqual(["stays", "properties"]);
+    expect(resolveCanonical("turismo", "alquiler_vacacional").visibleItems).toEqual(["stays", "properties"]);
+    expect(resolveCanonical("turismo", "agencia_viajes").visibleItems).toEqual(["tourBookings", "tours"]);
+    expect(resolveCanonical("turismo", "tours").visibleItems).toEqual(["tourBookings", "tours"]);
     expect(resolveCanonical("salud", "farmacia").visibleItems).toEqual(["inventory"]);
     expect(resolveCanonical("restaurantes", "dark_kitchen").visibleItems).toEqual(["menu", "foodOrders"]);
   });

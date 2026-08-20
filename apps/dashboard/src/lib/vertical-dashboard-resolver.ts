@@ -11,7 +11,12 @@ import type {
 
 export const VERTICAL_DASHBOARD_ITEMS = [
   "appointments",
+  // `stays` and `tourBookings` are the OPERATIONAL registers; `properties` and
+  // `tours` are the catalogues that configure them. They are separate items
+  // because they are separate jobs with separate permissions.
+  "stays",
   "properties",
+  "tourBookings",
   "tours",
   "listings",
   "vehicles",
@@ -60,8 +65,8 @@ const CAPABILITY_ITEMS: Readonly<Partial<Record<VerticalCapability, readonly Ver
   restaurant_ordering: ["menu", "foodOrders"],
   vehicle_inventory: ["vehicles"],
   vehicle_rentals: ["resourceRentals"],
-  tour_booking: ["tours"],
-  nightly_booking: ["properties"],
+  tour_booking: ["tourBookings", "tours"],
+  nightly_booking: ["stays", "properties"],
   course_enrollment: ["courses"],
   pet_records: ["pets"],
   membership_management: ["memberships", "classes"],
@@ -74,7 +79,9 @@ const CAPABILITY_ITEMS: Readonly<Partial<Record<VerticalCapability, readonly Ver
 
 const ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, VerticalDashboardItem>>> = {
   "/admin/appointments": "appointments",
+  "/admin/stays": "stays",
   "/admin/properties": "properties",
+  "/admin/tour-bookings": "tourBookings",
   "/admin/tours": "tours",
   "/admin/listings": "listings",
   "/admin/vehicles": "vehicles",

@@ -495,3 +495,34 @@ npx tsc --noEmit (api + dashboard)  → exit 0
 jest apps/api      → 2530 passed / 282 suites, 0 fallos
 jest apps/dashboard → 161 passed / 20 suites, 0 fallos
 ```
+
+### U15 — P0 §8.3 · Fotos de Listings: la única parte que el dueño podía tocar era la que faltaba
+
+**Fase 2 · Épica C · Paquete "Fotos Listings"**
+
+Inmobiliaria confirma el patrón que la auditoría de mercado nombró primero: `real_estate_listings.images` existe en la base, `send_listing_image` está registrada, tiene política de tool y sanea lo que le entrega a Meta — y las tres pantallas donde el tenant carga inmuebles (alta, detalle, import) no permitían cargar una sola foto. La capacidad estaba entera salvo el extremo que el dueño alcanza.
+
+**ADR-018 — Un solo gestor de fotos, no uno por objeto.**
+Ya existía uno completo, escrito **adentro** de la pestaña Fotos de una propiedad de alquiler vacacional. Copiarlo a Inmuebles habría dejado dos validaciones de tamaño, dos límites y dos textos que se corrigen por separado. Se extrajo a `components/media/PhotoManager.tsx` y hoy lo usan alojamiento e inmuebles; el helper `resolveMediaUrl`, que vivía duplicado en **seis** pantallas, pasó a `lib/media-url.ts`.
+
+**ADR-019 — Las fotos se guardan solas.**
+La versión anterior tenía barra de guardado aparte. El archivo ya está subido cuando aparece en la grilla: lo único pendiente era la asociación, así que cerrar la pestaña dejaba la foto en el servidor y el objeto sin ella. Ahora cada cambio (subir, reordenar, portada, borrar) persiste al instante, y si el guardado falla **se revierte y se dice por qué** — mostrar un orden que la base no tiene es peor que no reordenar.
+
+**Un defecto silencioso en el camino de importación**
+
+`bulk-import` reusa el `create` de siempre, así que una columna `images` habría llegado como **cadena** —una celda de planilla es una cadena— y `JSON.stringify('a.jpg,b.jpg')` guarda una cadena en una columna `jsonb` donde el que envía la foto espera un arreglo. Resultado: fila cargada, cero fotos, ningún error en ningún lado. `normalizeListingImages` normaliza donde se **escribe**: acepta arreglo o celda separada por coma/punto y coma/barra/salto, deduplica conservando el orden, y descarta lo que un canal no puede ir a buscar (`javascript:`, `data:`, protocol-relative). El mismo normalizador corre en alta y en edición: editar no puede ser la puerta por la que entra lo que el alta rechaza.
+
+**Además:** `update` no validaba el uuid (el id llega de una tool call, igual que en `getById`); los cinco tipos de inmueble estaban en **español fijo** dentro de una app de cuatro idiomas.
+
+**Readiness — decisión de no bloquear.** `listings` sigue midiendo inmuebles publicados, no fotos. Sin fotos el agente igual busca, filtra y da detalles; apagar la familia entera por una galería vacía castigaría lo que sí funciona. `send_listing_image` ya devuelve un error honesto por inmueble, y el estado vacío del gestor explica que la portada es lo que el cliente ve primero.
+
+**i18n** — las 12 cadenas de fotos se **mudaron** de `properties` al namespace `photoManager` conservando sus cuatro traducciones (reescribirlas habría sido perder trabajo hecho); 4 nuevas (`title`, `limitReached`, `agentHint`, `saveFailed`) y 3 muertas eliminadas. Nuevas en `listings`: columna de import y los cinco tipos de inmueble.
+
+**Pruebas** — `listing-images.spec.ts` (10 casos): arreglo respetado en orden; celda de planilla partida en sus tres separadores; todo lo que un canal no puede buscar descartado; duplicados fuera sin reordenar; tope de galería; valor ausente leído como "sin fotos", no como error; normalización en alta con la ruta de import; normalización en edición; una edición que no menciona fotos no las toca; uuid inválido rechazado antes de tocar la base.
+
+**Verificación**
+```
+npx tsc --noEmit (api + dashboard)  → exit 0
+jest apps/api      → 2540 passed / 283 suites, 0 fallos
+jest apps/dashboard → 161 passed / 20 suites, 0 fallos
+```

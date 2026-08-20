@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { PhotoManager } from "@/components/media/PhotoManager";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import { SkeletonPage } from "@/components/ui/skeleton-loader";
@@ -51,6 +52,9 @@ export default function ListingDetailPage() {
     const [listing, setListing] = useState<Listing | null>(null);
     const [loading, setLoading] = useState(true);
     const [form, setForm] = useState<any>({});
+    // Las fotos se guardan solas, no con el botón de abajo: el archivo ya está
+    // subido y lo único pendiente es la asociación.
+    const [images, setImages] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
@@ -62,6 +66,7 @@ export default function ListingDetailPage() {
         const res = await api.getListing(activeTenantId, listingId);
         if (res.success && res.data) {
             setListing(res.data);
+            setImages(Array.isArray(res.data.images) ? res.data.images : []);
             setForm({
                 name: res.data.name,
                 transactionType: res.data.transaction_type,
@@ -202,6 +207,22 @@ export default function ListingDetailPage() {
             <div className="mb-5">
                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("city")}</label>
                 <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className={inputCls} />
+            </div>
+
+            {/* La base soporta `images` y el agente tiene una tool que las
+                manda por WhatsApp; faltaba solamente la forma de cargarlas. */}
+            <div className="mb-6 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                <PhotoManager
+                    tenantId={activeTenantId!}
+                    entityType="listing"
+                    entityId={listing.id}
+                    value={images}
+                    onChange={setImages}
+                    persist={async (next) => {
+                        const res = await api.updateListing(activeTenantId!, listing.id, { images: next });
+                        return { success: !!res.success, error: res.error };
+                    }}
+                />
             </div>
 
             <div className="mb-5">

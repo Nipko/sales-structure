@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/media-url";
+import { PhotoManager } from "@/components/media/PhotoManager";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import Link from "next/link";
@@ -12,14 +14,6 @@ import {
 import { BulkImportModal } from "@/components/BulkImportModal";
 import { SkeletonCards } from "@/components/ui/skeleton-loader";
 import { HelpPanel } from "@/components/ui/help-panel";
-
-const LISTINGS_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
-function resolveMediaUrl(url: string): string {
-    if (!url) return url;
-    if (/^https?:\/\//i.test(url)) return url;
-    const apiOrigin = LISTINGS_API_BASE.replace(/\/api\/v1\/?$/, "");
-    return `${apiOrigin}${url.startsWith("/") ? url : "/" + url}`;
-}
 
 interface Listing {
     id: string;
@@ -40,13 +34,7 @@ interface Listing {
     is_active: boolean;
 }
 
-const PROPERTY_KINDS = [
-    { key: "apartment", label: "Apartamento" },
-    { key: "house", label: "Casa" },
-    { key: "commercial", label: "Local comercial" },
-    { key: "office", label: "Oficina" },
-    { key: "land", label: "Lote / Terreno" },
-];
+const PROPERTY_KINDS = ["apartment", "house", "commercial", "office", "land"] as const;
 
 export default function ListingsPage() {
     const { activeTenantId } = useTenant();
@@ -232,6 +220,7 @@ export default function ListingsPage() {
                     { key: "areaM2", label: t("areaM2"), type: "number", aliases: ["area", "metros", "m2", "metros cuadrados"] },
                     { key: "neighborhood", label: t("neighborhood"), aliases: ["barrio", "zona", "sector"] },
                     { key: "city", label: t("city"), aliases: ["ciudad", "municipio"] },
+                    { key: "images", label: t("photoColumn"), aliases: ["fotos", "imagenes", "imágenes", "photos", "urls de fotos"] },
                 ]}
             />
             {showCreate && (
@@ -270,6 +259,10 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
         neighborhood: "",
         city: "",
     });
+    // El inmueble todavía no existe, así que las fotos suben sin `entityId` y
+    // viajan con el alta. Cargarlas después, en el detalle, seguía siendo una
+    // visita más al mismo formulario.
+    const [images, setImages] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -281,7 +274,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
         setSaving(true);
         setError(null);
         try {
-            const res = await api.createListing(tenantId, form);
+            const res = await api.createListing(tenantId, { ...form, images });
             if (res.success) onCreated();
             else setError(res.error || tc("errorSaving"));
         } catch (err: any) {
@@ -334,7 +327,9 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                         <div>
                             <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("propertyKind")}</label>
                             <select value={form.propertyKind} onChange={e => setForm({ ...form, propertyKind: e.target.value })} className={inputCls}>
-                                {PROPERTY_KINDS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                                {PROPERTY_KINDS.map(kind => (
+                                    <option key={kind} value={kind}>{t(`propertyKinds.${kind}`)}</option>
+                                ))}
                             </select>
                         </div>
                         <div>
@@ -373,6 +368,15 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                             <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("city")}</label>
                             <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className={inputCls} />
                         </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                        <PhotoManager
+                            tenantId={tenantId}
+                            entityType="listing"
+                            value={images}
+                            onChange={setImages}
+                        />
                     </div>
 
                     {error && <p className="text-xs text-red-500">{error}</p>}

@@ -10,6 +10,51 @@ function assertListingUuid(value: unknown): string {
     return value;
 }
 
+/** Tope de fotos por inmueble. El agente manda 3; el resto es para la web. */
+export const MAX_LISTING_IMAGES = 20;
+
+/**
+ * Las fotos de un inmueble, en la forma que el resto del sistema espera.
+ *
+ * La columna es `jsonb` y hasta acá llegaban tres formas distintas: el arreglo
+ * que manda el panel, la celda de texto de un CSV importado, y lo que pegue el
+ * dueño. Un `JSON.stringify('a.jpg,b.jpg')` guarda una CADENA en la columna, y
+ * el que envía la foto pide un arreglo — la fila queda cargada y el inmueble
+ * sin fotos, sin error en ningún lado. Por eso la normalización vive donde se
+ * escribe y no donde se lee.
+ *
+ * Se conserva sólo lo que un canal puede ir a buscar: URL http(s) o ruta
+ * enraizada de nuestro propio endpoint de media. `data:`, `javascript:` y las
+ * protocol-relative quedan afuera acá, en el borde de escritura, y no sólo
+ * cuando se arma el mensaje.
+ */
+export function normalizeListingImages(value: unknown): string[] {
+    const raw: unknown[] = Array.isArray(value)
+        // Una celda de planilla trae varias URLs separadas por coma, punto y
+        // coma, barra vertical o salto de línea. Todas se ven igual de válidas
+        // para quien arma el archivo.
+        ? value
+        : typeof value === 'string'
+            ? value.split(/[\n,;|]+/)
+            : [];
+
+    const seen = new Set<string>();
+    const images: string[] = [];
+    for (const entry of raw) {
+        if (images.length >= MAX_LISTING_IMAGES) break;
+        if (typeof entry !== 'string') continue;
+        const url = entry.trim();
+        if (!url) continue;
+        const isAbsolute = /^https?:\/\//i.test(url);
+        const isLocalPath = url.startsWith('/') && !url.startsWith('//');
+        if (!isAbsolute && !isLocalPath) continue;
+        if (seen.has(url)) continue;
+        seen.add(url);
+        images.push(url);
+    }
+    return images;
+}
+
 /**
  * Real Estate Listings — long-term sale/rent. Distinct from vacation-rental
  * (short-term stays) so search criteria, fields and operational flow stay
@@ -102,7 +147,7 @@ export class ListingsService {
                 data.country || 'CO', data.latitude || null, data.longitude || null,
                 data.description || null,
                 JSON.stringify(data.amenities || []),
-                JSON.stringify(data.images || []),
+                JSON.stringify(normalizeListingImages(data.images)),
                 data.externalUrl || null,
                 data.status || 'available',
                 data.assignedAgentId || null,
@@ -113,6 +158,7 @@ export class ListingsService {
     }
 
     async update(schemaName: string, listingId: string, data: any): Promise<any> {
+        assertListingUuid(listingId);
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
@@ -142,7 +188,7 @@ export class ListingsService {
             idx++;
         }
         const jsonFields: Record<string, string> = {
-            amenities: 'amenities', images: 'images', metadata: 'metadata',
+            amenities: 'amenities', metadata: 'metadata',
         };
         for (const [jsKey, dbKey] of Object.entries(jsonFields)) {
             if (data[jsKey] !== undefined) {
@@ -150,6 +196,14 @@ export class ListingsService {
                 params.push(JSON.stringify(data[jsKey]));
                 idx++;
             }
+        }
+        // Las fotos pasan por la misma normalización que en el alta: editar un
+        // inmueble no puede ser la puerta por la que entra lo que el alta
+        // rechaza.
+        if (data.images !== undefined) {
+            sets.push(`"images" = $${idx}::jsonb`);
+            params.push(JSON.stringify(normalizeListingImages(data.images)));
+            idx++;
         }
 
         if (sets.length === 0) return this.getById(schemaName, listingId);

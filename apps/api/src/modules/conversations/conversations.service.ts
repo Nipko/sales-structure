@@ -21,7 +21,11 @@ import { outboundDedupeId, providerMessageId } from '../../common/utils/provider
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
-import { auditTurnClaim, toolResultSucceeded } from '../../common/utils/outcome-claim.util';
+import {
+    auditTurnClaim,
+    promisesLaterDelivery,
+    toolResultSucceeded,
+} from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { CustomerMemoryService } from './customer-memory.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
@@ -3419,6 +3423,50 @@ export class ConversationsService {
             } catch (e: any) {
                 this.logger.warn(`[Guardrail] False claim corrective retry failed: ${e.message}`);
                 response = unverifiedClaimFallbackText(lang);
+            }
+        }
+
+        // Prometer para después algo que YA se hizo deja al cliente esperando.
+        //
+        // Cuando el backend ejecutó la operación antes de llamar al modelo —el
+        // camino del "sí" del cliente— el resultado ya está en la mano y en la
+        // directiva. Una respuesta que difiere ("voy a generar el enlace… un
+        // momento") es un callejón sin salida: cada turno es pregunta→respuesta
+        // y no existe nada que mande ese segundo mensaje. Pasó en producción el
+        // 19-ago con `create_payment_link` y la conversación quedó congelada.
+        //
+        // Sólo se controla en ese caso: fuera de él, "dame un momento" es una
+        // frase legítima y el auditor de reclamos la excluye a propósito.
+        const outcomeAlreadyKnown = (executedTools || []).some(t => isBackingTool(t?.name));
+        if (outcomeAlreadyKnown && promisesLaterDelivery(response)) {
+            this.recordAgentSignal(tenantId, 'deferred_after_execution');
+            this.logger.warn(`[Guardrail] La operacion ya se ejecuto y la respuesta la difiere — reintento correctivo: "${response.slice(0, 100)}"`);
+            try {
+                const corrected = await this.llmRouter.execute({
+                    task: 'conversation',
+                    messages: [
+                        ...currentMessages,
+                        { role: 'assistant', content: response },
+                        { role: 'user', content: 'La operación YA se ejecutó y su resultado está en las instrucciones de este turno. No prometas hacerla después ni pidas esperar: no vas a poder enviar otro mensaje. Reescribe tu respuesta diciendo AHORA el resultado concreto —el enlace, el dato o el problema— tal como figura en las instrucciones. Devuelve solo el mensaje corregido.' },
+                    ],
+                    systemPrompt,
+                    temperature: 0.3,
+                    allowedTiers,
+                    tenantId,
+                });
+                const fixed = corrected.content?.trim();
+                if (fixed && !promisesLaterDelivery(fixed)) {
+                    response = fixed;
+                } else {
+                    // Se insistió en diferir. No hay texto determinista honesto
+                    // que sirva acá —inventar "te contactamos" sería otra
+                    // promesa que nadie cumple—, así que queda la señal para que
+                    // el dueño lo vea en Salud del agente.
+                    this.logger.warn('[Guardrail] El reintento volvio a diferir una operacion ya ejecutada');
+                    this.recordAgentSignal(tenantId, 'deferred_after_execution_unfixed');
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Guardrail] Reintento de promesa diferida fallo: ${e.message}`);
             }
         }
 

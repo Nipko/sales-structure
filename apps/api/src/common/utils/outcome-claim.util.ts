@@ -133,3 +133,53 @@ export function auditTurnClaim(
     ));
     return { claimed, backed, falseClaim: claimed && !backed };
 }
+
+/**
+ * Promesas de entrega futura: "voy a generar el enlace", "un momento", "ya te lo mando".
+ *
+ * Fuera de contexto son legítimas y por eso `COMPLETION_CLAIM` las excluye a
+ * propósito. Pero cuando el backend YA ejecutó la operación antes de llamar al
+ * modelo —el camino del "sí" del cliente— el resultado ya está en la mano y
+ * diferirlo es un callejón sin salida: cada turno es pregunta→respuesta, no hay
+ * nada que mande ese segundo mensaje. En producción el 19-ago el enlace de pago
+ * se ejecutó, el agente contestó "Voy a generar el enlace de pago ahora. Un
+ * momento..." y la conversación quedó congelada.
+ *
+ * Se mantiene tan angosta como la de reclamos: sólo las formas que dejan al
+ * cliente esperando un mensaje que nunca va a existir.
+ */
+const DEFERRED_DELIVERY = new RegExp(
+    [
+        // es
+        'voy a (generar|crear|enviar|mandar|procesar|preparar|gestionar|tramitar)',
+        'ya (te |le )?(lo |la )?(envio|mando|paso|comparto|genero)',
+        '(en )?un (momento|segundo|minuto|instante)',
+        'dame (un|unos) (momento|segundo|minuto)',
+        'enseguida (te|le|lo|la)',
+        'permiteme (un|unos)',
+        // en
+        "i(’|')?ll (generate|create|send|share|prepare|process)",
+        'i will (generate|create|send|share)',
+        '(one|just a|give me a) (moment|second|minute)',
+        // pt
+        'vou (gerar|criar|enviar|mandar|preparar)',
+        'ja (te |lhe )?(envio|mando)',
+        'um (momento|instante|segundo)',
+        // fr
+        'je vais (generer|creer|envoyer|preparer)',
+        "je vous (l(’|')?envoie|envoie)",
+        'un (instant|moment)',
+    ].join('|'),
+    'i',
+);
+
+/**
+ * ¿La respuesta promete hacer después algo que ya se hizo en este turno?
+ *
+ * Se normaliza igual que los reclamos (sin acentos, sin puntuación) para que
+ * "envío" y "envio" caigan en el mismo patrón.
+ */
+export function promisesLaterDelivery(text: string | null | undefined): boolean {
+    if (!text) return false;
+    return DEFERRED_DELIVERY.test(normalize(text));
+}

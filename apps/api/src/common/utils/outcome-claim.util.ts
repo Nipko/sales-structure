@@ -153,6 +153,9 @@ const DEFERRED_DELIVERY = new RegExp(
         // es
         'voy a (generar|crear|enviar|mandar|procesar|preparar|gestionar|tramitar)',
         'ya (te |le )?(lo |la )?(envio|mando|paso|comparto|genero)',
+        // "Ahora te paso el enlace" es de las formas mas comunes y no la
+        // cubria: el `ya` inicial no siempre esta.
+        '(ahora|enseguida|ya mismo) (te |le )?(lo |la )?(paso|envio|mando|comparto|genero)',
         '(en )?un (momento|segundo|minuto|instante)',
         'dame (un|unos) (momento|segundo|minuto)',
         'enseguida (te|le|lo|la)',

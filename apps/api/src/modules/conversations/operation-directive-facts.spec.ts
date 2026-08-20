@@ -41,8 +41,14 @@ describe('los datos que acompañan a la directiva', () => {
         expect(facts).toContain('720.000 COP');
     });
 
-    it('conserva el único dato que el huésped necesita', () => {
-        expect(facts).toContain('https://checkout.wompi.co/l/S9YKxi');
+    it('YA NO lleva el enlace: lo entrega el backend en su propia burbuja', () => {
+        // Invariante invertido a propósito. Antes se comprobaba que el enlace
+        // estuviera acá, porque el modelo era quien lo transcribía. Depender de
+        // eso costó una conversación congelada: el enlace existía y el modelo
+        // contestó "voy a generarlo". Ahora sale del backend, y dejarlo también
+        // en los datos haría que el cliente lo reciba dos veces.
+        expect(facts).not.toContain('https://checkout.wompi.co/l/S9YKxi');
+        expect(facts).not.toContain('paymentLink');
     });
 
     it('no le muestra al modelo nuestra fontanería', () => {

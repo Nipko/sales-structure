@@ -355,7 +355,7 @@ export class AppointmentsService {
                 });
                 canonicalServiceName = service.name;
                 // Si el servicio exige pago para confirmarse, la cita nace
-                // pendiente y con el turno RETENIDO 15 minutos mientras el
+                // pendiente y con el turno RETENIDO 20 minutos mientras el
                 // cliente paga. El estado se pasa explícito porque el default
                 // de la columna es 'pending', que significa otra cosa —
                 // "agendada, falta que el negocio la confirme"— y sí ocupa.

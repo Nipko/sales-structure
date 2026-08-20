@@ -24,7 +24,7 @@ export const PENDING_PAYMENT_STATUS = 'pending_payment';
 /**
  * Lo que se le publica a las OTAs: sólo lo pagado y firme.
  *
- * Una retención de 15 minutos NO sale al feed. Publicarla sería ruido —Airbnb y
+ * Una retención de 20 minutos NO sale al feed. Publicarla sería ruido —Airbnb y
  * Booking releen cada varios minutos, así que el bloqueo llegaría cuando ya
  * venció— y ensuciaría el calendario del dueño con huecos que aparecen y
  * desaparecen. La retención protege contra nuestras propias reservas
@@ -33,8 +33,16 @@ export const PENDING_PAYMENT_STATUS = 'pending_payment';
  */
 export const EXPORT_EXCLUDED_SQL = `'${PENDING_PAYMENT_STATUS}'`;
 
-/** Cuánto se le guardan las fechas al cliente mientras paga. */
-export const PAYMENT_HOLD_MS = 15 * 60 * 1000;
+/**
+ * Cuánto se le guardan las fechas al cliente mientras paga.
+ *
+ * 20 y no 15 por PSE: la transferencia bancaria saca al cliente al sitio del
+ * banco, le pide autenticarse y recién después lo devuelve. Quince minutos le
+ * quedaban justos, y una retención que vence MIENTRAS el cliente paga es el peor
+ * de los mundos — termina en "cobrado sin lugar", que es plata real sin nada que
+ * entregar. Con tarjeta sobra de todos modos.
+ */
+export const PAYMENT_HOLD_MS = 20 * 60 * 1000;
 
 /**
  * Una operación impaga ocupa cupo SOLO mientras la retención sigue viva.

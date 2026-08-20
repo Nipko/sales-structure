@@ -55,7 +55,9 @@ describe('el cableado', () => {
         // Fuera de ese caso "dame un momento" es legítimo, y el auditor de
         // reclamos lo excluye a propósito. Disparar siempre sería ruido.
         expect(SRC).toContain('const outcomeAlreadyKnown = (executedTools || []).some(t => isBackingTool(t?.name))');
-        expect(SRC).toContain('if (outcomeAlreadyKnown && promisesLaterDelivery(response))');
+        // La condición ganó una salvedad: cuando el backend manda el enlace en
+        // su propia burbuja, anunciarlo es CIERTO y no se reescribe.
+        expect(SRC).toContain('outcomeAlreadyKnown && !backendWillDeliver && promisesLaterDelivery(response)');
     });
 
     it('deja señal cuando el reintento vuelve a diferir', () => {

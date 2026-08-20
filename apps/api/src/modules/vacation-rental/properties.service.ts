@@ -528,7 +528,7 @@ export class PropertiesService {
             const cleaningFee = Number(property.cleaning_fee ?? 0);
             const totalPrice = nightPrice * stay.nights + cleaningFee;
             // Si el dueño exige pago para confirmar, la estadía nace pendiente y
-            // con las fechas RETENIDAS por 15 minutos mientras el huésped paga.
+            // con las fechas RETENIDAS por 20 minutos mientras el huésped paga.
             // El listener del cobro la confirma, revalidando disponibilidad.
             //
             // La retención es la única forma de que la promesa sea cierta: sin

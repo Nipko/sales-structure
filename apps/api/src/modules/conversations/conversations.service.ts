@@ -1635,6 +1635,34 @@ export class ConversationsService {
     }
 
     /** Send an image (or other media) to the customer on their channel. */
+    /**
+     * El enlace de pago sale del backend, no de la boca del modelo.
+     *
+     * El 19-ago el enlace se creó bien y el modelo igual contestó "voy a generar
+     * el enlace… un momento", así que nunca llegó. Se le puede pedir mejor y se
+     * le pidió —la directiva ahora es corta y clara— pero pedir no es garantizar,
+     * y esto es plata. Una URL transcrita por un modelo también puede salir
+     * cortada o con un carácter de más y no abrir.
+     *
+     * Va como mensaje aparte y con un retardo corto: llega justo después del
+     * texto, en el orden en que una persona lo mandaría.
+     */
+    private async sendPaymentLink(tenantId: string, inboundMsg: NormalizedMessage, url: string, delayMs = 1200) {
+        const outbound: OutboundMessage = {
+            tenantId,
+            channelType: inboundMsg.channelType,
+            channelAccountId: inboundMsg.channelAccountId,
+            to: inboundMsg.contactId,
+            content: { type: 'text', text: url },
+            metadata: { inboundTs: this.inboundTs(inboundMsg) },
+            // Atado al enlace, no al turno: si el turno se reprocesa tras un
+            // reinicio, el cliente no recibe el mismo enlace dos veces.
+            dedupeId: `paylink-${url.slice(-64)}`,
+        };
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
+        await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
+    }
+
     private async sendMedia(tenantId: string, inboundMsg: NormalizedMessage, mediaUrl: string, caption: string | undefined, delayMs?: number) {
         const outbound: OutboundMessage = {
             tenantId,
@@ -2954,6 +2982,17 @@ export class ConversationsService {
                     .catch(() => { /* best-effort */ });
             }
 
+            // El enlace de pago sale del backend, no de la boca del modelo: es
+            // plata, y ya vimos al modelo prometerlo y no mandarlo. Va primero
+            // que las imágenes porque es lo que el cliente está esperando.
+            const paymentLinks = executedToolsThisTurn
+                .map(t => (t?.result as any)?.paymentLink)
+                .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u));
+            for (const url of new Set(paymentLinks)) {
+                await this.sendPaymentLink(tenantId, msg, url);
+                await this.saveAiMessage(tenantId, conversation.id, url, msg.channelType);
+            }
+
             // Multimodal out (#13): dispatch product images the LLM requested,
             // staggered AFTER the text reply so they land in a natural order.
             for (let i = 0; i < mediaToSend.length; i++) {
@@ -3293,13 +3332,20 @@ export class ConversationsService {
             return T.failed.replace('{reason}', reason);
         }
         const facts = this.describeOperationResult(result);
+        // Cuando hay enlace, el backend lo manda como mensaje aparte. Hay que
+        // decírselo al modelo o va a intentar transcribir uno que ya no está en
+        // los datos, o peor, va a prometer generarlo.
+        const linkNote = result?.paymentLink
+            ? '\nEl enlace de pago se le envía en un mensaje aparte que sale JUSTO DESPUÉS del tuyo: '
+                + 'no lo escribas ni prometas generarlo, sólo decile qué tiene que pagar y que el enlace va enseguida.'
+            : '';
         // La operación se escribió, pero el dueño exige pago para confirmarla y
         // el cupo sigue a la venta. "Realizada" y "confirmada" no son lo mismo:
         // sin esta rama el agente cerraba la venta que todavia no ocurrio.
         if (result?.awaitingPayment === true) {
-            return facts ? `${T.awaitingPayment}\n${facts}` : T.awaitingPayment;
+            return (facts ? `${T.awaitingPayment}\n${facts}` : T.awaitingPayment) + linkNote;
         }
-        return facts ? `${T.done}\n${facts}` : T.doneNoDetails;
+        return (facts ? `${T.done}\n${facts}` : T.doneNoDetails) + linkNote;
     }
 
     /**
@@ -3316,6 +3362,9 @@ export class ConversationsService {
             // `linkStatus` sepultando al unico dato que el huesped necesitaba
             // —la URL—, y el modelo termino ignorando la directiva entera.
             // Tampoco tiene por que ver identificadores nuestros.
+            // El enlace lo manda el backend como burbuja aparte: si además
+            // estuviera acá, el cliente lo recibiría dos veces.
+            'paymentLink',
             'operationId', 'payableReference', 'paymentIntentId',
             'executionLedgerId', 'providerOperationId', 'provider',
             'linkCreated', 'linkStatus', 'requiresNewConfirmation',
@@ -3467,7 +3516,12 @@ export class ConversationsService {
         // Sólo se controla en ese caso: fuera de él, "dame un momento" es una
         // frase legítima y el auditor de reclamos la excluye a propósito.
         const outcomeAlreadyKnown = (executedTools || []).some(t => isBackingTool(t?.name));
-        if (outcomeAlreadyKnown && promisesLaterDelivery(response)) {
+        // Excepción: si el backend va a mandar el enlace en una burbuja aparte,
+        // "el enlace va enseguida" es CIERTO y no hay que reescribirlo. Sin esta
+        // salvedad los dos arreglos se pisan: uno le pide al modelo que anuncie
+        // el envío y el otro lo castiga por anunciarlo.
+        const backendWillDeliver = (executedTools || []).some(t => !!(t?.result as any)?.paymentLink);
+        if (outcomeAlreadyKnown && !backendWillDeliver && promisesLaterDelivery(response)) {
             this.recordAgentSignal(tenantId, 'deferred_after_execution');
             this.logger.warn(`[Guardrail] La operacion ya se ejecuto y la respuesta la difiere — reintento correctivo: "${response.slice(0, 100)}"`);
             try {

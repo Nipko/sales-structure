@@ -111,10 +111,12 @@ describe('la estadía nace pendiente cuando el dueño exige pago', () => {
 
         const hold = inserted[0].params[17] as Date;
         expect(hold).toBeInstanceOf(Date);
-        // 15 minutos hacia adelante, con margen para la latencia del test.
+        // 20 minutos hacia adelante, con margen para la latencia del test.
+        // Son 20 y no 15 por PSE: la transferencia bancaria saca al cliente al
+        // sitio del banco y lo devuelve, y quince le quedaban justos.
         const minutos = (hold.getTime() - antes) / 60000;
-        expect(minutos).toBeGreaterThan(14);
-        expect(minutos).toBeLessThanOrEqual(15.5);
+        expect(minutos).toBeGreaterThan(19);
+        expect(minutos).toBeLessThanOrEqual(20.5);
     });
 
     it('sin pago obligatorio no se retiene nada', async () => {

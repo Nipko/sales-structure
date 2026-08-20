@@ -12,7 +12,7 @@ import {
 /**
  * El cliente pagó la seña: la cita se confirma y recién ahí entra a la agenda.
  *
- * El turno queda RETENIDO 15 minutos mientras el cliente paga, así que la
+ * El turno queda RETENIDO 20 minutos mientras el cliente paga, así que la
  * carrera normal ya no existe. Pero la retención vence: si el pago se acredita
  * tarde, el segundo puede haberse quedado con el horario. Ahí hay plata cobrada
  * y no hay turno, y eso no se resuelve solo — va a una persona.

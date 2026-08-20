@@ -55,7 +55,7 @@ const TENANT_PAYMENT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 /**
  * Lo que vende cupo se cobra contra reloj; lo que no, no.
  *
- * Una reserva o una cita retienen la fecha 15 minutos mientras el cliente paga.
+ * Una reserva o una cita retienen la fecha 20 minutos mientras el cliente paga.
  * El enlace tiene que morir con esa retención: uno que sobrevive 24 horas
  * invita a pagar algo que ya no existe, y ese pago cae en el camino de "cobrado
  * sin lugar" — plata real sin nada que entregar.

@@ -88,9 +88,9 @@ describe('la política de confirmación que configura el dueño', () => {
             // Lo que nunca puede faltar: la instrucción de no dar por confirmado…
             expect(texto).toContain('No lo des por confirmado');
             // …y la retención, que es la única promesa concreta que el sistema
-            // sí cumple. Sin decirla, el cliente no sabe que tiene 15 minutos ni
+            // sí cumple. Sin decirla, el cliente no sabe cuánto tiempo tiene ni
             // por qué apurarse, y la retención no le sirve de nada.
-            expect(texto).toContain('15 minutos');
+            expect(texto).toContain('20 minutos');
             expect(texto).toContain('vuelve a quedar disponible');
         }
     });

@@ -35,14 +35,16 @@ describe('el predicado de ocupación', () => {
         expect(holdStillAliveSql()).not.toContain('IS NULL');
     });
 
-    it('retiene 15 minutos', () => {
-        expect(PAYMENT_HOLD_MS).toBe(15 * 60 * 1000);
+    it('retiene 20 minutos: PSE saca al cliente al banco y vuelve', () => {
+        // Quince le quedaban justos, y una retención que vence MIENTRAS el
+        // cliente paga termina en "cobrado sin lugar".
+        expect(PAYMENT_HOLD_MS).toBe(20 * 60 * 1000);
     });
 });
 
 describe('lo que se publica a las OTAs', () => {
     it('excluye lo impago sin mirar la retención', () => {
-        // 15 minutos de bloqueo no salen al feed: Airbnb y Booking releen cada
+        // 20 minutos de bloqueo no salen al feed: Airbnb y Booking releen cada
         // varios minutos, así que llegaría vencido, y ensuciaría el calendario
         // del dueño con huecos que aparecen y desaparecen.
         expect(EXPORT_EXCLUDED_SQL).toContain('pending_payment');

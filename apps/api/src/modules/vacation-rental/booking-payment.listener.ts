@@ -73,7 +73,7 @@ export class BookingPaymentListener {
                     SELECT check_in, check_out FROM property_bookings
                      WHERE property_id = $1::uuid
                        AND id <> $4::uuid
-                       AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+                       AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}
                        AND check_in < $3::date AND check_out > $2::date
                  ) c LIMIT 1`,
                 [booking.property_id, booking.check_in, booking.check_out, booking.id],

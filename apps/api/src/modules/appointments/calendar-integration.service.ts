@@ -1114,7 +1114,7 @@ export class CalendarIntegrationService {
                  WHERE calendar_integration_id = $1::uuid
                    AND (
                        calendar_sync_state NOT IN ('deleted', 'not_configured')
-                       OR (start_at > NOW() AND Nonestatus NOT IN ('cancelled', 'completed', 'no_show') AND ${holdStillAliveSql()})
+                       OR (start_at > NOW() AND status NOT IN ('cancelled', 'completed', 'no_show') AND ${holdStillAliveSql()})
                    )) AS owned_appointments,
                 (SELECT COUNT(*)::int FROM calendar_sync_outbox
                  WHERE integration_id = $1::uuid

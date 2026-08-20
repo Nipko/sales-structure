@@ -844,7 +844,7 @@ export class AppointmentsService {
         // Filter out existing appointments on that date
         const existing = await this.prisma.executeInTenantSchema(schemaName,
             `SELECT assigned_to, start_at, end_at FROM appointments
-             WHERE start_at::date = $1::date AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}`,
+             WHERE start_at::date = $1::date AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}`,
             [date],
         ) as any[];
 
@@ -880,7 +880,7 @@ export class AppointmentsService {
         let sql = `
             SELECT COUNT(*) as cnt FROM appointments
             WHERE assigned_to = $1::uuid
-              AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+              AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}
               AND start_at < $3::timestamp
               AND end_at > $2::timestamp
         `;
@@ -1036,7 +1036,7 @@ export class AppointmentsService {
         // 3. Get existing appointments
         const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT assigned_to, service_id, start_at, end_at FROM appointments
-             WHERE start_at::date = $1::date AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}`, [dateStr],
+             WHERE start_at::date = $1::date AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}`, [dateStr],
         );
 
         // 4. Generate slots

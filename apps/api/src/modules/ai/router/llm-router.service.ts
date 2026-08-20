@@ -1021,15 +1021,22 @@ export class LLMRouterService {
 
     analyzeComplexity(message: string): number {
         let score = 0;
-        if (message.length > 500) score += 30;
-        else if (message.length > 200) score += 20;
-        else if (message.length > 50) score += 10;
+        // Umbrales de CHAT, no de email. Los anteriores (>500 / >200 / >50)
+        // venian de textos largos: en WhatsApp un mensaje de 200 caracteres ya
+        // es una parrafada, asi que casi todo caia en el escalon mas bajo o en
+        // cero y este eje no distinguia nada.
+        if (message.length > 280) score += 30;
+        else if (message.length > 120) score += 20;
+        else if (message.length > 40) score += 10;
 
         const questionCount = (message.match(/\?/g) || []).length;
         if (questionCount > 2) score += 25;
         else if (questionCount > 0) score += 10;
 
-        const technicalPatterns = /\b(cotiaz|reserv|dispon|precio|factur|pago|devoluci|garant|especific|compar)/gi;
+        // `cotiaz` era un typo por `cotiz` y no casaba con nada: pedir una
+        // cotizacion —de lo mas valioso que puede escribir un cliente— puntuaba
+        // cero en este eje desde siempre.
+        const technicalPatterns = /\b(cotiz|reserv|dispon|precio|factur|pago|devoluci|garant|especific|compar)/gi;
         const technicalMatches = (message.match(technicalPatterns) || []).length;
         score += Math.min(technicalMatches * 10, 30);
 

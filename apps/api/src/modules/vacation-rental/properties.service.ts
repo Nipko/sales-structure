@@ -246,7 +246,7 @@ export class PropertiesService {
                            ELSE check_out > $2::date END
                 UNION ALL
                 SELECT 'direct' as source, check_in, check_out FROM property_bookings
-                WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+                WHERE property_id = $1::uuid AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}
                   AND check_in < $3::date AND check_out > $2::date
             ) conflicts LIMIT 1`,
             [propertyId, stay.checkIn, stay.checkOut],
@@ -308,7 +308,7 @@ export class PropertiesService {
                     2::smallint as date_range_semantics,
                     ${BOOKING_ORIGIN_SQL} as origin
                FROM property_bookings
-             WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+             WHERE property_id = $1::uuid AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}
                AND check_in < $3::date AND check_out > $2::date`,
             [propertyId, startDate, nextMonthStart],
         );
@@ -386,7 +386,7 @@ export class PropertiesService {
                                 ELSE check_out > $2::date END
                     UNION ALL
                     SELECT 'direct' AS source FROM property_bookings
-                     WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+                     WHERE property_id = $1::uuid AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}
                        AND check_in < $3::date AND check_out > $2::date
                  ) conflicts LIMIT 1`,
                 [propertyId, checkIn, requestedCheckOut],
@@ -484,7 +484,7 @@ export class PropertiesService {
                                ELSE check_out > $2::date END
                     UNION ALL
                     SELECT 'direct' as source, check_in, check_out FROM property_bookings
-                    WHERE property_id = $1::uuid AND Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+                    WHERE property_id = $1::uuid AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}
                       AND check_in < $3::date AND check_out > $2::date
                  ) conflicts LIMIT 1`,
                 [propertyId, stay.checkIn, stay.checkOut],

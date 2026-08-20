@@ -105,3 +105,41 @@ describe('el enlace muere con la retención', () => {
         expect(SRC).toContain('const TENANT_PAYMENT_LINK_TTL_MS = 24 * 60 * 60 * 1000;');
     });
 });
+
+describe('el SQL que se genera es SQL de verdad', () => {
+    // Este contrato nació de un defecto real: la migración de los 13 predicados
+    // se hizo con un script, y donde la consulta no tenía alias el script
+    // escribió el `None` de Python — quedó `AND Nonestatus NOT IN (...)` en
+    // ONCE lugares. Habría tumbado en producción cada chequeo de disponibilidad,
+    // cada chequeo de capacidad y la sincronización del calendario.
+    //
+    // No lo atrapó nadie: `tsc` no mira dentro de un template string, y los
+    // tests comparaban subcadenas sin ejecutar la consulta.
+    const SQL_FILES = [
+        'src/modules/vacation-rental/properties.service.ts',
+        'src/modules/vacation-rental/booking-payment.listener.ts',
+        'src/modules/vacation-rental/ical-sync.service.ts',
+        'src/modules/appointments/appointments.service.ts',
+        'src/modules/appointments/appointment-capacity.util.ts',
+        'src/modules/appointments/appointment-payment.listener.ts',
+        'src/modules/appointments/calendar-integration.service.ts',
+    ];
+
+    it('no quedó ningún artefacto del script de migración', () => {
+        for (const f of SQL_FILES) {
+            const src = readFileSync(resolve(__dirname, '../../..', f), 'utf8');
+            expect(src).not.toMatch(/\bNone/);
+            expect(src).not.toMatch(/undefinedstatus|nullstatus/);
+        }
+    });
+
+    it('cada predicado de ocupación empieza por una columna válida', () => {
+        // `status` a secas o con alias (`a.status`), nunca pegado a otra cosa.
+        for (const f of SQL_FILES) {
+            const src = readFileSync(resolve(__dirname, '../../..', f), 'utf8');
+            for (const m of src.matchAll(/(\S*)status NOT IN \('cancelled'/g)) {
+                expect(m[1]).toMatch(/^$|^[a-z_]+\.$/);
+            }
+        }
+    });
+});

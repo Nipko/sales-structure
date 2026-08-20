@@ -125,7 +125,7 @@ export async function lockAndAssertAppointmentCapacity(
         const staffConflict = await query<any[]>(
             `SELECT id
              FROM appointments
-             WHERE Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+             WHERE status NOT IN ('cancelled') AND ${holdStillAliveSql()}
                AND start_at < $1::timestamp
                AND end_at > $2::timestamp
                AND assigned_to = $3::uuid
@@ -141,7 +141,7 @@ export async function lockAndAssertAppointmentCapacity(
     const occupancy = await query<Array<{ occupied: number }>>(
         `SELECT COUNT(*)::int AS occupied
          FROM appointments
-         WHERE Nonestatus NOT IN ('cancelled') AND ${holdStillAliveSql()}
+         WHERE status NOT IN ('cancelled') AND ${holdStillAliveSql()}
            AND start_at < $1::timestamp
            AND end_at > $2::timestamp
            AND service_id = $3::uuid

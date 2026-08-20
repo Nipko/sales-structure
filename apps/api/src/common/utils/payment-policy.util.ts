@@ -22,6 +22,15 @@ export type PaymentPolicyMode = 'none' | 'full' | 'deposit' | 'any';
 export const PENDING_PAYMENT_STATUS = 'pending_payment';
 
 /**
+ * Una retención que nadie pagó y ya venció.
+ *
+ * Es sólo higiene de estado: las fechas ya estaban libres por reloj antes de que
+ * nadie escribiera esto. Lo que aporta es dejar de mostrar como "esperando el
+ * pago" algo que dejó de esperar hace horas.
+ */
+export const EXPIRED_HOLD_STATUS = 'expired';
+
+/**
  * Lo que se le publica a las OTAs: sólo lo pagado y firme.
  *
  * Una retención de 20 minutos NO sale al feed. Publicarla sería ruido —Airbnb y
@@ -62,7 +71,13 @@ export const PAYMENT_HOLD_MS = 20 * 60 * 1000;
  */
 export function holdStillAliveSql(alias = ''): string {
     const a = alias ? `${alias}.` : '';
-    return `(${a}status <> '${PENDING_PAYMENT_STATUS}' OR ${a}hold_expires_at > NOW())`;
+    // `expired` NUNCA ocupa, mire el reloj o no. El barrido marca así las
+    // retenciones que nadie pagó, y sin esta condición hacía justo lo contrario
+    // de lo que promete: una fila vencida dejaba de ser `pending_payment`, se
+    // escapaba de la comparación del reloj, y las fechas que acababa de liberar
+    // volvían a contar como ocupadas.
+    return `(${a}status <> '${EXPIRED_HOLD_STATUS}'`
+        + ` AND (${a}status <> '${PENDING_PAYMENT_STATUS}' OR ${a}hold_expires_at > NOW()))`;
 }
 
 const MODES: ReadonlySet<string> = new Set(['none', 'full', 'deposit', 'any']);

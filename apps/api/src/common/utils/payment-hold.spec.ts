@@ -23,8 +23,18 @@ describe('el predicado de ocupación', () => {
 
     it('deja pasar el alias sin romper la consulta', () => {
         expect(holdStillAliveSql('a')).toBe(
-            "(a.status <> 'pending_payment' OR a.hold_expires_at > NOW())",
+            "(a.status <> 'expired'"
+            + " AND (a.status <> 'pending_payment' OR a.hold_expires_at > NOW()))",
         );
+    });
+
+    it('una retención VENCIDA no ocupa, y esto casi sale al revés', () => {
+        // El barrido marca `expired` las retenciones que nadie pagó. Sin esta
+        // condición, esa fila dejaba de ser `pending_payment`, se escapaba de la
+        // comparación del reloj y las fechas que el barrido acababa de liberar
+        // volvían a contar como OCUPADAS. El barrido hacía lo contrario de lo
+        // que promete.
+        expect(holdStillAliveSql()).toContain("status <> 'expired'");
     });
 
     it('una fila sin retención (NULL) nunca ocupa', () => {

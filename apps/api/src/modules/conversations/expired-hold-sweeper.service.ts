@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import {
+    EXPIRED_HOLD_STATUS,
+    PENDING_PAYMENT_STATUS,
+} from '../../common/utils/payment-policy.util';
 
 /**
  * Deja en `expired` las retenciones que nadie pagó.
@@ -63,8 +67,8 @@ export class ExpiredHoldSweeperService {
                     const rows = await this.prisma.executeInTenantSchema<any[]>(
                         schemaName,
                         `UPDATE ${table}
-                            SET status = 'expired', updated_at = NOW()
-                          WHERE status = 'pending_payment'
+                            SET status = '${EXPIRED_HOLD_STATUS}', updated_at = NOW()
+                          WHERE status = '${PENDING_PAYMENT_STATUS}'
                             AND hold_expires_at IS NOT NULL
                             AND hold_expires_at < NOW()
                           RETURNING id`,

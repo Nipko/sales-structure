@@ -3259,6 +3259,23 @@ export class ConversationsService {
      * unchanged so we don't add latency where it isn't needed.
      */
     private async rewriteSearchQuery(userText: string, schemaName: string, conversationId: string, tenantId: string): Promise<string> {
+        // Una confirmación no tiene nada que expandir.
+        //
+        // El guard de abajo es `length < 80`, así que "sí" entraba: una consulta
+        // a la base MÁS una llamada al LLM para reescribir dos letras que no
+        // tienen referente. Y justo en el turno que cierra la venta, que es el
+        // que menos puede permitirse latencia de más.
+        //
+        // Sin `` a propósito: en JavaScript se apoya en `\w`, que no incluye
+        // `í`, así que `sí` no casa nunca. El anclaje al final ya exige que la
+        // confirmación sea todo el mensaje — "si tienen lugar" no entra.
+        // El patrón es el mismo que usa el intérprete de intención para decidir
+        // `isConfirmation`, a propósito: si mañana alguien agrega una forma de
+        // decir que sí, los dos lugares tienen que verla igual.
+        if (/^(si|sí|yes|ok|oka|okay|confirmo|confirmar|confirma|confirmado|dale|listo|perfecto|claro|correcto|de acuerdo|por supuesto|sure|oui|sim|va|vamos|exacto|gracias|thanks|obrigad|merci)[\s.!]*$/i.test(userText.trim())) {
+            return userText;
+        }
+
         // Only worth a rewrite for likely follow-ups (short or anaphoric) — a
         // self-contained question passes through so we don't add a call/latency.
         const looksLikeFollowUp = userText.length < 80 ||

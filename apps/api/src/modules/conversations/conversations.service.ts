@@ -2611,11 +2611,12 @@ export class ConversationsService {
         // bloque <recent_actions> no se emitio nunca — mientras la regla 18 del
         // contrato le ordenaba al modelo reusar identificadores de ahi. El
         // modelo hacia lo unico que podia: inventarlos.
-        if (!isNewSession) {
-            const priorActions = (conversation.metadata as any)?.toolContext;
-            if (Array.isArray(priorActions) && priorActions.length) {
-                (turnContext as any).recentActions = priorActions.slice(-RECENT_ACTIONS_MAX);
-            }
+        const priorActions: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }> = !isNewSession
+            && Array.isArray((conversation.metadata as any)?.toolContext)
+            ? (conversation.metadata as any).toolContext.slice(-RECENT_ACTIONS_MAX)
+            : [];
+        if (priorActions.length) {
+            (turnContext as any).recentActions = priorActions;
         }
 
         // Assemble with a cache boundary: the contract+persona prefix is stable
@@ -2938,7 +2939,7 @@ export class ConversationsService {
             // whole message thread (history + tool results) — everything the model saw.
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
-                executedToolsThisTurn, userLanguage,
+                executedToolsThisTurn, userLanguage, priorActions,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
 
@@ -3145,6 +3146,10 @@ export class ConversationsService {
             const entries = executed.slice(-RECENT_ACTIONS_MAX).map(t => ({
                 tool: t.name,
                 ok: toolResultSucceeded(t.result),
+                // Sobrevive al turno porque el guardrail lo necesita: una
+                // operacion escrita pero impaga no respalda un "confirmada",
+                // ni ahora ni dentro de tres turnos.
+                awaiting: (t.result as any)?.awaitingPayment === true || undefined,
                 facts: this.describeOperationResult(t.result).slice(0, 400) || undefined,
             }));
             await this.prisma.executeInTenantSchema(schemaName,
@@ -3326,6 +3331,35 @@ export class ConversationsService {
         return lines.join('\n');
     }
 
+    /**
+     * Lo que respalda un "ya quedó hecho": lo de este turno MÁS lo que hicieron
+     * los turnos anteriores de esta conversación.
+     *
+     * La auditoría miraba sólo el turno actual. Eso estuvo bien mientras el
+     * modelo no tenía memoria de sus herramientas — pero desde que
+     * `<recent_actions>` por fin se emite, el modelo PUEDE referirse
+     * correctamente a una reserva hecha dos turnos atrás, y el guardrail la
+     * marcaba como mentira y la reescribía. En producción tapó tres veces
+     * seguidas una reserva que existía y estaba confirmada: el huésped
+     * preguntaba, el agente respondía la verdad, y nosotros la borrábamos.
+     *
+     * Se acota solo: son a lo sumo RECENT_ACTIONS_MAX entradas, de ESTA
+     * conversación, y se descartan al abrir una sesión nueva junto con el resto
+     * de la época. Una operación pendiente de pago sigue sin respaldar nada.
+     */
+    private backingEvidence(
+        executed?: Array<{ name: string; result: any }>,
+        prior?: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }>,
+    ): Array<{ name: string; result: any }> {
+        const fromPrior = (prior || [])
+            .filter(a => a?.ok === true && typeof a.tool === 'string')
+            .map(a => ({
+                name: a.tool as string,
+                result: { success: true, awaitingPayment: a.awaiting === true },
+            }));
+        return [...(executed || []), ...fromPrior];
+    }
+
     private async applyOutputGuardrails(
         response: string,
         systemPrompt: string,
@@ -3335,6 +3369,7 @@ export class ConversationsService {
         conversationId: string,
         executedTools?: Array<{ name: string; result: any }>,
         lang?: string,
+        priorActions?: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }>,
     ): Promise<string> {
         if (!response || isErrorFallback(response)) return response;
 
@@ -3349,7 +3384,8 @@ export class ConversationsService {
         const isBackingTool = (name: string) => (
             isBusinessWriteTool(name) || name.startsWith('mcp__')
         );
-        const claimAudit = auditTurnClaim(response, executedTools, { isBackingTool });
+        const backing = this.backingEvidence(executedTools, priorActions);
+        const claimAudit = auditTurnClaim(response, backing, { isBackingTool });
         if (claimAudit.falseClaim) {
             this.recordAgentSignal(tenantId, 'claim_unbacked');
             this.logger.warn(`[Guardrail] Response claimed completed action without backing tool execution — corrective retry: "${response.slice(0, 100)}"`);
@@ -3368,7 +3404,7 @@ export class ConversationsService {
                 });
                 const fixedClaim = correctedClaim.content?.trim();
                 const secondAudit = fixedClaim
-                    ? auditTurnClaim(fixedClaim, executedTools, { isBackingTool })
+                    ? auditTurnClaim(fixedClaim, backing, { isBackingTool })
                     : null;
                 if (secondAudit && !secondAudit.falseClaim) {
                     response = fixedClaim as string;

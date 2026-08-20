@@ -1,0 +1,77 @@
+vertical,subtipo,preparacion_100,atractivo_100,prompt_5,variables_5,lenguaje_5,navegacion_5,ajuste_experiencia_100,confianza,benchmark,alertas
+salud,dental,47,87,2,2,2,2,40,A,NexHealth,SOR REG CAP PAY E2E
+salud,medica_general,38,75,1,1,2,2,30,B,Pabau,STOP SOR REG CAP E2E
+salud,dermatologia,43,86,1,2,1,2,30,A,Pabau,SOR REG CAP PAY UX E2E
+salud,psicologia,40,86,1,2,2,2,35,A,SimplePractice,SOR REG PAY E2E
+salud,farmacia,30,65,3,2,2,1,40,B,PioneerRx,STOP SOR REG LIVE PAY UX E2E
+moda_belleza,salon_belleza,42,84,1,2,2,2,35,A,Zenoti,CAP PAY UX E2E
+moda_belleza,barberia,41,75,1,2,1,2,30,B,SQUIRE,CAP PAY UX E2E
+moda_belleza,spa,43,85,1,2,2,2,35,A,Zenoti,CAP PAY UX WRITER E2E
+moda_belleza,estetica,45,88,1,2,1,2,30,A,Pabau,SOR REG CAP PAY UX E2E
+inmobiliaria,venta,52,84,2,2,2,2,40,A,Lofty,LIVE UX SOR E2E
+inmobiliaria,arriendo,48,84,2,2,1,2,35,A,AppFolio,LIVE UX SOR PAY REG E2E
+inmobiliaria,comercial,39,70,2,1,1,2,30,B,Buildout,STOP SOR LIVE UX E2E
+inmobiliaria,construccion,29,60,0,0,0,1,5,C,Buildertrend,STOP MISCLASS SOR PAY E2E
+restaurantes,casual_dining,48,74,2,2,2,2,40,A,SevenRooms,SOR LIVE CAP PAY E2E
+restaurantes,comida_rapida,50,76,2,3,2,3,50,A,Toast,SOR LIVE PAY E2E
+restaurantes,cafeteria,46,70,1,2,1,2,30,B,Lightspeed,SOR LIVE PAY E2E
+restaurantes,dark_kitchen,49,77,2,3,1,3,45,A,Deliverect,SOR LIVE CAP PAY E2E
+automotriz,concesionario,50,75,2,3,2,3,50,A,Tekion,SOR LIVE REG PAY E2E
+automotriz,taller,30,75,2,2,2,2,40,A,Shopmonkey,STOP MISCLASS SOR CAP PAY E2E
+automotriz,repuestos,38,68,3,3,2,3,55,B,PartsTech,SOR LIVE PAY E2E
+automotriz,alquiler,27,66,3,2,2,1,40,B,HQ Rental Software,STOP WRITER CAP LIVE PAY REG E2E
+turismo,agencia_viajes,39,68,2,2,2,2,40,B,Travefy,STOP MISCLASS SOR LIVE PAY E2E
+turismo,hotel,49,84,1,3,0,1,25,A,Cloudbeds,SOR LIVE CAP PAY E2E
+turismo,tours,52,74,2,3,2,1,40,B,Rezdy,CAP LIVE PAY UX E2E
+turismo,alquiler_vacacional,51,86,1,3,0,1,25,A,Guesty,SOR LIVE PAY REG E2E
+education,idiomas,43,76,1,2,2,2,35,A,Teachworks,CAP PAY SOR E2E
+education,universitaria,25,65,1,1,1,2,25,B,Element451,STOP MISCLASS SOR REG PAY E2E
+education,online,30,70,1,2,2,2,35,B,Thinkific,STOP SOR PAY E2E
+education,capacitacion,35,72,1,2,1,2,30,B,Arlo,SOR CAP PAY E2E
+finanzas,asesoria,24,62,1,1,1,1,20,B,Salesforce FSC,STOP SOR REG LIVE E2E
+finanzas,fintech,17,55,0,0,0,1,5,C,Mambu+Alloy,STOP MISCLASS SOR REG LIVE E2E
+finanzas,creditos,20,67,1,1,1,1,20,B,Blend,STOP SOR REG LIVE PAY E2E
+servicios_profesionales,abogados,27,68,2,1,2,1,30,B,Clio,STOP SOR REG PAY UX E2E
+servicios_profesionales,contadores,25,70,0,1,0,1,10,B,TaxDome,STOP SOR REG PAY E2E
+servicios_profesionales,arquitectos,19,55,0,1,0,1,10,C,Monograph,STOP MISCLASS SOR PAY E2E
+servicios_profesionales,consultores,22,60,0,1,0,1,10,C,Scoro,STOP SOR CAP PAY E2E
+retail,moda,39,72,1,2,1,3,35,A,Shopify,SOR LIVE PAY E2E
+retail,electronica,36,68,1,2,2,3,40,B,Lightspeed,SOR LIVE PAY E2E
+retail,hogar,38,66,1,2,1,3,35,B,Shopify,SOR LIVE CAP PAY E2E
+retail,marketplace,18,60,0,1,0,2,15,C,Mirakl,STOP MISCLASS SOR REG PAY E2E
+technology,saas,29,70,1,1,2,1,25,B,Intercom Fin,STOP SOR LIVE REG E2E
+technology,consultoria_ti,22,55,1,1,2,1,25,C,ConnectWise PSA,STOP SOR CAP PAY E2E
+technology,desarrollo,20,53,1,1,2,1,25,C,Productive,STOP SOR CAP PAY E2E
+technology,hardware,35,62,3,3,2,3,55,C,Cin7,SOR LIVE PAY E2E
+veterinaria,clinica_general,41,72,1,2,2,2,35,B,ezyVet,SOR REG LIVE PAY E2E
+veterinaria,hospital_24h,29,68,1,1,1,2,25,B,Instinct,STOP SOR REG CAP LIVE E2E
+veterinaria,exoticos,34,55,1,1,1,2,25,C,ezyVet,STOP SOR REG CAP E2E
+veterinaria,peluqueria_canina,35,65,0,2,0,2,20,B,MoeGo,MISCLASS CAP PAY E2E
+gimnasios,gimnasio_general,48,78,1,3,2,3,45,A,Glofox,LIVE CAP PAY UX E2E
+gimnasios,crossfit,42,77,2,3,1,3,45,A,Wodify,SOR CAP PAY E2E
+gimnasios,yoga_pilates,43,80,2,3,1,3,45,A,Mariana Tek,CAP PAY UX E2E
+gimnasios,cycling,39,70,2,3,1,3,45,B,Mariana Tek,CAP LIVE PAY UX E2E
+gimnasios,martial_arts,36,73,2,3,1,3,45,B,Zen Planner,REG CAP PAY E2E
+seguros,broker,39,74,1,3,1,2,35,A,Applied Epic,SOR REG LIVE PAY E2E
+seguros,aseguradora,19,58,0,1,0,1,10,C,Guidewire,STOP MISCLASS SOR REG LIVE E2E
+seguros,vida,32,72,1,2,1,2,30,B,Equisoft,STOP SOR REG LIVE E2E
+seguros,auto,34,74,1,3,1,2,35,B,Applied Epic+Guidewire,SOR REG LIVE PAY E2E
+seguros,salud,30,70,1,2,0,2,25,B,Salesforce Digital Insurance,STOP SOR REG LIVE E2E
+servicios_hogar,plomeria,33,75,1,2,1,3,35,B,ServiceTitan,SOR CAP LIVE PAY E2E
+servicios_hogar,electricidad,31,72,1,2,1,3,35,B,ServiceTitan,REG CAP LIVE PAY E2E
+servicios_hogar,fumigacion,27,70,1,2,1,3,35,B,FieldRoutes,STOP SOR REG CAP PAY E2E
+servicios_hogar,limpieza,30,74,1,2,1,3,35,B,Jobber,CAP LIVE PAY E2E
+servicios_hogar,jardineria,28,68,1,2,1,3,35,B,Jobber,CAP LIVE PAY E2E
+servicios_hogar,cerrajeria,25,63,1,2,1,3,35,C,Housecall Pro,STOP REG CAP LIVE PAY E2E
+servicios_hogar,pintura,29,67,1,2,1,3,35,B,Jobber,CAP PAY E2E
+pet_services,peluqueria,40,72,1,2,1,2,30,B,MoeGo,CAP PAY UX E2E
+pet_services,guarderia,27,68,3,2,2,1,40,B,MoeGo,STOP WRITER CAP LIVE REG PAY E2E
+pet_services,hotel,25,69,3,2,2,1,40,B,MoeGo,STOP WRITER CAP LIVE REG PAY E2E
+pet_services,paseos,31,65,1,1,0,2,20,B,Time To Pet,SOR CAP LIVE REG PAY E2E
+pet_services,adiestramiento,29,63,1,1,1,2,25,C,Gingr,CAP REG PAY E2E
+fotografia,estudio,33,64,1,2,2,2,35,B,Pixieset,UX CAP PAY SOR E2E
+fotografia,bodas,31,72,1,2,2,2,35,B,HoneyBook,UX CAP PAY E2E
+fotografia,eventos,30,68,1,2,1,2,30,B,HoneyBook,UX CAP PAY E2E
+fotografia,producto,26,60,1,1,1,2,25,C,Pixieset+DAM,STOP MISCLASS SOR PAY E2E
+fotografia,wedding_planner,11,70,0,0,0,0,0,B,Aisle Planner,STOP MISCLASS SOR PAY E2E
+otro,(sin_subtipo),25,50,1,1,0,1,15,C,Zoho Custom Modules,STOP MISCLASS UX E2E

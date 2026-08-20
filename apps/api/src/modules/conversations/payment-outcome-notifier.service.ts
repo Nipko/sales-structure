@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChannelType } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
+import { EmailService } from '../email/email.service';
 
 /**
  * Cerrar el lazo del pago: contarle al cliente cómo terminó.
@@ -15,12 +16,17 @@ import { OutboundQueueService } from '../channels/outbound-queue.service';
  * todas —se pagó y quedó firme, o se pagó y ya no había lugar— y porque los dos
  * mensajes tienen que sonar igual salga de donde salga.
  *
- * LÍMITE REAL, y no lo tapamos: WhatsApp sólo deja escribir libre dentro de las
- * 24h desde el último mensaje del cliente. Con la retención de 15 minutos el
- * caso normal entra holgado —el cliente acaba de escribir para reservar—, pero
- * un pago que se acredita tarde cae fuera de la ventana y Meta lo rechaza. Ahí
- * queda registrado como fallo de entrega en vez de fingir que llegó; cerrarlo
- * de verdad necesita una plantilla aprobada, que es una decisión del dueño.
+ * LA VENTANA DE 24h: WhatsApp sólo deja escribir libre dentro de las 24h desde
+ * el último mensaje DEL CLIENTE. Con la retención de 20 minutos el caso normal
+ * entra holgado —acaba de escribir para reservar— pero un pago que se acredita
+ * tarde cae fuera y Meta lo rechaza.
+ *
+ * Ahí se cae a EMAIL. No se intenta y se ve fallar: se decide antes, porque un
+ * rechazo de Meta deja al cliente sin enterarse igual y sin rastro legible. El
+ * email no reemplaza a una plantilla aprobada —el cliente escribió por WhatsApp
+ * y ahí querría la respuesta— pero es lo que se puede mandar hoy sin depender de
+ * que Meta apruebe nada. Sin email queda el log, para que el dueño al menos vea
+ * que su cliente no fue avisado.
  */
 @Injectable()
 export class PaymentOutcomeNotifierService {
@@ -29,6 +35,7 @@ export class PaymentOutcomeNotifierService {
     constructor(
         private readonly prisma: PrismaService,
         @Optional() private readonly outbound?: OutboundQueueService,
+        @Optional() private readonly email?: EmailService,
     ) {}
 
     /**
@@ -60,12 +67,18 @@ export class PaymentOutcomeNotifierService {
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 input.conversationId
-                    ? `SELECT c.channel_type, c.channel_account_id, ct.external_id
+                    ? `SELECT c.id AS conversation_id, c.channel_type, c.channel_account_id,
+                              ct.external_id, ct.email, ct.name,
+                              (SELECT MAX(m.created_at) FROM messages m
+                                WHERE m.conversation_id = c.id AND m.direction = 'inbound') AS last_inbound_at
                          FROM conversations c
                          JOIN contacts ct ON ct.id = c.contact_id
                         WHERE c.id = $1::uuid
                         LIMIT 1`
-                    : `SELECT c.channel_type, c.channel_account_id, ct.external_id
+                    : `SELECT c.id AS conversation_id, c.channel_type, c.channel_account_id,
+                              ct.external_id, ct.email, ct.name,
+                              (SELECT MAX(m.created_at) FROM messages m
+                                WHERE m.conversation_id = c.id AND m.direction = 'inbound') AS last_inbound_at
                          FROM conversations c
                          JOIN contacts ct ON ct.id = c.contact_id
                         WHERE c.contact_id = $1::uuid
@@ -80,6 +93,17 @@ export class PaymentOutcomeNotifierService {
                     `[Pago] no hay canal por donde avisarle al cliente (tenant ${input.tenantId})`,
                 );
                 return false;
+            }
+
+            // La ventana de 24h de WhatsApp. Meta sólo deja escribir libre dentro
+            // de las 24h desde el último mensaje DEL CLIENTE; pasado eso hace
+            // falta una plantilla aprobada. No lo intentamos y lo vemos fallar:
+            // se decide antes, porque un rechazo de Meta deja al cliente sin
+            // enterarse igual y sin rastro que el dueño pueda leer.
+            //
+            // Sólo aplica a WhatsApp. El resto de los canales no tiene ventana.
+            if (String(target.channel_type) === 'whatsapp' && this.isOutsideWhatsappWindow(target.last_inbound_at)) {
+                return this.notifyByEmail(target, input.text);
             }
 
             await this.outbound.enqueue({
@@ -97,6 +121,40 @@ export class PaymentOutcomeNotifierService {
             this.logger.error(`[Pago] no se pudo avisar al cliente: ${e.message}`);
             return false;
         }
+    }
+
+    /** 24h desde el último mensaje del cliente. Sin mensajes, se asume fuera. */
+    private isOutsideWhatsappWindow(lastInboundAt: unknown): boolean {
+        if (!lastInboundAt) return true;
+        const t = new Date(lastInboundAt as any).getTime();
+        if (!Number.isFinite(t)) return true;
+        return Date.now() - t > 24 * 60 * 60 * 1000;
+    }
+
+    /**
+     * Fuera de la ventana: email.
+     *
+     * No reemplaza a una plantilla aprobada —el cliente escribió por WhatsApp y
+     * ahí querría la respuesta— pero es lo que se puede mandar hoy sin depender
+     * de que Meta apruebe nada. Si no hay email, queda el log: al menos el dueño
+     * puede ver que su cliente no fue avisado.
+     */
+    private async notifyByEmail(target: any, text: string): Promise<boolean> {
+        const to = String(target?.email || '').trim();
+        if (!to || !this.email) {
+            this.logger.warn(
+                '[Pago] fuera de la ventana de 24h de WhatsApp y sin email: el cliente NO fue avisado',
+            );
+            return false;
+        }
+        const ok = await this.email.send({
+            to,
+            subject: 'Tu pago fue recibido',
+            text,
+            html: `<p>${text}</p>`,
+        });
+        if (ok) this.logger.log('[Pago] avisado por email (fuera de la ventana de 24h de WhatsApp)');
+        return ok;
     }
 }
 

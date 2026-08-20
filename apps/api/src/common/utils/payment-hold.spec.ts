@@ -85,3 +85,23 @@ describe('la reserva y la cita nacen retenidas', () => {
         }
     });
 });
+
+describe('el enlace muere con la retención', () => {
+    const SRC = readFileSync(
+        resolve(__dirname, '../../modules/tenant-payments/tenant-payments.service.ts'), 'utf8',
+    );
+
+    it('lo que retiene cupo usa el reloj de la retención, no 24 horas', () => {
+        // Un enlace que sobrevive a la retención invita a pagar algo que ya no
+        // existe, y ese pago cae en "cobrado sin lugar": plata real sin nada que
+        // entregar.
+        expect(SRC).toContain('holdsCapacity ? PAYMENT_HOLD_MS : TENANT_PAYMENT_LINK_TTL_MS');
+        expect(SRC).toContain("new Set(['property', 'appointment'])");
+    });
+
+    it('lo que no retiene nada conserva las 24 horas', () => {
+        // Un pedido o una factura no guardan cupo: acortarlos sólo obligaría al
+        // cliente a pedir el enlace de nuevo sin que nadie gane nada.
+        expect(SRC).toContain('const TENANT_PAYMENT_LINK_TTL_MS = 24 * 60 * 60 * 1000;');
+    });
+});

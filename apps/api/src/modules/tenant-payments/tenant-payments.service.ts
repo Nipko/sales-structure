@@ -34,6 +34,7 @@ import {
     WompiProviderError,
     type WompiEnvironment,
 } from './tenant-wompi.client';
+import { PAYMENT_HOLD_MS } from '../../common/utils/payment-policy.util';
 
 /**
  * Why the empty cases are split: "the provider says nobody paid" is evidence
@@ -50,6 +51,20 @@ const MP_API = 'https://api.mercadopago.com';
 const MASK = '***' as const;
 const MAX_PROVIDER_CREDENTIAL_HISTORY = 16;
 const TENANT_PAYMENT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Lo que vende cupo se cobra contra reloj; lo que no, no.
+ *
+ * Una reserva o una cita retienen la fecha 15 minutos mientras el cliente paga.
+ * El enlace tiene que morir con esa retención: uno que sobrevive 24 horas
+ * invita a pagar algo que ya no existe, y ese pago cae en el camino de "cobrado
+ * sin lugar" — plata real sin nada que entregar.
+ *
+ * Un pedido o una factura no retienen nada, asi que ahi las 24 horas siguen
+ * siendo lo correcto: acortarlas solo obligaria al cliente a pedir el enlace de
+ * nuevo sin ganar nada.
+ */
+const CAPACITY_HOLDING_KINDS: ReadonlySet<string> = new Set(['property', 'appointment']);
 
 class MercadoPagoProviderError extends Error {
     constructor(
@@ -1017,7 +1032,11 @@ export class TenantPaymentsService {
         if (provider === 'wompi' && owned.currency !== 'COP') {
             throw new BadRequestException({ error: 'wompi_cop_only' });
         }
-        const expiresAt = new Date(Date.now() + TENANT_PAYMENT_LINK_TTL_MS);
+        // El TTL lo decide lo que se esta vendiendo, no una constante global.
+        const holdsCapacity = CAPACITY_HOLDING_KINDS.has(
+            String(owned.canonicalReference || '').split(':')[0].trim().toLowerCase(),
+        );
+        const expiresAt = new Date(Date.now() + (holdsCapacity ? PAYMENT_HOLD_MS : TENANT_PAYMENT_LINK_TTL_MS));
         const { intent, created } = await store.createOrGetIntent({
             tenantId: input.tenantId,
             provider,

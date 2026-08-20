@@ -1075,7 +1075,23 @@ Rules: only include fields that are clearly visible. Return valid JSON only.`,
     }
 
     /**
-     * Delete a conversation and all its messages/notes
+     * Borra una conversación y el estado vivo que la acompaña.
+     *
+     * Borraba las filas y dejaba TODO lo demás en pie, así que la conversación
+     * desaparecía de la bandeja y el sistema seguía comportándose como si
+     * existiera: el motor de reservas retomaba un flujo a medias, una
+     * confirmación pendiente vieja se ejecutaba con el primer "sí", y la memoria
+     * del agente seguía hablando de un chat que el dueño ya había borrado.
+     *
+     * LO QUE NO SE BORRA, y es deliberado: las reservas, citas, pedidos y
+     * oportunidades sobreviven. Borrar una conversación no puede borrar la venta
+     * — su `conversation_id` queda en NULL (ON DELETE SET NULL) y el negocio
+     * sigue en pie.
+     *
+     * La plata la protege la base sola: `payment_operation_ledger` referencia al
+     * ledger de ejecución con ON DELETE RESTRICT, así que una operación de cobro
+     * no se puede borrar por accidente. Acá se hace explícito en vez de chocar
+     * contra el error: se borran las confirmaciones SIN cobro asociado.
      */
     async deleteConversation(tenantId: string, conversationId: string): Promise<void> {
         const schemaName = await this.getTenantSchema(tenantId);
@@ -1093,14 +1109,62 @@ Rules: only include fields that are clearly visible. Return valid JSON only.`,
             [conversationId],
         );
 
+        // Memoria del agente sobre ESTE chat. Sin esto, el próximo mensaje del
+        // mismo contacto arrastra lo que el dueño acaba de borrar.
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM conversation_memory WHERE conversation_id = $1::uuid`,
+            [conversationId],
+        ).catch((e: any) => this.logger.warn(`[Borrado] memoria: ${e.message}`));
+
+        // Confirmaciones pendientes, salvo las que tienen un cobro detrás.
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM tool_execution_ledger
+              WHERE conversation_id = $1::uuid
+                AND id NOT IN (SELECT execution_ledger_id FROM payment_operation_ledger)`,
+            [conversationId],
+        ).catch((e: any) => this.logger.warn(`[Borrado] confirmaciones: ${e.message}`));
+
         await this.prisma.executeInTenantSchema(
             schemaName,
             `DELETE FROM conversations WHERE id = $1::uuid`,
             [conversationId],
         );
 
+        // Estado vivo en Redis. Es lo que hacía que un chat borrado siguiera
+        // teniendo un flujo a medias esperando el próximo mensaje.
+        await this.clearConversationRuntimeState(tenantId, conversationId);
+
         this.logger.log(`Conversation ${conversationId} permanently deleted`);
         this.eventEmitter.emit('conversation.deleted', { tenantId, conversationId });
+    }
+
+    /**
+     * El estado que vive fuera de PostgreSQL.
+     *
+     * Las mismas claves que borra `infra/scripts/reset-chat.sh`, que existe justo
+     * porque esto no se limpiaba desde el producto. Cada fallo se traga: el
+     * borrado ya ocurrió en la base y abortar acá dejaría algo peor —una
+     * conversación a medio borrar— que un residuo en Redis.
+     */
+    private async clearConversationRuntimeState(tenantId: string, conversationId: string): Promise<void> {
+        const keys = [
+            `booking:${conversationId}`,          // flujo de reserva a medias
+            `procedure:${conversationId}`,        // procedimiento a medias
+            `lock:conv:${conversationId}`,        // mutex del turno
+            `handoff:${tenantId}:${conversationId}`,
+            `llm:affinity:${conversationId}`,
+            `llm:affinity:${conversationId}:conversation`,
+            `llm:affinity:${conversationId}:tool_calling`,
+        ];
+        for (const key of keys) {
+            try {
+                await this.redis.del(key);
+            } catch (e: any) {
+                this.logger.warn(`[Borrado] no se pudo limpiar ${key}: ${e.message}`);
+            }
+        }
     }
 
     /**

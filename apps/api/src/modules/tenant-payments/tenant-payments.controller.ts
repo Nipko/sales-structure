@@ -10,6 +10,7 @@ import { TenantPaymentsService } from './tenant-payments.service';
 import { TenantPaymentsWebhookService } from './tenant-payments-webhook.service';
 import { TenantWompiWebhookService } from './tenant-wompi-webhook.service';
 import type { TenantPaymentProvider } from './tenant-payment-reference';
+import { TenantSalesReportService } from './tenant-sales-report.service';
 
 @ApiTags('tenant-payments')
 @Controller('tenant-payments')
@@ -19,6 +20,7 @@ export class TenantPaymentsController {
         private readonly webhook: TenantPaymentsWebhookService,
         private readonly wompiWebhook: TenantWompiWebhookService,
         private readonly prisma: PrismaService,
+        private readonly salesReport: TenantSalesReportService,
     ) {}
 
     /**
@@ -71,6 +73,30 @@ export class TenantPaymentsController {
     async getConfig(@Param('tenantId') tenantId: string) {
         const data = await this.service.getConfig(tenantId);
         return { success: true, data };
+    }
+
+    /**
+     * Cómo va el negocio, en plata.
+     *
+     * `tenant_admin` igual que el resto de facturación: son los ingresos del
+     * negocio, no una métrica operativa. Un agente no tiene por qué verlos.
+     */
+    @Get(':tenantId/sales-summary')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @Roles('tenant_admin')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Cobrado, por cobrar, en proceso y perdido, por moneda' })
+    async getSalesSummary(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start?: string,
+        @Query('end') end?: string,
+    ) {
+        // Por defecto el mes en curso, que es como el dueño piensa el negocio.
+        const hoy = new Date();
+        const desde = start || new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
+        const hasta = end || hoy.toISOString().slice(0, 10);
+        const data = await this.salesReport.getMoneySummary(tenantId, desde, hasta);
+        return { success: true, data, range: { start: desde, end: hasta } };
     }
 
     @Put(':tenantId/config')

@@ -10,6 +10,7 @@ import { TenantWompiWebhookService } from './tenant-wompi-webhook.service';
 import { TenantPaymentCredentialCryptoService } from './tenant-payment-credential-crypto.service';
 import { TenantPaymentReconciliationService } from './tenant-payment-reconciliation.service';
 import { TenantPaymentEventsListener } from './tenant-payment-events.listener';
+import { TenantSalesReportService } from './tenant-sales-report.service';
 
 /**
  * Cobros del tenant a su cliente final (D3).
@@ -21,6 +22,7 @@ import { TenantPaymentEventsListener } from './tenant-payment-events.listener';
  */
 @Module({
     providers: [
+        TenantSalesReportService,
         TenantPaymentsService,
         TenantPaymentsWebhookService,
         TenantMercadoPagoOperationProvider,

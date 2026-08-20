@@ -526,3 +526,37 @@ npx tsc --noEmit (api + dashboard)  → exit 0
 jest apps/api      → 2540 passed / 283 suites, 0 fallos
 jest apps/dashboard → 161 passed / 20 suites, 0 fallos
 ```
+
+### U16 — P0 §8.3 · Fotografía nace sin paquetes, y el consejo para arreglarlo llevaba a una puerta cerrada
+
+**Fase 2 · Épica B/C · Paquete "Fotografía"**
+
+La definición de la vertical declara tres paquetes. Ninguno se escribía nunca. `fotografia` lleva `bookingEnabled: false` —un fotógrafo de bodas no vende franjas de 30 minutos— y **ese mismo flag apagaba el sembrado de servicios**, que es donde viven los paquetes. El estudio arrancaba con la tabla vacía, `list_photo_packages` devolvía cero, y el agente le decía al cliente que no hay nada que ofrecer.
+
+El mecanismo para separar las dos cosas ya existía: `seedServicesWithoutAgenda`, que usan `pet_services/guarderia` y `pet_services/hotel`. Fotografía simplemente no estaba en el registro — el mismo patrón "existente pero inalcanzable" que el plan censó cuatro veces.
+
+**Paquetes por sub-tipo, no por industria.** Sembrarle "Producto e-commerce" a un fotógrafo de bodas es trabajo de borrado el día 1. `estudio` recibe familiar/retrato/book, `bodas` boda completa/preboda/civil, `eventos` corporativo/social, `producto` e-commerce/con modelo. Los precios son base editable; el valor del preset es que el nombre corresponda al rubro desde el primer día.
+
+**ADR-020 — `wedding_planner` no recibe paquetes de fotografía.**
+Organiza bodas; no las fotografía. Es el peor subtipo de la auditoría —clasificado contra el producto equivocado— y su separación a Event Planning es su propia unidad. Sembrarle sesiones de fotos sería confirmarle una promesa falsa; sin paquetes queda con readiness incumplido, que es la verdad.
+
+**El CTA de reparación llevaba a una pantalla que el tenant no ve**
+
+`photo_sessions` y `boarding_capacity` decían "sembrá tus paquetes" y apuntaban a `/admin/appointments/config`. Fotografía, guardería y hotel de mascotas **no tienen Agenda en su menú** — el manifiesto se la quita a propósito. El consejo era correcto y el destino inalcanzable: el dueño no podía editar lo que el bootstrap le sembraba ni cargar lo que le faltaba.
+
+**ADR-021 — Un catálogo de paquetes propio, con el editor de siempre.**
+`/admin/service-catalog` monta el **mismo** `ServicesTab` + `ServiceModal` de la Agenda. El estado y los handlers se extrajeron a `hooks/useServiceCatalog.ts` sin cambiar comportamiento: un segundo formulario habría divergido la primera vez que alguien agregara un campo a uno solo. Vive en `canEditPipeline` (catálogo), no en el permiso del que opera; el registro operativo de sesiones sigue donde estaba. Los `notify`/textos van por ref para que los handlers no cambien de identidad en cada render.
+
+Se publica para los 4 sub-tipos reales de fotografía y para guardería/hotel de mascotas, y **no** para las verticales que ya tienen Agenda: dos pantallas para lo mismo es la duplicación que esto viene a evitar.
+
+**Semántica de lectura** — `listConfiguredServicesTool` (la que sirve `list_photo_packages` y `list_pet_services`) devolvía `{ error: <mensaje del driver> }` en el fallo y una lista vacía con un texto en inglés en el catálogo vacío. Ahora usa el contrato: `empty` con explicación al cliente, `read_failed` con mensaje seguro y `error` que el turno trata como tool fallida.
+
+**Pruebas** — `photography-packages.spec.ts` (15 casos): los 4 sub-tipos siembran paquetes con la agenda apagada; cada uno recibe los suyos (bodas no recibe producto y viceversa); todo paquete lleva 4 idiomas, precio y duración; `wedding_planner` no recibe paquetes de fotografía; las dos claves de readiness apuntan a una ruta que el tenant puede abrir; las 6 configuraciones publican el catálogo **sin** recuperar Agenda; salud no lo duplica. Más `verticals.service.spec.ts`, cuya prueba anterior afirmaba el defecto ("no se siembra ningún servicio") y ahora afirma los tres paquetes de estudio.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard)  → exit 0
+jest src/app.bootstrap.spec.ts               → 1/1 ✅ (DI limpio)
+jest apps/api      → 2555 passed / 284 suites, 0 fallos
+jest apps/dashboard → 161 passed / 20 suites, 0 fallos
+```

@@ -337,12 +337,23 @@ describe('VerticalsService resumable bootstrap', () => {
         }
     });
 
-    it('uses photo sessions without seeding a second appointment calendar', async () => {
+    /**
+     * Un estudio de fotos NO agenda franjas, pero SÍ vende paquetes. La versión
+     * anterior de esta prueba afirmaba que no se sembraba ninguno de los dos, y
+     * eso era exactamente el defecto: el tenant arrancaba con cero paquetes y
+     * `list_photo_packages` devolvía vacío el primer día.
+     */
+    it('seeds photography packages without seeding a second appointment calendar', async () => {
         const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
 
         await service.bootstrapVertical(tenantId, 'fotografia', 'estudio', 'es');
 
-        expect(seedServices).not.toHaveBeenCalled();
+        expect(seedServices).toHaveBeenCalledTimes(1);
+        const seededServices = (seedServices.mock.calls[0][1] as any).services;
+        expect(seededServices.map((s: any) => s.name.es)).toEqual([
+            'Sesión familiar', 'Retrato individual', 'Book profesional',
+        ]);
+        // Sin agenda no hay horarios semanales que sembrar.
         expect(seedAvailability).not.toHaveBeenCalled();
         const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
         expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))

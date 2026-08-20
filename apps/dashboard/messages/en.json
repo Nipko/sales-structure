@@ -305,6 +305,7 @@
       "financials": "Financials",
       "stays": "Stays",
       "tourBookings": "Tour bookings",
+      "serviceCatalog": "Packages & services",
       "properties": "Properties",
       "tours": "Tours & Packages",
       "listings": "Listings",
@@ -453,6 +454,7 @@
       "financials": "Financials",
       "stays": "Stays",
       "tourBookings": "Tour bookings",
+      "serviceCatalog": "Packages & services",
       "properties": "Properties",
       "tours": "Tours & Packages",
       "landings": "Landing Pages",
@@ -9183,6 +9185,11 @@
       "cancelled": "Cancelled"
     },
     "origin": { "agent": "Agent", "manual": "Manual" }
+  },
+  "serviceCatalog": {
+    "title": "Packages & services",
+    "subtitle": "What the business sells, with its duration, price and capacity",
+    "emptyWarning": "No packages yet. Without at least one, the agent answers that there is nothing to offer."
   },
   "serviceRequests": {
     "title": "Service requests",

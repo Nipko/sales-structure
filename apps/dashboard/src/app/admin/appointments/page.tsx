@@ -39,7 +39,7 @@ import {
   AlertTriangle,
   RefreshCw,
 } from "lucide-react";
-import { readPaymentPolicy } from "@/components/payments/payment-policy-fields";
+import { useServiceCatalog } from "@/hooks/useServiceCatalog";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -119,8 +119,6 @@ export default function AppointmentsPage() {
   // ---- Data state ----
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [services, setServices] = useState<Service[]>([]);
-  const [loadingServices, setLoadingServices] = useState(false);
   const [availabilitySlots, setAvailabilitySlots] = useState<AvailabilitySlot[]>(
     DAY_KEYS.map((_, i) => ({
       dayOfWeek: i + 1,
@@ -193,28 +191,6 @@ export default function AppointmentsPage() {
   }>({ enabled: false, flowId: "", flowCta: "Agendar", flowMode: "published" });
 
   // ---- Service modal ----
-  const [showServiceModal, setShowServiceModal] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
-  const [serviceForm, setServiceForm] = useState({
-    name: "",
-    duration: 30,
-    durationMax: null as number | null,
-    durationType: "fixed" as "fixed" | "flexible" | "open",
-    buffer: 0,
-    price: 0,
-    color: "#6c5ce7",
-    category: "",
-    maxConcurrent: 1,
-    rebookAfterDays: null as number | null,
-    requiredFields: [] as string[],
-    locationType: "in_person",
-    locationAddress: "",
-    meetingLink: "",
-    paymentPolicy: "none" as "none" | "full" | "deposit" | "any",
-    depositPercent: null as number | null,
-    depositAmount: null as number | null,
-  });
-  const [savingService, setSavingService] = useState(false);
 
   /* ================================================================ */
   /*  Toast helper                                                     */
@@ -224,6 +200,23 @@ export default function AppointmentsPage() {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   }, []);
+
+  // El catálogo de servicios vive en un hook porque también lo edita
+  // `/admin/service-catalog`, la ruta de las verticales que venden paquetes
+  // sin agendar franjas.
+  const {
+    services, loadingServices, showServiceModal, setShowServiceModal,
+    editingService, serviceForm, setServiceForm, savingService,
+    loadServices, openCreateServiceModal, openEditServiceModal,
+    handleSaveService, handleDeleteService, handleToggleServiceActive,
+  } = useServiceCatalog(activeTenantId, showToast, {
+    saveError: t("errors.saveService"),
+    deleteError: t("errors.deleteService"),
+    updateError: t("errors.updateService"),
+    created: t("toasts.serviceCreated"),
+    updated: t("toasts.serviceUpdated"),
+    deleted: t("toasts.serviceDeleted"),
+  });
 
   /* ================================================================ */
   /*  Data loaders                                                     */
@@ -289,35 +282,6 @@ export default function AppointmentsPage() {
     }
   }, [activeTenantId]);
 
-  const loadServices = useCallback(async () => {
-    if (!activeTenantId) return;
-    setLoadingServices(true);
-    try {
-      const res = await api.getServices(activeTenantId);
-      if (res?.success) {
-        // Map API field names to frontend interface
-        const mapped = (res.data || []).map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          duration: s.durationMinutes || s.duration || 30,
-          durationMax: s.durationMinutesMax || s.durationMax || null,
-          durationType: s.durationType || s.duration_type || 'fixed',
-          buffer: s.bufferMinutes || s.buffer || 0,
-          price: parseFloat(s.price || 0),
-          color: s.color || '#6c5ce7',
-          active: s.isActive ?? s.active ?? true,
-          category: s.category || null,
-          maxConcurrent: s.maxConcurrent || 1,
-          rebookAfterDays: s.rebookAfterDays ?? null,
-          requiredFields: s.requiredFields || [],
-        }));
-        setServices(mapped);
-      }
-    } catch {
-      /* ignore */
-    }
-    setLoadingServices(false);
-  }, [activeTenantId]);
 
   const loadCalendarIntegrations = useCallback(async () => {
     if (!activeTenantId) return;
@@ -728,88 +692,6 @@ export default function AppointmentsPage() {
       showToast(t("configSection.blockedDates") + " ✓");
     } catch {
       showToast(t("errors.deleteBlockedDate"));
-    }
-  };
-
-  /* ================================================================ */
-  /*  CRUD: Services                                                   */
-  /* ================================================================ */
-
-  const openCreateServiceModal = () => {
-    setEditingService(null);
-    setServiceForm({ name: "", duration: 30, durationMax: null, durationType: "fixed", buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, rebookAfterDays: null, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "", paymentPolicy: "none", depositPercent: null, depositAmount: null });
-    setShowServiceModal(true);
-  };
-
-  const openEditServiceModal = (svc: Service) => {
-    setEditingService(svc);
-    setServiceForm({
-      name: svc.name,
-      duration: svc.duration,
-      durationMax: svc.durationMax || null,
-      durationType: svc.durationType || "fixed",
-      buffer: svc.buffer,
-      price: svc.price,
-      color: svc.color,
-      category: svc.category || "",
-      maxConcurrent: svc.maxConcurrent || 1,
-      rebookAfterDays: (svc as any).rebookAfterDays ?? null,
-      requiredFields: svc.requiredFields || [],
-      locationType: (svc as any).locationType || (svc as any).location_type || "in_person",
-      locationAddress: (svc as any).locationAddress || (svc as any).location_address || "",
-      meetingLink: (svc as any).meetingLink || (svc as any).meeting_link || "",
-      // Sin esto, editar un servicio con anticipo lo devolvia a "sin pago".
-      ...readPaymentPolicy(svc),
-    });
-    setShowServiceModal(true);
-  };
-
-  const handleSaveService = async () => {
-    if (!activeTenantId || !serviceForm.name) return;
-    setSavingService(true);
-    try {
-      const payload = {
-        ...serviceForm,
-        durationMinutesMax: serviceForm.durationMax,
-      };
-      let response: any;
-      if (editingService) {
-        response = await api.updateService(activeTenantId, editingService.id, payload);
-      } else {
-        response = await api.createService(activeTenantId, payload);
-      }
-      if (!response?.success) {
-        showToast(response?.error || t("errors.saveService"));
-        setSavingService(false);
-        return;
-      }
-      showToast(editingService ? t("toasts.serviceUpdated") : t("toasts.serviceCreated"));
-      setShowServiceModal(false);
-      loadServices();
-    } catch {
-      showToast(t("errors.saveService"));
-    }
-    setSavingService(false);
-  };
-
-  const handleDeleteService = async (serviceId: string) => {
-    if (!activeTenantId) return;
-    try {
-      await api.deleteService(activeTenantId, serviceId);
-      loadServices();
-      showToast(t("toasts.serviceDeleted"));
-    } catch {
-      showToast(t("errors.deleteService"));
-    }
-  };
-
-  const handleToggleServiceActive = async (svc: Service) => {
-    if (!activeTenantId) return;
-    try {
-      await api.updateService(activeTenantId, svc.id, { active: !svc.active });
-      loadServices();
-    } catch {
-      showToast(t("errors.updateService"));
     }
   };
 

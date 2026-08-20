@@ -4037,6 +4037,12 @@ export class AIToolExecutorService {
      * generic services table that every tenant has — pet_services
      * and photography tenants seed it during onboarding with their
      * domain offerings.
+     *
+     * La consulta caída devolvía `{ error: <mensaje del driver> }` y el
+     * catálogo vacío devolvía una lista vacía con un texto en inglés que el
+     * modelo podía repetirle al cliente. Son dos hechos distintos —"todavía no
+     * cargaron los paquetes" y "no pude leerlos"— y el contrato de lectura
+     * existe para que no se confundan.
      */
     private async listConfiguredServicesTool(schemaName: string): Promise<any> {
         try {
@@ -4046,8 +4052,12 @@ export class AIToolExecutorService {
                  FROM services WHERE is_active = true
                  ORDER BY category, name`,
             );
-            if (!services?.length) return { services: [], message: 'No services configured.' };
-            return {
+            if (!services?.length) {
+                return readEmpty({ services: [], count: 0 }, {
+                    message: 'El negocio todavía no cargó sus paquetes.',
+                });
+            }
+            return readOk({
                 count: services.length,
                 services: services.map(s => ({
                     id: s.id,
@@ -4058,9 +4068,12 @@ export class AIToolExecutorService {
                     currency: s.currency,
                     category: s.category,
                 })),
-            };
+            });
         } catch (e: any) {
-            return { error: e.message };
+            this.logger.warn(`[Tool] list services failed: ${e.message}`);
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar los paquetes en este momento.',
+            });
         }
     }
 

@@ -305,6 +305,7 @@
       "financials": "Financeiro",
       "stays": "Reservas",
       "tourBookings": "Reservas de tours",
+      "serviceCatalog": "Pacotes e serviços",
       "properties": "Propriedades",
       "tours": "Passeios e Pacotes",
       "listings": "Imóveis",
@@ -453,6 +454,7 @@
       "financials": "Finanças",
       "stays": "Reservas",
       "tourBookings": "Reservas de tours",
+      "serviceCatalog": "Pacotes e serviços",
       "properties": "Propriedades",
       "tours": "Passeios e Pacotes",
       "landings": "Landing Pages",
@@ -9183,6 +9185,11 @@
       "cancelled": "Cancelada"
     },
     "origin": { "agent": "Agente", "manual": "Manual" }
+  },
+  "serviceCatalog": {
+    "title": "Pacotes e serviços",
+    "subtitle": "O que o negócio vende, com duração, preço e capacidade",
+    "emptyWarning": "Ainda não há nenhum pacote cadastrado. Sem pelo menos um, o agente responde que não há nada a oferecer."
   },
   "serviceRequests": {
     "title": "Solicitações de serviço",

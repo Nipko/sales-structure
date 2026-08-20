@@ -309,6 +309,57 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
         },
         // `abogados` usa correctamente los servicios genéricos de la vertical.
     },
+    fotografia: {
+        // La industria tiene `bookingEnabled: false` —un fotógrafo de bodas no
+        // vende franjas de 30 minutos— y eso apagaba TAMBIÉN el sembrado de
+        // servicios, que es donde viven los paquetes. Resultado: el estudio
+        // arrancaba sin un solo paquete, `list_photo_packages` devolvía vacío y
+        // el agente le decía al cliente que no hay nada que ofrecer, mientras la
+        // definición de la vertical declaraba tres paquetes que nunca se
+        // escribían.
+        //
+        // Cada sub-tipo lleva los suyos: sembrarle "Producto e-commerce" a un
+        // fotógrafo de bodas es trabajo de borrado el día 1.
+        estudio: {
+            skipAgenda: true,
+            seedServicesWithoutAgenda: true,
+            services: [
+                { name: { es: 'Sesión familiar', en: 'Family session', pt: 'Sessão familiar', fr: 'Séance famille' }, description: { es: '2 horas de sesión y 30 fotos editadas', en: '2-hour shoot and 30 edited photos', pt: '2 horas de sessão e 30 fotos editadas', fr: '2 heures de séance et 30 photos retouchées' }, durationMinutes: 120, price: 350000, currency: 'COP', category: 'familiar' },
+                { name: { es: 'Retrato individual', en: 'Individual portrait', pt: 'Retrato individual', fr: 'Portrait individuel' }, description: { es: '1 hora de sesión y 15 fotos editadas', en: '1-hour shoot and 15 edited photos', pt: '1 hora de sessão e 15 fotos editadas', fr: '1 heure de séance et 15 photos retouchées' }, durationMinutes: 60, price: 200000, currency: 'COP', category: 'retrato' },
+                { name: { es: 'Book profesional', en: 'Professional book', pt: 'Book profissional', fr: 'Book professionnel' }, description: { es: '3 horas, cambios de vestuario y 40 fotos editadas', en: '3 hours, wardrobe changes and 40 edited photos', pt: '3 horas, trocas de figurino e 40 fotos editadas', fr: '3 heures, changements de tenue et 40 photos retouchées' }, durationMinutes: 180, price: 600000, currency: 'COP', category: 'book' },
+            ],
+        },
+        bodas: {
+            skipAgenda: true,
+            seedServicesWithoutAgenda: true,
+            services: [
+                { name: { es: 'Boda completa', en: 'Full wedding', pt: 'Casamento completo', fr: 'Mariage complet' }, description: { es: '8 horas de cobertura, 400 fotos editadas y álbum', en: '8 hours of coverage, 400 edited photos and album', pt: '8 horas de cobertura, 400 fotos editadas e álbum', fr: '8 heures de couverture, 400 photos retouchées et album' }, durationMinutes: 480, price: 3500000, currency: 'COP', category: 'boda' },
+                { name: { es: 'Preboda', en: 'Engagement shoot', pt: 'Pré-wedding', fr: 'Séance engagement' }, description: { es: '2 horas en locación y 40 fotos editadas', en: '2 hours on location and 40 edited photos', pt: '2 horas em locação e 40 fotos editadas', fr: '2 heures en extérieur et 40 photos retouchées' }, durationMinutes: 120, price: 600000, currency: 'COP', category: 'preboda' },
+                { name: { es: 'Ceremonia civil', en: 'Civil ceremony', pt: 'Cerimônia civil', fr: 'Cérémonie civile' }, description: { es: '3 horas de cobertura y 120 fotos editadas', en: '3 hours of coverage and 120 edited photos', pt: '3 horas de cobertura e 120 fotos editadas', fr: '3 heures de couverture et 120 photos retouchées' }, durationMinutes: 180, price: 1200000, currency: 'COP', category: 'civil' },
+            ],
+        },
+        eventos: {
+            skipAgenda: true,
+            seedServicesWithoutAgenda: true,
+            services: [
+                { name: { es: 'Evento corporativo', en: 'Corporate event', pt: 'Evento corporativo', fr: 'Événement corporate' }, description: { es: '4 horas de cobertura y 150 fotos editadas', en: '4 hours of coverage and 150 edited photos', pt: '4 horas de cobertura e 150 fotos editadas', fr: '4 heures de couverture et 150 photos retouchées' }, durationMinutes: 240, price: 1200000, currency: 'COP', category: 'corporativo' },
+                { name: { es: 'Celebración social', en: 'Social celebration', pt: 'Celebração social', fr: 'Célébration' }, description: { es: '4 horas de cobertura y 150 fotos editadas', en: '4 hours of coverage and 150 edited photos', pt: '4 horas de cobertura e 150 fotos editadas', fr: '4 heures de couverture et 150 photos retouchées' }, durationMinutes: 240, price: 900000, currency: 'COP', category: 'social' },
+            ],
+        },
+        producto: {
+            skipAgenda: true,
+            seedServicesWithoutAgenda: true,
+            services: [
+                { name: { es: 'Producto e-commerce', en: 'E-commerce product', pt: 'Produto e-commerce', fr: 'Produit e-commerce' }, description: { es: 'Hasta 20 productos sobre fondo blanco', en: 'Up to 20 products on white background', pt: 'Até 20 produtos em fundo branco', fr: "Jusqu'à 20 produits sur fond blanc" }, durationMinutes: 240, price: 800000, currency: 'COP', category: 'producto' },
+                { name: { es: 'Producto con modelo', en: 'Product with model', pt: 'Produto com modelo', fr: 'Produit avec mannequin' }, description: { es: 'Hasta 10 productos en uso, modelo no incluido', en: 'Up to 10 products in use, model not included', pt: 'Até 10 produtos em uso, modelo não incluído', fr: "Jusqu'à 10 produits portés, mannequin non inclus" }, durationMinutes: 300, price: 1200000, currency: 'COP', category: 'lifestyle' },
+            ],
+        },
+        // `wedding_planner` NO recibe paquetes fotográficos a propósito: está
+        // clasificado contra el producto equivocado (organiza bodas, no las
+        // fotografía) y su separación a Event Planning es su propia unidad.
+        // Sembrarle sesiones de fotos sería confirmarle una promesa falsa;
+        // sin paquetes queda con readiness incumplido, que es la verdad.
+    },
     technology: {
         hardware: { skipAgenda: true, extraTools: ['catalog'] },
         // Desarrollo y consultoría no "demuestran" nada: relevan.

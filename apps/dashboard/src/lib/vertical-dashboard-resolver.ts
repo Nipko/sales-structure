@@ -31,6 +31,9 @@ export const VERTICAL_DASHBOARD_ITEMS = [
   "treatmentPlans",
   "pets",
   "photoSessions",
+  // El catálogo de paquetes de las verticales que venden servicios sin agendar
+  // franjas. Es el ítem de catálogo, no el registro operativo.
+  "serviceCatalog",
   "inventory",
   "orders",
 ] as const;
@@ -96,6 +99,7 @@ const ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, VerticalDashboardI
   "/admin/treatment-plans": "treatmentPlans",
   "/admin/pets": "pets",
   "/admin/photo-sessions": "photoSessions",
+  "/admin/service-catalog": "serviceCatalog",
   "/admin/inventory": "inventory",
   "/admin/orders": "orders",
 };
@@ -158,6 +162,7 @@ const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "serviceRequests",
   "pets",
   "photoSessions",
+  "serviceCatalog",
   "appointments",
 ];
 

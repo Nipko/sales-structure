@@ -97,6 +97,7 @@ import {
   Receipt,
   LifeBuoy,
   BedDouble,
+  Tags,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -278,6 +279,9 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticalItem: "treatmentPlans", capability: "canEditPipeline" },
       { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticalItem: "pets", capability: "canHandleConversations" },
       { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticalItem: "photoSessions", capability: "canEditPipeline" },
+      // El catálogo de las verticales sin Agenda. Se lo sembraba el bootstrap y
+      // el dueño no tenía dónde verlo.
+      { labelKey: "serviceCatalog", href: "/admin/service-catalog", icon: Tags, verticalItem: "serviceCatalog", capability: "canEditPipeline" },
       { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticalItem: "inventory", capability: "canEditPipeline" },
       { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticalItem: "orders", capability: "canHandleConversations" },
       { labelKey: "offers", href: "/admin/catalog/offers", icon: Tag, capability: "canEditPipeline" },

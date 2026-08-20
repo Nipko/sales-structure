@@ -57,7 +57,11 @@ interface ReadinessDefinition {
  * seeded at provisioning. Gating on either would block a profile for a reason
  * the tenant cannot act on.
  */
-const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessDefinition>>> = Object.freeze({
+/**
+ * Exportado para que el contrato de "a dónde manda el CTA de reparación" sea
+ * verificable: una ruta que el tenant no puede abrir es un consejo muerto.
+ */
+export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessDefinition>>> = Object.freeze({
     business_identity: {
         table: 'companies',
         where: `name IS NOT NULL AND name <> ''`,
@@ -151,7 +155,10 @@ const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessDefiniti
         table: 'services',
         where: 'is_active = true',
         repair: 'Sembrá tus paquetes fotográficos: sin ellos el agente no puede ofrecer nada.',
-        repairRoute: '/admin/appointments/config',
+        // No `/admin/appointments/config`: un estudio de fotos no tiene Agenda
+        // en su menú, así que el CTA de reparación llevaba a una pantalla que
+        // el dueño no ve.
+        repairRoute: '/admin/service-catalog',
     },
     // Boarding needs a service that is BOTH a lodging category and has real
     // concurrency. A daycare service with `max_concurrent` unset would let the
@@ -160,7 +167,7 @@ const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessDefiniti
         table: 'services',
         where: `is_active = true AND category IN ('guarderia', 'hotel') AND COALESCE(max_concurrent, 0) >= 1`,
         repair: 'Configurá el servicio de guardería u hotel con su capacidad simultánea.',
-        repairRoute: '/admin/appointments/config',
+        repairRoute: '/admin/service-catalog',
     },
 });
 

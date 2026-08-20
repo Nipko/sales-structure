@@ -124,6 +124,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "properties", pattern: "/admin/properties", titleKey: "nav.items.properties", scope: "tenant" },
   { id: "propertyDetail", pattern: "/admin/properties/:propertyId", titleKey: "navigation.routes.propertyDetail", scope: "tenant", parentId: "properties", dynamicTitleParam: "propertyId" },
   { id: "resourceRentals", pattern: "/admin/resource-rentals", titleKey: "nav.items.resourceRentals", scope: "tenant" },
+  { id: "serviceCatalog", pattern: "/admin/service-catalog", titleKey: "nav.items.serviceCatalog", scope: "tenant" },
   { id: "serviceRequests", pattern: "/admin/service-requests", titleKey: "nav.items.serviceRequests", scope: "tenant" },
   // Registros operativos. No cuelgan de su catálogo: se llega a ellos desde el
   // menú, no desde la ficha del alojamiento o del paquete que los configura.

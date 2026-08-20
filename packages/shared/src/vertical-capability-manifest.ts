@@ -122,6 +122,10 @@ export type VerticalRoutePath =
     | '/admin/insurance'
     | '/admin/service-requests'
     | '/admin/pets'
+    // El catálogo de paquetes de las verticales que venden servicios pero NO
+    // agendan franjas. Sin esta ruta el bootstrap les sembraba servicios que el
+    // dueño nunca podía ver: Agenda no está en su menú.
+    | '/admin/service-catalog'
     | '/admin/photo-sessions';
 
 export type VerticalReadinessKey =
@@ -825,7 +829,10 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['pet_boarding'],
                 addToolGroups: ['petBoarding'],
                 primaryObject: 'pet_boarding',
-                addRoutes: ['/admin/resource-rentals'],
+                // La guardería pierde Agenda (APPOINTMENT_PATCH_REMOVAL) pero
+                // sigue vendiendo servicios con capacidad: sin catálogo propio
+                // se queda sin dónde configurarlos.
+                addRoutes: ['/admin/resource-rentals', '/admin/service-catalog'],
                 addReadiness: ['boarding_capacity'],
             },
             hotel: {
@@ -833,7 +840,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['pet_boarding'],
                 addToolGroups: ['petBoarding'],
                 primaryObject: 'pet_boarding',
-                addRoutes: ['/admin/resource-rentals'],
+                addRoutes: ['/admin/resource-rentals', '/admin/service-catalog'],
                 addReadiness: ['boarding_capacity'],
             },
         },
@@ -845,7 +852,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             capabilities: ['photo_sessions'],
             toolGroups: ['photography'],
             primaryObject: 'photo_session',
-            routes: ['/admin/photo-sessions'],
+            routes: ['/admin/photo-sessions', '/admin/service-catalog'],
             readiness: ['photo_sessions'],
             events: ['photo_session.requested'],
             kpiContract: kpis(DASH_SALES, [

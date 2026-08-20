@@ -155,3 +155,27 @@ describe('el SQL que se genera es SQL de verdad', () => {
         }
     });
 });
+
+describe('el estado `expired` no puede filtrarse a ningún lado', () => {
+    // El barrido lo introdujo, y cada lugar que compara estados a mano tuvo que
+    // aprenderlo. El primero que se olvidó volvió a bloquear las fechas que
+    // acababa de liberar; los otros dos eran igual de caros.
+    it('no se publica a las OTAs', () => {
+        // Publicarlo le diría a Airbnb y Booking que unas fechas están ocupadas
+        // cuando volvieron a estar libres: se pierden reservas por bloqueos
+        // fantasma.
+        expect(EXPORT_EXCLUDED_SQL).toContain('expired');
+        expect(EXPORT_EXCLUDED_SQL).toContain('pending_payment');
+    });
+
+    it('no se le muestra al agente como operación activa', () => {
+        // Si el agente lo lee como vigente, le dice al cliente "tenés una cita
+        // el 5" sobre un turno que ya está libre y a la venta.
+        const src = readFileSync(
+            resolve(__dirname, '../../modules/conversations/active-operations-context.service.ts'), 'utf8',
+        );
+        const filtros = src.match(/NOT IN \('cancelled', 'canceled'[^)]*\)/g) || [];
+        expect(filtros.length).toBeGreaterThan(0);
+        for (const f of filtros) expect(f).toContain('expired');
+    });
+});

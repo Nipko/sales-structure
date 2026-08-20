@@ -39,8 +39,13 @@ export const EXPIRED_HOLD_STATUS = 'expired';
  * desaparecen. La retención protege contra nuestras propias reservas
  * simultáneas; la carrera contra una OTA es inherente al polling del iCal y ya
  * existía.
+ *
+ * Y una retención VENCIDA tampoco, por una razón más cara: publicarla le diría a
+ * Airbnb y a Booking que esas fechas están ocupadas cuando en realidad volvieron
+ * a estar libres. Perder reservas por publicar bloqueos fantasma es peor que
+ * cualquier eco.
  */
-export const EXPORT_EXCLUDED_SQL = `'${PENDING_PAYMENT_STATUS}'`;
+export const EXPORT_EXCLUDED_SQL = `'${PENDING_PAYMENT_STATUS}', '${EXPIRED_HOLD_STATUS}'`;
 
 /**
  * Cuánto se le guardan las fechas al cliente mientras paga.

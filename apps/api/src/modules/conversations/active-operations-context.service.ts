@@ -355,7 +355,7 @@ export class ActiveOperationsContextService {
              FROM appointments
              WHERE contact_id = $1::uuid
                AND start_at >= (NOW() AT TIME ZONE $2)
-               AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled')
+               AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled', 'expired')
              ORDER BY start_at ASC LIMIT ${limit}`,
             [contactId, timezone],
         );
@@ -448,7 +448,7 @@ export class ActiveOperationsContextService {
              JOIN properties p ON p.id = b.property_id
              WHERE b.contact_id = $1::uuid
                AND b.check_out >= (NOW() AT TIME ZONE $2)::date
-               AND LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled')
+               AND LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled', 'expired')
              ORDER BY b.check_in ASC LIMIT ${limit}`,
             [contactId, timezone],
         );
@@ -492,7 +492,7 @@ export class ActiveOperationsContextService {
              JOIN tour_packages p ON p.id = b.package_id
              WHERE b.contact_id = $1::uuid
                AND b.departure_date >= (NOW() AT TIME ZONE $2)::date
-               AND LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled')
+               AND LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled', 'expired')
              ORDER BY b.departure_date ASC, b.departure_time ASC NULLS FIRST LIMIT ${limit}`,
             [contactId, timezone],
         );

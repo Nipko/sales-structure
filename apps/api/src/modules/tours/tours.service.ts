@@ -11,6 +11,11 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import {
+    PAYMENT_HOLD_MS,
+    PENDING_PAYMENT_STATUS,
+    resolvePaymentPolicy,
+} from '../../common/utils/payment-policy.util';
 
 /**
  * Tours / travel packages module — supports both same-day experiences
@@ -376,17 +381,35 @@ export class ToursService {
             const unitPrice = inventory?.[0]?.price_override ?? pkg.price ?? 0;
             const childPrice = unitPrice * (1 - (pkg.child_discount_pct || 0) / 100);
             const totalPrice = unitPrice * adults + childPrice * children;
+            // Si el dueño exige pago para confirmar, la reserva nace pendiente.
+            //
+            // Acá la retención es DISTINTA de la de alojamiento: el asiento ya
+            // quedó descontado unas líneas más arriba, así que el cupo está
+            // tomado desde el minuto cero. Lo que hace falta no es retenerlo —
+            // es DEVOLVERLO si nadie paga, y de eso se encarga el barrido.
+            const policy = resolvePaymentPolicy(pkg, totalPrice);
+            const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS : 'reserved';
+            const holdExpiresAt = policy.requiresPayment
+                ? new Date(Date.now() + PAYMENT_HOLD_MS)
+                : null;
+            const amountDue = policy.requiresPayment
+                && policy.dueAmount != null
+                && policy.dueAmount < totalPrice
+                ? policy.dueAmount : null;
+
             const rows = await query<any[]>(
                 `INSERT INTO tour_bookings (
                     package_id, inventory_id, contact_id, opportunity_id, conversation_id,
                     guest_name, guest_email, guest_phone,
                     departure_date, departure_time, party_size, adults, children,
-                    unit_price, total_price, currency, language, special_requests
+                    unit_price, total_price, currency, language, special_requests,
+                    status, amount_due, hold_expires_at
                  ) VALUES (
                     $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
                     $6, $7, $8,
                     $9::date, $10, $11, $12, $13,
-                    $14, $15, $16, $17, $18
+                    $14, $15, $16, $17, $18,
+                    $19, $20, $21
                 ) RETURNING *`,
                 [
                     data.packageId, inventoryId, canonicalContactId, opportunityId, data.conversationId || null,
@@ -395,12 +418,13 @@ export class ToursService {
                     partySize, adults, children,
                     unitPrice, totalPrice, pkg.currency || 'COP',
                     data.language || 'es', data.specialRequests || null,
+                    status, amountDue, holdExpiresAt,
                 ],
             );
             if (!rows?.[0]) throw new Error('Tour booking was not created');
-            return { booking: rows[0], pkg, totalPrice };
+            return { booking: rows[0], pkg, totalPrice, policy };
         });
-        const { booking, pkg, totalPrice } = created;
+        const { booking, pkg, totalPrice, policy } = created;
 
         // Try to send confirmation email (fire-and-forget)
         try {

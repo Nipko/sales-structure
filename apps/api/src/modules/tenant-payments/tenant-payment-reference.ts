@@ -28,9 +28,14 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
     },
     tour: {
         table: 'tour_bookings',
-        amountExpression: 'target.total_price',
+        // `amount_due` es lo que vuelve REAL al anticipo: sin el COALESCE, un
+        // "anticipo del 30%" habria cobrado el 100% — el mismo defecto que ya
+        // se corrigio en alojamiento y citas.
+        amountExpression: 'COALESCE(target.amount_due, target.total_price)',
         currencyExpression: 'target.currency',
-        rejectedStatuses: ['cancelled', 'refunded'],
+        // `expired` rechaza el cobro: la retencion vencio y el asiento volvio al
+        // inventario, asi que aceptar la plata seria vender algo que ya no esta.
+        rejectedStatuses: ['cancelled', 'refunded', 'expired'],
         description: entityId => `Pago de reserva de tour ${entityId.slice(0, 8)}`,
     },
     // The vacation-rental sale. `total_price` already includes the cleaning fee
@@ -44,7 +49,10 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
         // NULL cuando se cobra todo, y ahí manda el total de siempre.
         amountExpression: 'COALESCE(target.amount_due, target.total_price)',
         currencyExpression: 'target.currency',
-        rejectedStatuses: ['cancelled', 'refunded'],
+        // `expired` rechaza el cobro. Es sutil y es caro: el listener del pago
+        // sólo confirma filas en `pending_payment`, así que aceptar plata sobre
+        // una retención vencida cobraría sin confirmar nada — y sin ruido.
+        rejectedStatuses: ['cancelled', 'refunded', 'expired'],
         description: entityId => `Pago de reserva de alojamiento ${entityId.slice(0, 8)}`,
     },
     // La venta más común de la plataforma (salud, belleza, estética) y la única
@@ -55,7 +63,7 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
         amountExpression: 'COALESCE(target.amount_due, service.price)',
         currencyExpression: 'service.currency',
         join: 'LEFT JOIN services service ON service.id = target.service_id',
-        rejectedStatuses: ['cancelled', 'no_show', 'completed'],
+        rejectedStatuses: ['cancelled', 'no_show', 'completed', 'expired'],
         description: entityId => `Pago de cita ${entityId.slice(0, 8)}`,
     },
     food: {

@@ -58,6 +58,9 @@ export class ExpiredHoldSweeperService {
 
         for (const { schemaName } of tenants) {
             if (!schemaName) continue;
+            // Tours va aparte: ahí vencer no es sólo marcar un estado, hay que
+            // devolver el asiento.
+            await this.expireTourHolds(schemaName);
             for (const table of ['property_bookings', 'appointments']) {
                 try {
                     // El `hold_expires_at IS NOT NULL` no es decorativo: sin él
@@ -84,6 +87,46 @@ export class ExpiredHoldSweeperService {
                     this.logger.warn(`[Retenciones] ${schemaName}.${table}: ${e.message}`);
                 }
             }
+        }
+    }
+    /**
+     * Tours: vencer una retención devuelve el asiento.
+     *
+     * Es la diferencia de fondo con las fechas. Una estadía impaga no ocupaba
+     * nada y se liberaba sola por reloj; un asiento se descuenta de
+     * `tour_inventory` al crear la reserva, así que queda tomado hasta que
+     * alguien lo devuelva. Si este barrido no corre, el cupo se pierde de verdad
+     * — acá el cron sí es necesario, y por eso el UPDATE y la devolución van en
+     * la MISMA transacción: soltar el asiento sin marcar la reserva lo devolvería
+     * dos veces en el siguiente barrido.
+     */
+    private async expireTourHolds(schemaName: string): Promise<void> {
+        try {
+            const devueltos = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                const vencidas = await query<any[]>(
+                    `UPDATE tour_bookings
+                        SET status = '${EXPIRED_HOLD_STATUS}', updated_at = NOW()
+                      WHERE status = '${PENDING_PAYMENT_STATUS}'
+                        AND hold_expires_at IS NOT NULL
+                        AND hold_expires_at < NOW()
+                      RETURNING id, inventory_id, party_size`,
+                );
+                for (const b of vencidas || []) {
+                    if (!b.inventory_id) continue;
+                    await query(
+                        `UPDATE tour_inventory
+                            SET available_seats = available_seats + $1, updated_at = NOW()
+                          WHERE id = $2::uuid`,
+                        [b.party_size, b.inventory_id],
+                    );
+                }
+                return vencidas?.length || 0;
+            });
+            if (devueltos) {
+                this.logger.log(`[Retenciones] ${devueltos} reserva(s) de tour vencieron y devolvieron su cupo en ${schemaName}`);
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Retenciones] tours en ${schemaName}: ${e.message}`);
         }
     }
 }

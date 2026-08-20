@@ -3934,6 +3934,17 @@ ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings"
 
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments"
     ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
+
+-- Tours: el cupo funciona AL REVÉS que las fechas.
+--
+-- El asiento se descuenta de `tour_inventory` al crear la reserva, así que una
+-- reserva impaga ya lo tiene tomado desde el minuto cero: no hace falta
+-- retenerlo. Lo que hace falta es DEVOLVERLO si nadie paga, y por eso
+-- `hold_expires_at` también vive acá — es el reloj que le dice al barrido cuándo
+-- soltar el asiento.
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_bookings"
+    ADD COLUMN IF NOT EXISTS "amount_due" DECIMAL(15,2),
+    ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
 DO $payment_policy_columns$
 DECLARE
     sellable TEXT;

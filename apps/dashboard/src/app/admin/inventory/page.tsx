@@ -13,7 +13,7 @@ import {
     Package, Search, Plus, AlertTriangle, TrendingUp, TrendingDown, ArrowUpDown, Tag, Box, BarChart3, X, Check, Minus,
 } from "lucide-react";
 
-interface Product { id: string; name: string; sku: string; description: string; category: string; price: number; cost: number; currency: string; stock: number; minStock: number; maxStock: number; unit: string; imageUrl: string | null; isActive: boolean; tags: string[]; createdAt: string; updatedAt: string; }
+interface Product { id: string; name: string; sku: string; description: string; category: string; price: number; cost: number; currency: string; stock: number; minStock: number; maxStock: number; unit: string; imageUrl: string | null; isActive: boolean; requiresPrescription?: boolean; tags: string[]; createdAt: string; updatedAt: string; }
 interface Category { id: string; name: string; color: string; productCount: number; }
 interface StockMovement { id: string; productId: string; productName: string; type: "in" | "out" | "adjustment"; quantity: number; previousStock: number; newStock: number; reason: string; createdAt: string; createdBy: string; }
 interface InventoryOverview { totalProducts: number; activeProducts: number; totalValue: number; lowStockAlerts: number; outOfStockCount: number; categories: Category[]; products: Product[]; recentMovements: StockMovement[]; }
@@ -141,7 +141,19 @@ export default function InventoryPage() {
                                     const s = stockStatusColor(product);
                                     return (
                                         <tr key={product.id} className="border-b border-border">
-                                            <td className="px-4 py-3"><div className="font-semibold">{product.name}</div><div className="text-xs text-muted-foreground mt-0.5">{product.description?.slice(0, 40)}</div></td>
+                                            <td className="px-4 py-3">
+                                                <div className="font-semibold flex items-center gap-1.5">
+                                                    {product.name}
+                                                    {/* El agente lo muestra pero no lo vende por chat: el
+                                                        dueño tiene que poder ver cuál es cuál de un vistazo. */}
+                                                    {product.requiresPrescription && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[10px] font-semibold uppercase tracking-wide">
+                                                            {t("prescription.badge")}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground mt-0.5">{product.description?.slice(0, 40)}</div>
+                                            </td>
                                             <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{product.sku}</td>
                                             <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg bg-muted text-xs font-medium">{product.category}</span></td>
                                             <td className="px-4 py-3 font-semibold text-primary">{formatCurrency(product.price)}</td>
@@ -194,12 +206,13 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
     const tc = useTranslations("common");
     const t = useTranslations("inventory");
     const [form, setForm] = useState({ name: "", sku: "", description: "", categoryId: "", price: "", cost: "", stock: "", unit: "unit" });
+    const [requiresPrescription, setRequiresPrescription] = useState(false);
     const [saving, setSaving] = useState(false);
 
     const handleSubmit = async () => {
         if (!form.name || !form.sku || !form.price) return;
         setSaving(true);
-        await api.createInventoryProduct(tenantId, { name: form.name, sku: form.sku, description: form.description, categoryId: form.categoryId || undefined, price: parseFloat(form.price), cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0, unit: form.unit });
+        await api.createInventoryProduct(tenantId, { name: form.name, sku: form.sku, description: form.description, categoryId: form.categoryId || undefined, price: parseFloat(form.price), cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0, unit: form.unit, requiresPrescription });
         onCreated();
     };
 
@@ -241,6 +254,18 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
                             </select>
                         </div>
                     </div>
+                    <label className="flex items-start gap-2.5 cursor-pointer rounded-[10px] border border-border p-3">
+                        <input
+                            type="checkbox"
+                            checked={requiresPrescription}
+                            onChange={e => setRequiresPrescription(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 rounded border-border"
+                        />
+                        <span>
+                            <span className="text-[13px] font-semibold block">{t("prescription.label")}</span>
+                            <span className="text-xs text-muted-foreground">{t("prescription.hint")}</span>
+                        </span>
+                    </label>
                 </div>
                 <button onClick={handleSubmit} disabled={saving || !form.name || !form.sku || !form.price} className={cn("w-full mt-5 py-3 px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer", (saving || !form.name || !form.sku || !form.price) && "opacity-50")}>
                     {saving ? t("createModal.saving") : tc("create")}

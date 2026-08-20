@@ -4153,6 +4153,11 @@
     }
   },
   "inventory": {
+    "prescription": {
+      "badge": "Receita",
+      "label": "Venda sob prescrição médica",
+      "hint": "O agente mostra no catálogo, mas não fecha o pedido pelo chat: a conversa vai para uma pessoa validar a receita."
+    },
     "title": "Estoque",
     "subtitle": "Gestão de produtos, estoque e movimentos",
     "allCategories": "Todos",

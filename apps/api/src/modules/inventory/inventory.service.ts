@@ -24,6 +24,12 @@ export interface Product {
     unit: string;
     imageUrl: string | null;
     isActive: boolean;
+    /**
+     * Venta bajo fórmula médica. El agente lo muestra pero no lo vende: el
+     * pedido por chat se rechaza en el writer para que ningún medicamento
+     * recetado salga sin que un farmacéutico vea la receta.
+     */
+    requiresPrescription: boolean;
     tags: string[];
     metadata: Record<string, any>;
     createdAt: string;
@@ -150,6 +156,7 @@ export class InventoryService {
         name: string; sku: string; description?: string; categoryId?: string;
         price: number; cost?: number; stock: number; minStock?: number; maxStock?: number;
         currency?: string; unit?: string; imageUrl?: string; tags?: string[];
+        requiresPrescription?: boolean;
     }): Promise<{ id: string }> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
@@ -159,13 +166,14 @@ export class InventoryService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO products (id, name, description, category, price, currency, is_available, stock, images, metadata, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, true, $6, $7::text[], $8::jsonb, NOW(), NOW())
+            `INSERT INTO products (id, name, description, category, price, currency, is_available, stock, images, metadata, requires_prescription, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, true, $6, $7::text[], $8::jsonb, $9, NOW(), NOW())
        RETURNING id`,
             [data.name, data.description || '', data.categoryId || null,
             data.price, currency, data.stock,
             data.imageUrl ? `{${data.imageUrl}}` : '{}',
-            JSON.stringify({ sku: data.sku, cost: data.cost || 0, min_stock: data.minStock || 5, max_stock: data.maxStock || 1000, unit: data.unit || 'unidad', tags: data.tags || [] })],
+            JSON.stringify({ sku: data.sku, cost: data.cost || 0, min_stock: data.minStock || 5, max_stock: data.maxStock || 1000, unit: data.unit || 'unidad', tags: data.tags || [] }),
+            data.requiresPrescription === true],
         );
 
         this.logger.log(`Product created: ${data.name} (${data.sku}) for tenant ${tenantId}`);
@@ -180,6 +188,7 @@ export class InventoryService {
         name: string; sku: string; description: string; categoryId: string;
         price: number; cost: number; minStock: number; maxStock: number;
         currency: string; unit: string; imageUrl: string; isActive: boolean; tags: string[];
+        requiresPrescription: boolean;
     }>): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
@@ -196,6 +205,10 @@ export class InventoryService {
             values.push(normalizeCurrencyCode(data.currency));
         }
         if (data.isActive !== undefined) { setClauses.push(`is_available = $${paramIndex++}`); values.push(data.isActive); }
+        if (data.requiresPrescription !== undefined) {
+            setClauses.push(`requires_prescription = $${paramIndex++}`);
+            values.push(data.requiresPrescription === true);
+        }
         setClauses.push('updated_at = NOW()');
 
         if (setClauses.length === 1) return; // Only updated_at
@@ -300,9 +313,19 @@ export class InventoryService {
                     stock INTEGER,
                     images TEXT[] DEFAULT '{}',
                     metadata JSONB DEFAULT '{}',
+                    requires_prescription BOOLEAN NOT NULL DEFAULT false,
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
                 )`);
+            // Esta definición es una SEGUNDA copia de `products`, paralela a
+            // `tenant-schema.sql`. Un schema creado por acá antes de que la
+            // columna existiera no la tiene, y el INSERT de arriba la nombra:
+            // el ALTER idempotente es lo que impide que ese schema quede
+            // rompiendo cada alta de producto.
+            await this.prisma.$queryRawUnsafe(
+                `ALTER TABLE "${schema}".products
+                    ADD COLUMN IF NOT EXISTS requires_prescription BOOLEAN NOT NULL DEFAULT false`,
+            );
             await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".stock_movements (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     product_id UUID NOT NULL,
@@ -340,6 +363,7 @@ export class InventoryService {
             unit: meta.unit || 'unidad',
             imageUrl: Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : null,
             isActive: p.is_available !== false,
+            requiresPrescription: p.requires_prescription === true,
             tags: Array.isArray(meta.tags) ? meta.tags : [],
             metadata: meta,
             createdAt: p.created_at?.toISOString?.() || new Date().toISOString(),

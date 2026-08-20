@@ -109,6 +109,11 @@ const VERTICAL_FLOW_GUIDANCE: Array<{
     { industry: 'inmobiliaria', requires: 'realEstate', guidance: 'Para una visita: search_listings → get_listing_details del inmueble concreto → send_listing_image si ayuda → agendá la visita dejando SIEMPRE registrado de qué inmueble se trata.' },
     { industry: 'automotriz', requires: 'vehicles', guidance: 'Para una prueba de manejo: search_vehicles → get_vehicle_details del vehículo concreto → send_vehicle_image si ayuda → acordá día y hora → schedule_test_drive. Si el horario está tomado, ofrecé otro; nunca digas que quedó agendada sin que schedule_test_drive haya tenido éxito.' },
     { industry: 'veterinaria', requires: 'pets', guidance: 'Registrá la mascota con register_pet antes de agendar (list_pets_for_contact primero para no duplicarla). Ante señales de urgencia usá triage_pet_emergency de inmediato.' },
+    // `salud` + catálogo es la farmacia: ninguna otra subespecialidad de salud
+    // enciende catálogo. La regla de la fórmula médica vive en el writer, no
+    // acá; esto sólo hace que el agente sepa POR QUÉ le van a decir que no y
+    // qué ofrecer en su lugar.
+    { industry: 'salud', requires: 'catalog', guidance: 'Para una venta de mostrador: search_products → check_stock antes de prometer disponibilidad → confirmá qué y cuántos → place_catalog_order. Lo que sale marcado como venta bajo fórmula médica NO se pide por chat: decilo con el nombre del producto y pasá la conversación a una persona del equipo para validar la receta. Nunca sugieras un medicamento para un síntoma, ni una dosis, ni un reemplazo de otro producto.' },
     { industry: 'retail', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock antes de prometer disponibilidad → send_product_image si ayuda → confirmá qué y cuántos → place_catalog_order. Los precios salen del catálogo: vos sólo pasás productId y cantidad.' },
     { industry: 'otro', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock → confirmá qué y cuántos → place_catalog_order. Nunca digas que el pedido quedó registrado sin que place_catalog_order haya tenido éxito.' },
 ];

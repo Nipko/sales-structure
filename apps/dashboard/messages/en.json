@@ -4153,6 +4153,11 @@
     }
   },
   "inventory": {
+    "prescription": {
+      "badge": "Rx",
+      "label": "Prescription only",
+      "hint": "The agent still shows it in the catalogue but will not take the order over chat: the conversation goes to a person to validate the prescription."
+    },
     "title": "Inventory",
     "subtitle": "Product management, stock and movements",
     "allCategories": "All",

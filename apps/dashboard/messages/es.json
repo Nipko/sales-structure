@@ -4153,6 +4153,11 @@
     }
   },
   "inventory": {
+    "prescription": {
+      "badge": "Receta",
+      "label": "Venta bajo fórmula médica",
+      "hint": "El agente lo muestra en el catálogo, pero no toma el pedido por chat: la conversación pasa a una persona para validar la receta."
+    },
     "title": "Inventario",
     "subtitle": "Gestión de productos, stock y movimientos",
     "allCategories": "Todos",

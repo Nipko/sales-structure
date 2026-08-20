@@ -697,7 +697,8 @@ export class AIToolExecutorService {
         }
         conds.push(`is_available = true`);
         params.push(limit);
-        const sql = `SELECT id, name, description, category, price, currency, stock, is_available, images
+        const sql = `SELECT id, name, description, category, price, currency, stock, is_available, images,
+                            requires_prescription
                      FROM "${schema}".products
                      WHERE ${conds.join(' AND ')}
                      ORDER BY name ASC
@@ -714,6 +715,11 @@ export class AIToolExecutorService {
                     currency: p.currency || 'COP',
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
+                    // Un producto de venta bajo fórmula se sigue mostrando: el
+                    // cliente merece saber que el negocio lo tiene. Lo que no
+                    // se puede es pedirlo por chat, y para eso el agente
+                    // necesita ver la marca acá y no descubrirlo al confirmar.
+                    requiresPrescription: !!p.requires_prescription,
                 })),
             });
         } catch (e: any) {
@@ -729,8 +735,8 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
-                    ? `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
+                    ? `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
                 productIdOrName,
             );
             if (rows.length > 0) {
@@ -744,6 +750,7 @@ export class AIToolExecutorService {
                     currency: p.currency || 'COP',
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
+                    requiresPrescription: !!p.requires_prescription,
                     images: Array.isArray(p.images) ? p.images : [],
                 };
             }
@@ -1022,6 +1029,13 @@ export class AIToolExecutorService {
      *
      * Prices are never taken from the model: only productId and quantity cross
      * the boundary, and the server prices the line from the catalog.
+     *
+     * Lo que requiere fórmula médica NO se pide por acá. El catálogo genérico
+     * trataba a todo por igual, así que en una farmacia un medicamento de venta
+     * bajo receta se podía pedir por WhatsApp sin que ningún farmacéutico viera
+     * nada — y la conversación quedaba como si el negocio lo hubiera aceptado.
+     * El bloqueo vive en el writer y no en el prompt: una instrucción de texto
+     * la puede pisar un prompt personalizado, y esto no.
      */
     private async placeCatalogOrder(
         tenantId: string,
@@ -1049,7 +1063,8 @@ export class AIToolExecutorService {
             // eight catalog-selling profiles could search and price a product and
             // never record a single order.
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, price, currency, stock, is_available FROM "${schema}".products
+                `SELECT id, name, price, currency, stock, is_available, requires_prescription
+                   FROM "${schema}".products
                   WHERE id = $1::uuid LIMIT 1`,
                 productId,
             );
@@ -1057,6 +1072,17 @@ export class AIToolExecutorService {
             if (!product) return { error: 'product_not_found', productId };
             if (product.is_available === false) {
                 return { error: 'product_unavailable', productId, productName: product.name };
+            }
+            if (product.requires_prescription === true) {
+                // Se nombra el producto para que el agente pueda decir CUÁL es
+                // el que necesita fórmula, en vez de un "no se pudo" que el
+                // cliente lee como que el negocio no lo tiene.
+                return {
+                    error: 'prescription_required',
+                    productId,
+                    productName: product.name,
+                    message: `${product.name} es de venta bajo fórmula médica: no puedo tomar ese pedido por chat. Te paso con una persona del equipo para validar la receta.`,
+                };
             }
             // Stock NULL means the tenant does not track units for this product.
             // Only an explicit number can be short.
@@ -1157,8 +1183,8 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
-                    ? `SELECT id, name, stock, is_available FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, stock, is_available FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
+                    ? `SELECT id, name, stock, is_available, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT id, name, stock, is_available, requires_prescription FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
                 productIdOrName,
             );
             if (rows.length > 0) {
@@ -1168,6 +1194,8 @@ export class AIToolExecutorService {
                     name: p.name,
                     stock: p.stock ?? null,
                     inStock: p.stock == null ? p.is_available : Number(p.stock) > 0,
+                    // Haber stock y poder venderlo por chat no son lo mismo.
+                    requiresPrescription: !!p.requires_prescription,
                 });
             }
         } catch (e: any) {

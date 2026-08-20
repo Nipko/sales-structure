@@ -3973,6 +3973,24 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments"
 ALTER TABLE "{{SCHEMA_NAME}}"."tour_bookings"
     ADD COLUMN IF NOT EXISTS "amount_due" DECIMAL(15,2),
     ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
+
+-- Venta libre y bajo receta no son el mismo producto.
+--
+-- El catálogo genérico trata a todo por igual: si está disponible, el agente lo
+-- busca, lo cotiza y arma el pedido. En una farmacia eso significa que un
+-- medicamento de venta bajo fórmula se puede pedir por WhatsApp sin que ningún
+-- farmacéutico vea la receta — y la conversación queda como si el negocio lo
+-- hubiera aceptado.
+--
+-- `false` por defecto es correcto y deliberado: en las otras siete verticales
+-- de catálogo NADA requiere receta, y una farmacia ya cargada marca lo suyo
+-- desde Inventario. Un default `true` habría apagado el catálogo entero de
+-- todos los tenants existentes.
+ALTER TABLE "{{SCHEMA_NAME}}"."products"
+    ADD COLUMN IF NOT EXISTS "requires_prescription" BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS "idx_products_requires_prescription"
+    ON "{{SCHEMA_NAME}}"."products" ("requires_prescription")
+    WHERE "requires_prescription" = true;
 DO $payment_policy_columns$
 DECLARE
     sellable TEXT;

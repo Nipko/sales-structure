@@ -560,3 +560,40 @@ jest src/app.bootstrap.spec.ts               → 1/1 ✅ (DI limpio)
 jest apps/api      → 2555 passed / 284 suites, 0 fallos
 jest apps/dashboard → 161 passed / 20 suites, 0 fallos
 ```
+
+### U17 — P0 §8.3 · Farmacia: el pedido sin dónde verse, el tablero de otra clínica y la receta que nadie miraba
+
+**Fase 2 · Épica B/C/E · Paquete "Farmacia"**
+
+`salud/farmacia` es el único subtipo de salud sin agenda y con catálogo, y heredaba todo lo de una clínica. Tres cosas rotas y una peligrosa.
+
+**1. El writer existía; la superficie de lectura no.** El manifiesto le publicaba `/admin/inventory` y omitía `/admin/orders`. El agente creaba el pedido con `place_catalog_order` y el dueño no tenía dónde verlo: el pedido existía sólo en la conversación.
+
+**2. Tablero de clínica en un negocio sin agenda.** KPIs heredados: citas de hoy, inasistencias de la semana, tratamientos activos y sesiones completadas. Cuatro números que siempre valen cero. El tipo `VerticalSubtypeCapabilityOverride` **no permitía** override de KPIs —la auditoría lo listó como causa compartida con fast food, alquileres, hardware y guardería—, así que se agregó `kpiContract?` al override y la resolución lo respeta. Farmacia queda con productos/stock/pedidos/GMV.
+
+**3. Assurance sobre tools que no publica.** Heredaba `get_treatment_plan: A2` y `list_upcoming_sessions: A2`; una farmacia no tiene ninguna de las dos. Gatear lo inexistente no protege nada. Ahora enforce sobre lo que sí tiene: `place_catalog_order: A1` — el pedido es del cliente y se arma sobre su nombre y su dirección.
+
+**4. La receta.** El catálogo genérico trata a todo por igual: disponible ⇒ el agente lo busca, lo cotiza y arma el pedido. En una farmacia eso significa que un medicamento de venta bajo fórmula se podía pedir por WhatsApp sin que ningún farmacéutico viera nada, y la conversación quedaba como si el negocio lo hubiera aceptado.
+
+**ADR-022 — El bloqueo de la fórmula médica vive en el writer, no en el prompt.**
+Una instrucción de texto la puede pisar un prompt personalizado; el rechazo del writer no. `products.requires_prescription` (aditivo, `false` por defecto — en las otras siete verticales de catálogo nada requiere receta, y un default `true` habría apagado el catálogo de todos los tenants existentes). `place_catalog_order` rechaza con `prescription_required` **nombrando el producto**, para que el agente pueda decir cuál es en vez de un "no se pudo" que el cliente lee como que el negocio no lo tiene.
+
+**ADR-023 — El producto recetado se sigue mostrando.**
+Ocultarlo del catálogo sería mentir por omisión: la farmacia lo tiene. `search_products`, `get_product` y `check_stock` devuelven `requiresPrescription`, así que el agente sabe el límite **antes** de confirmar y no lo descubre al cerrar. Haber stock y poder venderlo por chat no son lo mismo.
+
+**ADR-024 — Quitar la marca requiere supervisión.**
+El alta de producto la puede hacer un agente. Desmarcar "venta bajo fórmula" amplía lo que el agente de IA puede vender por chat —justo lo que el bloqueo existe para impedir—, así que el controller lo rechaza para `tenant_agent` a nivel de campo, no de endpoint.
+
+**Deriva encontrada al pasar:** `inventory.service.ts` tiene una **segunda** definición de `products` dentro de `ensureInventoryTables`, paralela a `tenant-schema.sql`. Hubo que agregar la columna en las dos más un `ALTER ... IF NOT EXISTS` de rescate. Queda registrada como tarea aparte: mientras existan dos definiciones, la próxima columna se olvida en una.
+
+**Lo que NO se hizo, y por qué.** El perfil sigue en **STOP**: dispensación real, refill, lote/vencimiento, sustitución y trazabilidad exigen un PMS farmacéutico (PioneerRx marca la profundidad) y validación humana con reglas por país. Esto no vende dispensación: la impide y la deriva a una persona.
+
+**Pruebas** — `pharmacy-prescription.spec.ts` (9 casos): el pedido de venta libre funciona igual que antes; el recetado se rechaza nombrando el producto y **sin escribir nada**; el **carrito mezclado** se rechaza entero (aceptar la parte OTC y callar el resto le dice al cliente que su pedido está completo cuando le falta justo lo que fue a buscar); el recetado sigue apareciendo en búsqueda, marcado; `check_stock` reporta la marca; el manifiesto publica Pedidos; no muestra tablero de clínica; enforce sobre la acción que sí tiene; los subtipos clínicos quedan intactos. Más la corrección de `vertical-dashboard-resolver.spec.ts`, cuya aserción afirmaba el defecto (farmacia = sólo Inventario).
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard)  → exit 0
+jest src/app.bootstrap.spec.ts               → 1/1 ✅ (DI limpio)
+jest apps/api      → 2564 passed / 285 suites, 0 fallos
+jest apps/dashboard → 161 passed / 20 suites, 0 fallos
+```

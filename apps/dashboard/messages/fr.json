@@ -4153,6 +4153,11 @@
     }
   },
   "inventory": {
+    "prescription": {
+      "badge": "Ordonnance",
+      "label": "Vente sur ordonnance",
+      "hint": "L’agent l’affiche au catalogue mais ne prend pas la commande par chat : la conversation passe à une personne pour valider l’ordonnance."
+    },
     "title": "Inventaire",
     "subtitle": "Gestion des produits, stock et mouvements",
     "allCategories": "Tous",

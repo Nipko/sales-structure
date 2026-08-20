@@ -307,6 +307,16 @@ export interface VerticalSubtypeCapabilityOverride {
     addEvents?: readonly VerticalDomainEvent[];
     removeEvents?: readonly VerticalDomainEvent[];
     assurance?: VerticalAssuranceContract;
+    /**
+     * KPIs propios del sub-tipo.
+     *
+     * Sin esto, una farmacia hereda el tablero de una clínica —citas de hoy,
+     * inasistencias, tratamientos activos— sin tener agenda ni tratamientos, y
+     * el dueño mira cuatro números que siempre valen cero. Lo mismo le pasa a
+     * fast food, alquileres, hardware y guardería con el tablero de su
+     * industria.
+     */
+    kpiContract?: VerticalKpiContract;
 }
 
 export interface VerticalCapabilityManifestEntry {
@@ -450,8 +460,26 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addCapabilities: ['catalog_search'],
                 addToolGroups: ['catalog'],
                 primaryObject: 'catalog_item',
-                addRoutes: ['/admin/inventory'],
+                // `/admin/orders` faltaba: el agente creaba el pedido y el
+                // dueño no tenía dónde verlo. Un writer sin superficie de
+                // lectura es un pedido que existe sólo en la conversación.
+                addRoutes: ['/admin/inventory', '/admin/orders'],
                 addReadiness: ['catalog_items'],
+                // Heredaba el tablero de una clínica: citas de hoy,
+                // inasistencias de la semana y tratamientos activos, en un
+                // negocio sin agenda ni tratamientos.
+                kpiContract: kpis(DASH_SALES, [
+                    'productsTotal', 'productsAvailable', 'productsOutOfStock', 'stockUnits',
+                    'orders30d', 'paidOrders30d', 'pendingOrders30d', 'gmv30d',
+                ]),
+                // Y heredaba assurance sobre `get_treatment_plan` y
+                // `list_upcoming_sessions`, dos tools que una farmacia no
+                // publica. Lo que sí necesita gate es el pedido: es del
+                // cliente, y se arma sobre su nombre y su dirección.
+                assurance: {
+                    minimum: 'A0',
+                    enforcedActions: { place_catalog_order: 'A1' },
+                },
             },
         },
     },
@@ -927,7 +955,7 @@ export function resolveVerticalCapabilityManifest(
         ),
         primaryObject: override?.primaryObject || entry.profile.primaryObject,
         routes: mergeValues(entry.profile.routes, override?.addRoutes, override?.removeRoutes),
-        kpiContract: entry.profile.kpiContract,
+        kpiContract: override?.kpiContract || entry.profile.kpiContract,
         readiness: {
             enforcement: 'advisory',
             requirements: mergeValues(

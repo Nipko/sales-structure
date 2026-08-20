@@ -84,7 +84,9 @@ describe("resolveVerticalDashboard", () => {
     expect(resolveCanonical("turismo", "alquiler_vacacional").visibleItems).toEqual(["stays", "properties"]);
     expect(resolveCanonical("turismo", "agencia_viajes").visibleItems).toEqual(["tourBookings", "tours"]);
     expect(resolveCanonical("turismo", "tours").visibleItems).toEqual(["tourBookings", "tours"]);
-    expect(resolveCanonical("salud", "farmacia").visibleItems).toEqual(["inventory"]);
+    // Una farmacia toma pedidos: el manifiesto publicaba Inventario y omitía
+    // Pedidos, así que el agente creaba la orden y el dueño no tenía dónde verla.
+    expect(resolveCanonical("salud", "farmacia").visibleItems).toEqual(["inventory", "orders"]);
     expect(resolveCanonical("restaurantes", "dark_kitchen").visibleItems).toEqual(["menu", "foodOrders"]);
   });
 

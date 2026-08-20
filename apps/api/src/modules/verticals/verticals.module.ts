@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { VerticalsService } from './verticals.service';
+import { VerticalReadinessService } from './vertical-readiness.service';
 import { VerticalsController } from './verticals.controller';
 import { StaffSchedulingService } from './staff-scheduling.service';
 import { StaffSchedulingController } from './staff-scheduling.controller';
@@ -22,6 +23,7 @@ import { EmailModule } from '../email/email.module';
     controllers: [VerticalsController, StaffSchedulingController, VehicleInventoryController],
     providers: [
         VerticalsService,
+        VerticalReadinessService,
         StaffSchedulingService,
         StaffOperationsModelService,
         VehicleInventoryService,
@@ -32,6 +34,7 @@ import { EmailModule } from '../email/email.module';
     ],
     exports: [
         VerticalsService,
+        VerticalReadinessService,
         StaffSchedulingService,
         StaffOperationsModelService,
         VehicleInventoryService,

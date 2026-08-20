@@ -397,3 +397,39 @@ npx tsc --noEmit (api + shared)          → exit 0
 npx jest --maxWorkers=2 (suite completa) → 2503 passed / 279 suites, 0 fallos
 ```
 
+### U12 — `EffectiveAgentCapabilityContractV1` + readiness bloqueante
+
+**Fase 1 · Épica E/H · §3.4 del plan · Gate 1**
+
+Las tools se publicaban desde toggles guardados en cada agente. La UI dejaba encender familias que no tenían nada que ver con el subtipo; el manifiesto solo aportaba defaults a agentes **nuevos**, así que uno existente conservaba lo que tuviera desde su alta; readiness era `advisory` desde la v1 del manifiesto y **nunca tuvo evaluador detrás**; y el gate de plan, cuando ocurría, ocurría en otro lado. Siete sistemas tenían cada uno una parte de la decisión y ninguno la tenía entera.
+
+**ADR-014 — El subtipo es un techo, no una sugerencia.**
+Un toggle solo puede **acotar** lo que el manifiesto concede. Ningún JSON que el tenant pueda editar amplía autoridad — que era exactamente cómo una peluquería canina podía encender la familia de seguros.
+
+**ADR-015 — Toda exclusión lleva motivo.**
+Una tool que desaparece en silencio le enseña al dueño que no existe. Una que dice "tu plan no incluye esto" o "no tenés productos cargados" le enseña qué hacer. Siete motivos tipados: `not_in_subtype`, `agent_disabled`, `plan_missing_feature`, `readiness_unmet`, `provider_unavailable`, `not_approved`, `external_system_of_record`.
+
+**Readiness que sí comprueba** — `verticals/vertical-readiness.service.ts` (nuevo)
+
+"Habilitado" y "tiene algo con qué responder" nunca fueron el mismo reclamo, y solo se hacía el primero: un tenant podía encender catálogo con cero productos, el agente publicaba `search_products` y al cliente se le decía que el negocio no vende nada.
+
+Cada clave es un COUNT contra **la misma tabla que la tool consulta**, así que readiness no puede desincronizarse de lo que se pregunta. 18 claves mapeadas con su texto de reparación y su ruta. Tres decisiones no obvias:
+- Una tabla que el tenant nunca aprovisionó cuenta **cero** (respuesta real), no error.
+- Un lookup **caído** deja la clave como satisfecha y marca `degraded`: desconocido no es incumplido, y apagar un agente que funciona por una consulta caída sería el mismo error de "error leído como vacío" que el contrato de lectura existe para evitar.
+- `professional_cases` y `pipeline` quedan deliberadamente **fuera**: la primera se deriva de oportunidades que todo tenant tiene, la segunda se siembra en el aprovisionamiento. Bloquear por cualquiera sería bloquear por algo que el tenant no puede accionar.
+- `boarding_capacity` exige categoría de alojamiento **y** `max_concurrent >= 1`: un servicio de guardería sin concurrencia dejaría al agente cotizando un cupo que no puede honrar.
+- El COUNT va con `LIMIT 50`, para que un tenant con un millón de filas no pague un conteo completo para responder "¿hay al menos una?".
+
+**Contrato** — `packages/shared/src/effective-capability-contract.ts` + `conversations/effective-capability.service.ts`. Intersección obligatoria y fail-closed: subtipo ∩ overrides del agente ∩ plan/cuotas ∩ readiness ∩ país. Lleva `version`, `subtypeProfileId`, `planSnapshot`, `countryPackId`, `publishedTools`, `publishedGroups`, `excluded[]`, `unmetReadiness[]`, `degraded` y `resolvedAt`.
+
+**Runtime:** el contrato tiene la última palabra sobre qué se publica y **solo acota** — un contrato que no resuelve deja el turno como estaba en vez de silenciar un agente que funciona. Las familias asíncronas (pagos, integraciones, MCP, par OTP) conservan sus propias puertas y pasan sin tocar. Se agrega el paso de traza `capability_contract`: sin él, "¿por qué el agente no usó X?" es incontestable después del hecho, y esa pregunta es la mayor parte del soporte de agentes.
+
+**Pruebas** — `effective-capability.spec.ts` (13 casos): familia fuera del subtipo descartada con motivo; familia concedida-pero-apagada reportada; publicación correcta; plan sin feature no publica dinero; plan ilegible **no** concede en silencio; sin datos no publica y dice qué cargar (con ruta); solo evalúa readiness de las familias que sobrevivieron las puertas anteriores; readiness ilegible marca degradado **sin** apagar el agente; contrato trazable con versión/perfil/plan/país; toda exclusión con motivo legible; subtipo desconocido falla en vez de publicar de más.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard) → exit 0
+npx jest --testPathPattern=bootstrap        → 1/1 ✅ (DI limpio)
+npx jest --maxWorkers=2 (suite completa)    → 2516 passed / 280 suites, 0 fallos
+```
+

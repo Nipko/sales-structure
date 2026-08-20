@@ -44,6 +44,7 @@ import { PaymentOperationService } from './payment-operation.service';
 import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
 import { staticToolsForAgentConfig } from './agent-tool-registry';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { EffectiveCapabilityService } from './effective-capability.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -354,6 +355,7 @@ export class ConversationsService {
         // Optional so the specs that build this orchestrator by hand keep
         // compiling; the turn falls back to the previous behaviour when absent.
         private regionalProfile?: RegionalProfileService,
+        private effectiveCapability?: EffectiveCapabilityService,
     ) {}
 
     /**
@@ -2412,6 +2414,48 @@ export class ConversationsService {
         // the customer typed it into a conversation that could not read it.
         // Derivation runs last, after every family, so it sees the real set.
         tools = [...tools, ...identityStepUpToolsFor(tools)];
+
+        // The effective capability contract has the last word on WHAT may be
+        // published. Registration above answers "what did the agent switch on";
+        // this answers "what may this agent actually do, this turn" — subtype
+        // ceiling, plan, quota and readiness together, resolved server-side and
+        // fail-closed. It only ever NARROWS the set: a contract that cannot be
+        // resolved leaves the turn exactly as it was rather than silencing an
+        // agent that works.
+        if (tools.length && this.effectiveCapability) {
+            try {
+                const contract = await this.effectiveCapability.resolve({
+                    tenantId,
+                    schemaName,
+                    industry: turnContext.verticalContext?.industry || config.industry,
+                    subType: turnContext.verticalContext?.subType,
+                    toolsConfig: cfgTools ?? {},
+                    agentId: (config as any)?.agentId,
+                });
+                const allowed = new Set(contract.publishedTools);
+                const before = tools.length;
+                // Families resolved asynchronously (payments, integrations, MCP,
+                // the OTP pair) are not part of the static contract and keep
+                // their own gates, so they pass through untouched.
+                const staticNames = new Set(staticToolsForAgentConfig(cfgTools ?? {}).map(t => String(t.name)));
+                tools = tools.filter(t => !staticNames.has(String(t?.name)) || allowed.has(String(t?.name)));
+                if (tools.length !== before) {
+                    this.logger.log(
+                        `[Capability] ${before} → ${tools.length} tools for ${contract.subtypeProfileId}`
+                        + ` (${contract.excluded.map(e => `${e.subject}:${e.reason}`).join(', ') || 'none excluded'})`,
+                    );
+                }
+                turnTrace.add('capability_contract', 'Capability', {
+                    profile: contract.subtypeProfileId,
+                    plan: contract.planSnapshot,
+                    published: contract.publishedGroups,
+                    unmetReadiness: contract.unmetReadiness,
+                    degraded: contract.degraded,
+                });
+            } catch (error: any) {
+                this.logger.warn(`[Capability] contract unresolved: ${error?.message}`);
+            }
+        }
 
         // D2: Tool retrieval — keep the turn's toolset small (Gorilla: >30 tools
         // degrades selection). Relevance is scored against the CURRENT message,

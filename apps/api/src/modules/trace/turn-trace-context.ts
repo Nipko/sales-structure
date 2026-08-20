@@ -7,6 +7,10 @@
 export type TurnStepType =
     | 'media' | 'intent' | 'booking' | 'procedure'
     | 'kb_retrieval' | 'reasoning' | 'tool_call' | 'tool_result'
+    // Which tools the effective contract published, and what it excluded.
+    // Without it in the trace, "why didn't the agent use X" is unanswerable
+    // after the fact — and that question is most of agent support.
+    | 'capability_contract'
     | 'guardrail' | 'decision';
 
 export interface TurnStep {

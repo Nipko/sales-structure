@@ -58,6 +58,7 @@ import { ActiveOperationsContextService } from './active-operations-context.serv
 import { ToolRetrievalService } from './tool-retrieval.service';
 import { EmotionService } from './emotion.service';
 import { ToolExecutionControlService } from './tool-execution-control.service';
+import { EffectiveCapabilityService } from './effective-capability.service';
 import { PAYMENT_OPERATION_PROVIDER, PaymentOperationService } from './payment-operation.service';
 import { ToolApprovalController } from './tool-approval.controller';
 import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
@@ -118,6 +119,7 @@ import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
         ConversationsGateway,
         AIToolExecutorService,
         ToolExecutionControlService,
+        EffectiveCapabilityService,
         ToolApprovalWorkflowService,
         PaymentOperationService,
         {
@@ -141,6 +143,6 @@ import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
         ChatIdentityService,
     ],
     controllers: [ConversationsController, AgentTestController, ToolApprovalController],
-    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService],
+    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService],
 })
 export class ConversationsModule {}

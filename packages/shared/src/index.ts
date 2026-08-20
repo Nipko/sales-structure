@@ -24,6 +24,9 @@ export * from './country-language-pack';
 // ---- The single registry for what a subtype is ----
 export * from './subtype-experience-profile';
 
+// ---- Effective agent capability: subtype x agent x plan x readiness ----
+export * from './effective-capability-contract';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
 

@@ -258,6 +258,8 @@
     "superAdminMode": "Super Admin",
     "sections": {
       "essentials": "Essenciais",
+      "dailyWork": "Trabalho do dia",
+      "catalogAndResources": "Catálogo e recursos",
       "aiGrowth": "IA e crescimento",
       "insights": "Insights",
       "administration": "Administração",

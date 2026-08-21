@@ -868,3 +868,22 @@ jest src/app.bootstrap.spec.ts → 1/1 ✅ (DI limpio)
 jest apps/api       → 2621 passed / 290 suites, 0 fallos
 jest apps/dashboard → 183 passed / 23 suites, 0 fallos
 ```
+
+### U27 — El trabajo diario, arriba y separado de su catálogo
+
+**Fase 4 · Épica D · Pasos 1 y 2 de §8.5 (orden del shell y grupos por perfil)**
+
+Registros y catálogos vivían mezclados en **una sola sección** llamada "Operación", y esa sección estaba **debajo** de IA y crecimiento. Quien atiende conversaciones recorría automatizaciones, campañas y fichas de producto para llegar a su propia agenda.
+
+**ADR-040 — El corte de secciones sale de la clasificación, no del criterio de quien agrega la línea.**
+`NAVIGATION_SURFACE_KIND` (U25) ya declara cada superficie como registro, catálogo o mixta. **Trabajo diario** recibe los registros y las mixtas; **Catálogo y recursos** recibe los catálogos. Una prueba lee el archivo del sidebar, extrae los ítems de cada sección y falla si alguno cayó del lado equivocado o aparece en las dos — así el corte no se degrada con la próxima línea que alguien agregue.
+
+**Trabajo diario sube por encima de IA y crecimiento**, verificado por posición en el archivo. Es el criterio del Gate 4: la operación primaria no puede estar detrás de las herramientas de crecimiento, que además el rol operativo mayormente no puede usar.
+
+**Lo que NO se hizo, y por qué.** El plan nombra también `customers` y `commercial` como grupos propios. Hoy contactos, embudo y organizaciones viven como un ítem con hijos, y separarlos exige reestructurar la relación padre/hijo del menú — más churn de navegación del que justifica sin poder validarlo con usuarios. Queda anotado como resto del paso 2.
+
+**Verificación**
+```
+npx tsc --noEmit (dashboard)  → exit 0
+jest apps/dashboard → 185 passed / 23 suites, 0 fallos
+```

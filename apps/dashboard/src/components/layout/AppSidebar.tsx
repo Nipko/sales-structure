@@ -225,6 +225,49 @@ const tenantSections: NavSectionDef[] = [
     ],
   },
   {
+    // Trabajo diario: los REGISTROS, el objeto que se abre todos los días.
+    // Estaban mezclados con sus catálogos en una sola sección, así que quien
+    // atiende recorría fichas de producto para llegar a su propia agenda. El
+    // corte no es de gusto: sale de `NAVIGATION_SURFACE_KIND`, donde cada
+    // superficie ya está declarada como registro, catálogo o mixta.
+    titleKey: "dailyWork",
+    collapsible: true,
+    defaultExpanded: true,
+    items: [
+      { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, verticalItem: "appointments", capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },
+      { labelKey: "stays", href: "/admin/stays", icon: BedDouble, verticalItem: "stays", capability: "canHandleConversations", accent: "text-sky-500 dark:text-sky-400" },
+      { labelKey: "tourBookings", href: "/admin/tour-bookings", icon: Compass, verticalItem: "tourBookings", capability: "canHandleConversations", accent: "text-teal-500 dark:text-teal-400" },
+      { labelKey: "resourceRentals", href: "/admin/resource-rentals", icon: KeyRound, verticalItem: "resourceRentals", capability: "canHandleConversations" },
+      { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticalItem: "foodOrders", capability: "canHandleConversations" },
+      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticalItem: "orders", capability: "canHandleConversations" },
+      { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticalItem: "serviceRequests", capability: "canHandleConversations" },
+      { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticalItem: "classes", capability: "canHandleConversations" },
+      { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticalItem: "photoSessions", capability: "canHandleConversations" },
+      { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticalItem: "pets", capability: "canHandleConversations" },
+      // Mixtas: se abren operando y su pestaña de catálogo se cierra adentro.
+      { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticalItem: "memberships", capability: "canHandleConversations" },
+      { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticalItem: "insurance", capability: "canHandleConversations" },
+    ],
+  },
+  {
+    // Catálogo y recursos: lo que CONFIGURA el objeto de arriba. Trabajo de
+    // supervisión, y restringirlo acá no le quita trabajo a nadie.
+    titleKey: "catalogAndResources",
+    collapsible: true,
+    items: [
+      { labelKey: "properties", href: "/admin/properties", icon: Home, verticalItem: "properties", capability: "canEditPipeline" },
+      { labelKey: "tours", href: "/admin/tours", icon: Compass, verticalItem: "tours", capability: "canEditPipeline" },
+      { labelKey: "listings", href: "/admin/listings", icon: Building2, verticalItem: "listings", capability: "canEditPipeline" },
+      { labelKey: "vehicles", href: "/admin/vehicles", icon: Car, verticalItem: "vehicles", capability: "canEditPipeline" },
+      { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticalItem: "menu", capability: "canEditPipeline" },
+      { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticalItem: "courses", capability: "canEditPipeline" },
+      { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticalItem: "treatmentPlans", capability: "canEditPipeline" },
+      { labelKey: "serviceCatalog", href: "/admin/service-catalog", icon: Tags, verticalItem: "serviceCatalog", capability: "canEditPipeline" },
+      { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticalItem: "inventory", capability: "canEditPipeline" },
+      { labelKey: "offers", href: "/admin/catalog/offers", icon: Tag, capability: "canEditPipeline" },
+    ],
+  },
+  {
     titleKey: "aiGrowth",
     collapsible: true,
     defaultExpanded: true,
@@ -252,43 +295,6 @@ const tenantSections: NavSectionDef[] = [
         ],
       },
       { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone, capability: "canSendBroadcast", accent: "text-orange-500 dark:text-orange-400" },
-    ],
-  },
-  {
-    titleKey: "operation",
-    collapsible: true,
-    defaultExpanded: true,
-    items: [
-      { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, verticalItem: "appointments", capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },
-      // Operational registers — the object an agent works from every day. They
-      // sit ABOVE their catalogue on purpose: to find a booking a host used to
-      // have to open a property card first, and an agent could not open it at
-      // all.
-      { labelKey: "stays", href: "/admin/stays", icon: BedDouble, verticalItem: "stays", capability: "canHandleConversations", accent: "text-sky-500 dark:text-sky-400" },
-      { labelKey: "tourBookings", href: "/admin/tour-bookings", icon: Compass, verticalItem: "tourBookings", capability: "canHandleConversations", accent: "text-teal-500 dark:text-teal-400" },
-      // Catalog management — supervisor+ (agents don't manage catalogs, they only operate)
-      { labelKey: "properties", href: "/admin/properties", icon: Home, verticalItem: "properties", capability: "canEditPipeline" },
-      { labelKey: "tours", href: "/admin/tours", icon: Compass, verticalItem: "tours", capability: "canEditPipeline" },
-      { labelKey: "listings", href: "/admin/listings", icon: Building2, verticalItem: "listings", capability: "canEditPipeline" },
-      { labelKey: "vehicles", href: "/admin/vehicles", icon: Car, verticalItem: "vehicles", capability: "canEditPipeline" },
-      { labelKey: "resourceRentals", href: "/admin/resource-rentals", icon: KeyRound, verticalItem: "resourceRentals", capability: "canHandleConversations" },
-      { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticalItem: "menu", capability: "canEditPipeline" },
-      // Operational — agents need access (taking orders, doing classes, dispatching, treating pets)
-      { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticalItem: "foodOrders", capability: "canHandleConversations" },
-      { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticalItem: "memberships", capability: "canHandleConversations" },
-      { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticalItem: "classes", capability: "canHandleConversations" },
-      { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticalItem: "courses", capability: "canEditPipeline" },
-      { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticalItem: "insurance", capability: "canHandleConversations" },
-      { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticalItem: "serviceRequests", capability: "canHandleConversations" },
-      { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticalItem: "treatmentPlans", capability: "canEditPipeline" },
-      { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticalItem: "pets", capability: "canHandleConversations" },
-      { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticalItem: "photoSessions", capability: "canHandleConversations" },
-      // El catálogo de las verticales sin Agenda. Se lo sembraba el bootstrap y
-      // el dueño no tenía dónde verlo.
-      { labelKey: "serviceCatalog", href: "/admin/service-catalog", icon: Tags, verticalItem: "serviceCatalog", capability: "canEditPipeline" },
-      { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticalItem: "inventory", capability: "canEditPipeline" },
-      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticalItem: "orders", capability: "canHandleConversations" },
-      { labelKey: "offers", href: "/admin/catalog/offers", icon: Tag, capability: "canEditPipeline" },
     ],
   },
   {

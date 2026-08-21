@@ -100,6 +100,43 @@ describe("navigation surface kind", () => {
         }
     });
 
+    /**
+     * Registros y catálogos estaban mezclados en una sola sección, así que
+     * quien atiende recorría fichas de producto para llegar a su propia
+     * agenda. El corte de secciones tiene que seguir la clasificación, no el
+     * criterio de quien agregue la próxima línea.
+     */
+    it("puts every register in daily work and every catalogue in its own section", () => {
+        const section = (titleKey: string) => {
+            const start = sidebar.indexOf(`titleKey: "${titleKey}"`);
+            expect(`${titleKey} section`).toBe(start >= 0 ? `${titleKey} section` : `${titleKey} MISSING`);
+            const end = sidebar.indexOf('\n  },', start);
+            return sidebar.slice(start, end);
+        };
+        const itemsOf = (body: string) =>
+            [...body.matchAll(/verticalItem: "(\w+)"/g)].map((match) => match[1]);
+
+        const daily = itemsOf(section("dailyWork"));
+        const catalogue = itemsOf(section("catalogAndResources"));
+        expect(daily.length).toBeGreaterThan(5);
+        expect(catalogue.length).toBeGreaterThan(5);
+
+        for (const item of daily) {
+            expect(`${item}=${navigationSurfaceKind(item)}`).not.toBe(`${item}=catalogue`);
+        }
+        for (const item of catalogue) {
+            expect(`${item}=${navigationSurfaceKind(item)}`).toBe(`${item}=catalogue`);
+        }
+        // Y ninguno aparece en las dos.
+        expect(daily.filter((item) => catalogue.includes(item))).toEqual([]);
+    });
+
+    /** El trabajo diario va antes que IA y crecimiento, no después. */
+    it("puts daily work above the growth tooling", () => {
+        expect(sidebar.indexOf('titleKey: "dailyWork"'))
+            .toBeLessThan(sidebar.indexOf('titleKey: "aiGrowth"'));
+    });
+
     it("maps each kind to exactly one capability", () => {
         expect(capabilityForSurface("stays")).toBe("canHandleConversations");
         expect(capabilityForSurface("properties")).toBe("canEditPipeline");

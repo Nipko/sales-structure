@@ -1567,6 +1567,29 @@ jest apps/api       → 3039 passed / 306 suites (1 skipped), 0 fallos
 jest apps/dashboard →  264 passed /  29 suites, 0 fallos
 ```
 
+### U54 — Llamarle "solución" a un switch
+
+**Último parcial interno: la herencia de terminología**
+
+15 de 76 perfiles declaran su propia terminología; los 61 restantes **heredan la de su industria por decisión**. La decisión es razonable —una clínica dental y una dermatológica dicen "paciente" igual— y nadie verificaba que siguiera siéndolo.
+
+Revisar los 61 uno por uno necesita a alguien que conozca cada rubro, y eso está donde tiene que estar: en el bloqueo externo, como revisión de dominio. Lo que **sí** se puede verificar sin un experto es la contradicción mecánica: **un subtipo cuyo objeto primario difiere del de sus hermanos no puede heredar el mismo sustantivo que ellos.**
+
+Esa regla encontró uno: **`technology/hardware`**. El rubro entero habla como un SaaS B2B —"solución", "deal", "demo"— y tres de sus cuatro subtipos venden justamente eso. `hardware` vende **equipos**: su objeto primario en el manifiesto es `catalog_item`, no una cita. Llamarle "solución" a un switch y "deal" a una venta de mostrador es el idioma de otro negocio, y su avoid-list ahora prohíbe además "licencia" y "suscripción" — un vendedor de equipos no las vende, y ofrecerlas es prometer algo que no hace.
+
+**Dos reglas más que la puerta fija**, porque son las dos formas de romper una terminología sin notarlo:
+- Un sustantivo **a medias** es peor que ninguno: el agente cae al español en una conversación en portugués y suena a error de sistema.
+- Una avoid-list **no puede prohibir la palabra que el propio perfil usa**, o el agente se queda sin forma de nombrar lo que el negocio vende.
+
+**Pruebas** — `subtype-terminology-inheritance.spec.ts` (nuevo, 4).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api       → 3043 passed / 307 suites (1 skipped), 0 fallos
+jest apps/dashboard →  264 passed /  29 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1632,7 +1655,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 |---|---|
 | ~~**Contrato efectivo**~~ | ✅ **U33/U35**: entra rol, canal, jurisdicción y salud/scopes/frescura del proveedor, y se resuelve ANTES de los tres motores |
 | ~~**STOP**~~ | ✅ **U35**: los 7 perfiles contra las cinco puertas, `capability_status` en el turno y handoff determinista |
-| **Terminología por sub-tipo** | 14 de 76 perfiles. Los demás heredan de su industria por decisión, pero **nadie verificó uno por uno que la herencia sea correcta** — y esa verificación necesita a alguien que conozca el rubro, no una regla |
+| **Terminología por sub-tipo** | ◐ **U54**: 15 de 76 declaran la propia y la contradicción *mecánica* de la herencia quedó cerrada con una puerta que la vigila. Lo que queda —revisar los 61 heredados uno por uno— **necesita a alguien que conozca el rubro**, y está en el bloqueo externo como revisión de dominio |
 | ~~**Set dorado**~~ | ✅ **U45**: mínimo 29 por perfil en los cuatro idiomas |
 | **Packs de país** | Los 15 de LatAm en `draft`. Ninguno se presenta como certificado, que es lo correcto, pero llegar a `pilot` exige un tenant real de ese país |
 | ~~**Telemetría de navegación**~~ | ✅ **U53**: tiempo-a-tarea, profundidad de clics, búsqueda y backtracking |

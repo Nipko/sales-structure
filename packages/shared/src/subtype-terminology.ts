@@ -81,6 +81,22 @@ const TERMINOLOGY: Readonly<Record<string, SubtypeTerminology>> = Object.freeze(
         customerNounPlural: { es: 'viajeros', en: 'travellers', pt: 'viajantes', fr: 'voyageurs' },
     },
 
+    // ── Technology: vender un router no es vender una suscripción ──────
+    //
+    // El rubro entero habla como un SaaS B2B —"solución", "deal", "demo"— y
+    // tres de sus cuatro subtipos venden justamente eso. `hardware` vende
+    // EQUIPOS: su objeto primario en el manifiesto es `catalog_item`, no una
+    // cita. Llamarle "solución" a un switch y "deal" a una venta de mostrador
+    // es el idioma de otro negocio, y "licencia" promete algo que no vende.
+    'technology/hardware': {
+        primaryObject: { es: 'Equipo', en: 'Device', pt: 'Equipamento', fr: 'Équipement' },
+        primaryObjectPlural: { es: 'Equipos', en: 'Devices', pt: 'Equipamentos', fr: 'Équipements' },
+        transactionNoun: { es: 'venta', en: 'sale', pt: 'venda', fr: 'vente' },
+        customerNoun: { es: 'cliente', en: 'customer', pt: 'cliente', fr: 'client' },
+        customerNounPlural: { es: 'clientes', en: 'customers', pt: 'clientes', fr: 'clients' },
+        avoid: ['solución', 'deal', 'licencia', 'suscripción'],
+    },
+
     // ── Automotriz: vender un auto no es repararlo ─────────────────────
     'automotriz/taller': {
         primaryObject: { es: 'Orden de trabajo', en: 'Work order', pt: 'Ordem de serviço', fr: 'Ordre de travail' },

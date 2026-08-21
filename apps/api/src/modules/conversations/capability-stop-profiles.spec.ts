@@ -306,7 +306,7 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
             expect(paymentOperations.applyDiscount).not.toHaveBeenCalled();
         });
 
-        it('una tool MCP opaca cae: no sabemos qué hace del otro lado', async () => {
+        it('una tool MCP sin aprobación legible cae: el nombre no dice nada', async () => {
             const { executor } = buildExecutor();
 
             const result = await executor.execute(
@@ -314,9 +314,33 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
                 {}, conversationId, BLOCKED_INPUT,
             );
 
-            // Una tool remota sin política revisada se asume comprometedora:
-            // el nombre no dice nada y el servidor es de un tercero.
+            // Sin cliente MCP inyectado no hay aprobación que leer, y
+            // desconocida no pasa: el servidor es de un tercero.
             expect(result).toMatchObject({ error: 'capability_blocked' });
+        });
+
+        it.each([
+            ['una escritura aprobada cae', 'write', true],
+            ['una tool sin efecto revisado cae', undefined, true],
+            ['una LECTURA firmada por una persona pasa', 'read', false],
+        ])('%s', async (_case, effect, blocked) => {
+            // El nombre de una tool remota no dice nada. Lo único que sabe qué
+            // hace es lo que una persona firmó al aprobarla, y esa firma es lo
+            // que decide si sobrevive con la escritura bloqueada. Tratarlas a
+            // todas como comprometedoras dejaba a un perfil bloqueado sin sus
+            // consultas remotas —mudo—, que es peor que el problema evitado.
+            const { executor } = buildExecutor();
+            (executor as any).mcpClient = {
+                getApproval: jest.fn().mockResolvedValue(effect ? { effect } : null),
+                callRemoteTool: jest.fn().mockResolvedValue({ ok: true }),
+            };
+
+            const result = await executor.execute(
+                schemaName, tenantId, contactId, 'mcp__crm__lookup',
+                {}, conversationId, BLOCKED_INPUT,
+            );
+
+            expect(result?.error === 'capability_blocked').toBe(blocked);
         });
 
         it('las integraciones verticales de lectura siguen pasando', async () => {

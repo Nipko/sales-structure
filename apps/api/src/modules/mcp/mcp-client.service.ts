@@ -33,7 +33,8 @@ interface DiscoveredTools {
  * "connected for inspection, not authorised for the AI".
  */
 export interface PublishableMcpTools {
-    tools: ToolDefinition[];
+    /** Cada tool con el efecto que una persona le revisó, cuando lo hay. */
+    tools: (ToolDefinition & { reviewedEffect?: string | null })[];
     discoveredCount: number;
     approvedCount: number;
 }
@@ -155,7 +156,23 @@ export class McpClientService {
             select: { settings: true },
         });
         const approved = approvedMcpToolNames(tenant?.settings);
-        const publishable = tools.filter(tool => approved.has(String(tool.name)));
+        const approvals = readMcpApprovals(tenant?.settings);
+        const effectByName = new Map(approvals.map(a => [
+            `mcp__${a.serverId}__${a.toolName}`,
+            a.effect,
+        ]));
+        // El efecto REVISADO viaja con la tool publicada.
+        //
+        // El nombre de una tool remota no dice nada, así que el contrato la
+        // trataba a toda como comprometedora y un perfil bloqueado perdía
+        // también sus consultas remotas. Lo único que sabe qué hace es lo que
+        // una persona firmó al aprobarla, y eso es lo que se adjunta acá.
+        const publishable = tools
+            .filter(tool => approved.has(String(tool.name)))
+            .map(tool => ({
+                ...tool,
+                reviewedEffect: effectByName.get(String(tool.name)) ?? null,
+            }));
         return {
             tools: publishable,
             discoveredCount: tools.length,

@@ -172,10 +172,30 @@ export class AIToolExecutorService {
                 return { error: 'unknown_tool', tool: toolName };
             }
 
+            // La aprobación revisada de una tool MCP, resuelta ACÁ ARRIBA.
+            //
+            // Una tool remota no trae política propia, así que la única fuente
+            // sobre qué hace es lo que una persona firmó al aprobarla. Antes se
+            // resolvía recién en el preflight, y la puerta de capacidad —que
+            // corre antes— no tenía con qué distinguir una consulta de un
+            // cobro: trataba a las dos como comprometedoras y un perfil
+            // bloqueado perdía también sus lecturas remotas.
+            const mcpApproval = toolName.startsWith('mcp__') && this.mcpClient?.getApproval
+                ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
+                : null;
+
             // La puerta común. Lo que cae es lo que COMPROMETE al negocio, no
             // lo que escribe una fila: una búsqueda en la base de conocimiento
             // o la llave de identidad siguen pasando.
-            if (opts?.commitmentBlocked && !isNonCommittalTool(toolName)) {
+            //
+            // Para una tool MCP la respuesta sale de la aprobación firmada, no
+            // del nombre: `effect: 'read'` revisado por una persona es una
+            // lectura; sin aprobación legible es desconocida, y desconocida no
+            // pasa cuando la escritura está bloqueada.
+            const committing = toolName.startsWith('mcp__')
+                ? mcpApproval?.effect !== 'read'
+                : !isNonCommittalTool(toolName);
+            if (opts?.commitmentBlocked && committing) {
                 this.logger.warn(
                     `[Tool] ${toolName} bloqueada: ${opts.commitmentBlocked.reason}`,
                 );
@@ -245,14 +265,6 @@ export class AIToolExecutorService {
             // ocurrir. Es el mismo patron que ya usa create_payment_link arriba.
             const precondition = await this.assertWritePreconditions(schemaName, toolName, args);
             if (precondition) return precondition;
-
-            // An external MCP tool carries no policy of its own, so the guard
-            // needs the reviewed approval record. Resolved here because this is
-            // the only place that already holds the MCP client; an unresolved
-            // approval stays null and the guard refuses.
-            const mcpApproval = toolName.startsWith('mcp__') && this.mcpClient?.getApproval
-                ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
-                : null;
 
             controlDecision = await this.toolExecutionControl.preflight({
                 schemaName,

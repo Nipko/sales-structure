@@ -1157,6 +1157,30 @@ jest apps/api       → 2753 passed / 295 suites (1 skipped), 0 fallos
 jest apps/dashboard →  212 passed /  26 suites, 0 fallos
 ```
 
+### U39 — Una tool remota no tiene nombre que valga, pero sí una firma
+
+**Pendiente interno 10 (mitad restante)**
+
+Las cuatro lecturas de proveedor ya habían entrado al contrato en U35. Faltaba MCP, y ahí el problema es distinto: una tool remota **no tiene política propia** —el nombre lo eligió un tercero y no dice nada—, así que el contrato la trataba a toda como comprometedora. Correcto como default y equivocado como final: un perfil bloqueado perdía también sus **consultas** remotas y quedaba mudo, que es el resultado que el bloqueo existe para evitar, no para causar.
+
+Lo único que sabe qué hace una tool remota es **la aprobación que una persona firmó**: el registro ya guarda `effect`, revisado y auditable, y ya se rechaza aprobar un efecto que no sea lectura sin confirmación. Eso es lo que ahora decide.
+
+**Dos lados, porque una sola mitad no alcanza:**
+- **Publicación** — `listPublishableTools` adjunta el efecto revisado a cada tool, y el filtro del contrato deja pasar `effect: 'read'` cuando la escritura está bloqueada.
+- **Ejecución** — la aprobación se resuelve **antes** de la puerta de capacidad, no en el preflight. Resolverla tarde era exactamente por qué la puerta no tenía con qué distinguir una consulta de un cobro. Es la misma resolución de antes, movida arriba, no una consulta nueva.
+
+**Sin efecto revisado, no pasa.** Una tool aprobada antes de que existiera el campo, o una aprobación ilegible, es desconocida — y desconocida no pasa cuando la escritura está bloqueada.
+
+**El Channel Manager no aporta tools propias.** Sus reservas llegan al agente por `check_property_availability`, que es una tool estática con política revisada y ya está bajo el contrato: no hay nada que reclasificar ahí.
+
+**Pruebas** — `capability-stop-profiles.spec.ts` (+3): con el perfil bloqueado, una escritura aprobada cae, una tool sin efecto revisado cae, y una lectura firmada por una persona pasa.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2756 passed / 295 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1262,7 +1286,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~7~~ | ✅ cerrado en **U37** |
 | ~~8~~ | ✅ cerrado en **U37** |
 | ~~9~~ | ✅ cerrado en **U38** |
-| 10 | ◐ Reclasificar las tools externas de lectura y someterlas al contrato efectivo — **hecho en U33** para las 4 lecturas de proveedor (Toast/Mindbody/Cliniko: reclasificadas como no comprometedoras y publicadas por el contrato con salud/scopes/frescura). Queda el resto de la superficie externa: MCP (hoy opaco, sin política por tool) y las lecturas del Channel Manager |
+| ~~10~~ | ✅ cerrado entre **U35** (las 4 lecturas de proveedor) y **U39** (MCP). El Channel Manager no aporta tools propias: sus reservas entran por `check_property_availability`, que ya tiene política revisada |
 | 11 | Migrar los consumidores de `normalizePhoneE164` al `TenantRegionalProfile`; eliminar el default `+57`; UI/API de revisión regional |
 | 12 | Eliminar fallbacks productivos COP / es-CO / Bogotá fuera de decisiones regionales explícitas |
 | 13 | Una sola fuente de schema para `products` |

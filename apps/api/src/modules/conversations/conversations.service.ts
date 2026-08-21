@@ -4039,8 +4039,15 @@ export class ConversationsService {
      * Una tool sin política revisada no sobrevive: acá, desconocido es no.
      */
     private nonCommittalTools(tools: any[]): any[] {
-        return tools.filter((tool: any) =>
-            isNonCommittalTool(String(tool?.function?.name || tool?.name)));
+        return tools.filter((tool: any) => {
+            const name = String(tool?.function?.name || tool?.name);
+            // Una tool MCP no tiene política propia: lo único que sabe qué hace
+            // es la aprobación que una persona firmó, y viaja con la tool. Sin
+            // efecto revisado es desconocida, y desconocida no pasa cuando la
+            // escritura está bloqueada.
+            if (name.startsWith('mcp__')) return tool?.reviewedEffect === 'read';
+            return isNonCommittalTool(name);
+        });
     }
 
     private async persistBookingState(schemaName: string, conversationId: string, state: any): Promise<void> {

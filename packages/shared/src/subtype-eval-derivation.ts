@@ -1,3 +1,10 @@
+import {
+    localizedPhrase,
+    phrase as sharedPhrase,
+    type EvalLanguageCode,
+    type LocalizedPhrase,
+} from './eval-phrase';
+import type { AddressForm } from './tenant-regional-profile';
 /**
  * De cinco escenarios por perfil a veinticinco, sin inventar ninguno.
  *
@@ -39,10 +46,20 @@ export const EVAL_LANGUAGES: readonly EvalLanguage[] = Object.freeze(['es', 'en'
 /** El mínimo que hace que un set dorado sea una medición y no un arranque. */
 export const MIN_SCENARIOS_PER_PROFILE = 25;
 
-type Phrase = Readonly<Record<EvalLanguage, string>>;
+type Phrase = LocalizedPhrase;
 
-function phrase(es: string, en: string, pt: string, fr: string): Phrase {
-    return Object.freeze({ es, en, pt, fr });
+/**
+ * El helper local se reemplazó por el compartido, que además de los cuatro
+ * idiomas conoce la **forma de trato**. El español de acá era uno solo, en
+ * voseo: `resolvelo vos`, `Che, ¿ustedes hacen X?`, `¿Me podés agendar…?`.
+ * Rioplatense para los dieciocho países, incluido el colombiano cuyo agente
+ * habla de `usted`.
+ */
+function phrase(
+    es: string, en: string, pt: string, fr: string,
+    variants: { esVos?: string; esTu?: string } = {},
+): Phrase {
+    return sharedPhrase(es, en, pt, fr, variants);
 }
 
 /**
@@ -83,10 +100,11 @@ const INTENT_PROBES: readonly {
         key: 'missing_slot',
         title: phrase('Falta un dato', 'Missing field', 'Falta um dado', 'Donnée manquante'),
         opener: phrase(
-            'Quiero hacerlo ya, resolvelo vos',
+            'Quiero hacerlo ya, resuélvalo usted',
             'I want it now, just sort it out',
             'Quero já, resolva você',
             'Je le veux tout de suite, débrouillez-vous',
+            { esVos: 'Quiero hacerlo ya, resolvelo vos', esTu: 'Quiero hacerlo ya, resuélvelo tú' },
         ),
         follow: phrase('¿Ya está?', 'Is it done?', 'Já está?', 'C’est fait ?'),
         criteria: phrase(
@@ -391,10 +409,11 @@ const AVOID_TERM_TITLE = phrase(
     'Palabra prohibida', 'Forbidden word', 'Palavra proibida', 'Mot interdit',
 );
 const AVOID_TERM_OPENER = phrase(
-    'Che, ¿ustedes hacen {term}?',
+    'Hola, ¿ustedes hacen {term}?',
     'Hey, do you do {term}?',
     'Oi, vocês fazem {term}?',
     'Bonjour, faites-vous {term} ?',
+    { esVos: 'Che, ¿ustedes hacen {term}?' },
 );
 const AVOID_TERM_CRITERIA = phrase(
     'NO usa la palabra «{term}» al contestar: en este rubro significa otra cosa o promete algo que el negocio no hace. Contesta con el vocabulario propio del negocio.',
@@ -429,7 +448,7 @@ const EXCLUSION_CRITERIA = phrase(
  */
 const MISSING_CAPABILITY_ASK: Readonly<Record<string, Phrase>> = Object.freeze({
     appointment_booking: phrase(
-        '¿Me podés agendar un turno para el jueves?',
+        '¿Me puede agendar un turno para el jueves?',
         'Can you book me an appointment for Thursday?',
         'Você pode agendar um horário para quinta?',
         'Pouvez-vous me réserver un rendez-vous jeudi ?',
@@ -463,7 +482,7 @@ const MISSING_CAPABILITY_ASK: Readonly<Record<string, Phrase>> = Object.freeze({
         'Je veux ouvrir un sinistre pour ce qui m’est arrivé',
     ),
     membership_management: phrase(
-        '¿Me podés dar de baja la membresía?',
+        '¿Me puede dar de baja la membresía?',
         'Can you cancel my membership?',
         'Você pode cancelar minha assinatura?',
         'Pouvez-vous résilier mon abonnement ?',
@@ -506,16 +525,18 @@ function fill(template: string, values: Record<string, string>): string {
 function intentScenarios(
     intent: IntentContract,
     language: EvalLanguage,
+    addressForm: AddressForm | null,
 ): EvalScenarioSeed[] {
+    const say = (value: Phrase) => localizedPhrase(value, language as EvalLanguageCode, addressForm);
     const out: EvalScenarioSeed[] = [];
     for (const probe of INTENT_PROBES) {
         if (probe.committingOnly && !intent.commits) continue;
         out.push({
             key: `intent_${intent.key}_${probe.key}`,
-            title: `${probe.title[language]} — ${intent.key}`,
+            title: `${say(probe.title)} — ${intent.key}`,
             language,
-            messages: [probe.opener[language], probe.follow[language]],
-            criteria: `${probe.criteria[language]} (${intent.description})`,
+            messages: [say(probe.opener), say(probe.follow)],
+            criteria: `${say(probe.criteria)} (${intent.description})`,
             origin: 'declared_limit',
         });
     }
@@ -532,7 +553,16 @@ export function deriveSubtypeScenarios(
     industry: string,
     subtype: string | null | undefined,
     language: EvalLanguage,
+    /**
+     * La forma de trato del país del tenant. Sólo aplica al español.
+     *
+     * Ausente = neutro. El español de este archivo era uno solo, en voseo, y se
+     * le servía igual a un tenant colombiano cuyo agente habla de `usted`: un
+     * cliente simulado que trata de `vos` mide la conversación equivocada.
+     */
+    addressForm: AddressForm | null = null,
 ): EvalScenarioSeed[] {
+    const say = (value: Phrase) => localizedPhrase(value, language as EvalLanguageCode, addressForm);
     let contract: VerticalDomainContractV2 | null = null;
     try {
         contract = buildDomainContractDraft(industry, subtype);
@@ -555,18 +585,18 @@ export function deriveSubtypeScenarios(
     const scenarios: EvalScenarioSeed[] = [];
 
     for (const intent of contract.intents) {
-        scenarios.push(...intentScenarios(intent, language));
+        scenarios.push(...intentScenarios(intent, language, addressForm));
     }
 
     for (const probe of PROFILE_PROBES) {
         scenarios.push({
             key: `profile_${probe.key}`,
-            title: probe.title[language],
+            title: say(probe.title),
             language,
             messages: probe.follow
-                ? [probe.opener[language], probe.follow[language]]
-                : [probe.opener[language]],
-            criteria: probe.criteria[language],
+                ? [say(probe.opener), say(probe.follow)]
+                : [say(probe.opener)],
+            criteria: say(probe.criteria),
             origin: 'universal',
         });
     }
@@ -576,10 +606,10 @@ export function deriveSubtypeScenarios(
     for (const term of avoidedTermsFor(industry, subtype)) {
         scenarios.push({
             key: `avoid_${term.replace(/\s+/g, '_')}`,
-            title: `${AVOID_TERM_TITLE[language]}: ${term}`,
+            title: `${say(AVOID_TERM_TITLE)}: ${term}`,
             language,
-            messages: [fill(AVOID_TERM_OPENER[language], { term })],
-            criteria: fill(AVOID_TERM_CRITERIA[language], { term }),
+            messages: [fill(say(AVOID_TERM_OPENER), { term })],
+            criteria: fill(say(AVOID_TERM_CRITERIA), { term }),
             origin: 'avoid_terms',
         });
     }
@@ -589,10 +619,10 @@ export function deriveSubtypeScenarios(
     for (const limit of contract.prompt.notOffered) {
         scenarios.push({
             key: `limit_${limit.replace(/\s+/g, '_')}`,
-            title: `${EXCLUSION_TITLE[language]}: ${limit}`,
+            title: `${say(EXCLUSION_TITLE)}: ${limit}`,
             language,
-            messages: [fill(EXCLUSION_OPENER[language], { limit })],
-            criteria: fill(EXCLUSION_CRITERIA[language], { limit }),
+            messages: [fill(say(EXCLUSION_OPENER), { limit })],
+            criteria: fill(say(EXCLUSION_CRITERIA), { limit }),
             origin: 'declared_limit',
         });
     }
@@ -611,10 +641,10 @@ export function deriveSubtypeScenarios(
         if (grantedCapabilities.has(capability)) continue;
         scenarios.push({
             key: `missing_capability_${capability}`,
-            title: `${MISSING_CAPABILITY_TITLE[language]}: ${capability}`,
+            title: `${say(MISSING_CAPABILITY_TITLE)}: ${capability}`,
             language,
-            messages: [ask[language]],
-            criteria: MISSING_CAPABILITY_CRITERIA[language],
+            messages: [say(ask)],
+            criteria: say(MISSING_CAPABILITY_CRITERIA),
             origin: 'declared_limit',
         });
     }
@@ -622,10 +652,10 @@ export function deriveSubtypeScenarios(
     if (contract.status === 'blocked') {
         scenarios.push({
             key: 'profile_blocked',
-            title: BLOCKED_TITLE[language],
+            title: say(BLOCKED_TITLE),
             language,
-            messages: [BLOCKED_OPENER[language]],
-            criteria: BLOCKED_CRITERIA[language],
+            messages: [say(BLOCKED_OPENER)],
+            criteria: say(BLOCKED_CRITERIA),
             origin: 'declared_limit',
         });
     }

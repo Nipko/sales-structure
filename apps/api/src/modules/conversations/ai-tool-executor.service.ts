@@ -4099,10 +4099,10 @@ export class AIToolExecutorService {
         if (!conversationId) return { error: 'no_conversation' };
         if (!code) return { error: 'missing_code', message: 'Pedile al cliente el código de 6 dígitos.' };
         const res = await this.chatIdentity.verifyCode(conversationId, String(code));
-        if (res.ok) return { verified: true, message: 'Identidad verificada. Ya podés consultar los datos que pidió.' };
+        if (res.ok) return { verified: true, message: 'Identidad verificada. Ya puede consultar los datos que pidió.' };
         const messages: Record<string, string> = {
             expired: 'El código venció o no se pidió ninguno. Ofrecé enviar uno nuevo con request_identity_code.',
-            wrong: 'El código no coincide. Pedíselo de nuevo; le quedan intentos.',
+            wrong: 'El código no coincide. Pídaselo de nuevo; le quedan intentos.',
             too_many: 'Demasiados intentos fallidos. NO sigas intentando: pasá la conversación a un asesor humano.',
         };
         return {
@@ -4465,7 +4465,7 @@ export class AIToolExecutorService {
         } catch (e: any) {
             const status = e?.status ?? e?.getStatus?.();
             if (status === 400 || status === 404) {
-                return { error: 'invalid_boarding_request', message: 'Revisá las fechas y el servicio antes de consultar el cupo.' };
+                return { error: 'invalid_boarding_request', message: 'Revise las fechas y el servicio antes de consultar el cupo.' };
             }
             this.logger.warn(`[Tool] check_daycare_availability failed: ${e.message}`);
             return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {

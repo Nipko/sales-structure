@@ -330,7 +330,7 @@ export class ProcedureEngineService {
                         completed: false,
                         text: rendered.invalid.length
                             ? 'Alguno de los datos que me diste no tiene el formato que necesito. Pedile al cliente que lo confirme antes de seguir.'
-                            : 'Me falta un dato para completar este paso. Pedíselo al cliente antes de seguir.',
+                            : 'Me falta un dato para completar este paso. Pídaselo al cliente antes de seguir.',
                         procedureName: procedure.name,
                     };
                 }

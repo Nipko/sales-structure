@@ -49,6 +49,7 @@ export * from './navigation-telemetry';
 
 // ---- What each profile calls the things it works with ----
 export * from './subtype-terminology';
+export * from './eval-phrase';
 export * from './subtype-eval-pack';
 export * from './subtype-eval-derivation';
 

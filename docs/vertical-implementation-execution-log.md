@@ -1977,6 +1977,42 @@ npx tsc --noEmit  → exit 0 en shared, api y dashboard
 jest apps/api     → 3170 passed / 315 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U64 — El set dorado estaba en español en los cuatro idiomas, y el español era uno solo
+
+**P1 · puntos 14, 15 y parte del 16 — terminología e idioma por perfil/país; sacar el guidance español global y el voseo fuera de su país**
+
+`composeSubtypeEvalPack` acepta un idioma. Devolvía, para todos:
+
+- Los **cuatro escenarios universales** con `language: 'es'` **fijo**, mensajes y criterio en español, en cualquier paquete.
+- Los de **no-pitch, vocabulario y límite declarado** estampados con el idioma pedido y escritos en español. Peor que los universales: dicen estar en inglés y no lo están.
+
+Medir un agente en portugués con un cliente simulado que escribe en español y un criterio en español no mide al agente: **mide si entiende español**. Y el punto 16 —correr los golden evals en ES/EN/PT/FR— no se puede cumplir mientras el paquete sea el mismo en los cuatro.
+
+**Y el español era uno solo, en voseo.** `¿Qué opinás de la política?`, `¿me ayudás con lo que ofrecen?`, `resolvelo vos`, `Che, ¿ustedes hacen X?`, `¿Me podés agendar…?`. Rioplatense para los dieciocho países — incluido el colombiano, cuyo agente habla de `usted` porque **la plataforma ya sabe la forma de trato de cada país** (`ADDRESS_FORM_BY_COUNTRY`, con CO/MX/CL en `usted`, AR/UY/PY en `vos`, VE en `tú`, BR en `você`). El set dorado no la miraba.
+
+Un cliente simulado que trata de `vos` a un agente configurado en `usted` mide la conversación equivocada: el agente parece frío, o parece que copia el registro, y ninguna de las dos cosas es lo que se quiso probar.
+
+**Cómo se resolvió, y qué NO se hizo.** El español se declara en la forma **neutra** —el default de la plataforma y lo correcto en quince de los dieciocho países— y la variante rioplatense se escribe sólo donde la frase efectivamente se conjuga distinto. **No se transforma texto arbitrario**: conjugar automáticamente produciría español inventado, que es peor que el español de otro país. Y la capacidad no se borró: un tenant argentino sigue midiéndose contra un cliente que habla como su cliente — se puso donde corresponde.
+
+**Voseo en producción, no sólo en las pruebas.** Cuatro directivas que **el modelo lee** estaban en voseo, y una de ellas mezclaba registros en la misma frase: `'Identidad verificada. Ya podés consultar los datos que pidió.'` — `podés` es vos y `pidió` es usted. Las otras: `'Pedíselo de nuevo'`, `'Revisá las fechas'`, `'Pedíselo al cliente antes de seguir'`. El modelo copia el registro de lo que lee, así que eso llega al cliente final. Quedaron en neutro.
+
+**El banco de pruebas no usaba el resolutor de producción.** `seedDefaults` llamaba al compositor con rubro y subtipo **y nada más**: ni el idioma del tenant (`tenants.language`) ni su país. Ahora la forma de trato sale del **mismo `RegionalProfileService` que usa el turno real** — no de una tabla propia del banco de pruebas, que es como se llega a medir contra reglas que el runtime no aplica.
+
+**Riesgos que quedan**
+- **El punto 16 no está cerrado.** Esto arregla que el paquete se componga en el idioma y el registro correctos; **correr** los golden evals contra los 76 perfiles × 4 idiomas necesita un tenant con agente configurado y presupuesto de LLM. Es una corrida, no código.
+- **La forma de trato sólo llega a los escenarios sembrados**, no a los que el dueño escriba a mano en la pantalla: esos quedan como los escriba.
+- **La terminología por país sigue pendiente.** U63 dio nombre al objeto primario de los 76 perfiles en cuatro idiomas; que "carro" o "coche", "celular" o "móvil" cambien por país es otra capa, y necesita el mismo criterio de rubro que sigue en bloqueo externo.
+- El detector de rioplatense es **deliberadamente estrecho** —formas verbales y una interjección, no palabras que también existen en otros registros—: un detector que marca de más termina desactivado. Puede dejar pasar formas que no están en la lista.
+
+**Pruebas** — `eval-pack-language.spec.ts` (nuevo, 17: los cuatro idiomas componen distinto de verdad, ningún escenario habla rioplatense sin declararlo, la forma de trato no toca los otros tres idiomas, y el detector no marca de más).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+npm run test:bootstrap → 1 passed (sin errores de DI)
+jest apps/api     → 3187 passed / 316 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -2092,9 +2128,9 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ◐ **U62** — worker, contrato de adapter, vencimiento, revisión, identidad por conexión y reparación de schema; **ningún adapter escrito** (necesita sandbox del proveedor) y la revisión no tiene pantalla |
 | 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ✅ **U63** |
 | 13 | Eliminar los gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ◐ **U63** — 170 → 83 huecos, y los 83 son los dos externos; falta conectar el contrato al planificador del turno, a la UI y al móvil |
-| 14 | Terminología e idioma por perfil/país | ⏳ pendiente |
-| 15 | Sacar guidance español global y voseo fuera de su país | ⏳ pendiente |
-| 16 | Golden evals reales ES/EN/PT/FR con el resolver de producción | ⏳ pendiente |
+| 14 | Terminología e idioma por perfil/país | ◐ **U63 + U64** — objeto primario en 4 idiomas para los 76 y registro por país en el set dorado; falta la capa de regionalismos léxicos y la revisión de rubro |
+| 15 | Sacar guidance español global y voseo fuera de su país | ✅ **U64** |
+| 16 | Golden evals reales ES/EN/PT/FR con el resolver de producción | ◐ **U64** — el paquete ya se compone en los 4 idiomas y con el resolutor regional de producción; **correr**los contra los 76 perfiles necesita tenant y presupuesto de LLM |
 | 17 | CRM mínimo + writer→ActiveObject→deep-link | ⏳ pendiente |
 | 18 | Backlog nativo de los 31 `build` y 23 `hybrid` | ⏳ pendiente |
 | 19 | Aliases y migraciones taxonómicas | ⏳ pendiente |

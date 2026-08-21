@@ -1,10 +1,11 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
-import { composeSubtypeEvalPack } from '@parallext/shared';
+import { composeSubtypeEvalPack, type AddressForm } from '@parallext/shared';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 export type ActionAssertionType = 'row_exists' | 'row_count' | 'no_row';
 
@@ -75,6 +76,9 @@ export class EvalService {
         private readonly quality: QualityService,
         private readonly redis: RedisService,
         private readonly eventEmitter: EventEmitter2,
+        // Opcional para los specs que arman el servicio a mano. Ausente = trato
+        // neutro, que es el default y no el rioplatense.
+        @Optional() private readonly regionalProfile?: RegionalProfileService,
     ) {}
 
     private async ensureTable(schema: string): Promise<void> {
@@ -132,20 +136,58 @@ export class EvalService {
      * Un fallo acá deja el pack universal, no lo apaga: cuatro escenarios
      * genéricos miden menos que cinco, pero cero no mide nada.
      */
-    private async profileOf(tenantId: string): Promise<{ industry?: string; subtype?: string }> {
+    /**
+     * Contra qué se mide este tenant: rubro, idioma y forma de trato.
+     *
+     * El idioma y el país **no se leían**, así que el set dorado se sembraba
+     * siempre en español —y en español rioplatense— para los 76 perfiles, en
+     * cualquier país. Un tenant brasileño medía a su agente con un cliente
+     * simulado que escribía en español, y uno colombiano con uno que lo trataba
+     * de `vos` mientras su agente habla de `usted`.
+     *
+     * El idioma sale de `tenants.language` y la forma de trato del **mismo
+     * resolutor regional que usa producción**: no una tabla propia del banco de
+     * pruebas, que es como se llega a medir contra reglas que el runtime no
+     * aplica.
+     */
+    private async profileOf(tenantId: string): Promise<{
+        industry?: string;
+        subtype?: string;
+        language?: string;
+        addressForm?: AddressForm | null;
+    }> {
         try {
             const tenant = await this.prisma.tenant.findUnique({
                 where: { id: tenantId },
-                select: { industry: true, settings: true },
+                select: { industry: true, settings: true, language: true },
             });
             const config = (tenant?.settings as any)?.verticalConfig;
             return {
                 industry: config?.industry || tenant?.industry || undefined,
                 subtype: config?.subType || undefined,
+                language: tenant?.language || undefined,
+                addressForm: await this.addressFormOf(tenantId),
             };
         } catch (e: any) {
             this.logger.warn(`[Eval] profile lookup failed for ${tenantId}: ${e?.message}`);
             return {};
+        }
+    }
+
+    /**
+     * La forma de trato del país operativo, resuelta como en producción.
+     *
+     * Sin resolutor regional cableado o sin país declarado devuelve `null`, que
+     * significa neutro: el default de la plataforma y lo correcto en quince de
+     * los dieciocho países del mapa. Suponer `vos` era el defecto.
+     */
+    private async addressFormOf(tenantId: string): Promise<AddressForm | null> {
+        if (!this.regionalProfile) return null;
+        try {
+            const regional = await this.regionalProfile.resolve(tenantId);
+            return (regional?.addressForm?.value as AddressForm) ?? null;
+        } catch {
+            return null;
         }
     }
 
@@ -524,11 +566,21 @@ export class EvalService {
      */
     private async seedDefaults(
         schema: string,
-        profile: { industry?: string; subtype?: string } = {},
+        profile: {
+            industry?: string;
+            subtype?: string;
+            language?: string;
+            addressForm?: AddressForm | null;
+        } = {},
     ): Promise<void> {
         const defaults: EvalScenarioInput[] = composeSubtypeEvalPack({
             industry: profile.industry,
             subtype: profile.subtype,
+            // Sin estos dos, el set dorado se sembraba en español rioplatense
+            // para todos: un tenant brasileño medía a su agente contra un
+            // cliente que escribía en español.
+            language: profile.language,
+            addressForm: profile.addressForm,
         }).map((scenario) => ({
             key: scenario.key,
             title: scenario.title,

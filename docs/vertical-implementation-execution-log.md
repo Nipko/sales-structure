@@ -2046,6 +2046,55 @@ npx tsc --noEmit  → exit 0 en shared, api y dashboard
 jest apps/api     → 3217 passed / 318 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U66 — El backlog nativo era una foto de julio presentada como estado actual
+
+**P1 · punto 18 — ejecutar el backlog nativo de los 31 `build` y 23 `hybrid`**
+
+Antes de ejecutar nada hay que poder leerlo, y no se podía. Cada perfil lleva `alerts`, y su propio comentario en el registro lo dice con todas las letras:
+
+> *"Audit alerts carried forward **verbatim**, so a reader can trace a decision to the finding that produced it."*
+
+Son **procedencia**, no estado. Y no hay ningún campo que diga cuáles siguen abiertas. Con lo cual "ejecutar el backlog nativo de los 31 `build` y 23 `hybrid`" es, literalmente, **incontestable**: la lista mezcla lo que sigue faltando con lo que se construyó después de que la auditoría se escribiera, y nadie puede distinguir una cosa de la otra mirándola.
+
+**La medición lo confirma.** Sobre los 54 perfiles `build` + `hybrid`, las alertas declaradas eran: `E2E` 54, `PAY` 52, `CAP` 35, `SOR` 34, `LIVE` 30, `REG` 21, `UX` 17, `STOP` 14, `WRITER` 4, `MISCLASS` 3.
+
+Las cuatro `WRITER` —"este perfil no tiene escritor"— son **falsas hoy**:
+
+| Perfil | Escrituras de negocio que tiene |
+|---|---|
+| `moda_belleza/spa` | `create_appointment`, `cancel_appointment`, `reschedule_appointment` |
+| `automotriz/alquiler` | `schedule_test_drive`, `create_vehicle_rental`, `cancel_vehicle_rental` |
+| `pet_services/guarderia` | `register_pet`, `update_pet`, `create_pet_boarding`, `cancel_pet_boarding` |
+| `pet_services/hotel` | las mismas cuatro |
+
+Los writers de alquiler de recurso se construyeron en **U49**, después de la auditoría. La alerta siguió ahí, diciendo que el perfil no puede escribir mientras el perfil escribía.
+
+**Lo que se hizo: el backlog dice ahora si cada alerta sigue abierta, y por qué.** Tres estados: `open` (verificada y sigue siendo cierta), `stale` (verificada y ya no lo es) y `needs_review` (el código no lo puede contestar).
+
+**Y qué NO se derivó, que es la parte importante.** Sólo se deriva lo que el sistema sabe **con certeza**. Una derivación plausible pero floja sería peor que la foto vieja — cerraría por decreto lo que hay que ir a mirar, y al menos la foto no mentía sobre su propia fecha.
+
+- `WRITER` **sí**: "¿tiene alguna escritura de negocio?" se contesta contando los writers de sus familias de tools. No hay margen de interpretación.
+- `SOR`, `LIVE`, `CAP`, `PAY` **no**: "el registro real vive afuera", "no hay dato en vivo", "faltan recursos", "no puede cobrar" son hechos del **negocio del tenant**, no de nuestras tablas. Un consultorio puede llevar su agenda acá o en su sistema clínico, y el código no distingue.
+- `REG`, `MISCLASS`, `STOP`, `E2E`, `SEC`, `UX` **tampoco**: decisiones de producto, de dominio o evidencia de campo.
+
+Una prueba exige que la lista de derivables **siga siendo corta y explícita**: si creciera sin que nadie lo piense, el backlog empezaría a cerrarse solo con derivaciones flojas. Y otra exige que `needs_review` no sea cero, porque un backlog que se declara vacío pasaría en verde sin haber mirado nada.
+
+**Lo que esto entrega, honestamente.** No es "el backlog ejecutado": son **4 ítems cerrados con evidencia** —las alertas falsas, quitadas del registro— y el resto **legible por primera vez**, que era lo que faltaba para poder ejecutarlo. Decir otra cosa sería el mismo error que este programa viene encontrando: declarar hecho lo que no se verificó.
+
+**Riesgos que quedan**
+- **Los ~200 ítems `needs_review` siguen abiertos**, y la mayoría no son código: `PAY` en 52 perfiles pregunta si ese rubro puede cobrar, `SOR` en 34 pregunta dónde vive el registro real de ese negocio. Contestarlos necesita a alguien que conozca el rubro y, para varios, un tenant real. **Bloqueo externo.**
+- **La derivación no tiene pantalla.** El backlog se puede leer desde el código y desde las pruebas; el panel no lo muestra. Trabajo interno pendiente.
+- **Las alertas siguen siendo la única fuente**: si la auditoría de julio omitió algo, esto no lo inventa. Reconciliar es medir lo declarado, no volver a auditar.
+
+**Pruebas** — `native-backlog.spec.ts` (nuevo, 14) + `native-backlog.ts` (nuevo, derivación).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+npm run test:bootstrap → 1 passed (sin errores de DI)
+jest apps/api     → 3231 passed / 319 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -2165,7 +2214,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 15 | Sacar guidance español global y voseo fuera de su país | ✅ **U64** |
 | 16 | Golden evals reales ES/EN/PT/FR con el resolver de producción | ◐ **U64** — el paquete ya se compone en los 4 idiomas y con el resolutor regional de producción; **correr**los contra los 76 perfiles necesita tenant y presupuesto de LLM |
 | 17 | CRM mínimo + writer→ActiveObject→deep-link | ✅ **U65** — la cadena quedó verificada writer por writer; el CRM mínimo ya estaba (U47) y su salida se lee en la ficha del Inbox |
-| 18 | Backlog nativo de los 31 `build` y 23 `hybrid` | ⏳ pendiente |
+| 18 | Backlog nativo de los 31 `build` y 23 `hybrid` | ◐ **U66** — 4 ítems cerrados con evidencia y el resto **legible por primera vez**: el backlog era una foto de julio sin campo de vigencia. Los ~200 restantes son en su mayoría hechos del negocio del tenant, no código |
 | 19 | Aliases y migraciones taxonómicas | ◐ **U65** — canonización en todos los consumidores + migración con tres modos; **no se corrió** (producción) y dos decisiones de taxonomía siguen siendo del dueño |
 
 **Además, salido de U55 y no en la lista original:** el reanudador de aprobaciones humanas no re-resuelve el contrato efectivo (ver riesgos de U55). Trabajo interno.

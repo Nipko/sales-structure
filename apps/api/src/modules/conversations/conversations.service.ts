@@ -60,6 +60,7 @@ import {
     isConfirmableWriteTool,
     toolBatchRequiresSequentialExecution,
     toolRequiresSequentialExecution,
+    TOOL_POLICY_REGISTRY,
 } from './tool-policy-registry';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
@@ -2492,6 +2493,17 @@ export class ConversationsService {
                 // their own gates, so they pass through untouched.
                 const staticNames = new Set(staticToolsForAgentConfig(cfgTools ?? {}).map(t => String(t.name)));
                 tools = tools.filter(t => !staticNames.has(String(t?.name)) || allowed.has(String(t?.name)));
+                // Un perfil bloqueado no escribe NADA, venga de donde venga la
+                // tool. Las familias asíncronas —pagos, descuentos,
+                // integraciones, MCP— se agregan fuera del contrato estático y
+                // conservan sus propias puertas: sin esto, el bloqueo tapaba la
+                // puerta principal y dejaba abierta la de servicio, y una
+                // aseguradora bloqueada seguía pudiendo generar un enlace de
+                // pago. Una tool sin política revisada también cae: en un
+                // perfil bloqueado, desconocido es no.
+                if (contract.writersBlocked) {
+                    tools = tools.filter(t => TOOL_POLICY_REGISTRY[String(t?.name)]?.effect === 'read');
+                }
                 if (tools.length !== before) {
                     this.logger.log(
                         `[Capability] ${before} → ${tools.length} tools for ${contract.subtypeProfileId}`

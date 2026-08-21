@@ -275,6 +275,28 @@ describe('un perfil bloqueado no cierra nada', () => {
         expect(blocked?.detail).toMatch(/no puede cerrar operaciones por chat/i);
     });
 
+    /**
+     * Las familias asíncronas —pagos, descuentos, integraciones, MCP— se
+     * agregan FUERA del contrato estático. Sin el flag, el bloqueo tapaba la
+     * puerta principal y dejaba abierta la de servicio: una aseguradora
+     * bloqueada seguía pudiendo generar un enlace de pago.
+     */
+    it('avisa que ninguna tool asíncrona puede escribir tampoco', async () => {
+        const { service } = build();
+
+        const blocked = await service.resolve({
+            tenantId, schemaName, industry: 'seguros', subType: 'aseguradora',
+            toolsConfig: { insurance: { enabled: true } },
+        });
+        const open = await service.resolve({
+            tenantId, schemaName, industry: 'seguros', subType: 'broker',
+            toolsConfig: { insurance: { enabled: true } },
+        });
+
+        expect(blocked.writersBlocked).toBe(true);
+        expect(open.writersBlocked).toBe(false);
+    });
+
     /** Un perfil que NO está bloqueado sigue publicando sus writers. */
     it('no toca a un perfil que no está bloqueado', async () => {
         const { service } = build();

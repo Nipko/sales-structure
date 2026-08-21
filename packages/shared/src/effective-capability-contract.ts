@@ -83,6 +83,17 @@ export interface EffectiveCapabilityContract {
     unmetReadiness: VerticalReadinessKey[];
     /** True when a gate could not be evaluated; the turn stays conservative. */
     degraded: boolean;
+    /**
+     * El perfil está `stop`: ninguna tool que escriba puede publicarse, venga
+     * de donde venga.
+     *
+     * Se expone además de filtrar `publishedTools` porque las familias que se
+     * resuelven asincrónicamente —pagos, descuentos, integraciones, MCP— se
+     * agregan FUERA del contrato estático y conservan sus propias puertas. Sin
+     * este flag, un perfil bloqueado seguía pudiendo generar un enlace de pago:
+     * el bloqueo tapaba la puerta principal y dejaba la de servicio abierta.
+     */
+    writersBlocked: boolean;
     resolvedAt: string;
 }
 

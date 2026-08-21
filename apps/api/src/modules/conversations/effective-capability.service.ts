@@ -158,7 +158,8 @@ export class EffectiveCapabilityService {
         // preguntas con honestidad. Lo que no puede es comprometerlo con algo
         // que su modelo de producto todavía no sostiene — para eso está el
         // handoff, que sigue publicado.
-        if (profile.strategy === 'stop') {
+        const writersBlocked = profile.strategy === 'stop';
+        if (writersBlocked) {
             const writers = publishedTools.filter((tool) => {
                 const policy = TOOL_POLICY_REGISTRY[tool];
                 return policy ? policy.effect !== 'read' : false;
@@ -191,6 +192,7 @@ export class EffectiveCapabilityService {
             excluded,
             unmetReadiness: [...unmet],
             degraded,
+            writersBlocked,
             resolvedAt: new Date().toISOString(),
         };
     }

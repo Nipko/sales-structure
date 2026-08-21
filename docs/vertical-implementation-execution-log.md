@@ -1002,3 +1002,23 @@ npx tsc --noEmit (api + shared)  → exit 0
 jest apps/api       → 2626 passed / 290 suites, 0 fallos
 jest apps/dashboard → 207 passed / 25 suites, 0 fallos
 ```
+
+### U33 — El bloqueo tapaba la puerta principal y dejaba abierta la de servicio
+
+**Fase 2/5 · Épica G · Continuación de U32**
+
+U32 hizo real el `stop`… en el contrato estático. Pero el propio comentario del runtime lo decía: *"las familias que se resuelven asincrónicamente —pagos, descuentos, integraciones, MCP— se agregan fuera del contrato estático y conservan sus propias puertas"*. Esas familias **pasaban sin tocar**. Una aseguradora bloqueada seguía pudiendo generar un enlace de pago: se le cerró la reserva y se le dejó el cobro.
+
+El contrato ahora expone `writersBlocked`, y el turno lo aplica a la lista **completa** de tools, no sólo a las estáticas.
+
+**ADR-044 — En un perfil bloqueado, desconocido es no.**
+El filtro conserva únicamente lo que tiene política revisada **y** efecto `read`. Una tool sin política —una MCP, por ejemplo— cae. En cualquier otro perfil eso sería demasiado agresivo; en uno bloqueado es la única lectura correcta de "no puede comprometer al negocio con nada".
+
+**Pruebas** — `effective-capability.spec.ts` (+1 caso): el perfil bloqueado expone `writersBlocked: true` y el no bloqueado de la misma industria `false` — sin la comparación, un flag siempre-verdadero pasaría la prueba.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared)  → exit 0
+jest src/app.bootstrap.spec.ts → 1/1 ✅ (DI limpio)
+jest apps/api → 2627 passed / 290 suites, 0 fallos
+```

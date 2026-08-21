@@ -10673,7 +10673,29 @@
     "provider_mindbody": "Mindbody (gyms)",
     "provider_mindbody_desc": "Sync classes and schedules for chat bookings.",
     "provider_cliniko": "Cliniko (health)",
-    "provider_cliniko_desc": "Appointment types and availability. No clinical record access (avoids HIPAA)."
+    "provider_cliniko_desc": "Appointment types and availability. No clinical record access (avoids HIPAA).",
+    "testFirst": "Test the connection before syncing",
+    "health": {
+      "status_healthy": "Working",
+      "status_stale": "Stale data",
+      "status_degraded": "Having trouble",
+      "status_unhealthy": "Not working",
+      "status_unavailable": "Untested",
+      "credentialValidated": "Credential validated",
+      "credentialUnverified": "Credential not validated — use Test",
+      "lastSync": "Last data pulled: {age}",
+      "neverSynced": "never",
+      "ageSeconds": "{count}s ago",
+      "ageMinutes": "{count} min ago",
+      "ageHours": "{count} h ago",
+      "ageDays": "{count} days ago",
+      "scopesMissing": "Missing permissions: {scopes}. Reads come back empty without saying why.",
+      "scopesUnknown": "We do not know yet which permissions the provider granted. Test the connection.",
+      "scopesSatisfied": "Granted permissions: {scopes}",
+      "lastError": "Last provider error: {code}",
+      "circuit_open": "Paused after repeated failures. It retries on its own; test the connection to bring it back sooner.",
+      "circuit_half_open": "Retrying after repeated failures."
+    }
   },
   "mcp": {
     "title": "MCP (Model Context Protocol)",

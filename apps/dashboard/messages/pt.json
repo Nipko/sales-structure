@@ -10673,7 +10673,29 @@
     "provider_mindbody": "Mindbody (academias)",
     "provider_mindbody_desc": "Sincronize aulas e horários para reservas pelo chat.",
     "provider_cliniko": "Cliniko (saúde)",
-    "provider_cliniko_desc": "Tipos de consulta e disponibilidade. Sem acesso ao prontuário (evita HIPAA)."
+    "provider_cliniko_desc": "Tipos de consulta e disponibilidade. Sem acesso ao prontuário (evita HIPAA).",
+    "testFirst": "Teste a conexão antes de sincronizar",
+    "health": {
+      "status_healthy": "Funcionando",
+      "status_stale": "Dados antigos",
+      "status_degraded": "Com problemas",
+      "status_unhealthy": "Não funciona",
+      "status_unavailable": "Não testada",
+      "credentialValidated": "Credencial validada",
+      "credentialUnverified": "Credencial não validada — use Testar",
+      "lastSync": "Último dado obtido: {age}",
+      "neverSynced": "nunca",
+      "ageSeconds": "há {count} s",
+      "ageMinutes": "há {count} min",
+      "ageHours": "há {count} h",
+      "ageDays": "há {count} dias",
+      "scopesMissing": "Faltam permissões: {scopes}. A leitura volta vazia sem dizer por quê.",
+      "scopesUnknown": "Ainda não sabemos quais permissões o provedor concedeu. Teste a conexão.",
+      "scopesSatisfied": "Permissões concedidas: {scopes}",
+      "lastError": "Último erro do provedor: {code}",
+      "circuit_open": "Pausada após várias falhas seguidas. Ela tenta de novo sozinha; teste a conexão para reativá-la antes.",
+      "circuit_half_open": "Tentando novamente após várias falhas."
+    }
   },
   "mcp": {
     "title": "MCP (Model Context Protocol)",

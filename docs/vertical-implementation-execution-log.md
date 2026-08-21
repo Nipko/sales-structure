@@ -1132,6 +1132,31 @@ npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2739 passed / 294 suites (1 skipped), 0 fallos
 ```
 
+### U38 — Había que probar para poder probar
+
+**Pendiente interno 9**
+
+El botón **Probar** sólo aparecía cuando el proveedor estaba `connected`, y `connected` exige `credentialValidated`, que se enciende **probando**. Peor: guardar la credencial resetea la salud a "sin validar" a propósito —guardar no es haber verificado—, así que **después de guardar la única acción disponible era volver a guardar**. Un callejón sin salida cerrado sobre sí mismo.
+
+La causa es una confusión de dos momentos con un solo nombre. Ahora se llaman distinto: `configured` (hay credencial guardada) enciende la fila de acciones; `connected` (además se validó contra el proveedor) es lo único que habilita **Sincronizar**, porque sincronizar antes de validar sólo produce un error del proveedor. El camino queda dicho en la pantalla: Guardar → Probar → Sincronizar.
+
+**La salud ya se calculaba y nadie la mostraba.** `materializeIntegrationHealth` sabe desde hace un release si la credencial fue validada, qué permisos concedió el proveedor de los que hacen falta, de cuándo es el último dato traído y si el circuito está abierto. El dueño veía "Conectado" o nada: una integración con el token vencido, con la mitad de los permisos o sincronizada hace tres días se veía **idéntica** a una sana, y se enteraba por un cliente que preguntó por un horario que no existía. El panel nuevo muestra estado, validación, frescura con antigüedad legible, permisos faltantes, último error y circuito.
+
+**Y ofrecía las tres integraciones a todo el mundo.** Una peluquería veía "Toast (POS de restaurante)" como algo que podría conectar. Ofrecer lo que no aplica no es neutral: le enseña al dueño que la pantalla no sabe qué negocio tiene, y entonces tampoco confía en lo que sí le muestra. El filtro sale del **manifiesto** —la misma fuente que decide qué puede hacer el agente—, así que un subtipo que mañana gane `restaurants` ve Toast sin tocar esta pantalla. Dos excepciones deliberadas: lo ya configurado se muestra **siempre** (si no, un tenant que migró de vertical pierde el botón de desconectar y la credencial queda viva sin pantalla que la administre), y sin config resuelta no se filtra nada.
+
+Detalle que faltaba: **Probar es lo que actualiza la salud**, y la pantalla no recargaba — el panel mostraba el estado anterior a la prueba recién hecha.
+
+**Pruebas** — `vertical-integrations.ui-contract.spec.ts` (nuevo, 14): lee el fuente de la página igual que `vertical-catalog-consumers.spec.ts`, porque lo que hay que fijar es que la pantalla no vuelva a decidir con `connected` lo que se decide con `configured`. Verifica también que los grupos de tools que nombra existan de verdad en el manifiesto — uno mal escrito escondería la integración para siempre y en silencio.
+
+**i18n**: `verticalIntegrations.health.*` y `testFirst` en los 4 idiomas.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en api y dashboard
+jest apps/api       → 2753 passed / 295 suites (1 skipped), 0 fallos
+jest apps/dashboard →  212 passed /  26 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1236,7 +1261,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~6~~ | ✅ cerrado en **U36** |
 | ~~7~~ | ✅ cerrado en **U37** |
 | ~~8~~ | ✅ cerrado en **U37** |
-| 9 | UI de integraciones: probar después de guardar, mostrar health/scopes/freshness, filtrar por subtipo |
+| ~~9~~ | ✅ cerrado en **U38** |
 | 10 | ◐ Reclasificar las tools externas de lectura y someterlas al contrato efectivo — **hecho en U33** para las 4 lecturas de proveedor (Toast/Mindbody/Cliniko: reclasificadas como no comprometedoras y publicadas por el contrato con salud/scopes/frescura). Queda el resto de la superficie externa: MCP (hoy opaco, sin política por tool) y las lecturas del Channel Manager |
 | 11 | Migrar los consumidores de `normalizePhoneE164` al `TenantRegionalProfile`; eliminar el default `+57`; UI/API de revisión regional |
 | 12 | Eliminar fallbacks productivos COP / es-CO / Bogotá fuera de decisiones regionales explícitas |

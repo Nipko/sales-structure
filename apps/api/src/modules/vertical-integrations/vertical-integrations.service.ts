@@ -291,6 +291,13 @@ export class VerticalIntegrationsService {
                     clientSecret: vi[p].clientSecret ? '***' : undefined,
                     apiKey: vi[p].apiKey ? '***' : undefined,
                     password: vi[p].password ? '***' : undefined,
+                    // `configured` = hay credencial guardada. `connected` =
+                    // además se validó contra el proveedor. El panel los
+                    // confundía y dejaba el botón "Probar" detrás de
+                    // `connected`, que sólo se enciende PROBANDO: había que
+                    // probar para poder probar. Guardar y validar son dos
+                    // momentos distintos y ahora se nombran distinto.
+                    configured: true,
                     connected: health.connected,
                     status: health.status,
                     health,

@@ -11,8 +11,29 @@ import {
     Plug, Loader2, CheckCircle2, RefreshCw, Trash2, Plug2,
     UtensilsCrossed, Dumbbell, Stethoscope, AlertTriangle,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { resolveVerticalCapabilityManifest } from "@parallext/shared";
+import { IntegrationHealthPanel } from "./_components/IntegrationHealthPanel";
 
 type Provider = "toast" | "mindbody" | "cliniko";
+
+/**
+ * De que rubro es cada proveedor.
+ *
+ * La pagina listaba los tres a todo el mundo: una peluqueria veia "Toast (POS
+ * de restaurante)" y "Cliniko (salud)" como cosas que podria conectar. Ofrecer
+ * lo que no aplica no es neutral - le ensena al dueno que la pantalla no sabe
+ * que negocio tiene, y entonces tampoco confia en lo que si le muestra.
+ *
+ * El grupo de tools sale del manifiesto, que es la misma fuente que decide que
+ * puede hacer el agente. Si manana un subtipo nuevo gana `restaurants`, Toast
+ * aparece solo.
+ */
+const PROVIDER_TOOL_GROUP: Record<Provider, string> = {
+    toast: "restaurants",
+    mindbody: "gyms",
+    cliniko: "treatments",
+};
 
 interface Field { key: string; label: string; secret?: boolean; placeholder?: string }
 
@@ -47,6 +68,22 @@ export default function VerticalIntegrationsPage() {
     const t = useTranslations("verticalIntegrations");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
+    const { verticalConfig } = useAuth();
+
+    // Los grupos de tools que el rubro del tenant concede. Sin config resuelta
+    // no se filtra: esconder integraciones por no saber el rubro seria peor que
+    // mostrar una de mas.
+    const tenantToolGroups = (() => {
+        const industry = verticalConfig?.industry;
+        if (!industry) return null;
+        try {
+            return new Set(
+                resolveVerticalCapabilityManifest(industry, verticalConfig?.subType).toolGroups as string[],
+            );
+        } catch {
+            return null;
+        }
+    })();
 
     const [configs, setConfigs] = useState<Record<string, any>>({});
     const [forms, setForms] = useState<Record<string, Record<string, string>>>({});
@@ -88,6 +125,9 @@ export default function VerticalIntegrationsPage() {
             const res: any = await api.testVerticalIntegration(activeTenantId, p);
             const ok = res?.success && res.data?.ok;
             flash(!!ok, ok ? t("testOk") : `${t("testFailed")}${res?.data?.message ? `: ${res.data.message}` : ""}`);
+            // Probar es lo que ACTUALIZA la salud: sin recargar, el panel
+            // seguia mostrando el estado anterior a la prueba recien hecha.
+            await load();
         } catch (e: any) { flash(false, e?.message || t("testFailed")); }
         setBusy("");
     };
@@ -145,8 +185,20 @@ export default function VerticalIntegrationsPage() {
                 <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
             ) : (
                 <div className="space-y-5">
-                    {PROVIDERS.map(({ key, icon: Icon, fields }) => {
+                    {PROVIDERS.filter(({ key }) => {
+                        // Lo ya configurado se muestra SIEMPRE, aunque el rubro
+                        // haya cambiado despues: si no, un tenant que migro de
+                        // vertical pierde el boton de desconectar y la
+                        // credencial queda viva sin pantalla que la administre.
+                        if (configs[key]?.configured) return true;
+                        if (!tenantToolGroups) return true;
+                        return tenantToolGroups.has(PROVIDER_TOOL_GROUP[key]);
+                    }).map(({ key, icon: Icon, fields }) => {
                         const connected = !!configs[key]?.connected;
+                        // Hay credencial guardada. NO significa que funcione:
+                        // esa es la distincion que faltaba y que dejaba el
+                        // boton "Probar" detras de haber probado.
+                        const configured = !!configs[key]?.configured;
                         const form = forms[key] || {};
                         return (
                             <div key={key} className="rounded-[14px] border border-border bg-card p-6">
@@ -174,7 +226,7 @@ export default function VerticalIntegrationsPage() {
                                             <input
                                                 type={f.secret ? "password" : "text"}
                                                 className={inputCls}
-                                                placeholder={f.secret && connected ? "••••••" : (f.placeholder || "")}
+                                                placeholder={f.secret && configured ? "••••••" : (f.placeholder || "")}
                                                 value={form[f.key] ?? ""}
                                                 onChange={(e) => setField(key, f.key, e.target.value)}
                                             />
@@ -182,18 +234,25 @@ export default function VerticalIntegrationsPage() {
                                     ))}
                                 </div>
 
+                                {configured && <IntegrationHealthPanel health={configs[key]?.health} />}
+
                                 <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border">
                                     <button onClick={() => save(key)} disabled={busy === `save:${key}`}
                                         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60">
                                         {busy === `save:${key}` ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} {t("save")}
                                     </button>
-                                    {connected && (
+                                    {configured && (
                                         <>
                                             <button onClick={() => test(key)} disabled={busy === `test:${key}`}
                                                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50">
                                                 {busy === `test:${key}` ? <Loader2 size={15} className="animate-spin" /> : <Plug2 size={15} />} {t("test")}
                                             </button>
-                                            <button onClick={() => sync(key)} disabled={busy === `sync:${key}`}
+                                            {/* Sincronizar antes de validar solo
+                                                produce un error del proveedor;
+                                                el camino es Probar y despues
+                                                Sincronizar. */}
+                                            <button onClick={() => sync(key)} disabled={busy === `sync:${key}` || !connected}
+                                                title={connected ? undefined : t("testFirst")}
                                                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50">
                                                 {busy === `sync:${key}` ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} {t("sync")}
                                             </button>

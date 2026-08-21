@@ -10673,7 +10673,29 @@
     "provider_mindbody": "Mindbody (salles de sport)",
     "provider_mindbody_desc": "Synchronisez les cours et horaires pour les réservations par chat.",
     "provider_cliniko": "Cliniko (santé)",
-    "provider_cliniko_desc": "Types de rendez-vous et disponibilités. Pas d'accès au dossier clinique (évite HIPAA)."
+    "provider_cliniko_desc": "Types de rendez-vous et disponibilités. Pas d'accès au dossier clinique (évite HIPAA).",
+    "testFirst": "Testez la connexion avant de synchroniser",
+    "health": {
+      "status_healthy": "Fonctionne",
+      "status_stale": "Données anciennes",
+      "status_degraded": "En difficulté",
+      "status_unhealthy": "Ne fonctionne pas",
+      "status_unavailable": "Non testée",
+      "credentialValidated": "Identifiant validé",
+      "credentialUnverified": "Identifiant non validé — utilisez Tester",
+      "lastSync": "Dernière donnée récupérée : {age}",
+      "neverSynced": "jamais",
+      "ageSeconds": "il y a {count} s",
+      "ageMinutes": "il y a {count} min",
+      "ageHours": "il y a {count} h",
+      "ageDays": "il y a {count} jours",
+      "scopesMissing": "Permissions manquantes : {scopes}. La lecture revient vide sans expliquer pourquoi.",
+      "scopesUnknown": "Nous ne savons pas encore quelles permissions le fournisseur a accordées. Testez la connexion.",
+      "scopesSatisfied": "Permissions accordées : {scopes}",
+      "lastError": "Dernière erreur du fournisseur : {code}",
+      "circuit_open": "Mise en pause après plusieurs échecs. Elle réessaie seule ; testez la connexion pour la réactiver plus tôt.",
+      "circuit_half_open": "Nouvel essai après plusieurs échecs."
+    }
   },
   "mcp": {
     "title": "MCP (Model Context Protocol)",

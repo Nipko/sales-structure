@@ -10677,7 +10677,29 @@
     "provider_mindbody": "Mindbody (gimnasios)",
     "provider_mindbody_desc": "Sincroniza clases y horarios para reservas por chat.",
     "provider_cliniko": "Cliniko (salud)",
-    "provider_cliniko_desc": "Tipos de cita y disponibilidad. No accede al historial clínico (evita HIPAA)."
+    "provider_cliniko_desc": "Tipos de cita y disponibilidad. No accede al historial clínico (evita HIPAA).",
+    "testFirst": "Probá la conexión antes de sincronizar",
+    "health": {
+      "status_healthy": "Funcionando",
+      "status_stale": "Datos viejos",
+      "status_degraded": "Con problemas",
+      "status_unhealthy": "No funciona",
+      "status_unavailable": "Sin probar",
+      "credentialValidated": "Credencial validada",
+      "credentialUnverified": "Credencial sin validar — usá Probar",
+      "lastSync": "Último dato traído: {age}",
+      "neverSynced": "nunca",
+      "ageSeconds": "hace {count} s",
+      "ageMinutes": "hace {count} min",
+      "ageHours": "hace {count} h",
+      "ageDays": "hace {count} días",
+      "scopesMissing": "Faltan permisos: {scopes}. La lectura vuelve vacía sin decir por qué.",
+      "scopesUnknown": "Todavía no sabemos qué permisos concedió el proveedor. Probá la conexión.",
+      "scopesSatisfied": "Permisos concedidos: {scopes}",
+      "lastError": "Último error del proveedor: {code}",
+      "circuit_open": "Pausada tras varios fallos seguidos. Se reintenta sola; probá la conexión para reactivarla antes.",
+      "circuit_half_open": "Reintentando después de varios fallos."
+    }
   },
   "mcp": {
     "title": "MCP (Model Context Protocol)",

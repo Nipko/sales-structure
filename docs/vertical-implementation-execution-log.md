@@ -1288,6 +1288,32 @@ npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2795 passed / 298 suites (1 skipped), 0 fallos
 ```
 
+### U44 — Qué conversaciones sabe sostener un perfil: nadie lo sabía
+
+**Pendientes internos 14 y 15**
+
+Cada pieza de la verdad de un subtipo vivía en su registro: el manifiesto sabe sus capacidades y rutas, la terminología sus sustantivos, el perfil comercial hasta dónde se vende, el eval pack qué medirle. **Ninguno sabía qué conversaciones tiene que sostener** — qué intenciones reconoce, qué datos necesita para cada una, cuáles de esos datos son sensibles, cuáles se guardan y cuáles se olvidan al terminar el turno, qué confirma antes de comprometerse, y qué hace cuando no puede. Eso se resolvía en el prompt: texto libre, distinto en cada perfil, imposible de verificar.
+
+Los cinco contratos (`SlotSchema`, `IntentContract`, `NavigationPolicy`, `VerticalPromptContractV2`, `CertificationEvidenceV2`) y los 76 borradores salieron en la misma unidad porque separarlos habría dado un tipo sin un solo dato dentro.
+
+**Los 76 se DERIVAN, no se escriben.** Un contrato escrito a mano para 76 perfiles son 76 oportunidades de prometer por escrito algo que el runtime no hace. Todo lo que se puede deducir de un registro existente se deduce; **lo que no, queda marcado como hueco explícito (`unresolved`) en vez de rellenarse con algo plausible** — un hueco visible se cierra, uno relleno se olvida.
+
+La regla que sostiene lo demás: **una intención sólo existe si su familia de tools existe**. La familia es la evidencia de que el runtime puede sostener esa conversación; declarar una sin ella sería exactamente el defecto que este contrato viene a cerrar. Y el `scope` comercial es lo único que autoriza una afirmación: un perfil de captación no puede prometer que reserva **aunque tenga las tools para hacerlo**.
+
+**`SlotSchema` obliga a decir cuatro cosas de cada dato** que el prompt nunca decía: qué tan delicado es (`public`/`personal`/`sensitive`/`regulated`), de dónde sale (`customer`/`tool`/`derived`/`tenant_config`), cuánto vive (`turn`/`conversation`/`record`/`never`) y si hay que repetírselo al cliente antes de usarlo.
+
+**Ninguno nace certificado, y no puede.** `CertificationEvidenceV2` incluye un requisito —corrida end-to-end contra un tenant real— que **una derivación no puede satisfacer**: sale `satisfied: false` siempre, por diseño. Los 7 perfiles bloqueados salen `blocked`, no `draft`. Marcar certificado sin evidencia E2E es de lo que el encargo prohíbe explícitamente, y acá es imposible por construcción, no por disciplina.
+
+**Un hallazgo del propio trabajo:** son 76 ids y **75 contratos**. `veterinaria/peluqueria_canina` es un alias de `pet_services/peluqueria`, y que el alias tuviera contrato propio sería la misclasificación que el alias existe para reparar — una peluquería canina con persona clínica y "recorrido del paciente". La prueba lo fija con ese nombre.
+
+**Pruebas** — `vertical-domain-contract.spec.ts` (nuevo, 96): los 76 perfiles uno por uno contra su manifiesto; toda intención que compromete pide confirmación explícita y **puede terminar en una persona** (sin estado terminal humano, un fallo deja al cliente esperando); todo deep link apunta a una ruta que el perfil tiene; cada slot declara sensibilidad, origen y persistencia; y `domainContractGaps` devuelve **motivos, no un booleano** — "no está listo" sin el motivo es lo que hace que nadie lo cierre nunca.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared y api
+jest apps/api → 2891 passed / 299 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1397,8 +1423,8 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~11~~ | ✅ cerrado entre **U40** (consumidores + default `+57`) y **U41** (revisión regional: API, cron y pantalla) |
 | ~~12~~ | ✅ cerrado en **U42** |
 | ~~13~~ | ✅ cerrado en **U43** |
-| 14 | `VerticalPromptContractV2`, `IntentContract`, `SlotSchema`, `NavigationPolicy`, `CertificationEvidenceV2` |
-| 15 | Los 76 contratos de dominio en `draft` |
+| ~~14~~ | ✅ cerrado en **U44** |
+| ~~15~~ | ✅ cerrado en **U44** |
 | 16 | Evals ≥25 escenarios por perfil e idioma prioritario |
 | 17 | Aplicar `canBook`, `canCancel`, `canCheckStock`, `canRecommend` en publicación y executor |
 | 18 | Writers CRM mínimos + Active Objects para todos los writers |

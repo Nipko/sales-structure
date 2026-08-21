@@ -23,6 +23,7 @@ export * from './country-language-pack';
 
 // ---- The single registry for what a subtype is ----
 export * from './subtype-experience-profile';
+export * from './vertical-domain-contract';
 
 // ---- Effective agent capability: subtype x agent x plan x readiness ----
 export * from './effective-capability-contract';

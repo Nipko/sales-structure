@@ -689,3 +689,28 @@ npx tsc --noEmit (api + dashboard)  → exit 0
 jest apps/api      → 2600 passed / 288 suites, 0 fallos
 jest apps/dashboard → 172 passed / 21 suites, 0 fallos
 ```
+
+## Cierre de Fase 2 — estado paquete por paquete
+
+El plan no enuncia un "Gate 2" explícito: la aceptación de la Fase 2 es la columna *Aceptación* de cada paquete de §8.3. Estado al cierre:
+
+| Paquete P0 | Estado | Dónde |
+|---|---|---|
+| Reservas alojamiento | ✅ | U14 (registro global) + U20 (crear/cancelar desde el registro) |
+| Turismo semántico | ✅ parcial | U13 (etiquetas) + U14 (objetos). *Alojamientos/Habitaciones y plantillas hotel/STR son terminología → Fase 3* |
+| Tours global | ✅ | U14 |
+| Boarding pet | ✅ | U2 (tools) sobre el motor existente; ocupación/agrupamiento → Fase 5 |
+| Alquiler vehículo | ✅ | U2 (tools) sobre el motor existente; depósito/contrato/calendario de flota → Fase 5 |
+| Fotos Listings | ✅ | U15 |
+| Fotografía | ✅ | U16 |
+| Farmacia | ✅ | U17 (perfil sigue STOP por diseño: no vende dispensación) |
+| Prompt correctness | ✅ | U18 |
+| Plan/readiness | ✅ | U12 (readiness bloqueante) + U19 (plan en navegación) |
+| Catálogo/pedidos | ✅ | U19 (guarda de los 8 perfiles) + correcciones previas del writer |
+| Resource Rentals | ✅ | U2 |
+| Tool honesty | ✅ | U4 + U5 |
+| Regional foundation | ✅ | U7 |
+| Consentimiento/RAG | ✅ | U8 + U9 |
+| **Channel Manager** | 🔒 **BLOQUEADO** | Write-back a Hostaway exige credenciales sandbox y certificación por versión de API. Queda **fail-closed** con motivo tipado (`channel_manager_owns_calendar`) y handoff honesto — U3, reafirmado en U20 |
+
+Un solo paquete queda abierto y su bloqueo es externo, no de código: sin sandbox no hay forma de probar el write-back, y publicarlo sin probarlo sería exactamente la doble reserva que el fail-closed evita.

@@ -4142,3 +4142,79 @@ BEGIN
     END LOOP;
 END
 $native_evidence_opportunity_triggers$;
+
+
+-- ============================================
+-- ANDAMIAJE DE INTEGRACIONES (provider-neutral)
+-- ============================================
+-- Cada integracion resolvia los mismos cuatro problemas de nuevo y distinto:
+-- no perder una escritura con el proveedor caido, no procesar dos veces el
+-- mismo webhook, saber si los dos lados siguen diciendo lo mismo, y probar el
+-- adapter sin credenciales. Cuatro problemas x N proveedores = N formas
+-- distintas de fallar.
+--
+-- Ninguna de estas tablas sabe que es Hostaway, Toast o Cliniko: el contrato es
+-- sobre la MECANICA y el adapter aporta el significado.
+
+-- ---- Outbox: la escritura que todavia no salio ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_outbox" (
+    "id"               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "provider"         VARCHAR(40) NOT NULL,
+    "operation"        VARCHAR(80) NOT NULL,
+    -- Derivada del hecho de negocio, no de un contador: reintentar es repetir
+    -- la MISMA escritura, y una clave nueva por intento crea una reserva nueva
+    -- en cada reintento — el modo de falla exacto que un outbox evita.
+    "idempotency_key"  VARCHAR(255) NOT NULL,
+    "payload"          JSONB NOT NULL DEFAULT '{}',
+    "status"           VARCHAR(20) NOT NULL DEFAULT 'pending',
+    "attempts"         INTEGER NOT NULL DEFAULT 0,
+    "next_attempt_at"  TIMESTAMPTZ,
+    "lease_expires_at" TIMESTAMPTZ,
+    "last_error"       TEXT,
+    "external_id"      VARCHAR(255),
+    "created_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- La clave es unica POR PROVEEDOR: dos proveedores pueden usar el mismo
+-- contador y no hay nada que lo impida.
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_integration_outbox_key"
+    ON "{{SCHEMA_NAME}}"."integration_outbox" ("provider", "idempotency_key");
+CREATE INDEX IF NOT EXISTS "idx_integration_outbox_claimable"
+    ON "{{SCHEMA_NAME}}"."integration_outbox" ("status", "next_attempt_at")
+ WHERE "status" IN ('pending', 'retrying');
+
+-- ---- Webhook inbox: el evento que llego ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_webhook_inbox" (
+    "id"                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "provider"          VARCHAR(40) NOT NULL,
+    "external_event_id" VARCHAR(255) NOT NULL,
+    "event_type"        VARCHAR(80) NOT NULL,
+    "payload"           JSONB NOT NULL DEFAULT '{}',
+    "status"            VARCHAR(20) NOT NULL DEFAULT 'received',
+    "received_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "processed_at"      TIMESTAMPTZ,
+    "last_error"        TEXT
+);
+-- Un proveedor reenvia cuando no recibe un 200 a tiempo, y una reserva
+-- procesada dos veces es una reserva doble.
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_integration_webhook_event"
+    ON "{{SCHEMA_NAME}}"."integration_webhook_inbox" ("provider", "external_event_id");
+CREATE INDEX IF NOT EXISTS "idx_integration_webhook_pending"
+    ON "{{SCHEMA_NAME}}"."integration_webhook_inbox" ("status", "received_at")
+ WHERE "status" = 'received';
+
+-- ---- Reconciliacion: la diferencia entre los dos lados ----
+-- Se guarda el REPORTE, no la correccion: corregir automaticamente es como una
+-- lectura desactualizada del proveedor borra una reserva local que si existe.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_reconciliations" (
+    "id"           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "provider"     VARCHAR(40) NOT NULL,
+    "checked_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "local_count"  INTEGER NOT NULL DEFAULT 0,
+    "remote_count" INTEGER NOT NULL DEFAULT 0,
+    "drift"        JSONB NOT NULL DEFAULT '[]',
+    -- Una comparacion que no se pudo completar NO es "sin drift".
+    "incomplete"   BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS "idx_integration_reconciliations_provider"
+    ON "{{SCHEMA_NAME}}"."integration_reconciliations" ("provider", "checked_at" DESC);

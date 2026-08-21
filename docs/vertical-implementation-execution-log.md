@@ -1480,6 +1480,40 @@ jest apps/api       → 2992 passed / 304 suites (1 skipped), 0 fallos
 jest apps/dashboard →  220 passed /  27 suites, 0 fallos
 ```
 
+### U51 — Cuatro problemas × N proveedores = N formas distintas de fallar
+
+**Pendiente interno 20**
+
+Cada integración que se agregó resolvió los mismos cuatro problemas **de nuevo y distinto**: cómo no perder una escritura con el proveedor caído, cómo no procesar dos veces el mismo webhook, cómo saber si los dos lados siguen diciendo lo mismo, y cómo probar el adapter sin credenciales.
+
+**Nada de este andamiaje sabe qué es Hostaway, Toast o Cliniko.** El contrato es sobre la mecánica —una escritura pendiente, un evento recibido, una comparación— y el adapter aporta el significado. Un contrato que nombra al proveedor termina con un `if (provider === 'x')` por cada rareza, y ésa es la forma en que un andamiaje compartido deja de serlo.
+
+**Los escritores externos están APAGADOS**, y es lo primero que hay que entender del diseño:
+- La allowlist es **por proveedor**, no un booleano global: certificar Hostaway no certifica Toast, y un `INTEGRATIONS_WRITE=true` habría encendido los dos.
+- Es una variable de **plataforma**, no de tenant: encenderlo porque alguien conectó credenciales es cómo se manda la primera escritura a producción sin que nadie la haya probado.
+- Con el interruptor apagado el outbox **igual encola** (`suppressed`) y la intención queda registrada. Descartarla sería perder la operación en silencio; el día que el proveedor se certifique, sale.
+
+**Las decisiones que hacen que esto funcione, y el modo de falla de cada una:**
+- **La clave de idempotencia se deriva del hecho de negocio**, no de un contador. Reintentar es repetir la MISMA escritura; un UUID por intento crea **una reserva nueva en cada reintento** — exactamente el modo de falla que un outbox existe para evitar. Una clave incompleta **tira** en vez de colisionar, porque una clave con un hueco deduplica dos escrituras que no son la misma.
+- **El arrendamiento vence.** Sin `lease_expires_at`, un worker que muere deja una escritura en `in_flight` para siempre y un reinicio en el momento equivocado congela una reserva hasta que alguien la mira a mano.
+- **La espera tiene techo.** Importa más que la curva: sin él, el octavo intento cae a horas y una caída de diez minutos del proveedor deja escrituras esperando media tarde.
+- **Morir es una decisión.** Una escritura que reintenta para siempre es una que nadie mira nunca.
+- **El dedupe de webhooks va por `(proveedor, evento)`**, no sólo por el id: dos proveedores pueden usar el mismo contador y no hay nada que lo impida. Un proveedor reenvía cuando no recibe un 200 a tiempo, y una reserva procesada dos veces es una reserva doble.
+- **La reconciliación reporta y no corrige.** Corregir automáticamente es cómo una lectura desactualizada del proveedor borra una reserva local que sí existe. Y "sin drift" e "incompleta" son campos distintos: confundirlos declara sanas dos integraciones que nunca se compararon.
+
+**El kit de contract-test verifica lo que se puede verificar SIN credenciales** —que `list` devuelva algo iterable con ids, que las claves sean deterministas, que `write` no se declare si no está implementado— y dice explícitamente qué queda fuera. Un adapter de sólo lectura es válido, que es el estado de todos hoy; declarar `write` y tirar sería peor, porque el outbox lo trataría como entregable y lo reintentaría ocho veces.
+
+**Un defecto del propio kit, encontrado al probarlo:** verificar un adapter sin proveedor hacía **explotar el kit** en vez de reportarlo. El adapter que más falta revisar habría sido justo el que no se podía revisar.
+
+**Pruebas** — `integration-scaffolding.spec.ts` (nuevo, 24). Las tres tablas nuevas viven en el schema del tenant, así que el purge —que dropea el schema entero— no necesita clasificarlas; la puerta de clasificación es sólo para tablas públicas, y sus 28 pruebas siguen verdes.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared y api
+jest apps/api → 3016 passed / 305 suites (1 skipped), 0 fallos
+jest app.bootstrap → 1 passed — DI limpio con el módulo global nuevo
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1595,4 +1629,4 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~17~~ | ✅ cerrado en **U46** |
 | ~~18~~ | ✅ cerrado entre **U47** (writers CRM) y **U48** (Active Objects) |
 | 19 | ◐ **Hecho en U49** (alquiler y guardería) y **U50** (superficie de `professional_case`). Queda: plantillas/semántica de turismo, y la analítica restante |
-| 20 | Scaffolding provider-neutral: outbox, webhook inbox, idempotencia, reconciliación y contract-test kit — con los writers externos apagados hasta tener sandbox |
+| ~~20~~ | ✅ cerrado en **U51** |

@@ -25,6 +25,7 @@ export * from './country-language-pack';
 export * from './subtype-experience-profile';
 export * from './vertical-domain-contract';
 export * from './resource-rental-details';
+export * from './integration-scaffolding';
 
 // ---- Effective agent capability: subtype x agent x plan x readiness ----
 export * from './effective-capability-contract';

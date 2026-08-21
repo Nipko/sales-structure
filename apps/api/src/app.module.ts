@@ -18,6 +18,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { RegionalProfileModule } from './modules/tenants/regional-profile.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { ChannelsModule } from './modules/channels/channels.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { InboundQueueModule } from './modules/inbound/inbound-queue.module';
@@ -199,6 +200,7 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         // Business modules
         AuthModule,
         RegionalProfileModule,
+        IntegrationsModule,
         TenantsModule,
         ChannelsModule,
         ConversationsModule,

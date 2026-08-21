@@ -31,6 +31,11 @@ export interface ToolPolicy {
     humanApproval: ToolHumanApproval;
     agentTestAllowed: boolean;
     /**
+     * De dónde viene la tool, y por lo tanto **qué puertas tiene que pasar
+     * además** de las de su política. Ver `ToolOrigin`.
+     */
+    origin: ToolOrigin;
+    /**
      * Si esta tool **compromete al negocio** frente al cliente.
      *
      * NO es lo mismo que escribir una fila, y confundir las dos cosas ya salió
@@ -49,10 +54,19 @@ export interface ToolPolicy {
     commitsBusiness: boolean;
 }
 
-type ToolPolicyOverrides = Partial<ToolPolicy>;
-type ToolPolicyEntry = readonly [name: string, policy: ToolPolicy];
+/**
+ * Lo que una entrada del registro declara a mano.
+ *
+ * `origin` NO está: lo estampa `buildRegistry` desde la taxonomía de más
+ * abajo. Que no se pueda escribir por entrada es a propósito — una tool
+ * vertical marcada `core` a mano sería exactamente el error que la separación
+ * existe para impedir, y nadie lo vería al leer la línea.
+ */
+type ToolPolicyDeclaration = Omit<ToolPolicy, 'origin'>;
+type ToolPolicyOverrides = Partial<ToolPolicyDeclaration>;
+type ToolPolicyEntry = readonly [name: string, policy: ToolPolicyDeclaration];
 
-const publicRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
+const publicRead = (overrides: ToolPolicyOverrides = {}): ToolPolicyDeclaration => ({
     effect: 'read',
     dataClassification: 'public',
     assurance: 'A0',
@@ -68,7 +82,7 @@ const publicRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
     ...overrides,
 });
 
-const contactRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
+const contactRead = (overrides: ToolPolicyOverrides = {}): ToolPolicyDeclaration => ({
     ...publicRead(),
     dataClassification: 'contact',
     assurance: 'A1',
@@ -77,13 +91,13 @@ const contactRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
     ...overrides,
 });
 
-const sensitiveRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
+const sensitiveRead = (overrides: ToolPolicyOverrides = {}): ToolPolicyDeclaration => ({
     ...contactRead(),
     dataClassification: 'sensitive',
     ...overrides,
 });
 
-const contactWrite = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
+const contactWrite = (overrides: ToolPolicyOverrides = {}): ToolPolicyDeclaration => ({
     effect: 'write',
     dataClassification: 'contact',
     assurance: 'A1',
@@ -99,7 +113,7 @@ const contactWrite = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
     ...overrides,
 });
 
-const mediaWrite = (): ToolPolicy => contactWrite({
+const mediaWrite = (): ToolPolicyDeclaration => contactWrite({
     dataClassification: 'public',
     externalEffect: 'channel_write',
     confirmation: 'not_required',
@@ -107,20 +121,20 @@ const mediaWrite = (): ToolPolicy => contactWrite({
     commitsBusiness: false,
 });
 
-const stepUpSensitiveRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => sensitiveRead({
+const stepUpSensitiveRead = (overrides: ToolPolicyOverrides = {}): ToolPolicyDeclaration => sensitiveRead({
     assurance: 'A2',
     assuranceEnforcement: 'step_up',
     ...overrides,
 });
 
-const stepUpSensitiveWrite = (overrides: ToolPolicyOverrides = {}): ToolPolicy => contactWrite({
+const stepUpSensitiveWrite = (overrides: ToolPolicyOverrides = {}): ToolPolicyDeclaration => contactWrite({
     dataClassification: 'sensitive',
     assurance: 'A2',
     assuranceEnforcement: 'step_up',
     ...overrides,
 });
 
-const entry = (name: string, policy: ToolPolicy): ToolPolicyEntry => [name, Object.freeze(policy)];
+const entry = (name: string, policy: ToolPolicyDeclaration): ToolPolicyEntry => [name, Object.freeze(policy)];
 
 const TOOL_POLICY_ENTRIES = [
     // Appointments and calendar
@@ -441,11 +455,116 @@ const TOOL_POLICY_ENTRIES = [
     entry('get_case_status', stepUpSensitiveRead({ agentTestAllowed: true })),
 ] as const;
 
+/**
+ * ═══ DE DÓNDE VIENE UNA TOOL, QUE NO ES LO MISMO QUE QUÉ HACE ═══
+ *
+ * Las cuatro procedencias tienen **ciclos de autorización distintos**, y hasta
+ * acá vivían mezcladas en una sola lista:
+ *
+ * - `core` — existe para cualquier tenant, en cualquier industria. La decide el
+ *   dueño (encender la familia) y el plan. FAQs, políticas, base de
+ *   conocimiento, catálogo, agenda, CRM, pedidos, la llave de identidad.
+ * - `vertical` — sólo tiene sentido dentro de una industria. Suma una puerta:
+ *   el manifiesto del subtipo. Publicar `file_claim` en una peluquería no es un
+ *   permiso de más, es una tool que no significa nada ahí.
+ * - `provider` — existe **porque el tenant conectó un tercero**, y desaparece
+ *   cuando esa conexión se cae. Suma tres puertas propias: salud, alcance del
+ *   token y frescura del dato. Es por TOOL y no por familia: `restaurants` es
+ *   nativa y funciona sin Toast; `get_restaurant_menu` no.
+ * - `mcp` — la tool de un servidor de un tercero. No tiene entrada acá: se
+ *   reconoce por el prefijo y su política es la opaca. Lo que la autoriza es la
+ *   revisión humana **por tool**, no que el servidor esté conectado.
+ *
+ * Por qué importa que esté declarado y no se deduzca en el momento: el filtro
+ * del contrato calculaba en el sitio de publicación un conjunto de "las tools
+ * estáticas de las familias encendidas" y dejaba pasar **todo lo demás**. Eso
+ * es esta distinción, implementada como una resta de conjuntos en un solo
+ * lugar: si una familia se mueve de estática a asincrónica, la resta cambia de
+ * significado sin que nadie lo note y la guarda deja de guardar.
+ */
+export type ToolOrigin = 'core' | 'vertical' | 'provider' | 'mcp';
+
+/**
+ * Las tools que sólo tienen sentido dentro de una industria.
+ *
+ * La lista es explícita —y no derivada de las familias— porque la fuente de
+ * familias vive en `agent-tool-registry`, que importa las 25 definiciones de
+ * tools: encadenar el registro de política a eso lo volvería un módulo pesado
+ * y crearía un ciclo. La coherencia entre las dos listas la fija
+ * `tool-origin-taxonomy.spec.ts`, que sí puede mirar las dos.
+ */
+const VERTICAL_ORIGIN_TOOLS: ReadonlySet<string> = new Set([
+    // properties
+    'list_properties', 'check_property_availability', 'get_property_details',
+    'get_check_in_instructions', 'create_property_booking', 'cancel_property_booking',
+    'list_my_property_bookings', 'send_property_image',
+    // tours
+    'search_packages', 'get_package_details', 'check_package_availability',
+    'create_tour_booking', 'cancel_tour_booking', 'list_my_tour_bookings',
+    // treatments
+    'get_treatment_plan', 'list_upcoming_sessions',
+    // realEstate
+    'search_listings', 'get_listing_details', 'send_listing_image',
+    // vehicles
+    'search_vehicles', 'get_vehicle_details', 'send_vehicle_image', 'schedule_test_drive',
+    // pets
+    'list_pets_for_contact', 'register_pet', 'get_vaccination_status',
+    'triage_pet_emergency', 'update_pet',
+    // restaurants
+    'get_menu', 'get_promotions', 'place_order', 'cancel_order',
+    'check_order_status', 'list_my_orders',
+    // gyms
+    'get_membership_plans', 'get_class_schedule', 'get_my_membership',
+    'book_class', 'freeze_membership', 'cancel_class_booking',
+    // education
+    'get_courses', 'get_course_schedule', 'enroll_student',
+    'get_placement_test_link', 'cancel_enrollment', 'list_my_enrollments',
+    // insurance
+    'get_insurance_plans', 'calculate_quote', 'check_policy_status',
+    'file_claim', 'list_my_claims', 'cancel_quote',
+    // homeServices
+    'create_service_request', 'check_request_status', 'list_my_requests',
+    'cancel_service_request',
+    // petServices
+    'list_pet_services', 'check_daycare_availability',
+    // vehicleRentals
+    'check_vehicle_rental_availability', 'create_vehicle_rental',
+    'list_my_vehicle_rentals', 'get_vehicle_rental', 'cancel_vehicle_rental',
+    // petBoarding
+    'create_pet_boarding', 'list_my_pet_boardings', 'get_pet_boarding',
+    'cancel_pet_boarding',
+    // photography
+    'list_photo_packages', 'send_portfolio', 'check_date_availability',
+    'request_photo_quote', 'cancel_photo_session',
+    // professionalServices
+    'get_case_status',
+]);
+
+/**
+ * Las cuatro lecturas que existen sólo mientras el tercero responda.
+ *
+ * Deliberadamente NO incluye las de pago. `create_payment_link` existe cuando
+ * el dueño habilita cobros, no cuando conecta un PSP concreto: el PSP se
+ * resuelve por país en tiempo de ejecución, y la tool sobrevive a cambiarlo.
+ * Lo que se cae con el proveedor es la ejecución, no la publicación — y son
+ * dos puertas distintas.
+ */
+const PROVIDER_ORIGIN_TOOLS: ReadonlySet<string> = new Set([
+    'get_restaurant_menu', 'get_fitness_schedule',
+    'list_clinic_services', 'check_clinic_availability',
+]);
+
+function declaredOrigin(name: string): ToolOrigin {
+    if (PROVIDER_ORIGIN_TOOLS.has(name)) return 'provider';
+    if (VERTICAL_ORIGIN_TOOLS.has(name)) return 'vertical';
+    return 'core';
+}
+
 function buildRegistry(entries: readonly ToolPolicyEntry[]): Readonly<Record<string, ToolPolicy>> {
     const registry: Record<string, ToolPolicy> = {};
     for (const [name, policy] of entries) {
         if (registry[name]) throw new Error(`Duplicate tool policy: ${name}`);
-        registry[name] = policy;
+        registry[name] = Object.freeze({ ...policy, origin: declaredOrigin(name) });
     }
     return Object.freeze(registry);
 }
@@ -466,9 +585,53 @@ export const OPAQUE_MCP_TOOL_POLICY: Readonly<ToolPolicy> = Object.freeze({
     confirmation: 'required_missing',
     humanApproval: 'required_missing',
     agentTestAllowed: false,
+    origin: 'mcp',
     // Opaca: no se sabe qué hace, así que se asume que compromete.
     commitsBusiness: true,
 });
+
+/**
+ * De dónde viene esta tool. `undefined` para lo que no conocemos.
+ *
+ * Un nombre desconocido NO cae en `core` por descarte: `core` es una concesión
+ * —"cualquier tenant la tiene"— y concederla por no reconocer el nombre es
+ * exactamente el default permisivo que la separación existe para sacar.
+ */
+export function toolOrigin(name: unknown): ToolOrigin | undefined {
+    if (typeof name !== 'string') return undefined;
+    if (name.startsWith('mcp__')) return 'mcp';
+    return TOOL_POLICY_REGISTRY[name]?.origin;
+}
+
+/**
+ * Las tools que resuelven su puerta DESPUÉS del contrato estático.
+ *
+ * Dos casos, y sólo dos:
+ *
+ * - **Pagos.** El PSP se resuelve por país en tiempo de ejecución; la familia
+ *   se registra contra la salud del proveedor del momento, no contra la config
+ *   guardada. Igual las alcanza `writersBlocked`: un perfil bloqueado no genera
+ *   un enlace de pago, que era la puerta de servicio que quedaba abierta.
+ * - **La llave de identidad.** El par de OTP se deriva de las tools A2 que el
+ *   turno terminó publicando —no de una familia—, y esa derivación corre al
+ *   final, cuando ya se sabe cuáles son. Recortarla contra el contrato dejaría
+ *   al cliente escribiendo un código en una conversación que no puede leerlo.
+ *
+ * Existe como lista nombrada porque antes esto era una **resta de conjuntos**
+ * calculada en el sitio de publicación —"todo lo que no esté en las familias
+ * encendidas pasa"—, y una resta no dice cuál es la excepción ni por qué: si
+ * una familia se movía de estática a asincrónica, la guarda cambiaba de
+ * significado sin que nadie lo notara.
+ */
+export const ASYNC_GATED_TOOL_NAMES: ReadonlySet<string> = new Set([
+    'create_payment_link', 'get_payment_status', 'refund_payment', 'apply_discount',
+    'request_identity_code', 'verify_identity_code',
+]);
+
+/** Las tools estáticas de una procedencia. `mcp` nunca tiene entradas acá. */
+export function toolsByOrigin(origin: ToolOrigin): readonly string[] {
+    return STATIC_TOOL_NAMES.filter(name => TOOL_POLICY_REGISTRY[name].origin === origin);
+}
 
 export function getToolPolicy(name: unknown): ToolPolicy | undefined {
     if (typeof name !== 'string') return undefined;

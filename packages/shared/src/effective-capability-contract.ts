@@ -92,6 +92,18 @@ export interface EffectiveCapabilityContract {
     countryPackId: string;
     /** Tool names the model may be shown. */
     publishedTools: string[];
+    /**
+     * Lo mismo, repartido por procedencia.
+     *
+     * Las cuatro no se autorizan igual —`core` la decide el dueño y el plan,
+     * `vertical` suma el manifiesto del subtipo, `provider` suma salud, alcance
+     * y frescura del tercero, `mcp` se aprueba tool por tool a mano— y hasta acá
+     * la traza mostraba una sola lista. Con eso, "¿por qué este turno no pudo
+     * leer el menú?" no se podía contestar sin reproducir el turno: no se veía
+     * si la tool nunca se publicó, si la familia estaba apagada o si Toast no
+     * contestaba.
+     */
+    publishedByOrigin?: Readonly<Record<'core' | 'vertical' | 'provider', readonly string[]>>;
     /** Families that survived every gate. */
     publishedGroups: VerticalToolGroup[];
     /** Everything that did not, with why. */

@@ -58,10 +58,12 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaProcessingService } from '../media-processing/media-processing.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import {
+    ASYNC_GATED_TOOL_NAMES,
     isBusinessWriteTool,
     isConfirmableWriteTool,
     isNonCommittalTool,
     toolBatchRequiresSequentialExecution,
+    toolOrigin,
     toolRequiresSequentialExecution,
 } from './tool-policy-registry';
 import {
@@ -2648,11 +2650,27 @@ export class ConversationsService {
                 );
             } else {
                 const allowed = new Set(contract.publishedTools);
-                // Las familias asíncronas —pagos, integraciones, MCP, el par de
-                // OTP— no son parte del contrato estático y conservan sus
-                // propias puertas, así que pasan sin tocar.
-                const staticNames = new Set(staticToolsForAgentConfig(cfgTools ?? {}).map(t => String(t.name)));
-                tools = tools.filter(t => !staticNames.has(String(t?.name)) || allowed.has(String(t?.name)));
+                // ═══ QUÉ GOBIERNA EL CONTRATO, DICHO POR PROCEDENCIA ═══
+                //
+                // Acá se recalculaba "las tools estáticas de las familias que
+                // el dueño encendió" y se dejaba pasar TODO lo demás. Es la
+                // misma distinción que ahora declara `ToolOrigin`, pero
+                // implementada como una resta de conjuntos en un solo lugar: si
+                // una familia se movía de estática a asincrónica, la resta
+                // cambiaba de significado y la guarda dejaba de guardar, sin
+                // que nada lo dijera.
+                //
+                // Ahora el contrato gobierna `core`, `vertical` y `provider`.
+                // Pasan sin tocar, con su motivo escrito: MCP —que se autoriza
+                // por revisión humana por tool, no por contrato— y las dos
+                // familias asincrónicas de `ASYNC_GATED_TOOL_NAMES`. Un nombre
+                // que no reconocemos NO pasa: desconocido no es permiso.
+                tools = tools.filter(t => {
+                    const name = String(t?.name);
+                    if (toolOrigin(name) === 'mcp') return true;
+                    if (ASYNC_GATED_TOOL_NAMES.has(name)) return true;
+                    return allowed.has(name);
+                });
                 // Bloqueado no escribe NADA, venga de donde venga la tool: sin
                 // esto el bloqueo tapaba la puerta principal y dejaba abierta la
                 // de servicio, y una aseguradora bloqueada seguía pudiendo

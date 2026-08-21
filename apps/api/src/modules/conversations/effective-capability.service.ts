@@ -16,7 +16,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { VerticalReadinessService } from '../verticals/vertical-readiness.service';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { enabledToolFamilies, staticToolsForAgentConfig } from './agent-tool-registry';
-import { isNonCommittalTool } from './tool-policy-registry';
+import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 
 /**
  * Lo que se sabe de un proveedor externo en el momento del turno.
@@ -48,6 +48,14 @@ const PROVIDER_TOOLS: Readonly<Record<string, readonly string[]>> = Object.freez
     mindbody: Object.freeze(['get_fitness_schedule']),
     cliniko: Object.freeze(['list_clinic_services', 'check_clinic_availability']),
 });
+
+/**
+ * Lo mismo, aplanado, para que la taxonomía de procedencias del registro de
+ * política se pueda contrastar contra ESTA lista y no contra una copia.
+ */
+export const PROVIDER_ORIGIN_TOOL_NAMES: readonly string[] = Object.freeze(
+    Object.values(PROVIDER_TOOLS).flat(),
+);
 
 /**
  * Cuánto puede tardar en volverse mentira lo que dijo un proveedor.
@@ -323,6 +331,15 @@ export class EffectiveCapabilityService {
             planSnapshot: planSlug,
             countryPackId: regional?.countryPackId ?? profile.capability.industry,
             publishedTools,
+            // La misma lista, repartida por procedencia. Se calcula acá —donde
+            // ya está decidida— y no en el sitio de publicación: recalcularla
+            // allá fue lo que produjo la resta de conjuntos que dejaba pasar
+            // todo lo que no reconocía.
+            publishedByOrigin: Object.freeze({
+                core: publishedTools.filter(t => toolOrigin(t) === 'core'),
+                vertical: publishedTools.filter(t => toolOrigin(t) === 'vertical'),
+                provider: publishedTools.filter(t => toolOrigin(t) === 'provider'),
+            }),
             publishedGroups: published,
             excluded,
             unmetReadiness: [...unmet],

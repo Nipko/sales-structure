@@ -1641,6 +1641,52 @@ jest apps/api       → 3060 passed / 308 suites (1 skipped, 10 skipped tests), 
 
 **Lo que esto NO cierra.** El gate de P0-A pide además **pruebas E2E live** (punto 6) y la separación de tools core/verticales/proveedor/MCP (punto 4). Ninguna de las dos está hecha. La fase sigue abierta.
 
+### U56 — La separación existía, implementada como una resta de conjuntos en un solo lugar
+
+**P0-A · punto 4 — separar tools core/globales, verticales, proveedor y MCP**
+
+Las cuatro procedencias ya estaban implícitas en el sistema y ninguna estaba **declarada**. La única parte donde la distinción tenía efecto era una línea del filtro del contrato:
+
+```ts
+const staticNames = new Set(staticToolsForAgentConfig(cfgTools ?? {}).map(t => String(t.name)));
+tools = tools.filter(t => !staticNames.has(name) || allowed.has(name));
+```
+
+Se lee como "el contrato manda". Lo que hace es: *"si esta tool sale de una familia que el dueño encendió, tiene que estar publicada; **todo lo demás pasa**"*. Es una resta de conjuntos recalculada en el sitio de publicación, y de ahí salen tres problemas:
+
+1. **No dice cuál es la excepción ni por qué.** Un lector no puede saber que las exentas son pagos y la llave de identidad — hay que reconstruirlo comparando dos funciones.
+2. **Cambia de significado sola.** Si una familia se mueve de estática a asincrónica —o al revés—, la resta cambia y la guarda deja de guardar sin que nada lo indique.
+3. **Desconocido pasaba.** Un nombre que no estuviera en el conjunto recalculado atravesaba el filtro. En una puerta cuyo trabajo es decidir permisos, ese es el default equivocado.
+
+**Las cuatro procedencias, y por qué son cuatro.** No se distinguen por lo que la tool *hace* sino por **qué puertas tiene que pasar además**:
+
+| Procedencia | Qué la habilita | Puerta adicional |
+|---|---|---|
+| `core` | cualquier tenant, cualquier industria | dueño + plan |
+| `vertical` | sólo dentro de una industria | manifiesto del subtipo |
+| `provider` | el tenant conectó un tercero | salud + alcance del token + frescura |
+| `mcp` | un servidor de un tercero | revisión humana **por tool** |
+
+`origin` es un campo del registro de política y **no se puede escribir por entrada**: lo estampa `buildRegistry` desde la taxonomía. Una tool vertical marcada `core` a mano sería exactamente el error que la separación existe para impedir, y nadie lo vería leyendo la línea.
+
+**Dos límites que la prueba fija y que no son obvios.** `create_payment_link` **no** es `provider`: existe cuando el dueño habilita cobros, no cuando conecta un PSP concreto —el PSP se resuelve por país en runtime y la tool sobrevive a cambiarlo—, así que lo que se cae con el proveedor es la ejecución, no la publicación. Y `get_menu` **sí** es `vertical`, no `provider`: `restaurants` es una familia nativa que funciona sin Toast; gatearla por el proveedor habría apagado a todo restaurante que nunca integró nada. La que depende de Toast es `get_restaurant_menu`, y es por tool.
+
+**La excepción quedó nombrada.** `ASYNC_GATED_TOOL_NAMES` son seis y sólo seis: las cuatro de dinero y el par de OTP. La llave de identidad se deriva de las tools A2 que el turno terminó publicando —no de una familia—, y esa derivación corre al final: recortarla contra el contrato dejaría al cliente escribiendo un código en una conversación que no puede leerlo.
+
+**ADR — por qué la taxonomía se declara a mano y no se deriva de las familias.** Derivarla haría que el registro de política importara `agent-tool-registry`, que arrastra las 25 definiciones de tools: un módulo de política que hoy es una tabla pasaría a depender de todo el árbol de tools. Se declara a mano y la coherencia la fija `tool-origin-taxonomy.spec.ts`, que es el único lugar que puede mirar las dos listas a la vez — incluida la comprobación de que las dos listas de familias **cubren el registro entero**, sin la cual una familia nueva sin clasificar quedaría fuera de las dos verificaciones y pasaría en verde sin ser mirada.
+
+**Riesgos que quedan**
+- `VERTICAL_FAMILIES` y `CORE_FAMILIES` viven en el spec. Una familia nueva rompe la prueba de cobertura —que es el punto—, pero rompe con un mensaje que hay que leer para entender qué falta clasificar.
+- `publishedByOrigin` se calcula y todavía **no se muestra en ninguna pantalla**. La traza ya puede contestar "¿por qué este turno no pudo leer el menú?"; la superficie de Ops que lo exponga es trabajo interno pendiente.
+
+**Pruebas** — `tool-origin-taxonomy.spec.ts` (nuevo, 15).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api     → 3075 passed / 309 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1746,7 +1792,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 1 | `allowedTools`/`effectiveSnapshot` obligatorios + default-deny en el ejecutor | ✅ **U55** |
 | 2 | Revalidar pending confirmations contra el snapshot vigente | ✅ **U55** |
 | 3 | Autorización exacta en Booking y Procedures | ✅ **U55** |
-| 4 | Separar tools core/globales, verticales, proveedor y MCP | ⏳ pendiente |
+| 4 | Separar tools core/globales, verticales, proveedor y MCP | ✅ **U56** |
 | 5 | Handoff STOP sólo ante operación denegada | ✅ **U55** |
 | 6 | Pruebas E2E live (no sólo unitarias) | ⏳ pendiente |
 | 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ⏳ pendiente |

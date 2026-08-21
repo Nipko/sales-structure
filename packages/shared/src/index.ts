@@ -849,11 +849,36 @@ export interface TurnRegionalContext {
     countryPackStatus: string;
 }
 
+/**
+ * Qué puede hacer el agente en ESTE turno, según el contrato efectivo.
+ *
+ * - `ok` — el contrato resolvió y el perfil puede operar.
+ * - `degraded` — resolvió pero alguna puerta no se pudo evaluar; se opera con
+ *   lo que sí se pudo confirmar.
+ * - `blocked` — el perfil está declarado `stop`: lee y deriva, no cierra nada.
+ * - `unresolved` — el contrato NO se pudo resolver. No se conserva el toolset
+ *   anterior: quedan sólo lecturas con política revisada y se deriva.
+ *
+ * Viaja al turno porque el modelo tiene que poder DECIRLO. Un agente al que se
+ * le quitan las tools sin explicarle por qué improvisa una excusa, y la excusa
+ * que inventa suele ser peor que la verdad.
+ */
+export type TurnCapabilityStatus = 'ok' | 'degraded' | 'blocked' | 'unresolved';
+
+export interface TurnCapability {
+    status: TurnCapabilityStatus;
+    /** Motivo tipado y corto. Nunca el mensaje de una excepción. */
+    reason?: string;
+    profileId?: string;
+}
+
 export interface TurnContext {
     language: string;
     timezone: string;
     /** Operating country, currency, locale and form of address for this turn. */
     regional?: TurnRegionalContext;
+    /** Lo que el contrato efectivo autorizó para este turno. */
+    capability?: TurnCapability;
     now: string;
     upcomingDays: Array<{ date: string; weekday: string; label?: string }>;
     businessHoursStatus: 'open' | 'closed' | 'unknown';

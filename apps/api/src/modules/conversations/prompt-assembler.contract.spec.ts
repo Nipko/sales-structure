@@ -85,6 +85,73 @@ describe('Contrato L1 del agente', () => {
         expect(contract).not.toContain('be a human having a conversation');
     });
 
+    /**
+     * El contrato efectivo ya bloquea la escritura en el ejecutor. Sin una
+     * regla, el modelo seguía ofreciendo y prometiendo lo que la puerta iba a
+     * rechazar, y el cliente se quedaba esperando una reserva que nunca se
+     * intentó.
+     */
+    it('no promete lo que el contrato efectivo va a rechazar', () => {
+        expect(contract).toContain('capability_status');
+        // Y tiene que apuntar al atributo que decide, no al estado: `degraded`
+        // informa que algo no se pudo leer, pero sigue autorizando escribir.
+        expect(contract).toContain('writes="blocked"');
+        // Tiene que nombrar las operaciones, no quedarse en abstracto.
+        for (const verb of ['booking', 'cancelling', 'rescheduling', 'charging']) {
+            expect(contract).toContain(verb);
+        }
+        // Y tiene que derivar, no reintentar ni disfrazarlo de falla temporal.
+        expect(contract).toContain('needs someone from the team');
+        expect(contract).toContain('never present it as a temporary glitch');
+        // El motivo interno no se le cuenta al cliente.
+        expect(contract).toContain('never state or hint at the internal reason');
+    });
+
+    it('el estado del contrato viaja como dato en el turno, no como prosa', () => {
+        const assembler = new PromptAssemblerService({} as any);
+        const turn = (assembler as any).buildTurnLayer({
+            language: 'es', timezone: 'America/Bogota', now: '2026-08-20T10:00:00Z',
+            businessHoursStatus: 'open',
+            capability: {
+                status: 'blocked',
+                reason: 'profile_blocked',
+                profileId: 'seguros/aseguradora',
+            },
+        });
+
+        expect(turn).toContain('<capability_status');
+        expect(turn).toContain('status="blocked"');
+        expect(turn).toContain('writes="blocked"');
+        expect(turn).toContain('internal_reason="profile_blocked"');
+        expect(turn).toContain('profile="seguros/aseguradora"');
+    });
+
+    it('degradado informa, pero no cierra la puerta', () => {
+        const assembler = new PromptAssemblerService({} as any);
+        const turn = (assembler as any).buildTurnLayer({
+            language: 'es', timezone: 'America/Bogota', now: '2026-08-20T10:00:00Z',
+            businessHoursStatus: 'open',
+            capability: { status: 'degraded', reason: 'gate_unevaluable' },
+        });
+
+        // Una entrada ilegible no puede dejar sin reservas a un negocio sano.
+        expect(turn).toContain('status="degraded"');
+        expect(turn).toContain('writes="allowed"');
+    });
+
+    it('un turno sin bloqueo no lleva el bloque: `ok` no se anuncia', () => {
+        const assembler = new PromptAssemblerService({} as any);
+        const turn = (assembler as any).buildTurnLayer({
+            language: 'es', timezone: 'America/Bogota', now: '2026-08-20T10:00:00Z',
+            businessHoursStatus: 'open',
+            capability: { status: 'ok' },
+        });
+
+        // Gastar tokens en decir "todo bien" en cada turno le enseña al modelo
+        // que el bloque es ruido, y deja de leerlo cuando importa.
+        expect(turn).not.toContain('<capability_status');
+    });
+
     it('mantiene las salvaguardas de seguridad después de las reglas nuevas', () => {
         // Las reglas se insertaron justo antes de este bloque: si una edición
         // futura lo pisa, el agente pierde los guardarraíles enteros.

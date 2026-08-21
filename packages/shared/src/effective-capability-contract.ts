@@ -53,7 +53,24 @@ export type CapabilityExclusionReason =
      * perfil certificado. Un perfil bloqueado que igual reserva, cotiza o cobra
      * es exactamente lo que el bloqueo existía para impedir.
      */
-    | 'profile_blocked';
+    | 'profile_blocked'
+    /**
+     * Quien pide no es un rol que opere.
+     *
+     * El contrato lo resuelven hoy la conversación y Agent Test, los dos como
+     * el rol operativo. Un llamador futuro que pase otro rol —o ninguno que se
+     * reconozca— no puede recibir el juego completo por omisión.
+     */
+    | 'role_not_operational'
+    /**
+     * El canal no es una superficie conversacional certificada.
+     *
+     * SMS es notificación de una sola vía en esta plataforma y el correo es un
+     * adaptador de entrada interno sin autoservicio certificado. Un turno que
+     * llegue por ahí puede leer y derivar; comprometer al negocio por un canal
+     * que no sostiene la conversación de vuelta, no.
+     */
+    | 'channel_not_certified';
 
 export interface ExcludedCapability {
     /** Tool family, or a single tool name when the exclusion is tool-level. */
@@ -94,6 +111,20 @@ export interface EffectiveCapabilityContract {
      * el bloqueo tapaba la puerta principal y dejaba la de servicio abierta.
      */
     writersBlocked: boolean;
+    /**
+     * Las entradas con las que se tomó la decisión.
+     *
+     * Viajan con el contrato para que "¿por qué este turno no pudo cobrar?" se
+     * pueda contestar mirando la traza, sin reproducir el turno entero.
+     */
+    decisionInputs?: {
+        role?: string;
+        channelType?: string;
+        operatingCountry?: string;
+        jurisdiction?: string;
+        /** Proveedores que el llamador midió en este turno. */
+        providersMeasured?: string[];
+    };
     resolvedAt: string;
 }
 
@@ -150,7 +181,19 @@ export const CAPABILITY_EXCLUSION_TEXT: Readonly<Record<CapabilityExclusionReaso
     not_approved: 'No tiene una política revisada, así que no puede ejecutarse.',
     external_system_of_record: 'Otro sistema es dueño de este registro; el equipo confirma.',
     profile_blocked: 'Este tipo de negocio todavía no puede cerrar operaciones por chat; el equipo las confirma.',
+    role_not_operational: 'Quien pide esto no tiene un rol que opere la conversación.',
+    channel_not_certified: 'Este canal no cierra operaciones; por acá el agente informa y deriva.',
 });
+
+/** Canales donde la conversación de ida y vuelta está certificada. */
+export const CONVERSATIONAL_CHANNELS: readonly string[] = Object.freeze([
+    'whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget',
+]);
+
+/** Roles que operan una conversación. Cualquier otro no publica nada. */
+export const OPERATIONAL_ROLES: readonly string[] = Object.freeze([
+    'tenant_agent', 'tenant_supervisor', 'tenant_admin', 'super_admin',
+]);
 
 export function capabilityForToolGroup(
     group: VerticalToolGroup,

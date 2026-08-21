@@ -1043,7 +1043,50 @@ npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2628 passed / 290 suites, 0 fallos
 ```
 
-## Cierre de sesión — estado de las fases y bloqueos vigentes
+### U35 — El contrato llegaba tarde a su propia decisión, y la puerta no era una sola
+
+**Pendientes internos 1, 2, 3, 4 y 5 · avance parcial del 10**
+
+El contrato efectivo se resolvía **al final** del turno, cuando el motor determinista ya había podido crear una cita, Procedures ya había podido invocar un writer y las familias asíncronas —pagos, integraciones, MCP— ya se habían agregado. Un perfil bloqueado tenía tres caminos para escribir antes de que nadie le preguntara si podía.
+
+Y el bloqueo se había cerrado tres veces —lista de tools, motor de reservas, Procedures— **cada vez donde se había visto el problema**. Los tres son llamadores del mismo ejecutor, y el ejecutor no preguntaba nada: apareció una cuarta puerta (la confirmación server-side del "sí") por el mismo motivo por el que aparecerá una quinta.
+
+**Cinco cambios, en este orden:**
+
+1. **El contrato se resuelve primero.** Una sola vez, antes que nada, y su resultado gobierna el motor determinista, Procedures y la publicación. Lo que el contrato no autoriza no se intenta: se deriva.
+2. **Entradas que faltaban.** El contrato ya sabía subtipo ∩ agente ∩ plan ∩ readiness; ahora también rol, canal, país/jurisdicción y **salud/scopes/frescura del proveedor**. Un rol no operativo y un canal no conversacional bloquean la escritura igual que un perfil `stop`.
+3. **La puerta baja al ejecutor.** `AIToolExecutorService.execute()` recibe la decisión del turno y rechaza lo que compromete al negocio, venga del llamador que venga — incluido el que todavía no existe. Devuelve `capability_blocked` con `shouldHandoff`, no un fallo silencioso.
+4. **`commitsBusiness` como campo de política de primera clase.** El primer intento filtró por `effect === 'write'` y mató siete lecturas semánticas (`search_faqs`, `get_policy`, `search_knowledge_base`, `recommend_products`…), el par de identidad y las cuatro lecturas de proveedor: un perfil bloqueado quedaba además **mudo**, que es peor que el problema que el bloqueo evita. La regla correcta no es "no escribe una fila" sino **"no compromete al negocio"**.
+5. **`<capability_status>` en el turno.** El backend ya cerraba la puerta; el modelo no sabía por qué y seguía prometiendo lo que la puerta iba a rechazar. Ahora viaja como dato, con la regla 23 del contrato L1: no ofrezcas ni prometas, decí que necesita a alguien del equipo, no nombres el motivo interno y no lo presentes como una falla temporal.
+
+**Dos correcciones sobre el propio trabajo**, encontradas al probarlo:
+
+- La primera versión de la compuerta de proveedor gateaba las **familias** `restaurants`, `gyms` y `treatments`, que son **nativas** (su readiness apunta a `menu_items`, tablas propias). Habría apagado a todo restaurante que nunca integró nada. Lo que depende del proveedor son cuatro lecturas concretas, y ahí quedó la compuerta — que además es la mitad del pendiente 10: esas cuatro pasaron de publicarse por estar *conectadas* y fuera del contrato, a publicarlas el contrato con salud, scopes y frescura.
+- `degraded` significa "una entrada de la decisión no se pudo leer", **no** "no se puede operar". La primera versión de la regla 23 se disparaba con cualquier estado distinto de `ok`, y un restaurante sano habría dejado de tomar reservas porque una consulta de plan falló. El bloque lleva ahora `writes="allowed|blocked"` y la regla mira eso.
+
+**Lo que NO se tocó:** `tool-approval-workflow.service.ts` ejecuta tras la aprobación **de una persona**. Un perfil bloqueado deriva a un humano; que ese humano después apruebe es exactamente el desenlace que el bloqueo busca, no una fuga.
+
+**Pruebas** — `capability-stop-profiles.spec.ts` (nuevo, 36 casos): los 7 perfiles STOP leídos del registro —no de una lista a mano— contra las cinco puertas. Además: 8 casos de proveedor en `effective-capability.spec.ts` (conectado ≠ sano ≠ fresco, y la familia nativa que sobrevive sin proveedor) y 4 en `prompt-assembler.contract.spec.ts`. Tres specs existentes cambiaron de expectativa porque el ejecutor recibe un argumento más.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2676 passed / 291 suites (1 skipped), 0 fallos
+jest app.bootstrap → 1 passed — DI de NestJS limpio
+```
+> El bootstrap exige `ENCRYPTION_KEY` de 64 hex en el shell; sin él falla por entorno, no por DI.
+
+## Estado del programa — cinco categorías, sin mezclar
+
+> **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
+>
+> | Categoría | Qué significa | Qué se puede hacer con eso |
+> |---|---|---|
+> | ✅ **Implementado y verificado** | Código + pruebas que lo fijan + verificación corrida | Nada; sólo no romperlo |
+> | ◐ **Parcial** | Funciona, pero no cumple el criterio completo del plan | Trabajo interno, sin dependencias |
+> | 🔒 **Fail-closed temporal** | Deliberadamente apagado en código, con motivo tipado y handoff | Se enciende cuando llegue lo externo |
+> | ⛔ **Bloqueo externo** | Necesita credencial, proveedor, experto, tenant piloto o decisión irreversible del dueño | Nada de nuestro lado |
+> | ⏳ **Pendiente interno** | Implementable hoy, sin depender de nadie | **Lo que sigue** |
 
 ### Verificación completa
 
@@ -1057,55 +1100,95 @@ jest app.bootstrap   →    1 passed — DI de NestJS limpio
 
 Línea de base al empezar la sesión: 2523 API / 161 dashboard. Ninguna prueba fue debilitada; las que cambiaron de expectativa lo hicieron porque **afirmaban el defecto** (farmacia sin Pedidos, guía de skillset siempre en inglés, cinco plantillas vacías que ganaban a la meta del dueño, fotografía sin paquetes), y cada una quedó anotada con por qué.
 
-### Fases
+### ✅ Implementado y verificado
 
-| Fase | Estado | Detalle |
+Código en su lugar, pruebas que lo fijan, verificación corrida.
+
+| Qué | Dónde |
+|---|---|
+| Registro único de los 76 perfiles + puerta de CI | U11 |
+| `EffectiveAgentCapabilityContractV1` con subtipo ∩ agente ∩ plan ∩ readiness, readiness **bloqueante** con CTA de reparación | U12 |
+| Semántica de lectura (`empty` ≠ `stale` ≠ `provider_down` ≠ `error`) en las tools que la usan | U6, extendida en U16 y U17 |
+| Clasificador único de confirmación, handoff y opt-out, por efecto y país | U8 |
+| Jurisdicción, autoridad y vigencia en RAG regulado | U9 |
+| Agent Test resuelve el mismo contrato que producción | U10 |
+| Registros globales de estadías y salidas, con crear y cancelar desde el registro | U14, U20 |
+| Fotos de inmuebles end-to-end, con normalización en el borde de escritura | U15 |
+| Paquetes de fotografía sembrados por sub-tipo + catálogo de servicios alcanzable | U16 |
+| Farmacia: Pedidos publicado, KPIs propios, assurance real, receta bloqueada **en el writer** | U17 |
+| Invariantes del prompt en modo libre; skillset por rubro con no-pitch; guías en 4 idiomas; `requiredFields` normalizado | U18 |
+| Plan en la navegación: candado en vez de 403 | U19 |
+| Terminología por sub-tipo con avoid-list, en turno y panel | U21 |
+| Set dorado derivado de lo que el perfil declara | U22 |
+| Trato, formatos regionales y prohibición de convertir importes | U23 |
+| Móvil con todos los espacios operativos del negocio | U24 |
+| Clasificación `register`/`catalogue`/`mixed` aplicada a menú y guardia de rutas | U25 |
+| Panel del Inbox con allowlist de campos y deep link por objeto, con `?tab=` | U26, U29 |
+| Secciones de navegación derivadas de la clasificación | U27 |
+| Home con KPIs del perfil y color que de verdad se renderiza | U28 |
+| Telemetría de 403 / dead end / plan bloqueado, con allowlist y sin PII | U30 |
+| Límites declarados del perfil en el prompt | U31 |
+| `strategy: 'stop'` con efecto real sobre writers estáticos y asíncronos | U32, U33 |
+| Divulgación de rol: el agente no se hace pasar por persona | U34 |
+
+### ◐ Parcial — funciona, no cumple el criterio completo
+
+| Qué | Qué falta para completo |
+|---|---|
+| **Contrato efectivo** | Le faltan entradas: salud/scopes/frescura del proveedor, jurisdicción, **rol** y **canal**. Y se resuelve **después** de Booking Engine y Procedures, no antes |
+| **STOP** | Probado contra tools estáticas y asíncronas; **sin probar** contra Booking Engine, Procedures y fallo del resolutor. No llega al turno como `capability_status` ni produce handoff determinista |
+| **Terminología por sub-tipo** | 14 de 76 perfiles. Los demás heredan de su industria por decisión, pero nadie verificó uno por uno que la herencia sea correcta |
+| **Set dorado** | 4 a 7 escenarios por perfil. El objetivo del plan es **≥25 por perfil e idioma prioritario** |
+| **Packs de país** | Los 15 de LatAm en `draft`. Ninguno se presenta como certificado, que es lo correcto, pero ninguno llegó a `pilot` |
+| **Telemetría de navegación** | Sólo lo excepcional. Faltan tiempo-a-tarea, click depth, búsqueda y backtracking |
+| **Secciones del shell** | `dailyWork` y `catalogAndResources` separadas; faltan `customers` y `commercial` como grupos propios |
+| **Active Objects** | Cubre los objetos con loader. Varios writers crean cosas que el turno siguiente no ve |
+| **Subpermisos de tool** (`canBook`, `canCancel`, `canCheckStock`, `canRecommend`) | Declarados en la config del agente; **no** se aplican en publicación ni en executor |
+
+### 🔒 Fail-closed temporal — apagado a propósito hasta que llegue lo externo
+
+| Qué | Cómo está apagado | Qué lo enciende |
 |---|---|---|
-| **0 — Decisiones** | ✅ | 76 configuraciones, registro único, alias y migraciones |
-| **1 — Contratos y resolutores únicos** | ✅ | Registro de subtipos + puerta de CI; contrato de capacidad efectiva |
-| **2 — Honestidad P0** | ✅ 15/16 | Sólo Channel Manager abierto, por bloqueo externo |
-| **3 — Prompts, variables y lenguaje** | ◐ | Infraestructura completa; falta autoría de dominio por perfil |
-| **4 — Navegación, home, Inbox y móvil** | ✅ | Los 9 pasos de §8.5, dos con resto anotado |
-| **5 — Profundidad e integraciones** | 🔒 | Cada ola exige credenciales de sandbox |
-| **6 — Piloto y certificación** | 🔒 | Exige tenants reales, evidencia E2E y sign-off |
+| Write-back a Channel Manager | `createBooking` falla con `channel_manager_owns_calendar`, proveedor, `asOf` y mensaje al cliente; la UI lo muestra | Sandbox Hostaway + certificación por versión de API |
+| Writers de los 7 perfiles `stop` | `writersBlocked` quita toda tool que no sea `read` con política revisada | La decisión de producto de cada perfil (ver bloqueo externo) |
+| Cobro en perfiles `stop` | El filtro corre sobre la lista completa, después de pagos e integraciones | Ídem |
 
-### Gate 3 — estado
+### ⛔ Bloqueo externo — nada de nuestro lado
 
-| Criterio | Estado |
+| Bloqueo | Qué se necesita | Quién |
+|---|---|---|
+| Channel Manager (Hostaway) | Credenciales de sandbox y certificación por versión de API | Proveedor |
+| Olas 2-4 de integraciones (Toast, Mindbody, Cliniko, PMS farmacéutico, DMS, PAS, core financiero) | Credenciales y sandbox por proveedor | Proveedor |
+| `fintech` | Elegir la familia de producto antes de definir el flujo | Dueño |
+| `marketplace` | Modelo multi-vendedor, KYB y payouts | Dueño |
+| `fotografia/wedding_planner` | Event Planning como experiencia propia: cambia el conteo canónico | Dueño (irreversible + migración) |
+| `inmobiliaria/construccion` | Venta de proyecto vs empresa constructora | Dueño (taxonomía + migración) |
+| Revisión de dominio de los contratos por perfil | Experto por rubro, que el plan exige antes de certificar | Dueño + experto |
+| Fase 6 — pilotos y certificación | 3-5 tenants por perfil, shadow mode, evidencia E2E, sign-off | Dueño |
+
+### ⏳ Pendiente interno — implementable hoy
+
+Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni tenant piloto.**
+
+| # | Pendiente |
 |---|---|
-| Sin fallback silencioso | ✅ contrato de lectura (`empty` ≠ `stale` ≠ `provider_down` ≠ `error`) |
-| Sin política literal sin fuente | ✅ las guías de skillset son contrato de plataforma, versionado y traducido |
-| Sin pregunta múltiple | ✅ regla de oro del contrato L1 |
-| Sin acción sin tool ni handoff | ✅ regla 16 + guardrail con `executedTools` |
-| Cuatro idiomas con paridad | ✅ verificado por prueba en terminología, guías y overrides de etiqueta |
-| Packs de país pilot/certified | ◐ todos en `draft`; ninguno se presenta como certificado |
-| Confirmación determinista | ✅ clasificador único por efecto y país |
-| Formatos coherentes | ✅ reglas 21 y 22 del contrato |
-
-### Gate 4 — cerrado
-
-| Criterio | Evidencia |
-|---|---|
-| Operación primaria a un clic en web | Sección **Trabajo diario** primera después de Esenciales, con los registros; verificado por posición en prueba |
-| Máximo dos taps en móvil | Conmutador de espacios operativos; el primero es el de siempre |
-| Catálogo restringido sin bloquear operación | Clasificación `register`/`catalogue`/`mixed` con prueba que la enfrenta al menú **y** al guardia de rutas |
-| Ningún par de objetos comparte etiqueta | Allowlist de vocabulario comercial + packs de terminología por subtipo, disjuntos por prueba |
-
-### Bloqueos vigentes — qué falta de afuera
-
-| Bloqueo | Qué está hecho | Qué se necesita | Quién |
-|---|---|---|---|
-| **Channel Manager (Hostaway)** | SoR resuelto, lectura con frescura y salud, escritura **fail-closed** con motivo tipado y handoff honesto; la UI muestra ese motivo | Credenciales de sandbox y certificación por versión de API para probar el write-back | Proveedor + dueño |
-| **Olas 2-4 de integraciones** (Toast, Mindbody, Cliniko, PMS farmacéutico, DMS, PAS, core financiero) | Adaptadores desacoplados por interfaz; los perfiles que dependen de ellos siguen `STOP` y ya **no publican writers** | Credenciales y sandbox por proveedor; discovery, mapping y certificación uno por uno | Proveedor + dueño |
-| **`fintech`** | Taxonomía, gating y contratos implementados; perfil `stop` efectivo | Elegir la familia de producto (crédito, pagos, inversión…) antes de definir el flujo | Dueño |
-| **`marketplace`** | No reutiliza el comercio de un solo vendedor; perfil `stop` efectivo | Modelo multi-vendedor, KYB y payouts | Dueño |
-| **`fotografia/wedding_planner`** | No recibe paquetes de fotografía; readiness incumplido a propósito; alias documentado | Crear Event Planning como experiencia propia — cambia el conteo canónico de subtipos | Dueño (decisión irreversible + migración) |
-| **`inmobiliaria/construccion`** | Perfil `stop` efectivo | Decidir si significa venta de proyecto o empresa constructora; lo segundo lo mueve a FSM/proyectos | Dueño (taxonomía + migración) |
-| **Autoría de dominio por perfil (Fase 3, pasos 1-5 y 7-8)** | Todo lo **derivable** ya se deriva: terminología, avoid-list, límites declarados, skillset por rubro, regional, set dorado | Guiones de dominio por perfil y **revisión con experto**, que el propio plan exige antes de certificar | Dueño + experto de dominio |
-| **Fase 6 — pilotos** | Los perfiles llegan con contratos, evals y trazabilidad | 3-5 tenants por perfil funcional, shadow mode, evidencia E2E y sign-off de producto, dominio, seguridad, legal y soporte | Dueño |
-
-### Restos anotados, implementables sin bloqueo
-
-- §8.5 paso 2: separar `customers` y `commercial` como secciones propias exige reestructurar la relación padre/hijo del menú.
-- §8.5 paso 9: tiempo-a-tarea, click depth, búsqueda y backtracking — analítica de producto, no de corrección.
-- `inventory.service.ts` mantiene una **segunda** definición de `products` paralela a `tenant-schema.sql`.
+| ~~1~~ | ✅ cerrado en **U33** |
+| ~~2~~ | ✅ cerrado en **U33** |
+| ~~3~~ | ✅ cerrado en **U33** |
+| ~~4~~ | ✅ cerrado en **U33** |
+| ~~5~~ | ✅ cerrado en **U33** |
+| 6 | Estados `selectable\|pilot\|waitlist\|legacy_only`; ocultar STOP en altas nuevas sin migrar tenants legacy |
+| 7 | Bloquear `POST /channel-manager/reservations` cuando el listing tiene SoR externo |
+| 8 | Cifrar credenciales de Channel Manager y de integraciones verticales |
+| 9 | UI de integraciones: probar después de guardar, mostrar health/scopes/freshness, filtrar por subtipo |
+| 10 | ◐ Reclasificar las tools externas de lectura y someterlas al contrato efectivo — **hecho en U33** para las 4 lecturas de proveedor (Toast/Mindbody/Cliniko: reclasificadas como no comprometedoras y publicadas por el contrato con salud/scopes/frescura). Queda el resto de la superficie externa: MCP (hoy opaco, sin política por tool) y las lecturas del Channel Manager |
+| 11 | Migrar los consumidores de `normalizePhoneE164` al `TenantRegionalProfile`; eliminar el default `+57`; UI/API de revisión regional |
+| 12 | Eliminar fallbacks productivos COP / es-CO / Bogotá fuera de decisiones regionales explícitas |
+| 13 | Una sola fuente de schema para `products` |
+| 14 | `VerticalPromptContractV2`, `IntentContract`, `SlotSchema`, `NavigationPolicy`, `CertificationEvidenceV2` |
+| 15 | Los 76 contratos de dominio en `draft` |
+| 16 | Evals ≥25 escenarios por perfil e idioma prioritario |
+| 17 | Aplicar `canBook`, `canCancel`, `canCheckStock`, `canRecommend` en publicación y executor |
+| 18 | Writers CRM mínimos + Active Objects para todos los writers |
+| 19 | Profundidad nativa sin proveedor: ocupación/agrupamiento de boarding; conductor/depósito/contrato/calendario de flota; plantillas y semántica de turismo; superficie de `professional_case`; navegación y analítica restantes; perfiles `build` y partes nativas de `hybrid` |
+| 20 | Scaffolding provider-neutral: outbox, webhook inbox, idempotencia, reconciliación y contract-test kit — con los writers externos apagados hasta tener sandbox |

@@ -30,6 +30,23 @@ export interface ToolPolicy {
     confirmation: ToolConfirmation;
     humanApproval: ToolHumanApproval;
     agentTestAllowed: boolean;
+    /**
+     * Si esta tool **compromete al negocio** frente al cliente.
+     *
+     * NO es lo mismo que escribir una fila, y confundir las dos cosas ya salió
+     * caro: el bloqueo de un perfil `stop` se implementó como `effect !== 'read'`
+     * y con eso se llevó puestas siete lecturas —FAQs, base de conocimiento,
+     * políticas, estado de póliza, mis siniestros— que están marcadas
+     * `conditional_write` sólo porque preparan una tabla perezosa. El perfil
+     * bloqueado quedaba mudo sobre lo único que sí podía contar.
+     *
+     * Y al revés: `send_booking_link` es una LECTURA que le manda al cliente el
+     * enlace donde reserva. El compromiso se cierra igual, sólo que fuera de la
+     * conversación — que es justo lo que el bloqueo existe para impedir.
+     *
+     * Por eso es un campo propio y no una derivación de `effect`.
+     */
+    commitsBusiness: boolean;
 }
 
 type ToolPolicyOverrides = Partial<ToolPolicy>;
@@ -47,6 +64,7 @@ const publicRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
     confirmation: 'not_required',
     humanApproval: 'not_required',
     agentTestAllowed: false,
+    commitsBusiness: false,
     ...overrides,
 });
 
@@ -77,6 +95,7 @@ const contactWrite = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
     confirmation: 'runtime_enforced',
     humanApproval: 'not_required',
     agentTestAllowed: false,
+    commitsBusiness: true,
     ...overrides,
 });
 
@@ -84,6 +103,8 @@ const mediaWrite = (): ToolPolicy => contactWrite({
     dataClassification: 'public',
     externalEffect: 'channel_write',
     confirmation: 'not_required',
+    // Mandar una foto del catálogo no compromete al negocio con nada.
+    commitsBusiness: false,
 });
 
 const stepUpSensitiveRead = (overrides: ToolPolicyOverrides = {}): ToolPolicy => sensitiveRead({
@@ -125,7 +146,11 @@ const TOOL_POLICY_ENTRIES = [
     // industry here, so both reads use the stronger global A2 boundary.
     entry('get_appointment_details', stepUpSensitiveRead({ ownership: 'resource_owner' })),
     entry('list_customer_appointments', stepUpSensitiveRead()),
-    entry('send_booking_link', publicRead()),
+    // Es una lectura que le manda al cliente el enlace DONDE reserva. Un perfil
+    // bloqueado que no puede reservar por chat tampoco puede cerrar el mismo
+    // compromiso mandando el link: el trato se cierra igual, sólo que fuera de
+    // la conversación.
+    entry('send_booking_link', publicRead({ commitsBusiness: true })),
 
     // Catalog, CRM context, knowledge and e-commerce
     entry('search_products', publicRead({ agentTestAllowed: true })),
@@ -311,14 +336,20 @@ const TOOL_POLICY_ENTRIES = [
         downstreamEffects: ['handoff'],
         agentTestAllowed: true,
     })),
+    // El par de identidad NO compromete al negocio: verifica quién habla. Es la
+    // única llave de las lecturas guardadas por A2, así que si cae con las
+    // escrituras vuelve el callejón sin salida que ya se cerró una vez: el
+    // guard pide un código, el cliente lo escribe y no hay tool que lo lea.
     entry('request_identity_code', contactWrite({
         dataClassification: 'sensitive',
         externalEffect: 'channel_write',
         confirmation: 'not_required',
+        commitsBusiness: false,
     })),
     entry('verify_identity_code', contactWrite({
         dataClassification: 'sensitive',
         confirmation: 'not_required',
+        commitsBusiness: false,
     })),
     entry('file_claim', stepUpSensitiveWrite({ ownership: 'resource_owner', downstreamEffects: ['handoff', 'notification'] })),
     entry('list_my_claims', stepUpSensitiveRead({
@@ -406,12 +437,33 @@ export const OPAQUE_MCP_TOOL_POLICY: Readonly<ToolPolicy> = Object.freeze({
     confirmation: 'required_missing',
     humanApproval: 'required_missing',
     agentTestAllowed: false,
+    // Opaca: no se sabe qué hace, así que se asume que compromete.
+    commitsBusiness: true,
 });
 
 export function getToolPolicy(name: unknown): ToolPolicy | undefined {
     if (typeof name !== 'string') return undefined;
     if (name.startsWith('mcp__')) return OPAQUE_MCP_TOOL_POLICY;
     return TOOL_POLICY_REGISTRY[name];
+}
+
+/**
+ * Si esta tool puede publicarse y ejecutarse cuando el negocio no puede
+ * comprometerse — perfil `stop`, rol que no opera, canal que no cierra
+ * operaciones, o contrato que no se pudo resolver.
+ *
+ * Lo que sobrevive no es "lo que no escribe" sino **lo que no compromete**: la
+ * base de conocimiento, las FAQs, las políticas, el estado de una póliza, el
+ * menú de un proveedor y la llave de identidad. Todo eso escribe algo —una
+ * tabla perezosa, un caché, un contador, un código— y nada de eso le promete
+ * nada al cliente.
+ *
+ * Una tool desconocida NO sobrevive: con el compromiso bloqueado, desconocido
+ * es no.
+ */
+export function isNonCommittalTool(name: unknown): boolean {
+    const policy = getToolPolicy(name);
+    return !!policy && policy.commitsBusiness === false;
 }
 
 export function isRegisteredStaticTool(name: unknown): name is string {

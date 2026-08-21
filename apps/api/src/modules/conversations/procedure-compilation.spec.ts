@@ -228,7 +228,8 @@ describe('los datos recogidos llegan a la tool', () => {
 
         expect(toolExecutor.execute).toHaveBeenCalledWith(
             schemaName, tenantId, contactId, 'get_order_status',
-            { orderId: '1024' }, conversationId, { channelType: undefined },
+            { orderId: '1024' }, conversationId,
+            { channelType: undefined, commitmentBlocked: null },
         );
     });
 

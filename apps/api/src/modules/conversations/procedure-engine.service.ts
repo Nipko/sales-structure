@@ -34,6 +34,25 @@ export interface ProcedureAgentContext {
     /** The agent's saved tool config, used to compile tool steps. */
     toolsConfig?: unknown;
     channelType?: string;
+    /**
+     * Las tools que el contrato efectivo publicó para ESTE turno.
+     *
+     * La autorización de un paso se decidía sólo contra la config guardada del
+     * agente, que es una preferencia del dueño y no una concesión de autoridad:
+     * un procedimiento podía invocar un writer en un perfil bloqueado, por
+     * plan insuficiente o sin los datos que la tool necesita. El contrato ya
+     * resolvió todo eso antes de llegar acá; ausente, la autorización cae a la
+     * config como antes, que es lo que hacen los specs que arman el motor a
+     * mano.
+     */
+    authorisedTools?: readonly string[];
+
+    /**
+     * El negocio no puede comprometerse en este turno. Se propaga al ejecutor
+     * para que un paso de tool no escriba aunque el motor haya llegado hasta
+     * acá por otro camino.
+     */
+    commitmentBlocked?: { reason: string } | null;
 }
 
 const STATE_TTL = 3600; // 1h
@@ -302,7 +321,10 @@ export class ProcedureEngineService {
                 try {
                     const result = await this.toolExecutor.execute(
                         schemaName, tenantId, contactId, toolName, rendered.args, conversationId,
-                        { channelType: agent?.channelType },
+                        {
+                            channelType: agent?.channelType,
+                            commitmentBlocked: agent?.commitmentBlocked ?? null,
+                        },
                     );
                     if (result?.error) {
                         const explicitlyRejected = ['action_rejected', 'approval_rejected'].includes(result.error);
@@ -405,6 +427,11 @@ export class ProcedureEngineService {
     private toolStepAuthorized(toolName: string, agent?: ProcedureAgentContext): boolean {
         if (!toolName) return false;
         if (!agent || agent.toolsConfig === undefined) return false;
+        // El contrato efectivo manda cuando el turno lo trae: ya aplicó techo de
+        // subtipo, plan, readiness, salud del proveedor y bloqueo del perfil.
+        // La config del agente es una preferencia del dueño, no una concesión
+        // de autoridad — y era lo único que se miraba acá.
+        if (agent.authorisedTools) return agent.authorisedTools.includes(toolName);
         return procedureAuthorizedToolNames(agent.toolsConfig).has(toolName);
     }
 

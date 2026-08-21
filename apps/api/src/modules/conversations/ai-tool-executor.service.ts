@@ -42,7 +42,7 @@ import {
     canEvalExecuteWriter,
     isAgentTestSafeToolName,
 } from './agent-test-tool-policy';
-import { isRegisteredStaticTool } from './tool-policy-registry';
+import { isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
 import {
     ToolExecutionControlService,
     type ToolExecutionControlDecision,
@@ -145,6 +145,19 @@ export class AIToolExecutorService {
              * country's rules is wrong even when it is fluent and cited.
              */
             jurisdiction?: string | null;
+            /**
+             * El negocio no puede comprometerse en este turno.
+             *
+             * Éste es el ÚNICO lugar por el que pasan los cuatro llamadores —el
+             * loop del LLM, el motor determinista de reservas, Procedures y la
+             * confirmación server-side del "sí"—, y hasta acá no preguntaba
+             * nunca si el perfil estaba bloqueado. El bloqueo vivía en el
+             * momento de PUBLICAR tools, así que cada llamador nuevo fuera del
+             * loop volvía a abrir la puerta: se cerró tres veces y apareció una
+             * cuarta. Verificarlo acá lo cierra para todos, incluido el que
+             * todavía no existe.
+             */
+            commitmentBlocked?: { reason: string } | null;
         },
     ): Promise<any> {
         this.logger.log(`[Tool] Executing: ${toolName}`);
@@ -157,6 +170,21 @@ export class AIToolExecutorService {
             // boundary below; every other unknown name fails closed here.
             if (!toolName.startsWith('mcp__') && !isRegisteredStaticTool(toolName)) {
                 return { error: 'unknown_tool', tool: toolName };
+            }
+
+            // La puerta común. Lo que cae es lo que COMPROMETE al negocio, no
+            // lo que escribe una fila: una búsqueda en la base de conocimiento
+            // o la llave de identidad siguen pasando.
+            if (opts?.commitmentBlocked && !isNonCommittalTool(toolName)) {
+                this.logger.warn(
+                    `[Tool] ${toolName} bloqueada: ${opts.commitmentBlocked.reason}`,
+                );
+                return {
+                    error: 'capability_blocked',
+                    reason: opts.commitmentBlocked.reason,
+                    shouldHandoff: true,
+                    message: 'Esto no lo puedo cerrar por chat. Te paso con alguien del equipo.',
+                };
             }
 
             // Persistence-disabled execution is a capability boundary, not a

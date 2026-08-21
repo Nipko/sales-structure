@@ -20,6 +20,7 @@ import {
     NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem,
     ModelTier, RoutingFactors,
     localizedTerm, subtypeTerminologyFor, resolveSubtypeExperienceProfile,
+    type EffectiveCapabilityContract, type TurnCapability,
     type LocalizedTerm,
 } from '@parallext/shared';
 import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
@@ -58,9 +59,9 @@ import { AiResolutionService } from '../analytics/ai-resolution.service';
 import {
     isBusinessWriteTool,
     isConfirmableWriteTool,
+    isNonCommittalTool,
     toolBatchRequiresSequentialExecution,
     toolRequiresSequentialExecution,
-    TOOL_POLICY_REGISTRY,
 } from './tool-policy-registry';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
@@ -2126,13 +2127,67 @@ export class ConversationsService {
         // An escalation asked for by a tool executed outside the loop.
         let pendingOperationHandoff: string | null = null;
 
+        // ═══ EL CONTRATO EFECTIVO SE RESUELVE PRIMERO ═══
+        //
+        // Antes se resolvía al FINAL, después de que el motor de reservas ya
+        // había podido crear una cita, de que Procedures ya había podido
+        // invocar un writer, y después de agregar pagos, integraciones y MCP.
+        // Un perfil bloqueado tenía tres caminos para escribir antes de que
+        // nadie le preguntara si podía: el contrato llegaba tarde a su propia
+        // decisión.
+        //
+        // Acá se resuelve UNA vez, antes que nada, y el resultado gobierna el
+        // motor determinista, Procedures y la publicación de tools.
+        const cfgTools = (config.tools ?? (config as any)?.tools) as any;
+        const capability = await this.resolveTurnCapability({
+            tenantId,
+            schemaName,
+            config,
+            cfgTools,
+            turnContext,
+            channelType: msg.channelType,
+        });
+        turnContext.capability = capability.status;
+        turnTrace.add('capability_contract', 'Capability', {
+            status: capability.status.status,
+            reason: capability.status.reason,
+            profile: capability.status.profileId,
+            plan: capability.contract?.planSnapshot,
+            published: capability.contract?.publishedGroups,
+            unmetReadiness: capability.contract?.unmetReadiness,
+            degraded: capability.contract?.degraded,
+        });
+
+        // Una operación que el contrato no autoriza no se intenta y se deriva.
+        // El motor de reservas y Procedures escriben POR FUERA del loop de
+        // tools, así que filtrar la lista de tools no los alcanza: hay que no
+        // dejarlos correr.
+        const writesAuthorised = capability.status.status === 'ok'
+            || capability.status.status === 'degraded';
+        if (!writesAuthorised) {
+            pendingOperationHandoff = `capability:${capability.status.status}`;
+        }
+        // Lo mismo, en la forma que entiende el ejecutor. No alcanza con no
+        // dejar correr a los motores: el ejecutor es la puerta común y ahí se
+        // verifica de nuevo, para el llamador que todavía no existe.
+        const commitmentBlocked = writesAuthorised
+            ? null
+            : {
+                reason: `capability:${capability.status.status}`
+                    + `:${capability.status.reason ?? 'sin_motivo'}`,
+            };
+
         // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
         // message is the ANSWER to that field — give the procedure engine priority
         // so the booking engine doesn't hijack it and leave the procedure hung.
         const procedureAwaiting = await this.procedureEngine.getState(conversation.id)
             .then(s => !!s?.awaitingField).catch(() => false);
 
-        if (toolsEnabled && !procedureAwaiting) {
+        // El motor determinista CREA la cita: escribe por fuera del loop de
+        // tools, así que filtrar la lista de tools no lo alcanzaba. Un perfil
+        // bloqueado, un rol que no opera o un canal que no cierra operaciones
+        // llegaban acá y reservaban igual.
+        if (toolsEnabled && !procedureAwaiting && writesAuthorised) {
             // Tenant-local "today" — toISOString() would be UTC, which rolls over
             // to tomorrow during the evening across all of LatAm (UTC-3…-6) and
             // would make the booking engine treat "hoy" as the next day.
@@ -2266,15 +2321,23 @@ export class ConversationsService {
         // booking engine didn't take over. If an active procedure is in progress or
         // a trigger matches, it produces a directive the LLM voices (like booking),
         // keeping the flow deterministic. Fully guarded so it can never break chat.
-        if (!engineProducedText) {
+        //
+        // Procedures ejecuta tools por su cuenta, también fuera del loop: un
+        // procedimiento activo podía invocar un writer en un perfil bloqueado
+        // sin que el contrato se hubiera resuelto todavía. Ahora corre sólo si
+        // el contrato autorizó escribir, y recibe la lista publicada para que
+        // un paso no pueda invocar una tool que el contrato no dejó pasar.
+        if (!engineProducedText && writesAuthorised) {
             try {
                 const procResult = await this.procedureEngine.process(
                     schemaName, tenantId, conversation.id, conversation.contact_id || '', userText,
                     {
                         industry: turnContext.verticalContext?.industry,
                         subType: turnContext.verticalContext?.subType,
-                        toolsConfig: (config.tools ?? (config as any)?.tools) ?? {},
+                        toolsConfig: cfgTools ?? {},
                         channelType: msg.channelType,
+                        authorisedTools: capability.contract?.publishedTools,
+                        commitmentBlocked,
                     },
                 );
                 if (procResult.handled) {
@@ -2329,6 +2392,7 @@ export class ConversationsService {
                                 channelType: msg.channelType,
                                 maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                 jurisdiction: regional?.operatingCountry.value,
+                                commitmentBlocked,
                             },
                         ),
                         TOOL_TIMEOUT_MS,
@@ -2400,7 +2464,6 @@ export class ConversationsService {
         // Plan, quota, provider health and readiness are NOT decided here: the
         // money families below and the central guard apply those per turn, so a
         // tool can be authorised by config and still be refused at execution.
-        const cfgTools = (config.tools ?? (config as any)?.tools) as any;
         tools = [...tools, ...staticToolsForAgentConfig(cfgTools)];
 
         // Customer checkout is independent from ecommerce and fails closed on
@@ -2430,16 +2493,21 @@ export class ConversationsService {
             }
         }
 
-        // Vertical integration tools (T3.19) — registered per connected provider
-        // (Toast / Mindbody / Cliniko). Connection state is cached (5min), so this
-        // is a cheap per-turn check. Guarded so it never breaks the pipeline.
-        try {
-            const connected = await this.verticalIntegrations.getConnectedProviders(tenantId);
-            if (connected.toast) tools = [...tools, GET_RESTAURANT_MENU_TOOL];
-            if (connected.mindbody) tools = [...tools, GET_FITNESS_SCHEDULE_TOOL];
-            if (connected.cliniko) tools = [...tools, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL];
-        } catch (e: any) {
-            this.logger.debug(`[T3.19] vertical integration tool gating skipped: ${e.message}`);
+        // Lecturas de proveedor (T3.19: Toast / Mindbody / Cliniko).
+        //
+        // Se publicaban por estar CONECTADAS, con su propia puerta al margen del
+        // contrato. Ahora las decide el contrato —que ademas mira salud, scopes
+        // y frescura— y aca solo se traducen los nombres que autorizo a sus
+        // definiciones. Sin contrato no se publica ninguna: un resolutor caido
+        // no es permiso para leer de un tercero.
+        const providerToolDefs: Record<string, typeof GET_RESTAURANT_MENU_TOOL> = {
+            get_restaurant_menu: GET_RESTAURANT_MENU_TOOL,
+            get_fitness_schedule: GET_FITNESS_SCHEDULE_TOOL,
+            list_clinic_services: LIST_CLINIC_SERVICES_TOOL,
+            check_clinic_availability: CHECK_CLINIC_AVAILABILITY_TOOL,
+        };
+        for (const [name, def] of Object.entries(providerToolDefs)) {
+            if (capability.contract?.publishedTools.includes(name)) tools = [...tools, def];
         }
 
         // External MCP tools (T3.20). Discovery is not authorisation: the model
@@ -2469,56 +2537,48 @@ export class ConversationsService {
         // Derivation runs last, after every family, so it sees the real set.
         tools = [...tools, ...identityStepUpToolsFor(tools)];
 
-        // The effective capability contract has the last word on WHAT may be
-        // published. Registration above answers "what did the agent switch on";
-        // this answers "what may this agent actually do, this turn" — subtype
-        // ceiling, plan, quota and readiness together, resolved server-side and
-        // fail-closed. It only ever NARROWS the set: a contract that cannot be
-        // resolved leaves the turn exactly as it was rather than silencing an
-        // agent that works.
-        if (tools.length && this.effectiveCapability) {
-            try {
-                const contract = await this.effectiveCapability.resolve({
-                    tenantId,
-                    schemaName,
-                    industry: turnContext.verticalContext?.industry || config.industry,
-                    subType: turnContext.verticalContext?.subType,
-                    toolsConfig: cfgTools ?? {},
-                    agentId: (config as any)?.agentId,
-                });
+        // El contrato tiene la última palabra sobre QUÉ se publica. El registro
+        // de arriba contesta "qué encendió el dueño"; esto contesta "qué puede
+        // hacer este agente, en este turno". Se resolvió al principio, así que
+        // acá sólo se aplica.
+        if (tools.length) {
+            const before = tools.length;
+            const contract = capability.contract;
+
+            if (!contract) {
+                // ═══ EL RESOLUTOR NO RESOLVIÓ ═══
+                //
+                // Antes se dejaba el turno "exactamente como estaba", que en la
+                // práctica es publicar el juego completo de writers apoyándose
+                // en una decisión que nunca se tomó. Un resolutor caído no es
+                // permiso: quedan sólo lecturas con política revisada, y el
+                // turno deriva a una persona.
+                tools = this.nonCommittalTools(tools);
+                this.logger.warn(
+                    `[Capability] sin contrato (${capability.status.reason}): `
+                    + `${before} → ${tools.length} tools, sólo lecturas revisadas`,
+                );
+            } else {
                 const allowed = new Set(contract.publishedTools);
-                const before = tools.length;
-                // Families resolved asynchronously (payments, integrations, MCP,
-                // the OTP pair) are not part of the static contract and keep
-                // their own gates, so they pass through untouched.
+                // Las familias asíncronas —pagos, integraciones, MCP, el par de
+                // OTP— no son parte del contrato estático y conservan sus
+                // propias puertas, así que pasan sin tocar.
                 const staticNames = new Set(staticToolsForAgentConfig(cfgTools ?? {}).map(t => String(t.name)));
                 tools = tools.filter(t => !staticNames.has(String(t?.name)) || allowed.has(String(t?.name)));
-                // Un perfil bloqueado no escribe NADA, venga de donde venga la
-                // tool. Las familias asíncronas —pagos, descuentos,
-                // integraciones, MCP— se agregan fuera del contrato estático y
-                // conservan sus propias puertas: sin esto, el bloqueo tapaba la
-                // puerta principal y dejaba abierta la de servicio, y una
-                // aseguradora bloqueada seguía pudiendo generar un enlace de
-                // pago. Una tool sin política revisada también cae: en un
-                // perfil bloqueado, desconocido es no.
+                // Bloqueado no escribe NADA, venga de donde venga la tool: sin
+                // esto el bloqueo tapaba la puerta principal y dejaba abierta la
+                // de servicio, y una aseguradora bloqueada seguía pudiendo
+                // generar un enlace de pago. Una tool sin política revisada
+                // también cae: con la escritura bloqueada, desconocido es no.
                 if (contract.writersBlocked) {
-                    tools = tools.filter(t => TOOL_POLICY_REGISTRY[String(t?.name)]?.effect === 'read');
+                    tools = this.nonCommittalTools(tools);
                 }
                 if (tools.length !== before) {
                     this.logger.log(
                         `[Capability] ${before} → ${tools.length} tools for ${contract.subtypeProfileId}`
-                        + ` (${contract.excluded.map(e => `${e.subject}:${e.reason}`).join(', ') || 'none excluded'})`,
+                        + ` (${contract.excluded.map((e: { subject: string; reason: string }) => `${e.subject}:${e.reason}`).join(', ') || 'none excluded'})`,
                     );
                 }
-                turnTrace.add('capability_contract', 'Capability', {
-                    profile: contract.subtypeProfileId,
-                    plan: contract.planSnapshot,
-                    published: contract.publishedGroups,
-                    unmetReadiness: contract.unmetReadiness,
-                    degraded: contract.degraded,
-                });
-            } catch (error: any) {
-                this.logger.warn(`[Capability] contract unresolved: ${error?.message}`);
             }
         }
 
@@ -2939,6 +2999,7 @@ export class ConversationsService {
                                     channelType: msg.channelType,
                                     maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                     jurisdiction: regional?.operatingCountry.value,
+                                    commitmentBlocked,
                                 }),
                                 TOOL_TIMEOUT_MS,
                                 tc.function.name,
@@ -3870,6 +3931,116 @@ export class ConversationsService {
             return name.length > 3 && lower.includes(name);
         });
         return !matchesSeededService;
+    }
+
+    /**
+     * El contrato efectivo del turno, resuelto UNA vez y antes que nada.
+     *
+     * Devuelve siempre un estado utilizable. Lo que NUNCA devuelve es
+     * "seguí como estabas": si el contrato no resuelve, el estado es
+     * `unresolved` y el llamador deja sólo lecturas con política revisada. Un
+     * resolutor caído que conserva el toolset anterior es peor que uno que no
+     * existe, porque da la impresión de que alguien decidió.
+     */
+    private async resolveTurnCapability(input: {
+        tenantId: string;
+        schemaName: string;
+        config: TenantConfig;
+        cfgTools: any;
+        turnContext: TurnContext;
+        channelType?: string;
+    }): Promise<{ contract: EffectiveCapabilityContract | null; status: TurnCapability }> {
+        const profileId = input.turnContext.verticalContext?.subType
+            ? `${input.turnContext.verticalContext?.industry}/${input.turnContext.verticalContext?.subType}`
+            : input.turnContext.verticalContext?.industry;
+
+        if (!this.effectiveCapability) {
+            // El servicio es opcional en los specs que arman el pipeline a mano.
+            // En producción siempre está; su ausencia no puede abrir la puerta.
+            return { contract: null, status: { status: 'unresolved', reason: 'resolver_unavailable', profileId } };
+        }
+
+        // Salud real de los proveedores externos, medida antes de decidir.
+        //
+        // Las lecturas de Toast/Mindbody/Cliniko se publicaban por estar
+        // CONECTADAS. `getAllHealth` ya calcula conectado, scopes y frescura;
+        // nadie se lo preguntaba en el turno. Si la consulta falla, se pasa
+        // `undefined` —no un snapshot vacio—: vacio significa "medi y no hay
+        // ninguno" y apagaria integraciones sanas por una consulta caida.
+        let providers: Record<string, {
+            connected: boolean; healthy?: boolean;
+            scopes?: readonly string[]; asOf?: string;
+        }> | undefined;
+        try {
+            const health = await this.verticalIntegrations.getAllHealth(input.tenantId);
+            providers = Object.fromEntries(Object.entries(health).map(([name, h]: [string, any]) => [
+                name,
+                {
+                    connected: !!h?.connected,
+                    // Scopes incompletos es lo mismo que no poder leer: el token
+                    // esta conectado y aun asi la lectura vuelve vacia.
+                    healthy: h?.status === 'healthy' && h?.scopeStatus !== 'missing',
+                    scopes: h?.grantedScopes,
+                    asOf: h?.lastSuccessfulSyncAt || h?.lastCheckedAt || undefined,
+                },
+            ]));
+        } catch (error: any) {
+            this.logger.debug(`[Capability] salud de proveedores no disponible: ${error?.message}`);
+        }
+
+        try {
+            const contract = await this.effectiveCapability.resolve({
+                tenantId: input.tenantId,
+                schemaName: input.schemaName,
+                industry: input.turnContext.verticalContext?.industry || input.config.industry,
+                subType: input.turnContext.verticalContext?.subType,
+                toolsConfig: input.cfgTools ?? {},
+                agentId: (input.config as any)?.agentId,
+                providers,
+                // Entradas que faltaban: sin ellas el contrato decidía sin saber
+                // quién habla, por qué canal ni bajo qué jurisdicción.
+                channelType: input.channelType,
+                operatingCountry: input.turnContext.regional?.operatingCountry,
+                jurisdiction: input.turnContext.regional?.operatingCountry,
+                // El agente de IA actúa siempre como el rol operativo: no
+                // administra catálogo ni configuración desde una conversación.
+                role: 'tenant_agent',
+            });
+
+            if (contract.writersBlocked) {
+                return {
+                    contract,
+                    status: { status: 'blocked', reason: 'profile_blocked', profileId: contract.subtypeProfileId },
+                };
+            }
+            if (contract.degraded) {
+                return {
+                    contract,
+                    status: { status: 'degraded', reason: 'gate_unevaluable', profileId: contract.subtypeProfileId },
+                };
+            }
+            return { contract, status: { status: 'ok', profileId: contract.subtypeProfileId } };
+        } catch (error: any) {
+            this.logger.warn(`[Capability] contract unresolved: ${error?.message}`);
+            return { contract: null, status: { status: 'unresolved', reason: 'resolver_failed', profileId } };
+        }
+    }
+
+    /**
+     * Las tools que sobreviven cuando el negocio no puede comprometerse.
+     *
+     * No es "lo que no escribe": es **lo que no compromete**. Una búsqueda en la
+     * base de conocimiento escribe un contador, el menú de un proveedor escribe
+     * un caché y la llave de identidad escribe un código — y nada de eso le
+     * promete nada al cliente. Filtrar por `effect === 'read'` dejaba al agente
+     * bloqueado sin nada con qué contestar, que es lo contrario de lo que el
+     * bloqueo declara querer.
+     *
+     * Una tool sin política revisada no sobrevive: acá, desconocido es no.
+     */
+    private nonCommittalTools(tools: any[]): any[] {
+        return tools.filter((tool: any) =>
+            isNonCommittalTool(String(tool?.function?.name || tool?.name)));
     }
 
     private async persistBookingState(schemaName: string, conversationId: string, state: any): Promise<void> {

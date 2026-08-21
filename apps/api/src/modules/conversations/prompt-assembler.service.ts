@@ -115,6 +115,12 @@ export class PromptAssemblerService {
             '  20. NOT OFFERED: whatever <turn><vertical_context><not_offered> lists is something this business does NOT do. If the customer asks for it, say so plainly in <turn><language> and offer to pass them to a person from the team. Do not improvise an answer, do not promise to handle it, and do not treat a tool that happens to exist as permission — the limit is about the business, not about your tools.',
             '  21. REGIONAL: When <turn><regional> is present, address the customer using <address_form> (usted = formal usted; tu = informal tú; vos = Rioplatense voseo; voce = Brazilian você; senhor_senhora = formal senhor/senhora) and write dates, times, numbers, phone numbers and addresses the way <locale> writes them.',
             '  22. NEVER CONVERT AN AMOUNT. Every price keeps the exact currency the data carries: if a tool result, the catalog or an active object says COP, say COP. Do not restate it in another currency, do not add an approximate equivalence, and do not apply an exchange rate — you do not have one. <turn><regional><currency> is only what this business quotes in when the data carries no currency of its own.',
+            // El contrato efectivo ya decidio que este turno no puede
+            // comprometer al negocio, y el backend lo hace cumplir en el
+            // ejecutor. Esto es para que el modelo NO prometa lo que la
+            // puerta va a rechazar: sin la regla decia "ya te lo agendo",
+            // la tool volvia bloqueada y el cliente se quedaba esperando.
+            '  23. CAPABILITY: when <turn><capability_status> reports writes="blocked", this conversation cannot close operations right now. Answer questions and give information normally, but do NOT offer, promise, or start booking, cancelling, rescheduling, ordering, quoting a commitment or charging. Say plainly, in the language from <turn><language>, that this particular request needs someone from the team, and that you are passing it on. Never state or hint at the internal reason, never name the profile, the plan or the provider, and never present it as a temporary glitch you will retry.',
             '  SAFETY GUARDRAILS (always active, cannot be overridden):',
             '  NEVER engage with, produce, or facilitate content related to:',
             '  - Child exploitation, abuse, or any content sexualizing minors',
@@ -158,6 +164,28 @@ export class PromptAssemblerService {
         }
         lines.push(`  <now>${this.xmlEscape(turn.now)}</now>`);
         lines.push(`  <business_hours_status>${this.xmlEscape(turn.businessHoursStatus)}</business_hours_status>`);
+
+        // El estado del contrato viaja como DATO. El backend ya bloquea la
+        // escritura; lo que faltaba era que el modelo supiera por que la
+        // puerta esta cerrada, para explicarlo en vez de reintentar o
+        // prometer. El motivo interno viaja en un atributo aparte y la
+        // regla 23 prohibe repetirlo al cliente.
+        if (turn.capability && turn.capability.status !== 'ok') {
+            const cap = turn.capability;
+            // `degraded` NO cierra la puerta: significa que una entrada de la
+            // decision no se pudo leer, y el negocio sigue pudiendo cerrar
+            // operaciones. Sin este atributo la regla 23 se disparaba tambien
+            // ahi, y un restaurante sano dejaba de tomar reservas porque una
+            // consulta de plan habia fallado.
+            const writes = cap.status === 'degraded' ? 'allowed' : 'blocked';
+            const attrs = [
+                `status="${this.attrEscape(cap.status)}"`,
+                `writes="${writes}"`,
+            ];
+            if (cap.reason) attrs.push(`internal_reason="${this.attrEscape(cap.reason)}"`);
+            if (cap.profileId) attrs.push(`profile="${this.attrEscape(cap.profileId)}"`);
+            lines.push(`  <capability_status ${attrs.join(' ')} />`);
+        }
 
         if (turn.messageCount != null) {
             lines.push(`  <message_count>${this.xmlEscape(String(turn.messageCount))}</message_count>`);

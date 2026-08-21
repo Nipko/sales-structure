@@ -83,7 +83,7 @@ describe('ProcedureEngine central writer controls', () => {
             'refund_payment',
             { paymentReference: 'pay-1' },
             conversationId,
-            { channelType: undefined },
+            { channelType: undefined, commitmentBlocked: null },
         );
         expect(getSavedState()).toMatchObject({
             currentStepId: 'writer',

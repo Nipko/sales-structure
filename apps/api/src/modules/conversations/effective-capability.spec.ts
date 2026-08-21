@@ -236,6 +236,100 @@ describe('el contrato es trazable', () => {
     });
 });
 
+describe('conectada no es sana, y sana no es fresca', () => {
+    /**
+     * Las cuatro lecturas de proveedor (Toast, Mindbody, Cliniko) se publicaban
+     * por estar CONECTADAS y por fuera del contrato. Un token con la mitad de
+     * los permisos esta conectado igual; un menu sincronizado hace tres dias
+     * tambien. El agente contestaba con el ultimo dato que alguien logro traer,
+     * sin decir de cuando era.
+     */
+    const fresh = () => new Date().toISOString();
+    const old = () => new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+
+    it('publica la lectura del proveedor sano y fresco', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'restaurantes', subType: 'comida_rapida',
+            toolsConfig: { restaurants: { enabled: true } },
+            providers: { toast: { connected: true, healthy: true, asOf: fresh() } },
+        });
+
+        expect(contract.publishedTools).toContain('get_restaurant_menu');
+    });
+
+    it.each([
+        ['no conectado', { connected: false, healthy: true, asOf: null as any }],
+        ['conectado pero enfermo', { connected: true, healthy: false, asOf: null as any }],
+        ['sano pero viejo', { connected: true, healthy: true, asOf: 'STALE' }],
+        ['sin fecha: no se sabe de cuando es', { connected: true, healthy: true, asOf: undefined }],
+    ])('%s no publica la lectura', async (_case, health: any) => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'restaurantes', subType: 'comida_rapida',
+            toolsConfig: { restaurants: { enabled: true } },
+            providers: {
+                toast: {
+                    ...health,
+                    asOf: health.asOf === 'STALE' ? old() : (health.asOf ?? undefined),
+                },
+            },
+        });
+
+        expect(contract.publishedTools).not.toContain('get_restaurant_menu');
+        expect(contract.excluded).toContainEqual(expect.objectContaining({
+            subject: 'toast', reason: 'provider_unavailable',
+        }));
+    });
+
+    it('la familia NATIVA sigue publicada sin ningun proveedor conectado', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'restaurantes', subType: 'comida_rapida',
+            toolsConfig: { restaurants: { enabled: true } },
+            providers: {},
+        });
+
+        // `restaurants` vive en tablas propias: gatearla por Toast habria
+        // apagado a todo restaurante que nunca integro nada.
+        expect(contract.publishedGroups).toContain('restaurants');
+        expect(contract.publishedTools).toContain('get_menu');
+        expect(contract.publishedTools).not.toContain('get_restaurant_menu');
+    });
+
+    it('sin snapshot no se reporta exclusion: nadie midio nada', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'restaurantes', subType: 'comida_rapida',
+            toolsConfig: { restaurants: { enabled: true } },
+        });
+
+        expect(contract.degraded).toBe(false);
+        expect(contract.excluded.some((e: { reason: string }) => e.reason === 'provider_unavailable'))
+            .toBe(false);
+        expect(contract.publishedTools).not.toContain('get_restaurant_menu');
+    });
+
+    it('un perfil bloqueado tampoco hereda la lectura del proveedor como escritura', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'seguros', subType: 'aseguradora',
+            toolsConfig: { insurance: { enabled: true } },
+            providers: { cliniko: { connected: true, healthy: true, asOf: fresh() } },
+        });
+
+        // Leer es leer, incluso bloqueado: lo que no puede es comprometerse.
+        expect(contract.writersBlocked).toBe(true);
+        expect(contract.publishedTools).toContain('list_clinic_services');
+        expect(contract.publishedTools).not.toContain('file_claim');
+    });
+});
+
 describe('un perfil bloqueado no cierra nada', () => {
     /**
      * `stop` era documentación: el registro lo declaraba, la auditoría lo

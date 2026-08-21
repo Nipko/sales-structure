@@ -1366,6 +1366,33 @@ npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2919 passed / 301 suites (1 skipped), 0 fallos
 ```
 
+### U47 — El CRM tenía dos tools y las dos leían
+
+**Pendiente interno 18 (primera mitad)**
+
+El agente descubría en la conversación que el cliente prefiere los martes, que le interesa el plan anual, que ya lo llamaron dos veces sin respuesta — y **nada de eso llegaba al CRM**. Quedaba en el historial del hilo, que ningún vendedor lee, y el humano que tomaba la conversación después empezaba de cero.
+
+**Por qué sólo tres, y por qué éstas.** Un writer de CRM manejado por un modelo es una superficie peligrosa distinta de una reserva: no falla ruidosamente, **ensucia**. Un lead con la etapa equivocada, una etiqueta inventada o un campo pisado no se nota hasta que alguien construye un reporte encima. Las tres son **aditivas y no destructivas**: agregan una nota, suman una etiqueta, registran un interés.
+
+**`update_lead_stage` no está, a propósito.** Existe un motor de transiciones con reglas que el dueño configuró; dejar que el modelo salte por encima lo volvería decorativo. Una prueba lo fija: no puede aparecer ninguna tool con `stage`/`pipeline` en el nombre.
+
+**Tres decisiones que hacen que no ensucie:**
+- **Sin lead no se crea uno.** Crearlo desde una conversación metería en el embudo a cualquiera que preguntó un horario.
+- **La etiqueta tiene que existir.** Si no existe, falla y lo dice. Inventarla es cómo el equipo arma un segmento y le faltan la mitad de los contactos, porque el agente escribió "VIP" donde ellos usan "vip".
+- **El interés no pisa lo que una persona clasificó.** Escribe `primary_intent` sólo si está vacío; si ya hay uno, va al secundario. Pisar es la forma silenciosa de que el equipo deje de confiar en el campo.
+
+**Y no comprometen al negocio**, así que sobreviven cuando la escritura está bloqueada (U35): un perfil bloqueado se dedica justamente a capturar y derivar, y quitarle la anotación lo dejaría capturando en el aire. Tampoco piden confirmación al cliente — pedirle que confirme una nota interna es ruido que además le revela que se está tomando nota de él.
+
+La nota queda **atribuida** (`created_by = 'agent'`): el equipo tiene que poder distinguir lo que anotó el agente de lo que escribió una persona.
+
+**Pruebas** — `crm-writers.spec.ts` (nuevo, 11) y el conteo del registro canónico de tools de 104 a 107, que es la puerta que exige política revisada, rama del ejecutor y definición para cada tool.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2930 passed / 302 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1479,6 +1506,6 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~15~~ | ✅ cerrado en **U44** |
 | ~~16~~ | ✅ cerrado en **U45** |
 | ~~17~~ | ✅ cerrado en **U46** |
-| 18 | Writers CRM mínimos + Active Objects para todos los writers |
+| 18 | ◐ **Hecho en U47**: los tres writers CRM mínimos (`add_contact_note`, `tag_contact`, `record_contact_interest`). Queda **Active Objects para todos los writers**: hay 5 cargadores para 22 tipos declarados |
 | 19 | Profundidad nativa sin proveedor: ocupación/agrupamiento de boarding; conductor/depósito/contrato/calendario de flota; plantillas y semántica de turismo; superficie de `professional_case`; navegación y analítica restantes; perfiles `build` y partes nativas de `hybrid` |
 | 20 | Scaffolding provider-neutral: outbox, webhook inbox, idempotencia, reconciliación y contract-test kit — con los writers externos apagados hasta tener sandbox |

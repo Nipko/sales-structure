@@ -402,6 +402,16 @@ export class AIToolExecutorService {
                 case 'get_customer_context':
                     return this.getCustomerContext(schemaName, contactId);
 
+                // ── CRM: lo que el agente aprende y antes no anotaba ──
+                case 'add_contact_note':
+                    return this.addContactNote(schemaName, contactId, conversationId, args.note);
+
+                case 'tag_contact':
+                    return this.tagContact(schemaName, contactId, args.tag);
+
+                case 'record_contact_interest':
+                    return this.recordContactInterest(schemaName, contactId, args.interest);
+
                 // ── E-commerce dual-skillset tools (T2.17) ──────────
                 case 'recommend_products':
                     return this.recommendProducts(
@@ -1401,6 +1411,154 @@ export class AIToolExecutorService {
      * Gracefully handles missing tables — a tenant without the leads table
      * still gets a basic contact profile.
      */
+    /**
+     * El lead de este contacto, o null.
+     *
+     * Las tres escrituras de CRM cuelgan del lead y no del contacto porque es
+     * donde el equipo mira: notas, etiquetas e interés viven en el embudo. Sin
+     * lead no se crea uno — crearlo desde una conversación metería en el
+     * embudo a cualquiera que preguntó un horario.
+     */
+    private async leadIdForContact(schema: string, contactId: string): Promise<string | null> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".leads
+                  WHERE contact_id = $1::uuid AND archived_at IS NULL
+                  ORDER BY created_at DESC LIMIT 1`,
+                contactId,
+            );
+            return rows[0]?.id || null;
+        } catch (e: any) {
+            this.logger.warn(`[Tool] lead lookup failed: ${e.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Anota un hecho que el cliente dijo.
+     *
+     * Aditiva y no destructiva a propósito: agrega una fila, nunca pisa lo que
+     * una persona escribió. Un writer de CRM manejado por un modelo no falla
+     * ruidosamente — ensucia, y eso no se nota hasta que alguien construye un
+     * reporte encima.
+     */
+    private async addContactNote(
+        schema: string,
+        contactId: string,
+        conversationId: string | undefined,
+        note: unknown,
+    ): Promise<any> {
+        if (!contactId) {
+            return { error: 'no_contact', message: 'No tengo identificado al cliente de esta conversación.' };
+        }
+        const content = typeof note === 'string' ? note.trim() : '';
+        if (content.length < 3 || content.length > 1000) {
+            return { error: 'invalid_note', message: 'La nota tiene que ser un texto breve y concreto.' };
+        }
+        const leadId = await this.leadIdForContact(schema, contactId);
+        if (!leadId) {
+            return { error: 'no_lead', message: 'Este cliente todavía no está en el embudo.' };
+        }
+        try {
+            await this.prisma.$queryRawUnsafe(
+                `INSERT INTO "${schema}".notes (lead_id, conversation_id, content, created_by)
+                 VALUES ($1::uuid, $2::uuid, $3, 'agent')`,
+                leadId, conversationId || null, content,
+            );
+            return { success: true, recorded: content };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] add_contact_note failed: ${e.message}`);
+            return { error: 'note_failed', message: 'No pude guardar la nota en este momento.' };
+        }
+    }
+
+    /**
+     * Suma una etiqueta que el negocio YA creó.
+     *
+     * Una etiqueta inventada vuelve inusable el filtrado del CRM: el equipo
+     * arma un segmento y le faltan la mitad de los contactos porque el agente
+     * escribió "VIP" donde ellos usan "vip". Por eso no se crea la etiqueta:
+     * si no existe, falla y lo dice.
+     */
+    private async tagContact(schema: string, contactId: string, tag: unknown): Promise<any> {
+        if (!contactId) {
+            return { error: 'no_contact', message: 'No tengo identificado al cliente de esta conversación.' };
+        }
+        const name = typeof tag === 'string' ? tag.trim() : '';
+        if (!name || name.length > 100) {
+            return { error: 'invalid_tag', message: 'La etiqueta no es válida.' };
+        }
+        const leadId = await this.leadIdForContact(schema, contactId);
+        if (!leadId) {
+            return { error: 'no_lead', message: 'Este cliente todavía no está en el embudo.' };
+        }
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".tags WHERE lower(name) = lower($1) LIMIT 1`,
+                name,
+            );
+            const tagId = rows[0]?.id;
+            if (!tagId) {
+                return {
+                    error: 'unknown_tag',
+                    message: `El negocio no tiene una etiqueta "${name}".`,
+                };
+            }
+            await this.prisma.$queryRawUnsafe(
+                `INSERT INTO "${schema}".lead_tags (lead_id, tag_id)
+                 VALUES ($1::uuid, $2::uuid) ON CONFLICT DO NOTHING`,
+                leadId, tagId,
+            );
+            return { success: true, tag: name };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] tag_contact failed: ${e.message}`);
+            return { error: 'tag_failed', message: 'No pude etiquetar al cliente en este momento.' };
+        }
+    }
+
+    /**
+     * Registra lo que el cliente dijo que le interesa.
+     *
+     * Escribe `primary_intent` sólo cuando está vacío y, si ya hay uno, va al
+     * secundario: pisar lo que una persona clasificó es la forma silenciosa de
+     * que el equipo deje de confiar en el campo.
+     */
+    private async recordContactInterest(
+        schema: string,
+        contactId: string,
+        interest: unknown,
+    ): Promise<any> {
+        if (!contactId) {
+            return { error: 'no_contact', message: 'No tengo identificado al cliente de esta conversación.' };
+        }
+        const value = typeof interest === 'string' ? interest.trim().slice(0, 100) : '';
+        if (value.length < 2) {
+            return { error: 'invalid_interest', message: 'No entendí qué le interesa al cliente.' };
+        }
+        const leadId = await this.leadIdForContact(schema, contactId);
+        if (!leadId) {
+            return { error: 'no_lead', message: 'Este cliente todavía no está en el embudo.' };
+        }
+        try {
+            await this.prisma.$queryRawUnsafe(
+                `UPDATE "${schema}".leads
+                    SET primary_intent = COALESCE(NULLIF(primary_intent, ''), $2),
+                        secondary_intent = CASE
+                            WHEN COALESCE(primary_intent, '') = '' THEN secondary_intent
+                            WHEN lower(primary_intent) = lower($2) THEN secondary_intent
+                            ELSE COALESCE(NULLIF(secondary_intent, ''), $2)
+                        END,
+                        updated_at = NOW()
+                  WHERE id = $1::uuid`,
+                leadId, value,
+            );
+            return { success: true, interest: value };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] record_contact_interest failed: ${e.message}`);
+            return { error: 'interest_failed', message: 'No pude registrar el interés en este momento.' };
+        }
+    }
+
     private async getCustomerContext(schema: string, contactId: string): Promise<any> {
         if (!contactId) {
             return readUnauthorized({ message: 'No tengo identificado al cliente de esta conversación.' });

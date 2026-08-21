@@ -3,6 +3,7 @@ import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, KB_TOOL, POLICY_TOOL } from './tools/knowledge-tools';
 import { CUSTOMER_CONTEXT_TOOL, ORDER_TOOL } from './tools/crm-tools';
+import { CRM_WRITE_TOOLS } from './tools/crm-write-tools';
 import { ECOMMERCE_TOOLS } from './tools/ecommerce-tools';
 import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
@@ -52,7 +53,7 @@ const TOOL_FAMILIES: readonly ToolFamily[] = [
     { key: 'policies', tools: [POLICY_TOOL] },
     { key: 'knowledge', tools: [KB_TOOL] },
     { key: 'orders', tools: [ORDER_TOOL] },
-    { key: 'crm', tools: [CUSTOMER_CONTEXT_TOOL] },
+    { key: 'crm', tools: [CUSTOMER_CONTEXT_TOOL, ...CRM_WRITE_TOOLS] },
     { key: 'ecommerce', tools: ECOMMERCE_TOOLS },
     { key: 'properties', tools: VACATION_RENTAL_TOOLS },
     { key: 'tours', tools: TOURS_TOOLS },

@@ -179,6 +179,35 @@ const TOOL_POLICY_ENTRIES = [
     })),
     entry('list_customer_orders', contactRead({ agentTestAllowed: true })),
     entry('get_customer_context', sensitiveRead({ agentTestAllowed: true })),
+
+    // ── CRM: lo que el agente aprende y antes no anotaba ──────────────
+    //
+    // Escriben en el CRM y NO comprometen al negocio: anotar lo que el cliente
+    // dijo no le promete nada. Por eso sobreviven cuando la escritura está
+    // bloqueada — un perfil bloqueado se dedica justamente a capturar y
+    // derivar, y quitarle la anotación lo dejaría capturando en el aire.
+    //
+    // Las tres son aditivas: agregan una fila o suman una etiqueta. Ninguna
+    // pisa lo que una persona escribió, ninguna mueve la etapa del embudo —eso
+    // lo decide el motor de reglas, no la opinión del modelo— y ninguna borra.
+    entry('add_contact_note', contactWrite({
+        confirmation: 'not_required',
+        // Dos notas iguales son dos hechos anotados dos veces, no un duplicado
+        // que corregir: el equipo ve las dos y sabe qué pasó.
+        idempotency: 'not_applicable',
+        commitsBusiness: false,
+    })),
+    entry('tag_contact', contactWrite({
+        confirmation: 'not_required',
+        // La clave (lead, etiqueta) es única en la tabla: repetir no duplica.
+        idempotency: 'state_guarded',
+        commitsBusiness: false,
+    })),
+    entry('record_contact_interest', contactWrite({
+        confirmation: 'not_required',
+        idempotency: 'state_guarded',
+        commitsBusiness: false,
+    })),
     // In production this may lazily prepare its local search tables. Agent Test
     // supplies persistence:disabled, which forces the audited read-only path.
     entry('recommend_products', publicRead({

@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
+import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -63,7 +64,10 @@ export default function MembershipsPage() {
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
-    const [tab, setTab] = useState<TabId>("plans");
+    // Mixta, igual que Seguros: los planes son catálogo y el padrón de socios
+    // —congelar, descongelar, renovar— es trabajo de todos los días.
+    const { canEditPipeline } = useRole();
+    const [tab, setTab] = useState<TabId>(canEditPipeline ? "plans" : "members");
     const [plans, setPlans] = useState<Plan[]>([]);
     const [members, setMembers] = useState<Member[]>([]);
     const [loading, setLoading] = useState(true);
@@ -170,7 +174,7 @@ export default function MembershipsPage() {
                         <FileSpreadsheet className="h-4 w-4" /> {tImport("pickFile")}
                     </button>
                 )}
-                {tab === "plans" && (
+                {tab === "plans" && canEditPipeline && (
                     <button
                         onClick={() => setShowPlanForm("new")}
                         className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
@@ -197,7 +201,9 @@ export default function MembershipsPage() {
 
             <div className="flex bg-card border border-border rounded-lg p-0.5 w-fit">
                 {([
-                    { id: "plans" as const, label: t("plansTab"), icon: Dumbbell, count: plans.length },
+                    ...(canEditPipeline
+                        ? [{ id: "plans" as const, label: t("plansTab"), icon: Dumbbell, count: plans.length }]
+                        : []),
                     { id: "members" as const, label: t("membersTab"), icon: Users, count: members.length },
                     { id: "classes" as const, label: t("classesTab"), icon: CalendarDays, count: classes.length },
                 ]).map(tabDef => {

@@ -275,14 +275,14 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticalItem: "menu", capability: "canEditPipeline" },
       // Operational — agents need access (taking orders, doing classes, dispatching, treating pets)
       { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticalItem: "foodOrders", capability: "canHandleConversations" },
-      { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticalItem: "memberships", capability: "canEditPipeline" },
+      { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticalItem: "memberships", capability: "canHandleConversations" },
       { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticalItem: "classes", capability: "canHandleConversations" },
       { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticalItem: "courses", capability: "canEditPipeline" },
-      { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticalItem: "insurance", capability: "canEditPipeline" },
+      { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticalItem: "insurance", capability: "canHandleConversations" },
       { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticalItem: "serviceRequests", capability: "canHandleConversations" },
       { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticalItem: "treatmentPlans", capability: "canEditPipeline" },
       { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticalItem: "pets", capability: "canHandleConversations" },
-      { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticalItem: "photoSessions", capability: "canEditPipeline" },
+      { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticalItem: "photoSessions", capability: "canHandleConversations" },
       // El catálogo de las verticales sin Agenda. Se lo sembraba el bootstrap y
       // el dueño no tenía dónde verlo.
       { labelKey: "serviceCatalog", href: "/admin/service-catalog", icon: Tags, verticalItem: "serviceCatalog", capability: "canEditPipeline" },

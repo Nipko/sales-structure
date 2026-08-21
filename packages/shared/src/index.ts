@@ -34,6 +34,9 @@ export * from './agent-skillset-policy';
 // ---- Plan gating for navigation: no visible option that ends in 403 ----
 export * from './navigation-plan-gate';
 
+// ---- Operating is not managing the catalogue ----
+export * from './navigation-surface-kind';
+
 // ---- What each profile calls the things it works with ----
 export * from './subtype-terminology';
 export * from './subtype-eval-pack';

@@ -188,14 +188,20 @@ export const PAGE_RULES: PageRule[] = [
     // Operational items — agents need access (taking orders, dispatching, treating customers)
     { prefix: "/admin/food-orders", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/resource-rentals", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
-    { prefix: "/admin/memberships", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    // Mixta: el padrón de socios con congelar y renovar es trabajo de todos
+    // los días. Los planes se gatean DENTRO de la pantalla, no cerrándola.
+    { prefix: "/admin/memberships", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/classes", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/courses", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
-    { prefix: "/admin/insurance", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    // Mixta: cotizaciones, pólizas y siniestros son operación pura; sólo la
+    // pestaña de planes es catálogo.
+    { prefix: "/admin/insurance", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/service-requests", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/treatment-plans", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/pets", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
-    { prefix: "/admin/photo-sessions", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    // Registro: las sesiones de un estudio. Su catálogo real son los paquetes,
+    // que viven en /admin/service-catalog y siguen siendo de supervisión.
+    { prefix: "/admin/photo-sessions", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     // Catálogo: mismo permiso que el resto de los catálogos, no el del que opera.
     { prefix: "/admin/service-catalog", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/inventory", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },

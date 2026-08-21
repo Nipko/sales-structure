@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
+import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -88,7 +89,11 @@ export default function InsurancePage() {
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
-    const [tab, setTab] = useState<TabId>("plans");
+    // La pantalla es mixta: planes es catálogo, el resto es operación. Quien
+    // atiende entra —si no, pierde cotizaciones, pólizas y siniestros enteros—
+    // y la pestaña de catálogo se cierra acá adentro, no cerrando la pantalla.
+    const { canEditPipeline } = useRole();
+    const [tab, setTab] = useState<TabId>(canEditPipeline ? "plans" : "quotes");
     const [plans, setPlans] = useState<Plan[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
     const [policies, setPolicies] = useState<Policy[]>([]);
@@ -134,7 +139,7 @@ export default function InsurancePage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
-                {tab === "plans" && (
+                {tab === "plans" && canEditPipeline && (
                     <button onClick={() => setShowPlanForm("new")} className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
                         <Plus className="h-4 w-4" /> {t("addPlan")}
                     </button>
@@ -157,7 +162,9 @@ export default function InsurancePage() {
 
             <div className="flex bg-card border border-border rounded-lg p-0.5 w-fit">
                 {([
-                    { id: "plans" as const, label: t("plansTab"), icon: ShieldCheck, count: plans.length },
+                    ...(canEditPipeline
+                        ? [{ id: "plans" as const, label: t("plansTab"), icon: ShieldCheck, count: plans.length }]
+                        : []),
                     { id: "quotes" as const, label: t("quotesTab"), icon: FileSignature, count: quotes.length },
                     { id: "policies" as const, label: t("policiesTab"), icon: FileText, count: policies.length },
                     { id: "claims" as const, label: t("claimsTab"), icon: AlertTriangle, count: claims.length },

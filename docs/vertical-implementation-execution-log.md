@@ -813,3 +813,30 @@ jest apps/mobile    → 319 passed / 24 suites, 0 fallos
 jest apps/api       → 2621 passed / 290 suites, 0 fallos
 jest apps/dashboard → 172 passed / 21 suites, 0 fallos
 ```
+
+### U25 — Operar no es administrar el catálogo
+
+**Fase 4 · Épica D · Paso 3 de §8.5 (dividir permisos `view|operate` de `manage catalog`)**
+
+Cada superficie vertical decidía su permiso **pantalla por pantalla**, sin registro que dijera qué era cada una. Así se llegó a tres asignaciones que cierran trabajo sin proteger nada:
+
+| Superficie | Estaba en | Qué es de verdad |
+|---|---|---|
+| Sesiones fotográficas | catálogo | El **registro** de un estudio: pedidas, agendadas, entregadas. Su catálogo real son los paquetes, que hasta U16 ni siquiera tenían pantalla |
+| Seguros | catálogo | **Mixta**: sólo la pestaña de planes es catálogo; cotizaciones, pólizas y siniestros son operación pura |
+| Membresías | catálogo | **Mixta**: los planes son catálogo; el padrón con congelar, descongelar y renovar es trabajo de todos los días |
+
+En las tres, quien atiende conversaciones no podía abrir la pantalla — perdía el objeto entero, no la parte que había que proteger. Es exactamente el criterio del Gate 4: *catálogo restringido sin bloquear operación*.
+
+**ADR-037 — Tres tipos de superficie, no dos.**
+`register` (quien opera), `catalogue` (supervisión) y `mixed` (se abre **operando** y el catálogo se gatea **adentro**). Cerrar una pantalla mixta para proteger una pestaña es tirar la mitad operativa; la alternativa —dividirla en dos rutas— es trabajo del paso 4 y no hacía falta para dejar de bloquear a quien opera hoy.
+
+**No abre ningún 403.** La API de seguros ya estaba bien partida: las lecturas aceptan cualquier rol de tenant, crear cotización y siniestro acepta al agente, y sólo los planes exigen supervisión. Lo mismo en gimnasios. El defecto era del panel, no del backend: la pantalla se cerraba delante de endpoints que sí respondían.
+
+**Pruebas** — `navigation-surface-kind.spec.ts` (6 casos): **todo ítem del panel está clasificado** (uno sin clasificar es una decisión que nadie tomó) y ninguna clasificación apunta a un ítem inexistente; **la capacidad de cada línea del menú se afirma contra la clasificación**, leyendo el archivo del sidebar — así la asignación deja de depender del criterio de quien escribe la línea; el guardia de rutas deja entrar al rol operativo en **todo** registro y mixta (una capacidad de menú que el guardia contradice deja la opción visible y la pantalla cerrada); y el catálogo sigue **cerrado**, porque abrirlo de más es el error opuesto.
+
+**Verificación**
+```
+npx tsc --noEmit (shared + dashboard)  → exit 0
+jest apps/dashboard → 178 passed / 22 suites, 0 fallos
+```

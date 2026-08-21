@@ -43,11 +43,96 @@ export interface ProviderHealthInput {
  * Gatearlas por Toast habria apagado a todo restaurante que nunca integro
  * nada. Lo que depende del proveedor son estas cuatro lecturas y nada mas.
  */
-const PROVIDER_TOOLS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-    toast: Object.freeze(['get_restaurant_menu']),
-    mindbody: Object.freeze(['get_fitness_schedule']),
-    cliniko: Object.freeze(['list_clinic_services', 'check_clinic_availability']),
+/**
+ * ═══ QUÉ SIGNIFICA CADA PROVEEDOR, EN UN SOLO REGISTRO ═══
+ *
+ * Antes vivía repartido en dos mapas —qué tools aporta, cuánto dura su dato— y
+ * faltaban las dos cosas que más importan:
+ *
+ * **En qué industrias tiene sentido.** Las lecturas de proveedor se agregaban
+ * DESPUÉS del manifiesto del subtipo, así que se saltaban su techo: un taller
+ * mecánico que conectara Mindbody publicaba `get_fitness_schedule`. El
+ * manifiesto es un techo para las familias nativas y no lo era para las
+ * externas — que son justamente las que traen datos de otro sistema.
+ *
+ * **Qué escritor local vuelve deshonesto.** Es la misma forma del defecto que
+ * ya costó caro en alojamiento: el agente lee la disponibilidad del PMS y
+ * escribe la reserva en el registro local, que el PMS nunca ve. Con Mindbody y
+ * Cliniko pasa igual — se consulta la agenda del proveedor y se agenda en
+ * `appointments`, donde el sistema real del negocio no la ve— y ahí el
+ * resultado es un turno vendido dos veces.
+ *
+ * La regla es la misma asimetría: **las lecturas se publican, los escritores
+ * locales desplazados no.** Escribir de vuelta al proveedor necesita
+ * credenciales verificadas y un mapeo certificado; hasta entonces la respuesta
+ * honesta es "lo confirma el equipo".
+ */
+export interface ProviderIntegrationPolicy {
+    /**
+     * Las industrias donde este proveedor significa algo. Fuera de esta lista
+     * no se publica ni una tool suya, aunque la conexión esté sana: un dato
+     * fresco de un sistema que no es de este negocio sigue sin ser suyo.
+     */
+    industries: readonly string[];
+    /** Lo que aporta. Es por TOOL, nunca por familia: las familias son nativas. */
+    tools: readonly string[];
+    /**
+     * Cuánto puede tardar en volverse mentira lo que dijo.
+     *
+     * Un menú de ayer todavía sirve; una disponibilidad de ayer, no. El número
+     * no es "cuándo expira el caché" sino "cuándo deja de ser honesto
+     * repetirlo".
+     */
+    freshnessBudgetSeconds: number;
+    /**
+     * Escritores locales que dejan de ser honestos mientras este proveedor
+     * manda. Vacío significa que el proveedor sólo informa y no administra
+     * ningún calendario ni inventario propio.
+     */
+    localWritersDisplaced: readonly string[];
+}
+
+const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = Object.freeze({
+    toast: Object.freeze({
+        industries: Object.freeze(['restaurantes']),
+        tools: Object.freeze(['get_restaurant_menu']),
+        freshnessBudgetSeconds: 3600,
+        // Toast administra el menú, no el turno: leer de allá y tomar el pedido
+        // acá no vende dos veces nada. Un pedido que el POS no ve es un
+        // problema de operación, y ése se resuelve con escritura de vuelta.
+        localWritersDisplaced: Object.freeze([]),
+    }),
+    mindbody: Object.freeze({
+        industries: Object.freeze(['gimnasios']),
+        tools: Object.freeze(['get_fitness_schedule']),
+        freshnessBudgetSeconds: 900,
+        // Mindbody ES la agenda del gimnasio. Consultar los cupos allá y
+        // anotarlos acá produce una clase con dos personas en el mismo lugar.
+        localWritersDisplaced: Object.freeze(['book_class', 'cancel_class_booking']),
+    }),
+    cliniko: Object.freeze({
+        industries: Object.freeze(['salud']),
+        tools: Object.freeze(['list_clinic_services', 'check_clinic_availability']),
+        freshnessBudgetSeconds: 900,
+        // Lo mismo con la agenda clínica, donde el turno vendido dos veces se
+        // convierte en dos pacientes en la sala de espera.
+        localWritersDisplaced: Object.freeze([
+            'create_appointment', 'reschedule_appointment', 'cancel_appointment',
+        ]),
+    }),
 });
+
+/**
+ * Es por TOOL, no por familia. El primer intento gateó las familias
+ * `restaurants`, `gyms` y `treatments`, que son NATIVAS: su readiness apunta a
+ * tablas propias (`menu_items`) y funcionan sin ningún proveedor conectado.
+ * Gatearlas por Toast habría apagado a todo restaurante que nunca integró nada.
+ */
+const PROVIDER_TOOLS: Readonly<Record<string, readonly string[]>> = Object.freeze(
+    Object.fromEntries(
+        Object.entries(PROVIDER_POLICIES).map(([name, policy]) => [name, policy.tools]),
+    ),
+);
 
 /**
  * Lo mismo, aplanado, para que la taxonomía de procedencias del registro de
@@ -57,17 +142,8 @@ export const PROVIDER_ORIGIN_TOOL_NAMES: readonly string[] = Object.freeze(
     Object.values(PROVIDER_TOOLS).flat(),
 );
 
-/**
- * Cuánto puede tardar en volverse mentira lo que dijo un proveedor.
- *
- * Un menú de ayer todavía sirve; una disponibilidad de ayer, no. El número no
- * es "cuándo expira el caché" sino "cuándo deja de ser honesto repetirlo".
- */
-const PROVIDER_FRESHNESS_BUDGET_SECONDS: Readonly<Record<string, number>> = Object.freeze({
-    toast: 3600,
-    mindbody: 900,
-    cliniko: 900,
-});
+/** El registro de proveedores, para las pruebas de contrato y la UI de Ops. */
+export const PROVIDER_INTEGRATION_POLICIES = PROVIDER_POLICIES;
 
 /**
  * Resolves the effective capability contract, server-side and fail-closed.
@@ -236,7 +312,27 @@ export class EffectiveCapabilityService {
         // `publishedTools`, se recortan si el perfil esta bloqueado y su
         // exclusion lleva motivo como cualquier otra.
         const now = Date.now();
-        for (const [providerName, providerTools] of Object.entries(PROVIDER_TOOLS)) {
+        /** Escritores locales que un proveedor vivo desplaza en este turno. */
+        const displacedWriters = new Set<string>();
+        for (const [providerName, policy] of Object.entries(PROVIDER_POLICIES)) {
+            const providerTools = policy.tools;
+            // ═══ EL TECHO DEL SUBTIPO TAMBIÉN ALCANZA A LO EXTERNO ═══
+            //
+            // Estas lecturas se agregaban DESPUÉS del manifiesto, así que se
+            // saltaban su techo: un taller mecánico que conectara Mindbody
+            // publicaba `get_fitness_schedule`. Un dato fresco de un sistema
+            // que no es de este negocio sigue sin ser suyo.
+            if (!policy.industries.includes(profile.capability.industry)) {
+                if (input.providers?.[providerName]) {
+                    excluded.push({
+                        subject: providerName,
+                        reason: 'provider_unavailable',
+                        detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
+                        repairRoute: '/admin/settings/integrations/vertical',
+                    });
+                }
+                continue;
+            }
             const health = input.providers?.[providerName];
             if (!health) {
                 // Sin canal de medicion no hay puerta que fallara: el llamador
@@ -254,7 +350,7 @@ export class EffectiveCapabilityService {
                 continue;
             }
 
-            const budget = PROVIDER_FRESHNESS_BUDGET_SECONDS[providerName] ?? 900;
+            const budget = policy.freshnessBudgetSeconds;
             // Sin `asOf` no se sabe de cuando es. Desconocido no es fresco.
             const stale = health.asOf
                 ? (now - Date.parse(health.asOf)) / 1000 > budget
@@ -271,6 +367,30 @@ export class EffectiveCapabilityService {
             }
 
             publishedTools = [...publishedTools, ...providerTools];
+            // ═══ LECTURA EXTERNA + ESCRITOR LOCAL = LA MISMA NOCHE VENDIDA DOS VECES ═══
+            //
+            // Es la forma exacta del defecto de alojamiento, en otros dos
+            // rubros: se consulta la agenda del proveedor y se agenda en la
+            // tabla local, donde el sistema real del negocio no lo ve. Con el
+            // proveedor vivo, sus escritores desplazados salen del contrato y
+            // la operación va a una persona hasta que exista escritura de
+            // vuelta certificada.
+            for (const writer of policy.localWritersDisplaced) displacedWriters.add(writer);
+        }
+
+        if (displacedWriters.size) {
+            const displaced = publishedTools.filter(tool => displacedWriters.has(tool));
+            if (displaced.length) {
+                publishedTools = publishedTools.filter(tool => !displacedWriters.has(tool));
+                excluded.push({
+                    subject: displaced.join(', '),
+                    reason: 'provider_unavailable',
+                    detail: 'La agenda de este negocio la administra un sistema externo. '
+                        + 'Reservar acá crearía un turno que ese sistema nunca ve, '
+                        + 'así que la operación la confirma el equipo.',
+                    repairRoute: '/admin/settings/integrations/vertical',
+                });
+            }
         }
 
         // (5) Un perfil `stop` no cierra nada.

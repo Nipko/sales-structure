@@ -317,16 +317,23 @@ describe('conectada no es sana, y sana no es fresca', () => {
     it('un perfil bloqueado tampoco hereda la lectura del proveedor como escritura', async () => {
         const { service } = build();
 
+        // El bloqueo llega por el CANAL, no por el perfil. Antes este caso
+        // emparejaba una aseguradora con Cliniko —un sistema clínico en una
+        // industria que no es la suya—, y desde que el proveedor tiene matriz
+        // de industria esa combinación ya no publica nada: el caso habría
+        // pasado a verde sin ejercitar nunca lo que mira, que es que un turno
+        // bloqueado conserva la lectura externa.
         const contract = await service.resolve({
-            tenantId, schemaName, industry: 'seguros', subType: 'aseguradora',
-            toolsConfig: { insurance: { enabled: true } },
+            tenantId, schemaName, industry: 'salud', subType: 'medica_general',
+            toolsConfig: { appointments: { enabled: true } },
+            channelType: 'email',
             providers: { cliniko: { connected: true, healthy: true, asOf: fresh() } },
         });
 
         // Leer es leer, incluso bloqueado: lo que no puede es comprometerse.
         expect(contract.writersBlocked).toBe(true);
         expect(contract.publishedTools).toContain('list_clinic_services');
-        expect(contract.publishedTools).not.toContain('file_claim');
+        expect(contract.publishedTools).not.toContain('create_appointment');
     });
 });
 
@@ -402,5 +409,128 @@ describe('un perfil bloqueado no cierra nada', () => {
 
         expect(contract.excluded.some(e => e.reason === 'profile_blocked')).toBe(false);
         expect(contract.publishedTools).toContain('file_claim');
+    });
+});
+
+/**
+ * ═══ MATRIZ PROVEEDOR↔INDUSTRIA, Y LECTURA EXTERNA + ESCRITOR LOCAL ═══
+ *
+ * Las lecturas de proveedor se agregaban DESPUÉS del manifiesto del subtipo,
+ * así que se saltaban su techo. Y publicarlas junto al escritor local reproduce
+ * exactamente el defecto que ya costó caro en alojamiento: se consulta la
+ * agenda del proveedor y se agenda en la tabla local, donde el sistema real del
+ * negocio no lo ve.
+ */
+const fresh = () => new Date().toISOString();
+
+describe('un proveedor sólo significa algo en su industria', () => {
+    it('un taller mecánico con Mindbody conectado no publica su lectura', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'automotriz', subType: 'taller',
+            toolsConfig: { appointments: { enabled: true } },
+            providers: { mindbody: { connected: true, healthy: true, asOf: fresh() } },
+        });
+
+        // Sano, fresco y conectado — y aun así no. Un dato de un sistema que no
+        // es de este negocio sigue sin ser suyo.
+        expect(contract.publishedTools).not.toContain('get_fitness_schedule');
+        expect(contract.excluded.map(e => e.subject)).toContain('mindbody');
+    });
+
+    it('...y el mismo proveedor en su industria sí', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'gimnasios', subType: 'gimnasio_general',
+            toolsConfig: { gyms: { enabled: true } },
+            providers: { mindbody: { connected: true, healthy: true, asOf: fresh() } },
+        });
+
+        expect(contract.publishedTools).toContain('get_fitness_schedule');
+    });
+});
+
+describe('leer del proveedor y escribir local es vender la misma noche dos veces', () => {
+    it('Mindbody vivo desplaza al reservador local de clases', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'gimnasios', subType: 'gimnasio_general',
+            toolsConfig: { gyms: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+            providers: { mindbody: { connected: true, healthy: true, asOf: fresh() } },
+        });
+
+        expect(contract.publishedTools).toContain('get_fitness_schedule');
+        expect(contract.publishedTools).not.toContain('book_class');
+        expect(contract.publishedTools).not.toContain('cancel_class_booking');
+        // Y con motivo: una ausencia sin explicación no se puede reparar.
+        expect(contract.excluded.some(e => e.subject.includes('book_class'))).toBe(true);
+    });
+
+    it('sin el proveedor conectado, el reservador local es el correcto', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'gimnasios', subType: 'gimnasio_general',
+            toolsConfig: { gyms: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+        });
+
+        // El gimnasio que nunca integró nada sigue reservando. La familia es
+        // NATIVA: gatearla por el proveedor habría apagado a la mayoría.
+        expect(contract.publishedTools).toContain('book_class');
+    });
+
+    it('un proveedor caído no desplaza nada: su lectura tampoco se publicó', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'gimnasios', subType: 'gimnasio_general',
+            toolsConfig: { gyms: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+            providers: { mindbody: { connected: true, healthy: false, asOf: fresh() } },
+        });
+
+        // Desplazar con el proveedor caído dejaría al gimnasio sin ninguna de
+        // las dos formas de reservar — la externa que no responde y la local
+        // que le quitamos.
+        expect(contract.publishedTools).not.toContain('get_fitness_schedule');
+        expect(contract.publishedTools).toContain('book_class');
+    });
+
+    it('Cliniko vivo desplaza a las tres escrituras de agenda', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'salud', subType: 'medica_general',
+            toolsConfig: { appointments: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+            providers: { cliniko: { connected: true, healthy: true, asOf: fresh() } },
+        });
+
+        expect(contract.publishedTools).toContain('check_clinic_availability');
+        for (const writer of ['create_appointment', 'reschedule_appointment', 'cancel_appointment']) {
+            expect(contract.publishedTools).not.toContain(writer);
+        }
+        // La consulta local sobrevive: preguntar no compromete a nadie.
+        expect(contract.publishedTools).toContain('check_availability');
+    });
+
+    it('Toast no desplaza nada: administra el menú, no el turno', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'restaurantes', subType: 'casual_dining',
+            toolsConfig: { restaurants: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+            providers: { toast: { connected: true, healthy: true, asOf: fresh() } },
+        });
+
+        expect(contract.publishedTools).toContain('get_restaurant_menu');
+        // Leer el menú de allá y tomar el pedido acá no vende dos veces nada.
+        expect(contract.publishedTools).toContain('place_order');
     });
 });

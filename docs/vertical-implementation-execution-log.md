@@ -1771,6 +1771,46 @@ npx tsc --noEmit  → exit 0 en shared, api y dashboard
 jest apps/api     → 3094 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U59 — El techo del subtipo no alcanzaba a lo que viene de afuera
+
+**P0-B · punto 8 — matriz proveedor↔subtipo, y evitar lectura externa + escritor local**
+
+Dos defectos que salen del mismo lugar: las lecturas de proveedor se agregaban **después** del manifiesto del subtipo, fuera de su alcance.
+
+**(a) Ninguna matriz de industria.** El bucle publicaba las tools de un proveedor mirando sólo salud, conexión y frescura. Un taller mecánico que conectara Mindbody publicaba `get_fitness_schedule` — sano, fresco, conectado y ajeno. El manifiesto es un techo para las familias nativas y no lo era para las externas, que son justamente las que traen datos de **otro sistema**.
+
+**(b) Lectura externa + escritor local, otra vez.** Es la forma exacta del defecto de alojamiento (U58), en otros dos rubros:
+
+| Proveedor | Se lee de allá | Se escribe acá | Qué produce |
+|---|---|---|---|
+| Mindbody | `get_fitness_schedule` | `book_class` | dos personas en el mismo cupo |
+| Cliniko | `check_clinic_availability` | `create_appointment` | dos pacientes en la sala de espera |
+| Toast | `get_restaurant_menu` | `place_order` | — el menú no es un turno |
+
+Toast queda deliberadamente fuera: administra el **menú**, no el calendario. Leer de allá y tomar el pedido acá no vende dos veces nada. Igualar los tres "porque son proveedores" habría apagado a todo restaurante integrado sin ningún riesgo que evitar.
+
+**Un registro en vez de dos mapas.** `PROVIDER_TOOLS` y `PROVIDER_FRESHNESS_BUDGET_SECONDS` eran dos objetos paralelos indexados por el mismo nombre — la forma clásica de que uno crezca y el otro no. Ahora son un `ProviderIntegrationPolicy` por proveedor con las cuatro cosas juntas: industrias, tools, presupuesto de frescura y escritores locales desplazados. Esto también adelanta parte del punto 9: el presupuesto de frescura ya no vive suelto.
+
+**Tres decisiones de borde que las pruebas fijan:**
+- **Un proveedor caído no desplaza nada.** Desplazar con el proveedor sin responder dejaría al gimnasio sin ninguna de las dos formas de reservar: la externa que no contesta y la local que le quitamos. El desplazamiento sólo ocurre cuando la lectura externa **efectivamente se publicó**.
+- **La consulta local sobrevive.** Con Cliniko vivo caen las tres escrituras de agenda y `check_availability` se queda: preguntar no compromete a nadie.
+- **El gimnasio que nunca integró nada sigue reservando.** La familia es nativa; gatearla por el proveedor habría apagado a la mayoría para proteger a la minoría.
+
+**Una prueba que iba a pasar por el motivo equivocado.** `effective-capability.spec.ts` verificaba que un perfil bloqueado conserva la lectura externa usando **una aseguradora con Cliniko conectado** — un sistema clínico en una industria que no es la suya. Con la matriz, esa combinación ya no publica nada, así que el caso habría quedado en verde sin ejercitar nunca lo que mira. Se reescribió con un consultorio bloqueado **por canal**, que es un emparejamiento real.
+
+**Riesgos que quedan**
+- La matriz es por **industria**, no por subtipo. Cliniko vale para `salud` entera, incluida `salud/farmacia`, donde una agenda clínica probablemente no signifique lo mismo. Afinarlo a subtipo necesita saber qué vende cada proveedor en cada uno: es revisión de dominio, y va con el resto de esa revisión al bloqueo externo.
+- El desplazamiento es **estático por proveedor**, no por unidad. En alojamiento la decisión es por propiedad —una puede estar puenteada y la otra no—; acá, con Cliniko vivo, caen las escrituras de agenda del tenant entero. Es lo conservador y puede ser de más para un consultorio que use Cliniko sólo para una sede. Un mapeo por recurso es trabajo interno pendiente.
+- Sigue sin haber escritura de vuelta a ningún proveedor. Es **bloqueo externo** (credenciales), sin cambios.
+
+**Pruebas** — `effective-capability.spec.ts` (+7, 32 en total).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api     → 3101 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1880,7 +1920,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 5 | Handoff STOP sólo ante operación denegada | ✅ **U55** |
 | 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57** — la cadena real sin mocks entre las piezas que deciden, contra la misma función que corre en producción; falta el *orden* del turno (`processIncomingMessage`) y una corrida contra base real |
 | 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ✅ **U58** |
-| 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ⏳ pendiente |
+| 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ◐ **U59** — matriz por **industria** (no por subtipo) y desplazamiento estático por proveedor (no por recurso); afinar ambos necesita revisión de dominio |
 | 9 | Unificar freshness, cron y estado mostrado en UI | ⏳ pendiente |
 | 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ⏳ pendiente |
 | 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ⏳ pendiente |

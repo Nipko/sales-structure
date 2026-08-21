@@ -10708,6 +10708,8 @@
       "status_degraded": "Having trouble",
       "status_unhealthy": "Not working",
       "status_unavailable": "Untested",
+      "status_not_applicable": "Not for your industry",
+      "industryNotApplicable": "The connection works, but this provider does not apply to your industry: the agent does not use its data in conversations.",
       "credentialValidated": "Credential validated",
       "credentialUnverified": "Credential not validated — use Test",
       "lastSync": "Last data pulled: {age}",

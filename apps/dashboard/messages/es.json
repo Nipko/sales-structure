@@ -10712,6 +10712,8 @@
       "status_degraded": "Con problemas",
       "status_unhealthy": "No funciona",
       "status_unavailable": "Sin probar",
+      "status_not_applicable": "No aplica a tu rubro",
+      "industryNotApplicable": "La conexión funciona, pero este proveedor no aplica al rubro de tu negocio: el agente no usa sus datos en las conversaciones.",
       "credentialValidated": "Credencial validada",
       "credentialUnverified": "Credencial sin validar — usá Probar",
       "lastSync": "Último dato traído: {age}",

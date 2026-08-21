@@ -29,6 +29,7 @@ export * from './integration-scaffolding';
 
 // ---- Effective agent capability: subtype x agent x plan x readiness ----
 export * from './effective-capability-contract';
+export * from './provider-integration-policy';
 
 // ---- Navigation semantics: two objects never share a label ----
 export * from './navigation-semantics';

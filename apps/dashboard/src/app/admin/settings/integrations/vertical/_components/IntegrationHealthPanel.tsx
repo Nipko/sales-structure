@@ -17,7 +17,7 @@ import { AlertTriangle, CheckCircle2, Clock, KeyRound, ShieldAlert } from "lucid
  */
 
 export interface IntegrationHealth {
-    status: "healthy" | "stale" | "degraded" | "unhealthy" | "unavailable";
+    status: "healthy" | "stale" | "degraded" | "unhealthy" | "unavailable" | "not_applicable";
     connected: boolean;
     credentialValidated: boolean;
     requiredScopes: string[];
@@ -26,6 +26,13 @@ export interface IntegrationHealth {
     lastCheckedAt: string | null;
     lastSuccessfulSyncAt: string | null;
     freshness: { maxAgeSeconds: number; ageSeconds: number | null; stale: boolean };
+    /**
+     * Si este proveedor aplica al rubro del negocio.
+     *
+     * `false` es una integración impecable que el agente no usa. Sin esto la
+     * pantalla decía "sano" y la conversación decía otra cosa.
+     */
+    industryEligible?: boolean;
     consecutiveFailures: number;
     circuitState: "closed" | "open" | "half_open";
     lastError: { code: string; message: string; at: string } | null;
@@ -37,6 +44,7 @@ const STATUS_STYLE: Record<IntegrationHealth["status"], string> = {
     degraded: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
     unhealthy: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400",
     unavailable: "bg-muted text-muted-foreground",
+    not_applicable: "bg-muted text-muted-foreground",
 };
 
 function ageLabel(seconds: number | null, t: ReturnType<typeof useTranslations>): string {
@@ -94,6 +102,16 @@ export function IntegrationHealthPanel({ health }: { health?: IntegrationHealth 
                 <div className="flex items-start gap-2 text-[11px] text-muted-foreground">
                     <CheckCircle2 size={12} className="mt-0.5 shrink-0" />
                     <span>{t("scopesSatisfied", { scopes: health.grantedScopes.join(", ") })}</span>
+                </div>
+            )}
+
+            {/* Conectada, sana y fresca — y el agente no la usa igual. Es el
+                único estado que la pantalla no podía explicar: el dueño veía
+                verde y una conversación que ignoraba la integración. */}
+            {health.industryEligible === false && (
+                <div className="flex items-start gap-2 text-[11px] text-muted-foreground">
+                    <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                    <span>{t("industryNotApplicable")}</span>
                 </div>
             )}
 

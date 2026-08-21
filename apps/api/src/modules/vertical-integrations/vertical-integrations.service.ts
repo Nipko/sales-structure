@@ -395,27 +395,32 @@ export class VerticalIntegrationsService {
         if (!PROVIDERS.includes(provider)) throw new BadRequestException('Proveedor no soportado');
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true },
+            select: { settings: true, industry: true },
         });
         const settings = (tenant?.settings as any) || {};
         return materializeIntegrationHealth(
             provider,
             !!settings.verticalIntegrations?.[provider],
             settings.verticalIntegrationHealth?.[provider],
+            new Date(),
+            tenant?.industry,
         );
     }
 
     async getAllHealth(tenantId: string): Promise<Record<VerticalProvider, IntegrationHealth>> {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true },
+            select: { settings: true, industry: true },
         });
         const settings = (tenant?.settings as any) || {};
         const configured = settings.verticalIntegrations || {};
         const stored = settings.verticalIntegrationHealth || {};
+        const now = new Date();
         return Object.fromEntries(PROVIDERS.map(provider => [
             provider,
-            materializeIntegrationHealth(provider, !!configured[provider], stored[provider]),
+            materializeIntegrationHealth(
+                provider, !!configured[provider], stored[provider], now, tenant?.industry,
+            ),
         ])) as Record<VerticalProvider, IntegrationHealth>;
     }
 

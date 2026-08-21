@@ -1,0 +1,156 @@
+/**
+ * ═══ TRES NÚMEROS QUE DECIDÍAN LO MISMO Y NO SE HABLABAN ═══
+ *
+ * "¿Este dato del proveedor sigue sirviendo?" se contestaba en tres lugares con
+ * tres respuestas distintas, y las tres eran defendibles por separado:
+ *
+ * | Quién | Qué decía | Efecto |
+ * |---|---|---|
+ * | El cron de re-sync | corre **1 vez por día** (`0 5 * * *`) | el espejo tiene ~24h de edad normal |
+ * | El contrato efectivo | presupuesto de **900s** (Mindbody/Cliniko) | a los 15 minutos deja de publicar la tool |
+ * | La salud / el panel | `stale` a las **36h** | verde durante todo ese tiempo |
+ *
+ * El resultado en producción: las lecturas espejadas quedaban despublicadas
+ * **23 horas y 45 minutos de cada día**, y el dueño veía la integración en
+ * verde todo el tiempo. Un panel que dice "sincronizado hace 2 horas, sano"
+ * mientras el agente contesta que no puede consultar la grilla es peor que un
+ * error: nadie puede reconciliarlo mirando la pantalla.
+ *
+ * El origen del desacuerdo es que "frescura" son **dos cosas distintas**:
+ *
+ * - **Frescura del espejo.** Cuán viejo es lo que copiamos. Gobierna las
+ *   lecturas servidas desde `vi_items` y sólo tiene sentido comparada contra
+ *   **cada cuánto corre el sync**: un presupuesto más chico que la cadencia
+ *   apaga la función siempre, por definición.
+ * - **Liveza de la conexión.** Si la credencial y el circuito funcionan ahora.
+ *   Gobierna las lecturas que van **en vivo** al proveedor, a las que no les
+ *   importa cuándo se sincronizó el espejo.
+ *
+ * `check_clinic_availability` va en vivo a Cliniko: aplicarle el presupuesto
+ * del espejo era medirle la edad a un dato que se acababa de traer.
+ */
+
+export type VerticalProviderName = 'toast' | 'mindbody' | 'cliniko';
+
+export interface ProviderFreshnessPolicy {
+    /**
+     * Cada cuánto se refresca el espejo, en segundos.
+     *
+     * Es un dato del sistema, no una preferencia: si el cron cambia de cadencia
+     * y esto no, el presupuesto de abajo deja de tener sentido — y el modo de
+     * falla es silencioso, porque la función simplemente deja de publicarse.
+     * `providerFreshnessContradictions()` lo verifica.
+     */
+    mirrorSyncIntervalSeconds: number;
+    /**
+     * Cuánto puede tener el espejo antes de que repetirlo deje de ser honesto.
+     *
+     * Tiene que ser **mayor** que la cadencia, con margen para que un sync
+     * fallido no apague la integración en el acto.
+     */
+    mirrorMaxAgeSeconds: number;
+    /** Las lecturas servidas desde el espejo: les aplica el presupuesto. */
+    mirrorBackedTools: readonly string[];
+    /**
+     * Las lecturas que van en vivo al proveedor. No se les mide la edad del
+     * espejo; lo único que las gobierna es que la conexión esté sana.
+     */
+    liveTools: readonly string[];
+}
+
+/** El re-sync de integraciones verticales corre una vez por día, a las 5. */
+export const VERTICAL_INTEGRATION_SYNC_INTERVAL_SECONDS = 24 * 60 * 60;
+
+/**
+ * Margen sobre la cadencia. Con un solo sync diario, un día que falle no puede
+ * apagar la integración al minuto siguiente — pero dos días seguidos sí.
+ */
+const MIRROR_MAX_AGE_SECONDS = 36 * 60 * 60;
+
+export const PROVIDER_FRESHNESS: Readonly<Record<VerticalProviderName, ProviderFreshnessPolicy>> =
+    Object.freeze({
+        toast: Object.freeze({
+            mirrorSyncIntervalSeconds: VERTICAL_INTEGRATION_SYNC_INTERVAL_SECONDS,
+            mirrorMaxAgeSeconds: MIRROR_MAX_AGE_SECONDS,
+            mirrorBackedTools: Object.freeze(['get_restaurant_menu']),
+            liveTools: Object.freeze([]),
+        }),
+        mindbody: Object.freeze({
+            mirrorSyncIntervalSeconds: VERTICAL_INTEGRATION_SYNC_INTERVAL_SECONDS,
+            mirrorMaxAgeSeconds: MIRROR_MAX_AGE_SECONDS,
+            mirrorBackedTools: Object.freeze(['get_fitness_schedule']),
+            liveTools: Object.freeze([]),
+        }),
+        cliniko: Object.freeze({
+            mirrorSyncIntervalSeconds: VERTICAL_INTEGRATION_SYNC_INTERVAL_SECONDS,
+            mirrorMaxAgeSeconds: MIRROR_MAX_AGE_SECONDS,
+            mirrorBackedTools: Object.freeze(['list_clinic_services']),
+            // Va en vivo a `available_times`: su respuesta nace fresca.
+            liveTools: Object.freeze(['check_clinic_availability']),
+        }),
+    });
+
+export function providerFreshnessFor(provider: string): ProviderFreshnessPolicy | undefined {
+    return (PROVIDER_FRESHNESS as Record<string, ProviderFreshnessPolicy>)[provider];
+}
+
+/** Si esta tool se sirve del espejo y por lo tanto tiene edad que medir. */
+export function isMirrorBackedProviderTool(tool: string): boolean {
+    return Object.values(PROVIDER_FRESHNESS).some(p => p.mirrorBackedTools.includes(tool));
+}
+
+/**
+ * Los proveedores cuyo presupuesto NO es coherente con su propia cadencia.
+ *
+ * Devuelve una lista en vez de tirar: se usa desde una prueba de contrato, y
+ * ahí un mensaje que diga *cuáles* y *por cuánto* es lo que hace falta para
+ * arreglarlo. Un presupuesto menor o igual a la cadencia significa que la
+ * integración pasa la mayor parte del día despublicada **por diseño**, y ese
+ * era exactamente el estado anterior.
+ */
+export function providerFreshnessContradictions(): Array<{
+    provider: string;
+    syncIntervalSeconds: number;
+    maxAgeSeconds: number;
+}> {
+    return Object.entries(PROVIDER_FRESHNESS)
+        .filter(([, p]) => p.mirrorMaxAgeSeconds <= p.mirrorSyncIntervalSeconds)
+        .map(([provider, p]) => ({
+            provider,
+            syncIntervalSeconds: p.mirrorSyncIntervalSeconds,
+            maxAgeSeconds: p.mirrorMaxAgeSeconds,
+        }));
+}
+
+/**
+ * En qué industrias significa algo cada proveedor.
+ *
+ * Vive acá y no en el servicio del contrato porque **la pantalla también la
+ * necesita**: el panel puede mostrar una integración conectada, sana y fresca
+ * cuya lectura el contrato no publica —porque este negocio no es de ese
+ * rubro—, y el dueño no tiene forma de saberlo desde ahí. Un estado que sólo
+ * conoce el runtime es un estado que la pantalla contradice.
+ */
+export const PROVIDER_INDUSTRIES: Readonly<Record<VerticalProviderName, readonly string[]>> =
+    Object.freeze({
+        toast: Object.freeze(['restaurantes']),
+        mindbody: Object.freeze(['gimnasios']),
+        cliniko: Object.freeze(['salud']),
+    });
+
+/**
+ * Si este proveedor tiene sentido para la industria de este negocio.
+ *
+ * Sin industria conocida devuelve `true`: no saber el rubro no es motivo para
+ * declarar inelegible una integración que el dueño conectó a mano. La puerta
+ * que decide de verdad es la del contrato, que sí resuelve el perfil.
+ */
+export function providerFitsIndustry(
+    provider: string,
+    industry: string | null | undefined,
+): boolean {
+    const industries = (PROVIDER_INDUSTRIES as Record<string, readonly string[]>)[provider];
+    if (!industries) return false;
+    if (!industry) return true;
+    return industries.includes(industry);
+}

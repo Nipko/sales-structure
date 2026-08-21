@@ -1811,6 +1811,47 @@ npx tsc --noEmit  → exit 0 en shared, api y dashboard
 jest apps/api     → 3101 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U60 — Tres números que decidían lo mismo y no se hablaban
+
+**P0-B · punto 9 — unificar frescura, cron y estado mostrado en UI**
+
+La pregunta "¿este dato del proveedor sigue sirviendo?" se contestaba en tres lugares, con tres respuestas distintas, y cada una era defendible sola:
+
+| Quién | Qué decía | Efecto |
+|---|---|---|
+| El cron de re-sync | corre **1 vez por día** (`@Cron('0 5 * * *')`) | el espejo tiene ~24h de edad normal |
+| El contrato efectivo | presupuesto de **900s** (Mindbody, Cliniko) | a los 15 minutos deja de publicar la tool |
+| La salud y el panel | `stale` a las **36h** | verde durante todo ese tiempo |
+
+Puestos juntos: **las lecturas espejadas quedaban despublicadas 23 horas y 45 minutos de cada día**, y el panel del dueño mostraba verde el día entero. "Sincronizado hace 2 horas, sano" en la pantalla, y el agente contestando que no puede consultar la grilla. Nadie puede reconciliar eso mirando el producto — no es un error visible, es una función que no existe y una pantalla que dice que sí.
+
+**Por qué se desincronizaron.** "Frescura" son **dos cosas** que llevaban un solo nombre:
+
+- **Frescura del espejo**: cuán viejo es lo que copiamos. Sólo tiene sentido comparada contra **cada cuánto corre el sync**. Un presupuesto menor que la cadencia apaga la función siempre, por definición — y nadie lo veía porque los dos números vivían en archivos distintos.
+- **Liveza de la conexión**: si la credencial y el circuito funcionan ahora. Es lo único que gobierna a las lecturas que van **en vivo**.
+
+`check_clinic_availability` va en vivo a `available_times` de Cliniko: aplicarle el presupuesto del espejo era medirle la edad a un dato que se acababa de traer. Las otras tres salen de `vi_items`.
+
+**Lo que se hizo.** `packages/shared/src/provider-integration-policy.ts` es ahora el único lugar donde vive el número, con la cadencia declarada al lado y las tools separadas en espejadas vs en vivo. El módulo de salud y el contrato efectivo leen de ahí. `providerFreshnessContradictions()` devuelve los proveedores cuyo presupuesto **no** es coherente con su propia cadencia, y una prueba de contrato exige que esa lista esté vacía y que el margen aguante que un día de sync falle sin apagar nada (dos días seguidos sí apagan: a esa altura el dato no sirve).
+
+**La tercera pata: el panel no podía explicar el estado que más falta hacía.** Desde U59 un proveedor puede estar conectado, validado, con scopes completos y sincronizado hace un segundo — y el contrato no publicar ni una de sus tools, porque el negocio no es de ese rubro. El panel decía **sano**. Se agregó `industryEligible` al contrato de salud y el estado `not_applicable`, que va **antes** de los estados de salud (decir "sano" de algo que el agente nunca usa es la contradicción a eliminar) y **después** de `unavailable` (una integración que nadie configuró no necesita la explicación larga). Panel + i18n en los 4 idiomas.
+
+**ADR — por qué el presupuesto subió a 36h en vez de acelerar el cron.** Sincronizar cada 15 minutos son ~96 llamadas diarias por tenant y por proveedor contra APIs con límite de tasa, para catálogos que cambian de a poco. Se eligió alinear el presupuesto a la cadencia real, que además es el número que la pantalla ya mostraba.
+
+**Riesgos que quedan**
+- **Una grilla de clases espejada 24h antes puede afirmar cupo que ya no existe.** `get_fitness_schedule` devuelve `available` desde el espejo. El filtro de clases pasadas y la marca `stale` ya existen y ayudan, pero no cubren "la clase existe y se llenó". Cerrarlo bien es leer disponibilidad en vivo de Mindbody, como hace Cliniko. **Trabajo interno pendiente**, y queda anotado como lo que es: hoy ese dato puede estar viejo.
+- La cadencia del cron está declarada como constante y verificada contra sí misma, no contra la expresión `@Cron`. Si alguien cambia la expresión y no la constante, la prueba sigue en verde.
+- Toast y el Channel Manager tienen relojes propios (`syncInterval` por tenant, con multiplicador ×3). No entraron a este registro: son otro riel de sincronización. Unificarlos es trabajo interno pendiente.
+
+**Pruebas** — `provider-freshness-coherence.spec.ts` (nuevo, 13) + panel e i18n ×4.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api       → 3114 passed / 311 suites (1 skipped, 10 skipped tests), 0 fallos
+jest apps/dashboard →  264 passed /  29 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1921,7 +1962,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57** — la cadena real sin mocks entre las piezas que deciden, contra la misma función que corre en producción; falta el *orden* del turno (`processIncomingMessage`) y una corrida contra base real |
 | 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ✅ **U58** |
 | 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ◐ **U59** — matriz por **industria** (no por subtipo) y desplazamiento estático por proveedor (no por recurso); afinar ambos necesita revisión de dominio |
-| 9 | Unificar freshness, cron y estado mostrado en UI | ⏳ pendiente |
+| 9 | Unificar freshness, cron y estado mostrado en UI | ◐ **U60** — un solo número compartido, cadencia verificada y estado `not_applicable` en el panel; falta la disponibilidad en vivo de Mindbody y unificar el reloj del Channel Manager |
 | 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ⏳ pendiente |
 | 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ⏳ pendiente |
 | 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ⏳ pendiente |

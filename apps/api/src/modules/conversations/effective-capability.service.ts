@@ -6,6 +6,8 @@ import {
     OPERATIONAL_ROLES,
     TOOL_GROUP_PLAN_FEATURE,
     TOOL_GROUP_READINESS,
+    PROVIDER_INDUSTRIES,
+    providerFreshnessFor,
     resolveSubtypeExperienceProfile,
     type EffectiveCapabilityContract,
     type ExcludedCapability,
@@ -77,14 +79,6 @@ export interface ProviderIntegrationPolicy {
     /** Lo que aporta. Es por TOOL, nunca por familia: las familias son nativas. */
     tools: readonly string[];
     /**
-     * Cuánto puede tardar en volverse mentira lo que dijo.
-     *
-     * Un menú de ayer todavía sirve; una disponibilidad de ayer, no. El número
-     * no es "cuándo expira el caché" sino "cuándo deja de ser honesto
-     * repetirlo".
-     */
-    freshnessBudgetSeconds: number;
-    /**
      * Escritores locales que dejan de ser honestos mientras este proveedor
      * manda. Vacío significa que el proveedor sólo informa y no administra
      * ningún calendario ni inventario propio.
@@ -94,26 +88,23 @@ export interface ProviderIntegrationPolicy {
 
 const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = Object.freeze({
     toast: Object.freeze({
-        industries: Object.freeze(['restaurantes']),
+        industries: PROVIDER_INDUSTRIES.toast,
         tools: Object.freeze(['get_restaurant_menu']),
-        freshnessBudgetSeconds: 3600,
         // Toast administra el menú, no el turno: leer de allá y tomar el pedido
         // acá no vende dos veces nada. Un pedido que el POS no ve es un
         // problema de operación, y ése se resuelve con escritura de vuelta.
         localWritersDisplaced: Object.freeze([]),
     }),
     mindbody: Object.freeze({
-        industries: Object.freeze(['gimnasios']),
+        industries: PROVIDER_INDUSTRIES.mindbody,
         tools: Object.freeze(['get_fitness_schedule']),
-        freshnessBudgetSeconds: 900,
         // Mindbody ES la agenda del gimnasio. Consultar los cupos allá y
         // anotarlos acá produce una clase con dos personas en el mismo lugar.
         localWritersDisplaced: Object.freeze(['book_class', 'cancel_class_booking']),
     }),
     cliniko: Object.freeze({
-        industries: Object.freeze(['salud']),
+        industries: PROVIDER_INDUSTRIES.cliniko,
         tools: Object.freeze(['list_clinic_services', 'check_clinic_availability']),
-        freshnessBudgetSeconds: 900,
         // Lo mismo con la agenda clínica, donde el turno vendido dos veces se
         // convierte en dos pacientes en la sala de espera.
         localWritersDisplaced: Object.freeze([
@@ -350,7 +341,11 @@ export class EffectiveCapabilityService {
                 continue;
             }
 
-            const budget = policy.freshnessBudgetSeconds;
+            // El presupuesto de frescura sale del registro compartido, que es
+            // el mismo que mira la salud que ve el dueño en el panel. Antes
+            // había un número acá y otro allá: la tool se despublicaba a los 15
+            // minutos y la pantalla seguía en verde durante 36 horas.
+            const budget = providerFreshnessFor(providerName)?.mirrorMaxAgeSeconds ?? 900;
             // Sin `asOf` no se sabe de cuando es. Desconocido no es fresco.
             const stale = health.asOf
                 ? (now - Date.parse(health.asOf)) / 1000 > budget

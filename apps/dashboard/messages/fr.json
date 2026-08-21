@@ -10708,6 +10708,8 @@
       "status_degraded": "En difficulté",
       "status_unhealthy": "Ne fonctionne pas",
       "status_unavailable": "Non testée",
+      "status_not_applicable": "Ne s'applique pas à votre secteur",
+      "industryNotApplicable": "La connexion fonctionne, mais ce fournisseur ne s'applique pas au secteur de votre entreprise : l'agent n'utilise pas ses données dans les conversations.",
       "credentialValidated": "Identifiant validé",
       "credentialUnverified": "Identifiant non validé — utilisez Tester",
       "lastSync": "Dernière donnée récupérée : {age}",

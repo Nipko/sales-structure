@@ -1687,6 +1687,42 @@ npx tsc --noEmit  → exit 0 en shared, api y dashboard
 jest apps/api     → 3075 passed / 309 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U57 — Cada pieza en verde y el sistema abierto
+
+**P0-A · punto 6 — pruebas E2E, no sólo unitarias**
+
+El defecto que cerró U55 **no estaba en ninguna puerta**. El contrato resolvía bien y tenía sus pruebas; el ejecutor preguntaba bien y tenía las suyas. Entre los dos había cinco llamadores que no pasaban nada. Ese agujero es invisible para una prueba unitaria por construcción: cada unidad se verifica contra un doble que sí le pasa lo que espera.
+
+Lo que se agrega corre la cadena real —`EffectiveCapabilityService` → autoridad del turno → `AIToolExecutorService`— y los **dos motores que escriben por fuera del bucle de tools**, que son los que nunca alcanzó filtrar la lista publicada. Lo único simulado es el borde: base, Redis y el modelo. No hay credenciales de terceros ni se toca ningún sistema externo: lo que se verifica es **nuestro** encadenamiento, que es donde estaba el agujero.
+
+**Los nueve escenarios**, cada uno una forma distinta de que el permiso no llegue:
+
+- Una barbería agenda y **no** puede abrir un siniestro: el techo del subtipo llega hasta el ejecutor sin que nadie lo repita, y la exclusión queda explicada en el contrato en vez de simplemente ausente.
+- Un perfil bloqueado **contesta** una FAQ y **no** cierra una cita, en el mismo turno y con la misma autoridad.
+- Un canal no certificado bloquea la escritura con el perfil certificado — el mismo tenant que sí agenda por WhatsApp.
+- Un rol desconocido la bloquea también.
+- El motor de reservas con perfil bloqueado: el "sí" **no produce una cita**.
+- El motor de reservas con el subpermiso apagado: tampoco, con el perfil certificado.
+- El "sí" del cliente contra un contrato que **cambió entre la pregunta y la confirmación**: la tool se despublicó, el token sigue vigente, y ya no corre.
+- Procedures se detiene **antes** del ejecutor y con el motivo exacto.
+- ...y el mensaje al cliente no nombra la tool ni la configuración.
+
+**Dos premisas mías que la corrida desmintió, y quedaron en el spec:**
+- Escribí un caso con `role: 'tenant_admin'` esperando que bloqueara. No bloquea, y **está bien**: los cuatro roles del producto son operativos. Lo que la puerta atrapa es un rol que no reconocemos —una integración nueva, un token viejo, un valor mal escrito—. El caso quedó reescrito para medir eso.
+- Y afirmé "cero consultas a la base" en los casos del motor de reservas. Falso: el motor lee el catálogo de servicios legítimamente, y `list_services` sobrevive incluso a un perfil bloqueado —que es justamente el punto—. La aserción correcta es que **no se escribió una cita**, y así quedó. Pedir cero llamadas habría pasado en verde midiendo otra cosa.
+
+**Riesgos que quedan**
+- El E2E entra por `EffectiveCapabilityService.resolve` y por los motores, **no** por `processIncomingMessage`. El armado de la autoridad en `conversations.service` —qué lista se congela y cuándo— se replica en un helper del spec en vez de ejercitarse. Cubrir el turno entero necesita construir el orquestador con sus 39 dependencias; es trabajo interno pendiente, no un bloqueo.
+- No hay corrida contra base real. La cadena de decisión no la toca, pero un `INSERT` que el guard deje pasar y la base rechace por constraint es un caso que estas pruebas no ven.
+
+**Pruebas** — `tool-authority.e2e.spec.ts` (nuevo, 9).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api     → 3084 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1794,7 +1830,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 3 | Autorización exacta en Booking y Procedures | ✅ **U55** |
 | 4 | Separar tools core/globales, verticales, proveedor y MCP | ✅ **U56** |
 | 5 | Handoff STOP sólo ante operación denegada | ✅ **U55** |
-| 6 | Pruebas E2E live (no sólo unitarias) | ⏳ pendiente |
+| 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57** — la cadena real sin mocks entre las piezas que deciden; falta el turno entero por `processIncomingMessage` y una corrida contra base real |
 | 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ⏳ pendiente |
 | 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ⏳ pendiente |
 | 9 | Unificar freshness, cron y estado mostrado en UI | ⏳ pendiente |

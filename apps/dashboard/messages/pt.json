@@ -1870,6 +1870,29 @@
       "switchWarningBody": "Ao ativar o modo total, DEIXARÁ de emitir faturas eletrônicas DIAN para clientes da Colômbia. Confirme com seu contador antes de continuar.",
       "switchConfirm": "Sim, ativar modo total"
     },
+    "regionalIdentity": {
+      "title": "Identidade regional",
+      "subtitle": "Onde o negócio opera e de onde veio cada valor. O declarado manda; o resto é suposição nossa.",
+      "recheck": "Revisar de novo",
+      "declared": "Declarado",
+      "failed": "Não foi possível salvar",
+      "declareCountryPrompt": "Ninguém declarou em que país este negócio opera. Sem isso, telefones sem código de país não podem ser normalizados e a moeda é uma suposição.",
+      "chooseCountry": "Escolha o país",
+      "conflictsTitle": "{count} dado(s) com sinais que não batem. Escolha qual vale:",
+      "candidateFrom": "Vem de: {from}",
+      "field_country": "País onde opera",
+      "field_operating_country": "País onde opera",
+      "field_currency": "Moeda",
+      "field_timezone": "Fuso horário",
+      "field_locale": "Idioma e formatos",
+      "field_phoneRegion": "País dos telefones",
+      "field_phone_region": "País dos telefones",
+      "field_addressForm": "Forma de tratamento",
+      "source_declared": "Você declarou",
+      "source_derived": "Deduzido do país",
+      "source_inferred": "Nós inferimos",
+      "source_fallback": "Padrão que definimos"
+    },
     "localizationPage": {
       "title": "Localização",
       "subtitle": "Fuso horário, moeda, formato de data e idioma do workspace",
@@ -1878,7 +1901,8 @@
       "currency": "Moeda",
       "dateFormat": "Formato de data",
       "timeFormat": "Formato de hora",
-      "weekStart": "Primeiro dia da semana"
+      "weekStart": "Primeiro dia da semana",
+      "undefined": "Não definido"
     },
     "businessHoursPage": {
       "title": "Horário comercial",

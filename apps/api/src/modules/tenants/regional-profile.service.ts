@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
     AddressForm,
     COUNTRY_DEFAULT_ADDRESS_FORM,
@@ -39,6 +39,49 @@ import { RedisService } from '../redis/redis.service';
  */
 
 const CACHE_TTL_SECONDS = 300;
+
+/**
+ * Qué columna escribe cada campo revisable, y cómo se valida su valor.
+ *
+ * Explícito y no derivado del nombre: `timezone` vive en `operating_timezone`
+ * y `currency` en `operating_currency`, y una convención implícita que
+ * "casi siempre" acierta es la que un día escribe la columna equivocada.
+ */
+const REVIEW_FIELD_COLUMN: Readonly<Record<string, {
+    field: string;
+    normalize: (value: string) => string | null;
+}>> = Object.freeze({
+    operating_country: {
+        field: 'operatingCountry',
+        normalize: (v) => (/^[A-Za-z]{2}$/.test(v) ? v.toUpperCase() : null),
+    },
+    phone_region: {
+        field: 'phoneRegion',
+        normalize: (v) => (/^[A-Za-z]{2}$/.test(v) ? v.toUpperCase() : null),
+    },
+    currency: {
+        field: 'operatingCurrency',
+        normalize: (v) => (/^[A-Za-z]{3}$/.test(v) ? v.toUpperCase() : null),
+    },
+    timezone: {
+        field: 'operatingTimezone',
+        // Se valida contra la base de zonas del runtime, no contra una lista
+        // propia que quedaría vieja con cada release de tzdata.
+        normalize: (v) => {
+            if (!v || v.length > 64) return null;
+            try {
+                new Intl.DateTimeFormat('en', { timeZone: v });
+                return v;
+            } catch {
+                return null;
+            }
+        },
+    },
+    locale: {
+        field: 'defaultLocale',
+        normalize: (v) => (/^[A-Za-z]{2}(-[A-Za-z0-9]{2,8})*$/.test(v) && v.length <= 35 ? v : null),
+    },
+});
 const PLATFORM_FALLBACK_COUNTRY = 'CO';
 
 /** Timezone → country, for the inference step only. */
@@ -350,5 +393,120 @@ export class RegionalProfileService {
             }
         }
         return queued;
+    }
+
+    /** Las revisiones abiertas, más el perfil que las produjo. */
+    async listReviews(tenantId: string, status: 'pending' | 'resolved' | 'all' = 'pending') {
+        const where: any = { tenantId };
+        if (status !== 'all') where.status = status;
+        return this.prisma.regionalIdentityReview.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+        });
+    }
+
+    /**
+     * Resolver una revisión ESCRIBE el valor declarado.
+     *
+     * Es la mitad que faltaba, y sin ella todo lo demás era decorativo: el
+     * perfil detectaba los conflictos, la tabla los podía guardar y **nada**
+     * podía convertir una decisión del dueño en la columna `declared` que el
+     * resto del sistema lee. La rama `declared` era inalcanzable, así que el
+     * país siempre venía inferido o de fallback — y un `fallback` es lo que
+     * hace que un teléfono no se normalice y que el agente hable en la moneda
+     * equivocada.
+     *
+     * Cada campo escribe SU columna. Nada se deduce de nada: elegir el país no
+     * cambia la moneda por su cuenta, porque un negocio colombiano que cobra en
+     * dólares existe y "corregirlo" le cambiaría los precios.
+     */
+    async resolveReview(
+        tenantId: string,
+        reviewId: string,
+        input: { value: string; resolvedBy: string },
+    ): Promise<{ field: string; value: string }> {
+        const review = await this.prisma.regionalIdentityReview.findFirst({
+            where: { id: reviewId, tenantId },
+        });
+        if (!review) throw new NotFoundException('Revisión regional no encontrada');
+        if (review.status !== 'pending') {
+            throw new BadRequestException('Esa revisión ya fue resuelta');
+        }
+
+        const value = String(input.value || '').trim();
+        if (!value) throw new BadRequestException('Hay que elegir un valor');
+
+        // Sólo se acepta uno de los candidatos que el sistema detectó. Un campo
+        // libre acá sería otra puerta para escribir la identidad regional sin
+        // que nadie mire, que es de donde vino el problema.
+        const candidates = Array.isArray(review.candidates)
+            ? (review.candidates as any[]).map(c => String(c?.value || ''))
+            : [];
+        if (candidates.length && !candidates.includes(value)) {
+            throw new BadRequestException(
+                `"${value}" no es uno de los valores detectados (${candidates.join(', ')})`,
+            );
+        }
+
+        const column = REVIEW_FIELD_COLUMN[review.field];
+        if (!column) throw new BadRequestException(`Campo regional desconocido: ${review.field}`);
+
+        const normalized = column.normalize(value);
+        if (!normalized) {
+            throw new BadRequestException(`"${value}" no es un valor válido para ${review.field}`);
+        }
+
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { [column.field]: normalized } as any,
+        });
+        await this.prisma.regionalIdentityReview.update({
+            where: { id: reviewId },
+            data: {
+                status: 'resolved',
+                resolvedBy: input.resolvedBy,
+                resolvedAt: new Date(),
+            },
+        });
+        // El perfil cacheado todavía dice lo viejo.
+        await this.invalidate(tenantId);
+        this.logger.log(
+            `[Regional] ${review.field} declarado como ${normalized} para ${tenantId} por ${input.resolvedBy}`,
+        );
+        return { field: review.field, value: normalized };
+    }
+
+    /**
+     * Declarar un valor regional sin que haya un conflicto detectado.
+     *
+     * Un tenant sin conflictos igual puede no haber declarado nada: sus señales
+     * coinciden porque hay una sola, o porque no hay ninguna y todo cae a
+     * fallback. Ese caso —el más común— no produce revisión, y sin esta puerta
+     * seguiría sin poder declarar su país.
+     */
+    async declare(
+        tenantId: string,
+        field: string,
+        value: string,
+        declaredBy: string,
+    ): Promise<{ field: string; value: string }> {
+        const column = REVIEW_FIELD_COLUMN[field];
+        if (!column) throw new BadRequestException(`Campo regional desconocido: ${field}`);
+        const normalized = column.normalize(String(value || '').trim());
+        if (!normalized) throw new BadRequestException(`"${value}" no es un valor válido para ${field}`);
+
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { [column.field]: normalized } as any,
+        });
+        // Un conflicto abierto sobre ese mismo campo queda contestado.
+        await this.prisma.regionalIdentityReview.updateMany({
+            where: { tenantId, field, status: 'pending' },
+            data: { status: 'resolved', resolvedBy: declaredBy, resolvedAt: new Date() },
+        });
+        await this.invalidate(tenantId);
+        this.logger.log(`[Regional] ${field} declarado como ${normalized} para ${tenantId}`);
+        return { field, value: normalized };
     }
 }

@@ -1870,6 +1870,29 @@
       "switchWarningBody": "Enabling total mode will STOP issuing DIAN electronic invoices for Colombian customers. Confirm with your accountant before continuing.",
       "switchConfirm": "Yes, enable total mode"
     },
+    "regionalIdentity": {
+      "title": "Regional identity",
+      "subtitle": "Where the business operates and where each value came from. Declared wins; the rest is our guess.",
+      "recheck": "Re-check",
+      "declared": "Declared",
+      "failed": "Could not save",
+      "declareCountryPrompt": "Nobody declared which country this business operates in. Without it, phone numbers with no country code cannot be normalised and the currency is a guess.",
+      "chooseCountry": "Choose the country",
+      "conflictsTitle": "{count} value(s) with signals that disagree. Pick the one that counts:",
+      "candidateFrom": "From: {from}",
+      "field_country": "Operating country",
+      "field_operating_country": "Operating country",
+      "field_currency": "Currency",
+      "field_timezone": "Time zone",
+      "field_locale": "Language and formats",
+      "field_phoneRegion": "Phone country",
+      "field_phone_region": "Phone country",
+      "field_addressForm": "Form of address",
+      "source_declared": "You declared it",
+      "source_derived": "Derived from country",
+      "source_inferred": "We inferred it",
+      "source_fallback": "Default we set"
+    },
     "localizationPage": {
       "title": "Localization",
       "subtitle": "Timezone, currency, date format and workspace language",
@@ -1878,7 +1901,8 @@
       "currency": "Currency",
       "dateFormat": "Date Format",
       "timeFormat": "Time Format",
-      "weekStart": "First Day of the Week"
+      "weekStart": "First Day of the Week",
+      "undefined": "Not set"
     },
     "businessHoursPage": {
       "title": "Business Hours",

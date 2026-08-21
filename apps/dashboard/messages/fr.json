@@ -1870,6 +1870,29 @@
       "switchWarningBody": "L'activation du mode total ARRÊTERA l'émission des factures électroniques DIAN pour les clients colombiens. Confirmez avec votre comptable avant de continuer.",
       "switchConfirm": "Oui, activer le mode total"
     },
+    "regionalIdentity": {
+      "title": "Identité régionale",
+      "subtitle": "Où l'entreprise opère et d'où vient chaque valeur. Le déclaré prime ; le reste est notre supposition.",
+      "recheck": "Revérifier",
+      "declared": "Déclaré",
+      "failed": "Enregistrement impossible",
+      "declareCountryPrompt": "Personne n'a déclaré dans quel pays cette entreprise opère. Sans cela, les numéros sans indicatif ne peuvent pas être normalisés et la devise est une supposition.",
+      "chooseCountry": "Choisissez le pays",
+      "conflictsTitle": "{count} valeur(s) dont les signaux divergent. Choisissez celle qui compte :",
+      "candidateFrom": "Provient de : {from}",
+      "field_country": "Pays d'activité",
+      "field_operating_country": "Pays d'activité",
+      "field_currency": "Devise",
+      "field_timezone": "Fuseau horaire",
+      "field_locale": "Langue et formats",
+      "field_phoneRegion": "Pays des téléphones",
+      "field_phone_region": "Pays des téléphones",
+      "field_addressForm": "Forme d'adresse",
+      "source_declared": "Vous l'avez déclaré",
+      "source_derived": "Déduit du pays",
+      "source_inferred": "Nous l'avons déduit",
+      "source_fallback": "Valeur par défaut"
+    },
     "localizationPage": {
       "title": "Localisation",
       "subtitle": "Fuseau horaire, devise, format de date et langue de l'espace de travail",
@@ -1878,7 +1901,8 @@
       "currency": "Devise",
       "dateFormat": "Format de date",
       "timeFormat": "Format d'heure",
-      "weekStart": "Premier jour de la semaine"
+      "weekStart": "Premier jour de la semaine",
+      "undefined": "Non défini"
     },
     "businessHoursPage": {
       "title": "Heures d'ouverture",

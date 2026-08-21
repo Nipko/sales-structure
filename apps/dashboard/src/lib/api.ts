@@ -485,6 +485,21 @@ export const api = {
     getVerticalDefinitions: () =>
         apiGet<VerticalDefinitions>('/verticals/definitions/all'),
     getTenantUsers: (tenantId: string) => apiGet(`/tenants/${tenantId}/users`),
+
+    // --- Identidad regional ---
+    // El perfil viaja con la PROCEDENCIA de cada valor. Sin ella el dueño ve
+    // "Colombia" y no puede distinguir lo que declaró de lo que el sistema
+    // puso para poder seguir — que es la diferencia entre un teléfono que se
+    // normaliza y uno que no.
+    getRegionalProfile: (tenantId: string) => apiGet(`/tenants/${tenantId}/regional/profile`),
+    getRegionalReviews: (tenantId: string, status?: string) =>
+        apiGet(`/tenants/${tenantId}/regional/reviews${status ? `?status=${status}` : ""}`),
+    refreshRegionalReviews: (tenantId: string) =>
+        apiPost(`/tenants/${tenantId}/regional/reviews/refresh`, {}),
+    resolveRegionalReview: (tenantId: string, reviewId: string, value: string) =>
+        apiPost(`/tenants/${tenantId}/regional/reviews/${reviewId}/resolve`, { value }),
+    declareRegionalValue: (tenantId: string, field: string, value: string) =>
+        apiPost(`/tenants/${tenantId}/regional/declare`, { field, value }),
     adminResetPassword: (userId: string, newPassword: string) =>
         apiPost("/auth/admin/reset-password", { userId, newPassword }),
 

@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { RegionalProfileService } from './regional-profile.service';
+import { RegionalProfileController } from './regional-profile.controller';
+import { RegionalConflictCronService } from './regional-conflict-cron.service';
 
 /**
  * La identidad regional del tenant, disponible en todo el backend.
@@ -15,7 +17,8 @@ import { RegionalProfileService } from './regional-profile.service';
  */
 @Global()
 @Module({
-    providers: [RegionalProfileService],
+    controllers: [RegionalProfileController],
+    providers: [RegionalProfileService, RegionalConflictCronService],
     exports: [RegionalProfileService],
 })
 export class RegionalProfileModule {}

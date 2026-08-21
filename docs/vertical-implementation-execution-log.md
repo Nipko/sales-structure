@@ -1205,6 +1205,36 @@ npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2774 passed / 296 suites (1 skipped), 0 fallos
 ```
 
+### U41 — Detectar sin poder decidir es un diagnóstico sin tratamiento
+
+**Pendiente interno 11 (segunda mitad)**
+
+El perfil regional distingue lo que el dueño **declaró** de lo que se dedujo, se infirió o se puso por defecto, y detecta cuándo las señales se contradicen —moneda que no corresponde al país, país de facturación distinto del que el dueño escribió en Business Info—. Faltaban las dos puntas:
+
+- **`queueConflictsForReview` no tenía ningún llamador.** La tabla `regional_identity_reviews` estaba permanentemente vacía. Un detector sin disparador es una función que compila.
+- **No existía forma de declarar un valor.** La rama `declared` era **inalcanzable**: el país siempre llegaba `inferred` o `fallback`. Y un `fallback` no es un detalle de procedencia — es exactamente lo que hace que un teléfono no se normalice (U40) y que el agente hable de precios en la moneda equivocada.
+
+**El disparador** es un cron nocturno con lock (`prefer: 'worker'`, porque todo `@Cron` corre en API y worker), que recorre los tenants activos. Deliberadamente lento y barato: las señales que producen un conflicto cambian cuando alguien edita la configuración, no solas, y el encolado es idempotente —actualiza la revisión pendiente en vez de acumular filas—. Un tenant que falla no para el barrido de los demás.
+
+**La decisión** entra por dos puertas. `resolveReview` acepta **sólo uno de los candidatos detectados** —un campo libre sería otra puerta para escribir la identidad regional sin que nadie mire, que es de donde vino el problema— y `declare` cubre el caso más común, que **no produce conflicto**: un tenant que nunca declaró nada tiene una sola señal, o ninguna. Sin esa segunda puerta seguiría sin poder decir en qué país opera.
+
+**Cada campo escribe su propia columna y nada se deduce de nada.** Elegir el país no cambia la moneda por su cuenta: un negocio colombiano que cobra en dólares existe, y "corregirlo" le cambiaría los precios. El mapa campo→columna es explícito, no derivado del nombre, porque una convención que "casi siempre" acierta es la que un día escribe la columna equivocada. La zona horaria se valida contra la base de zonas del runtime, no contra una lista propia que quedaría vieja con cada tzdata.
+
+**La pantalla muestra la procedencia**, que es el punto entero. Con el mismo texto en pantalla, "el negocio dijo que opera en México" y "nadie dijo nada y pusimos Colombia para poder seguir" son indistinguibles — y la segunda es la que rompe cosas.
+
+**Y de paso, el formulario de Localización dejaba de ser honesto** (adelanta parte del pendiente 12): pintaba `America/Bogota`, `COP` y `es-CO` como valores iniciales **antes de leer nada**, así que un negocio mexicano que entraba a cambiar el formato de fecha y apretaba Guardar declaraba —sin verlo— que opera en Bogotá y cobra en pesos colombianos. Ahora los campos sin dato quedan en "Sin definir" y no se guarda lo que el dueño no eligió: mandar `""` borraría un valor declarado antes, y mandar el placeholder lo declararía.
+
+**Pruebas** — `regional-review.spec.ts` (nuevo, 17): la escritura por columna para los cinco campos, el rechazo de un valor fuera de los candidatos, de un formato inválido, de una zona horaria inventada y de una revisión ajena o ya resuelta; la invalidación del caché (sin ella el perfil sigue diciendo lo viejo); y el cron con su tenant que falla.
+
+**i18n**: `settings.regionalIdentity.*` y `localizationPage.undefined` en los 4 idiomas.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en api y dashboard
+jest apps/api       → 2791 passed / 297 suites (1 skipped), 0 fallos
+jest apps/dashboard →  212 passed /  26 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1311,7 +1341,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~8~~ | ✅ cerrado en **U37** |
 | ~~9~~ | ✅ cerrado en **U38** |
 | ~~10~~ | ✅ cerrado entre **U35** (las 4 lecturas de proveedor) y **U39** (MCP). El Channel Manager no aporta tools propias: sus reservas entran por `check_property_availability`, que ya tiene política revisada |
-| 11 | ◐ **Hecho en U40**: los 14 consumidores migrados al `TenantRegionalProfile` y el default `+57` eliminado. Queda la **UI/API de revisión regional** (`queueConflictsForReview` todavía sin llamador, y sin pantalla que escriba el valor declarado) |
+| ~~11~~ | ✅ cerrado entre **U40** (consumidores + default `+57`) y **U41** (revisión regional: API, cron y pantalla) |
 | 12 | Eliminar fallbacks productivos COP / es-CO / Bogotá fuera de decisiones regionales explícitas |
 | 13 | Una sola fuente de schema para `products` |
 | 14 | `VerticalPromptContractV2`, `IntentContract`, `SlotSchema`, `NavigationPolicy`, `CertificationEvidenceV2` |

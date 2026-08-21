@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Globe, DollarSign, Calendar, Clock, Save, CheckCircle, AlertCircle } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { TIMEZONE_GROUPS, normalizeTimezone } from "@parallext/shared";
+import { RegionalIdentityCard } from "./_components/RegionalIdentityCard";
 
 const CURRENCIES = [
     { value: "COP", label: "COP - Peso colombiano ($)" },
@@ -51,12 +52,20 @@ export default function LocalizationPage() {
     const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
+    // Vacío, no "Bogotá y COP".
+    //
+    // Estos defaults se pintaban en el formulario ANTES de leer nada, así que
+    // un negocio mexicano que entraba a cambiar el formato de fecha y apretaba
+    // Guardar declaraba —sin verlo— que opera en Bogotá y cobra en pesos
+    // colombianos. Un valor que el sistema puso para poder dibujar la pantalla
+    // no puede convertirse en una decisión del dueño por apretar un botón que
+    // dice otra cosa.
     const [form, setForm] = useState({
-        timezone: "America/Bogota",
-        currency: "COP",
+        timezone: "",
+        currency: "",
         dateFormat: "DD/MM/YYYY",
         timeFormat: "24h",
-        language: "es-CO",
+        language: "",
         weekStart: "monday",
     });
     const [saving, setSaving] = useState(false);
@@ -72,11 +81,14 @@ export default function LocalizationPage() {
                 const t = result.data as any;
                 const s = t.settings || {};
                 setForm({
-                    timezone: s.timezone || "America/Bogota",
-                    currency: s.currency || "COP",
+                    // Sin dato guardado, el campo queda sin elegir y el
+                    // `<select>` muestra "Sin definir". El fallback del backend
+                    // se muestra aparte, marcado como lo que es.
+                    timezone: s.timezone || "",
+                    currency: s.currency || "",
                     dateFormat: s.dateFormat || "DD/MM/YYYY",
                     timeFormat: s.timeFormat || "24h",
-                    language: t.language || "es-CO",
+                    language: t.language || "",
                     weekStart: s.weekStart || "monday",
                 });
             }
@@ -90,15 +102,18 @@ export default function LocalizationPage() {
         try {
             const tenantId = activeTenantId || user?.tenantId;
             if (!tenantId) return;
+            // Lo que el dueño no eligió no se guarda: mandar `""` borraría un
+            // valor declarado antes, y mandar el placeholder lo declararía.
+            const settings: Record<string, string> = {
+                dateFormat: form.dateFormat,
+                timeFormat: form.timeFormat,
+                weekStart: form.weekStart,
+            };
+            if (form.timezone) settings.timezone = form.timezone;
+            if (form.currency) settings.currency = form.currency;
             const result = await api.updateTenant(tenantId, {
-                language: form.language,
-                settings: {
-                    timezone: form.timezone,
-                    currency: form.currency,
-                    dateFormat: form.dateFormat,
-                    timeFormat: form.timeFormat,
-                    weekStart: form.weekStart,
-                },
+                ...(form.language ? { language: form.language } : {}),
+                settings,
             });
             if (result.success) {
                 setSaved(true);
@@ -136,13 +151,16 @@ export default function LocalizationPage() {
                 </div>
             )}
 
+            <RegionalIdentityCard tenantId={activeTenantId || user?.tenantId} />
+
             <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 {/* Timezone */}
                 <div>
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
                         <Clock size={14} className="text-neutral-400" /> {t("timezone")}
                     </label>
-                    <select value={normalizeTimezone(form.timezone)} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className={selectClasses}>
+                    <select value={form.timezone ? normalizeTimezone(form.timezone) : ""} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className={selectClasses}>
+                        <option value="">{t("undefined")}</option>
                         {TIMEZONE_GROUPS.map((g) => (
                             <optgroup key={g.region} label={g.region}>
                                 {g.zones.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
@@ -157,6 +175,7 @@ export default function LocalizationPage() {
                         <Globe size={14} className="text-neutral-400" /> {t("language")}
                     </label>
                     <select value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })} className={selectClasses}>
+                        <option value="">{t("undefined")}</option>
                         {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                     </select>
                 </div>
@@ -167,6 +186,7 @@ export default function LocalizationPage() {
                         <DollarSign size={14} className="text-neutral-400" /> {t("currency")}
                     </label>
                     <select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className={selectClasses}>
+                        <option value="">{t("undefined")}</option>
                         {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                     </select>
                 </div>

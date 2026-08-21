@@ -1852,6 +1852,44 @@ jest apps/api       → 3114 passed / 311 suites (1 skipped, 10 skipped tests), 
 jest apps/dashboard →  264 passed /  29 suites, 0 fallos
 ```
 
+### U61 — Guardar la configuración destruía la credencial, de dos formas distintas
+
+**P0-B · punto 10 — secretos: migración dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos**
+
+Cinco cosas que se sostenían entre sí. Las dos primeras son defectos con consecuencia inmediata:
+
+**(1) La máscara del panel se guardaba como credencial.** El panel enmascara con `***` y devuelve eso al guardar. Las integraciones verticales lo reconocían; el channel manager **no**. Un dueño que abría la pantalla, cambiaba el intervalo de sincronización y guardaba, **cifraba los tres asteriscos y los almacenaba como clave de API**. Sin error, sin aviso: a partir de ahí la integración mandaba `***` al proveedor.
+
+**(2) Cambiar de proveedor tapiaba la integración.** El sobre ata el valor a su proveedor por AAD, así que una clave de Hostaway no se descifra como si fuera de Guesty — eso está bien. Lo que estaba mal es qué pasaba después: el guardado conservaba el sobre viejo (`isEnvelope` → no lo re-cifra), la config quedaba diciendo `guesty` con un secreto de `hostaway`, y **cada** lectura posterior tiraba `tenant_secret_decryption_failed`. Sin forma de saber por qué, y —desde U58— con las reservas del alojamiento bloqueadas de rebote. Un secreto del proveedor anterior no significa nada para el nuevo: ahora se descarta y se piden credenciales de nuevo.
+
+**(3) Updates no atómicos sobre un JSONB que comparten diez módulos.** En `tenant.settings` viven marca blanca, SSO, channel manager, integraciones verticales, su salud, e-commerce, Slack, reseñas, tier gestionado, MCP y SMS. Casi todos escribían `update({ settings: { ...settings, miRama } })`, que manda **una foto vieja del objeto completo**: lo que otro módulo escribió entre la lectura y la escritura desaparece, sin error, sin conflicto y sin traza.
+
+Y no es teórico: el re-cifrado corre **desde una lectura**, en segundo plano (`.catch()`), disparado por una conversación cualquiera. Un dueño guardando su SSO en ese momento lo ve desaparecer; o al revés, su guardado pisa el re-cifrado y la credencial vuelve a quedar en claro. La técnica correcta ya estaba en el repositorio —`updateHealth` usa `jsonb_set` y lo explica— y se usaba en **un** lugar; ahora es una utilidad con cuatro formas (reemplazar rama, fusionar rama, reemplazar hoja, borrar hoja) y los caminos de secretos la usan.
+
+**(4) La máscara se derivaba de una lista escrita a mano.** El channel manager enmascaraba `apiKey` y `apiSecret` por literal; las verticales, la unión de los tres proveedores. Hoy coinciden por casualidad — un proveedor nuevo con otro nombre de campo sale **sin enmascarar por una respuesta HTTP**. Ahora sale del registro de campos secretos de cada módulo.
+
+**(5) La migración, y la puerta que no se podía cerrar.** El re-cifrado oportunista sólo alcanza a quien es leído: un tenant que conectó Hostaway y no volvió a tener una conversación de alojamiento conserva su clave en claro por meses, sin error y con el panel mostrándola enmascarada igual. Y mientras quede **uno solo**, el puente que acepta texto plano tiene que seguir abierto — con lo cual cualquier valor que reaparezca en claro (una restauración de backup vieja, una edición a mano del JSONB) se lee como si nada.
+
+`scripts/migrate-tenant-secrets.js` tiene los tres modos en el orden en que esto se hace sin romper nada: `--dry-run` cuenta y ubica sin escribir; `--apply` cifra con un `jsonb_set` por secreto y **condicionado a que el valor no haya cambiado** (`AND settings #>> path = $4`), porque corre sobre producción con el sistema andando; `--cutover` verifica que no quede nada y dice qué variable poner —sin ponerla, porque activar el rechazo es una decisión de despliegue—. Con `TENANT_SECRET_PLAINTEXT=reject`, un secreto en claro pasa a ser un error ruidoso.
+
+**Un defecto que casi entra con el arreglo.** El script copia el AAD porque no puede importar el servicio (arrastraría medio NestJS y dejaría de correr con `node`). Lo escribí como cadena unida por dos puntos; el servicio usa `JSON.stringify([...])`. Habría producido sobres que el runtime **no puede abrir** — integraciones tapiadas en producción después de una migración que dice "listo". Lo atrapó la prueba de ida y vuelta contra el servicio real, que es la única forma de no dejarlo librado a compararlos a ojo.
+
+**Y una prueba mía que pasaba sin verificar nada.** El primer intento de "las listas del script y del runtime coinciden" sólo comprobaba que los servicios estuvieran definidos. Se exportaron los registros de campos secretos de los dos módulos y ahora se comparan de verdad, campo por campo, incluidos los identificadores de AAD — porque el script podría conocer `clientSecret` y mandar `clientsecret`, y el sobre sería ilegible.
+
+**Riesgos que quedan**
+- **Los otros ~8 módulos que escriben `settings` siguen con el patrón que pierde datos** (marca blanca, SSO, Slack, reseñas, e-commerce, MCP, gestionado, SMS). La utilidad existe y esos caminos no se convirtieron: quedan fuera del alcance de "secretos" y son **trabajo interno pendiente**.
+- El corte (`TENANT_SECRET_PLAINTEXT=reject`) **no está activado**, y no puede estarlo hasta correr la migración contra producción. Eso es del dueño, no del código.
+- La variable nueva necesita entrar a los Secrets de GitHub **y** a `deploy.yml`, o el próximo deploy la pierde al regenerar el `.env`. El propio `--cutover` lo imprime.
+
+**Pruebas** — `tenant-secret-migration.spec.ts` (nuevo, 15), `channel-manager-secrets.spec.ts` (nuevo, 8), `tenant-settings-branch.fixture.ts` (nuevo, doble que aplica la semántica de `jsonb_set`), + specs de integraciones verticales actualizados al camino de escritura real.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+npm run test:bootstrap → 1 passed (sin errores de DI)
+jest apps/api     → 3137 passed / 313 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1963,7 +2001,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ✅ **U58** |
 | 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ◐ **U59** — matriz por **industria** (no por subtipo) y desplazamiento estático por proveedor (no por recurso); afinar ambos necesita revisión de dominio |
 | 9 | Unificar freshness, cron y estado mostrado en UI | ◐ **U60** — un solo número compartido, cadencia verificada y estado `not_applicable` en el panel; falta la disponibilidad en vivo de Mindbody y unificar el reloj del Channel Manager |
-| 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ⏳ pendiente |
+| 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ◐ **U61** — las cinco piezas construidas y probadas; el corte a `reject` depende de correr la migración en producción, y los ~8 módulos restantes que escriben `settings` siguen con el patrón que pierde datos |
 | 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ⏳ pendiente |
 | 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ⏳ pendiente |
 | 13 | Eliminar los 72 gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ⏳ pendiente |

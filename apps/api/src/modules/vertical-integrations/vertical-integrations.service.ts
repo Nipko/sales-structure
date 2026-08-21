@@ -5,7 +5,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { Cron } from '@nestjs/schedule';
 import { CronLockService } from '../redis/cron-lock.service';
-import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+import {
+    TENANT_SECRET_MASK,
+    TenantSecretCryptoService,
+    isMaskedSecret,
+} from '../../common/crypto/tenant-secret-crypto.service';
+import {
+    deleteTenantSettingsLeaf,
+    replaceTenantSettingsLeaf,
+} from '../../common/utils/tenant-settings-branch.util';
 import {
     OUTBOUND_MAX_REQUEST_BYTES,
     OUTBOUND_MAX_RESPONSE_BYTES,
@@ -66,14 +74,14 @@ const PROVIDERS: VerticalProvider[] = ['toast', 'mindbody', 'cliniko'];
  * `siteId` de Mindbody y `locationGuid` de Toast NO son secretos, y cifrarlos
  * sólo agregaría descifrados que pueden fallar.
  */
-const SECRET_FIELDS: Readonly<Record<VerticalProvider, readonly string[]>> = Object.freeze({
+export const SECRET_FIELDS: Readonly<Record<VerticalProvider, readonly string[]>> = Object.freeze({
     toast: Object.freeze(['clientSecret']),
     mindbody: Object.freeze(['apiKey', 'password']),
     cliniko: Object.freeze(['apiKey']),
 });
 
 /** `clientSecret` → `client_secret`: el AAD ata el valor a su campo exacto. */
-function secretFieldId(field: string): string {
+export function secretFieldId(field: string): string {
     return field.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 }
 const PROVIDER_ALLOWLIST_CONFIG: Partial<Record<VerticalProvider, string>> = {
@@ -261,18 +269,15 @@ export class VerticalIntegrationsService {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) return;
         const settings = (tenant.settings as any) || {};
-        const vi = settings.verticalIntegrations || {};
-        const current = vi[provider];
+        const current = settings.verticalIntegrations?.[provider];
         if (!current) return;
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    ...settings,
-                    verticalIntegrations: { ...vi, [provider]: { ...current, ...rewrap } },
-                } as any,
-            },
-        });
+        // Merge sobre la fila viva. Este camino lo dispara una LECTURA en
+        // segundo plano: reescribir desde una foto competía con el dueño
+        // guardando, y el perdedor de esa carrera desaparecía sin traza.
+        await replaceTenantSettingsLeaf(
+            this.prisma, tenantId, 'verticalIntegrations', provider,
+            { ...current, ...rewrap },
+        );
         this.logger.log(`[VI] secretos de ${provider} re-cifrados para ${tenantId}`);
     }
 
@@ -288,9 +293,12 @@ export class VerticalIntegrationsService {
                 const health = materializeIntegrationHealth(p, true, storedHealth[p]);
                 out[p] = {
                     ...vi[p],
-                    clientSecret: vi[p].clientSecret ? '***' : undefined,
-                    apiKey: vi[p].apiKey ? '***' : undefined,
-                    password: vi[p].password ? '***' : undefined,
+                    // Derivado del registro por proveedor: escrito a mano, un
+                    // campo secreto nuevo sale sin enmascarar por una respuesta
+                    // HTTP y nadie lo nota.
+                    ...Object.fromEntries(SECRET_FIELDS[p].map(field => [
+                        field, vi[p][field] ? TENANT_SECRET_MASK : undefined,
+                    ])),
                     // `configured` = hay credencial guardada. `connected` =
                     // además se validó contra el proveedor. El panel los
                     // confundía y dejaba el botón "Probar" detrás de
@@ -318,8 +326,12 @@ export class VerticalIntegrationsService {
         // Merge — keep existing secrets if masked/omitted
         const merged: any = { ...current, ...config, provider };
         const cfgAny = config as any;
-        for (const secretKey of ['clientSecret', 'apiKey', 'password']) {
-            if (cfgAny[secretKey] === '***' || cfgAny[secretKey] === undefined) {
+        // La lista sale del registro por proveedor, no de la unión escrita a
+        // mano de los tres. Hoy coinciden por casualidad; un proveedor nuevo con
+        // un nombre de campo distinto rompería la conservación del secreto sin
+        // que nada lo dijera.
+        for (const secretKey of SECRET_FIELDS[provider]) {
+            if (isMaskedSecret(cfgAny[secretKey]) || cfgAny[secretKey] === undefined) {
                 merged[secretKey] = current[secretKey];
             }
         }
@@ -347,21 +359,19 @@ export class VerticalIntegrationsService {
             });
         }
 
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    ...settings,
-                    verticalIntegrations: { ...vi, [provider]: persisted },
-                    // Saving credentials never means they were validated. Reset
-                    // health and require an explicit check/sync before tools exist.
-                    verticalIntegrationHealth: {
-                        ...healthStore,
-                        [provider]: initialIntegrationHealth(provider),
-                    },
-                } as any,
-            },
-        });
+        // Una hoja por proveedor, sobre la fila viva. Reescribir las dos ramas
+        // enteras desde una foto significaba que guardar Toast borraba lo que se
+        // hubiera guardado de Cliniko en el mismo instante — y también lo que
+        // hubiera escrito cualquier otro módulo en `settings`.
+        await replaceTenantSettingsLeaf(
+            this.prisma, tenantId, 'verticalIntegrations', provider, persisted,
+        );
+        // Saving credentials never means they were validated. Reset health and
+        // require an explicit check/sync before tools exist.
+        await replaceTenantSettingsLeaf(
+            this.prisma, tenantId, 'verticalIntegrationHealth', provider,
+            initialIntegrationHealth(provider),
+        );
         await this.invalidateHealthCache(tenantId);
         return merged;
     }
@@ -369,21 +379,11 @@ export class VerticalIntegrationsService {
     async disconnect(tenantId: string, provider: VerticalProvider): Promise<void> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) return;
-        const settings = (tenant.settings as any) || {};
-        const vi = { ...(settings.verticalIntegrations || {}) };
-        const healthStore = { ...(settings.verticalIntegrationHealth || {}) };
-        delete vi[provider];
-        delete healthStore[provider];
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    ...settings,
-                    verticalIntegrations: vi,
-                    verticalIntegrationHealth: healthStore,
-                } as any,
-            },
-        });
+        // Desconectar borra la hoja del proveedor y nada más. Con el patrón
+        // anterior, desconectar Toast reescribía `settings` entero desde una
+        // foto: cualquier cosa guardada en el medio se perdía.
+        await deleteTenantSettingsLeaf(this.prisma, tenantId, 'verticalIntegrations', provider);
+        await deleteTenantSettingsLeaf(this.prisma, tenantId, 'verticalIntegrationHealth', provider);
         await this.invalidateHealthCache(tenantId);
     }
 

@@ -62,7 +62,9 @@ describe('VerticalIntegrationsService endpoint security', () => {
             hostname: 'http://ws-api.toasttab.com',
         })).rejects.toBeInstanceOf(BadRequestException);
 
+        // Un endpoint rechazado no escribe nada, por ninguna de las dos vías.
         expect(prisma.tenant.update).not.toHaveBeenCalled();
+        expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
     });
 
     it('rejects provider lookalike domains', async () => {
@@ -71,7 +73,9 @@ describe('VerticalIntegrationsService endpoint security', () => {
         })).rejects.toBeInstanceOf(BadRequestException);
 
         expect(lookupSpy).not.toHaveBeenCalled();
+        // Un endpoint rechazado no escribe nada, por ninguna de las dos vías.
         expect(prisma.tenant.update).not.toHaveBeenCalled();
+        expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -91,7 +95,9 @@ describe('VerticalIntegrationsService endpoint security', () => {
             baseUrl: 'https://cliniko-proxy.example.com/v1',
         })).rejects.toBeInstanceOf(BadRequestException);
 
+        // Un endpoint rechazado no escribe nada, por ninguna de las dos vías.
         expect(prisma.tenant.update).not.toHaveBeenCalled();
+        expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
     });
 
     it('rejects a mixed DNS answer instead of selecting only its public address', async () => {
@@ -104,7 +110,9 @@ describe('VerticalIntegrationsService endpoint security', () => {
             hostname: 'https://ws-api.toasttab.com',
         })).rejects.toBeInstanceOf(BadRequestException);
 
+        // Un endpoint rechazado no escribe nada, por ninguna de las dos vías.
         expect(prisma.tenant.update).not.toHaveBeenCalled();
+        expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
     });
 
     it('accepts and normalizes an official Cliniko shard URL', async () => {
@@ -113,24 +121,28 @@ describe('VerticalIntegrationsService endpoint security', () => {
             baseUrl: 'https://api.au1.cliniko.com/v1/',
         });
 
-        expect(prisma.tenant.update).toHaveBeenCalledWith(expect.objectContaining({
-            where: { id: TENANT_ID },
-            data: {
-                settings: expect.objectContaining({
-                    verticalIntegrations: {
-                        cliniko: expect.objectContaining({
-                            provider: 'cliniko',
-                            baseUrl: 'https://api.au1.cliniko.com/v1',
-                        }),
-                    },
-                    verticalIntegrationHealth: {
-                        cliniko: expect.objectContaining({
-                            credentialValidated: false,
-                            lastCheckedAt: null,
-                        }),
-                    },
-                }),
-            },
+        // La escritura pasó a `jsonb_set` sobre la fila viva: mandar
+        // `{...settings, verticalIntegrations}` era mandar una foto vieja del
+        // objeto completo, y guardar Toast borraba lo que se hubiera guardado
+        // de Cliniko en el mismo instante. Lo que se verifica es lo mismo —qué
+        // queda persistido— contra el camino que hoy corre.
+        const writes = prisma.$executeRawUnsafe.mock.calls;
+        const configWrite = writes.find((c: any[]) => c[3] === '{verticalIntegrations,cliniko}');
+        expect(configWrite).toBeDefined();
+        expect(JSON.parse(configWrite![4])).toEqual(expect.objectContaining({
+            provider: 'cliniko',
+            baseUrl: 'https://api.au1.cliniko.com/v1',
+        }));
+
+        // Guardar una credencial nunca es haberla validado: la salud se
+        // reinicia en la misma operación.
+        const healthWrite = writes.find(
+            (c: any[]) => c[3] === '{verticalIntegrationHealth,cliniko}',
+        );
+        expect(healthWrite).toBeDefined();
+        expect(JSON.parse(healthWrite![4])).toEqual(expect.objectContaining({
+            credentialValidated: false,
+            lastCheckedAt: null,
         }));
     });
 
@@ -143,7 +155,11 @@ describe('VerticalIntegrationsService endpoint security', () => {
             hostname: 'https://toast-api.partner.example',
         });
 
-        expect(prisma.tenant.update).toHaveBeenCalled();
+        expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('UPDATE public.tenants'),
+            TENANT_ID, '{verticalIntegrations}', '{verticalIntegrations,toast}',
+            expect.any(String),
+        );
 
         await expect(service.updateConfig(TENANT_ID, 'toast', {
             hostname: 'https://sub.toast-api.partner.example',

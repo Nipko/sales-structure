@@ -3,12 +3,26 @@ import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import * as crypto from 'crypto';
-import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+import {
+    TENANT_SECRET_MASK,
+    TenantSecretCryptoService,
+    isMaskedSecret,
+} from '../../common/crypto/tenant-secret-crypto.service';
+import {
+    mergeTenantSettingsBranch,
+    replaceTenantSettingsBranch,
+} from '../../common/utils/tenant-settings-branch.util';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Lo que es una credencial. `accountId` es un identificador, no un secreto. */
-const CHANNEL_MANAGER_SECRET_FIELDS = ['apiKey', 'apiSecret'] as const;
+export const CHANNEL_MANAGER_SECRET_FIELDS = ['apiKey', 'apiSecret'] as const;
+
+/** `apiKey` → `api_key`: el AAD ata el valor a su campo exacto. */
+export const CHANNEL_MANAGER_SECRET_FIELD_IDS: Readonly<Record<string, string>> = Object.freeze({
+    apiKey: 'api_key',
+    apiSecret: 'api_secret',
+});
 
 /**
  * Proveedores cuyo libro mayor de reservas vive AFUERA.
@@ -175,12 +189,19 @@ export class ChannelManagerService {
         return stored ? this.redactConfig(stored) : null;
     }
 
+    /**
+     * Lo que el panel puede ver.
+     *
+     * La lista sale del registro de campos secretos y no de un literal por
+     * campo: escrita a mano, un campo secreto nuevo sale sin enmascarar y nadie
+     * lo nota hasta que aparece en una respuesta HTTP.
+     */
     private redactConfig(config: Record<string, any>): Record<string, any> {
-        return {
-            ...config,
-            apiKey: config.apiKey ? '***' : undefined,
-            apiSecret: config.apiSecret ? '***' : undefined,
-        };
+        const out: Record<string, any> = { ...config };
+        for (const field of CHANNEL_MANAGER_SECRET_FIELDS) {
+            out[field] = config[field] ? TENANT_SECRET_MASK : undefined;
+        }
+        return out;
     }
 
     /**
@@ -201,7 +222,7 @@ export class ChannelManagerService {
                 tenantId,
                 scope: 'channel_manager' as const,
                 provider: String(stored.provider || 'direct').toLowerCase(),
-                field: field === 'apiKey' ? 'api_key' : 'api_secret',
+                field: CHANNEL_MANAGER_SECRET_FIELD_IDS[field],
             };
             try {
                 const result = this.secrets.readCompatible(value, context);
@@ -240,14 +261,12 @@ export class ChannelManagerService {
         });
         if (!tenant) return;
         const settings = (tenant.settings as any) || {};
-        const current = settings.channelManager;
-        if (!current) return;
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: { ...settings, channelManager: { ...current, ...rewrap } } as any,
-            },
-        });
+        if (!settings.channelManager) return;
+        // Fusiona sólo los campos re-cifrados. Este camino corre en segundo
+        // plano disparado por una LECTURA cualquiera, así que compite con el
+        // dueño guardando su configuración: reescribir la rama entera desde una
+        // foto vieja le revertía el intervalo de sincronización sin avisar.
+        await mergeTenantSettingsBranch(this.prisma, tenantId, 'channelManager', rewrap);
         this.logger.log(`[CM] credenciales re-cifradas para ${tenantId}`);
     }
 
@@ -261,14 +280,46 @@ export class ChannelManagerService {
         const settings = (tenant.settings as any) || {};
         const current = settings.channelManager || {};
 
+        const nextProvider = updates.provider ?? current.provider ?? 'direct';
+        // ═══ CAMBIAR DE PROVEEDOR NO ARRASTRA LA CREDENCIAL DEL ANTERIOR ═══
+        //
+        // El sobre ata el valor a su proveedor por AAD, así que una clave de
+        // Hostaway no se puede descifrar como si fuera de Guesty — y eso está
+        // bien. Lo que estaba mal es qué pasaba después: el guardado conservaba
+        // el sobre viejo (`isEnvelope` → no lo re-cifra), la config quedaba
+        // diciendo `guesty` con un secreto de `hostaway`, y a partir de ahí
+        // CADA lectura tiraba `tenant_secret_decryption_failed`. La integración
+        // quedaba tapiada sin decir por qué, y sin forma de arreglarla salvo
+        // adivinar que había que reescribir las credenciales.
+        //
+        // Un secreto del proveedor anterior no significa nada para el nuevo:
+        // se descarta y se piden de nuevo.
+        const providerChanged = !!current.provider && current.provider !== nextProvider;
+        const carried = (field: 'apiKey' | 'apiSecret'): string | undefined => {
+            const incoming = updates[field];
+            // La máscara significa "dejá lo que había". Sin reconocerla, se
+            // cifraban los tres asteriscos y la credencial quedaba destruida:
+            // el sistema guardaba `***` y lo mandaba al proveedor como clave.
+            if (incoming !== undefined && !isMaskedSecret(incoming)) return incoming;
+            return providerChanged ? undefined : current[field];
+        };
+
         const merged: ChannelManagerConfig = {
-            provider: updates.provider ?? current.provider ?? 'direct',
-            apiKey: updates.apiKey ?? current.apiKey,
-            apiSecret: updates.apiSecret ?? current.apiSecret,
-            accountId: updates.accountId ?? current.accountId,
+            provider: nextProvider,
+            apiKey: carried('apiKey'),
+            apiSecret: carried('apiSecret'),
+            accountId: providerChanged
+                ? (updates.accountId ?? undefined)
+                : (updates.accountId ?? current.accountId),
             syncInterval: updates.syncInterval ?? current.syncInterval ?? 60,
             autoBlock: updates.autoBlock ?? current.autoBlock ?? true,
         };
+        if (providerChanged) {
+            this.logger.warn(
+                `[CM] ${tenantId} cambió de ${current.provider} a ${nextProvider}: `
+                + 'se descartan las credenciales del proveedor anterior',
+            );
+        }
 
         // Los secretos se cifran ANTES de tocar la base. Un valor que ya venía
         // cifrado (se conservó porque el panel mandó `***`) no se vuelve a
@@ -282,14 +333,14 @@ export class ChannelManagerService {
                 tenantId,
                 scope: 'channel_manager',
                 provider: String(merged.provider || 'direct').toLowerCase(),
-                field: field === 'apiKey' ? 'api_key' : 'api_secret',
+                field: CHANNEL_MANAGER_SECRET_FIELD_IDS[field],
             });
         }
 
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings: { ...settings, channelManager: persisted } as any },
-        });
+        // Reemplaza SÓLO esta rama. Mandar `{...settings, channelManager}` es
+        // mandar una foto vieja del objeto entero: lo que otro módulo escribió
+        // entre la lectura y esta línea desaparecía sin error ni traza.
+        await replaceTenantSettingsBranch(this.prisma, tenantId, 'channelManager', persisted);
         // Devuelve lo redactado: quien guardó ya sabe qué escribió, y el valor
         // no tiene por qué volver a viajar por la respuesta.
         return this.redactConfig(merged) as ChannelManagerConfig;

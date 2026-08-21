@@ -16,6 +16,22 @@ const NAME_RE = /^[a-z0-9_]{1,40}$/;
  */
 export type TenantSecretScope = 'channel_manager' | 'vertical_integration';
 
+/**
+ * Lo que el panel manda de vuelta en lugar del secreto.
+ *
+ * Es una constante y no un literal repetido porque los dos lados tienen que
+ * coincidir **exactamente**: si quien guarda no reconoce la máscara, la trata
+ * como un valor nuevo y **cifra los tres asteriscos**. El resultado es una
+ * credencial destruida sin ningún error — el sistema guarda `***` y lo usa como
+ * clave contra el proveedor.
+ */
+export const TENANT_SECRET_MASK = '***';
+
+/** Si este valor es la máscara y por lo tanto significa "dejá lo que había". */
+export function isMaskedSecret(value: unknown): boolean {
+    return value === TENANT_SECRET_MASK;
+}
+
 export interface TenantSecretContext {
     tenantId: string;
     scope: TenantSecretScope;
@@ -145,13 +161,31 @@ export class TenantSecretCryptoService {
     }
 
     /**
+     * Si esta instancia todavía acepta leer secretos en claro.
+     *
+     * El puente de compatibilidad es necesario mientras quede algo sin cifrar
+     * en la base, y es **exactamente** la puerta que hay que cerrar cuando no
+     * queda nada: mientras esté abierta, cualquier valor que aparezca en claro
+     * —una restauración de backup vieja, una edición a mano del JSONB, una fila
+     * migrada mal— se lee como si nada y sigue funcionando, así que nadie se
+     * entera.
+     *
+     * `TENANT_SECRET_PLAINTEXT=reject` es el corte. Se activa **después** de que
+     * la migración reporte cero pendientes, y a partir de ahí un secreto en
+     * claro es un error ruidoso en vez de una lectura silenciosa.
+     */
+    plaintextAccepted(): boolean {
+        return (process.env.TENANT_SECRET_PLAINTEXT || 'accept').toLowerCase() !== 'reject';
+    }
+
+    /**
      * Puente de migración para lo que HOY está en claro en la base.
      *
      * A diferencia del sobre de pagos —que rechaza cualquier valor que no sea
      * un sobre—, acá hay que poder leer texto plano: es lo que está guardado.
      * Se acepta sólo por esta puerta, se devuelve marcado como tal y con
      * `needsRewrap`, para que el llamador lo vuelva a guardar cifrado en el
-     * mismo camino. Cuando no quede nada en claro, esta función se borra.
+     * mismo camino. Con el corte activado deja de aceptarse.
      */
     readCompatible(value: unknown, context: TenantSecretContext): TenantSecretReadResult {
         this.normalizeContext(context);
@@ -160,6 +194,11 @@ export class TenantSecretCryptoService {
         }
         if (typeof value !== 'string') {
             throw new TenantSecretCryptoError('tenant_secret_plaintext_invalid');
+        }
+        if (!this.plaintextAccepted()) {
+            // El corte ya se hizo: un valor en claro acá significa que algo lo
+            // reintrodujo. Fallar es lo que hace que se vea.
+            throw new TenantSecretCryptoError('tenant_secret_plaintext_rejected');
         }
         this.assertPlaintext(value);
         // Leer texto plano NO exige clave, a propósito: no hay nada que

@@ -2095,6 +2095,53 @@ npm run test:bootstrap → 1 passed (sin errores de DI)
 jest apps/api     → 3231 passed / 319 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U67 — Validar el deploy encontró dos cosas: una falla mía y una interacción que ninguna entrada vio
+
+**Validación del despliegue.** El deploy quedó en rojo y las dos causas eran independientes: arreglar una sola no lo ponía en verde.
+
+**(a) El `disable` nombraba una regla que ya no existe.** Los dos specs que cargan los scripts de migración con `require` llevaban `/* eslint-disable @typescript-eslint/no-var-requires */` — el nombre **viejo** de la regla. La que el proyecto aplica es `no-require-imports`, así que el `disable` no silenciaba nada.
+
+Y el lint es bloqueante: al morir ahí quedaron **salteados los seis pasos siguientes** —billing, `prisma migrate` sobre base efímera, smoke de compatibilidad de `tenant-schema`, smoke de pipeline en PostgreSQL, build del API y boot smoke—. Son justamente los que validan el DDL nuevo y los módulos nuevos. La ventana sin validar no eran 13 commits sino **34**: el último deploy verde fue `2c7a0681`.
+
+**(b) La telemetría de navegación nunca se declaró en el e2e, y llevaba días escondida.** El rediseño de navegación agregó el emisor en el layout de `/admin` y **no tocó la allowlist** de `navigation.spec.ts`, así que el `POST /analytics/navigation-telemetry/…` caía en el catch-all y contaba como llamada inesperada.
+
+No fallaba siempre porque la cola se vacía a los 3 segundos: **que el POST cayera dentro o fuera del caso dependía de cuánto tardara el caso**. Con `retries: 1` y `failOnFlakyTests` en CI, un solo intento rojo tiñe el deploy aunque el reintento pase — que es exactamente lo que venía pasando sin que nadie lo mirara. Los otros dos casos que cargan `/admin/inbox` eran flakes latentes, no casos sanos.
+
+Se **declara la llamada** en vez de esperar a que la red se aquiete: esperar sumaría más de 3s por caso y seguiría siendo una carrera, porque el temporizador se arma en la hidratación y eso el test no puede observar. Verificado con 1 worker y 3 repeticiones, como corre CI: 15/15, cero flaky.
+
+---
+
+### Corrección a U59 + U60 — el radio de impacto del desplazamiento cambió sin que yo lo viera
+
+Las dos entradas describen su propio cambio correctamente y **ninguna vio la interacción entre las dos**:
+
+- **U59** desplaza los escritores locales de agenda cuando el proveedor está publicado: con Cliniko sano, un tenant pierde `create_appointment`, `reschedule_appointment` y `cancel_appointment`; con Mindbody, `book_class`.
+- **U60** abrió el presupuesto de frescura de **900 s a 36 h**.
+
+Antes de U60, con un cron diario, el proveedor estaba `stale` casi todo el día → no se publicaba → **el desplazamiento casi nunca ocurría**. Después de U60 el proveedor está sano casi todo el día → se publica → **el desplazamiento pasa a ser permanente**.
+
+O sea: U60 no sólo arregló la contradicción de los tres números, también **activó de hecho** una restricción que U59 había dejado casi dormida. El desplazamiento sigue siendo correcto —leer la agenda de Cliniko y escribir el turno acá pone dos pacientes en la misma sala de espera—, pero su alcance real es otro y ninguna de las dos entradas lo dice.
+
+**Lo que no se puede cerrar de este lado:** cuántos tenants tienen hoy `settings.verticalIntegrations.cliniko` o `.mindbody` con la credencial validada. Si son cero, esto es inocuo. Si no, esos tenants pierden la reserva por chat **sin interruptor**: revertir exige otro deploy. Es una decisión del dueño con un dato que sólo se puede sacar de producción.
+
+---
+
+### Riesgos de despliegue que quedaron registrados y no se cerraron
+
+- **Cinco variables nuevas que el deploy borra en cada push.** `INTEGRATION_WRITE_PROVIDERS`, `TENANT_SECRET_PLAINTEXT`, `TENANT_SECRET_KEY`, `TENANT_SECRET_KEY_ID`, `TENANT_SECRET_PREVIOUS_KEYS` no están en `deploy.yml` ni en `.env.example`. **No bloquean este deploy** —todas tienen default fail-closed— pero mientras falten: el riel de integraciones nace mudo, el corte de secretos en texto plano **no se puede activar**, y no hay rotación de clave posible. Agregarlas necesita **tres** lugares en `deploy.yml` (el bloque `env:`, la lista `envs:` del ssh-action y el `echo >> .env`); si falta el del medio, la variable llega vacía al VPS.
+- **33 specs nuevos que el CI no corre.** `deploy.yml` y `vertical-quality.yml` llevan listas blancas a mano (97 y 98 specs) y ninguno de los nuevos está en ellas. Hay un job que corre la suite entera, pero sólo con el cron de domingo: **no es gate de deploy**. Todos pasan localmente. Agregarlos exige `NODE_OPTIONS=--max-old-space-size=8192` o revientan el heap.
+- **El smoke de `tenant-schema` es el primer lugar a mirar si el deploy vuelve a salir rojo**: corre el migrador dos veces y comparara strings exactos de conteo, así que **cualquier warning nuevo rompe la aserción**. El DDL agregado (3 tablas, 6 índices, 2 `ALTER`) es aditivo e idempotente, pero eso no se pudo verificar de este lado: **esta máquina no tiene Docker ni PostgreSQL**, así que los cuatro pasos con base de datos sólo los puede contestar CI.
+
+**Verificación local (lo que sí se pudo correr)**
+```
+npx eslint "src/**/*.ts"          → exit 0
+npx tsc --noEmit                  → exit 0 en los 5 workspaces
+turbo build --filter=@parallext/api → 2 successful
+build de las 5 apps               → api, dashboard, whatsapp, landing, shared: exit 0
+jest apps/api                     → 3231 passed / 319 suites, 0 fallos
+playwright navigation.spec        → 15/15 con 1 worker y 3 repeticiones, 0 flaky
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:

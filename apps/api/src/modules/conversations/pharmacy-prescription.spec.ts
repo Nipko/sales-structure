@@ -1,5 +1,6 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { resolveVerticalCapabilityManifest } from '@parallext/shared';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * Venta libre y venta bajo fórmula no son el mismo producto.
@@ -53,7 +54,8 @@ describe('pharmacy prescription boundary', () => {
 
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: otc, quantity: 2 }] },
+            { items: [{ productId: otc, quantity: 2 }] }, undefined,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result.success).toBe(true);
@@ -68,7 +70,8 @@ describe('pharmacy prescription boundary', () => {
 
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: rx, quantity: 1 }] },
+            { items: [{ productId: rx, quantity: 1 }] }, undefined,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result.error).toBe('prescription_required');
@@ -91,7 +94,8 @@ describe('pharmacy prescription boundary', () => {
 
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
-            { items: [{ productId: otc, quantity: 1 }, { productId: rx, quantity: 1 }] },
+            { items: [{ productId: otc, quantity: 1 }, { productId: rx, quantity: 1 }] }, undefined,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result.error).toBe('prescription_required');
@@ -109,7 +113,8 @@ describe('pharmacy prescription boundary', () => {
         ]);
 
         const result = await harness.executor.execute(
-            schemaName, tenantId, contactId, 'search_products', { query: 'amoxi' },
+            schemaName, tenantId, contactId, 'search_products', { query: 'amoxi' }, undefined,
+            { authority: authorityFor('search_products') },
         );
 
         expect(result.products).toHaveLength(1);
@@ -123,7 +128,8 @@ describe('pharmacy prescription boundary', () => {
         ]);
 
         const result = await harness.executor.execute(
-            schemaName, tenantId, contactId, 'check_stock', { product: 'Amoxicilina 500mg' },
+            schemaName, tenantId, contactId, 'check_stock', { product: 'Amoxicilina 500mg' }, undefined,
+            { authority: authorityFor('check_stock') },
         );
 
         expect(result.inStock).toBe(true);

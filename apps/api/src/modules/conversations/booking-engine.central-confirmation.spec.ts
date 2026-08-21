@@ -1,4 +1,17 @@
 import { BookingEngineService, type BookingState } from './booking-engine.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
+
+/**
+ * El permiso con el que el motor entra al turno.
+ *
+ * El motor escribe citas por fuera del bucle de tools, así que la lista
+ * publicada nunca lo alcanzaba. Ahora la autoridad es un parámetro suyo y
+ * viaja hasta el ejecutor: estas pruebas verifican, además del flujo, que
+ * llegue intacta.
+ */
+const BOOKING_AUTHORITY = authorityFor(
+    'list_services', 'check_availability', 'create_appointment',
+);
 
 const schemaName = 'tenant_booking_confirmation';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -45,9 +58,7 @@ describe('BookingEngine trusted confirmation wiring', () => {
             {},
             '2026-08-08',
             'en',
-            false,
-            undefined,
-            conversationId,
+            { authority: BOOKING_AUTHORITY, conversationId },
         );
 
         expect(result.state.step).toBe('booked');
@@ -68,6 +79,7 @@ describe('BookingEngine trusted confirmation wiring', () => {
             },
             conversationId,
             {
+                authority: BOOKING_AUTHORITY,
                 authorityEvidence: {
                     kind: 'booking_engine_confirmation',
                     source: 'confirm_yes',
@@ -122,14 +134,13 @@ describe('BookingEngine trusted confirmation wiring', () => {
             {},
             '2026-08-08',
             'es',
-            false,
-            undefined,
-            conversationId,
+            { authority: BOOKING_AUTHORITY, conversationId },
         );
 
         expect(result.state.step).toBe('booked');
         expect(toolExecutor.execute).toHaveBeenCalledTimes(1);
         expect(toolExecutor.execute.mock.calls[0][6]).toEqual({
+            authority: BOOKING_AUTHORITY,
             authorityEvidence: {
                 kind: 'booking_engine_confirmation',
                 source: 'text_confirmation',
@@ -165,7 +176,8 @@ describe('BookingEngine trusted confirmation wiring', () => {
         const result = await engine.process(
             schemaName, tenantId, contactId,
             { intent: 'confirm', isConfirmation: true } as any,
-            'sí, confirmo', bookingState, {}, '2026-08-08', 'es', false, undefined, conversationId,
+            'sí, confirmo', bookingState, {}, '2026-08-08', 'es',
+            { authority: BOOKING_AUTHORITY, conversationId },
         );
 
         expect(result.state.step).toBe('booked');
@@ -201,7 +213,8 @@ describe('BookingEngine trusted confirmation wiring', () => {
         const result = await engine.process(
             schemaName, tenantId, contactId,
             { intent: 'general_question', isConfirmation: true } as any,
-            'confirm_yes', bookingState, {}, '2026-08-08', 'es', false, undefined, conversationId,
+            'confirm_yes', bookingState, {}, '2026-08-08', 'es',
+            { authority: BOOKING_AUTHORITY, conversationId },
         );
 
         expect(result.executedTools).toEqual([
@@ -233,7 +246,8 @@ describe('BookingEngine trusted confirmation wiring', () => {
         const result = await engine.process(
             schemaName, tenantId, contactId,
             { intent: 'general_question', isConfirmation: true } as any,
-            'confirm_yes', bookingState, {}, '2026-08-08', 'es', false, undefined, conversationId,
+            'confirm_yes', bookingState, {}, '2026-08-08', 'es',
+            { authority: BOOKING_AUTHORITY, conversationId },
         );
 
         const createCalls = toolExecutor.execute.mock.calls.filter(c => c[3] === 'create_appointment');

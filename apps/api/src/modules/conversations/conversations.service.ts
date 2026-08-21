@@ -21,7 +21,8 @@ import {
     ModelTier, RoutingFactors,
     localizedTerm, subtypeTerminologyFor, resolveSubtypeExperienceProfile,
     type EffectiveCapabilityContract, type TurnCapability,
-    type LocalizedTerm,
+    isToolAuthorityDenial,
+    type LocalizedTerm, type ToolExecutionAuthority,
 } from '@parallext/shared';
 import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
 import { IdentityService } from '../identity/identity.service';
@@ -2170,12 +2171,22 @@ export class ConversationsService {
         // dejarlos correr.
         const writesAuthorised = capability.status.status === 'ok'
             || capability.status.status === 'degraded';
-        if (!writesAuthorised) {
-            pendingOperationHandoff = `capability:${capability.status.status}`;
-        }
-        // Lo mismo, en la forma que entiende el ejecutor. No alcanza con no
-        // dejar correr a los motores: el ejecutor es la puerta común y ahí se
-        // verifica de nuevo, para el llamador que todavía no existe.
+
+        // ═══ EL HANDOFF SE DISPARA POR UNA OPERACIÓN DENEGADA, NO POR EL PERFIL ═══
+        //
+        // Acá se hacía `pendingOperationHandoff = 'capability:blocked'` en el
+        // momento de resolver el contrato, ANTES de que el cliente pidiera
+        // nada. Consecuencia: en un perfil bloqueado, alguien que sólo saluda o
+        // pregunta el horario abría un caso en la cola de agentes humanos. El
+        // perfil bloqueado es el que MÁS conversaciones informativas tiene
+        // —justamente porque no cierra operaciones—, así que la cola se llenaba
+        // de conversaciones que nadie necesitaba atender, y las que sí lo
+        // necesitaban quedaban enterradas entre ellas.
+        //
+        // Ahora se escala sólo cuando una operación concreta fue DENEGADA: el
+        // ejecutor devuelve `capability_blocked`, `tool_disabled_by_owner`,
+        // `tool_not_authorised` o `authority_stale`, y eso es un pedido real
+        // que el sistema no pudo cumplir.
         const commitmentBlocked = writesAuthorised
             ? null
             : {
@@ -2189,6 +2200,32 @@ export class ConversationsService {
         // cancelar" veía la casilla apagada y el agente cancelaba igual.
         const deniedTools = [...subpermissionDeniedToolNames(cfgTools ?? {})];
         const bookingDenied = deniedTools.includes('create_appointment');
+
+        /**
+         * La autoridad de este turno, con la lista que se le pase.
+         *
+         * `resolvedAt` sale del contrato y no de `now()`: si el contrato no se
+         * pudo resolver, la autoridad nace vieja y el ejecutor la rechaza por
+         * `authority_stale` en vez de dejar pasar una lista vacía como si fuera
+         * una decisión.
+         */
+        const turnAuthority = (allowedTools: readonly string[]): ToolExecutionAuthority => ({
+            source: 'turn_contract',
+            allowedTools,
+            commitmentBlocked,
+            deniedTools,
+            resolvedAt: capability.contract?.resolvedAt ?? new Date(0).toISOString(),
+            subtypeProfileId: capability.status.profileId,
+        });
+
+        /**
+         * Lo que los motores deterministas pueden invocar.
+         *
+         * Sale del contrato, no de la lista final de tools: el motor de
+         * reservas y Procedures corren ANTES de que se arme esa lista, y darles
+         * la lista final los ataría a un orden de ejecución que no controlan.
+         */
+        const engineAuthority = turnAuthority(capability.contract?.publishedTools ?? []);
 
         // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
         // message is the ANSWER to that field — give the procedure engine priority
@@ -2241,7 +2278,10 @@ export class ConversationsService {
                 this.logger.log(`[Pipeline] ${intent.intent} (idle): LLM handles with full persona`);
                 // Refresh services from DB and update cache so booking engine gets fresh data next turn
                 try {
-                    const result = await this.toolExecutor.execute(schemaName, tenantId, conversation.contact_id || '', 'list_services', {});
+                    const result = await this.toolExecutor.execute(
+                        schemaName, tenantId, conversation.contact_id || '', 'list_services', {},
+                        conversation.id, { authority: engineAuthority },
+                    );
                     bookingState.services = result?.services?.length ? result.services : [];
                     // Update the tenantId-scoped cache so next booking engine call is consistent
                     const svcCacheKey = `booking:services:${tenantId}`;
@@ -2265,7 +2305,12 @@ export class ConversationsService {
                 const engineResult = await this.bookingEngine.process(
                     schemaName, tenantId, conversation.contact_id || '',
                     intent, userText, bookingState, customerProfile, todayISO, userLanguage,
-                    flowCapable, flowResponseData, conversation.id,
+                    {
+                        authority: engineAuthority,
+                        flowCapable,
+                        flowData: flowResponseData,
+                        conversationId: conversation.id,
+                    },
                 );
 
                 bookingState = engineResult.state;
@@ -2353,7 +2398,7 @@ export class ConversationsService {
                         subType: turnContext.verticalContext?.subType,
                         toolsConfig: cfgTools ?? {},
                         channelType: msg.channelType,
-                        authorisedTools: capability.contract?.publishedTools,
+                        authority: engineAuthority,
                         commitmentBlocked,
                         deniedTools,
                     },
@@ -2403,10 +2448,23 @@ export class ConversationsService {
                 );
                 if (pending) {
                     this.logger.log(`[Confirm] Customer confirmed — executing pending ${pending.toolName} server-side (ledger ${pending.ledgerId})`);
+                    // ═══ EL "SÍ" SE EJECUTA CONTRA EL CONTRATO DE HOY ═══
+                    //
+                    // El ticket pendiente sobrevive turnos, y entre la pregunta
+                    // y el "sí" pueden pasar cosas: el dueño apaga la familia,
+                    // vence la habilitación que exige el subtipo, el proveedor
+                    // deja de estar sano, el plan baja. El único control que
+                    // había era el vencimiento del token —que sólo mide tiempo—,
+                    // así que la operación se ejecutaba con el permiso de ayer.
+                    //
+                    // `engineAuthority` es el contrato de ESTE turno: si la tool
+                    // ya no está publicada, el ejecutor la deniega con motivo
+                    // tipado en vez de escribir una fila que hoy nadie autoriza.
                     const result = await this.withTimeout(
                         this.toolExecutor.execute(
                             schemaName, tenantId, conversation.contact_id, pending.toolName,
                             pending.args, conversation.id, {
+                                authority: engineAuthority,
                                 channelType: msg.channelType,
                                 maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                 jurisdiction: regional?.operatingCountry.value,
@@ -2426,7 +2484,18 @@ export class ConversationsService {
                         this.logger.warn(`[Confirm] Pending ${pending.toolName} still requires confirmation — falling through to the normal turn`);
                     } else {
                         preExecutedTools = [...preExecutedTools, { name: pending.toolName, result }];
-                        if (result?.shouldHandoff === true
+                        if (isToolAuthorityDenial(result?.error)) {
+                            // La operación que el cliente ya confirmó dejó de
+                            // estar autorizada. Es un pedido real que no se
+                            // puede cumplir: va a una persona con el motivo
+                            // exacto, no con "falló".
+                            pendingOperationHandoff = `denied:${pending.toolName}:${result.error}`;
+                            this.recordAgentSignal(tenantId, 'authority_denied_after_confirmation');
+                            this.logger.warn(
+                                `[Confirm] ${pending.toolName} ya no está autorizada al momento del "sí" `
+                                + `(ledger ${pending.ledgerId}, ${result.error}): ${String(result.reason ?? '')}`,
+                            );
+                        } else if (result?.shouldHandoff === true
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
                             pendingOperationHandoff = `intake:${pending.toolName}`;
@@ -2600,6 +2669,18 @@ export class ConversationsService {
                 }
             }
         }
+
+        // ═══ LO PUBLICADO ES LO AUTORIZADO ═══
+        //
+        // Se congela ACÁ, después de que el contrato tuvo la última palabra y
+        // ANTES del recorte por relevancia de abajo. El recorte es una
+        // optimización de selección —el modelo elige peor con 30 tools que con
+        // 10—, no una decisión de permiso: derivar la autorización de la lista
+        // recortada convertiría "esta tool no era relevante para este mensaje"
+        // en "esta tool no está autorizada", y mandaría a una persona una
+        // conversación que no lo necesita.
+        const turnAllowedTools = tools.map(t => String(t?.name)).filter(Boolean);
+        const llmAuthority = turnAuthority(turnAllowedTools);
 
         // D2: Tool retrieval — keep the turn's toolset small (Gorilla: >30 tools
         // degrades selection). Relevance is scored against the CURRENT message,
@@ -3015,6 +3096,7 @@ export class ConversationsService {
                                 : (tc.function.arguments || {});
                             result = await this.withTimeout(
                                 this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, {
+                                    authority: llmAuthority,
                                     channelType: msg.channelType,
                                     maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                     jurisdiction: regional?.operatingCountry.value,
@@ -3070,7 +3152,16 @@ export class ConversationsService {
                         // nuestro, no mandando al cliente a una cola humana por un
                         // problema interno que él nunca vio. Las excepciones son
                         // las que pueden haber movido plata o cupo.
-                        if (result && result.shouldHandoff === true
+                        if (isToolAuthorityDenial(result?.error)) {
+                            // El cliente pidió algo concreto que este agente no
+                            // está autorizado a hacer. ESTE es el momento de la
+                            // escalada —no el de resolver el contrato—: quien
+                            // sólo saluda en un perfil bloqueado no genera un
+                            // caso, y quien pide una operación denegada sí.
+                            postToolHandoff = postToolHandoff
+                                || `denied:${tc.function.name}:${result.error}`;
+                            this.recordAgentSignal(tenantId, 'authority_denied_operation');
+                        } else if (result && result.shouldHandoff === true
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
                             postToolHandoff = postToolHandoff || `intake:${tc.function.name}`;

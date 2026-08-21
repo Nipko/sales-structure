@@ -1590,6 +1590,57 @@ jest apps/api       → 3043 passed / 307 suites (1 skipped), 0 fallos
 jest apps/dashboard →  264 passed /  29 suites, 0 fallos
 ```
 
+### U55 — La autorización era por negación: lo que nadie prohibió, estaba permitido
+
+**P0-A · puntos 1, 2, 3 y 5 — autoridad de ejecución**
+
+`AIToolExecutorService.execute` es la puerta común. Por ahí pasan siete llamadores: el bucle del LLM, el motor de reservas, Procedures, la confirmación diferida del "sí", el banco de pruebas del agente, el servidor MCP y el reanudador de aprobaciones humanas. Y preguntaba **dos** cosas, las dos **opcionales**:
+
+```ts
+async execute(schema, tenantId, contactId, toolName, args, conversationId?, opts?: {…})
+```
+
+De ahí salían tres defectos que se sostenían entre sí:
+
+1. **La ausencia de opinión valía como permiso.** `opts` era opcional; cinco de los siete llamadores no lo pasaban. El más visible: `mcp-server.service.ts:99` —un endpoint autenticado por API key, expuesto a terceros— llamaba `execute(schema, tenantId, '', name, args)` y su única defensa era un `if` con una lista local. Y `conversations.service.ts:2244` refrescaba el catálogo con `list_services` sin opts ni `conversationId`.
+2. **Se autorizaba por negación.** Las dos preguntas eran "¿el dueño apagó ESTA tool?" y "¿el negocio está bloqueado?". Una tool que nadie hubiera pensado en prohibir estaba permitida **por omisión** — y cada familia nueva nacía autorizada.
+3. **Y el resolutor caído era el camino más permisivo.** En Procedures la autorización *caía* a `procedureAuthorizedToolNames(agent.toolsConfig)` cuando el contrato no llegaba. La config del agente es lo que el dueño **prefiere**, no lo que el sistema **concede**: no sabe de plan, de habilitación, de salud del proveedor ni de perfil bloqueado.
+
+**Lo que se hizo.** La pregunta se dio vuelta: ya no es "¿alguien prohibió esto?" sino **"¿qué se publicó para este turno?"**. `ToolExecutionAuthority` + `decideToolAuthority()` viven en `shared` —la misma decisión la tienen que tomar el ejecutor y el motor, y tres copias divergen— y `opts.authority` pasó a ser **obligatoria**: quitarla es un error de compilación, no un turno permisivo. Los siete llamadores declaran su origen (`turn_contract`, `agent_test`, `human_approval`, `mcp_server`, `system`) y su alcance exacto; el de aprobación humana y el del banco de pruebas autorizan **una sola tool**, la del ticket o la que el filtro acaba de aprobar.
+
+**El orden de los cuatro motivos no es cosmético.** Vencida → bloqueada → apagada por el dueño → no publicada. Sin ese orden, una tool que el dueño apagó dentro de un perfil bloqueado se reportaba como "no autorizada", y eso manda a revisar el plan cuando la respuesta era volver a encenderla en la pantalla del agente.
+
+**Punto 2 — el "sí" se ejecutaba con el permiso de ayer.** `findPendingConfirmation` filtraba por `status`, `confirmation_token IS NOT NULL` y `confirmation_expires_at > NOW()`: **sólo tiempo**. El ticket sobrevive turnos, y entre la pregunta y el "sí" el dueño puede apagar la familia, puede vencer una habilitación, puede caerse el proveedor, puede bajar el plan. Ahora el ticket se ejecuta contra el contrato **de este turno** y, si dejó de estar publicado, cae con motivo tipado y escala como `denied:<tool>:<motivo>` en vez de escribir una fila que hoy nadie autoriza.
+
+**Punto 5 — el handoff se disparaba por el perfil, no por la operación.** Estaba en `conversations.service.ts`, en el momento de **resolver** el contrato:
+
+```ts
+if (!writesAuthorised) pendingOperationHandoff = `capability:${capability.status.status}`;
+```
+
+Es decir: en un perfil bloqueado, alguien que sólo saluda o pregunta el horario **abría un caso en la cola de agentes humanos**. Y el perfil bloqueado es justamente el que más conversaciones informativas tiene —porque no cierra operaciones—, así que la cola se llenaba de conversaciones que nadie necesitaba atender y las que sí lo necesitaban quedaban enterradas. Ahora escala `isToolAuthorityDenial(result.error)`: un pedido concreto que el sistema no pudo cumplir.
+
+**Un detalle que casi se pierde: el recorte a 10 tools no autoriza.** La lista autorizada se congela **después** del filtro del contrato y **antes** del recorte por relevancia. Derivarla del recorte convertiría "esta tool no era relevante para este mensaje" en "esta tool no está autorizada" — y mandaría a una persona una conversación que no lo necesita.
+
+**Una prueba que pasaba por la razón equivocada.** `capability-stop-profiles.spec.ts` llamaba `toolStepAuthorized({authorisedTools: […]}, 'file_claim')` con los **argumentos invertidos**: el objeto llegaba como nombre de tool y la cadena como agente, así que la función salía por `agent.toolsConfig === undefined` sin mirar nunca la lista publicada. Habría dado `false` con cualquier entrada. Corregida, y con el contrapunto que le faltaba: lo que sí se publicó, pasa.
+
+**ADR — por qué la autoridad no cae a nada.** Un llamador sin autoridad podría "heredar" el contrato del turno buscándolo en Redis. Se descartó: eso reintroduce exactamente el defecto: el camino que no declaró nada vuelve a ser el que más puede. Sin autoridad no se ejecuta, y el compilador lo impide antes de que llegue a producción.
+
+**Riesgos que quedan**
+- **El reanudador de aprobaciones no re-resuelve el contrato.** Su autoridad es la decisión de la persona, acotada a la tool del ticket. Si el dueño apaga esa familia entre la aprobación y el resume, la operación corre igual. Cerrarlo requiere resolver el contrato efectivo desde ahí, y el ticket no guarda el agente ni el canal con los que se resolvió. **Es trabajo interno pendiente**, no un bloqueo.
+- **`TOOL_AUTHORITY_MAX_AGE_SECONDS = 120`** es un techo elegido, no medido: un turno con RAG lento y varias tools secuenciales podría acercarse. Si aparece `authority_stale` en producción sin que nada esté mal, el número —no la regla— es lo que hay que revisar.
+
+**Pruebas** — `tool-execution-authority.spec.ts` (nuevo, 16: positivas y negativas, la decisión aislada y la misma decisión en la puerta) + `__fixtures__/tool-authority.fixture.ts` (deliberadamente **sin** un `allowAll()`: una autoridad que autorice todo pondría en verde justo los casos que el default-deny tiene que atrapar) + 15 specs existentes que ahora declaran su premisa de autorización en vez de heredarla.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+npm run test:bootstrap → 1 passed (sin errores de DI)
+jest apps/api       → 3060 passed / 308 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
+**Lo que esto NO cierra.** El gate de P0-A pide además **pruebas E2E live** (punto 6) y la separación de tools core/verticales/proveedor/MCP (punto 4). Ninguna de las dos está hecha. La fase sigue abierta.
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1684,11 +1735,39 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | Revisión de dominio de los contratos por perfil | Experto por rubro, que el plan exige antes de certificar | Dueño + experto |
 | Fase 6 — pilotos y certificación | 3-5 tenants por perfil, shadow mode, evidencia E2E, sign-off | Dueño |
 
-### ⏳ Pendiente interno — los 20, cerrados
+### ⏳ Pendiente interno
+
+#### Tanda vigente — reapertura del dueño (ago 2026)
+
+> **Corrección.** La tanda anterior se cerró diciendo que lo que quedaba dependía de terceros. No era exacto: quedaba —y queda— trabajo interno. El dueño lo reabrió en 19 puntos ordenados. Esta tabla es el estado honesto de esos 19, y se actualiza por paquete, no al final.
+
+| # | Paquete | Estado |
+|---|---|---|
+| 1 | `allowedTools`/`effectiveSnapshot` obligatorios + default-deny en el ejecutor | ✅ **U55** |
+| 2 | Revalidar pending confirmations contra el snapshot vigente | ✅ **U55** |
+| 3 | Autorización exacta en Booking y Procedures | ✅ **U55** |
+| 4 | Separar tools core/globales, verticales, proveedor y MCP | ⏳ pendiente |
+| 5 | Handoff STOP sólo ante operación denegada | ✅ **U55** |
+| 6 | Pruebas E2E live (no sólo unitarias) | ⏳ pendiente |
+| 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ⏳ pendiente |
+| 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ⏳ pendiente |
+| 9 | Unificar freshness, cron y estado mostrado en UI | ⏳ pendiente |
+| 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ⏳ pendiente |
+| 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ⏳ pendiente |
+| 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ⏳ pendiente |
+| 13 | Eliminar los 72 gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ⏳ pendiente |
+| 14 | Terminología e idioma por perfil/país | ⏳ pendiente |
+| 15 | Sacar guidance español global y voseo fuera de su país | ⏳ pendiente |
+| 16 | Golden evals reales ES/EN/PT/FR con el resolver de producción | ⏳ pendiente |
+| 17 | CRM mínimo + writer→ActiveObject→deep-link | ⏳ pendiente |
+| 18 | Backlog nativo de los 31 `build` y 23 `hybrid` | ⏳ pendiente |
+| 19 | Aliases y migraciones taxonómicas | ⏳ pendiente |
+
+**Además, salido de U55 y no en la lista original:** el reanudador de aprobaciones humanas no re-resuelve el contrato efectivo (ver riesgos de U55). Trabajo interno.
+
+#### Tanda anterior — los 20, cerrados
 
 Los veinte quedaron implementados, con pruebas que los fijan y suites completas verdes. **La lista se conserva tachada, no borrada**: lo que se cerró y con qué unidad es la única forma de contestar después "¿esto ya se hizo?" sin volver a auditarlo.
-
-Lo que sigue **no** es una lista de trabajo interno pendiente: es el bloque ⛔ de más arriba —lo que depende de una credencial, un experto o un tenant piloto— y lo que aparezca de auditar de nuevo lo que se acaba de construir.
 
 | # | Pendiente |
 |---|---|

@@ -1,4 +1,5 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 const schemaName = 'tenant_executor_controls';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -81,6 +82,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'list_services',
             {},
             conversationId,
+            { authority: authorityFor('list_services') },
         )).resolves.toEqual({
             error: 'tool_control_wiring_unavailable',
             message: 'Los controles de ejecución no están disponibles. La acción no puede continuar.',
@@ -107,6 +109,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'list_services',
             {},
             conversationId,
+            { authority: authorityFor('list_services') },
         );
 
         expect(result).toEqual({ error: 'confirmation_required' });
@@ -135,6 +138,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'list_services',
             {},
             conversationId,
+            { authority: authorityFor('list_services') },
         );
 
         expect(result).toEqual({ services: [] });
@@ -161,6 +165,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'list_services',
             {},
             conversationId,
+            { authority: authorityFor('list_services') },
         );
 
         expect(result).toEqual({
@@ -188,6 +193,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'create_payment_link',
             { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
             conversationId,
+            { authority: authorityFor('create_payment_link') },
         );
 
         expect(result).toEqual({ error: 'identity_verification_required' });
@@ -216,6 +222,7 @@ describe('AIToolExecutorService central authority boundary', () => {
                 description: 'inventado por el modelo',
             },
             conversationId,
+            { authority: authorityFor('create_payment_link') },
         );
 
         expect(control.preflight).toHaveBeenCalledWith(expect.objectContaining({
@@ -265,6 +272,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'get_payment_status',
             { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
             conversationId,
+            { authority: authorityFor('get_payment_status') },
         );
 
         expect(paymentOperations.getPaymentStatus).toHaveBeenCalledWith(

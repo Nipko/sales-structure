@@ -1,4 +1,5 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * El catálogo ofrecía lo que no vendía y no podía cerrar nada.
@@ -51,7 +52,7 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
         const query = jest.fn().mockResolvedValue([]);
         const { executor } = createExecutor(query);
 
-        await executor.execute(schemaName, tenantId, contactId, 'search_products', { query: 'ibuprofeno' }, conversationId);
+        await executor.execute(schemaName, tenantId, contactId, 'search_products', { query: 'ibuprofeno' }, conversationId, { authority: authorityFor('search_products') });
 
         const [sql] = query.mock.calls[0];
         expect(sql).toContain('is_available = true');
@@ -64,6 +65,7 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
         await executor.execute(
             schemaName, tenantId, contactId, 'search_products',
             { query: 'ibuprofeno', category: 'analgesicos' }, conversationId,
+            { authority: authorityFor('search_products') },
         );
 
         const [sql, ...params] = query.mock.calls[0];
@@ -79,6 +81,7 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'search_products', { query: 'ibuprofeno' }, conversationId,
+            { authority: authorityFor('search_products') },
         );
 
         expect(query).toHaveBeenCalledTimes(1);
@@ -93,6 +96,7 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'search_products', { query: 'ibuprofeno' }, conversationId,
+            { authority: authorityFor('search_products') },
         );
 
         expect(result.status).toBe('error');
@@ -111,6 +115,7 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'search_products', { query: 'ibuprofeno' }, conversationId,
+            { authority: authorityFor('search_products') },
         );
 
         expect(result.status).toBe('ok');
@@ -133,6 +138,7 @@ describe('place_catalog_order llega al writer', () => {
         await executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: PRODUCT_ID, quantity: 2 }] }, conversationId,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         const [sql] = query.mock.calls[0];
@@ -148,6 +154,7 @@ describe('place_catalog_order llega al writer', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: PRODUCT_ID, quantity: 2, unitPrice: 1 }] }, conversationId,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(createOrder).toHaveBeenCalledWith(tenantId, expect.objectContaining({
@@ -165,6 +172,7 @@ describe('place_catalog_order llega al writer', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: PRODUCT_ID, quantity: 1 }] }, conversationId,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result.error).toBe('product_unavailable');
@@ -179,6 +187,7 @@ describe('place_catalog_order llega al writer', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: PRODUCT_ID, quantity: 4 }] }, conversationId,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result).toMatchObject({ error: 'insufficient_stock', available: 1, requested: 4 });
@@ -193,6 +202,7 @@ describe('place_catalog_order llega al writer', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: PRODUCT_ID, quantity: 3 }] }, conversationId,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result.success).toBe(true);
@@ -207,6 +217,7 @@ describe('place_catalog_order llega al writer', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: PRODUCT_ID, quantity: 2 }] }, conversationId,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result.error).toBe('order_failed');
@@ -221,6 +232,7 @@ describe('place_catalog_order llega al writer', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: PRODUCT_ID, quantity: 1 }] }, conversationId,
+            { authority: authorityFor('place_catalog_order') },
         );
 
         expect(result.error).toBe('orders_unavailable');

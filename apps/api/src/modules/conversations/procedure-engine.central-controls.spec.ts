@@ -1,5 +1,9 @@
 import type { ProcedureDefinition, ProcedureRunState } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
+
+/** El permiso con el que este procedimiento entra al turno. */
+const REFUND_AUTHORITY = authorityFor('refund_payment');
 
 const schemaName = 'tenant_procedure_control';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -67,7 +71,10 @@ describe('ProcedureEngine central writer controls', () => {
             // contrato ningún paso `tool` puede ejecutarse. `refund_payment` se
             // autoriza porque el tenant tiene pagos habilitados y el paso está
             // escrito a mano, no elegido por el modelo.
-            { toolsConfig: { payments: { enabled: true } } },
+            {
+                toolsConfig: { payments: { enabled: true } },
+                authority: REFUND_AUTHORITY,
+            },
         );
 
         expect(result).toMatchObject({
@@ -83,7 +90,12 @@ describe('ProcedureEngine central writer controls', () => {
             'refund_payment',
             { paymentReference: 'pay-1' },
             conversationId,
-            { channelType: undefined, commitmentBlocked: null },
+            {
+                authority: REFUND_AUTHORITY,
+                channelType: undefined,
+                commitmentBlocked: null,
+                deniedTools: undefined,
+            },
         );
         expect(getSavedState()).toMatchObject({
             currentStepId: 'writer',

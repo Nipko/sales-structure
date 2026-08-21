@@ -4,6 +4,7 @@ import { PET_BOARDING_TOOLS, VEHICLE_RENTAL_TOOLS } from './tools/resource-renta
 import { TOOL_POLICY_REGISTRY, isRegisteredStaticTool } from './tool-policy-registry';
 import { VERTICAL_TOOL_CAPABILITY } from '../../common/contracts/vertical-capability-tools';
 import { resolveVerticalCapabilityManifest } from '@parallext/shared';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * El motor existía y el agente no lo conocía.
@@ -148,6 +149,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'check_vehicle_rental_availability',
             { vehicleId: VEHICLE_ID, startDate: '2026-09-01', endDate: '2026-09-05' }, conversationId,
+            { authority: authorityFor('check_vehicle_rental_availability') },
         );
 
         expect(result.available).toBe(true);
@@ -167,6 +169,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'check_vehicle_rental_availability',
             { vehicleId: VEHICLE_ID, startDate: '2026-09-01', endDate: '2026-09-05' }, conversationId,
+            { authority: authorityFor('check_vehicle_rental_availability') },
         );
 
         expect(result.available).toBe(false);
@@ -181,6 +184,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'check_vehicle_rental_availability',
             { vehicleId: VEHICLE_ID, startDate: '2026-09-01', endDate: '2026-09-05' }, conversationId,
+            { authority: authorityFor('check_vehicle_rental_availability') },
         );
 
         expect(result.status).toBe('error');
@@ -199,6 +203,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
                 driverName: 'Nir Levin', driverPhone: '+573001112233',
             },
             conversationId,
+            { authority: authorityFor('create_vehicle_rental') },
         );
 
         expect(rentals.create).toHaveBeenCalledWith(schemaName, expect.objectContaining({
@@ -216,6 +221,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'create_vehicle_rental',
             { vehicleId: VEHICLE_ID, startDate: '2026-09-01', endDate: '2026-09-05' }, conversationId,
+            { authority: authorityFor('create_vehicle_rental') },
         );
 
         expect(result.error).toBe('driver_required');
@@ -234,6 +240,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
             schemaName, tenantId, contactId, 'create_vehicle_rental',
             { vehicleId: VEHICLE_ID, startDate: '2026-09-01', endDate: '2026-09-05', driverName: 'Nir' },
             conversationId,
+            { authority: authorityFor('create_vehicle_rental') },
         );
 
         expect(result).toMatchObject({
@@ -248,6 +255,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'list_my_vehicle_rentals', {}, conversationId,
+            { authority: authorityFor('list_my_vehicle_rentals') },
         );
 
         expect(rentals.list).toHaveBeenCalledWith(schemaName, expect.objectContaining({
@@ -263,6 +271,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
 
         const result: any = await executor.execute(
             schemaName, tenantId, 'anonimo', 'list_my_vehicle_rentals', {}, conversationId,
+            { authority: authorityFor('list_my_vehicle_rentals') },
         );
 
         expect(result.status).toBe('unauthorized');
@@ -277,6 +286,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'get_vehicle_rental', { rentalId: RENTAL_ID }, conversationId,
+            { authority: authorityFor('get_vehicle_rental') },
         );
 
         expect(result.status).toBe('empty');
@@ -294,6 +304,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'cancel_vehicle_rental',
             { rentalId: RENTAL_ID, reason: 'cambio de planes' }, conversationId,
+            { authority: authorityFor('cancel_vehicle_rental') },
         );
 
         expect(rentals.cancelForContact).toHaveBeenCalledWith(schemaName, RENTAL_ID, contactId, 'cambio de planes');
@@ -313,6 +324,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'cancel_vehicle_rental', { rentalId: RENTAL_ID }, conversationId,
+            { authority: authorityFor('cancel_vehicle_rental') },
         );
 
         expect(result.error).toBe('not_your_rental');
@@ -328,6 +340,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'cancel_vehicle_rental', { rentalId: RENTAL_ID }, conversationId,
+            { authority: authorityFor('cancel_vehicle_rental') },
         );
 
         expect(result.error).toBe('rental_not_found');
@@ -348,6 +361,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'check_daycare_availability',
             { checkIn: '2026-09-01', checkOut: '2026-09-05' }, conversationId,
+            { authority: authorityFor('check_daycare_availability') },
         );
 
         expect(checkAvailability).toHaveBeenCalledWith(schemaName, {
@@ -371,6 +385,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
         await executor.execute(
             schemaName, tenantId, contactId, 'check_daycare_availability',
             { checkIn: '2026-09-01' }, conversationId,
+            { authority: authorityFor('check_daycare_availability') },
         );
 
         expect(checkAvailability).toHaveBeenCalledWith(schemaName, expect.objectContaining({
@@ -385,6 +400,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'check_daycare_availability',
             { checkIn: '2026-09-01', checkOut: '2026-09-05' }, conversationId,
+            { authority: authorityFor('check_daycare_availability') },
         );
 
         expect(result.status).toBe('empty');
@@ -398,6 +414,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'check_daycare_availability',
             { checkIn: '2026-09-01', checkOut: '2026-09-05' }, conversationId,
+            { authority: authorityFor('check_daycare_availability') },
         );
 
         expect(result.status).toBe('error');
@@ -412,6 +429,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
             schemaName, tenantId, contactId, 'create_pet_boarding',
             { petId: PET_ID, serviceId: SERVICE_ID, startDate: '2026-09-01', endDate: '2026-09-05', notes: 'medicación 8am' },
             conversationId,
+            { authority: authorityFor('create_pet_boarding') },
         );
 
         expect(rentals.create).toHaveBeenCalledWith(schemaName, expect.objectContaining({
@@ -434,6 +452,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
             schemaName, tenantId, contactId, 'create_pet_boarding',
             { petId: PET_ID, serviceId: SERVICE_ID, startDate: '2026-09-01', endDate: '2026-09-05' },
             conversationId,
+            { authority: authorityFor('create_pet_boarding') },
         );
 
         expect(result).toMatchObject({ error: 'rental_conflict', fullNight: '2026-09-03', capacity: 8 });
@@ -448,6 +467,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
             schemaName, tenantId, contactId, 'create_pet_boarding',
             { petId: PET_ID, serviceId: SERVICE_ID, startDate: '2026-09-01', endDate: '2026-09-05' },
             conversationId,
+            { authority: authorityFor('create_pet_boarding') },
         );
 
         expect(result.error).toBe('rental_resource_not_found');
@@ -460,6 +480,7 @@ describe('guardería/hotel: el cupo que se consulta es el que se reserva', () =>
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'list_my_pet_boardings', {}, conversationId,
+            { authority: authorityFor('list_my_pet_boardings') },
         );
 
         expect(rentals.list).toHaveBeenCalledWith(schemaName, expect.objectContaining({

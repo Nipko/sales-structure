@@ -3,6 +3,29 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { InterpretedIntent } from './intent-interpreter.service';
+import type { ToolExecutionAuthority } from '@parallext/shared';
+
+/**
+ * Lo que el motor necesita saber del turno además del estado de la reserva.
+ *
+ * Existe como objeto —y no como tres parámetros más al final— porque `authority`
+ * tiene que ser **obligatoria**, y en una lista posicional que ya venía con
+ * opcionales al final no hay dónde poner un parámetro requerido sin que el
+ * compilador deje de avisar cuando falta.
+ */
+export interface BookingTurnContext {
+    /** Con qué permiso escribe este motor. Sin esto, el ejecutor deniega. */
+    authority: ToolExecutionAuthority;
+    /**
+     * Opt-in WhatsApp Flows: the caller decides capability (flag ON + flowId set +
+     * channel is WhatsApp). The engine stays pure (doesn't read tenant.settings),
+     * same principle as `language`. `flowData` carries the parsed nfm_reply fields.
+     */
+    flowCapable?: boolean;
+    flowData?: Record<string, unknown>;
+    conversationId?: string;
+}
+
 
 /**
  * DECIDE phase — pure deterministic booking flow.
@@ -277,13 +300,17 @@ export class BookingEngineService {
         customerProfile: { name?: string; email?: string; phone?: string },
         todayDate: string,
         language: string = 'es',
-        // Opt-in WhatsApp Flows: the caller decides capability (flag ON + flowId set +
-        // channel is WhatsApp). The engine stays pure (doesn't read tenant.settings),
-        // same principle as `language`. `flowData` carries the parsed nfm_reply fields.
-        flowCapable: boolean = false,
-        flowData?: Record<string, unknown>,
-        conversationId?: string,
+        turn: BookingTurnContext,
     ): Promise<EngineResult> {
+        // ═══ LA AUTORIDAD ES UN PARÁMETRO, NO UN DETALLE OPCIONAL ═══
+        //
+        // Este motor escribe citas POR FUERA del bucle de tools, así que
+        // filtrar la lista de tools del turno nunca lo alcanzó. Antes recibía
+        // sólo `conversationId` y llamaba al ejecutor sin decir con qué
+        // permiso: era el camino por el que un perfil bloqueado seguía
+        // agendando. Ahora la autoridad viaja junto con el turno y el ejecutor
+        // la exige.
+        const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
         // D3 fix: stale PG booking state (age <=1h) can resucitar ask_name with date vencida.
@@ -316,7 +343,10 @@ export class BookingEngineService {
                 state.services = JSON.parse(cached);
                 this.logger.debug(`[Engine] Services loaded from cache (${state.services?.length ?? 0} active)`);
             } else {
-                const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'list_services', {});
+                const result = await this.toolExecutor.execute(
+                    schemaName, tenantId, contactId, 'list_services', {},
+                    conversationId, { authority },
+                );
                 if (result?.services?.length) {
                     state.services = result.services;
                     await this.redis.set(cacheKey, JSON.stringify(result.services), 300); // 5 min TTL
@@ -371,9 +401,11 @@ export class BookingEngineService {
                     // the chosen slot against REAL availability (business hours, blocked
                     // dates, staff schedule) — the same guard the text flow applies at
                     // show_slots. Without this, a closed/out-of-hours slot books blindly.
-                    const avail = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'check_availability', {
-                        date: state.date, serviceId: state.serviceId,
-                    });
+                    const avail = await this.toolExecutor.execute(
+                        schemaName, tenantId, contactId, 'check_availability',
+                        { date: state.date, serviceId: state.serviceId },
+                        conversationId, { authority },
+                    );
                     // Dead end (agenda not configured / tool failure): re-asking for a
                     // date would loop, so be honest and hand over to a human.
                     const availFatal = this.unrecoverableToolError(avail);
@@ -391,6 +423,7 @@ export class BookingEngineService {
                             state,
                             L,
                             conversationId,
+                            authority,
                             'flow_response',
                         );
                     }
@@ -398,7 +431,7 @@ export class BookingEngineService {
                     // in text so the customer chooses a valid one (or is asked for a new date).
                     this.logger.warn(`[Engine] Flow slot ${state.date} ${state.time} not available — showing real slots`);
                     state.flowStartedAt = undefined;
-                    return this.checkAvailability(schemaName, tenantId, contactId, state, L);
+                    return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId);
                 }
                 // Flow returned incomplete/invalid/past/unknown-service data → restart in text.
                 this.logger.warn('[Engine] Flow response incomplete/invalid — falling back to text flow');
@@ -698,6 +731,7 @@ export class BookingEngineService {
                 state,
                 L,
                 conversationId,
+                authority,
                 'confirm_yes',
             );
         }
@@ -764,7 +798,7 @@ export class BookingEngineService {
         // times. The button never hit it because it short-circuits earlier.
         const confirmingChosenSlot = state.step === 'confirm' && !!state.time && intent.isConfirmation;
         if (state.serviceId && state.date && (!state.slots || !state.slots.length) && !confirmingChosenSlot) {
-            return this.checkAvailability(schemaName, tenantId, contactId, state, L);
+            return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId);
         }
 
         // ── Have service + date + time → collect info or confirm ──
@@ -777,7 +811,8 @@ export class BookingEngineService {
                 // say yes twice — always on Telegram/Instagram/Messenger/widget,
                 // which have no confirm button at all.
                 return this.createBooking(
-                    schemaName, tenantId, contactId, state, L, conversationId, 'text_confirmation',
+                    schemaName, tenantId, contactId, state, L, conversationId, authority,
+                    'text_confirmation',
                 );
             }
             return this.collectMissingInfo(state, L);
@@ -864,11 +899,16 @@ export class BookingEngineService {
     }
 
     // ── Check availability ──
-    private async checkAvailability(schema: string, tenantId: string, contactId: string, state: BookingState, lang: string): Promise<EngineResult> {
+    private async checkAvailability(
+        schema: string, tenantId: string, contactId: string, state: BookingState, lang: string,
+        authority: ToolExecutionAuthority, conversationId?: string,
+    ): Promise<EngineResult> {
         this.logger.log(`[Decide] Checking availability: ${state.serviceName} on ${state.date}`);
-        const result = await this.toolExecutor.execute(schema, tenantId, contactId, 'check_availability', {
-            date: state.date, serviceId: state.serviceId,
-        });
+        const result = await this.toolExecutor.execute(
+            schema, tenantId, contactId, 'check_availability',
+            { date: state.date, serviceId: state.serviceId },
+            conversationId, { authority },
+        );
 
         if (result?.available && result.slots?.length) {
             state.slots = result.slots.slice(0, 6);
@@ -947,6 +987,7 @@ export class BookingEngineService {
         state: BookingState,
         lang: string,
         conversationId: string | undefined,
+        authority: ToolExecutionAuthority,
         confirmationSource?: 'confirm_yes' | 'flow_response' | 'text_confirmation',
     ): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
@@ -988,12 +1029,15 @@ export class BookingEngineService {
             // era el motor el que no se lo pasaba nunca.
             staffId: state.staffId,
             customerName: state.customerName, customerEmail: state.customerEmail, customerPhone: state.customerPhone,
-        }, conversationId, confirmationSource ? {
-            authorityEvidence: {
-                kind: 'booking_engine_confirmation',
-                source: confirmationSource,
-            },
-        } : undefined);
+        }, conversationId, {
+            authority,
+            ...(confirmationSource ? {
+                authorityEvidence: {
+                    kind: 'booking_engine_confirmation' as const,
+                    source: confirmationSource,
+                },
+            } : {}),
+        });
         const executedTools = [{ name: 'create_appointment', result }];
         if (result?.success) {
             state.step = 'booked';

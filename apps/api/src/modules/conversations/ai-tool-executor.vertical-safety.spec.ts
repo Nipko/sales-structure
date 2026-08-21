@@ -1,4 +1,5 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 describe('AIToolExecutorService vertical safety contracts', () => {
     const schemaName = 'tenant_vertical';
@@ -91,7 +92,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             toolName,
             args,
             conversationId,
-            { channelType: 'whatsapp' },
+            { authority: authorityFor(toolName), channelType: 'whatsapp' },
         );
 
         expect(result).toMatchObject({
@@ -114,7 +115,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             toolName,
             args,
             undefined,
-            { channelType: 'whatsapp' },
+            { authority: authorityFor(toolName), channelType: 'whatsapp' },
         );
 
         expect(result).toMatchObject({
@@ -149,6 +150,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
                 description: 'Minor collision',
             },
             conversationId,
+            { authority: authorityFor('file_claim') },
         );
 
         expect(result.error).toContain('No policy with that number is linked to this customer');
@@ -167,6 +169,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             'list_my_claims',
             { policyNumber: 'POL-1' },
             conversationId,
+            { authority: authorityFor('list_my_claims') },
         );
 
         expect(result).toEqual({ claims: [] });
@@ -211,6 +214,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
                 items: [{ menuItemId, name: 'fake', quantity: 2, unitPrice: 1 }],
             },
             conversationId,
+            { authority: authorityFor('place_order') },
         );
 
         expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).toContain(
@@ -269,6 +273,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
                 guestName: 'Ana',
             },
             conversationId,
+            { authority: authorityFor('create_tour_booking') },
         );
 
         expect(result.booking).toMatchObject({
@@ -296,6 +301,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             'enroll_student',
             { cohortId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', studentName: 'Ana' },
             conversationId,
+            { authority: authorityFor('enroll_student') },
         );
 
         expect(result).toMatchObject({
@@ -328,6 +334,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             'get_customer_context',
             {},
             conversationId,
+            { authority: authorityFor('get_customer_context') },
         );
 
         const contactSql = harness.prisma.$queryRawUnsafe.mock.calls[0][0];

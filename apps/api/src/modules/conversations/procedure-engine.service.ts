@@ -2,8 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import type { ProcedureDefinition, ProcedureStep, ProcedureRunState } from '@parallext/shared';
-import { procedureAuthorizedToolNames } from './agent-tool-registry';
+import {
+    decideToolAuthority,
+    type ProcedureDefinition, type ProcedureStep, type ProcedureRunState,
+    type ToolAuthorityDecision, type ToolExecutionAuthority,
+} from '@parallext/shared';
+import { isNonCommittalTool } from './tool-policy-registry';
 import {
     interpolateProcedureArgs,
     type ProcedureSlotSpec,
@@ -35,17 +39,20 @@ export interface ProcedureAgentContext {
     toolsConfig?: unknown;
     channelType?: string;
     /**
-     * Las tools que el contrato efectivo publicó para ESTE turno.
+     * La autoridad de ejecución de ESTE turno.
      *
-     * La autorización de un paso se decidía sólo contra la config guardada del
+     * La autorización de un paso se decidía contra la config guardada del
      * agente, que es una preferencia del dueño y no una concesión de autoridad:
-     * un procedimiento podía invocar un writer en un perfil bloqueado, por
-     * plan insuficiente o sin los datos que la tool necesita. El contrato ya
-     * resolvió todo eso antes de llegar acá; ausente, la autorización cae a la
-     * config como antes, que es lo que hacen los specs que arman el motor a
-     * mano.
+     * un procedimiento podía invocar un writer en un perfil bloqueado, por plan
+     * insuficiente o sin los datos que la tool necesita. Y cuando el contrato no
+     * llegaba, la autorización *caía* a esa config — es decir, el camino más
+     * degradado era también el más permisivo.
+     *
+     * Ahora es lo mismo que mira el ejecutor, y sin ella no corre ningún paso
+     * de tool: un procedimiento detenido se retoma, uno que escribió sin
+     * permiso no se deshace.
      */
-    authorisedTools?: readonly string[];
+    authority?: ToolExecutionAuthority;
 
     /**
      * El negocio no puede comprometerse en este turno. Se propaga al ejecutor
@@ -281,17 +288,24 @@ export class ProcedureEngineService {
                 // typed. A procedure could name any tool and the engine handed it
                 // straight to the executor, so a step could run a family the
                 // agent had switched off.
-                if (!this.toolStepAuthorized(toolName, agent)) {
+                const stepAuthority = this.toolStepDecision(toolName, agent);
+                if (!stepAuthority.allowed) {
                     this.logger.warn(
-                        `[Procedure] step "${step.id}" names "${toolName}", outside this agent's authorised tools — escalating`,
+                        `[Procedure] step "${step.id}" names "${toolName}" `
+                        + `(${stepAuthority.reason}): ${stepAuthority.detail} — escalando`,
                     );
                     await this.clearState(conversationId);
                     return {
                         handled: true,
                         completed: false,
                         text: 'Esta parte del procedimiento necesita una herramienta que este agente no tiene habilitada. Pasá la conversación a una persona del equipo.',
+                        // El motivo tipado viaja en la escalada. Sin esto, "el
+                        // dueño apagó la tool", "el perfil está bloqueado" y "el
+                        // paso nombra una tool de otra familia" llegaban a la
+                        // cola humana con la misma etiqueta, y son tres cosas
+                        // que se arreglan en tres lugares distintos.
+                        handoffReason: `procedure_tool_${stepAuthority.reason}:${toolName || 'unknown'}`,
                         handoff: true,
-                        handoffReason: `procedure_tool_not_authorized:${toolName || 'unknown'}`,
                         procedureName: procedure.name,
                     };
                 }
@@ -325,6 +339,7 @@ export class ProcedureEngineService {
                     const result = await this.toolExecutor.execute(
                         schemaName, tenantId, contactId, toolName, rendered.args, conversationId,
                         {
+                            authority: agent!.authority!,
                             channelType: agent?.channelType,
                             commitmentBlocked: agent?.commitmentBlocked ?? null,
                             deniedTools: agent?.deniedTools,
@@ -429,14 +444,28 @@ export class ProcedureEngineService {
      * recoverable; one that runs a tool the tenant switched off is not.
      */
     private toolStepAuthorized(toolName: string, agent?: ProcedureAgentContext): boolean {
-        if (!toolName) return false;
-        if (!agent || agent.toolsConfig === undefined) return false;
-        // El contrato efectivo manda cuando el turno lo trae: ya aplicó techo de
-        // subtipo, plan, readiness, salud del proveedor y bloqueo del perfil.
-        // La config del agente es una preferencia del dueño, no una concesión
-        // de autoridad — y era lo único que se miraba acá.
-        if (agent.authorisedTools) return agent.authorisedTools.includes(toolName);
-        return procedureAuthorizedToolNames(agent.toolsConfig).has(toolName);
+        return this.toolStepDecision(toolName, agent).allowed;
+    }
+
+    private toolStepDecision(
+        toolName: string,
+        agent?: ProcedureAgentContext,
+    ): ToolAuthorityDecision {
+        if (!toolName) {
+            return {
+                allowed: false,
+                reason: 'not_authorised',
+                detail: 'El paso no nombra ninguna tool.',
+            };
+        }
+        // La misma decisión que toma el ejecutor, tomada acá para poder
+        // detener el procedimiento con un mensaje en vez de dejarlo avanzar
+        // hasta chocar. Sin autoridad no hay paso de tool: el techo de
+        // subtipo, el plan, la habilitación, la salud del proveedor y el
+        // bloqueo del perfil ya se resolvieron antes de llegar acá.
+        return decideToolAuthority(agent?.authority, toolName, {
+            isNonCommittal: isNonCommittalTool(toolName),
+        });
     }
 
     private nextStepId(procedure: ProcedureDefinition, currentId: string | null): string | null {

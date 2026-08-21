@@ -387,6 +387,15 @@ export class AgentTestService {
                                 // nowhere to record the confirmation.
                                 isAuditedEvalWriter ? options?.sandboxConversationId : undefined,
                                 {
+                                    // La autoridad del banco de pruebas alcanza
+                                    // exactamente la tool que este `if` ya
+                                    // aprobó: la lista segura o el writer
+                                    // auditado, nunca las dos cosas a la vez.
+                                    authority: {
+                                        source: 'agent_test',
+                                        allowedTools: [tc.function.name],
+                                        resolvedAt: new Date().toISOString(),
+                                    },
                                     evalMode: isAuditedEvalWriter,
                                     readOnly: !isAuditedEvalWriter,
                                     executionContext,

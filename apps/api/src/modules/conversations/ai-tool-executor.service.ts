@@ -24,7 +24,13 @@ import { ResourceRentalsService } from '../resource-rentals/resource-rentals.ser
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
-import { TOOL_READ_ERROR_CODES, type PolicyType } from '@parallext/shared';
+import {
+    TOOL_READ_ERROR_CODES,
+    decideToolAuthority,
+    type PolicyType,
+    type ToolAuthorityDecision,
+    type ToolExecutionAuthority,
+} from '@parallext/shared';
 import {
     readEmpty,
     readFailed,
@@ -108,7 +114,57 @@ export class AIToolExecutorService {
     ) { }
 
     /**
+     * La respuesta a una denegación, con el motivo tipado que la produjo.
+     *
+     * Cada motivo dice algo distinto al cliente, y confundirlos hace que el
+     * dueño busque el problema donde no está:
+     *
+     * - `disabled_by_owner`: él lo apagó. No promete reintentar, porque no hay
+     *   nada que reintentar.
+     * - `commitment_blocked`: el negocio no puede cerrar esto por chat.
+     * - `authority_stale` y `not_authorised`: algo del lado del sistema. Al
+     *   cliente se le dice lo mismo —lo toma una persona— porque el motivo
+     *   interno no es asunto suyo, pero el log y el `error` los distinguen.
+     */
+    private authorityDenied(
+        toolName: string,
+        decision: Extract<ToolAuthorityDecision, { allowed: false }>,
+    ): Record<string, unknown> {
+        const base = {
+            tool: toolName,
+            reason: decision.detail,
+            shouldHandoff: true,
+        };
+        if (decision.reason === 'disabled_by_owner') {
+            return {
+                ...base,
+                error: 'tool_disabled_by_owner',
+                message: 'Eso no lo puedo hacer por chat. Te paso con alguien del equipo.',
+            };
+        }
+        if (decision.reason === 'commitment_blocked') {
+            return {
+                ...base,
+                error: 'capability_blocked',
+                message: 'Esto no lo puedo cerrar por chat. Te paso con alguien del equipo.',
+            };
+        }
+        return {
+            ...base,
+            error: decision.reason === 'authority_stale'
+                ? 'authority_stale'
+                : 'tool_not_authorised',
+            message: 'Eso no lo puedo resolver por acá. Te paso con alguien del equipo.',
+        };
+    }
+
+    /**
      * Execute a single tool call and return the result.
+     *
+     * `opts` es OBLIGATORIO y `opts.authority` también. No es una molestia de
+     * tipos: era la única forma de enterarse de cuántos llamadores no pasaban
+     * ninguna autorización. Con los dos opcionales, omitir `opts` daba acceso
+     * al catálogo entero, y la mayoría de los llamadores reales lo omitía.
      */
     async execute(
         schemaName: string,
@@ -116,12 +172,22 @@ export class AIToolExecutorService {
         contactId: string,
         toolName: string,
         args: Record<string, any>,
-        conversationId?: string,
+        conversationId: string | undefined,
         // channelType viaja por OPTS y no por args a proposito: args lo arma el
         // LLM, asi que si el canal viniera por ahi el modelo podria decir que la
         // conversacion es por email para que el codigo salga por email — o sea,
         // por el mismo canal que estamos tratando de verificar.
-        opts?: {
+        opts: {
+            /**
+             * Quién autoriza esta ejecución y qué autoriza exactamente.
+             *
+             * Obligatoria. El ejecutor es la puerta común de todos los
+             * llamadores —loop del LLM, motor de reservas, Procedures, la
+             * confirmación server-side del "sí", Agent Test, la reanudación
+             * tras aprobación humana y el servidor MCP— y hasta acá cinco de
+             * ellos no pasaban ninguna autorización.
+             */
+            authority: ToolExecutionAuthority;
             evalMode?: boolean;
             channelType?: string;
             readOnly?: boolean;
@@ -192,39 +258,35 @@ export class AIToolExecutorService {
                 ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
                 : null;
 
-            // El dueño lo apagó. No es un fallo ni una falta de capacidad: es
-            // una decisión suya, y por eso el mensaje no promete reintentar.
-            if (opts?.deniedTools?.includes(toolName)) {
-                this.logger.warn(`[Tool] ${toolName} apagada por el dueño del agente`);
-                return {
-                    error: 'tool_disabled_by_owner',
-                    tool: toolName,
-                    shouldHandoff: true,
-                    message: 'Eso no lo puedo hacer por chat. Te paso con alguien del equipo.',
-                };
-            }
-
-            // La puerta común. Lo que cae es lo que COMPROMETE al negocio, no
-            // lo que escribe una fila: una búsqueda en la base de conocimiento
-            // o la llave de identidad siguen pasando.
+            // ═══ LA PUERTA COMÚN, AHORA DEFAULT-DENY ═══
             //
-            // Para una tool MCP la respuesta sale de la aprobación firmada, no
-            // del nombre: `effect: 'read'` revisado por una persona es una
+            // Antes eran dos comprobaciones sueltas y OPCIONALES: `deniedTools`
+            // (lo que el dueño apagó) y `commitmentBlocked` (el perfil). Las
+            // dos por NEGACIÓN, así que todo lo que nadie pensó en prohibir
+            // estaba permitido — una tool nueva nacía autorizada para todos.
+            // Y un llamador que omitía `opts` no cruzaba ninguna de las dos.
+            //
+            // Ahora la pregunta es al revés: ¿esta tool está en lo que ESTE
+            // origen autoriza? Lo que no está, no pasa.
+            //
+            // Para una tool MCP, "compromete" sale de la aprobación firmada y
+            // no del nombre: `effect: 'read'` revisado por una persona es una
             // lectura; sin aprobación legible es desconocida, y desconocida no
             // pasa cuando la escritura está bloqueada.
-            const committing = toolName.startsWith('mcp__')
-                ? mcpApproval?.effect !== 'read'
-                : !isNonCommittalTool(toolName);
-            if (opts?.commitmentBlocked && committing) {
+            const isNonCommittal = toolName.startsWith('mcp__')
+                ? mcpApproval?.effect === 'read'
+                : isNonCommittalTool(toolName);
+            const authorityDecision = decideToolAuthority(
+                opts?.authority,
+                toolName,
+                { isNonCommittal },
+            );
+            if (!authorityDecision.allowed) {
                 this.logger.warn(
-                    `[Tool] ${toolName} bloqueada: ${opts.commitmentBlocked.reason}`,
+                    `[Tool] ${toolName} denegada (${authorityDecision.reason}) `
+                    + `origen=${opts?.authority?.source ?? 'ninguno'}: ${authorityDecision.detail}`,
                 );
-                return {
-                    error: 'capability_blocked',
-                    reason: opts.commitmentBlocked.reason,
-                    shouldHandoff: true,
-                    message: 'Esto no lo puedo cerrar por chat. Te paso con alguien del equipo.',
-                };
+                return this.authorityDenied(toolName, authorityDecision);
             }
 
             // Persistence-disabled execution is a capability boundary, not a

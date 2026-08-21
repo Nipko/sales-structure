@@ -154,7 +154,19 @@ describe('A4 approval workflow e2e', () => {
             'apply_discount',
             { percent: 10, reason: 'retención' },
             conversationId,
-            { channelType: 'whatsapp' },
+            {
+                // La aprobación de una persona ES la autoridad, y alcanza sólo
+                // a la tool del ticket: aprobar un descuento no habilita a
+                // reembolsar.
+                authority: {
+                    source: 'human_approval',
+                    allowedTools: ['apply_discount'],
+                    resolvedAt: expect.stringMatching(
+                        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+                    ),
+                },
+                channelType: 'whatsapp',
+            },
         );
         expect(state.published).toEqual([
             'tool.approval.requested',

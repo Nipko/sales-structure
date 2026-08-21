@@ -123,7 +123,19 @@ export class ToolApprovalWorkflowService {
                 claim.toolName,
                 claim.args,
                 claim.conversationId,
-                { channelType: claim.channelType },
+                {
+                    // La autoridad acá es la decisión de una persona, y alcanza
+                    // exactamente a la tool del ticket: aprobar un reembolso no
+                    // habilita a cobrar. `resolvedAt` es el momento del claim
+                    // —no el de la aprobación— porque el claim es el acto
+                    // fresco: un ticket vencido no llega hasta acá.
+                    authority: {
+                        source: 'human_approval',
+                        allowedTools: [claim.toolName],
+                        resolvedAt: new Date().toISOString(),
+                    },
+                    channelType: claim.channelType,
+                },
             );
             if (!result || typeof result !== 'object' || Array.isArray(result)) {
                 result = { error: 'approval_resume_invalid_result' };

@@ -96,7 +96,20 @@ export class McpServerService {
             return { content: [{ type: 'text', text: `Tool not available: ${name}` }], isError: true };
         }
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const result = await this.toolExecutor.execute(schemaName, tenantId, '', name, args);
+        // El servidor MCP expone una lista curada de lecturas y esa lista ES la
+        // autoridad: nada fuera de `EXPOSED_TOOLS` puede ejecutarse por acá,
+        // aunque el ejecutor conozca la tool. Antes se llamaba sin autoridad
+        // alguna y la única defensa era el `if` de arriba.
+        const result = await this.toolExecutor.execute(
+            schemaName, tenantId, '', name, args, undefined,
+            {
+                authority: {
+                    source: 'mcp_server',
+                    allowedTools: [...EXPOSED_NAMES],
+                    resolvedAt: new Date().toISOString(),
+                },
+            },
+        );
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
     }
 

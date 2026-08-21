@@ -3,6 +3,7 @@ import {
     staticToolsForAgentConfig,
     subpermissionDeniedToolNames,
 } from './agent-tool-registry';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * Las casillas que el dueño apagaba y no apagaban nada.
@@ -105,7 +106,16 @@ describe('el ejecutor también los mira: publicar no alcanza', () => {
 
         const result = await executor.execute(
             schemaName, tenantId, contactId, 'cancel_appointment', {}, undefined,
-            { deniedTools: ['cancel_appointment', 'reschedule_appointment'] },
+            {
+                // La tool está PUBLICADA y aun así cae: lo que la frena es que
+                // el dueño la apagó. Con la lista vacía el caso pasaría por
+                // `not_authorised` sin tocar nunca el subpermiso.
+                authority: {
+                    ...authorityFor('cancel_appointment', 'reschedule_appointment'),
+                    deniedTools: ['cancel_appointment', 'reschedule_appointment'],
+                },
+                deniedTools: ['cancel_appointment', 'reschedule_appointment'],
+            },
         );
 
         expect(result).toMatchObject({ error: 'tool_disabled_by_owner', shouldHandoff: true });
@@ -117,7 +127,10 @@ describe('el ejecutor también los mira: publicar no alcanza', () => {
 
         const result = await executor.execute(
             schemaName, tenantId, contactId, 'check_stock', {}, undefined,
-            { deniedTools: ['check_stock'] },
+            {
+                authority: { ...authorityFor('check_stock'), deniedTools: ['check_stock'] },
+                deniedTools: ['check_stock'],
+            },
         );
 
         // No es un fallo ni una falta de capacidad temporal.
@@ -130,7 +143,13 @@ describe('el ejecutor también los mira: publicar no alcanza', () => {
 
         const result = await executor.execute(
             schemaName, tenantId, contactId, 'check_availability', { date: '2026-09-01' },
-            undefined, { deniedTools: ['cancel_appointment'] },
+            undefined, {
+                authority: {
+                    ...authorityFor('check_availability'),
+                    deniedTools: ['cancel_appointment'],
+                },
+                deniedTools: ['cancel_appointment'],
+            },
         );
 
         expect(result?.error).not.toBe('tool_disabled_by_owner');

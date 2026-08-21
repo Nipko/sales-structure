@@ -4,6 +4,7 @@ import {
     AGENT_TEST_SANDBOX_CONTACT_ID,
 } from './agent-test-tool-policy';
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const SCHEMA = 'tenant_agent_test_tools';
@@ -185,7 +186,10 @@ describe('Agent Test complete safe-tool allowlist', () => {
                 undefined,
                 // Deliberately omit readOnly: persistence:disabled alone must
                 // be sufficient to suppress lazy DDL in recommend_products.
-                { executionContext: AGENT_TEST_EXECUTION_CONTEXT },
+                {
+                    authority: authorityFor(toolName),
+                    executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+                },
             );
             expect(result).not.toMatchObject({ error: 'agent_test_read_only' });
             expect(result).not.toMatchObject({ error: 'tool_failed' });

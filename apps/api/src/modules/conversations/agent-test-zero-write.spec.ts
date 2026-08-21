@@ -8,6 +8,7 @@ import { PoliciesService } from '../policies/policies.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { AgentTestService } from './agent-test.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const AGENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -346,7 +347,15 @@ describe('Agent Test no-business-write execution', () => {
             {} as any,
         );
 
-        const opts = { readOnly: true, executionContext: AGENT_TEST_EXECUTION_CONTEXT };
+        // Las tres tools están autorizadas a propósito, `create_appointment`
+        // incluida: lo que este caso mide es que el modo de sólo-lectura la
+        // frene. Dejarla fuera de la autoridad la haría caer por
+        // `not_authorised` y la prueba pasaría sin ejercitar el gate.
+        const opts = {
+            authority: authorityFor('search_faqs', 'get_policy', 'create_appointment'),
+            readOnly: true,
+            executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+        };
         const faqResult = await executor.execute(
             SCHEMA, TENANT_ID, AGENT_ID, 'search_faqs', { query: 'horario' }, undefined, opts,
         );

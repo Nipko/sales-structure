@@ -1,4 +1,5 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 describe('AIToolExecutorService appointment cancellation safety', () => {
     const schemaName = 'tenant_appointment_safety';
@@ -148,7 +149,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'cancel_appointment',
-            { appointmentId, reason: 'Cambio de planes' },
+            { appointmentId, reason: 'Cambio de planes' }, undefined,
+            { authority: authorityFor('cancel_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alternatives: [] });
@@ -173,7 +175,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'cancel_appointment',
-            { appointmentId },
+            { appointmentId }, undefined,
+            { authority: authorityFor('cancel_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alreadyCancelled: true });
@@ -189,7 +192,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'cancel_appointment',
-            { appointmentId },
+            { appointmentId }, undefined,
+            { authority: authorityFor('cancel_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alreadyCancelled: true });
@@ -210,7 +214,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'get_check_in_instructions',
-            { propertyId: appointmentId },
+            { propertyId: appointmentId }, undefined,
+            { authority: authorityFor('get_check_in_instructions') },
         );
 
         expect(result.error).toContain('no active booking');
@@ -234,7 +239,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'reschedule_appointment',
-            { appointmentId, newDate: '2026-08-12', newTime: '11:00', reason: 'Cambio' },
+            { appointmentId, newDate: '2026-08-12', newTime: '11:00', reason: 'Cambio' }, undefined,
+            { authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({ success: true });
@@ -267,7 +273,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'reschedule_appointment',
-            { appointmentId, newDate: '2026-08-12', newTime: '11:00' },
+            { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
+            { authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alreadyRescheduled: true });
@@ -296,7 +303,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'reschedule_appointment',
-            { appointmentId, newDate: '2026-08-12', newTime: '11:00' },
+            { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
+            { authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({ retryable: true });
@@ -331,7 +339,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 date: '2026-08-12',
                 time: '11:00',
                 customerName: 'Cliente',
-            },
+            }, undefined,
+            { authority: authorityFor('create_appointment') },
         );
 
         expect(result).toMatchObject({ retryable: true });
@@ -353,7 +362,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'check_availability',
-            { serviceId, staffId: foreignStaffId, date: '2026-08-12' },
+            { serviceId, staffId: foreignStaffId, date: '2026-08-12' }, undefined,
+            { authority: authorityFor('check_availability') },
         );
 
         expect(result).toMatchObject({ error: 'tool_failed' });
@@ -393,7 +403,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 date: '2026-08-12',
                 time: '11:00',
                 customerName: 'Cliente',
-            },
+            }, undefined,
+            { authority: authorityFor('create_appointment') },
         );
 
         expect(result).toMatchObject({ error: 'tool_failed' });
@@ -440,7 +451,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 customerPhone: '+573001112233',
                 customerEmail: 'cliente@example.com',
                 notes: 'Traer documentos',
-            },
+            }, undefined,
+            { authority: authorityFor('create_appointment') },
         );
 
         expect(result).toMatchObject({
@@ -503,7 +515,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'reschedule_appointment',
-            { appointmentId, newDate: '2026-08-12', newTime: '11:00' },
+            { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
+            { authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({
@@ -533,7 +546,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             tenantId,
             contactId,
             'reschedule_appointment',
-            { appointmentId, newDate: '2026-08-12', newTime: '11:00' },
+            { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
+            { authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result.error).toContain('changed concurrently');

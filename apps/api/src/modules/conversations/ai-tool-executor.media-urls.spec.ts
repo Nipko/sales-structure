@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * Regression: MediaService stores uploads as relative paths
@@ -72,7 +73,10 @@ describe('AIToolExecutorService media URL resolution', () => {
     }
 
     function run(harness: ReturnType<typeof createHarness>, tool: string, args: Record<string, any>) {
-        return harness.executor.execute(schemaName, tenantId, contactId, tool, args);
+        return harness.executor.execute(
+            schemaName, tenantId, contactId, tool, args,
+            undefined, { authority: authorityFor(tool) },
+        );
     }
 
     it('absolutizes the relative paths MediaService stores for a property', async () => {

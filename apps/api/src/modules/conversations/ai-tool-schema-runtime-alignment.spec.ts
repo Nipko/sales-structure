@@ -4,6 +4,7 @@ import { INSURANCE_TOOLS } from './tools/insurance-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
 import { CREATE_PAYMENT_LINK_TOOL, GET_PAYMENT_STATUS_TOOL } from './tools/payment-tools';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 describe('AI tool schema and runtime alignment', () => {
     const schemaName = 'tenant_tools';
@@ -156,6 +157,7 @@ describe('AI tool schema and runtime alignment', () => {
             'check_order_status',
             { orderId },
             conversationId,
+            { authority: authorityFor('check_order_status') },
         );
 
         expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).toContain('estimated_delivery_at');
@@ -190,6 +192,7 @@ describe('AI tool schema and runtime alignment', () => {
             'check_order_status',
             { orderId },
             conversationId,
+            { authority: authorityFor('check_order_status') },
         );
 
         expect(result).toMatchObject({
@@ -209,6 +212,7 @@ describe('AI tool schema and runtime alignment', () => {
             'request_photo_quote',
             { date: '2026-09-10', customerName: 'Ana' },
             conversationId,
+            { authority: authorityFor('request_photo_quote') },
         );
 
         expect(result).toMatchObject({
@@ -240,6 +244,7 @@ describe('AI tool schema and runtime alignment', () => {
             'request_photo_quote',
             args,
             conversationId,
+            { authority: authorityFor('request_photo_quote') },
         );
 
         expect(harness.photographyService.create).toHaveBeenCalledWith(
@@ -280,6 +285,7 @@ describe('AI tool schema and runtime alignment', () => {
             'cancel_photo_session',
             { sessionId, reason: 'Cambio de planes' },
             conversationId,
+            { authority: authorityFor('cancel_photo_session') },
         )).resolves.toMatchObject({ success: true });
 
         expect(harness.prisma.transactionInTenantSchema).toHaveBeenCalledWith(
@@ -309,6 +315,7 @@ describe('AI tool schema and runtime alignment', () => {
             'cancel_photo_session',
             { sessionId: '55555555-5555-4555-8555-555555555555' },
             conversationId,
+            { authority: authorityFor('cancel_photo_session') },
         )).resolves.toMatchObject({ error: 'You can only cancel your own sessions' });
         expect(foreign.transactionQuery).toHaveBeenCalledTimes(1);
 
@@ -325,6 +332,7 @@ describe('AI tool schema and runtime alignment', () => {
             'cancel_photo_session',
             { sessionId: '55555555-5555-4555-8555-555555555555' },
             conversationId,
+            { authority: authorityFor('cancel_photo_session') },
         )).resolves.toMatchObject({ error: expect.stringContaining('in_progress') });
         expect(active.transactionQuery).toHaveBeenCalledTimes(1);
     });

@@ -8,6 +8,7 @@ import {
     readUnauthorized,
 } from '../../common/contracts/tool-read-result.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * "No pude leer" no puede sonar igual que "no hay nada".
@@ -54,6 +55,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const empty = createExecutor(jest.fn().mockResolvedValue([]));
         const emptyResult: any = await empty.execute(
             schemaName, tenantId, contactId, 'list_customer_orders', {}, conversationId,
+            { authority: authorityFor('list_customer_orders') },
         );
         expect(emptyResult.status).toBe('empty');
         expect(emptyResult.orders).toEqual([]);
@@ -62,6 +64,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const broken = createExecutor(jest.fn().mockRejectedValue(DB_DOWN));
         const brokenResult: any = await broken.execute(
             schemaName, tenantId, contactId, 'list_customer_orders', {}, conversationId,
+            { authority: authorityFor('list_customer_orders') },
         );
         expect(brokenResult.status).toBe('error');
         expect(brokenResult.error).toBe('read_failed');
@@ -72,6 +75,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const executor = createExecutor(jest.fn().mockResolvedValue([]));
         const result: any = await executor.execute(
             schemaName, tenantId, '', 'list_customer_orders', {}, conversationId,
+            { authority: authorityFor('list_customer_orders') },
         );
         expect(result.status).toBe('unauthorized');
         expect(result.orders).toBeUndefined();
@@ -81,6 +85,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const executor = createExecutor(jest.fn().mockRejectedValue(DB_DOWN));
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'list_active_offers', {}, conversationId,
+            { authority: authorityFor('list_active_offers') },
         );
         expect(result.status).toBe('error');
         expect(result.offers).toBeUndefined();
@@ -90,6 +95,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const broken = createExecutor(jest.fn().mockRejectedValue(DB_DOWN));
         const brokenResult: any = await broken.execute(
             schemaName, tenantId, contactId, 'check_stock', { productId: 'Ibuprofeno' }, conversationId,
+            { authority: authorityFor('check_stock') },
         );
         expect(brokenResult.status).toBe('error');
         expect(brokenResult.error).toBe('read_failed');
@@ -97,6 +103,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const missing = createExecutor(jest.fn().mockResolvedValue([]));
         const missingResult: any = await missing.execute(
             schemaName, tenantId, contactId, 'check_stock', { productId: 'Ibuprofeno' }, conversationId,
+            { authority: authorityFor('check_stock') },
         );
         expect(missingResult.status).toBe('empty');
         expect(missingResult.product).toBeNull();
@@ -106,6 +113,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const executor = createExecutor(jest.fn().mockRejectedValue(new Error('connection terminated')));
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'get_customer_context', {}, conversationId,
+            { authority: authorityFor('get_customer_context') },
         );
         expect(result.status).toBe('error');
         // Lo importante: no devuelve `{contact: null, lead: null,
@@ -122,6 +130,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'get_customer_context', {}, conversationId,
+            { authority: authorityFor('get_customer_context') },
         );
 
         expect(result.status).toBe('ok');
@@ -136,6 +145,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         });
         const noKbResult: any = await noKb.execute(
             schemaName, tenantId, contactId, 'search_knowledge_base', { query: 'devoluciones' }, conversationId,
+            { authority: authorityFor('search_knowledge_base') },
         );
         expect(noKbResult.status).toBe('empty');
         expect(noKbResult.chunks).toEqual([]);
@@ -148,6 +158,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         });
         const noHitsResult: any = await noHits.execute(
             schemaName, tenantId, contactId, 'search_knowledge_base', { query: 'devoluciones' }, conversationId,
+            { authority: authorityFor('search_knowledge_base') },
         );
         expect(noHitsResult.status).toBe('empty');
 
@@ -159,6 +170,7 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         });
         const brokenResult: any = await broken.execute(
             schemaName, tenantId, contactId, 'search_knowledge_base', { query: 'devoluciones' }, conversationId,
+            { authority: authorityFor('search_knowledge_base') },
         );
         expect(brokenResult.status).toBe('error');
         expect(brokenResult.chunks).toBeUndefined();

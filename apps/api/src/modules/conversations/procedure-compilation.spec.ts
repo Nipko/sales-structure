@@ -6,6 +6,7 @@ import {
     procedureAuthorizedToolNames,
     staticToolsForAgentConfig,
 } from './agent-tool-registry';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * Procedures combinaba dos defectos opuestos: podía saltarse el gating del
@@ -86,9 +87,18 @@ function createHarness(options: {
     return { service, redis, toolExecutor, prisma, getSaved: () => saved };
 }
 
-// `get_order_status` vive en la familia e-commerce, no en catálogo.
+/**
+ * `get_order_status` vive en la familia e-commerce, no en catálogo.
+ *
+ * La config de familias sigue acá porque describe qué encendió el dueño, pero
+ * ya no es lo que autoriza: la autoridad del turno es lo que decide, y sin ella
+ * ningún paso de tool corre. Antes, cuando el contrato no llegaba, la
+ * autorización *caía* a esta config — el camino más degradado era el más
+ * permisivo.
+ */
 const CATALOG_AGENT = {
     toolsConfig: { catalog: { enabled: true }, orders: { enabled: true }, ecommerce: { enabled: true } },
+    authority: authorityFor('get_order_status'),
 };
 
 /**
@@ -125,12 +135,15 @@ describe('un paso de tool se compila contra el agente', () => {
 
         const result = await service.process(
             schemaName, tenantId, conversationId, contactId, 'estado',
-            { toolsConfig: { faqs: { enabled: true } } } as any,
+            { toolsConfig: { faqs: { enabled: true } }, authority: authorityFor('search_faqs') } as any,
         );
 
         expect(toolExecutor.execute).not.toHaveBeenCalled();
         expect(result).toMatchObject({ handoff: true, completed: false });
-        expect(result.handoffReason).toContain('procedure_tool_not_authorized');
+        // El motivo es tipado: "no está publicada" no es lo mismo que "el dueño
+        // la apagó" ni que "el perfil está bloqueado", y las tres se arreglan en
+        // lugares distintos.
+        expect(result.handoffReason).toBe('procedure_tool_not_authorised:get_order_status');
     });
 
     it('sin contrato del agente no ejecuta nada: falla cerrado', async () => {
@@ -148,7 +161,7 @@ describe('un paso de tool se compila contra el agente', () => {
         const { service } = createHarness();
         const result = await service.process(
             schemaName, tenantId, conversationId, contactId, 'estado',
-            { toolsConfig: {} } as any,
+            { toolsConfig: {}, authority: authorityFor() } as any,
         );
         expect(result.text).not.toMatch(/get_order_status|toolsConfig|catalog/);
     });
@@ -229,7 +242,12 @@ describe('los datos recogidos llegan a la tool', () => {
         expect(toolExecutor.execute).toHaveBeenCalledWith(
             schemaName, tenantId, contactId, 'get_order_status',
             { orderId: '1024' }, conversationId,
-            { channelType: undefined, commitmentBlocked: null },
+            {
+                authority: CATALOG_AGENT.authority,
+                channelType: undefined,
+                commitmentBlocked: null,
+                deniedTools: undefined,
+            },
         );
     });
 

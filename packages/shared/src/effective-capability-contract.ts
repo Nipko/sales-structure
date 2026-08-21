@@ -201,3 +201,183 @@ export function capabilityForToolGroup(
 ): VerticalCapability {
     return map[group];
 }
+
+// ── Autoridad de ejecución ───────────────────────────────────────────────
+
+/**
+ * De dónde salió el permiso para ejecutar una tool.
+ *
+ * No es decorativo: cada origen tiene su propia forma de estar mal, y saber
+ * cuál fue es lo que permite auditar una ejecución después. Un
+ * `human_approval` que ejecuta algo que el contrato del turno no publicaba es
+ * legítimo — una persona lo decidió—; el mismo caso con `turn_contract` es un
+ * defecto.
+ */
+export type ToolAuthoritySource =
+    /** El contrato efectivo resuelto para este turno de conversación. */
+    | 'turn_contract'
+    /** Agent Test: el mismo contrato, más la lista segura del banco de pruebas. */
+    | 'agent_test'
+    /** Una persona aprobó esta ejecución en la consola. */
+    | 'human_approval'
+    /** El servidor MCP expuesto: lista curada de sólo lectura, con API key. */
+    | 'mcp_server'
+    /** Trabajo interno de la plataforma, sin conversación detrás. */
+    | 'system';
+
+/**
+ * Lo que el ejecutor necesita para decidir, y **sin lo cual no ejecuta nada**.
+ *
+ * ── Por qué es obligatoria ──────────────────────────────────────────────
+ *
+ * Hasta acá el ejecutor recibía `commitmentBlocked` y `deniedTools`, los dos
+ * **opcionales**. Un llamador que omitía `opts` tenía acceso al catálogo
+ * entero de tools — y de los llamadores reales, la mayoría no pasaba ninguna de
+ * las dos. La puerta existía y casi nadie la cruzaba.
+ *
+ * Peor: la autorización era por NEGACIÓN. `deniedTools` lista lo prohibido, así
+ * que todo lo que nadie pensó en prohibir estaba permitido. Una tool nueva
+ * nacía autorizada para todos hasta que alguien se acordara de restringirla.
+ *
+ * `allowedTools` invierte eso: **lo que no está, no pasa**. Una tool nueva nace
+ * denegada y sólo la ejecuta quien decidió publicarla.
+ */
+export interface ToolExecutionAuthority {
+    /** Qué produjo este permiso. */
+    source: ToolAuthoritySource;
+    /**
+     * Los nombres exactos que este origen autoriza. **Default-deny**: una tool
+     * que no está acá no se ejecuta, sin importar quién la pida.
+     */
+    allowedTools: readonly string[];
+    /**
+     * El negocio no puede comprometerse en este turno: perfil `stop`, rol no
+     * operativo, canal no conversacional, o contrato irresoluble.
+     */
+    commitmentBlocked?: { reason: string } | null;
+    /** Lo que el dueño apagó a mano en su agente. */
+    deniedTools?: readonly string[];
+    /**
+     * Cuándo se resolvió el contrato del que sale esta autoridad.
+     *
+     * Es lo que permite detectar una autoridad rancia: un ticket de
+     * confirmación creado hace veinte minutos no puede ejecutarse contra el
+     * permiso que había entonces, porque en el medio el dueño pudo apagar la
+     * tool, el plan pudo bajar y el proveedor pudo caerse.
+     */
+    resolvedAt: string;
+    /** El perfil contra el que se resolvió, para la línea de auditoría. */
+    subtypeProfileId?: string;
+}
+
+/**
+ * Cuánto puede envejecer una autoridad antes de exigir re-resolución.
+ *
+ * Dos minutos: más que el turno más lento y mucho menos que la ventana de un
+ * ticket de confirmación, que es exactamente el caso que hay que atrapar.
+ */
+export const TOOL_AUTHORITY_MAX_AGE_SECONDS = 120;
+
+export type ToolAuthorityDenialReason =
+    | 'not_authorised'
+    | 'commitment_blocked'
+    | 'disabled_by_owner'
+    | 'authority_stale';
+
+/**
+ * Los códigos con los que el ejecutor devuelve una denegación de autoridad.
+ *
+ * Existen como conjunto porque el handoff se dispara ante una operación
+ * **denegada**, y reconocerla mirando `shouldHandoff` no alcanza: media docena
+ * de fallas distintas lo levantan. Comparar contra este conjunto es la
+ * diferencia entre "el cliente pidió algo que no podemos hacer" —que sí
+ * necesita una persona— y "una lectura salió mal", que no.
+ */
+export const TOOL_AUTHORITY_DENIAL_ERRORS: readonly string[] = [
+    'tool_not_authorised',
+    'capability_blocked',
+    'tool_disabled_by_owner',
+    'authority_stale',
+];
+
+export function isToolAuthorityDenial(error: unknown): boolean {
+    return typeof error === 'string' && TOOL_AUTHORITY_DENIAL_ERRORS.includes(error);
+}
+
+export type ToolAuthorityDecision =
+    | { allowed: true }
+    | {
+        allowed: false;
+        /** Motivo tipado. El mensaje al cliente se arma con esto, no con texto libre. */
+        reason: ToolAuthorityDenialReason;
+        detail: string;
+    };
+
+/**
+ * La decisión, en un solo lugar.
+ *
+ * Vive en `shared` y no en el ejecutor porque la misma respuesta la tienen que
+ * dar el ejecutor, la publicación de tools y Agent Test. Tres copias de esta
+ * función son tres formas distintas de contestar la misma pregunta, y la
+ * historia de este módulo es exactamente esa.
+ *
+ * **El orden importa.** Primero lo rancio (no sabemos), después lo bloqueado
+ * (el negocio no puede), después lo apagado (el dueño no quiere) y último lo no
+ * publicado. Al revés, una tool apagada por el dueño dentro de un perfil
+ * bloqueado reportaría "no autorizada" y el dueño buscaría el problema donde no
+ * está.
+ */
+export function decideToolAuthority(
+    authority: ToolExecutionAuthority | undefined | null,
+    toolName: string,
+    options: { isNonCommittal: boolean; now?: Date },
+): ToolAuthorityDecision {
+    // Sin autoridad no se ejecuta. Éste es el default-deny.
+    if (!authority) {
+        return {
+            allowed: false,
+            reason: 'not_authorised',
+            detail: 'La ejecución llegó sin autoridad declarada.',
+        };
+    }
+
+    const now = options.now ?? new Date();
+    const resolvedAt = Date.parse(authority.resolvedAt);
+    // Una fecha ilegible es infinitamente vieja: desconocido no es fresco.
+    const ageSeconds = Number.isFinite(resolvedAt)
+        ? (now.getTime() - resolvedAt) / 1000
+        : Number.POSITIVE_INFINITY;
+    if (ageSeconds > TOOL_AUTHORITY_MAX_AGE_SECONDS) {
+        return {
+            allowed: false,
+            reason: 'authority_stale',
+            detail: `La autorización tiene ${Math.round(ageSeconds)}s y hay que resolverla de nuevo.`,
+        };
+    }
+
+    if (authority.commitmentBlocked && !options.isNonCommittal) {
+        return {
+            allowed: false,
+            reason: 'commitment_blocked',
+            detail: authority.commitmentBlocked.reason,
+        };
+    }
+
+    if (authority.deniedTools?.includes(toolName)) {
+        return {
+            allowed: false,
+            reason: 'disabled_by_owner',
+            detail: `${toolName} está apagada en la configuración del agente.`,
+        };
+    }
+
+    if (!authority.allowedTools.includes(toolName)) {
+        return {
+            allowed: false,
+            reason: 'not_authorised',
+            detail: `${toolName} no está en las tools publicadas para este turno.`,
+        };
+    }
+
+    return { allowed: true };
+}

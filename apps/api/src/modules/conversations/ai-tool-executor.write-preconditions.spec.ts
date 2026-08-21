@@ -1,4 +1,5 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * El "s√≠" del hu√©sped autoriz√≥ una escritura imposible.
@@ -76,6 +77,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaci√
 
         const result = await executor.execute(
             schemaName, tenantId, contactId, 'create_property_booking', BOOKING_ARGS, conversationId,
+            { authority: authorityFor('create_property_booking') },
         );
 
         expect(result).toMatchObject({ error: 'unknown_property' });
@@ -91,6 +93,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaci√
         const result = await executor.execute(
             schemaName, tenantId, contactId, 'create_property_booking',
             { ...BOOKING_ARGS, propertyId: 'Amazon Minimalist' }, conversationId,
+            { authority: authorityFor('create_property_booking') },
         );
 
         expect(result).toMatchObject({ error: 'unknown_property' });
@@ -102,6 +105,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaci√
 
         const result: any = await executor.execute(
             schemaName, tenantId, contactId, 'create_property_booking', BOOKING_ARGS, conversationId,
+            { authority: authorityFor('create_property_booking') },
         );
 
         expect(result.message).toEqual(expect.any(String));
@@ -115,6 +119,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaci√
 
         await executor.execute(
             schemaName, tenantId, contactId, 'create_property_booking', BOOKING_ARGS, conversationId,
+            { authority: authorityFor('create_property_booking') },
         );
 
         expect(getById).toHaveBeenCalledWith(schemaName, PROPERTY_ID);
@@ -125,7 +130,7 @@ describe('una reserva sobre un alojamiento inexistente no llega a la confirmaci√
         const getById = jest.fn();
         const { executor, control } = createExecutor(getById);
 
-        await executor.execute(schemaName, tenantId, contactId, 'list_properties', {}, conversationId);
+        await executor.execute(schemaName, tenantId, contactId, 'list_properties', {}, conversationId, { authority: authorityFor('list_properties') });
 
         expect(getById).not.toHaveBeenCalled();
         expect(control.preflight).toHaveBeenCalled();

@@ -8,6 +8,7 @@ import {
     type ProcedureDefinition,
     type ProcedureRunState,
 } from '@parallext/shared';
+import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
  * Los siete perfiles bloqueados, contra las CINCO puertas por las que se
@@ -104,7 +105,21 @@ function buildExecutor() {
 }
 
 /** Lo que el ejecutor recibe cuando el contrato dijo que no. */
-const BLOCKED_INPUT = { commitmentBlocked: { reason: 'capability:blocked:profile_blocked' } };
+/**
+ * Un perfil bloqueado con la tool **publicada**.
+ *
+ * Que la tool esté en `allowedTools` no es un detalle del fixture: es lo que
+ * hace que estas pruebas midan el bloqueo y no la falta de publicación. Si la
+ * lista viniera vacía, el ejecutor denegaría por `not_authorised` y el caso
+ * pasaría en verde sin haber ejercitado nunca la puerta del perfil `stop`.
+ */
+const blockedInputFor = (...tools: string[]) => ({
+    authority: {
+        ...authorityFor(...tools),
+        commitmentBlocked: { reason: 'capability:blocked:profile_blocked' },
+    },
+    commitmentBlocked: { reason: 'capability:blocked:profile_blocked' },
+});
 
 describe('los siete perfiles bloqueados no comprometen al negocio', () => {
     it('hay siete y el registro no los perdió por el camino', () => {
@@ -187,7 +202,7 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
             const result = await executor.execute(
                 schemaName, tenantId, contactId, 'create_appointment',
                 { serviceId: 'svc-1', date: '2026-09-01', time: '10:00' },
-                conversationId, BLOCKED_INPUT,
+                conversationId, blockedInputFor('create_appointment'),
             );
 
             expect(result).toMatchObject({ error: 'capability_blocked', shouldHandoff: true });
@@ -200,7 +215,7 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
 
             const result = await executor.execute(
                 schemaName, tenantId, contactId, 'check_availability',
-                { date: '2026-09-01' }, conversationId, BLOCKED_INPUT,
+                { date: '2026-09-01' }, conversationId, blockedInputFor('check_availability'),
             );
 
             expect(result?.error).not.toBe('capability_blocked');
@@ -251,21 +266,48 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
                 toolExecutor as any,
             );
 
-            await engine.process(
+            const blocked = await engine.process(
                 schemaName, tenantId, conversationId, contactId, 'dale',
                 {
                     toolsConfig: { payments: { enabled: true } },
+                    authority: {
+                        // La tool está PUBLICADA: lo que la frena es el bloqueo
+                        // del perfil, no la falta de publicación.
+                        ...authorityFor('refund_payment'),
+                        commitmentBlocked: { reason: 'capability:blocked:profile_blocked' },
+                    },
                     commitmentBlocked: { reason: 'capability:blocked:profile_blocked' },
                 },
             );
 
-            expect(toolExecutor.execute).toHaveBeenCalledWith(
+            // El paso se detiene en el motor, ANTES del ejecutor. Antes llegaba
+            // hasta el ejecutor y volvía denegado: el resultado para el cliente
+            // era el mismo, pero el reembolso se dejaba pedido y el ledger
+            // abría y cerraba un asiento por una operación que nunca podía
+            // correr. Ahora el motor toma la misma decisión con los mismos
+            // datos y la escalada dice POR QUÉ.
+            expect(toolExecutor.execute).not.toHaveBeenCalled();
+            expect(blocked).toMatchObject({
+                handoff: true,
+                completed: false,
+                handoffReason: 'procedure_tool_commitment_blocked:refund_payment',
+            });
+        });
+
+        it('y el ejecutor sigue siendo la puerta si el paso llega igual', async () => {
+            // La defensa del motor no reemplaza a la del ejecutor: un llamador
+            // futuro que arme el paso por otro camino tiene que chocar con la
+            // misma puerta. Por eso se verifica de los dos lados.
+            const { executor, prisma } = buildExecutor();
+
+            const result = await executor.execute(
                 schemaName, tenantId, contactId, 'refund_payment',
                 { paymentReference: 'pay-1' }, conversationId,
-                expect.objectContaining({
-                    commitmentBlocked: { reason: 'capability:blocked:profile_blocked' },
-                }),
+                blockedInputFor('refund_payment'),
             );
+
+            expect(result).toMatchObject({ error: 'capability_blocked', shouldHandoff: true });
+            expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
         });
 
         it('un paso no autorizado por el contrato no se ejecuta', () => {
@@ -277,11 +319,19 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
 
             // El contrato publicó SOLO lecturas: el paso que pide un writer no
             // está en la lista y por lo tanto no está autorizado.
-            const authorized = (engine as any).toolStepAuthorized(
-                { authorisedTools: ['search_knowledge_base', 'get_insurance_plans'], toolsConfig: {} },
-                'file_claim',
-            );
-            expect(authorized).toBe(false);
+            //
+            // Los argumentos van (tool, agente). Estaban al revés, y el caso
+            // pasaba en verde por eso: el objeto llegaba como nombre de tool y
+            // la cadena `'file_claim'` como agente, así que la función salía por
+            // `agent.toolsConfig === undefined` sin mirar nunca la lista
+            // publicada. Habría dado `false` con cualquier entrada.
+            const agent = {
+                authority: authorityFor('search_knowledge_base', 'get_insurance_plans'),
+                toolsConfig: {},
+            };
+            expect((engine as any).toolStepAuthorized('file_claim', agent)).toBe(false);
+            // Y el contrapunto que faltaba: lo que SÍ publicó, pasa.
+            expect((engine as any).toolStepAuthorized('get_insurance_plans', agent)).toBe(true);
         });
     });
 
@@ -296,7 +346,7 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
 
             const result = await executor.execute(
                 schemaName, tenantId, contactId, tool,
-                { amount: 1000 }, conversationId, BLOCKED_INPUT,
+                { amount: 1000 }, conversationId, blockedInputFor(tool),
             );
 
             expect(result).toMatchObject({ error: 'capability_blocked' });
@@ -311,7 +361,7 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
 
             const result = await executor.execute(
                 schemaName, tenantId, contactId, 'mcp__crm__create_deal',
-                {}, conversationId, BLOCKED_INPUT,
+                {}, conversationId, blockedInputFor('mcp__crm__create_deal'),
             );
 
             // Sin cliente MCP inyectado no hay aprobación que leer, y
@@ -337,7 +387,7 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
 
             const result = await executor.execute(
                 schemaName, tenantId, contactId, 'mcp__crm__lookup',
-                {}, conversationId, BLOCKED_INPUT,
+                {}, conversationId, blockedInputFor('mcp__crm__lookup'),
             );
 
             expect(result?.error === 'capability_blocked').toBe(blocked);
@@ -348,7 +398,7 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
 
             for (const tool of ['get_restaurant_menu', 'get_fitness_schedule', 'list_clinic_services']) {
                 const result = await executor.execute(
-                    schemaName, tenantId, contactId, tool, {}, conversationId, BLOCKED_INPUT,
+                    schemaName, tenantId, contactId, tool, {}, conversationId, blockedInputFor(tool),
                 );
                 expect(result?.error).not.toBe('capability_blocked');
             }
@@ -371,7 +421,13 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
             const { executor } = buildExecutor();
             const result = await executor.execute(
                 schemaName, tenantId, contactId, 'create_appointment', {}, conversationId,
-                { commitmentBlocked: { reason: 'capability:unresolved:resolver_error' } },
+                {
+                    authority: {
+                        ...authorityFor('create_appointment'),
+                        commitmentBlocked: { reason: 'capability:unresolved:resolver_error' },
+                    },
+                    commitmentBlocked: { reason: 'capability:unresolved:resolver_error' },
+                },
             );
             expect(result).toMatchObject({ error: 'capability_blocked', shouldHandoff: true });
         });
@@ -381,7 +437,13 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
 
             const result = await executor.execute(
                 schemaName, tenantId, contactId, 'place_order', {}, conversationId,
-                { commitmentBlocked: { reason: 'capability:unresolved:plan_unreadable' } },
+                {
+                    authority: {
+                        ...authorityFor('place_order'),
+                        commitmentBlocked: { reason: 'capability:unresolved:plan_unreadable' },
+                    },
+                    commitmentBlocked: { reason: 'capability:unresolved:plan_unreadable' },
+                },
             );
 
             expect(result.reason).toBe('capability:unresolved:plan_unreadable');

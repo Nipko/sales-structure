@@ -252,6 +252,16 @@ describe('AgentTestService read-only tool policy', () => {
             expect(call[2]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
             expect(AGENT_TEST_SAFE_TOOL_NAMES).toContain(call[3]);
             expect(call[6]).toEqual({
+                // La autoridad del banco de pruebas alcanza EXACTAMENTE la tool
+                // que el filtro de la lista segura acaba de aprobar: aprobar una
+                // lectura no habilita a la de al lado.
+                authority: {
+                    source: 'agent_test',
+                    allowedTools: [call[3]],
+                    resolvedAt: expect.stringMatching(
+                        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+                    ),
+                },
                 evalMode: false,
                 readOnly: true,
                 executionContext: AGENT_TEST_EXECUTION_CONTEXT,

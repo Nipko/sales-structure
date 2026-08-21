@@ -16,6 +16,7 @@ import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evid
 import {
     LodgingSorResolution,
     LodgingSourceOfTruthService,
+    localWriterAllowed,
 } from '../channel-manager/lodging-source-of-truth.service';
 import {
     describePaymentPolicy,
@@ -63,24 +64,38 @@ export class PropertiesService {
     ) {}
 
     /**
-     * Who owns this unit's calendar right now. `local` when there is no
-     * resolver wired or no Channel Manager connection — that is the ordinary
-     * case, not a degraded one.
+     * Who owns this unit's calendar right now.
+     *
+     * `local` cuando no hay resolutor cableado o el tenant no tiene Channel
+     * Manager: ese es el caso ordinario, no uno degradado.
+     *
+     * Lo que cambió: un fallo del resolutor ya **no** devuelve `local`. Este
+     * `catch` era el tercero de los tres caminos por los que una unidad de
+     * Hostaway terminaba escribiéndose acá — los otros dos estaban dentro del
+     * propio resolutor. No poder averiguar quién administra el calendario no
+     * autoriza a escribir en él.
      */
     private async resolveSor(
         tenantId: string | undefined,
         schemaName: string,
         propertyId: string,
     ): Promise<LodgingSorResolution> {
-        const fallback: LodgingSorResolution = {
-            sor: 'local', connected: false, stale: false, health: 'unknown',
-        };
-        if (!this.lodgingSor || !tenantId) return fallback;
+        // Sin resolutor no hay integración en este despliegue, y sin tenantId
+        // no hay a quién preguntarle: las dos son ausencias, no fallas.
+        if (!this.lodgingSor || !tenantId) {
+            return { sor: 'local', connected: false, stale: false, health: 'unknown' };
+        }
         try {
             return await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId);
         } catch (error: any) {
-            this.logger.warn(`[Lodging] SoR resolution failed: ${error?.message}`);
-            return fallback;
+            this.logger.error(`[Lodging] SoR resolution failed: ${error?.message}`);
+            return {
+                sor: 'unknown',
+                connected: false,
+                stale: true,
+                health: 'unknown',
+                writerBlockedReason: 'ownership_unknown',
+            };
         }
     }
 
@@ -348,11 +363,16 @@ export class PropertiesService {
             // how old it is; a Channel Manager mirror is not a live PMS read.
             source: sor.sor === 'channel_manager' ? 'channel_manager' : 'tenant_db',
             asOf: sor.lastSyncedAt || new Date().toISOString(),
-            stale: sor.sor === 'channel_manager' ? sor.stale : false,
+            // `unknown` también viaja como vieja. Es la mitad de lectura del
+            // mismo defecto: si no se pudo determinar quién administra el
+            // calendario, esta respuesta se calculó SÓLO con el registro local
+            // y decir `stale: false` la presenta como completa. Puede faltarle
+            // justo la noche que el PMS ya vendió.
+            stale: sor.sor === 'local' ? false : sor.stale,
             health: sor.health,
             // When the PMS owns the calendar, no conversational writer may
             // close this stay — say so here so the tool never promises it.
-            canBookDirectly: sor.sor === 'local',
+            canBookDirectly: localWriterAllowed(sor),
             writerBlockedReason: sor.writerBlockedReason ?? null,
             nightPrice: Number(property.night_price),
             nights: stay.nights,
@@ -534,13 +554,20 @@ export class PropertiesService {
         // real calendar never learns about — a double booking with extra steps.
         // Blocking is the honest outcome until write-back is certified.
         const sor = await this.resolveSor(data.tenantId, schemaName, propertyId);
-        if (sor.sor === 'channel_manager') {
+        if (!localWriterAllowed(sor)) {
+            // Se pregunta "¿está permitido?" y no "¿es del channel manager?".
+            // La comparación anterior bloqueaba UN estado y dejaba pasar todo
+            // lo demás por omisión — incluido el estado que significa "no sé
+            // quién administra este calendario", que es el que menos debe pasar.
+            const ownershipUnknown = sor.sor === 'unknown';
             throw new ConflictException({
-                error: 'channel_manager_owns_calendar',
+                error: ownershipUnknown ? 'lodging_ownership_unknown' : 'channel_manager_owns_calendar',
                 provider: sor.provider,
                 asOf: sor.lastSyncedAt ?? null,
                 stale: sor.stale,
-                message: 'Este alojamiento se administra desde el channel manager del negocio. La reserva la confirma el equipo.',
+                message: ownershipUnknown
+                    ? 'No pude confirmar la disponibilidad de este alojamiento en este momento. El equipo te confirma la reserva.'
+                    : 'Este alojamiento se administra desde el channel manager del negocio. La reserva la confirma el equipo.',
             });
         }
         const contactId = assertOptionalContactId(data.contactId);

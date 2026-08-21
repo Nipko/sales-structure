@@ -1,6 +1,9 @@
 import { ConflictException } from '@nestjs/common';
 import { PropertiesService } from './properties.service';
-import { LodgingSourceOfTruthService } from '../channel-manager/lodging-source-of-truth.service';
+import {
+    LodgingSourceOfTruthService,
+    localWriterAllowed,
+} from '../channel-manager/lodging-source-of-truth.service';
 
 /**
  * Dos registros vendían las mismas noches.
@@ -291,5 +294,121 @@ describe('el resolutor de fuente de verdad', () => {
         expect(redis.setJson).toHaveBeenCalledWith(
             `lodging:sor:${tenantId}:${PROPERTY_ID}`, expect.any(Object), expect.any(Number),
         );
+    });
+});
+
+/**
+ * ═══ "NO PUDE AVERIGUARLO" NO ES "ES LOCAL" ═══
+ *
+ * El archivo afirmaba que una propiedad que se sabe mapeada nunca se degrada a
+ * local por un error transitorio, "porque la fila del mapeo se lee en la misma
+ * consulta que la config". Eran dos lecturas separadas y las dos devolvían
+ * `local` al fallar; el llamador tenía un tercer `catch` que hacía lo mismo.
+ *
+ * `local` es el estado que PERMITE escribir. Cada uno de esos tres caminos era
+ * una forma de que el agente vendiera una noche que Hostaway ya había vendido.
+ */
+describe('una unidad mapeada nunca degrada a escritura local', () => {
+    function buildResolver(configResult: any, listingResult: any[] | Error) {
+        const executeInTenantSchema = listingResult instanceof Error
+            ? jest.fn().mockRejectedValue(listingResult)
+            : jest.fn().mockResolvedValue(listingResult);
+        const redis = {
+            getJson: jest.fn().mockResolvedValue(null),
+            setJson: jest.fn(),
+            del: jest.fn(),
+        };
+        const getConfig = configResult instanceof Error
+            ? jest.fn().mockRejectedValue(configResult)
+            : jest.fn().mockResolvedValue(configResult);
+        const service = new LodgingSourceOfTruthService(
+            { executeInTenantSchema } as any, redis as any, { getConfig } as any,
+        );
+        for (const level of ['warn', 'error', 'debug'] as const) {
+            jest.spyOn((service as any).logger, level).mockImplementation(() => undefined);
+        }
+        return { service, redis, getConfig, executeInTenantSchema };
+    }
+
+    const mapped = [{ id: LISTING_ID, provider: 'hostaway', last_synced_at: new Date().toISOString() }];
+
+    it('la config ilegible ya no convierte una unidad de Hostaway en local', async () => {
+        // `getConfig` DESCIFRA: una clave de cifrado rotada bastaba para que
+        // esta unidad pasara a escribirse localmente. Ahora el mapeo se lee
+        // primero y no depende de poder descifrar nada.
+        const { service } = buildResolver(new Error('bad decrypt'), mapped);
+
+        const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
+
+        expect(result).toMatchObject({
+            sor: 'channel_manager',
+            listingId: LISTING_ID,
+            // El proveedor sale de la fila, no de la config que no se pudo leer.
+            provider: 'hostaway',
+            writerBlockedReason: 'channel_manager_owns_calendar',
+        });
+    });
+
+    it('una consulta que falla es `unknown`, no `local`', async () => {
+        const { service } = buildResolver(
+            { provider: 'hostaway', syncInterval: 60 },
+            new Error('canceling statement due to statement timeout'),
+        );
+
+        const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
+
+        expect(result.sor).toBe('unknown');
+        expect(localWriterAllowed(result)).toBe(false);
+        expect(result.writerBlockedReason).toBe('ownership_unknown');
+    });
+
+    it('un permiso denegado tampoco concluye `local`', async () => {
+        const denied: any = new Error('permission denied for table cm_listings');
+        denied.code = '42501';
+        const { service } = buildResolver({ provider: 'hostaway', syncInterval: 60 }, denied);
+
+        expect((await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID)).sor)
+            .toBe('unknown');
+    });
+
+    it('la tabla ausente SÍ concluye `local`: es una respuesta, no una falla', async () => {
+        // Es el único error que puede concluir `local`, y por eso se reconoce
+        // por el código de PostgreSQL y no por "algo salió mal".
+        const absent: any = new Error('relation "tenant_x.cm_listings" does not exist');
+        absent.code = '42P01';
+        const { service } = buildResolver({ provider: 'hostaway', syncInterval: 60 }, absent);
+
+        const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
+
+        expect(result).toMatchObject({ sor: 'local', connected: true, provider: 'hostaway' });
+        expect(localWriterAllowed(result)).toBe(true);
+    });
+
+    it('`unknown` no se cachea: un tropiezo no bloquea un minuto entero', async () => {
+        const { service, redis } = buildResolver(
+            { provider: 'hostaway', syncInterval: 60 }, new Error('connection reset'),
+        );
+
+        await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
+
+        expect(redis.setJson).not.toHaveBeenCalled();
+    });
+
+    it('...y una decisión firme sí se cachea', async () => {
+        const { service, redis } = buildResolver({ provider: 'hostaway', syncInterval: 60 }, mapped);
+        await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
+        expect(redis.setJson).toHaveBeenCalled();
+    });
+
+    it('sin mapeo y con la config ilegible sigue siendo local: no hay nada que proteger', async () => {
+        // El tenant común no tiene channel manager. Bloquearle las reservas
+        // directas porque una lectura tropezó sería romper a la mayoría para
+        // proteger a la minoría — y acá no hay unidad puenteada que proteger.
+        const { service } = buildResolver(new Error('settings unreadable'), []);
+
+        const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
+
+        expect(result.sor).toBe('local');
+        expect(localWriterAllowed(result)).toBe(true);
     });
 });

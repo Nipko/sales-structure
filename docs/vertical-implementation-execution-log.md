@@ -1728,6 +1728,49 @@ npm run test:bootstrap → 1 passed (sin errores de DI)
 jest apps/api     → 3087 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U58 — "No pude averiguarlo" se leía como "es local", y local es el estado que escribe
+
+**P0-B · punto 7 — una unidad mapeada nunca puede degradar a escritura local**
+
+El archivo lo decía con todas las letras:
+
+> *"What never fails open is the opposite direction — a property known to be mapped is never downgraded to local by a transient error, **because the mapping row is read in the same query as the config**."*
+
+Las dos afirmaciones eran falsas. Son **dos** lecturas separadas, y las dos devolvían `local` al fallar. Sumado al `catch` del llamador, había **tres caminos** por los que una unidad que administra Hostaway terminaba escribiéndose en el registro local:
+
+1. `getConfig(tenantId)` fallaba → `return localOnly`. Y `getConfig` **descifra**: una clave de cifrado rotada, un `settings` corrupto o un timeout contra `tenants` bastaban.
+2. La consulta a `cm_listings` fallaba → `return { ...localOnly, connected: true }`. El comentario ahí decía *"the table may not exist yet for this tenant, which simply means no property is bridged"* — conflando "esa tabla no existe" (una respuesta) con "la consulta falló" (no saber).
+3. `properties.service.resolveSor` tenía su propio `catch` → `fallback` con `sor: 'local'`.
+
+`local` no es un estado neutro: es **el que permite escribir**. Cada uno de esos tres caminos era una forma de vender una noche que el PMS ya había vendido — la única falla que le cuesta al anfitrión el huésped y la reseña.
+
+**El arreglo es el orden de lectura, no un `try` más.** El mapeo se lee **primero**, porque es la verdad sobre quién administra la unidad y no depende de poder leer ni descifrar la config. Y aparece un tercer estado: `unknown`.
+
+- `42P01` (la tabla no existe) es una **respuesta**: este tenant nunca puenteó nada → `local`. Es el único error que puede concluir `local`, y se reconoce por el código de PostgreSQL, no por "algo salió mal".
+- Cualquier otra falla → `unknown`, y `unknown` no escribe.
+- Con la unidad mapeada, el proveedor sale de **la fila**, no de la config: el bloqueo ya no depende de un dato que sólo sirve para redactar el mensaje.
+
+**`localWriterAllowed()` en vez de comparar contra un estado.** La guarda era `if (sor.sor === 'channel_manager') throw` — bloquea **un** estado y deja pasar todo lo demás por omisión. Con un estado nuevo, el que más había que bloquear habría pasado. Ahora se pregunta "¿está permitido?".
+
+**La mitad de lectura del mismo defecto.** `checkAvailability` reportaba `stale: sor.sor === 'channel_manager' ? sor.stale : false`. Con `unknown`, eso decía `stale: false`: una respuesta calculada **sólo** con el registro local, presentada como completa, a la que puede faltarle justo la noche que el PMS ya vendió. Ahora sólo `local` reporta frescura plena.
+
+**`unknown` no se cachea.** Guardarlo convertiría el tropiezo de una consulta en un minuto entero de reservas directas bloqueadas para ese alojamiento. La próxima llamada vuelve a preguntar.
+
+**ADR — por qué `unknown` bloquea y no advierte.** La alternativa era dejar escribir y marcar la reserva como "a confirmar". Se descartó: la fila local ya existe y ya ocupó la noche en nuestro registro; el aviso viaja a un humano que puede tardar horas, y mientras tanto el agente ya la ofrece como vendida. Bloquear cuesta un mensaje; escribir cuesta la noche vendida dos veces.
+
+**Riesgos que quedan**
+- `invalidate(tenantId)` **sin** `propertyId` no borra nada: no hay forma barata de enumerar las claves, y la ventana la acota el TTL de 60s. Después de que un sync mapee una unidad nueva, una reserva directa puede colarse durante ese minuto. Es trabajo interno pendiente —un índice de propiedades por tenant, o un sello de versión por tenant en la clave—, no un bloqueo.
+- El texto `relation ... cm_listings ... does not exist` se acepta como equivalente a `42P01` porque Prisma no siempre preserva el código. Es deliberadamente estrecho, pero sigue siendo comparar contra un mensaje.
+- La escritura de vuelta a Hostaway sigue sin existir: el estado correcto de una unidad mapeada es "lo confirma el equipo". Eso es **bloqueo externo** (credenciales y sandbox), sin cambios.
+
+**Pruebas** — `lodging-source-of-truth.spec.ts` (+7, 23 en total).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api     → 3094 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1836,7 +1879,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 4 | Separar tools core/globales, verticales, proveedor y MCP | ✅ **U56** |
 | 5 | Handoff STOP sólo ante operación denegada | ✅ **U55** |
 | 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57** — la cadena real sin mocks entre las piezas que deciden, contra la misma función que corre en producción; falta el *orden* del turno (`processIncomingMessage`) y una corrida contra base real |
-| 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ⏳ pendiente |
+| 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ✅ **U58** |
 | 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ⏳ pendiente |
 | 9 | Unificar freshness, cron y estado mostrado en UI | ⏳ pendiente |
 | 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ⏳ pendiente |

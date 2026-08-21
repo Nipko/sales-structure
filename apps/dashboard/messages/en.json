@@ -931,6 +931,32 @@
     }
   },
   "inbox": {
+    "activeObjects": {
+      "title": "Open right now",
+      "loading": "Looking up what they have open…",
+      "failed": "Could not read what this contact has open. That does not mean they have nothing.",
+      "partial": "Partial: one of the lookups did not answer.",
+      "open": "Open",
+      "kind": {
+        "appointment": "Appointment",
+        "order": "Order",
+        "food_order": "Order",
+        "property_booking": "Booking",
+        "tour_booking": "Tour booking",
+        "treatment_plan": "Treatment plan",
+        "treatment_session": "Session",
+        "service_request": "Request",
+        "photo_session": "Photo session",
+        "class_booking": "Class",
+        "membership": "Membership",
+        "enrollment": "Enrolment",
+        "insurance_policy": "Policy",
+        "insurance_claim": "Claim",
+        "insurance_quote": "Quote",
+        "professional_case": "Case",
+        "pet": "Pet"
+      }
+    },
     "title": "Inbox",
     "live": "LIVE",
     "noConversation": "Select a conversation to view messages",

@@ -37,6 +37,9 @@ export * from './navigation-plan-gate';
 // ---- Operating is not managing the catalogue ----
 export * from './navigation-surface-kind';
 
+// ---- Where a human opens the object the agent is talking about ----
+export * from './active-object-deep-link';
+
 // ---- What each profile calls the things it works with ----
 export * from './subtype-terminology';
 export * from './subtype-eval-pack';

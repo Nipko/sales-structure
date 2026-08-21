@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { api } from "@/lib/api";
+import { ActiveObjectsCard } from "@/components/inbox/ActiveObjectsCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
@@ -2311,6 +2312,15 @@ export default function InboxPage() {
                                 )}
                             </div>
                         </div>
+
+                        {/* El objeto del que se está hablando: lo mismo que ve
+                            el agente de IA en cada turno, con su enlace. */}
+                        {activeTenantId && (
+                            <ActiveObjectsCard
+                                tenantId={activeTenantId}
+                                conversationId={selectedConv.id}
+                            />
+                        )}
 
                         {/* Channel Info Card */}
                         <div className="rounded-xl border border-border bg-muted/30 p-3.5 mb-4">

@@ -675,6 +675,12 @@ export const api = {
         apiDelete(`/agent-console/conversation/${tenantId}/${conversationId}/message/${messageId}`),
     bulkArchiveConversations: (tenantId: string, ids: string[]) =>
         apiPost(`/agent-console/conversations/${tenantId}/bulk-archive`, { conversationIds: ids }),
+    /**
+     * Los objetos operativos abiertos del contacto de una conversación: el
+     * mismo contrato acotado que recibe el agente en cada turno.
+     */
+    getConversationActiveObjects: (tenantId: string, conversationId: string) =>
+        apiGet<{ items: any[] }>(`/conversations/${tenantId}/${conversationId}/active-objects`),
     bulkDeleteConversations: (tenantId: string, ids: string[]) =>
         apiPost(`/agent-console/conversations/${tenantId}/bulk-delete`, { conversationIds: ids }),
 

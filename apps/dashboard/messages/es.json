@@ -931,6 +931,32 @@
     }
   },
   "inbox": {
+    "activeObjects": {
+      "title": "En curso",
+      "loading": "Buscando lo que tiene abierto…",
+      "failed": "No se pudo leer lo que este contacto tiene abierto. No quiere decir que no tenga nada.",
+      "partial": "Falta parte: una de las consultas no respondió.",
+      "open": "Abrir",
+      "kind": {
+        "appointment": "Cita",
+        "order": "Pedido",
+        "food_order": "Pedido",
+        "property_booking": "Reserva",
+        "tour_booking": "Reserva de tour",
+        "treatment_plan": "Plan de tratamiento",
+        "treatment_session": "Sesión",
+        "service_request": "Solicitud",
+        "photo_session": "Sesión fotográfica",
+        "class_booking": "Clase",
+        "membership": "Membresía",
+        "enrollment": "Inscripción",
+        "insurance_policy": "Póliza",
+        "insurance_claim": "Siniestro",
+        "insurance_quote": "Cotización",
+        "professional_case": "Caso",
+        "pet": "Mascota"
+      }
+    },
     "title": "Inbox",
     "live": "EN VIVO",
     "noConversation": "Selecciona una conversación para ver los mensajes",

@@ -840,3 +840,31 @@ En las tres, quien atiende conversaciones no podía abrir la pantalla — perdí
 npx tsc --noEmit (shared + dashboard)  → exit 0
 jest apps/dashboard → 178 passed / 22 suites, 0 fallos
 ```
+
+### U26 — El Inbox muestra el objeto del que se está hablando
+
+**Fase 4 · Épica D · Paso 5 de §8.5 (panel contextual con allowlist de datos)**
+
+El panel del Inbox mostraba el contacto y el canal. Quien atendía leía *"confirmame la reserva"* y tenía que adivinar cuál, salir a buscarla y volver — mientras el agente de IA recibía ese mismo objeto **en cada turno** desde hacía un release, en `activeObjects`.
+
+**ADR-038 — El panel ve lo mismo que el modelo, ni más ni menos.**
+El endpoint devuelve el contrato `ActiveObjectContextItemV1` tal cual: tipo, estado, clase de estado, fuente, referencia, etiqueta, fechas, importe, moneda y sujeto. Esa lista **ya es** la allowlist que pide el plan, revisada cuando se construyó para el prompt; inventar una segunda para la pantalla habría creado dos que divergen. Una prueba lee el componente y falla si renderiza un campo fuera de la lista — sin eso, el panel deja de ser una lista revisada y pasa a ser una ventana a la base.
+
+**ADR-039 — Enlace declarado o ningún enlace.**
+`ACTIVE_OBJECT_DEEP_LINKS` decide para **los 24 tipos**; `professional_case` vale `null` porque todavía no tiene pantalla propia, y eso es una decisión escrita, no un olvido. Una prueba verifica que todo enlace apunte a una ruta que el registro de navegación realmente tiene: una ruta inventada termina en 404, que es peor que no ofrecer enlace.
+
+**Tres estados distintos, tres textos distintos.** Cargando, vacío (no se muestra nada), caído ("no se pudo leer lo que este contacto tiene abierto — **no quiere decir que no tenga nada**") y parcial ("una de las consultas no respondió"). Una consulta caída que se ve igual que "no tiene nada abierto" hace que quien atiende actúe sobre una ausencia falsa: la misma regla que el contrato de lectura impone al agente, aplicada a la persona.
+
+**Sin contacto no es un error.** Una conversación recién abierta por un número desconocido no tiene contacto todavía; el endpoint devuelve vacío en vez de fallar y mandar a buscar un problema que no existe.
+
+**Un defecto propio, encontrado al arrancar:** el mapa de enlaces importaba `ACTIVE_OBJECT_KINDS` **como valor** desde `index.ts`, que re-exporta este archivo mucho antes de definir esa constante. El resultado era `undefined` en tiempo de evaluación y Nest fallaba al arrancar, lejos del archivo culpable. Ahora se importa solo el tipo y la lista se deriva de las propias claves del mapa.
+
+**Pruebas** — `active-object-deep-link.spec.ts` (5 casos): hay decisión para **todos** los tipos; todo enlace apunta a una ruta real del registro; los objetos operativos van a su registro; `null` para el que no tiene pantalla; y el componente **sólo** renderiza campos del contrato acotado.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard)  → exit 0
+jest src/app.bootstrap.spec.ts → 1/1 ✅ (DI limpio)
+jest apps/api       → 2621 passed / 290 suites, 0 fallos
+jest apps/dashboard → 183 passed / 23 suites, 0 fallos
+```

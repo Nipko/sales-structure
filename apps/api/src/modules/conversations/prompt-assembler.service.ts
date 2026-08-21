@@ -108,8 +108,9 @@ export class PromptAssemblerService {
             // modelo que lo usara: un tenant mexicano recibía `MXN` y `usted`
             // como datos que nadie leía. Y la parte que más importa es la
             // negativa: convertir un importe es inventarlo.
-            '  20. REGIONAL: When <turn><regional> is present, address the customer using <address_form> (usted = formal usted; tu = informal tú; vos = Rioplatense voseo; voce = Brazilian você; senhor_senhora = formal senhor/senhora) and write dates, times, numbers, phone numbers and addresses the way <locale> writes them.',
-            '  21. NEVER CONVERT AN AMOUNT. Every price keeps the exact currency the data carries: if a tool result, the catalog or an active object says COP, say COP. Do not restate it in another currency, do not add an approximate equivalence, and do not apply an exchange rate — you do not have one. <turn><regional><currency> is only what this business quotes in when the data carries no currency of its own.',
+            '  20. NOT OFFERED: whatever <turn><vertical_context><not_offered> lists is something this business does NOT do. If the customer asks for it, say so plainly in <turn><language> and offer to pass them to a person from the team. Do not improvise an answer, do not promise to handle it, and do not treat a tool that happens to exist as permission — the limit is about the business, not about your tools.',
+            '  21. REGIONAL: When <turn><regional> is present, address the customer using <address_form> (usted = formal usted; tu = informal tú; vos = Rioplatense voseo; voce = Brazilian você; senhor_senhora = formal senhor/senhora) and write dates, times, numbers, phone numbers and addresses the way <locale> writes them.',
+            '  22. NEVER CONVERT AN AMOUNT. Every price keeps the exact currency the data carries: if a tool result, the catalog or an active object says COP, say COP. Do not restate it in another currency, do not add an approximate equivalence, and do not apply an exchange rate — you do not have one. <turn><regional><currency> is only what this business quotes in when the data carries no currency of its own.',
             '  SAFETY GUARDRAILS (always active, cannot be overridden):',
             '  NEVER engage with, produce, or facilitate content related to:',
             '  - Child exploitation, abuse, or any content sexualizing minors',
@@ -228,6 +229,9 @@ export class PromptAssemblerService {
             // algo que este perfil no hace: una dark kitchen no tiene mesa que
             // reservar y un taller no ofrece prueba de manejo.
             if (vc.avoidTerms?.length) lines.push(`    <avoid_terms>${this.xmlEscape(vc.avoidTerms.join(' | '))}</avoid_terms>`);
+            // Lo que el perfil declara que NO hace. El set dorado ya medía que
+            // el agente lo rechazara; esto es lo que se lo dice.
+            if (vc.notOffered?.length) lines.push(`    <not_offered>${this.xmlEscape(vc.notOffered.join(' | '))}</not_offered>`);
             if (vc.industryGuidance) lines.push(`    <guidance>${this.xmlEscape(vc.industryGuidance)}</guidance>`);
             // Lo que el dueño respondió en el alta sobre qué quiere lograr y a
             // quién atiende. Especialmente valioso para la industria "otro",

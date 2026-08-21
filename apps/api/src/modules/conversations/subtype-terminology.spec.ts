@@ -135,6 +135,31 @@ describe('terminology in the assembled turn', () => {
         expect(prompt).toContain('<avoid_terms>reserva de mesa | salón</avoid_terms>');
     });
 
+    /**
+     * El set dorado mide que el agente rechace lo que su perfil declara que no
+     * hace. Hasta acá **nada se lo decía**: se medía al modelo adivinando.
+     */
+    it('carries the profile declared limits into the prompt', () => {
+        const prompt = assembler.assemble(config, {
+            verticalContext: {
+                industry: 'salud',
+                subType: 'farmacia',
+                notOffered: ['expediente clinico', 'diagnostico'],
+            },
+        } as any);
+
+        expect(prompt).toContain('<not_offered>expediente clinico | diagnostico</not_offered>');
+    });
+
+    it('tells the model what to do with a declared limit', () => {
+        const contract = (assembler as any).buildContractLayer().toLowerCase();
+        expect(contract).toContain('not_offered');
+        expect(contract).toContain('does not do');
+        // La parte que evita el peor error: tener la tool no es tener permiso.
+        expect(contract).toContain('the limit is about the business, not about your tools');
+        expect(contract).toContain('pass them to a person');
+    });
+
     /** Sin términos propios el bloque no aparece: nada vacío que el modelo interprete. */
     it('omits the block for a profile with no word of its own', () => {
         const prompt = assembler.assemble(config, {
@@ -143,5 +168,6 @@ describe('terminology in the assembled turn', () => {
 
         expect(prompt).not.toContain('<primary_object_noun>');
         expect(prompt).not.toContain('<avoid_terms>');
+        expect(prompt).not.toContain('<not_offered>');
     });
 });

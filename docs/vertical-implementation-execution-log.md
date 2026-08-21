@@ -958,3 +958,25 @@ jest src/app.bootstrap.spec.ts → 1/1 ✅ (DI limpio)
 jest apps/api       → 2621 passed / 290 suites, 0 fallos
 jest apps/dashboard → 207 passed / 25 suites, 0 fallos
 ```
+
+### U31 — Se medía que el agente rechazara lo que nadie le había dicho
+
+**Fase 3 · Épica F · Pasos 1 y 2 (scope y límites del perfil)**
+
+U22 puso en el set dorado un escenario `declared_limit`: se le pide al agente algo que su perfil declara que **no** hace y se mide si lo rechaza con claridad. Esas exclusiones viven en el registro de perfiles desde U11 — y **nada se las decía al agente**. La prueba medía al modelo adivinando, no al sistema.
+
+Ahora el turno lleva `<not_offered>` y el contrato dice qué hacer con él: decirlo sin rodeos en el idioma del cliente y ofrecer pasar a una persona. Sin improvisar una respuesta y sin prometer gestionarlo.
+
+**La parte que evita el peor error:** *el límite es del negocio, no de tus herramientas*. Un perfil de salud declara que no lleva expediente clínico ni da diagnóstico; que exista una tool de tratamientos —porque otro subtipo de la misma industria la usa— no es permiso para hacerlo. Sin esa frase, un modelo con una herramienta disponible tiende a leer disponibilidad como autorización.
+
+**Un perfil que el registro no conoce no declara límites**, y no se le inventa ninguno: un límite falso hace que el agente rechace algo que el negocio **sí** hace, que es el error simétrico y peor de explicar.
+
+Se resuelve aparte de la terminología porque un perfil puede tener límites sin tener sustantivos propios — de hecho la mayoría está en ese caso.
+
+**Pruebas** — `subtype-terminology.spec.ts` (+2 casos): los límites llegan al turno; el contrato nombra el bloque, dice que no se hace, ofrece derivar y **contiene explícitamente** que el límite es del negocio y no de las herramientas. Y el caso de ausencia se amplía: sin límites declarados el bloque no aparece.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared)  → exit 0
+jest apps/api → 2623 passed / 290 suites, 0 fallos
+```

@@ -942,6 +942,15 @@ export interface VerticalContext {
     primaryObjectNoun?: string;
     primaryObjectNounPlural?: string;
     /**
+     * Lo que este perfil declara que NO hace.
+     *
+     * Vive en el registro de perfiles y alimenta el set dorado desde U22: se
+     * medía que el agente rechazara estas cosas y **nada se las decía**. Una
+     * prueba que exige un comportamiento que el prompt nunca pidió mide al
+     * modelo adivinando, no al sistema.
+     */
+    notOffered?: string[];
+    /**
      * Palabras que este perfil NO usa con el cliente.
      *
      * No es estilo: son términos que significan otra cosa en el rubro o que

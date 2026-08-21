@@ -19,7 +19,7 @@ import { DripSequenceService } from '../automation/drip-sequence.service';
 import {
     NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem,
     ModelTier, RoutingFactors,
-    localizedTerm, subtypeTerminologyFor,
+    localizedTerm, subtypeTerminologyFor, resolveSubtypeExperienceProfile,
     type LocalizedTerm,
 } from '@parallext/shared';
 import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
@@ -2029,6 +2029,26 @@ export class ConversationsService {
                 verticalConfig?.industry,
                 verticalConfig?.subType,
             );
+            // Lo que el perfil declara que NO hace. Se resuelve aparte de la
+            // terminología porque un perfil puede tener límites sin tener
+            // sustantivos propios — de hecho la mayoría está en ese caso.
+            try {
+                const profile = resolveSubtypeExperienceProfile(
+                    verticalConfig?.industry,
+                    verticalConfig?.subType ?? null,
+                );
+                if (profile.exclusions?.length) {
+                    turnContext.verticalContext = {
+                        ...(turnContext.verticalContext || {}),
+                        notOffered: [...profile.exclusions],
+                    };
+                }
+            } catch {
+                // Un perfil que el registro no conoce no declara límites. No
+                // inventar ninguno es lo correcto: un límite falso hace que el
+                // agente rechace algo que el negocio sí hace.
+            }
+
             if (subtypeTerms) {
                 const lang = userLanguage || 'es';
                 const pick = (term?: LocalizedTerm) => localizedTerm(term, lang) || undefined;

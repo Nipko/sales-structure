@@ -1453,6 +1453,33 @@ jest apps/api       → 2992 passed / 304 suites (1 skipped), 0 fallos
 jest apps/dashboard →  219 passed /  27 suites, 0 fallos
 ```
 
+### U50 — El objeto primario del rubro no tenía pantalla
+
+**Pendiente interno 19 (`professional_case`)**
+
+El manifiesto declara `primaryObject: 'professional_case'` para `servicios_profesionales` y le daba **una sola ruta: `/admin/appointments`**. El objeto central del rubro no tenía superficie, así que el equipo abría el **embudo de ventas** y leía "Oportunidades", "Valor del negocio" y "Probabilidad de cierre" sobre el expediente de un cliente. Y el enlace de un caso mencionado en el Inbox iba a `null` —sin destino— porque no había a dónde.
+
+Es la contradicción exacta que la regla de navegación ya nombra: dos objetos no comparten etiqueta, y acá el objeto operativo del rubro estaba usando la etiqueta comercial de otro.
+
+**No se creó una tabla.** Un caso **es** una oportunidad del embudo: eso ya estaba decidido y `get_case_status` lo usa así desde hace releases. Crear `professional_cases` habría partido el dato en dos y dejado al agente y al panel mirando registros distintos. Lo que faltaba era **leerlo con las palabras del rubro**: referencia, etapa, cuándo se abrió, cuándo se movió, de quién es.
+
+**La referencia corta es la MISMA que el agente le dice al cliente por chat** (los primeros 8 caracteres del id, en mayúsculas). Que el equipo viera otra habría hecho imposible cruzarlas cuando el cliente llama por teléfono y la repite.
+
+**Sólo lectura, a propósito.** Abrir y mover un caso pasa por el motor de transiciones del embudo, con las reglas que el estudio configuró. Una escritura paralela desde esta pantalla las volvería decorativas — el mismo motivo por el que U47 no le dio al agente una tool para mover etapas.
+
+**Cinco registros que había que tocar** para que la pantalla exista de verdad, y los cuatro contratos que lo verificaron: el registro canónico de navegación, la clasificación de superficie (`register`, no `catalogue`: clasificarla como catálogo la habría puesto detrás del permiso de configuración que un agente humano no tiene), el resolutor de items por capacidad, la ruta del manifiesto y `roles.ts` —deny-by-default: sin regla explícita, la pantalla existe y nadie puede abrirla—.
+
+Las cuatro pruebas de contrato del dashboard **fallaron en el primer intento** y cada una señaló un registro que faltaba. Es exactamente para eso que existen.
+
+**i18n**: `cases.*` y `nav.items.cases` en los 4 idiomas.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api       → 2992 passed / 304 suites (1 skipped), 0 fallos
+jest apps/dashboard →  220 passed /  27 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1567,5 +1594,5 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~16~~ | ✅ cerrado en **U45** |
 | ~~17~~ | ✅ cerrado en **U46** |
 | ~~18~~ | ✅ cerrado entre **U47** (writers CRM) y **U48** (Active Objects) |
-| 19 | ◐ **Hecho en U49**: alquiler y guardería completos — conductor, depósito, contrato, kilometraje, jaula, compatibilidad y grupo de patio, con contrato declarado, validación, endpoint propio, editor y **vista de ocupación por recurso**. Queda: plantillas/semántica de turismo, superficie de `professional_case`, navegación y analítica restantes |
+| 19 | ◐ **Hecho en U49** (alquiler y guardería) y **U50** (superficie de `professional_case`). Queda: plantillas/semántica de turismo, y la analítica restante |
 | 20 | Scaffolding provider-neutral: outbox, webhook inbox, idempotencia, reconciliación y contract-test kit — con los writers externos apagados hasta tener sandbox |

@@ -43,6 +43,10 @@ export const NAVIGATION_SURFACE_KIND: Readonly<Record<string, NavigationSurfaceK
     // entregadas. Vivía detrás del permiso de catálogo mientras su catálogo
     // real —los paquetes— ni siquiera tenía pantalla.
     photoSessions: 'register',
+    // Un caso es un REGISTRO operativo: lo que el equipo opera, no lo que
+    // configura. Clasificarlo como catálogo lo habría puesto detrás del
+    // permiso de configuración que un agente no tiene.
+    cases: 'register',
 
     // ── Catálogos ─────────────────────────────────────────────────────
     properties: 'catalogue',

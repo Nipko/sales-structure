@@ -321,6 +321,7 @@
       "treatmentPlans": "Plans de traitement",
       "pets": "Animaux",
       "photoSessions": "Séances photo",
+      "cases": "Dossiers",
       "vehicles": "Véhicules",
       "resourceRentals": "Locations et séjours",
       "platformUsage": "Utilisation par tenant",
@@ -11199,6 +11200,22 @@
     "neverSynced": "Jamais synchronisé",
     "productsSynced": "{count} produits disponibles pour l’assistant",
     "footnote": "Sans produits synchronisés, l’assistant ne peut pas montrer de catalogue, même si l’outil est activé dans l’éditeur d’agent."
+  },
+  "cases": {
+    "title": "Dossiers",
+    "subtitle": "Les dossiers du cabinet : à quelle étape chacun se trouve et quand il a bougé pour la dernière fois.",
+    "filter_open": "Ouverts",
+    "filter_closed": "Clos",
+    "filter_all": "Tous",
+    "columnReference": "Référence",
+    "columnClient": "Client",
+    "columnStage": "Étape",
+    "columnLastUpdate": "Dernier mouvement",
+    "columnActions": "Actions",
+    "openConversation": "Voir la conversation",
+    "unknownClient": "Aucun client attribué",
+    "emptyTitle": "Pas encore de dossiers",
+    "emptyDescription": "Un dossier s’ouvre quand une demande avance dans le tunnel. L’agent peut en consulter l’état par chat dès qu’il existe."
   },
   "resourceRentals": {
     "title": "Locations et séjours",

@@ -321,6 +321,7 @@
       "treatmentPlans": "Treatment plans",
       "pets": "Pets",
       "photoSessions": "Photo sessions",
+      "cases": "Cases",
       "vehicles": "Vehicles",
       "resourceRentals": "Rentals & stays",
       "platformUsage": "Tenant usage",
@@ -11199,6 +11200,22 @@
     "neverSynced": "Never synced",
     "productsSynced": "{count} products available to the assistant",
     "footnote": "With no products synced the assistant cannot show a catalog, even if the tool is enabled in the agent editor."
+  },
+  "cases": {
+    "title": "Cases",
+    "subtitle": "The firm’s matters: what stage each one is in and when it last moved.",
+    "filter_open": "Open",
+    "filter_closed": "Closed",
+    "filter_all": "All",
+    "columnReference": "Reference",
+    "columnClient": "Client",
+    "columnStage": "Stage",
+    "columnLastUpdate": "Last movement",
+    "columnActions": "Actions",
+    "openConversation": "Open conversation",
+    "unknownClient": "No client assigned",
+    "emptyTitle": "No cases yet",
+    "emptyDescription": "A case opens when an enquiry advances in the funnel. The agent can look up its status over chat as soon as it exists."
   },
   "resourceRentals": {
     "title": "Rentals & stays",

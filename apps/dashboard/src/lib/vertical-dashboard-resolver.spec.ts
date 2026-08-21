@@ -33,6 +33,9 @@ const OPERATIONAL_ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, Vertic
   "/admin/treatment-plans": "treatmentPlans",
   "/admin/pets": "pets",
   "/admin/photo-sessions": "photoSessions",
+  // Los casos de un estudio: el objeto PRIMARIO del rubro, que hasta ahora
+  // no tenía pantalla y dejaba al equipo abriendo el embudo de ventas.
+  "/admin/cases": "cases",
   "/admin/inventory": "inventory",
   "/admin/orders": "orders",
 };

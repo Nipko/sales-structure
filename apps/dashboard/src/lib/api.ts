@@ -507,6 +507,13 @@ export const api = {
         apiGet<VerticalDefinitions>('/verticals/definitions/all'),
     getTenantUsers: (tenantId: string) => apiGet(`/tenants/${tenantId}/users`),
 
+    // --- Casos de un estudio ---
+    // Un caso ES una oportunidad del embudo; lo que cambia es el vocabulario
+    // con el que se lee. Sólo lectura: abrir y mover un caso pasa por el motor
+    // de transiciones, con las reglas que el estudio configuro.
+    listProfessionalCases: (tenantId: string, status?: "open" | "closed" | "all") =>
+        apiGet(`/professional-cases/${tenantId}${status && status !== "all" ? `?status=${status}` : ""}`),
+
     // --- Identidad regional ---
     // El perfil viaja con la PROCEDENCIA de cada valor. Sin ella el dueño ve
     // "Colombia" y no puede distinguir lo que declaró de lo que el sistema

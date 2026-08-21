@@ -121,6 +121,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "orders", pattern: "/admin/orders", titleKey: "nav.items.orders", scope: "tenant" },
   { id: "pets", pattern: "/admin/pets", titleKey: "nav.items.pets", scope: "tenant" },
   { id: "photoSessions", pattern: "/admin/photo-sessions", titleKey: "nav.items.photoSessions", scope: "tenant" },
+  { id: "cases", pattern: "/admin/cases", titleKey: "nav.items.cases", scope: "tenant" },
   { id: "properties", pattern: "/admin/properties", titleKey: "nav.items.properties", scope: "tenant" },
   { id: "propertyDetail", pattern: "/admin/properties/:propertyId", titleKey: "navigation.routes.propertyDetail", scope: "tenant", parentId: "properties", dynamicTitleParam: "propertyId" },
   { id: "resourceRentals", pattern: "/admin/resource-rentals", titleKey: "nav.items.resourceRentals", scope: "tenant" },

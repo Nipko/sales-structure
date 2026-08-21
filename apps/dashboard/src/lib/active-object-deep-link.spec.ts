@@ -68,9 +68,17 @@ describe("active object deep links", () => {
 
     /** `null` es una decisión declarada, no un olvido. */
     it("returns nothing for an object with no screen of its own", () => {
-        expect(deepLinkForActiveObject("professional_case")).toBeNull();
+        // `professional_case` ya NO está acá: era el objeto primario de
+        // `servicios_profesionales` y no tenía pantalla, así que el equipo
+        // abría el embudo de ventas para mirar un expediente. Ahora tiene la
+        // suya y el enlace lleva a ella.
         expect(deepLinkForActiveObject("no_existe")).toBeNull();
         expect(deepLinkForActiveObject(undefined)).toBeNull();
+        expect(deepLinkForActiveObject(null)).toBeNull();
+    });
+
+    it("el objeto primario de un estudio ya tiene a dónde llevar", () => {
+        expect(deepLinkForActiveObject("professional_case")).toBe("/admin/cases");
     });
 
     /**

@@ -122,6 +122,11 @@ export type VerticalRoutePath =
     | '/admin/insurance'
     | '/admin/service-requests'
     | '/admin/pets'
+    // Los casos de un estudio. El manifiesto declara `professional_case` como
+    // objeto primario del rubro y le daba una sola ruta: la agenda. El objeto
+    // central no tenía superficie, así que el equipo abría el embudo de ventas
+    // y leía "Oportunidades" y "Probabilidad de cierre" sobre un expediente.
+    | '/admin/cases'
     // El catálogo de paquetes de las verticales que venden servicios pero NO
     // agendan franjas. Sin esta ruta el bootstrap les sembraba servicios que el
     // dueño nunca podía ver: Agenda no está en su menú.
@@ -705,7 +710,10 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             capabilities: ['appointment_booking', 'professional_case_lookup'],
             toolGroups: ['appointments', 'professionalServices'],
             primaryObject: 'professional_case',
-            routes: ['/admin/appointments'],
+            // El objeto primario del rubro necesita su propia ruta. Con sólo
+            // `/admin/appointments`, el estudio tenía la agenda y ninguna
+            // pantalla donde vivieran los casos.
+            routes: ['/admin/cases', '/admin/appointments'],
             readiness: ['appointment_services', 'professional_cases'],
             events: APPOINTMENT_EVENTS,
             assurance: {

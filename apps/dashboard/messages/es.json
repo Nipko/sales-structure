@@ -321,6 +321,7 @@
       "treatmentPlans": "Planes de tratamiento",
       "pets": "Mascotas",
       "photoSessions": "Sesiones fotográficas",
+      "cases": "Casos",
       "vehicles": "Vehículos",
       "resourceRentals": "Alquileres y estadías",
       "platformUsage": "Uso por tenant",
@@ -11203,6 +11204,22 @@
     "neverSynced": "Todavía no sincronizaste",
     "productsSynced": "{count} productos disponibles para el agente",
     "footnote": "Sin productos sincronizados el agente no puede mostrar catálogo, aunque la herramienta esté encendida en el editor de agente."
+  },
+  "cases": {
+    "title": "Casos",
+    "subtitle": "Los expedientes del estudio: en qué etapa está cada uno y cuándo se movió por última vez.",
+    "filter_open": "Abiertos",
+    "filter_closed": "Cerrados",
+    "filter_all": "Todos",
+    "columnReference": "Referencia",
+    "columnClient": "Cliente",
+    "columnStage": "Etapa",
+    "columnLastUpdate": "Último movimiento",
+    "columnActions": "Acciones",
+    "openConversation": "Ver conversación",
+    "unknownClient": "Sin cliente asignado",
+    "emptyTitle": "Todavía no hay casos",
+    "emptyDescription": "Un caso se abre cuando una consulta avanza en el embudo. El agente puede consultar su estado por chat en cuanto exista."
   },
   "resourceRentals": {
     "title": "Alquileres y estadías",

@@ -62,9 +62,11 @@ const DEEP_LINKS: Readonly<Record<ActiveObjectKind, string | null>> = Object.fre
     insurance_claim: '/admin/insurance?tab=claims',
     insurance_quote: '/admin/insurance?tab=quotes',
 
-    // Sin pantalla propia todavía. Se muestra sin enlace: mandar a una ruta
-    // inventada es peor que no ofrecer ninguna.
-    professional_case: null,
+    // El objeto PRIMARIO de `servicios_profesionales` — el manifiesto lo dice—
+    // no tenía pantalla: el equipo abría el embudo de ventas y leía
+    // "Oportunidades" y "Probabilidad de cierre" sobre el expediente de un
+    // cliente. Ahora tiene la suya, con el vocabulario del rubro.
+    professional_case: '/admin/cases',
 });
 
 export function deepLinkForActiveObject(kind: unknown): string | null {

@@ -321,6 +321,7 @@
       "treatmentPlans": "Planos de tratamento",
       "pets": "Pets",
       "photoSessions": "Sessões fotográficas",
+      "cases": "Casos",
       "vehicles": "Veículos",
       "resourceRentals": "Aluguéis e estadias",
       "platformUsage": "Uso por tenant",
@@ -11199,6 +11200,22 @@
     "neverSynced": "Nunca sincronizado",
     "productsSynced": "{count} produtos disponíveis para o assistente",
     "footnote": "Sem produtos sincronizados o assistente não consegue mostrar catálogo, mesmo com a ferramenta ligada no editor de agente."
+  },
+  "cases": {
+    "title": "Casos",
+    "subtitle": "Os processos do escritório: em que etapa cada um está e quando se moveu pela última vez.",
+    "filter_open": "Abertos",
+    "filter_closed": "Fechados",
+    "filter_all": "Todos",
+    "columnReference": "Referência",
+    "columnClient": "Cliente",
+    "columnStage": "Etapa",
+    "columnLastUpdate": "Última movimentação",
+    "columnActions": "Ações",
+    "openConversation": "Ver conversa",
+    "unknownClient": "Sem cliente atribuído",
+    "emptyTitle": "Ainda não há casos",
+    "emptyDescription": "Um caso abre quando uma consulta avança no funil. O agente pode consultar o estado por chat assim que existir."
   },
   "resourceRentals": {
     "title": "Aluguéis e estadias",

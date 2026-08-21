@@ -16,10 +16,11 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { AIModule } from '../ai/ai.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
+import { ProfessionalCasesController } from './professional-cases.controller';
 
 @Module({
     imports: [PrismaModule, RedisModule, AIModule, PipelineModule],
-    controllers: [CrmController],
+    controllers: [CrmController, ProfessionalCasesController],
     providers: [
         NotesService,
         TasksService,

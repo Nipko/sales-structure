@@ -31,6 +31,10 @@ export const VERTICAL_DASHBOARD_ITEMS = [
   "treatmentPlans",
   "pets",
   "photoSessions",
+  // El objeto PRIMARIO de `servicios_profesionales`, que no tenía ítem: el
+  // manifiesto le daba una sola ruta —la agenda— y el equipo terminaba
+  // abriendo el embudo de ventas para mirar un expediente.
+  "cases",
   // El catálogo de paquetes de las verticales que venden servicios sin agendar
   // franjas. Es el ítem de catálogo, no el registro operativo.
   "serviceCatalog",
@@ -78,10 +82,12 @@ const CAPABILITY_ITEMS: Readonly<Partial<Record<VerticalCapability, readonly Ver
   pet_services: ["pets"],
   pet_boarding: ["resourceRentals"],
   photo_sessions: ["photoSessions"],
+  professional_case_lookup: ["cases"],
 };
 
 const ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, VerticalDashboardItem>>> = {
   "/admin/appointments": "appointments",
+  "/admin/cases": "cases",
   "/admin/stays": "stays",
   "/admin/properties": "properties",
   "/admin/tour-bookings": "tourBookings",

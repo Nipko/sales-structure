@@ -12,7 +12,8 @@ import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
-import { navigationPlanDecision } from "@parallext/shared";
+import { navigationPlanDecision, planFeatureForPath } from "@parallext/shared";
+import { recordNavigationEvent } from "@/lib/navigation-telemetry";
 import { defaultLandingForRole } from "@/lib/roles";
 import { useQualityHealth } from "@/contexts/QualityHealthContext";
 import { getQualityAttentionCount } from "@/lib/quality-health";
@@ -728,6 +729,15 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
    */
   const applyPlanGate = <T extends { href: string }>(item: T): T & { planLocked?: boolean } => {
     if (navigationPlanDecision(item.href, planFeatures) !== 'locked') return item;
+    // Se cuenta la opción que el plan cierra. No es un dead end —lleva a
+    // Facturación— pero es la medida de cuánta gente choca con el techo de su
+    // plan, que es justo lo que el candado existe para hacer visible.
+    recordNavigationEvent(user?.tenantId, {
+      event: 'navigation.plan_locked',
+      route: item.href,
+      reason: 'plan',
+      requirement: planFeatureForPath(item.href) || undefined,
+    });
     return { ...item, href: '/admin/settings/billing', planLocked: true };
   };
 

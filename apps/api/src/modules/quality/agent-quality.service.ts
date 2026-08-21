@@ -249,7 +249,10 @@ export class AgentQualityService {
                              THEN true ELSE false END AS has_legacy_credential
                    FROM whatsapp_channels`,
                 [],
-            ).catch(() => []),
+                // `[]` a secas infiere `never[]`, y el `Promise.all` termina
+                // dando `never` al elemento: el `.filter` de abajo no compila.
+                // Los dos hermanos de este mismo bloque ya lo anotan así.
+            ).catch(() => [] as any[]),
             this.prisma.executeInTenantSchema<Array<{ binding: string }>>(
                 schemaName,
                 `SELECT DISTINCT binding

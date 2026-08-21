@@ -679,6 +679,9 @@ export const api = {
      * Los objetos operativos abiertos del contacto de una conversación: el
      * mismo contrato acotado que recibe el agente en cada turno.
      */
+    /** Los callejones sin salida de la navegación. Fire-and-forget. */
+    recordNavigationTelemetry: (tenantId: string, events: unknown[]) =>
+        apiPost(`/analytics/navigation-telemetry/${tenantId}`, { events }),
     getConversationActiveObjects: (tenantId: string, conversationId: string) =>
         apiGet<{ items: any[] }>(`/conversations/${tenantId}/${conversationId}/active-objects`),
     bulkDeleteConversations: (tenantId: string, ids: string[]) =>

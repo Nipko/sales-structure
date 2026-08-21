@@ -7,6 +7,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { sanitizeNavigationTelemetryBatch } from '@parallext/shared';
 
 @Controller('analytics')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
@@ -19,6 +20,44 @@ export class AnalyticsController {
         private auditService: AuditService,
         private throttle: TenantThrottleService,
     ) {}
+
+    /**
+     * Los callejones sin salida de la navegación.
+     *
+     * El Gate 4 pide cero opción visible que termine en 403 o dead end. Las
+     * pruebas lo verifican estructuralmente, pero la estructura sólo cubre lo
+     * que alguien pensó en declarar: una configuración rara, un enlace guardado
+     * hace meses o un rol que cambió a mitad de sesión producen el mismo
+     * síntoma sin que ningún mapa esté mal.
+     *
+     * Lo abre el rol OPERATIVO a propósito: es justamente quien choca con esto,
+     * y un endpoint que sólo acepta supervisión mediría a quien no lo sufre.
+     */
+    @Post('navigation-telemetry/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    async recordNavigationTelemetry(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { events?: unknown },
+    ) {
+        // El saneo descarta el registro entero ante cualquier campo desconocido:
+        // guardar la mitad buena esconde el problema hasta que aparezca un dato
+        // que no debía estar en una tabla de analítica.
+        const records = sanitizeNavigationTelemetryBatch(body?.events);
+        for (const record of records) {
+            await this.analyticsService.trackEvent({
+                tenantId,
+                eventType: record.event,
+                data: {
+                    route: record.route,
+                    reason: record.reason,
+                    ...(record.role ? { role: record.role } : {}),
+                    ...(record.requirement ? { requirement: record.requirement } : {}),
+                },
+            }).catch(() => undefined);
+        }
+        // `accepted` y no `ok`: el cliente tiene que poder ver que mandó de más.
+        return { success: true, accepted: records.length };
+    }
 
     // ---- Dashboard Endpoints ----
 

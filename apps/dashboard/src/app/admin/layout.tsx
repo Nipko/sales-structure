@@ -20,6 +20,8 @@ import {
   canAccessDashboardNavigationPath,
   resolveAccessDeniedNavigation,
 } from "@/lib/navigation-access";
+import { canAccessPath } from "@/lib/roles";
+import { recordNavigationEvent } from "@/lib/navigation-telemetry";
 import { OnbordaProvider, Onborda } from "onborda";
 import { TourCard, useProductTourSteps, TourLauncher, TourBoundary } from "@/components/tour/ProductTour";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
@@ -84,6 +86,14 @@ export default function AdminLayout({
     const landing = resolveAccessDeniedNavigation(pathname, role, impersonating, verticalConfig);
     if (pathname !== landing) {
       try { sessionStorage.setItem("navigation:access-denied", "1"); } catch { /* optional notice */ }
+      // Se cuenta la ruta que NO se pudo abrir, no a quién le pasó: el
+      // contrato no admite ningún campo que identifique a una persona.
+      recordNavigationEvent(user?.tenantId, {
+        event: "navigation.access_denied",
+        route: pathname.split("?")[0],
+        reason: canAccessPath(pathname, role, impersonating) ? "vertical" : "role",
+        role,
+      });
       router.replace(landing);
     }
   }, [pathname, role, impersonating, isLoading, isVerticalConfigLoading, isAuthenticated, router, verticalConfig]);

@@ -926,3 +926,35 @@ npx tsc --noEmit (shared + dashboard)  → exit 0
 jest apps/dashboard → 192 passed / 24 suites, 0 fallos
 jest apps/api       → 2621 passed / 290 suites, 0 fallos
 ```
+
+### U30 — Contar los callejones sin salida que el Gate 4 dice que no existen
+
+**Fase 4 · Épica D · Paso 9 de §8.5 (telemetría de navegación)**
+
+El Gate 4 pide *cero opción visible que termine en 403 o dead end*. Hasta acá eso se verificaba **estructuralmente**: los mapas, los permisos, las rutas. Pero la estructura sólo cubre lo que alguien pensó en declarar — un tenant con configuración rara, un enlace guardado hace meses o un rol que cambió a mitad de sesión producen el mismo síntoma sin que ningún mapa esté mal.
+
+**ADR-041 — Sólo lo excepcional.**
+Se emiten tres eventos: `access_denied`, `dead_end` y `plan_locked`. **No** se emite cada vista de ruta: sería un volumen que le cuesta almacenamiento al tenant para medir lo que ya funciona. Un 403 y un callejón son raros por construcción, y si dejan de serlo eso es exactamente el hallazgo. Se reusa `analytics_events`, que ya existe con `event_type` + `data`: una segunda tabla de eventos sería la duplicación que este programa viene removiendo.
+
+**ADR-042 — Allowlist de campos, y se descarta el registro entero.**
+Cuatro campos: ruta, motivo tipado, rol y requisito faltante. Ninguno identifica a una persona. Un **denylist** crece cada vez que alguien agrega un campo, y el día que se atrasa es el día que se guarda un dato personal en una tabla de analítica. Ante un campo desconocido se descarta el registro **completo**, no el campo: guardar la mitad buena esconde el problema hasta que aparezca lo que no debía estar.
+
+**La ruta también lleva datos.** `/admin/contacts/<uuid>` pasa cualquier patrón de ruta razonable y metería el identificador de un contacto en la tabla. Todo segmento que parezca un id —uuid, numérico, hex largo— rechaza el registro. Recortarlo habría dejado una ruta que no es la que ocurrió.
+
+**Medir no puede empeorar lo que se mide.** La cola vive en memoria, agrupa 3 s, se manda sin `await` y sin propagar el fallo; si el usuario cierra la pestaña se pierde lo pendiente, y está bien: perder telemetría es infinitamente mejor que retrasar una navegación. Un mismo tropiezo no se cuenta dos veces aunque React vuelva a renderizar.
+
+**El endpoint lo abre el rol operativo a propósito**, contra el `@Roles` de la clase: es justamente quien choca con esto, y uno que sólo acepte supervisión mediría a quien no lo sufre.
+
+**Un error de tipos ajeno, encontrado al compilar:** `agent-quality.service.ts` tenía un `.catch(() => [])` que infiere `never[]` y hacía fallar el `.filter` de abajo. Sus dos hermanos del mismo bloque ya lo anotaban bien. Se corrigió igual: un error que bloquea el typecheck bloquea el deploy, sea de quien sea.
+
+**Lo que NO se hizo.** Tiempo-a-tarea, click depth, búsqueda y backtracking necesitan instrumentar el recorrido completo, no el tropiezo. Son analítica de producto, no de corrección, y quedan anotados como resto del paso 9.
+
+**Pruebas** — `navigation-telemetry.spec.ts` (8 casos, uno parametrizado ×4 y otro ×5): se acepta la forma que emite el panel; un nombre de evento no declarado se descarta; **un correo, un nombre, texto libre o un id descartan el registro entero**; una ruta con id, con query, absoluta o vacía se rechaza; el motivo tiene que ser tipado; los opcionales siguen siendo opcionales; el lote se acota y descarta sólo lo inválido; la basura no rompe.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard)  → exit 0
+jest src/app.bootstrap.spec.ts → 1/1 ✅ (DI limpio)
+jest apps/api       → 2621 passed / 290 suites, 0 fallos
+jest apps/dashboard → 207 passed / 25 suites, 0 fallos
+```

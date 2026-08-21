@@ -40,6 +40,9 @@ export * from './navigation-surface-kind';
 // ---- Where a human opens the object the agent is talking about ----
 export * from './active-object-deep-link';
 
+// ---- Counting the dead ends Gate 4 says must not exist ----
+export * from './navigation-telemetry';
+
 // ---- What each profile calls the things it works with ----
 export * from './subtype-terminology';
 export * from './subtype-eval-pack';
@@ -446,7 +449,12 @@ export type AnalyticsEventType =
     | 'tool_executed'
     | 'order_created'
     | 'payment_received'
-    | 'model_used';
+    | 'model_used'
+    // Navegación: sólo lo excepcional. Un 403 y un callejón sin salida son
+    // raros por construcción, y si dejan de serlo eso es el hallazgo.
+    | 'navigation.access_denied'
+    | 'navigation.dead_end'
+    | 'navigation.plan_locked';
 
 export interface AnalyticsEvent {
     id: string;

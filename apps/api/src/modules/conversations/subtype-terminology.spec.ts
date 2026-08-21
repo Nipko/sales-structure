@@ -72,12 +72,36 @@ describe('subtype terminology pack', () => {
             .toBe('Tour');
     });
 
-    /** El silencio es una decisión: ese subtipo usa bien el término de su vertical. */
-    it('returns nothing for a profile with no word of its own', () => {
-        expect(subtypeTerminologyFor('salud', 'dental')).toBeNull();
+    /**
+     * El silencio ya NO es una decisión, y era el hueco más numeroso.
+     *
+     * Sesenta de los setenta y seis perfiles no declaraban terminología y el
+     * contrato de dominio los marcaba `terminology.primaryObject`: el agente no
+     * tenía cómo llamar a lo que el negocio administra y caía a palabras
+     * genéricas.
+     *
+     * Lo que faltaba no era criterio de rubro: el objeto primario **ya está
+     * declarado en el manifiesto** (`appointment`, `insurance_policy`, `pet`…).
+     * Sólo faltaba su nombre en los cuatro idiomas, y eso se deriva.
+     */
+    it('un perfil sin palabra propia hereda el nombre de su objeto primario', () => {
+        // `salud` administra turnos: eso lo dice el manifiesto, no una
+        // suposición sobre odontología.
+        expect(localizedTerm(subtypeTerminologyFor('salud', 'dental')?.primaryObject, 'es'))
+            .toBe('turno');
+        expect(localizedTerm(subtypeTerminologyFor('salud', 'dental')?.primaryObject, 'pt'))
+            .toBe('agendamento');
+        // Y no inventa una lista de términos a evitar: eso sí es criterio de
+        // rubro y sigue siendo del perfil que lo declare.
+        expect(avoidedTermsFor('salud', 'dental')).toEqual([]);
+    });
+
+    it('sin industria o sin subtipo no hay nada que derivar', () => {
         expect(subtypeTerminologyFor('turismo', null)).toBeNull();
         expect(subtypeTerminologyFor(null, 'hotel')).toBeNull();
-        expect(avoidedTermsFor('salud', 'dental')).toEqual([]);
+        // Un rubro que no conocemos no tiene objeto primario: el hueco es real
+        // y se sigue reportando en vez de taparse con un sustantivo genérico.
+        expect(subtypeTerminologyFor('industria_inventada', 'x')).toBeNull();
     });
 
     /**

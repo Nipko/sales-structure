@@ -1924,6 +1924,59 @@ npm run test:bootstrap → 1 passed (sin errores de DI; necesita --max-old-space
 jest apps/api     → 3156 passed / 314 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U63 — El contrato de dominio describía cuatro grupos de diecinueve
+
+**P1 · puntos 12 y 13 — Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles; eliminar los huecos**
+
+Medido antes de tocar nada, sobre los 76 perfiles: **170 huecos.**
+
+| Hueco | Cuántos | ¿Se cierra desde el código? |
+|---|---|---|
+| `terminology.primaryObject` | 59 | sí |
+| `scope_without_committing_intent` | 28 | sí |
+| `certification.e2e_evidence` | 76 | no — necesita un tenant real |
+| `certification.commercialisable` | 7 | no — decisión de producto del dueño |
+
+**(a) Quince de los diecinueve grupos no declaraban ninguna intención.** `INTENTS_BY_TOOL_GROUP` tenía `faqs`, `appointments`, `catalog` y `payments`. Los otros quince —los que definen lo que cada industria realmente hace— derivaban un contrato que sólo sabía "preguntar algo": un hotel, una clínica, una aseguradora y un gimnasio se describían igual.
+
+De ahí salían los 28 `scope_without_committing_intent`: perfiles cuyo alcance comercial dice que reservan u operan, y ninguna intención declarada se comprometía a nada. **El perfil prometía más de lo que su contrato podía sostener.**
+
+Cada grupo declara ahora qué quiere el cliente, qué datos hacen falta con su sensibilidad y persistencia, **qué tools se usan y en qué orden**, cómo se confirma, cómo puede terminar y si compromete. Tres decisiones de forma que valen la pena:
+- **`treatments`, `realEstate` y `professionalServices` NO comprometen.** Un plan de tratamiento lo define un profesional, un cierre inmobiliario pasa por una persona y un estudio informa el estado de un caso, no lo resuelve por chat. Darles una intención que compromete habría cerrado el hueco mintiendo.
+- **La urgencia veterinaria termina siempre en una persona.** El triage ordena la urgencia, no la resuelve, y decir lo contrario en una urgencia cuesta caro.
+- **En seguros, la llave de identidad va primero en el plan**: lo que sigue son datos del asegurado y no se leen sin verificar quién pregunta.
+
+**(b) El catálogo se podía mirar y no comprar.** `catalog` sólo tenía una intención de navegación, y `place_catalog_order` —el paso de cierre del rubro— ya existía sin ninguna intención que lo nombrara. Eran los últimos 6 perfiles del hueco: retail, repuestos, farmacia y hardware.
+
+**(c) El objeto primario ya estaba declarado; le faltaba el nombre.** 16 de 76 perfiles declaran su terminología a mano y los otros 60 devolvían `null`. Lo que no se veía: **el objeto primario de cada perfil ya está decidido en el manifiesto** (`appointment`, `property_booking`, `insurance_policy`, `pet`…). Eso no es criterio de rubro sino qué cosa administra el negocio; lo único que faltaba era cómo se llama en cada idioma.
+
+Por eso se deriva y no se pide a un experto. La revisión de dominio que sigue pendiente es **otra** —si "paciente" o "cliente" es lo correcto para una dermatológica frente a una odontológica, si un rubro usa un regionalismo— y ésa sí necesita a alguien del rubro. Poner "póliza" donde el manifiesto dice `insurance_policy` no necesita a nadie. **La declaración explícita siempre gana**: los 16 perfiles que ya eligieron sus palabras conservan las suyas, listas de términos a evitar incluidas.
+
+**Dos planes de tools nombraban tools que no existen.** `get_product_details` (la tool se llama `get_product`) y `list_my_appointments` (`list_customer_appointments`). El plan **describe y no ejecuta**, así que el error no rompía nada visible — es una promesa que nadie puede cumplir, viviendo ahí sin que nadie la mire. La prueba nueva los encontró a los dos y cierra esa puerta.
+
+**Y una copia de una relación que ya existía.** `vertical-domain-contract.spec.ts` llevaba su propio mapa intención→familia con cinco entradas; al declarar quince grupos quedó comparando contra `undefined` y falló. Se reemplazó por `intentToolGroup()`, derivado del registro: una copia de una relación que ya existe es una copia que se desactualiza.
+
+**Tres invariantes existentes que mis intents violaban, y que respeté en vez de aflojar:**
+- Toda intención que compromete confirma **explícitamente** (yo había puesto `summary` en tres). Un presupuesto es un número al que el negocio queda atado, y registrar una ficha crea un registro a nombre del cliente.
+- Todo slot **sensible** se confirma antes de usarse (cinco de los míos no lo hacían).
+- Toda intención puede terminar en una persona: sin esa salida, una intención que se traba se traba para siempre.
+
+**Y una prueba que pasó a medir lo contrario, a propósito.** `el que no se pudo derivar lo dice` exigía `unresolved.length > 0` en al menos un perfil. Con los 87 huecos derivables cerrados, `unresolved` queda vacío para los 76 — así que ahora exige exactamente eso, y lo que no se puede derivar sigue verificándose donde vive: en los bloqueos de certificación.
+
+**Resultado: 170 → 83 huecos**, y los 83 son exactamente los dos externos (76 evidencia E2E + 7 `commercialisable`). Una prueba fija el número: que no baje de ahí es la forma de que nadie los cierre por decreto.
+
+**Riesgos que quedan**
+- **La revisión de dominio de los 60 perfiles derivados sigue pendiente.** Lo derivado es correcto por construcción —el nombre del objeto que el manifiesto declara— y **no** reemplaza que alguien del rubro valide `customerNoun`, `transactionNoun` y las listas de términos a evitar. **Bloqueo externo**, sin cambios.
+- Las intenciones son **contrato declarativo**: describen qué se hace y con qué tools, y el runtime no las ejecuta como plan. Conectarlas al planificador del turno es trabajo interno pendiente — y es lo que convertiría el contrato en comportamiento.
+
+**Pruebas** — `domain-contract-tool-plan.spec.ts` (nuevo, 12) + `vertical-domain-contract.spec.ts` y `subtype-terminology.spec.ts` actualizados al comportamiento nuevo.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api     → 3170 passed / 315 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -2037,8 +2090,8 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 9 | Unificar freshness, cron y estado mostrado en UI | ◐ **U60** — un solo número compartido, cadencia verificada y estado `not_applicable` en el panel; falta la disponibilidad en vivo de Mindbody y unificar el reloj del Channel Manager |
 | 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ◐ **U61** — las cinco piezas construidas y probadas; el corte a `reject` depende de correr la migración en producción, y los ~8 módulos restantes que escriben `settings` siguen con el patrón que pierde datos |
 | 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ◐ **U62** — worker, contrato de adapter, vencimiento, revisión, identidad por conexión y reparación de schema; **ningún adapter escrito** (necesita sandbox del proveedor) y la revisión no tiene pantalla |
-| 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ⏳ pendiente |
-| 13 | Eliminar los 72 gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ⏳ pendiente |
+| 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ✅ **U63** |
+| 13 | Eliminar los gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ◐ **U63** — 170 → 83 huecos, y los 83 son los dos externos; falta conectar el contrato al planificador del turno, a la UI y al móvil |
 | 14 | Terminología e idioma por perfil/país | ⏳ pendiente |
 | 15 | Sacar guidance español global y voseo fuera de su país | ⏳ pendiente |
 | 16 | Golden evals reales ES/EN/PT/FR con el resolver de producción | ⏳ pendiente |

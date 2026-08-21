@@ -2,6 +2,7 @@ import {
     VERTICAL_DOMAIN_CONTRACT_VERSION,
     buildDomainContractDraft,
     domainContractGaps,
+    intentToolGroup,
     listDomainContractDrafts,
     listSubtypeExperienceProfileIds,
     resolveVerticalCapabilityManifest,
@@ -84,15 +85,16 @@ describe('un contrato no promete lo que el runtime no puede', () => {
             const groups = new Set(manifest.toolGroups as readonly string[]);
             // Cada intención se deriva de una familia de tools: la familia ES la
             // evidencia de que el runtime puede sostener esa conversación.
-            const byIntent: Record<string, string> = {
-                ask_question: 'faqs',
-                book_appointment: 'appointments',
-                cancel_appointment: 'appointments',
-                browse_catalog: 'catalog',
-                pay: 'payments',
-            };
+            //
+            // El mapa se pide al registro en vez de copiarlo acá. La copia que
+            // había tenía cinco entradas, y al declarar los quince grupos que
+            // faltaban quedó comparando contra `undefined` — una copia de una
+            // relación que ya existe es una copia que se desactualiza.
             for (const intent of draft.intents) {
-                expect(groups.has(byIntent[intent.key])).toBe(true);
+                const group = intentToolGroup(intent.key);
+                expect({ intent: intent.key, group }).toEqual({ intent: intent.key, group });
+                expect({ intent: intent.key, granted: groups.has(group!) })
+                    .toEqual({ intent: intent.key, granted: true });
             }
         },
     );
@@ -185,16 +187,34 @@ describe('el prompt del perfil dice hasta dónde llega', () => {
 });
 
 describe('los huecos se declaran en vez de rellenarse', () => {
-    it('el que no se pudo derivar lo dice', () => {
+    it('lo que sí se pudo derivar ya no figura como hueco', () => {
+        // Antes había 87 huecos derivables: 59 perfiles sin nombre para su
+        // objeto primario y 28 cuyo alcance prometía cerrar sin ninguna
+        // intención que se comprometiera. Los dos se cerraron —el objeto
+        // primario ya estaba declarado en el manifiesto y le faltaba el
+        // nombre; las intenciones faltaban en 15 de los 19 grupos—, así que
+        // `unresolved` queda vacío.
+        //
+        // Esta prueba dejó de medir "hay huecos declarados" y pasa a medir lo
+        // contrario, que es lo que corresponde: si vuelve a aparecer uno, es
+        // regresión y no estado normal.
+        const withGaps = listDomainContractDrafts()
+            .filter(d => d.unresolved.length > 0)
+            .map(d => ({ profile: d.profileId, gaps: d.unresolved }));
+        expect(withGaps).toEqual([]);
+    });
+
+    it('...y lo que no se puede derivar sigue declarado como bloqueo', () => {
         // Un hueco visible se cierra; uno relleno con algo plausible se olvida.
-        const withGaps = listDomainContractDrafts().filter(d => d.unresolved.length > 0);
-        expect(withGaps.length).toBeGreaterThan(0);
-        for (const draft of withGaps) {
-            for (const gap of draft.unresolved) {
-                expect(typeof gap).toBe('string');
-                expect(gap.length).toBeGreaterThan(3);
-            }
+        // Los que quedan son los dos que no dependen del código, y siguen
+        // saliendo con motivo legible.
+        const blockers = listDomainContractDrafts().flatMap(d => d.certification.blockers);
+        expect(blockers.length).toBeGreaterThan(0);
+        for (const blocker of blockers) {
+            expect(typeof blocker).toBe('string');
+            expect(blocker.length).toBeGreaterThan(3);
         }
+        expect([...new Set(blockers)].sort()).toEqual(['commercialisable', 'e2e_evidence']);
     });
 
     it('`domainContractGaps` devuelve motivos, no un booleano', () => {

@@ -1,3 +1,5 @@
+import { resolveVerticalCapabilityManifest } from './vertical-capability-manifest';
+
 /**
  * Cómo llama cada perfil a las cosas con las que trabaja.
  *
@@ -197,13 +199,156 @@ export const SUBTYPE_TERMINOLOGY: Readonly<Record<string, SubtypeTerminology>> =
 /** Perfiles con terminología propia, para pruebas de contrato y auditoría. */
 export const SUBTYPE_TERMINOLOGY_IDS: readonly string[] = Object.freeze(Object.keys(TERMINOLOGY));
 
+/**
+ * ═══ EL OBJETO PRIMARIO YA ESTABA DECLARADO; LE FALTABA EL NOMBRE ═══
+ *
+ * Dieciséis de los setenta y seis perfiles declaran su terminología a mano. Los
+ * otros sesenta devolvían `null` y el contrato de dominio los marcaba
+ * `terminology.primaryObject` como hueco — **el hueco más numeroso de los 170**.
+ *
+ * Lo que no se veía: el objeto primario de cada perfil **ya está decidido**. El
+ * manifiesto de capacidades lo declara por vertical (`appointment`,
+ * `property_booking`, `insurance_policy`, `pet`…), y esa decisión no es una
+ * cuestión de criterio de rubro: es qué cosa administra el negocio. Lo único
+ * que faltaba era **cómo se llama esa cosa en cada idioma**.
+ *
+ * Por eso esto se deriva y no se pide a un experto. La revisión de dominio que
+ * sigue pendiente es otra —si "paciente" o "cliente" es lo correcto para una
+ * dermatológica frente a una odontológica, si un rubro usa un regionalismo—, y
+ * ésa sí necesita a alguien que conozca el rubro. Poner "póliza" donde el
+ * manifiesto dice `insurance_policy` no necesita a nadie.
+ *
+ * La declaración explícita **siempre gana**: los dieciséis perfiles que ya
+ * eligieron sus palabras siguen con las suyas, incluidas sus listas de términos
+ * a evitar. Esto sólo llena lo que estaba vacío.
+ */
+const PRIMARY_OBJECT_TERMS: Readonly<Record<string, {
+    singular: LocalizedTerm;
+    plural: LocalizedTerm;
+}>> = Object.freeze({
+    lead: {
+        singular: { es: 'consulta', en: 'enquiry', pt: 'consulta', fr: 'demande' },
+        plural: { es: 'consultas', en: 'enquiries', pt: 'consultas', fr: 'demandes' },
+    },
+    appointment: {
+        singular: { es: 'turno', en: 'appointment', pt: 'agendamento', fr: 'rendez-vous' },
+        plural: { es: 'turnos', en: 'appointments', pt: 'agendamentos', fr: 'rendez-vous' },
+    },
+    catalog_item: {
+        singular: { es: 'producto', en: 'product', pt: 'produto', fr: 'produit' },
+        plural: { es: 'productos', en: 'products', pt: 'produtos', fr: 'produits' },
+    },
+    treatment_plan: {
+        singular: { es: 'tratamiento', en: 'treatment plan', pt: 'tratamento', fr: 'traitement' },
+        plural: { es: 'tratamientos', en: 'treatment plans', pt: 'tratamentos', fr: 'traitements' },
+    },
+    real_estate_listing: {
+        singular: { es: 'propiedad', en: 'listing', pt: 'imóvel', fr: 'bien' },
+        plural: { es: 'propiedades', en: 'listings', pt: 'imóveis', fr: 'biens' },
+    },
+    food_order: {
+        singular: { es: 'pedido', en: 'order', pt: 'pedido', fr: 'commande' },
+        plural: { es: 'pedidos', en: 'orders', pt: 'pedidos', fr: 'commandes' },
+    },
+    vehicle: {
+        singular: { es: 'vehículo', en: 'vehicle', pt: 'veículo', fr: 'véhicule' },
+        plural: { es: 'vehículos', en: 'vehicles', pt: 'veículos', fr: 'véhicules' },
+    },
+    tour_package: {
+        singular: { es: 'paquete', en: 'package', pt: 'pacote', fr: 'forfait' },
+        plural: { es: 'paquetes', en: 'packages', pt: 'pacotes', fr: 'forfaits' },
+    },
+    property_booking: {
+        singular: { es: 'estadía', en: 'stay', pt: 'estadia', fr: 'séjour' },
+        plural: { es: 'estadías', en: 'stays', pt: 'estadias', fr: 'séjours' },
+    },
+    course: {
+        singular: { es: 'curso', en: 'course', pt: 'curso', fr: 'cours' },
+        plural: { es: 'cursos', en: 'courses', pt: 'cursos', fr: 'cours' },
+    },
+    professional_case: {
+        singular: { es: 'caso', en: 'case', pt: 'caso', fr: 'dossier' },
+        plural: { es: 'casos', en: 'cases', pt: 'casos', fr: 'dossiers' },
+    },
+    pet: {
+        singular: { es: 'mascota', en: 'pet', pt: 'pet', fr: 'animal' },
+        plural: { es: 'mascotas', en: 'pets', pt: 'pets', fr: 'animaux' },
+    },
+    membership: {
+        singular: { es: 'membresía', en: 'membership', pt: 'plano', fr: 'abonnement' },
+        plural: { es: 'membresías', en: 'memberships', pt: 'planos', fr: 'abonnements' },
+    },
+    insurance_policy: {
+        singular: { es: 'póliza', en: 'policy', pt: 'apólice', fr: 'police' },
+        plural: { es: 'pólizas', en: 'policies', pt: 'apólices', fr: 'polices' },
+    },
+    service_request: {
+        singular: { es: 'servicio', en: 'service request', pt: 'serviço', fr: 'intervention' },
+        plural: { es: 'servicios', en: 'service requests', pt: 'serviços', fr: 'interventions' },
+    },
+    vehicle_rental: {
+        singular: { es: 'alquiler', en: 'rental', pt: 'aluguel', fr: 'location' },
+        plural: { es: 'alquileres', en: 'rentals', pt: 'aluguéis', fr: 'locations' },
+    },
+    pet_boarding: {
+        singular: { es: 'estadía', en: 'boarding stay', pt: 'hospedagem', fr: 'pension' },
+        plural: { es: 'estadías', en: 'boarding stays', pt: 'hospedagens', fr: 'pensions' },
+    },
+    photo_session: {
+        singular: { es: 'sesión', en: 'session', pt: 'sessão', fr: 'séance' },
+        plural: { es: 'sesiones', en: 'sessions', pt: 'sessões', fr: 'séances' },
+    },
+});
+
+/** Los nombres de objeto primario que se saben nombrar. Para las pruebas. */
+export const NAMED_PRIMARY_OBJECTS: readonly string[] = Object.freeze(
+    Object.keys(PRIMARY_OBJECT_TERMS),
+);
+
+/**
+ * El nombre del objeto primario de un perfil, cuando no declaró el suyo.
+ *
+ * Devuelve `null` para un objeto que no sabemos nombrar, y eso es a propósito:
+ * inventar un sustantivo genérico sería tapar el hueco en vez de cerrarlo, y el
+ * contrato de dominio dejaría de reportarlo.
+ */
+export function primaryObjectTerminology(
+    primaryObject: unknown,
+): SubtypeTerminology | null {
+    if (typeof primaryObject !== 'string') return null;
+    const entry = PRIMARY_OBJECT_TERMS[primaryObject];
+    if (!entry) return null;
+    return Object.freeze({
+        primaryObject: entry.singular,
+        primaryObjectPlural: entry.plural,
+    });
+}
+
 export function subtypeTerminologyFor(
     industry: unknown,
     subtype: unknown,
 ): SubtypeTerminology | null {
     if (typeof industry !== 'string' || !industry) return null;
     if (typeof subtype !== 'string' || !subtype) return null;
-    return TERMINOLOGY[`${industry.trim()}/${subtype.trim()}`] || null;
+    const declared = TERMINOLOGY[`${industry.trim()}/${subtype.trim()}`];
+    if (declared) return declared;
+    // Sin declaración propia, el nombre sale del objeto primario que el
+    // manifiesto ya decidió. No es una suposición sobre el rubro: es ponerle
+    // nombre a una decisión que ya estaba tomada.
+    // El manifiesto tira para una industria desconocida. Un rubro que no
+    // conocemos no tiene objeto primario, y ahí el hueco es real y se reporta.
+    try {
+        // `__none__` es el marcador de "esta industria no tiene subtipos", no un
+        // subtipo. Pasarlo al manifiesto lo hace fallar, y por eso `otro` —la
+        // única industria sin subtipos— era el último perfil sin terminología.
+        const requested = subtype.trim();
+        const manifest = resolveVerticalCapabilityManifest(
+            industry.trim(), requested === '__none__' ? undefined : requested,
+        );
+        return primaryObjectTerminology(manifest?.primaryObject);
+    } catch {
+        return null;
+    }
 }
 
 /**

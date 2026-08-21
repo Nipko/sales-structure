@@ -268,26 +268,540 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
                 sensitivity: 'personal', source: 'tool', persistence: 'record',
                 confirm: true,
             })]),
-            toolPlan: Object.freeze(['list_my_appointments', 'cancel_appointment']),
+            // `list_my_appointments` no existe: la tool se llama
+            // `list_customer_appointments`. Segundo plan que nombraba una tool
+            // inexistente — el plan describe y no ejecuta, así que el error no
+            // rompía nada visible.
+            toolPlan: Object.freeze(['list_customer_appointments', 'cancel_appointment']),
             confirmation: 'explicit',
             fallback: 'handoff',
             states: Object.freeze(['identifying', 'confirming', 'cancelled', 'handed_off']),
             commits: true,
         }),
     ]),
-    catalog: Object.freeze([Object.freeze<IntentContract>({
-        key: 'browse_catalog',
-        description: 'El cliente pregunta qué hay y a qué precio.',
+    catalog: Object.freeze([
+        Object.freeze<IntentContract>({
+            key: 'browse_catalog',
+            description: 'El cliente pregunta qué hay y a qué precio.',
+            slots: Object.freeze([Object.freeze<SlotSchema>({
+                key: 'query', type: 'text', required: false,
+                sensitivity: 'public', source: 'customer', persistence: 'turn',
+            })]),
+            // `get_product_details` no existe: la tool se llama `get_product`.
+            // Un plan que nombra una tool inexistente es una promesa que nadie
+            // puede cumplir, y no lo veía nadie porque el plan no se ejecuta —
+            // describe. `domain-contract-tool-plan.spec.ts` cierra esa puerta.
+            toolPlan: Object.freeze(['search_products', 'get_product', 'check_stock']),
+            confirmation: 'none',
+            fallback: 'answer',
+            states: Object.freeze(['listed', 'empty', 'handed_off']),
+            commits: false,
+        }),
+        // ═══ EL CATÁLOGO SE PODÍA MIRAR Y NO COMPRAR ═══
+        //
+        // `catalog` sólo declaraba una intención de navegación. Los seis
+        // perfiles de retail y repuestos —cuyo alcance comercial dice que
+        // operan— quedaban marcados `scope_without_committing_intent`: el
+        // perfil promete cerrar y ninguna intención se compromete a nada.
+        //
+        // Y la tool que cierra **ya existía**: `place_catalog_order`. Era el
+        // paso de cierre del rubro, construido y sin ninguna intención que lo
+        // nombrara.
+        Object.freeze<IntentContract>({
+            key: 'place_catalog_order',
+            description: 'El cliente quiere comprar lo que vio en el catálogo.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'items', type: 'reference', required: true,
+                    sensitivity: 'public', source: 'customer', persistence: 'record',
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'delivery_address', type: 'text', required: false,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                    confirm: true,
+                }),
+                ...CONTACT_SLOTS,
+            ]),
+            // El stock se consulta ANTES de comprometer: vender lo que no hay
+            // es la forma más cara de cerrar una venta.
+            toolPlan: Object.freeze(['get_product', 'check_stock', 'place_catalog_order']),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['collecting', 'confirming', 'ordered', 'handed_off']),
+            commits: true,
+        }),
+    ]),
+    // ═══ LOS QUINCE GRUPOS QUE NO DECLARABAN NINGUNA INTENCIÓN ═══
+    //
+    // El registro tenía cuatro entradas: `faqs`, `appointments`, `catalog` y
+    // `payments`. Los otros quince grupos verticales —los que definen lo que
+    // cada industria realmente hace— derivaban un contrato **sin ninguna
+    // intención propia**, así que un hotel, una clínica, una aseguradora o un
+    // gimnasio se describían con el vocabulario de "preguntar algo" y nada más.
+    //
+    // La consecuencia medible: 28 de los 76 perfiles quedaban marcados
+    // `scope_without_committing_intent` — su alcance comercial dice que
+    // reservan u operan, y ninguna intención declarada se compromete a nada. El
+    // perfil prometía más de lo que su contrato podía sostener.
+    //
+    // Cada grupo declara aquí lo mismo: qué quiere el cliente, qué datos hacen
+    // falta, **qué tools se usan y en qué orden**, cómo se confirma, cómo puede
+    // terminar y si compromete al negocio. El plan de tools nombra tools que
+    // existen de verdad: `domain-contract-tool-plan.spec.ts` lo verifica contra
+    // el registro de políticas, porque un plan que nombra una tool inexistente
+    // es una promesa que nadie puede cumplir.
+
+    // ── Alojamiento: estadías ────────────────────────────────────────────
+    properties: Object.freeze([
+        Object.freeze<IntentContract>({
+            key: 'book_stay',
+            description: 'El huésped quiere reservar una estadía.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'property_id', type: 'reference', required: true,
+                    sensitivity: 'public', source: 'tool', persistence: 'record',
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'check_in', type: 'date', required: true,
+                    sensitivity: 'public', source: 'customer', persistence: 'record',
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'check_out', type: 'date', required: true,
+                    sensitivity: 'public', source: 'customer', persistence: 'record',
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'guests', type: 'number', required: true,
+                    sensitivity: 'public', source: 'customer', persistence: 'record',
+                }),
+                ...CONTACT_SLOTS,
+            ]),
+            toolPlan: Object.freeze([
+                'list_properties', 'check_property_availability', 'create_property_booking',
+            ]),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['collecting', 'confirming', 'booked', 'handed_off']),
+            commits: true,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'stay_logistics',
+            description: 'El huésped pregunta cómo entrar, dónde queda o qué incluye.',
+            slots: Object.freeze([Object.freeze<SlotSchema>({
+                key: 'booking_id', type: 'reference', required: false,
+                sensitivity: 'personal', source: 'tool', persistence: 'record',
+            })]),
+            toolPlan: Object.freeze([
+                'get_property_details', 'list_my_property_bookings', 'get_check_in_instructions',
+            ]),
+            confirmation: 'none',
+            fallback: 'handoff',
+            states: Object.freeze(['answered', 'not_found', 'handed_off']),
+            commits: false,
+        }),
+    ]),
+
+    // ── Turismo: paquetes y salidas ──────────────────────────────────────
+    tours: Object.freeze([Object.freeze<IntentContract>({
+        key: 'book_tour',
+        description: 'El cliente quiere reservar una salida o paquete.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'package_id', type: 'reference', required: true,
+                sensitivity: 'public', source: 'tool', persistence: 'record',
+            }),
+            DATETIME_SLOT,
+            Object.freeze<SlotSchema>({
+                key: 'travellers', type: 'number', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'record',
+            }),
+            ...CONTACT_SLOTS,
+        ]),
+        toolPlan: Object.freeze([
+            'search_packages', 'check_package_availability', 'create_tour_booking',
+        ]),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'confirming', 'booked', 'handed_off']),
+        commits: true,
+    })]),
+
+    // ── Salud: planes de tratamiento ─────────────────────────────────────
+    //
+    // No compromete: el plan lo define un profesional. El agente informa en qué
+    // punto está, y proponerlo o cambiarlo NO es algo que pueda hacer por chat.
+    treatments: Object.freeze([Object.freeze<IntentContract>({
+        key: 'treatment_status',
+        description: 'El paciente pregunta en qué punto está su tratamiento.',
         slots: Object.freeze([Object.freeze<SlotSchema>({
-            key: 'query', type: 'text', required: false,
-            sensitivity: 'public', source: 'customer', persistence: 'turn',
+            key: 'patient_reference', type: 'reference', required: true,
+            sensitivity: 'sensitive', source: 'derived', persistence: 'record',
+            confirm: true,
         })]),
-        toolPlan: Object.freeze(['search_products', 'get_product_details']),
+        toolPlan: Object.freeze(['get_treatment_plan', 'list_upcoming_sessions']),
         confirmation: 'none',
-        fallback: 'answer',
+        fallback: 'handoff',
+        states: Object.freeze(['answered', 'not_found', 'handed_off']),
+        commits: false,
+    })]),
+
+    // ── Inmobiliaria: propiedades en venta o alquiler ────────────────────
+    //
+    // Tampoco compromete: mostrar una propiedad no la reserva, y el cierre
+    // inmobiliario pasa por una persona en todos los casos.
+    realEstate: Object.freeze([Object.freeze<IntentContract>({
+        key: 'find_listing',
+        description: 'El cliente busca una propiedad con ciertas características.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'operation', type: 'enum', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'turn',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'zone', type: 'text', required: false,
+                sensitivity: 'public', source: 'customer', persistence: 'turn',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'budget', type: 'number', required: false,
+                sensitivity: 'personal', source: 'customer', persistence: 'record',
+            }),
+        ]),
+        toolPlan: Object.freeze(['search_listings', 'get_listing_details', 'send_listing_image']),
+        confirmation: 'none',
+        fallback: 'handoff',
         states: Object.freeze(['listed', 'empty', 'handed_off']),
         commits: false,
     })]),
+
+    // ── Restaurantes: pedidos ────────────────────────────────────────────
+    restaurants: Object.freeze([
+        Object.freeze<IntentContract>({
+            key: 'place_food_order',
+            description: 'El cliente quiere pedir comida.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'items', type: 'reference', required: true,
+                    sensitivity: 'public', source: 'customer', persistence: 'record',
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'delivery_address', type: 'text', required: false,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                    confirm: true,
+                }),
+                ...CONTACT_SLOTS,
+            ]),
+            toolPlan: Object.freeze(['get_menu', 'get_promotions', 'place_order']),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['collecting', 'confirming', 'placed', 'handed_off']),
+            commits: true,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'track_food_order',
+            description: 'El cliente pregunta por un pedido que ya hizo.',
+            slots: Object.freeze([Object.freeze<SlotSchema>({
+                key: 'order_id', type: 'reference', required: true,
+                sensitivity: 'personal', source: 'tool', persistence: 'record',
+            })]),
+            toolPlan: Object.freeze(['list_my_orders', 'check_order_status']),
+            confirmation: 'none',
+            fallback: 'handoff',
+            states: Object.freeze(['answered', 'not_found', 'handed_off']),
+            commits: false,
+        }),
+    ]),
+
+    // ── Automotriz: vehículos y pruebas de manejo ────────────────────────
+    vehicles: Object.freeze([Object.freeze<IntentContract>({
+        key: 'schedule_test_drive',
+        description: 'El cliente quiere probar un vehículo.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'vehicle_id', type: 'reference', required: true,
+                sensitivity: 'public', source: 'tool', persistence: 'record',
+            }),
+            DATETIME_SLOT,
+            ...CONTACT_SLOTS,
+        ]),
+        toolPlan: Object.freeze([
+            'search_vehicles', 'get_vehicle_details', 'schedule_test_drive',
+        ]),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'confirming', 'scheduled', 'handed_off']),
+        commits: true,
+    })]),
+
+    // ── Educación: cursos e inscripciones ────────────────────────────────
+    education: Object.freeze([Object.freeze<IntentContract>({
+        key: 'enrol_student',
+        description: 'El interesado quiere inscribirse en un curso.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'course_id', type: 'reference', required: true,
+                sensitivity: 'public', source: 'tool', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'student_name', type: 'text', required: true,
+                sensitivity: 'personal', source: 'customer', persistence: 'record',
+            }),
+            ...CONTACT_SLOTS,
+        ]),
+        toolPlan: Object.freeze(['get_courses', 'get_course_schedule', 'enroll_student']),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'confirming', 'enrolled', 'handed_off']),
+        commits: true,
+    })]),
+
+    // ── Servicios profesionales: estado de un caso ───────────────────────
+    //
+    // Un estudio no cierra un caso por chat: informa. El scope de estos
+    // perfiles es de captación o calificación, y su intención lo refleja.
+    professionalServices: Object.freeze([Object.freeze<IntentContract>({
+        key: 'case_status',
+        description: 'El cliente pregunta cómo va su caso o expediente.',
+        slots: Object.freeze([Object.freeze<SlotSchema>({
+            key: 'case_reference', type: 'reference', required: true,
+            sensitivity: 'sensitive', source: 'derived', persistence: 'record',
+            confirm: true,
+        })]),
+        toolPlan: Object.freeze(['get_case_status']),
+        confirmation: 'none',
+        fallback: 'handoff',
+        states: Object.freeze(['answered', 'not_found', 'handed_off']),
+        commits: false,
+    })]),
+
+    // ── Veterinaria: la ficha del animal ─────────────────────────────────
+    pets: Object.freeze([
+        Object.freeze<IntentContract>({
+            key: 'register_pet',
+            description: 'El dueño registra a su animal o actualiza su ficha.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'pet_name', type: 'text', required: true,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'species', type: 'enum', required: true,
+                    sensitivity: 'public', source: 'customer', persistence: 'record',
+                }),
+            ]),
+            toolPlan: Object.freeze(['list_pets_for_contact', 'register_pet', 'update_pet']),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['collecting', 'registered', 'handed_off']),
+            commits: true,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'pet_emergency',
+            description: 'El dueño describe una urgencia con su animal.',
+            slots: Object.freeze([Object.freeze<SlotSchema>({
+                key: 'symptoms', type: 'text', required: true,
+                sensitivity: 'sensitive', source: 'customer', persistence: 'record',
+                confirm: true,
+            })]),
+            // Termina SIEMPRE en una persona: el triage ordena la urgencia, no
+            // la resuelve, y decir lo contrario en una urgencia cuesta caro.
+            toolPlan: Object.freeze(['triage_pet_emergency']),
+            confirmation: 'none',
+            fallback: 'handoff',
+            states: Object.freeze(['triaged', 'handed_off']),
+            commits: false,
+        }),
+    ]),
+
+    // ── Gimnasios: clases y membresías ───────────────────────────────────
+    gyms: Object.freeze([Object.freeze<IntentContract>({
+        key: 'book_class',
+        description: 'El socio quiere anotarse a una clase.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'class_id', type: 'reference', required: true,
+                sensitivity: 'public', source: 'tool', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'membership_reference', type: 'reference', required: false,
+                sensitivity: 'personal', source: 'derived', persistence: 'record',
+            }),
+        ]),
+        toolPlan: Object.freeze(['get_class_schedule', 'get_my_membership', 'book_class']),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'confirming', 'booked', 'handed_off']),
+        commits: true,
+    })]),
+
+    // ── Seguros: cotización y siniestros ─────────────────────────────────
+    insurance: Object.freeze([
+        Object.freeze<IntentContract>({
+            key: 'quote_policy',
+            description: 'El interesado quiere saber cuánto le sale una póliza.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'plan_id', type: 'reference', required: true,
+                    sensitivity: 'public', source: 'tool', persistence: 'record',
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'risk_profile', type: 'text', required: true,
+                    sensitivity: 'sensitive', source: 'customer', persistence: 'record',
+                    confirm: true,
+                }),
+                ...CONTACT_SLOTS,
+            ]),
+            toolPlan: Object.freeze(['get_insurance_plans', 'calculate_quote']),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['collecting', 'quoted', 'handed_off']),
+            commits: true,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'file_claim',
+            description: 'El asegurado reporta un siniestro.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'policy_number', type: 'reference', required: true,
+                    sensitivity: 'sensitive', source: 'derived', persistence: 'record',
+                    confirm: true,
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'incident_description', type: 'text', required: true,
+                    sensitivity: 'sensitive', source: 'customer', persistence: 'record',
+                    confirm: true,
+                }),
+            ]),
+            // La llave de identidad va primero: lo que sigue son datos del
+            // asegurado y no se leen sin verificar quién pregunta.
+            toolPlan: Object.freeze([
+                'request_identity_code', 'verify_identity_code',
+                'check_policy_status', 'file_claim',
+            ]),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['identifying', 'collecting', 'filed', 'handed_off']),
+            commits: true,
+        }),
+    ]),
+
+    // ── Servicios a domicilio: pedidos de visita ─────────────────────────
+    homeServices: Object.freeze([Object.freeze<IntentContract>({
+        key: 'request_service',
+        description: 'El cliente pide que vayan a su casa a resolver algo.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'problem_description', type: 'text', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'address', type: 'text', required: true,
+                sensitivity: 'personal', source: 'customer', persistence: 'record',
+                confirm: true,
+            }),
+            DATETIME_SLOT,
+            ...CONTACT_SLOTS,
+        ]),
+        toolPlan: Object.freeze(['create_service_request', 'check_request_status']),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'confirming', 'requested', 'handed_off']),
+        commits: true,
+    })]),
+
+    // ── Servicios para mascotas: guardería y peluquería ──────────────────
+    petServices: Object.freeze([Object.freeze<IntentContract>({
+        key: 'ask_pet_service',
+        description: 'El dueño pregunta qué servicios hay y si tienen lugar.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'service_id', type: 'reference', required: false,
+                sensitivity: 'public', source: 'tool', persistence: 'turn',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'date', type: 'date', required: false,
+                sensitivity: 'public', source: 'customer', persistence: 'turn',
+            }),
+        ]),
+        toolPlan: Object.freeze(['list_pet_services', 'check_daycare_availability']),
+        confirmation: 'none',
+        fallback: 'handoff',
+        states: Object.freeze(['answered', 'unavailable', 'handed_off']),
+        commits: false,
+    })]),
+
+    // ── Alquiler de vehículos ────────────────────────────────────────────
+    vehicleRentals: Object.freeze([Object.freeze<IntentContract>({
+        key: 'rent_vehicle',
+        description: 'El cliente quiere alquilar un vehículo por unos días.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'pickup_at', type: 'datetime', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'return_at', type: 'datetime', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'record',
+            }),
+            ...CONTACT_SLOTS,
+        ]),
+        toolPlan: Object.freeze([
+            'check_vehicle_rental_availability', 'create_vehicle_rental',
+        ]),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'confirming', 'reserved', 'handed_off']),
+        commits: true,
+    })]),
+
+    // ── Hospedaje de mascotas ────────────────────────────────────────────
+    petBoarding: Object.freeze([Object.freeze<IntentContract>({
+        key: 'board_pet',
+        description: 'El dueño quiere dejar a su animal unos días.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'pet_reference', type: 'reference', required: true,
+                sensitivity: 'personal', source: 'derived', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'check_in', type: 'date', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'check_out', type: 'date', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'record',
+            }),
+            ...CONTACT_SLOTS,
+        ]),
+        toolPlan: Object.freeze(['create_pet_boarding', 'list_my_pet_boardings']),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'confirming', 'reserved', 'handed_off']),
+        commits: true,
+    })]),
+
+    // ── Fotografía: presupuesto de una sesión ────────────────────────────
+    photography: Object.freeze([Object.freeze<IntentContract>({
+        key: 'request_photo_quote',
+        description: 'El cliente quiere presupuesto para una sesión.',
+        slots: Object.freeze([
+            Object.freeze<SlotSchema>({
+                key: 'package_id', type: 'reference', required: false,
+                sensitivity: 'public', source: 'tool', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'event_date', type: 'date', required: true,
+                sensitivity: 'public', source: 'customer', persistence: 'record',
+            }),
+            ...CONTACT_SLOTS,
+        ]),
+        toolPlan: Object.freeze([
+            'list_photo_packages', 'check_date_availability', 'request_photo_quote',
+        ]),
+        confirmation: 'explicit',
+        fallback: 'handoff',
+        states: Object.freeze(['collecting', 'quoted', 'handed_off']),
+        commits: true,
+    })]),
+
     payments: Object.freeze([Object.freeze<IntentContract>({
         key: 'pay',
         description: 'El cliente quiere pagar lo que ya acordó.',
@@ -354,6 +868,22 @@ function navigationFor(manifest: ResolvedVerticalCapabilityManifest): Navigation
             route,
         }))),
     };
+}
+
+/**
+ * De qué familia de tools sale cada intención.
+ *
+ * Se deriva del registro y no se escribe a mano: la prueba que verifica "el
+ * perfil sólo declara intenciones que su manifiesto concede" llevaba su propia
+ * copia de este mapa con cinco entradas, y al agregar quince grupos quedó
+ * verificando contra un `undefined`. Una copia de una relación que ya existe es
+ * una copia que se desactualiza.
+ */
+export function intentToolGroup(intentKey: string): string | undefined {
+    for (const [group, intents] of Object.entries(INTENTS_BY_TOOL_GROUP)) {
+        if (intents.some(intent => intent.key === intentKey)) return group;
+    }
+    return undefined;
 }
 
 function intentsFor(manifest: ResolvedVerticalCapabilityManifest): readonly IntentContract[] {

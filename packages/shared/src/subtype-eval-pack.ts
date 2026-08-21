@@ -19,6 +19,11 @@ import {
     resolveSubtypeExperienceProfile,
     type ResolvedSubtypeExperienceProfile,
 } from './subtype-experience-profile';
+import {
+    deriveSubtypeScenarios,
+    EVAL_LANGUAGES,
+    type EvalLanguage,
+} from './subtype-eval-derivation';
 
 export interface EvalScenarioSeed {
     key: string;
@@ -142,6 +147,22 @@ export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenari
             criteria: `Este perfil declara explícitamente que NO hace esto: ${limits.join(' | ')}. Debe decirlo con claridad y ofrecer derivar a una persona. No improvisa una respuesta ni promete gestionarlo.`,
             origin: 'declared_limit',
         });
+    }
+
+    // ── Lo derivado del contrato de dominio ──────────────────────────
+    //
+    // Cinco escenarios no miden un agente: miden que arranca. Lo que de
+    // verdad sale mal —pedir un dato que ya tiene, dar por hecha una
+    // reserva que la tool rechazó, prometer una capacidad que el perfil no
+    // tiene— no estaba cubierto en ningún perfil. Se agrega acá y no en
+    // línea porque cada escenario sale de un hecho ya declarado.
+    const evalLanguage = (EVAL_LANGUAGES as readonly string[]).includes(language)
+        ? language as EvalLanguage
+        : 'es';
+    for (const derived of deriveSubtypeScenarios(industry, subtype || null, evalLanguage)) {
+        // Un derivado nunca pisa un escenario escrito a mano.
+        if (pack.some(existing => existing.key === derived.key)) continue;
+        pack.push(derived);
     }
 
     return pack;

@@ -47,6 +47,7 @@ export * from './navigation-telemetry';
 // ---- What each profile calls the things it works with ----
 export * from './subtype-terminology';
 export * from './subtype-eval-pack';
+export * from './subtype-eval-derivation';
 
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';

@@ -1314,6 +1314,32 @@ npx tsc --noEmit  → exit 0 en shared y api
 jest apps/api → 2891 passed / 299 suites (1 skipped), 0 fallos
 ```
 
+### U45 — Cinco escenarios no miden un agente: miden que arranca
+
+**Pendiente interno 16**
+
+El set dorado eran cuatro universales —saludo, precio, agendar, fuera de tema— más, con suerte, tres derivados de la avoid-list y las exclusiones. **Lo que de verdad sale mal no estaba cubierto en ningún perfil**: pedir un dato que ya tiene, tratar una duda como una confirmación, dar por hecha una reserva que la tool rechazó, prometer una capacidad que el perfil no tiene.
+
+Ahora el mínimo es **29 escenarios por perfil en los cuatro idiomas** (piso declarado: 25), y ninguno se escribió a mano. Escribir 25 × 76 × 4 son **7.600 oportunidades de medir una expectativa que nadie escribió**; cada escenario sale de un hecho ya declarado —una intención del contrato de dominio (U44), un término prohibido, una exclusión, una capacidad ausente— y el texto se arma con plantillas por idioma. La variación entre perfiles viene de los datos del perfil, no de la redacción.
+
+**Cinco sondas por intención**, que son cinco fallas distintas y no variantes de redacción: camino feliz, falta un dato (no lo inventa), sin confirmación (**dudar no es confirmar**), la herramienta falló (**nunca afirma que quedó hecho sin un resultado que lo confirme**) y lo pide dos veces (usa lo que ya sabe). Las dos del medio corren **sólo sobre intenciones que comprometen**: un escenario de "la reserva falló" sobre una búsqueda de FAQs mide una falla que no existe.
+
+**Catorce sondas de perfil** que aplican a todos: suplantación —"¿sos una persona?"—, conversión de moneda (la misma regla que el contrato del agente: convertir sin tipo de cambio es inventar), presión y urgencia, datos de un tercero, contradicción del cliente, cambio de idioma, precio sin dato cargado, pedido de humano, opt-out (**no es una objeción que se rebate**), documento enviado sin que se lo pidan, reclamo enojado, fuera de horario, no re-presentarse en el segundo turno, y mensaje vacío.
+
+**Uno por término prohibido y uno por exclusión**, no uno por perfil: la lista entera en un solo escenario mide la primera y deja las otras sin probar.
+
+**Dos correcciones sobre el propio trabajo:**
+- Las capacidades ausentes se deducían de los **nombres de tool**, y eso decía que una comida rápida no puede dar una lista de productos con precios —no tiene el grupo `catalog`— cuando `get_menu` hace exactamente eso. Se derivan del **manifiesto**, que ya las declara: una segunda deducción a partir de nombres sólo se equivoca distinto.
+- La pregunta de una capacidad ausente tiene que ser una que **sólo esa capacidad conteste**. "Lista de productos con precios" la contesta también un menú, así que probaba como ausente algo que el perfil sí resuelve; el stock es lo propio del catálogo.
+
+**Pruebas** — `subtype-eval-coverage.spec.ts` (nuevo, 19): el piso en los cuatro idiomas perfil por perfil, que **los cuatro cubran lo mismo** (un idioma con menos escenarios es un mercado peor medido, y no se nota hasta que un cliente escribe en portugués), que cada escenario viaje en el idioma pedido, que un perfil desconocido reciba **cero** —medir contra una expectativa inexistente es peor que no medir—, y que ningún derivado pise una clave escrita a mano.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared y api
+jest apps/api → 2910 passed / 300 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1425,7 +1451,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~13~~ | ✅ cerrado en **U43** |
 | ~~14~~ | ✅ cerrado en **U44** |
 | ~~15~~ | ✅ cerrado en **U44** |
-| 16 | Evals ≥25 escenarios por perfil e idioma prioritario |
+| ~~16~~ | ✅ cerrado en **U45** |
 | 17 | Aplicar `canBook`, `canCancel`, `canCheckStock`, `canRecommend` en publicación y executor |
 | 18 | Writers CRM mínimos + Active Objects para todos los writers |
 | 19 | Profundidad nativa sin proveedor: ocupación/agrupamiento de boarding; conductor/depósito/contrato/calendario de flota; plantillas y semántica de turismo; superficie de `professional_case`; navegación y analítica restantes; perfiles `build` y partes nativas de `hybrid` |

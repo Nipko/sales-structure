@@ -159,7 +159,7 @@ export default function PropertyDetailPage() {
 
   const tabs: TabItem[] = [
     { id: "calendar", label: t("calendar"), icon: CalendarDays },
-    { id: "info", label: "Info", icon: Info },
+    { id: "info", label: t("info"), icon: Info },
     { id: "photos", label: t("photos"), icon: Image },
     { id: "bookings", label: t("bookings"), icon: List },
     { id: "feeds", label: t("feeds"), icon: Link2 },

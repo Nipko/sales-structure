@@ -82,7 +82,7 @@ export default function TourDetailPage() {
     const [loading, setLoading] = useState(true);
 
     const tabs: TabItem[] = [
-        { id: "info", label: "Info", icon: Info },
+        { id: "info", label: t("info"), icon: Info },
         { id: "inventory", label: t("inventory"), icon: CalendarDays },
         { id: "bookings", label: t("bookings"), icon: List },
     ];

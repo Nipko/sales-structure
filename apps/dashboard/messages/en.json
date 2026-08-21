@@ -6491,6 +6491,7 @@
     "saveFailed": "Could not save the change. The photos are unchanged."
   },
   "properties": {
+    "info": "Details",
     "title": "Properties",
     "subtitle": "Manage your listings and availability",
     "addProperty": "Add property",
@@ -8210,6 +8211,7 @@
     }
   },
   "tours": {
+    "info": "Details",
     "title": "Tours & Packages",
     "subtitle": "Manage your experiences and travel packages",
     "createPackage": "Create package",

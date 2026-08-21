@@ -10,11 +10,12 @@ import {
     Megaphone, Plus, Edit2, Power, Clock, Layers, X, Play, Pause
 } from "lucide-react";
 
-const statusColors: Record<string, { bg: string; text: string; label: string }> = {
-    draft: { bg: "#95a5a622", text: "#95a5a6", label: "Draft" },
-    active: { bg: "#2ecc7122", text: "#2ecc71", label: "Active" },
-    paused: { bg: "#f39c1222", text: "#f39c12", label: "Paused" },
-    finished: { bg: "#e74c3c22", text: "#e74c3c", label: "Finished" },
+/** Solo color: la etiqueta sale de `campaigns.status.*`, en los cuatro idiomas. */
+const statusColors: Record<string, { bg: string; text: string }> = {
+    draft: { bg: "#95a5a622", text: "#95a5a6" },
+    active: { bg: "#2ecc7122", text: "#2ecc71" },
+    paused: { bg: "#f39c1222", text: "#f39c12" },
+    finished: { bg: "#e74c3c22", text: "#e74c3c" },
 };
 
 export default function CampaignsPage() {

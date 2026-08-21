@@ -6491,6 +6491,7 @@
     "saveFailed": "Não foi possível salvar a alteração. As fotos continuam como estavam."
   },
   "properties": {
+    "info": "Dados",
     "title": "Propriedades",
     "subtitle": "Gerencie seus anuncios e disponibilidade",
     "addProperty": "Adicionar propriedade",
@@ -8210,6 +8211,7 @@
     }
   },
   "tours": {
+    "info": "Dados",
     "title": "Passeios e Pacotes",
     "subtitle": "Gerencie suas experiências e pacotes de viagem",
     "createPackage": "Criar pacote",

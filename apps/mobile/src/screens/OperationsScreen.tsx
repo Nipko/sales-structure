@@ -20,7 +20,8 @@ import { useToast } from '../components/Toast';
 import { Modal } from '../components/AppModal';
 import { haptic } from '../lib/haptics';
 import {
-    resolveVerticalWorkspace,
+    resolveVerticalWorkspaces,
+    workspaceOfKind,
     type VerticalWorkspaceKind,
 } from '../lib/verticalWorkspace';
 import {
@@ -758,7 +759,10 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
 
     return (
         <SafeAreaView style={styles.root} edges={['top']}>
-            <Text style={styles.h1}>{t(resolveVerticalWorkspace(verticalConfig || {}).labelKey)}</Text>
+            {/* El título sale del espacio que se está mostrando, no del primero
+                que resuelve la config: con el conmutador activo eso contradecía
+                la pestaña elegida. */}
+            <Text style={styles.h1}>{t(workspaceOfKind(kind).labelKey)}</Text>
             <SectionList
                 sections={sections}
                 keyExtractor={(item) => item.id}
@@ -1044,17 +1048,74 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
     );
 }
 
+function renderWorkspace(kind: VerticalWorkspaceKind) {
+    if (kind === 'appointments') return <AppointmentsScreen />;
+    if (kind === 'stays') return <ReservationsScreen />;
+    return <VerticalOperationsScreen kind={kind} />;
+}
+
+/**
+ * Los espacios operativos del negocio, no el primero de la lista.
+ *
+ * Once de los 76 perfiles declaran más de una operación —un gimnasio vende
+ * membresías y agenda clases, una escuela inscribe y toma citas de admisión, un
+ * restaurante con salón despacha pedidos y reserva mesas— y el teléfono
+ * mostraba una sola. El conmutador aparece únicamente cuando hay más de uno:
+ * un negocio de una sola operación no gana una pestaña que no le sirve.
+ */
 export function OperationsScreen() {
     const { verticalConfig } = useAuth();
-    const workspace = resolveVerticalWorkspace(verticalConfig || {});
+    const { t } = useI18n();
+    const workspaces = resolveVerticalWorkspaces(verticalConfig || {});
+    const [activeKind, setActiveKind] = useState<VerticalWorkspaceKind | null>(null);
 
-    if (workspace.kind === 'appointments') return <AppointmentsScreen />;
-    if (workspace.kind === 'stays') return <ReservationsScreen />;
-    return <VerticalOperationsScreen kind={workspace.kind} />;
+    const active = workspaces.find((workspace) => workspace.kind === activeKind) || workspaces[0];
+
+    if (workspaces.length < 2) return renderWorkspace(active.kind);
+
+    return (
+        <View style={styles.workspaceRoot}>
+            <SafeAreaView edges={['top']} style={styles.workspaceSwitcherBar}>
+                <View style={styles.workspaceSwitcher}>
+                    {workspaces.map((workspace) => {
+                        const selected = workspace.kind === active.kind;
+                        return (
+                            <TouchableOpacity
+                                key={workspace.kind}
+                                onPress={() => setActiveKind(workspace.kind)}
+                                style={[styles.workspaceTab, selected && styles.workspaceTabActive]}
+                                accessibilityRole="tab"
+                                accessibilityState={{ selected }}
+                                accessibilityLabel={t(workspace.labelKey)}
+                            >
+                                <Ionicons
+                                    name={workspace.iconName}
+                                    size={15}
+                                    color={selected ? theme.accent : theme.textSecondary}
+                                />
+                                <Text style={[styles.workspaceTabText, selected && styles.workspaceTabTextActive]}>
+                                    {t(workspace.labelKey)}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            </SafeAreaView>
+            <View style={styles.workspaceBody}>{renderWorkspace(active.kind)}</View>
+        </View>
+    );
 }
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: theme.bg },
+    workspaceRoot: { flex: 1, backgroundColor: theme.bg },
+    workspaceSwitcherBar: { backgroundColor: theme.bg },
+    workspaceSwitcher: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 },
+    workspaceTab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },
+    workspaceTabActive: { backgroundColor: theme.accent + '18', borderColor: theme.accent + '66' },
+    workspaceTabText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
+    workspaceTabTextActive: { color: theme.accent },
+    workspaceBody: { flex: 1 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: theme.bg },
     content: { paddingBottom: 32 },
     emptyContent: { flexGrow: 1 },

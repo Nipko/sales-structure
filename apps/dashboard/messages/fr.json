@@ -6491,6 +6491,7 @@
     "saveFailed": "Impossible d’enregistrer la modification. Les photos restent inchangées."
   },
   "properties": {
+    "info": "Informations",
     "title": "Proprietes",
     "subtitle": "Gerez vos annonces et disponibilites",
     "addProperty": "Ajouter une propriete",
@@ -8210,6 +8211,7 @@
     }
   },
   "tours": {
+    "info": "Informations",
     "title": "Tours et Forfaits",
     "subtitle": "Gérez vos expériences et forfaits de voyage",
     "createPackage": "Créer un forfait",

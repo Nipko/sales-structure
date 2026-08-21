@@ -285,6 +285,59 @@ function normalize(value: string | null | undefined): string {
 }
 
 /**
+ * Todos los espacios operativos del perfil, en orden de prioridad.
+ *
+ * La app resolvía UNO solo: la primera capacidad de la lista ganaba y el resto
+ * desaparecía del teléfono. Un gimnasio veía las clases y perdía la agenda; una
+ * escuela de idiomas veía las inscripciones y perdía las citas de admisión; un
+ * restaurante con salón veía los pedidos y perdía las reservas de mesa. Once de
+ * los 76 perfiles declaran más de una operación, y en el teléfono se veía una
+ * sola.
+ *
+ * El primero de la lista es el mismo que devolvía antes, así que nada cambia
+ * para quien pide uno solo.
+ */
+/**
+ * La resolución de un espacio concreto.
+ *
+ * Con el conmutador activo, la pantalla ya sabe QUÉ espacio está mostrando y no
+ * tiene por qué volver a resolverlo desde la config: hacerlo devolvía siempre
+ * el primero, así que el título contradecía la pestaña elegida.
+ */
+export function workspaceOfKind(kind: VerticalWorkspaceKind): VerticalWorkspaceResolution {
+    return WORKSPACES[kind] || WORKSPACES.none;
+}
+
+export function resolveVerticalWorkspaces(
+    input: VerticalWorkspaceInput,
+): VerticalWorkspaceResolution[] {
+    const primary = resolveVerticalWorkspace(input);
+    if (primary.kind === 'none') return [primary];
+
+    // Las rutas heredadas por sub-tipo resuelven un único espacio a propósito:
+    // un tenant con configuración v1 conserva exactamente lo que tenía hasta
+    // que reconcilie, y agregarle espacios sería cambiarle la app sin aviso.
+    const capabilities = new Set(input.effectiveCapabilities || []);
+    if (
+        !Array.isArray(input.effectiveCapabilities)
+        || input.manifestVersion !== VERTICAL_CAPABILITY_MANIFEST_VERSION
+    ) {
+        return [primary];
+    }
+
+    const resolved: VerticalWorkspaceResolution[] = [];
+    const seen = new Set<VerticalWorkspaceKind>();
+    for (const capability of CAPABILITY_PRIORITY) {
+        if (!capabilities.has(capability)) continue;
+        const kind = CAPABILITY_WORKSPACES[capability];
+        if (seen.has(kind)) continue;
+        seen.add(kind);
+        resolved.push(WORKSPACES[kind]);
+    }
+    return resolved.length ? resolved : [primary];
+}
+
+/**
  * Resolves the mobile operational workspace for a tenant's vertical config.
  * Specialized data models take precedence over the generic booking flag.
  */

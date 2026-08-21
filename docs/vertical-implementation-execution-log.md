@@ -785,3 +785,31 @@ El turno no trae tipo de cambio, así que cualquier equivalencia que el modelo e
 npx tsc --noEmit (api)  → exit 0
 jest apps/api           → 2621 passed / 290 suites, 0 fallos
 ```
+
+## Fase 4 — Navegación, home, Inbox y móvil
+
+### U24 — El teléfono mostraba menos negocio que la pantalla grande
+
+**Fase 4 · Épica D · Pasos 7 y 8 de §8.5**
+
+**Móvil: un solo espacio operativo.** `resolveVerticalWorkspace` recorría una lista de prioridad y devolvía **el primero** que coincidía; el resto desaparecía del teléfono. Un gimnasio veía las clases y perdía la agenda; una escuela de idiomas veía las inscripciones y perdía las citas de admisión; un restaurante con salón veía los pedidos y perdía las reservas de mesa. **Once de los 76 perfiles** declaran más de una operación.
+
+**ADR-035 — El conmutador aparece sólo cuando hay algo que conmutar.**
+`resolveVerticalWorkspaces` devuelve todos los espacios en el mismo orden de prioridad, y **el primero es idéntico** al que devolvía el resolutor singular — una prueba lo verifica perfil por perfil, así que nada cambia para un negocio de una sola operación, que no gana una pestaña que no le sirve.
+
+**ADR-036 — Una configuración v1 conserva exactamente lo que tenía.**
+El resolutor plural sólo se abre con manifiesto vigente y capacidades publicadas. Un tenant que no reconcilió mantiene su único espacio: sumarle pestañas sería cambiarle la app sin aviso, y el resto del sistema ya trata la v1 como una valla, no como un caso a mejorar.
+
+**Un defecto de la propia pantalla, encontrado al conectar el conmutador:** el título se resolvía llamando de nuevo al resolutor singular, que devuelve **siempre el primero**. Con el conmutador activo eso hacía que el título contradijera la pestaña elegida. Ahora sale del espacio que se está mostrando (`workspaceOfKind(kind)`).
+
+**i18n residual (paso 8).** `Info` estaba escrito en inglés en las pestañas de propiedad y de tour dentro de una app de cuatro idiomas — ahora `Datos / Details / Dados / Informations`. Y en Campañas, cuatro estados (`Draft/Active/Paused/Finished`) vivían en una tabla de colores **con traducción ya existente que la pantalla sí usaba**: el literal inglés era una traducción muerta que la próxima edición podía volver a mostrar. Se eliminó el campo.
+
+**Pruebas** — `verticalWorkspaces.test.ts` (9 casos): el primer espacio es idéntico al del resolutor singular **en los 76 perfiles**; gimnasio, escuela y restaurante casual reciben sus dos espacios; retail, guardería y alquiler de vehículos siguen con uno (las dos últimas pierden la agenda a propósito en el manifiesto); ningún espacio se repite; **toda capacidad operativa de todo perfil tiene su espacio en el teléfono** — si alguien agrega una capacidad y olvida el mapeo, el negocio quedaría invisible en móvil y nadie se enteraría; un perfil sin capacidades publica `none`; una configuración v1 conserva su único espacio.
+
+**Verificación**
+```
+npx tsc --noEmit (api + dashboard + mobile)  → exit 0
+jest apps/mobile    → 319 passed / 24 suites, 0 fallos
+jest apps/api       → 2621 passed / 290 suites, 0 fallos
+jest apps/dashboard → 172 passed / 21 suites, 0 fallos
+```

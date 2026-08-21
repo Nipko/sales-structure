@@ -144,6 +144,27 @@ async function bootstrapTenantAdmin(
       return;
     }
 
+    // Telemetría de navegación del shell.
+    //
+    // El emisor se agregó con el rediseño de navegación y esta lista no se
+    // tocó, así que el POST caía en el catch-all de abajo y se contaba como
+    // llamada inesperada. No fallaba siempre porque la cola se vacía a los 3s
+    // (`navigation-telemetry.ts`): que el POST cayera dentro o fuera del caso
+    // dependía de cuánto tardara el caso. Con `retries: 1` y
+    // `failOnFlakyTests` en CI, un solo intento rojo tiñe el deploy aunque el
+    // reintento pase — que es exactamente lo que venía pasando.
+    //
+    // `/admin/inbox` es pantalla operativa, así que cargarla SIEMPRE encola un
+    // `navigation.task_reached`: es una llamada declarada del shell, no una
+    // fuga.
+    if (
+      method === "POST" &&
+      path === `/analytics/navigation-telemetry/${TENANT_ID}`
+    ) {
+      await fulfillSuccess(route);
+      return;
+    }
+
     if (method === "GET" && path === `/verticals/${TENANT_ID}`) {
       await fulfillSuccess(route, {
         industry: "technology",

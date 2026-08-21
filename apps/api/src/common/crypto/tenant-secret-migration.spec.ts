@@ -8,7 +8,18 @@ import {
     CHANNEL_MANAGER_SECRET_FIELD_IDS,
 } from '../../modules/channel-manager/channel-manager.service';
 
-/* eslint-disable @typescript-eslint/no-var-requires */
+/*
+ * `require` y no `import`: el script es un `.js` CommonJS que tiene que
+ * correr con `node` pelado dentro del contenedor, sin pasar por el build de
+ * TypeScript. Importarlo como módulo ES lo ataría al build y dejaría de poder
+ * invocarse en producción, que es su único motivo de existir.
+ *
+ * La regla que el proyecto aplica es `no-require-imports`; el `disable` decía
+ * `no-var-requires` —el nombre viejo de la regla— así que no silenciaba nada
+ * y el lint del deploy cayó. Se nombran las dos: los dos nombres conviven
+ * según la versión del plugin.
+ */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 const migration = require('../../../scripts/migrate-tenant-secrets.js');
 
 /**

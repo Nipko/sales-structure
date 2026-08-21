@@ -4160,6 +4160,13 @@ $native_evidence_opportunity_triggers$;
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_outbox" (
     "id"               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "provider"         VARCHAR(40) NOT NULL,
+    -- A cual conexion de ese proveedor pertenece. La unicidad de abajo es
+    -- (proveedor, clave), y eso alcanza mientras haya UNA conexion por
+    -- proveedor: con dos cuentas de Hostaway el mismo hecho deriva la misma
+    -- clave y la segunda escritura choca contra la fila de la primera, o sea
+    -- desaparece. La clave derivada ya incluye la conexion cuando la hay; esta
+    -- columna la deja consultable y auditable.
+    "connection_id"    VARCHAR(120),
     "operation"        VARCHAR(80) NOT NULL,
     -- Derivada del hecho de negocio, no de un contador: reintentar es repetir
     -- la MISMA escritura, y una clave nueva por intento crea una reserva nueva
@@ -4182,6 +4189,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uidx_integration_outbox_key"
 CREATE INDEX IF NOT EXISTS "idx_integration_outbox_claimable"
     ON "{{SCHEMA_NAME}}"."integration_outbox" ("status", "next_attempt_at")
  WHERE "status" IN ('pending', 'retrying');
+-- Expand-contract: los schemas creados antes de que existiera esta columna ya
+-- tienen la tabla, y `CREATE TABLE IF NOT EXISTS` no la agrega. Aditivo y
+-- nullable, asi que el codigo viejo sigue corriendo contra el schema nuevo
+-- durante el deploy.
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_outbox"
+    ADD COLUMN IF NOT EXISTS "connection_id" VARCHAR(120);
+
+-- Lo que necesita ojos humanos: muerto, suprimido o vencido.
+CREATE INDEX IF NOT EXISTS "idx_integration_outbox_review"
+    ON "{{SCHEMA_NAME}}"."integration_outbox" ("status", "updated_at" DESC)
+ WHERE "status" IN ('dead', 'suppressed', 'expired');
 
 -- ---- Webhook inbox: el evento que llego ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_webhook_inbox" (

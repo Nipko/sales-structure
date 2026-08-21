@@ -34,7 +34,13 @@ function buildService(rows: any[][] = []) {
         queries.push({ sql, params });
         return rows.shift() ?? [];
     });
-    const service = new IntegrationOutboxService({ executeInTenantSchema } as any);
+    // `enqueue` repara el schema antes de insertar: los schemas creados antes
+    // de que existiera el andamiaje no tienen sus tablas, y un `42P01` ahí
+    // hacía perder la intención en silencio.
+    const ensureCanonicalTables = jest.fn().mockResolvedValue(undefined);
+    const service = new IntegrationOutboxService(
+        { executeInTenantSchema, ensureCanonicalTables } as any,
+    );
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     jest.spyOn((service as any).logger, 'debug').mockImplementation(() => undefined);
     return { service, queries };

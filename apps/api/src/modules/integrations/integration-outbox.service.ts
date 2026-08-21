@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
     EXTERNAL_WRITES_DISABLED,
+    OUTBOX_ENTRY_TTL_SECONDS,
+    OUTBOX_EXPIRABLE_STATUSES,
     OUTBOX_MAX_ATTEMPTS,
     deriveIdempotencyKey,
     externalWriteGateFor,
@@ -13,6 +15,18 @@ import {
     type WebhookInboxEntry,
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
+
+/**
+ * Las tablas del andamiaje, para repararlas en un schema viejo.
+ *
+ * Se agregaron a `tenant-schema.sql` después de que existieran tenants, así que
+ * los schemas creados antes no las tienen. Encolar contra una tabla ausente
+ * tiraba `42P01` y el llamador perdía la intención en silencio.
+ */
+const OUTBOX_TABLES = Object.freeze([
+    'integration_outbox',
+    'integration_webhook_inbox',
+]);
 
 /**
  * La escritura que todavía no salió, el evento que ya llegó, y la diferencia
@@ -54,8 +68,16 @@ export class IntegrationOutboxService {
             operation: string;
             subjectId: string;
             payload?: Record<string, unknown>;
+            /** La conexión concreta del proveedor. Ausente = la única. */
+            connectionId?: string;
         },
     ): Promise<{ id: string; idempotencyKey: string; suppressed: boolean }> {
+        // Las tablas del andamiaje no existen en los schemas creados antes de
+        // que se agregaran. Encolar contra una tabla ausente tiraba `42P01`, y
+        // el llamador —que suele estar en un `.catch()`— perdía la intención en
+        // silencio: exactamente lo que un outbox existe para impedir.
+        await this.prisma.ensureCanonicalTables(schemaName, OUTBOX_TABLES).catch(() => undefined);
+
         const idempotencyKey = deriveIdempotencyKey(input);
         const gate = this.gateFor(input.provider);
         // Se encola igual con el interruptor apagado: la intención queda
@@ -66,13 +88,14 @@ export class IntegrationOutboxService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO integration_outbox
-                 (provider, operation, idempotency_key, payload, status, next_attempt_at)
-             VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
+                 (provider, connection_id, operation, idempotency_key, payload, status, next_attempt_at)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6, NOW())
              ON CONFLICT (provider, idempotency_key) DO UPDATE
                  SET updated_at = NOW()
              RETURNING id, status`,
             [
                 input.provider,
+                input.connectionId ?? null,
                 input.operation,
                 idempotencyKey,
                 JSON.stringify(input.payload ?? {}),
@@ -83,6 +106,112 @@ export class IntegrationOutboxService {
             id: String(rows[0]?.id),
             idempotencyKey,
             suppressed: !gate.enabled,
+        };
+    }
+
+    /**
+     * Lo que estaba esperando a que se certificara el proveedor, ahora puede.
+     *
+     * Sin esto, la promesa del comentario de `enqueue` —"el día que el proveedor
+     * se certifique, sale"— era **falsa**: `claim` sólo mira `pending` y
+     * `retrying`, así que una entrada `suppressed` se quedaba ahí para siempre
+     * aunque el interruptor se encendiera. Intención registrada y nunca
+     * ejecutada es peor que perderla: parece que va a salir.
+     *
+     * Vence primero y libera después, en ese orden: liberar una entrada de hace
+     * tres meses la mandaría al proveedor como si fuera de hoy.
+     */
+    async releaseSuppressed(schemaName: string, provider: string): Promise<number> {
+        if (!this.gateFor(provider).enabled) return 0;
+        await this.expireStale(schemaName, provider);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE integration_outbox
+                SET status = 'pending', next_attempt_at = NOW(), updated_at = NOW()
+              WHERE provider = $1 AND status = 'suppressed'
+              RETURNING id`,
+            [provider],
+        );
+        const count = rows?.length ?? 0;
+        if (count) {
+            this.logger.log(`[Outbox] ${count} escritura(s) de ${provider} liberadas al certificarse`);
+        }
+        return count;
+    }
+
+    /**
+     * Las que ya no tiene sentido entregar.
+     *
+     * Una reserva encolada hace tres meses entregada hoy no repara nada: crea
+     * una reserva que nadie pidió, para una fecha que pasó, en el calendario de
+     * alguien que no la espera. Y una cola sin vencimiento tampoco se puede
+     * revisar — crece con intención que nadie va a ejecutar y esconde lo que sí
+     * importa.
+     */
+    async expireStale(schemaName: string, provider?: string): Promise<number> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE integration_outbox
+                SET status = 'expired',
+                    last_error = 'outbox_entry_ttl_exceeded',
+                    next_attempt_at = NULL,
+                    lease_expires_at = NULL,
+                    updated_at = NOW()
+              WHERE status = ANY($1::text[])
+                AND created_at < NOW() - ($2 || ' seconds')::interval
+                AND ($3::text IS NULL OR provider = $3)
+              RETURNING id`,
+            [
+                [...OUTBOX_EXPIRABLE_STATUSES],
+                String(OUTBOX_ENTRY_TTL_SECONDS),
+                provider ?? null,
+            ],
+        );
+        const count = rows?.length ?? 0;
+        if (count) this.logger.warn(`[Outbox] ${count} escritura(s) vencidas sin entregar`);
+        return count;
+    }
+
+    /**
+     * Lo que hay que mirar, sin devolver ni un payload.
+     *
+     * El andamiaje registraba todo y no había forma de verlo: una escritura
+     * muerta o suprimida es justamente lo que necesita ojos humanos, y vivía en
+     * una tabla por tenant que nadie consultaba. El payload no viaja: puede
+     * traer datos del cliente final y esto lo mira un super_admin.
+     */
+    async review(schemaName: string): Promise<{
+        byStatus: Record<string, number>;
+        attention: Array<{
+            id: string; provider: string; operation: string;
+            status: string; attempts: number; lastError?: string; createdAt: string;
+        }>;
+    }> {
+        const counts = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT status, COUNT(*)::int AS total FROM integration_outbox GROUP BY status`,
+            [],
+        ).catch(() => [] as any[]);
+        const attention = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, provider, operation, status, attempts, last_error, created_at
+               FROM integration_outbox
+              WHERE status IN ('dead', 'suppressed', 'expired')
+              ORDER BY updated_at DESC
+              LIMIT 50`,
+            [],
+        ).catch(() => [] as any[]);
+        return {
+            byStatus: Object.fromEntries((counts || []).map(r => [r.status, Number(r.total)])),
+            attention: (attention || []).map(r => ({
+                id: String(r.id),
+                provider: r.provider,
+                operation: r.operation,
+                status: r.status,
+                attempts: Number(r.attempts ?? 0),
+                lastError: r.last_error || undefined,
+                createdAt: new Date(r.created_at).toISOString(),
+            })),
         };
     }
 

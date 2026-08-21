@@ -43,11 +43,34 @@ export type OutboxStatus =
     /** Agotó los intentos. Necesita una persona. */
     | 'dead'
     /** El interruptor de escrituras externas estaba apagado. */
-    | 'suppressed';
+    | 'suppressed'
+    /**
+     * Pasó demasiado tiempo. Ya no se entrega.
+     *
+     * Es un estado terminal y hacía falta: el outbox acumula intención mientras
+     * el proveedor no está certificado, y la promesa de que "el día que se
+     * certifique, sale" tiene un límite. Entregar hoy una reserva encolada hace
+     * tres meses no repara nada — crea una reserva que nadie pidió, para una
+     * fecha que ya pasó, en el calendario de un anfitrión que no la espera.
+     */
+    | 'expired';
 
 export interface OutboxEntry {
     id: string;
     provider: string;
+    /**
+     * A cuál conexión de ese proveedor pertenece.
+     *
+     * La unicidad era `(proveedor, clave)`, y eso es correcto sólo mientras un
+     * tenant tenga UNA conexión por proveedor. Con dos cuentas de Hostaway —dos
+     * carteras de propiedades, dos juegos de credenciales— el mismo hecho de
+     * negocio deriva la misma clave, así que la segunda conexión choca contra
+     * la fila de la primera y **su escritura desaparece**: el `ON CONFLICT` la
+     * convierte en un toque de `updated_at`.
+     *
+     * Ausente significa "la única conexión", que es lo que hay hoy.
+     */
+    connectionId?: string;
     /** Qué se quiere hacer. El adapter lo traduce a una llamada. */
     operation: string;
     /**
@@ -71,6 +94,27 @@ export interface OutboxEntry {
 
 /** Cuántas veces y con cuánta espera. */
 export const OUTBOX_MAX_ATTEMPTS = 8 as const;
+
+/**
+ * Cuánto puede esperar una escritura antes de dejar de tener sentido.
+ *
+ * Siete días. No es una elección de retención sino de honestidad: la mayoría de
+ * lo que se encola son reservas, cancelaciones y turnos, y una operación de la
+ * semana pasada entregada hoy no es tardía, es **incorrecta**. Un outbox sin
+ * vencimiento tampoco se puede revisar: la cola crece con intención que nadie
+ * va a ejecutar y esconde lo que sí importa.
+ */
+export const OUTBOX_ENTRY_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/** Los estados desde los que una entrada todavía puede vencer. */
+export const OUTBOX_EXPIRABLE_STATUSES: readonly OutboxStatus[] = Object.freeze([
+    'pending', 'retrying', 'suppressed',
+]);
+
+/** Los estados terminales: ya no se toca ninguna. */
+export const OUTBOX_TERMINAL_STATUSES: readonly OutboxStatus[] = Object.freeze([
+    'delivered', 'dead', 'expired',
+]);
 
 /**
  * Espera exponencial con techo, en segundos.
@@ -128,13 +172,67 @@ export function deriveIdempotencyKey(input: {
     operation: string;
     /** El identificador del hecho: la reserva, el pedido, la cita. */
     subjectId: string;
+    /**
+     * La conexión concreta. Ausente = la única.
+     *
+     * Entra a la clave porque el mismo hecho de negocio mandado a **dos
+     * cuentas distintas del mismo proveedor** son dos escrituras, no un
+     * reintento. Sin esto la segunda choca contra la primera y se pierde.
+     */
+    connectionId?: string;
 }): string {
     const parts = [input.tenantId, input.provider, input.operation, input.subjectId]
         .map(part => String(part ?? '').trim().toLowerCase());
     if (parts.some(part => !part)) {
         throw new Error('idempotency key needs tenant, provider, operation and subject');
     }
-    return parts.join(':');
+    const connection = String(input.connectionId ?? '').trim().toLowerCase();
+    // Se agrega sólo cuando hay conexión, para que las claves ya guardadas
+    // sigan derivando igual: cambiar la forma de todas convertiría cada
+    // pendiente en una entrada nueva y las duplicaría contra el proveedor.
+    return connection ? [...parts, connection].join(':') : parts.join(':');
+}
+
+// ── Adapters: lo que efectivamente hace la llamada ───────────────────────
+
+export interface IntegrationWriteResult {
+    ok: boolean;
+    /** El id que devolvió el proveedor, para poder reconciliar después. */
+    externalId?: string;
+    /** Por qué falló. Viaja al `last_error` de la entrada. */
+    error?: string;
+    /**
+     * Si reintentar tiene sentido.
+     *
+     * `false` mata la entrada en el acto en vez de gastar ocho intentos: un
+     * payload que el proveedor rechaza por inválido no mejora esperando, y
+     * ocho reintentos sólo retrasan el momento en que una persona lo mira.
+     */
+    retryable?: boolean;
+}
+
+/**
+ * Lo que un worker necesita para poder entregar una escritura.
+ *
+ * El andamiaje tenía cola, reintentos, arrendamiento e idempotencia — y ningún
+ * lugar donde enchufar la llamada real. Sin esta interfaz, "convertirlo en
+ * adapters" era una intención sin forma: cada proveedor iba a inventar la suya
+ * y el worker iba a tener un `switch`.
+ */
+export interface IntegrationWriteAdapter {
+    provider: string;
+    /**
+     * Las operaciones que sabe ejecutar.
+     *
+     * Se declara en vez de descubrirse: una entrada con una operación que el
+     * adapter no conoce tiene que morir con un motivo legible, no llegar hasta
+     * adentro y explotar con un `undefined is not a function`.
+     */
+    operations: readonly string[];
+    write(entry: OutboxEntry, context: {
+        tenantId: string;
+        schemaName: string;
+    }): Promise<IntegrationWriteResult>;
 }
 
 // ── Reconciliación ───────────────────────────────────────────────────────

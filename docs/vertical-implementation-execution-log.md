@@ -1890,6 +1890,40 @@ npm run test:bootstrap → 1 passed (sin errores de DI)
 jest apps/api     → 3137 passed / 313 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U62 — El andamiaje no tenía quién lo corriera
+
+**P0-B · punto 11 — convertir el scaffolding en adapters/workers reales, con expiry, review, idempotencia por conexión y migraciones para tenants existentes**
+
+`IntegrationOutboxService` tenía cola, arrendamiento con vencimiento, reintentos con espera exponencial y techo, muerte por agotamiento, dedupe de webhooks y reconciliación con detección de deriva. Todo bien construido. Y **cero llamadores**: ningún módulo lo importaba, ningún proceso drenaba la cola, ninguna entrada salía nunca.
+
+Peor que "no se usa todavía": el servicio **promete** en su propio comentario que *"el día que el proveedor se certifique, sale"*. No era cierto. Las entradas nacen `suppressed` mientras el proveedor no está certificado y `claim` sólo mira `pending`/`retrying`; encender el interruptor no liberaba nada de lo acumulado. Intención registrada que nunca se ejecuta es peor que perderla — parece que va a salir.
+
+**Lo que faltaba, pieza por pieza:**
+
+- **El worker.** Corre cada minuto con `CronLockService` (API y worker levantan el mismo AppModule; sin el candado todo corre dos veces, y dos veces contra el límite de tasa de un tercero). Hace cuatro cosas en orden: vence, libera, reclama con arrendamiento, entrega.
+- **El adapter.** No había interfaz: "convertirlo en adapters" era una intención sin forma, y cada proveedor iba a inventar la suya con un `switch` en el worker. `IntegrationWriteAdapter` declara proveedor, **qué operaciones sabe hacer** y `write()`. El registro rechaza el duplicado en vez de pisarlo: cuál gana dependería del orden de carga de los módulos, y ese defecto se ve distinto en cada despliegue.
+- **El vencimiento.** Un outbox sin TTL no se puede revisar: crece con intención que nadie va a ejecutar y esconde lo que sí importa. Siete días, y no es retención sino honestidad — una reserva encolada hace tres meses entregada hoy no repara nada: crea una reserva que nadie pidió, para una fecha que pasó, en el calendario de alguien que no la espera. **Vencer corre antes que liberar**, por eso mismo.
+- **La revisión.** Todo esto vivía en una tabla por tenant que nadie podía consultar. `GET /integrations/rail` dice qué proveedores están certificados y cuáles tienen adapter —y el cruce: *certificado sin adapter* es el interruptor encendido sin nadie que ejecute—; `GET /integrations/outbox/:tenantId` lista lo muerto, suprimido y vencido. Ambos `super_admin`, y **el payload nunca viaja**: puede traer datos del cliente final del tenant.
+- **La idempotencia por conexión.** La unicidad era `(proveedor, clave)`, correcto sólo mientras haya UNA conexión por proveedor. Con dos cuentas de Hostaway —dos carteras, dos credenciales— el mismo hecho de negocio deriva la misma clave, la segunda choca contra la fila de la primera y **su escritura desaparece**: el `ON CONFLICT` la convierte en un toque de `updated_at`. La conexión entra a la clave **sólo cuando existe**, para que las claves ya guardadas deriven igual: cambiar la forma de todas convertiría cada pendiente en una entrada nueva y el proveedor recibiría la operación dos veces.
+- **Las migraciones.** Los schemas creados antes de que existiera el andamiaje no tienen sus tablas. Insertar contra una tabla ausente tiraba `42P01`, y el llamador —que suele estar en un `.catch()`— perdía la intención en silencio, exactamente lo que un outbox existe para impedir. `enqueue` repara con `ensureCanonicalTables`, y la columna nueva entra por expand-contract (`ADD COLUMN IF NOT EXISTS`, nullable), que es lo que exige el orden del deploy: migra antes de recrear contenedores.
+
+**Sin adapter, la entrada muere con motivo.** Hoy **no hay ninguno registrado** —ninguna integración externa está certificada— y eso es lo correcto: el riel funciona, la escritura real espera autorización. Lo que cambió es que ahora se ve: `no_adapter_registered` y `operation_not_supported:<op>` en vez de una cola creciendo en silencio. Y un fallo declarado no recuperable muere en el acto: un payload que el proveedor rechaza por inválido no mejora esperando, y ocho reintentos son ocho llamadas inútiles y ocho veces más tarde que alguien lo mire.
+
+**Riesgos que quedan**
+- **No hay ningún adapter escrito.** Escribir el de Hostaway necesita credenciales de sandbox y certificación — **bloqueo externo**, sin cambios. Lo que sí está es dónde enchufarlo.
+- **No hay pantalla.** La revisión es API-only; el Ops Center no la muestra. Trabajo interno pendiente.
+- **La columna `connection_id` no la escribe nadie todavía**: ningún llamador pasa `connectionId` porque ningún llamador encola. Existe para que la primera integración multi-cuenta no tenga que migrar datos.
+- **El worker recorre todos los tenants activos cada minuto.** Con la cola vacía son dos consultas baratas por tenant, pero escala lineal con la base. Cuando haya volumen habrá que filtrar por "tenants con entradas", y eso es trabajo interno pendiente.
+
+**Pruebas** — `integration-outbox.worker.spec.ts` (nuevo, 19) + `integration-scaffolding.spec.ts` ajustado al camino que repara el schema.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+npm run test:bootstrap → 1 passed (sin errores de DI; necesita --max-old-space-size=8192)
+jest apps/api     → 3156 passed / 314 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -2002,7 +2036,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ◐ **U59** — matriz por **industria** (no por subtipo) y desplazamiento estático por proveedor (no por recurso); afinar ambos necesita revisión de dominio |
 | 9 | Unificar freshness, cron y estado mostrado en UI | ◐ **U60** — un solo número compartido, cadencia verificada y estado `not_applicable` en el panel; falta la disponibilidad en vivo de Mindbody y unificar el reloj del Channel Manager |
 | 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ◐ **U61** — las cinco piezas construidas y probadas; el corte a `reject` depende de correr la migración en producción, y los ~8 módulos restantes que escriben `settings` siguen con el patrón que pierde datos |
-| 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ⏳ pendiente |
+| 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ◐ **U62** — worker, contrato de adapter, vencimiento, revisión, identidad por conexión y reparación de schema; **ningún adapter escrito** (necesita sandbox del proveedor) y la revisión no tiene pantalla |
 | 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ⏳ pendiente |
 | 13 | Eliminar los 72 gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ⏳ pendiente |
 | 14 | Terminología e idioma por perfil/país | ⏳ pendiente |

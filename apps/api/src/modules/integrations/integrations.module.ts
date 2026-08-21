@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { IntegrationOutboxService } from './integration-outbox.service';
+import { IntegrationOutboxWorker } from './integration-outbox.worker';
+import { IntegrationsController } from './integrations.controller';
 
 /**
  * El andamiaje compartido de integraciones.
@@ -13,7 +15,8 @@ import { IntegrationOutboxService } from './integration-outbox.service';
  */
 @Global()
 @Module({
-    providers: [IntegrationOutboxService],
-    exports: [IntegrationOutboxService],
+    controllers: [IntegrationsController],
+    providers: [IntegrationOutboxService, IntegrationOutboxWorker],
+    exports: [IntegrationOutboxService, IntegrationOutboxWorker],
 })
 export class IntegrationsModule {}

@@ -20,7 +20,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import {
     BedDouble, RefreshCw, Loader2, Search, CalendarDays, User, Home,
-    ChevronLeft, ChevronRight, Bot, Hand,
+    ChevronLeft, ChevronRight, Bot, Hand, Plus, X, XCircle,
 } from "lucide-react";
 
 interface Stay {
@@ -81,6 +81,10 @@ export default function StaysPage() {
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [creating, setCreating] = useState(false);
+    const [cancelTarget, setCancelTarget] = useState<Stay | null>(null);
+    const [cancelBusy, setCancelBusy] = useState(false);
+    const [cancelError, setCancelError] = useState("");
 
     const load = useCallback(async () => {
         if (!activeTenantId) return;
@@ -112,6 +116,23 @@ export default function StaysPage() {
 
     useEffect(() => { load(); }, [load]);
 
+    async function confirmCancel() {
+        if (!activeTenantId || !cancelTarget) return;
+        setCancelBusy(true);
+        setCancelError("");
+        const res = await api.cancelPropertyBooking(activeTenantId, cancelTarget.id)
+            .catch(() => ({ success: false, error: "" } as any));
+        setCancelBusy(false);
+        if (!res?.success) {
+            // El motivo importa: una reserva que administra el channel manager
+            // no se cancela desde acá, y decir "no se pudo" invita a reintentar.
+            setCancelError(res?.error || t("cancelFailed"));
+            return;
+        }
+        setCancelTarget(null);
+        load();
+    }
+
     const page = Math.floor(offset / PAGE_SIZE) + 1;
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -125,14 +146,25 @@ export default function StaysPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
-                <button
-                    onClick={load}
-                    disabled={loading}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50"
-                >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    {tc("refresh")}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={load}
+                        disabled={loading}
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50"
+                    >
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        {tc("refresh")}
+                    </button>
+                    {/* Cargar una estadía no puede exigir abrir antes la ficha
+                        del alojamiento: quien atiende trabaja desde el registro. */}
+                    <button
+                        onClick={() => setCreating(true)}
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-sm transition"
+                    >
+                        <Plus className="h-4 w-4" />
+                        {t("newStay")}
+                    </button>
+                </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -185,6 +217,7 @@ export default function StaysPage() {
                                     <th className="text-left font-medium px-4 py-2">{t("col.status")}</th>
                                     <th className="text-left font-medium px-4 py-2">{t("col.origin")}</th>
                                     <th className="text-right font-medium px-4 py-2">{t("col.total")}</th>
+                                    <th className="w-10 px-4 py-2"><span className="sr-only">{t("cancelStay")}</span></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -250,6 +283,18 @@ export default function StaysPage() {
                                                 }).format(Number(stay.total_price))
                                                 : "—"}
                                         </td>
+                                        <td className="px-4 py-2 text-right">
+                                            {stay.status !== "cancelled" && (
+                                                <button
+                                                    onClick={() => { setCancelError(""); setCancelTarget(stay); }}
+                                                    title={t("cancelStay")}
+                                                    aria-label={t("cancelStay")}
+                                                    className="p-1 rounded text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition"
+                                                >
+                                                    <XCircle className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -279,6 +324,219 @@ export default function StaysPage() {
                     </div>
                 </div>
             )}
+
+            {creating && activeTenantId && (
+                <NewStayModal
+                    tenantId={activeTenantId}
+                    onClose={() => setCreating(false)}
+                    onCreated={() => { setCreating(false); setOffset(0); load(); }}
+                />
+            )}
+
+            {cancelTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setCancelTarget(null)}>
+                    <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-base font-semibold mb-1">{t("cancelStay")}</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            {t("cancelConfirm", {
+                                guest: cancelTarget.guest_name || cancelTarget.contact_name || t("noGuest"),
+                                property: cancelTarget.property_name || "—",
+                            })}
+                        </p>
+                        {cancelError && (
+                            <p className="text-xs text-red-600 dark:text-red-400 mb-3">{cancelError}</p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setCancelTarget(null)}
+                                disabled={cancelBusy}
+                                className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-muted"
+                            >
+                                {tc("cancel")}
+                            </button>
+                            <button
+                                onClick={confirmCancel}
+                                disabled={cancelBusy}
+                                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50"
+                            >
+                                {cancelBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                {t("cancelStay")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface PropertyOption { id: string; name: string; city?: string }
+
+/**
+ * Alta de estadía desde el registro.
+ *
+ * Comprueba disponibilidad ANTES de intentar crear, porque el rechazo del
+ * servidor llega con la fecha ya cargada y sin decir qué fechas sí hay. Y
+ * cuando el alojamiento lo administra un channel manager, el error tiene un
+ * motivo propio: no es un fallo, es que el calendario es de otro.
+ */
+function NewStayModal({ tenantId, onClose, onCreated }: {
+    tenantId: string;
+    onClose: () => void;
+    onCreated: () => void;
+}) {
+    const t = useTranslations("stays");
+    const tc = useTranslations("common");
+
+    const [properties, setProperties] = useState<PropertyOption[]>([]);
+    const [form, setForm] = useState({
+        propertyId: "", checkIn: "", checkOut: "", guestsCount: 1,
+        guestName: "", guestPhone: "", guestEmail: "",
+    });
+    const [checking, setChecking] = useState(false);
+    const [availability, setAvailability] = useState<{ available: boolean; reason?: string; totalPrice?: number } | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        api.listProperties(tenantId)
+            .then((res) => {
+                if (res.success && Array.isArray(res.data)) {
+                    setProperties(res.data.map((p: any) => ({ id: p.id, name: p.name, city: p.city })));
+                }
+            })
+            .catch(() => setProperties([]));
+    }, [tenantId]);
+
+    const rangeReady = Boolean(form.propertyId && form.checkIn && form.checkOut && form.checkIn < form.checkOut);
+
+    useEffect(() => {
+        if (!rangeReady) { setAvailability(null); return; }
+        let cancelled = false;
+        setChecking(true);
+        api.getPropertyAvailability(tenantId, form.propertyId, form.checkIn, form.checkOut)
+            .then((res) => {
+                if (cancelled) return;
+                setAvailability(res.success && res.data ? res.data : null);
+            })
+            .catch(() => { if (!cancelled) setAvailability(null); })
+            .finally(() => { if (!cancelled) setChecking(false); });
+        return () => { cancelled = true; };
+    }, [tenantId, form.propertyId, form.checkIn, form.checkOut, rangeReady]);
+
+    async function handleSave() {
+        if (!rangeReady || !form.guestName.trim()) return;
+        setSaving(true);
+        setError("");
+        const res = await api.createPropertyBooking(tenantId, form.propertyId, {
+            checkIn: form.checkIn,
+            checkOut: form.checkOut,
+            guestsCount: form.guestsCount,
+            guestName: form.guestName.trim(),
+            guestPhone: form.guestPhone.trim() || undefined,
+            guestEmail: form.guestEmail.trim() || undefined,
+        }).catch(() => ({ success: false, error: "" } as any));
+        setSaving(false);
+        if (res?.success) { onCreated(); return; }
+        setError(res?.error || t("createFailed"));
+    }
+
+    const inputCls = "w-full px-3 py-2 bg-background border border-border rounded-lg text-sm";
+    const canSave = rangeReady && form.guestName.trim().length > 0 && availability?.available === true && !saving;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+            <div className="bg-card border border-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                    <h3 className="text-base font-semibold">{t("newStay")}</h3>
+                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="h-4 w-4" /></button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                    <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">{t("col.property")}</label>
+                        <select
+                            value={form.propertyId}
+                            onChange={(e) => setForm({ ...form, propertyId: e.target.value })}
+                            className={inputCls}
+                        >
+                            <option value="">{t("pickProperty")}</option>
+                            {properties.map((p) => (
+                                <option key={p.id} value={p.id}>{p.city ? `${p.name} — ${p.city}` : p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("checkIn")}</label>
+                            <input type="date" value={form.checkIn} onChange={(e) => setForm({ ...form, checkIn: e.target.value })} className={inputCls} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("checkOut")}</label>
+                            <input type="date" value={form.checkOut} onChange={(e) => setForm({ ...form, checkOut: e.target.value })} className={inputCls} />
+                        </div>
+                    </div>
+
+                    {rangeReady && (
+                        <div className="rounded-lg border border-border px-3 py-2 text-xs">
+                            {checking
+                                ? <span className="inline-flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("checkingAvailability")}</span>
+                                : availability?.available
+                                    ? <span className="text-emerald-600 dark:text-emerald-400">{t("availableRange")}</span>
+                                    : <span className="text-amber-600 dark:text-amber-400">{t("unavailableRange")}</span>}
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("guestName")}</label>
+                            <input value={form.guestName} onChange={(e) => setForm({ ...form, guestName: e.target.value })} className={inputCls} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("guests")}</label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={form.guestsCount}
+                                onChange={(e) => setForm({ ...form, guestsCount: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                                className={inputCls}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("guestPhone")}</label>
+                            <input value={form.guestPhone} onChange={(e) => setForm({ ...form, guestPhone: e.target.value })} className={inputCls} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("guestEmail")}</label>
+                            <input type="email" value={form.guestEmail} onChange={(e) => setForm({ ...form, guestEmail: e.target.value })} className={inputCls} />
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                            {error}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+                    <button onClick={onClose} disabled={saving} className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-muted">
+                        {tc("cancel")}
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={!canSave}
+                        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium disabled:opacity-50"
+                    >
+                        {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {tc("create")}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

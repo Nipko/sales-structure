@@ -211,8 +211,15 @@ export class VacationRentalController {
         return { success: true, data };
     }
 
+    /**
+     * Crear una estadía la puede hacer un agente; cancelarla, no podía.
+     *
+     * El agente de IA ya cancela con confirmación y verificación de titular
+     * (`cancel_property_booking`), así que la persona del equipo —que tiene más
+     * contexto y responde por lo que hace— tenía menos autoridad que el modelo.
+     */
     @Put(':tenantId/bookings/:bookingId/cancel')
-    @Roles('tenant_admin', 'tenant_supervisor')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Cancel a booking' })
     async cancelBooking(

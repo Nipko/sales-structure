@@ -667,3 +667,25 @@ npx tsc --noEmit (api + shared + dashboard)  → exit 0
 jest apps/api      → 2597 passed / 287 suites, 0 fallos
 jest apps/dashboard → 172 passed / 21 suites, 0 fallos
 ```
+
+### U20 — P0 §8.3 · Operar una estadía desde el registro, sin abrir antes la ficha
+
+**Fase 2/4 · Épica D · Paquete "Reservas alojamiento"**
+
+U14 le dio a las estadías una pantalla propia. Era de solo lectura: para cargar una reserva o cancelarla había que volver a abrir la tarjeta del alojamiento — que es exactamente el recorrido que el registro vino a eliminar. El criterio del plan dice ver, **crear** y **cancelar** sin Kanban ni ficha.
+
+**ADR-030 — La persona del equipo no puede tener menos autoridad que el modelo.**
+`createBooking` ya aceptaba `tenant_agent`; `cancelBooking` exigía supervisión. Mientras tanto el agente de IA **sí** cancelaba (`cancel_property_booking`, con confirmación y verificación de titular). Quien atiende, tiene más contexto y responde por lo que hace, quedaba por debajo. Cancelar se alinea con crear. Administrar el alojamiento sigue por encima: eso es catálogo, no operación.
+
+**El alta comprueba disponibilidad antes de intentar.** El rechazo del servidor llega con las fechas ya cargadas y no dice cuáles sí hay; verificar antes convierte un error en una decisión. El contacto es opcional, así que un huésped de mostrador se carga con nombre y teléfono sin inventarle una ficha de CRM.
+
+**El channel manager tiene motivo propio.** Cuando el calendario lo administra Hostaway, `createBooking` falla cerrado con `channel_manager_owns_calendar` — no hay write-back certificado, así que una fila local sería una reserva que el calendario real del anfitrión nunca conoce. La pantalla muestra **ese** mensaje y no un "no se pudo" que invita a reintentar. El bloqueo externo sigue registrado; esto no lo levanta, lo hace legible.
+
+**Pruebas** — `stay-register-actions.spec.ts` (3 casos): crear y cancelar comparten exactamente el mismo conjunto de roles; administrar unidades sigue por encima del rol operativo; una estadía que administra el channel manager se rechaza con `ConflictException` y con proveedor y motivo en el cuerpo.
+
+**Verificación**
+```
+npx tsc --noEmit (api + dashboard)  → exit 0
+jest apps/api      → 2600 passed / 288 suites, 0 fallos
+jest apps/dashboard → 172 passed / 21 suites, 0 fallos
+```

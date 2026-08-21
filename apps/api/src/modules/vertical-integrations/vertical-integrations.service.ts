@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { Cron } from '@nestjs/schedule';
 import { CronLockService } from '../redis/cron-lock.service';
+import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
 import {
     OUTBOUND_MAX_REQUEST_BYTES,
     OUTBOUND_MAX_RESPONSE_BYTES,
@@ -52,6 +53,29 @@ export interface ClinikoConfig {
 export type VerticalIntegrationConfig = ToastConfig | MindbodyConfig | ClinikoConfig;
 
 const PROVIDERS: VerticalProvider[] = ['toast', 'mindbody', 'cliniko'];
+
+/**
+ * Los campos que son un secreto, por proveedor.
+ *
+ * Estaban guardados EN CLARO en `tenant.settings`, enmascarados con `***` sólo
+ * al serializarlos en su propio endpoint: la clase de protección que se ve pero
+ * no existe. Cualquier lectura del tenant, cualquier backup y cualquier volcado
+ * de la base los entregaba enteros.
+ *
+ * La lista es por proveedor y no una heurística sobre el nombre del campo:
+ * `siteId` de Mindbody y `locationGuid` de Toast NO son secretos, y cifrarlos
+ * sólo agregaría descifrados que pueden fallar.
+ */
+const SECRET_FIELDS: Readonly<Record<VerticalProvider, readonly string[]>> = Object.freeze({
+    toast: Object.freeze(['clientSecret']),
+    mindbody: Object.freeze(['apiKey', 'password']),
+    cliniko: Object.freeze(['apiKey']),
+});
+
+/** `clientSecret` → `client_secret`: el AAD ata el valor a su campo exacto. */
+function secretFieldId(field: string): string {
+    return field.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
 const PROVIDER_ALLOWLIST_CONFIG: Partial<Record<VerticalProvider, string>> = {
     toast: 'VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS',
     cliniko: 'VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS',
@@ -84,6 +108,7 @@ export class VerticalIntegrationsService {
         private readonly http: HttpService,
         private readonly cronLock: CronLockService,
         private readonly appConfig: ConfigService,
+        private readonly secrets: TenantSecretCryptoService,
     ) {}
 
     /**
@@ -163,9 +188,92 @@ export class VerticalIntegrationsService {
     }
 
     // ── Config (tenant.settings) ─────────────────────────────
+    /**
+     * El config listo para USAR, con los secretos descifrados.
+     *
+     * Es el camino interno: los tres llamadores son sync, testConnection y la
+     * consulta de disponibilidad de Cliniko. El endpoint del panel usa
+     * `getAllConfigs`, que enmascara.
+     */
     async getConfig(tenantId: string, provider: VerticalProvider): Promise<any | null> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        return (tenant?.settings as any)?.verticalIntegrations?.[provider] || null;
+        const stored = (tenant?.settings as any)?.verticalIntegrations?.[provider];
+        if (!stored) return null;
+        return this.decryptSecrets(tenantId, provider, stored);
+    }
+
+    /**
+     * Descifra en memoria lo que se guardó cifrado, y deja pasar lo que todavía
+     * está en claro marcándolo para reescritura.
+     *
+     * Lo viejo se re-guarda cifrado en el mismo camino, sin migración aparte y
+     * sin que nadie tenga que acordarse de correrla. Si el re-guardado falla no
+     * se rompe la sincronización en curso: se reintenta en la próxima lectura.
+     */
+    private async decryptSecrets(
+        tenantId: string,
+        provider: VerticalProvider,
+        stored: Record<string, any>,
+    ): Promise<Record<string, any>> {
+        const config = { ...stored };
+        const rewrap: Record<string, string> = {};
+        for (const field of SECRET_FIELDS[provider]) {
+            const value = stored[field];
+            if (value === undefined || value === null || value === '') continue;
+            try {
+                const result = this.secrets.readCompatible(value, {
+                    tenantId, scope: 'vertical_integration', provider, field: secretFieldId(field),
+                });
+                config[field] = result.plaintext;
+                if (result.needsRewrap) {
+                    // El re-cifrado es best-effort: sin clave usable, la
+                    // credencial que se pudo leer se sigue usando y se reintenta
+                    // en la próxima lectura. Fallar acá apagaría la integración
+                    // por un problema de configuración que no la afecta.
+                    try {
+                        rewrap[field] = this.secrets.encrypt(result.plaintext, {
+                            tenantId, scope: 'vertical_integration', provider, field: secretFieldId(field),
+                        });
+                    } catch (error: any) {
+                        this.logger.warn(`[VI] no se pudo cifrar ${provider}.${field}: ${error?.code}`);
+                    }
+                }
+            } catch (error: any) {
+                // Un secreto ilegible NO se degrada a texto plano: se deja
+                // ausente y la llamada al proveedor falla, que es lo honesto.
+                this.logger.warn(`[VI] secreto ilegible ${provider}.${field}: ${error?.code || error?.message}`);
+                delete config[field];
+            }
+        }
+        if (Object.keys(rewrap).length) {
+            this.persistRewrappedSecrets(tenantId, provider, rewrap).catch((error: any) => {
+                this.logger.warn(`[VI] no se pudo re-cifrar ${provider}: ${error?.message}`);
+            });
+        }
+        return config;
+    }
+
+    private async persistRewrappedSecrets(
+        tenantId: string,
+        provider: VerticalProvider,
+        rewrap: Record<string, string>,
+    ): Promise<void> {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        if (!tenant) return;
+        const settings = (tenant.settings as any) || {};
+        const vi = settings.verticalIntegrations || {};
+        const current = vi[provider];
+        if (!current) return;
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                settings: {
+                    ...settings,
+                    verticalIntegrations: { ...vi, [provider]: { ...current, ...rewrap } },
+                } as any,
+            },
+        });
+        this.logger.log(`[VI] secretos de ${provider} re-cifrados para ${tenantId}`);
     }
 
     async getAllConfigs(tenantId: string): Promise<Record<string, any>> {
@@ -219,12 +327,25 @@ export class VerticalIntegrationsService {
                 merged.practitionerId = this.validateClinikoIdentifier(merged.practitionerId, 'profesional Cliniko');
             }
         }
+        // Los secretos se cifran ANTES de tocar la base. `merged` puede traer
+        // un valor viejo que ya estaba cifrado (se conservó porque el panel
+        // mandó `***`) o uno nuevo en claro: se cifra sólo lo segundo.
+        const persisted: any = { ...merged };
+        for (const field of SECRET_FIELDS[provider]) {
+            const value = persisted[field];
+            if (value === undefined || value === null || value === '') continue;
+            if (this.secrets.isEnvelope(value)) continue;
+            persisted[field] = this.secrets.encrypt(String(value), {
+                tenantId, scope: 'vertical_integration', provider, field: secretFieldId(field),
+            });
+        }
+
         await this.prisma.tenant.update({
             where: { id: tenantId },
             data: {
                 settings: {
                     ...settings,
-                    verticalIntegrations: { ...vi, [provider]: merged },
+                    verticalIntegrations: { ...vi, [provider]: persisted },
                     // Saving credentials never means they were validated. Reset
                     // health and require an explicit check/sync before tools exist.
                     verticalIntegrationHealth: {

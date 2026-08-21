@@ -25,11 +25,8 @@ export class ChannelManagerController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Get channel manager config' })
     async getConfig(@CurrentUser() user: any) {
-        const config = await this.cm.getConfig(user.tenantId);
-        return {
-            success: true,
-            data: config ? { ...config, apiKey: config.apiKey ? '***' : undefined, apiSecret: config.apiSecret ? '***' : undefined } : null,
-        };
+        // El panel nunca descifra: sólo necesita saber si hay credencial.
+        return { success: true, data: await this.cm.getRedactedConfig(user.tenantId) };
     }
 
     @Put('config')

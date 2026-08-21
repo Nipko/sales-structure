@@ -3,8 +3,38 @@ import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import * as crypto from 'crypto';
+import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lo que es una credencial. `accountId` es un identificador, no un secreto. */
+const CHANNEL_MANAGER_SECRET_FIELDS = ['apiKey', 'apiSecret'] as const;
+
+/**
+ * Proveedores cuyo libro mayor de reservas vive AFUERA.
+ *
+ * `ical` no está: un feed iCal es el calendario del propio tenant publicado
+ * hacia las OTAs, así que una reserva directa sobre ese listado es exactamente
+ * el caso normal —se crea acá y el bloqueo viaja en el feed exportado—. Estos
+ * dos tienen su propia API de reservas y su propio estado autoritativo.
+ */
+const EXTERNAL_RESERVATION_SYSTEMS: ReadonlySet<string> = new Set(['hostaway', 'guesty']);
+
+/**
+ * Los estados que LIBERAN la fecha. Todo lo demás ocupa.
+ *
+ * La lista es de lo que libera, no de lo que ocupa, a propósito: los estados
+ * los inventa el proveedor —Hostaway manda `new`, `modified`, `ownerStay`,
+ * `awaitingPayment`— y una lista de "ocupa" se queda corta con el próximo que
+ * agreguen. Un estado desconocido bloquea: no saber si ocupa no es saber que
+ * está libre. `ownerStay` no está acá porque el dueño ocupando el
+ * departamento lo ocupa igual.
+ */
+const NON_BLOCKING_RESERVATION_STATUSES: readonly string[] = Object.freeze([
+    'cancelled', 'canceled', 'declined', 'expired', 'rejected', 'no_show',
+    'inquiry', 'inquirypreapproved', 'inquirydenied',
+    'inquirytimedout', 'inquirynotpossible',
+]);
 
 export interface ChannelManagerConfig {
     provider: 'hostaway' | 'guesty' | 'ical' | 'direct';
@@ -38,6 +68,7 @@ export class ChannelManagerService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly http: HttpService,
+        private readonly secrets: TenantSecretCryptoService,
     ) {}
 
     /**
@@ -123,7 +154,101 @@ export class ChannelManagerService {
             where: { id: tenantId },
             select: { settings: true },
         });
-        return (tenant?.settings as any)?.channelManager || null;
+        const stored = (tenant?.settings as any)?.channelManager;
+        if (!stored) return null;
+        return await this.decryptConfig(tenantId, stored) as ChannelManagerConfig;
+    }
+
+    /**
+     * El config para MOSTRAR: nunca descifra.
+     *
+     * El panel sólo necesita saber si hay credencial, no cuál es. Descifrar
+     * para volver a taparlo con `***` sería sacar el secreto de su sobre por
+     * un motivo que no lo necesita.
+     */
+    async getRedactedConfig(tenantId: string): Promise<any | null> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const stored = (tenant?.settings as any)?.channelManager;
+        return stored ? this.redactConfig(stored) : null;
+    }
+
+    private redactConfig(config: Record<string, any>): Record<string, any> {
+        return {
+            ...config,
+            apiKey: config.apiKey ? '***' : undefined,
+            apiSecret: config.apiSecret ? '***' : undefined,
+        };
+    }
+
+    /**
+     * Descifra en memoria, y deja pasar lo que todavía está en claro marcándolo
+     * para reescritura: lo viejo se re-guarda cifrado en el mismo camino, sin
+     * una migración aparte que alguien tenga que acordarse de correr.
+     */
+    private async decryptConfig(
+        tenantId: string,
+        stored: Record<string, any>,
+    ): Promise<Record<string, any>> {
+        const config = { ...stored };
+        const rewrap: Record<string, string> = {};
+        for (const field of CHANNEL_MANAGER_SECRET_FIELDS) {
+            const value = stored[field];
+            if (value === undefined || value === null || value === '') continue;
+            const context = {
+                tenantId,
+                scope: 'channel_manager' as const,
+                provider: String(stored.provider || 'direct').toLowerCase(),
+                field: field === 'apiKey' ? 'api_key' : 'api_secret',
+            };
+            try {
+                const result = this.secrets.readCompatible(value, context);
+                config[field] = result.plaintext;
+                if (result.needsRewrap) {
+                    // Best-effort: sin clave usable la credencial legible se
+                    // sigue usando y se reintenta en la próxima lectura.
+                    try {
+                        rewrap[field] = this.secrets.encrypt(result.plaintext, context);
+                    } catch (error: any) {
+                        this.logger.warn(`[CM] no se pudo cifrar ${field}: ${error?.code}`);
+                    }
+                }
+            } catch (error: any) {
+                // Un secreto ilegible no se degrada a texto plano: se deja
+                // ausente y la llamada al proveedor falla, que es lo honesto.
+                this.logger.warn(`[CM] secreto ilegible ${field}: ${error?.code || error?.message}`);
+                delete config[field];
+            }
+        }
+        if (Object.keys(rewrap).length) {
+            this.persistRewrappedConfig(tenantId, rewrap).catch((error: any) => {
+                this.logger.warn(`[CM] no se pudo re-cifrar la credencial: ${error?.message}`);
+            });
+        }
+        return config;
+    }
+
+    private async persistRewrappedConfig(
+        tenantId: string,
+        rewrap: Record<string, string>,
+    ): Promise<void> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        if (!tenant) return;
+        const settings = (tenant.settings as any) || {};
+        const current = settings.channelManager;
+        if (!current) return;
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                settings: { ...settings, channelManager: { ...current, ...rewrap } } as any,
+            },
+        });
+        this.logger.log(`[CM] credenciales re-cifradas para ${tenantId}`);
     }
 
     async updateConfig(tenantId: string, updates: Partial<ChannelManagerConfig>): Promise<ChannelManagerConfig> {
@@ -145,24 +270,46 @@ export class ChannelManagerService {
             autoBlock: updates.autoBlock ?? current.autoBlock ?? true,
         };
 
+        // Los secretos se cifran ANTES de tocar la base. Un valor que ya venía
+        // cifrado (se conservó porque el panel mandó `***`) no se vuelve a
+        // cifrar; uno nuevo en claro sí.
+        const persisted: any = { ...merged };
+        for (const field of CHANNEL_MANAGER_SECRET_FIELDS) {
+            const value = (persisted as any)[field];
+            if (value === undefined || value === null || value === '') continue;
+            if (this.secrets.isEnvelope(value)) continue;
+            (persisted as any)[field] = this.secrets.encrypt(String(value), {
+                tenantId,
+                scope: 'channel_manager',
+                provider: String(merged.provider || 'direct').toLowerCase(),
+                field: field === 'apiKey' ? 'api_key' : 'api_secret',
+            });
+        }
+
         await this.prisma.tenant.update({
             where: { id: tenantId },
-            data: { settings: { ...settings, channelManager: { ...merged } } as any },
+            data: { settings: { ...settings, channelManager: persisted } as any },
         });
-        return merged;
+        // Devuelve lo redactado: quien guardó ya sabe qué escribió, y el valor
+        // no tiene por qué volver a viajar por la respuesta.
+        return this.redactConfig(merged) as ChannelManagerConfig;
     }
 
     async listListings(tenantId: string): Promise<any[]> {
         const schemaName = await this.resolveSchemaName(tenantId);
         await this.ensureTables(schemaName);
+        // El contador cuenta lo que OCUPA, no lo que dice una palabra que el
+        // proveedor no usa: `status = 'confirmed'` dejaba en cero un listado de
+        // Hostaway lleno de estadías `new`.
         return this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT l.*,
                 (SELECT COUNT(*)::int FROM cm_reservations r
-                 WHERE r.listing_id = l.id AND r.check_out >= CURRENT_DATE AND r.status = 'confirmed') as active_reservations
+                 WHERE r.listing_id = l.id AND r.check_out >= CURRENT_DATE
+                 AND lower(coalesce(r.status, '')) <> ALL($1::text[])) as active_reservations
             FROM cm_listings l
             WHERE l.status != 'deleted'
             ORDER BY l.name
-        `);
+        `, [[...NON_BLOCKING_RESERVATION_STATUSES]]);
     }
 
     async createListing(tenantId: string, data: {
@@ -197,11 +344,49 @@ export class ChannelManagerService {
         const schemaName = await this.resolveSchemaName(tenantId);
         await this.ensureTables(schemaName);
 
+        const listings = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, provider, name FROM cm_listings WHERE id = $1::uuid LIMIT 1`,
+            [data.listingId],
+        );
+        if (!listings?.length) throw new NotFoundException('Listing not found');
+        const listingProvider = String(listings[0].provider || 'direct').toLowerCase();
+
+        // ═══ EL LIBRO MAYOR ESTÁ AFUERA ═══
+        //
+        // Esto insertaba `provider = 'direct'` en CUALQUIER listado, incluidos
+        // los de Hostaway. Una reserva de Hostaway se crea en Hostaway: una
+        // fila local que el proveedor nunca ve no bloquea nada del lado del
+        // canal, así que el mismo departamento se podía vender dos veces —una
+        // acá y otra en Airbnb— y el huésped se enteraba al llegar.
+        //
+        // Escribir en el proveedor tampoco es la salida: no hay credencial de
+        // escritura certificada y hacerlo a ciegas es peor. Se rechaza con el
+        // motivo, que es lo honesto mientras el escritor externo no exista.
+        if (EXTERNAL_RESERVATION_SYSTEMS.has(listingProvider)) {
+            throw new ConflictException({
+                error: 'external_system_of_record',
+                provider: listingProvider,
+                listingId: data.listingId,
+                message: `Las reservas de "${listings[0].name}" viven en ${listingProvider}. `
+                    + 'Creala allá y se sincroniza sola; una reserva creada acá no bloquearía '
+                    + 'las fechas en el canal y el alojamiento se vendería dos veces.',
+            });
+        }
+
+        // El conflicto se medía contra `status = 'confirmed'`, y Hostaway nunca
+        // manda esa palabra: manda `new`, `modified`, `ownerStay`. Una estadía
+        // sincronizada no bloqueaba nada y la fecha se volvía a vender.
+        //
+        // Se invierte la pregunta: bloquea todo lo que NO libera la fecha. Un
+        // estado desconocido bloquea, porque no saber si ocupa no es saber que
+        // está libre.
         const conflicts = await this.prisma.executeInTenantSchema<any[]>(schemaName, `
             SELECT 1 FROM cm_reservations
-            WHERE listing_id = $1::uuid AND status = 'confirmed'
+            WHERE listing_id = $1::uuid
+            AND lower(coalesce(status, '')) <> ALL($4::text[])
             AND check_in < $3::date AND check_out > $2::date
-        `, [data.listingId, data.checkIn, data.checkOut]);
+        `, [data.listingId, data.checkIn, data.checkOut, [...NON_BLOCKING_RESERVATION_STATUSES]]);
 
         if (conflicts.length > 0) throw new BadRequestException('Dates conflict with existing reservation');
 
@@ -264,10 +449,11 @@ export class ChannelManagerService {
             CROSS JOIN cm_listings l
             LEFT JOIN cm_availability a ON a.listing_id = l.id AND a.date = d
             LEFT JOIN cm_reservations r ON r.listing_id = l.id
-                AND r.status = 'confirmed' AND d >= r.check_in AND d < r.check_out
+                AND lower(coalesce(r.status, '')) <> ALL($4::text[])
+                AND d >= r.check_in AND d < r.check_out
             WHERE l.id = $1::uuid
             ORDER BY d
-        `, [listingId, from, to]);
+        `, [listingId, from, to, [...NON_BLOCKING_RESERVATION_STATUSES]]);
     }
 
     async syncHostaway(tenantId: string): Promise<{ listings: number; reservations: number }> {

@@ -30,6 +30,7 @@ import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned
 import {
     hasReservedTenantSetting,
     mergeTenantSettingsAtomic,
+    firstReservedTenantSetting,
     redactReservedTenantSettings,
     redactReservedTenantSettingsFromRecord,
 } from '../../common/utils/tenant-settings.util';
@@ -1046,11 +1047,14 @@ export class TenantsService {
             ...tenantData
         } = data;
 
-        if (hasReservedTenantSetting(requestedSettings)) {
+        const reservedKey = firstReservedTenantSetting(requestedSettings);
+        if (reservedKey) {
+            // El mensaje nombra la clave real. Decir siempre `tenantPayments`
+            // mandaba a buscar el problema al lugar equivocado.
             throw new BadRequestException({
                 error: 'reserved_tenant_setting',
-                key: 'tenantPayments',
-                message: 'settings.tenantPayments solo puede administrarse mediante la integración dedicada de pagos del tenant.',
+                key: reservedKey,
+                message: `settings.${reservedKey} solo puede administrarse mediante su integración dedicada.`,
             });
         }
 

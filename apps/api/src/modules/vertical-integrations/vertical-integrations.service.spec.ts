@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { promises as dns } from 'node:dns';
 import { VerticalIntegrationsService } from './vertical-integrations.service';
+import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+
+// El sobre de credenciales ata el valor a su tenant, asi que el id tiene que
+// ser un UUID real y no una etiqueta.
+const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
 describe('VerticalIntegrationsService endpoint security', () => {
     let service: VerticalIntegrationsService;
@@ -11,6 +16,9 @@ describe('VerticalIntegrationsService endpoint security', () => {
     let lookupSpy: jest.SpyInstance;
 
     beforeEach(() => {
+        // Guardar una credencial que no se puede cifrar es exactamente lo que
+        // este servicio ya no hace: sin clave, `updateConfig` falla cerrado.
+        process.env.TENANT_SECRET_KEY = 'a'.repeat(64);
         prisma = {
             $executeRawUnsafe: jest.fn().mockResolvedValue(1),
             tenant: {
@@ -41,6 +49,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
             http,
             { runExclusive: jest.fn() } as any,
             appConfig,
+            new TenantSecretCryptoService(),
         );
     });
 
@@ -49,7 +58,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('rejects non-HTTPS provider endpoints before persisting them', async () => {
-        await expect(service.updateConfig('tenant-1', 'toast', {
+        await expect(service.updateConfig(TENANT_ID, 'toast', {
             hostname: 'http://ws-api.toasttab.com',
         })).rejects.toBeInstanceOf(BadRequestException);
 
@@ -57,7 +66,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('rejects provider lookalike domains', async () => {
-        await expect(service.updateConfig('tenant-1', 'cliniko', {
+        await expect(service.updateConfig(TENANT_ID, 'cliniko', {
             baseUrl: 'https://api.au1.cliniko.com.attacker.example/v1',
         })).rejects.toBeInstanceOf(BadRequestException);
 
@@ -78,7 +87,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
         ));
         lookupSpy.mockResolvedValue([{ address, family }] as any);
 
-        await expect(service.updateConfig('tenant-1', 'cliniko', {
+        await expect(service.updateConfig(TENANT_ID, 'cliniko', {
             baseUrl: 'https://cliniko-proxy.example.com/v1',
         })).rejects.toBeInstanceOf(BadRequestException);
 
@@ -91,7 +100,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
             { address: '10.0.0.7', family: 4 },
         ] as any);
 
-        await expect(service.updateConfig('tenant-1', 'toast', {
+        await expect(service.updateConfig(TENANT_ID, 'toast', {
             hostname: 'https://ws-api.toasttab.com',
         })).rejects.toBeInstanceOf(BadRequestException);
 
@@ -99,13 +108,13 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('accepts and normalizes an official Cliniko shard URL', async () => {
-        await service.updateConfig('tenant-1', 'cliniko', {
+        await service.updateConfig(TENANT_ID, 'cliniko', {
             apiKey: 'secret-au1',
             baseUrl: 'https://api.au1.cliniko.com/v1/',
         });
 
         expect(prisma.tenant.update).toHaveBeenCalledWith(expect.objectContaining({
-            where: { id: 'tenant-1' },
+            where: { id: TENANT_ID },
             data: {
                 settings: expect.objectContaining({
                     verticalIntegrations: {
@@ -130,13 +139,13 @@ describe('VerticalIntegrationsService endpoint security', () => {
             key === 'VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS' ? 'toast-api.partner.example' : ''
         ));
 
-        await service.updateConfig('tenant-1', 'toast', {
+        await service.updateConfig(TENANT_ID, 'toast', {
             hostname: 'https://toast-api.partner.example',
         });
 
         expect(prisma.tenant.update).toHaveBeenCalled();
 
-        await expect(service.updateConfig('tenant-1', 'toast', {
+        await expect(service.updateConfig(TENANT_ID, 'toast', {
             hostname: 'https://sub.toast-api.partner.example',
         })).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -154,7 +163,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
             },
         });
 
-        await expect(service.testConnection('tenant-1', 'cliniko')).resolves.toEqual(expect.objectContaining({
+        await expect(service.testConnection(TENANT_ID, 'cliniko')).resolves.toEqual(expect.objectContaining({
             ok: true,
             health: expect.objectContaining({
                 provider: 'cliniko',
@@ -189,7 +198,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
             },
         });
 
-        await service.testConnection('tenant-1', 'cliniko');
+        await service.testConnection(TENANT_ID, 'cliniko');
         const requestConfig = http.axiosRef.get.mock.calls[0][1];
         const pinnedLookup = requestConfig.httpsAgent.options.lookup;
 
@@ -214,7 +223,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
             },
         });
 
-        await service.testConnection('tenant-1', 'cliniko');
+        await service.testConnection(TENANT_ID, 'cliniko');
         const pinnedLookup = http.axiosRef.get.mock.calls[0][1].httpsAgent.options.lookup;
         const callback = jest.fn();
         pinnedLookup('metadata.google.internal', { all: false }, callback);
@@ -237,7 +246,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
             },
         });
 
-        await expect(service.testConnection('tenant-1', 'toast')).resolves.toEqual(expect.objectContaining({
+        await expect(service.testConnection(TENANT_ID, 'toast')).resolves.toEqual(expect.objectContaining({
             ok: true,
             health: expect.objectContaining({
                 provider: 'toast',
@@ -276,7 +285,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
             message: 'request failed with secret-au1',
         });
 
-        const result = await service.testConnection('tenant-1', 'cliniko');
+        const result = await service.testConnection(TENANT_ID, 'cliniko');
 
         expect(result).toMatchObject({
             ok: false,
@@ -328,7 +337,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
         });
 
         await expect(service.checkClinikoAvailability(
-            'tenant-1',
+            TENANT_ID,
             '789/../../users?admin=true',
         )).resolves.toEqual({
             availableTimes: [],

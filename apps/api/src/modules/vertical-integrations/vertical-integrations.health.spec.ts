@@ -1,5 +1,6 @@
 import { VerticalIntegrationsService } from './vertical-integrations.service';
 import { reduceIntegrationHealth } from './integration-health';
+import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -48,6 +49,7 @@ describe('VerticalIntegrationsService health and tool gate', () => {
             http,
             { runExclusive: jest.fn() } as any,
             { get: jest.fn().mockReturnValue('') } as any,
+            new TenantSecretCryptoService(),
         );
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     });

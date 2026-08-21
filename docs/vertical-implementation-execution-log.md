@@ -1101,6 +1101,37 @@ jest apps/api       → 2702 passed / 291 suites (1 skipped), 0 fallos
 jest apps/dashboard →  212 passed /  26 suites, 0 fallos
 ```
 
+### U37 — La puerta de servicio del alojamiento, y las claves que se veían tapadas pero no lo estaban
+
+**Pendientes internos 7 y 8**
+
+**El writer del agente ya fallaba cerrado** cuando el PMS es dueño del calendario: `LodgingSourceOfTruthService` existe exactamente para eso y su comentario lo dice —*"escribir localmente crea una reserva que el PMS nunca conoce; eso es un doble booking con pasos extra"*—. `POST /channel-manager/reservations` no preguntaba nada: insertaba `provider = 'direct'` en **cualquier** listado, incluidos los de Hostaway. El mismo defecto que esa asimetría existe para evitar, entrando por otra puerta.
+
+Ahora el alta lee el proveedor del listado y rechaza los que tienen su libro mayor afuera (`hostaway`, `guesty`) **diciendo dónde crearla**: un "no se puede" sin destino deja al dueño buscando un botón que no existe. `ical` no está en esa lista a propósito — un feed iCal es el calendario del propio tenant publicado hacia las OTAs, así que la reserva directa ahí es el caso normal y el bloqueo viaja en el export.
+
+**Y el conflicto se medía contra una palabra que el proveedor no usa.** El filtro era `status = 'confirmed'`; Hostaway manda `new`, `modified`, `ownerStay`, `awaitingPayment`. Una estadía sincronizada no bloqueaba nada. Se invirtió la pregunta: la lista enumera lo que **libera** la fecha y todo lo demás ocupa, así que un estado que el proveedor invente mañana bloquea por defecto —no saber si ocupa no es saber que está libre—. La misma corrección va en el calendario de disponibilidad y en el contador de reservas activas, que tenían el mismo filtro: el calendario mostraba libre una noche vendida.
+
+**Las credenciales estaban en claro.** Hostaway, Guesty, Toast, Mindbody y Cliniko vivían como texto plano en `tenant.settings`, y su endpoint las tapaba con `***` — protección que se ve en pantalla y no existe en la base. Cualquier backup, cualquier volcado y **`GET /tenants/:id`** (que devolvía el JSONB entero: sólo `tenantPayments` estaba redactado) las entregaba completas.
+
+Se cierran **las dos mitades, porque una sin la otra no sirve**: cifrado en reposo con `TenantSecretCryptoService` —hermano del sobre de pagos, misma mecánica AES-256-GCM con keyring rotable, espacio de nombres distinto a propósito— y las claves fuera del contrato genérico del tenant. Cifrar sin lo segundo sólo movería el problema un paso: una respuesta que devuelve el sobre entero lo saca del sobre.
+
+El AAD ata cada valor a su tenant, scope, proveedor y campo: copiar la fila de un tenant a otro, o el `apiKey` de Cliniko al slot de Mindbody, rompe la autenticación en vez de redirigir una integración en silencio.
+
+**Tres decisiones de migración**, que son lo que hace que esto no rompa a nadie:
+- Lo que hoy está en claro **se sigue leyendo** y se re-guarda cifrado en el mismo camino, sin una migración aparte que alguien tenga que acordarse de correr.
+- Leer texto plano **no exige clave** —no hay nada que descifrar—, así que una instancia con la variable mal puesta no pierde las integraciones que ya funcionaban. Guardar una credencial nueva **sí** falla cerrado: persistir un secreto que no se puede cifrar es el defecto que esto viene a cerrar.
+- Un sobre **corrupto no se degrada a texto plano**: se omite el campo. Usar el ciphertext como credencial haría que el error dijera "el proveedor rechazó la clave" en vez de "el sobre está roto".
+
+**Sin variables nuevas obligatorias:** `TENANT_SECRET_KEY` cae a `ENCRYPTION_KEY`, que ya está desplegada. Rotar la clave requiere agregar `TENANT_SECRET_KEY` / `TENANT_SECRET_KEY_ID` / `TENANT_SECRET_PREVIOUS_KEYS` a Secrets **y** a `deploy.yml`, como toda variable nueva.
+
+**Pruebas** — `channel-manager-reservations.spec.ts` (nuevo, 10): rechazo por proveedor con motivo accionable, `ical` y `direct` que sí pasan, y el predicado de ocupación verificado sobre la consulta real. `tenant-secret-crypto.service.spec.ts` (nuevo, 18): el sobre no se abre desde otro tenant/scope/proveedor/campo, la rotación lee lo viejo y pide reescritura, y el puente de migración no degrada un sobre roto. `vertical-integrations.credentials.spec.ts` (nuevo, 9): nada del secreto aparece en lo persistido, el `***` del panel no pisa la credencial guardada, lo viejo en claro se re-cifra solo, y las dos claves quedan fuera del contrato genérico.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2739 passed / 294 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1203,8 +1234,8 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~4~~ | ✅ cerrado en **U33** |
 | ~~5~~ | ✅ cerrado en **U33** |
 | ~~6~~ | ✅ cerrado en **U36** |
-| 7 | Bloquear `POST /channel-manager/reservations` cuando el listing tiene SoR externo |
-| 8 | Cifrar credenciales de Channel Manager y de integraciones verticales |
+| ~~7~~ | ✅ cerrado en **U37** |
+| ~~8~~ | ✅ cerrado en **U37** |
 | 9 | UI de integraciones: probar después de guardar, mostrar health/scopes/freshness, filtrar por subtipo |
 | 10 | ◐ Reclasificar las tools externas de lectura y someterlas al contrato efectivo — **hecho en U33** para las 4 lecturas de proveedor (Toast/Mindbody/Cliniko: reclasificadas como no comprometedoras y publicadas por el contrato con salud/scopes/frescura). Queda el resto de la superficie externa: MCP (hoy opaco, sin política por tool) y las lecturas del Channel Manager |
 | 11 | Migrar los consumidores de `normalizePhoneE164` al `TenantRegionalProfile`; eliminar el default `+57`; UI/API de revisión regional |

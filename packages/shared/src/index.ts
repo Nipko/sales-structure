@@ -737,6 +737,13 @@ export const ACTIVE_OBJECT_KINDS = [
     'insurance_quote',
     'service_request',
     'photo_session',
+    // Los alquileres de recurso —un auto, una estadía de mascota— no tenían
+    // NINGÚN tipo declarado, así que `create_vehicle_rental` y
+    // `create_pet_boarding` escribían una fila que el turno siguiente no podía
+    // ver: el cliente preguntaba "¿hasta cuándo lo tengo?" y el agente no tenía
+    // dónde mirar.
+    'vehicle_rental',
+    'pet_boarding',
 ] as const;
 export type ActiveObjectKind = typeof ACTIVE_OBJECT_KINDS[number];
 
@@ -764,6 +771,7 @@ export const ACTIVE_OBJECT_SOURCES = [
     'insurance_quotes',
     'service_requests',
     'photo_sessions',
+    'resource_rentals',
     'external_integration',
     'legacy_active_bookings',
     'legacy_recent_orders',

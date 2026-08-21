@@ -21,7 +21,18 @@ export type ActiveOperationsLoaderName =
     | 'property_bookings'
     | 'tour_bookings'
     | 'orders'
-    | 'food_orders';
+    | 'food_orders'
+    // Cinco cargadores para veintidós tipos declarados: el resto de los
+    // writers escribía filas que el turno siguiente no podía ver. Un socio
+    // preguntaba "¿cuántas clases me quedan?" y el agente, que acababa de
+    // reservarle una, no tenía dónde mirar. Estos cinco cubren los tipos que
+    // la política de exposición permite meter en el turno; los demás son
+    // `tool_only` a propósito y NO se cargan.
+    | 'memberships'
+    | 'class_bookings'
+    | 'enrollments'
+    | 'photo_sessions'
+    | 'resource_rentals';
 
 export interface ActiveOperationsContextInput {
     tenantId: string;
@@ -48,15 +59,24 @@ export interface ActiveOperationsContextResult {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_WITH_ZONE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 
+// Los estados que la propia plataforma escribe. Uno que cae en `unknown` no es
+// un dato faltante: es el agente sin saber si la membresía está congelada o la
+// clase en lista de espera, con la fila delante.
 const STATUS_MAP: Readonly<Record<ActiveObjectStatusClass, ReadonlySet<string>>> = {
-    pending: new Set(['pending', 'received', 'requested', 'new', 'draft', 'created']),
+    pending: new Set([
+        'pending', 'received', 'requested', 'new', 'draft', 'created',
+        'waitlist', 'enrolled', 'scheduled',
+    ]),
     active: new Set([
         'active', 'confirmed', 'processing', 'preparing', 'ready', 'reserved',
-        'approved', 'in_progress', 'checked_in', 'shipped',
+        'approved', 'in_progress', 'checked_in', 'shipped', 'picked_up',
     ]),
-    paused: new Set(['paused', 'on_hold']),
-    completed: new Set(['completed', 'delivered', 'fulfilled', 'closed', 'checked_out']),
-    cancelled: new Set(['cancelled', 'canceled', 'refunded', 'rejected', 'voided']),
+    paused: new Set(['paused', 'on_hold', 'frozen']),
+    completed: new Set([
+        'completed', 'delivered', 'fulfilled', 'closed', 'checked_out',
+        'attended', 'returned', 'expired',
+    ]),
+    cancelled: new Set(['cancelled', 'canceled', 'refunded', 'rejected', 'voided', 'dropped']),
     failed: new Set(['failed', 'payment_failed', 'no_show']),
     unknown: new Set(),
 };
@@ -148,6 +168,16 @@ export function resolveActiveOperationsLoaders(
     // have their own manifest capability. Preserve the existing activation.
     if (enabled(['orders', 'ecommerce'])) loaders.push('orders');
     if (enabled(['restaurants'], 'restaurant_ordering', 'restaurants')) loaders.push('food_orders');
+    if (enabled(['gyms'], 'membership_management', 'gyms')) {
+        loaders.push('memberships');
+        loaders.push('class_bookings');
+    }
+    if (enabled(['education'], 'course_enrollment', 'education')) loaders.push('enrollments');
+    if (enabled(['photography'], 'photo_sessions', 'photography')) loaders.push('photo_sessions');
+    if (enabled(['vehicleRentals'], 'vehicle_rentals', 'vehicleRentals')
+        || enabled(['petBoarding'], 'pet_boarding', 'petBoarding')) {
+        loaders.push('resource_rentals');
+    }
     return loaders;
 }
 
@@ -313,6 +343,16 @@ export class ActiveOperationsContextService {
                 return this.loadOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool);
             case 'food_orders':
                 return this.loadFoodOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+            case 'memberships':
+                return this.loadMemberships(schemaName, contactId, Math.min(2, maxItems), detailsTool);
+            case 'class_bookings':
+                return this.loadClassBookings(schemaName, contactId, Math.min(4, maxItems), detailsTool);
+            case 'enrollments':
+                return this.loadEnrollments(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+            case 'photo_sessions':
+                return this.loadPhotoSessions(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+            case 'resource_rentals':
+                return this.loadResourceRentals(schemaName, contactId, Math.min(3, maxItems), detailsTool);
         }
     }
 
@@ -333,7 +373,194 @@ export class ActiveOperationsContextService {
                 return tools.orders?.enabled === true ? 'list_customer_orders' : undefined;
             case 'food_orders':
                 return tools.restaurants?.enabled === true ? 'list_my_orders' : undefined;
+            case 'memberships':
+                return tools.gyms?.enabled === true ? 'get_my_membership' : undefined;
+            case 'class_bookings':
+                return tools.gyms?.enabled === true ? 'list_my_classes' : undefined;
+            case 'enrollments':
+                return tools.education?.enabled === true ? 'list_my_enrollments' : undefined;
+            case 'photo_sessions':
+                return tools.photography?.enabled === true ? 'list_my_photo_sessions' : undefined;
+            case 'resource_rentals':
+                if (tools.vehicleRentals?.enabled === true) return 'list_my_vehicle_rentals';
+                return tools.petBoarding?.enabled === true ? 'list_my_pet_boardings' : undefined;
         }
+    }
+
+    /**
+     * La membresía del socio: estado, período y créditos que le quedan.
+     *
+     * Sin esto, el agente le acababa de reservar una clase y no podía contestar
+     * "¿cuántas me quedan?" — el dato estaba en la fila que él mismo escribió.
+     */
+    private async loadMemberships(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, status, class_credits_remaining,
+                    to_char(current_period_start, 'YYYY-MM-DD') AS starts_at_iso,
+                    to_char(current_period_end, 'YYYY-MM-DD') AS ends_at_iso,
+                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM members
+             WHERE contact_id = $1::uuid
+             ORDER BY updated_at DESC LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'membership',
+            id: String(row.id),
+            source: 'members',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('members', row.status),
+            startsAt: asIso(row.starts_at_iso),
+            endsAt: asIso(row.ends_at_iso),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            quantity: nullableNumber(row.class_credits_remaining),
+            detailsTool,
+        }));
+    }
+
+    /** Las clases que el socio tiene reservadas y todavía no pasaron. */
+    private async loadClassBookings(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, status,
+                    to_char(booked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso
+             FROM class_bookings
+             WHERE contact_id = $1::uuid
+               AND status IN ('confirmed', 'waitlist')
+             ORDER BY booked_at DESC LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'class_booking',
+            id: String(row.id),
+            source: 'class_bookings',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('class_bookings', row.status),
+            startsAt: asIso(row.starts_at_iso ?? row.booked_at),
+            detailsTool,
+        }));
+    }
+
+    /** Las inscripciones del alumno, con su avance. */
+    private async loadEnrollments(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT e.id, e.status, e.completion_percent, e.course_id, c.name AS course_name,
+                    to_char(e.enrolled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
+                    to_char(e.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM enrollments e
+             LEFT JOIN courses c ON c.id = e.course_id
+             WHERE e.contact_id = $1::uuid
+             ORDER BY e.enrolled_at DESC LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'enrollment',
+            id: String(row.id),
+            source: 'enrollments',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('enrollments', row.status),
+            label: safeText(row.course_name),
+            startsAt: asIso(row.starts_at_iso ?? row.enrolled_at),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            quantity: nullableNumber(row.completion_percent),
+            // De QUÉ curso es la inscripción, por el mismo motivo.
+            subject: row.course_id
+                ? {
+                    kind: 'course' as const,
+                    id: String(row.course_id),
+                    label: safeText(row.course_name, 120),
+                }
+                : undefined,
+            detailsTool,
+        }));
+    }
+
+    /** Las sesiones de foto del cliente: cuándo son y si ya se entregaron. */
+    private async loadPhotoSessions(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, status, price, currency,
+                    to_char(scheduled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
+                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM photo_sessions
+             WHERE contact_id = $1::uuid
+             ORDER BY scheduled_at DESC NULLS LAST LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'photo_session',
+            id: String(row.id),
+            source: 'photo_sessions',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('photo_sessions', row.status),
+            startsAt: asIso(row.starts_at_iso ?? row.scheduled_at),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            amount: nullableNumber(row.price),
+            currency: currency(row.currency),
+            detailsTool,
+        }));
+    }
+
+    /**
+     * Alquileres de recurso: un auto o una estadía de mascota.
+     *
+     * `create_vehicle_rental` y `create_pet_boarding` escribían una fila que no
+     * tenía NINGÚN tipo declarado, así que el turno siguiente no la veía: el
+     * cliente preguntaba "¿hasta cuándo lo tengo?" y el agente, que acababa de
+     * crearla, no tenía dónde mirar. Una fila y dos tipos, porque el objeto
+     * que el cliente tiene en la cabeza es el auto o la mascota, no "el
+     * alquiler".
+     */
+    private async loadResourceRentals(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, rental_type, status,
+                    to_char(start_date, 'YYYY-MM-DD') AS starts_at_iso,
+                    to_char(end_date, 'YYYY-MM-DD') AS ends_at_iso,
+                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM resource_rentals
+             WHERE contact_id = $1::uuid
+             ORDER BY start_date DESC LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: String(row.rental_type) === 'pet_boarding' ? 'pet_boarding' : 'vehicle_rental',
+            id: String(row.id),
+            source: 'resource_rentals',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('resource_rentals', row.status),
+            startsAt: asIso(row.starts_at_iso),
+            endsAt: asIso(row.ends_at_iso),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            detailsTool,
+        }));
     }
 
     private async loadAppointments(
@@ -485,7 +712,7 @@ export class ActiveOperationsContextService {
     ): Promise<ActiveObjectContextItemV1[]> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT b.id, b.status, b.total_price, b.currency, p.name AS package_name,
+            `SELECT b.id, b.status, b.total_price, b.currency, p.name AS package_name, b.package_id,
                     to_char(((b.departure_date + COALESCE(b.departure_time, TIME '00:00')) AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
                     to_char((b.updated_at AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
              FROM tour_bookings b
@@ -507,6 +734,18 @@ export class ActiveOperationsContextService {
             updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
             amount: nullableNumber(row.total_price),
             currency: currency(row.currency),
+            // De QUÉ paquete es la salida. Es el mismo defecto que ya se había
+            // arreglado en alojamiento: sin el sujeto, el único identificador
+            // que el modelo tenía a mano era el de la reserva, y lo pasaba
+            // como `packageId` — la escritura fallaba DESPUÉS del "sí" del
+            // cliente.
+            subject: row.package_id
+                ? {
+                    kind: 'tour_package' as const,
+                    id: String(row.package_id),
+                    label: safeText(row.package_name, 120),
+                }
+                : undefined,
             detailsTool,
         }));
     }

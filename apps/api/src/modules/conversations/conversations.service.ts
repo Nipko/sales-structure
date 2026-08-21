@@ -3385,10 +3385,40 @@ export class ConversationsService {
                 awaiting: (t.result as any)?.awaitingPayment === true || undefined,
                 facts: this.describeOperationResult(t.result).slice(0, 400) || undefined,
             }));
+            // Se ACUMULA, no se pisa.
+            //
+            // El `jsonb_set` reemplazaba el arreglo entero, así que
+            // `<recent_actions>` sólo contenía lo del último turno: el agente
+            // buscaba una propiedad en el turno 1, el cliente preguntaba otra
+            // cosa en el 2, y en el 3 volvía a buscar la misma propiedad —
+            // porque ya no recordaba haberlo hecho—. Peor todavía: un
+            // identificador que una tool devolvió en el turno 1 desaparecía, y
+            // el modelo se inventaba uno para reemplazarlo.
+            //
+            // Se concatena con lo anterior y se recorta a las últimas N en la
+            // misma sentencia, para que dos turnos concurrentes no se pisen
+            // leyendo y escribiendo por separado. El `ORDER BY position` de la
+            // agregación restaura el orden cronológico: el lector hace
+            // `slice(-N)`, así que dejarlo al revés le habría dado las acciones
+            // más VIEJAS en vez de las más recientes.
             await this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations
                     SET metadata = jsonb_set(
-                        jsonb_set(COALESCE(metadata, '{}'::jsonb), '{toolContext}', $2::jsonb),
+                        jsonb_set(
+                            COALESCE(metadata, '{}'::jsonb),
+                            '{toolContext}',
+                            (
+                                SELECT COALESCE(jsonb_agg(entry ORDER BY position), '[]'::jsonb)
+                                  FROM (
+                                    SELECT entry, position
+                                      FROM jsonb_array_elements(
+                                        COALESCE(metadata->'toolContext', '[]'::jsonb) || $2::jsonb
+                                      ) WITH ORDINALITY AS t(entry, position)
+                                     ORDER BY position DESC
+                                     LIMIT ${RECENT_ACTIONS_MAX}
+                                  ) recent
+                            )
+                        ),
                         '{toolContextUpdatedAt}', to_jsonb(NOW()::text)
                     )
                   WHERE id = $1::uuid`,

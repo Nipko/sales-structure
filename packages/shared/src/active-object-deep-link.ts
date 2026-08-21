@@ -40,6 +40,11 @@ const DEEP_LINKS: Readonly<Record<ActiveObjectKind, string | null>> = Object.fre
     treatment_session: '/admin/treatment-plans',
     pet: '/admin/pets',
     enrollment: '/admin/courses',
+    // Las dos comparten pantalla: `/admin/resource-rentals` lista los dos
+    // tipos. Inventar `/admin/rentals` habría mandado a un 404, que es lo que
+    // el `null` de más abajo existe para evitar.
+    vehicle_rental: '/admin/resource-rentals',
+    pet_boarding: '/admin/resource-rentals',
 
     // ── Catálogo: el sujeto del objeto, no el objeto ──────────────────
     catalog_item: '/admin/inventory',

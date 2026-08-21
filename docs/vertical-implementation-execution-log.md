@@ -1393,6 +1393,33 @@ npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2930 passed / 302 suites (1 skipped), 0 fallos
 ```
 
+### U48 — El agente escribía filas que el turno siguiente no podía ver
+
+**Pendiente interno 18 (segunda mitad)**
+
+Cinco cargadores para veintidós tipos declarados. Un socio preguntaba *"¿cuántas clases me quedan?"* y el agente, que acababa de reservarle una, **no tenía dónde mirar**: el dato estaba en la fila que él mismo había escrito.
+
+Peor: `create_vehicle_rental` y `create_pet_boarding` escribían un alquiler que **no tenía ningún tipo declarado**. El cliente preguntaba "¿hasta cuándo lo tengo?" y la fila recién creada era literalmente invisible para el agente.
+
+**Cinco cargadores nuevos** —membresías (con los créditos que quedan), clases reservadas, inscripciones, sesiones de foto y alquileres de recurso— y **dos tipos nuevos**: `vehicle_rental` y `pet_boarding`. Una fila y dos tipos, porque el objeto que el cliente tiene en la cabeza es el auto o la mascota, no "el alquiler".
+
+**Y dos sujetos que faltaban.** `tour_booking` y `enrollment` viajaban sin decir de qué paquete o de qué curso eran — el mismo defecto que ya se había arreglado en alojamiento: sin el sujeto, el único identificador que el modelo tiene a mano es el de la reserva, y lo pasa como `packageId`; la escritura falla **después** del "sí" del cliente.
+
+**Lo que NO se carga tampoco es un olvido.** Tratamientos, seguros, casos profesionales y solicitudes de servicio son `tool_only`: se leen sólo con una tool que exige verificación de identidad, y meterlos en el turno sería saltarse esa puerta. `catalog_item` queda fuera por otro motivo, también declarado: un producto no está "activo" para un cliente, aparece cuando una tool lo devuelve — cargarlo sería meterle el catálogo entero al agente en cada mensaje.
+
+**Quince estados que caían en `unknown`.** `frozen`, `waitlist`, `attended`, `enrolled`, `dropped`, `picked_up`, `returned`, `checked_out`… los escribe la propia plataforma y el clasificador no los conocía: el agente tenía la fila delante y no sabía si la membresía estaba congelada o la clase en lista de espera. Uno que nadie declara **sigue** siendo `unknown`, porque adivinar una clase para una palabra que el sistema no escribe sería inventar significado.
+
+**Y `<recent_actions>` sobrevivía un solo turno.** `persistToolContext` hacía `jsonb_set` del arreglo entero, así que **pisaba** en vez de acumular: el agente buscaba una propiedad en el turno 1, el cliente preguntaba otra cosa en el 2, y en el 3 volvía a buscar la misma — porque ya no recordaba haberlo hecho. Peor: un identificador que una tool devolvió en el turno 1 desaparecía, y el modelo se inventaba uno para reemplazarlo. Ahora se concatena y se recorta **en la misma sentencia**, para que dos turnos concurrentes no se pisen leyendo y escribiendo por separado, y el `ORDER BY` de la agregación restaura el orden cronológico — el lector hace `slice(-N)`, así que dejarlo al revés le habría dado las acciones más **viejas**.
+
+**Pruebas** — `active-objects-coverage.spec.ts` (nuevo, 46): todo tipo permitido en el turno tiene quien lo produzca, los `tool_only` **no** se cargan, los cargadores se encienden con la capacidad del negocio (un negocio sin esas familias no paga la consulta: cada cargador es una consulta por turno), los deep links de los dos tipos nuevos apuntan a una pantalla que existe, y los quince estados se clasifican.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared y api
+jest apps/api       → 2976 passed / 303 suites (1 skipped), 0 fallos
+jest apps/dashboard →  219 passed /  27 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1506,6 +1533,6 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~15~~ | ✅ cerrado en **U44** |
 | ~~16~~ | ✅ cerrado en **U45** |
 | ~~17~~ | ✅ cerrado en **U46** |
-| 18 | ◐ **Hecho en U47**: los tres writers CRM mínimos (`add_contact_note`, `tag_contact`, `record_contact_interest`). Queda **Active Objects para todos los writers**: hay 5 cargadores para 22 tipos declarados |
+| ~~18~~ | ✅ cerrado entre **U47** (writers CRM) y **U48** (Active Objects) |
 | 19 | Profundidad nativa sin proveedor: ocupación/agrupamiento de boarding; conductor/depósito/contrato/calendario de flota; plantillas y semántica de turismo; superficie de `professional_case`; navegación y analítica restantes; perfiles `build` y partes nativas de `hybrid` |
 | 20 | Scaffolding provider-neutral: outbox, webhook inbox, idempotencia, reconciliación y contract-test kit — con los writers externos apagados hasta tener sandbox |

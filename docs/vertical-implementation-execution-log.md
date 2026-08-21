@@ -764,3 +764,24 @@ npx tsc --noEmit (api + shared)  → exit 0
 jest src/app.bootstrap.spec.ts   → 1/1 ✅ (DI limpio)
 jest apps/api                    → 2619 passed / 290 suites, 0 fallos
 ```
+
+### U23 — El país estaba en el turno y nadie lo leía
+
+**Fase 3 · Épica H · Paso 13 (formatos regionales y forma de trato)**
+
+U7 separó el país operativo del país de facturación y puso `<regional>` en el turno con país, moneda, locale, forma de trato y el pack del país con su estado. Faltaba lo que lo convierte en comportamiento: **ninguna regla del contrato le decía al modelo que lo usara**. Un tenant mexicano recibía `currency: MXN`, `addressForm: usted` y `locale: es-MX` como datos que nadie leía — el mismo patrón "existente pero inalcanzable" que el plan censó cuatro veces.
+
+Dos reglas, y la segunda importa más que la primera:
+
+**Regla 20 — trato y formatos.** El código de forma de trato es opaco (`voce` no significa nada suelto), así que la regla lleva la glosa: `usted` formal, `tu` informal, `vos` voseo rioplatense, `voce` você brasileño, `senhor_senhora` formal. Fechas, horas, números, teléfonos y direcciones se escriben como los escribe el locale.
+
+**ADR-034 — Convertir un importe es inventarlo.**
+El turno no trae tipo de cambio, así que cualquier equivalencia que el modelo escriba se la inventó. La regla es explícita y negativa: el precio conserva **exactamente** la moneda que trae el dato —si el catálogo o la tool dicen COP, se dice COP—, sin reformularlo en otra moneda, sin equivalencia aproximada y sin aplicar una tasa. `<regional><currency>` es sólo lo que el negocio cotiza **cuando el dato no trae moneda propia**. Sin esta regla, un tenant con `currency: MXN` y un catálogo en COP tenía todo lo necesario para producir un precio falso con aspecto de servicio.
+
+**Pruebas** — `prompt-assembler.contract.spec.ts` (+2 casos, fijados por significado y no por redacción, como el resto del archivo): el contrato nombra el bloque regional, la forma de trato **con sus cinco códigos glosados** y el locale; y prohíbe convertir, nombrando la tasa de cambio que no tiene y la regla de que la moneda del dato manda.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api           → 2621 passed / 290 suites, 0 fallos
+```

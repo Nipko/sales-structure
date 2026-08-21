@@ -43,6 +43,31 @@ describe('Contrato L1 del agente', () => {
         expect(contract).toContain('idempotentreplay');
     });
 
+    /**
+     * El bloque <regional> viajaba con país, moneda, locale y forma de trato
+     * desde hacía un release, y ninguna regla le decía al modelo que lo usara:
+     * un tenant mexicano recibía `MXN` y `usted` como datos que nadie leía.
+     */
+    it('usa la forma de trato y los formatos del país donde opera el negocio', () => {
+        // El contrato viaja escapado, así que se afirma por las palabras, no
+        // por los signos.
+        expect(contract).toContain('regional:');
+        expect(contract).toContain('address_form');
+        // Los códigos son opacos: `voce` no significa nada sin la glosa.
+        for (const form of ['usted', 'tu', 'vos', 'voce', 'senhor_senhora']) {
+            expect(contract).toContain(form);
+        }
+        expect(contract).toContain('locale');
+    });
+
+    /** Convertir un importe es inventarlo: no hay tipo de cambio en el turno. */
+    it('prohíbe convertir un importe a otra moneda', () => {
+        expect(contract).toContain('never convert an amount');
+        expect(contract).toContain('exchange rate');
+        // La moneda del dato gana sobre la del negocio.
+        expect(contract).toContain('keeps the exact currency the data carries');
+    });
+
     it('mantiene las salvaguardas de seguridad después de las reglas nuevas', () => {
         // Las reglas se insertaron justo antes de este bloque: si una edición
         // futura lo pisa, el agente pierde los guardarraíles enteros.

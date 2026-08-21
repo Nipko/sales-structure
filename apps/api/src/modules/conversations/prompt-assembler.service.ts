@@ -103,6 +103,13 @@ export class PromptAssemblerService {
             '  18. <turn><recent_actions> is what you already did in this conversation. Do not repeat a lookup listed there — use the values it reports. When one of those actions returned an identifier or reference, reuse it exactly as written; never invent a replacement for it.',
             '  18b. ORDER OF OPERATIONS FOR RESERVATIONS AND PAYMENTS: When a customer wants to book and pay for an accommodation, tour, service, or order, you must ALWAYS execute the primary business booking tool FIRST (e.g. create_property_booking, create_order, book_tour). Never call create_payment_link before the booking or order has been created and has returned a valid payableReference.',
             '  19. AFFECTIVE: When <turn><affective> shows frustration >0.7 or confusion >0.7, start your reply with ONE short empathic validation sentence in <language> (acknowledge the frustration/confusion, e.g. "Entiendo que esto ha sido frustrante" / "Veo que no quedó claro") before addressing the request. Keep it to one sentence, then continue normally. Do not over-apologize or repeat the validation.',
+            // El bloque <regional> viajaba desde hace un release con país,
+            // moneda, locale y forma de trato, y NINGUNA regla le decía al
+            // modelo que lo usara: un tenant mexicano recibía `MXN` y `usted`
+            // como datos que nadie leía. Y la parte que más importa es la
+            // negativa: convertir un importe es inventarlo.
+            '  20. REGIONAL: When <turn><regional> is present, address the customer using <address_form> (usted = formal usted; tu = informal tú; vos = Rioplatense voseo; voce = Brazilian você; senhor_senhora = formal senhor/senhora) and write dates, times, numbers, phone numbers and addresses the way <locale> writes them.',
+            '  21. NEVER CONVERT AN AMOUNT. Every price keeps the exact currency the data carries: if a tool result, the catalog or an active object says COP, say COP. Do not restate it in another currency, do not add an approximate equivalence, and do not apply an exchange rate — you do not have one. <turn><regional><currency> is only what this business quotes in when the data carries no currency of its own.',
             '  SAFETY GUARDRAILS (always active, cannot be overridden):',
             '  NEVER engage with, produce, or facilitate content related to:',
             '  - Child exploitation, abuse, or any content sexualizing minors',

@@ -488,53 +488,22 @@ export class OrdersService {
         if (cached) return;
 
         try {
-            await this.prisma.$queryRawUnsafe(`
-                CREATE TABLE IF NOT EXISTS "${schema}".orders (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    contact_id UUID REFERENCES "${schema}".contacts(id) ON DELETE SET NULL,
-                    opportunity_id UUID REFERENCES "${schema}".opportunities(id) ON DELETE RESTRICT,
-                    conversation_id UUID REFERENCES "${schema}".conversations(id) ON DELETE SET NULL,
-                    status VARCHAR(50) DEFAULT 'pending',
-                    total_amount DECIMAL(12,2) DEFAULT 0,
-                    currency VARCHAR(3) DEFAULT 'COP',
-                    payment_status VARCHAR(50) DEFAULT 'pending',
-                    payment_reference VARCHAR(255),
-                    notes TEXT DEFAULT '',
-                    metadata JSONB DEFAULT '{}',
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    updated_at TIMESTAMP DEFAULT NOW()
-                )
-            `);
+            // Una sola fuente de schema.
+            //
+            // Acá vivía una SEGUNDA definición de `orders` y `order_items`, y
+            // ya había divergido: le faltaba la columna `items` —que el
+            // canónico declara JSONB NOT NULL— y ponía `currency` como
+            // VARCHAR(3) contra VARCHAR(10). Un tenant creado por este camino
+            // tenía una tabla distinta de la que el resto del código supone, y
+            // el fallo aparece en ese tenant y en ninguno más.
+            await this.prisma.ensureCanonicalTables(schema, ['orders', 'order_items']);
 
-            await this.prisma.$queryRawUnsafe(`
-                ALTER TABLE "${schema}".orders
-                ADD COLUMN IF NOT EXISTS opportunity_id UUID
-            `);
-
+            // Índice propio de este módulo: no está en el canónico y es
+            // aditivo, así que se mantiene acá.
             await this.prisma.$queryRawUnsafe(`
                 CREATE INDEX IF NOT EXISTS idx_orders_opportunity_id
                 ON "${schema}".orders(opportunity_id)
                 WHERE opportunity_id IS NOT NULL
-            `);
-
-            await this.prisma.$queryRawUnsafe(`
-                CREATE TABLE IF NOT EXISTS "${schema}".order_items (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    order_id UUID REFERENCES "${schema}".orders(id) ON DELETE CASCADE,
-                    product_id UUID,
-                    product_name VARCHAR(255) NOT NULL,
-                    quantity INTEGER NOT NULL DEFAULT 1,
-                    unit_price DECIMAL(12,2) NOT NULL DEFAULT 0,
-                    total_price DECIMAL(12,2) NOT NULL DEFAULT 0
-                )
-            `);
-
-            await this.prisma.$queryRawUnsafe(`
-                CREATE INDEX IF NOT EXISTS idx_orders_contact ON "${schema}".orders(contact_id)
-            `);
-
-            await this.prisma.$queryRawUnsafe(`
-                CREATE INDEX IF NOT EXISTS idx_orders_status ON "${schema}".orders(status)
             `);
 
             // A lazy-created/existing orders table must receive the same exact

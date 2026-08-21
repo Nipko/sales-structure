@@ -275,6 +275,55 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         return rows?.length > 0;
     }
 
+    /**
+     * Crear/reparar unas tablas concretas DESDE la definición canónica.
+     *
+     * Varios módulos llevaban su propia copia del DDL para poder crear sus
+     * tablas de forma perezosa en un schema viejo. Dos copias de una tabla no
+     * se mantienen iguales solas: `product_categories` ya había divergido —la
+     * copia perezosa la creaba sin `sort_order` y con `name` más corto—, así
+     * que un tenant provisto por ese camino tenía una tabla que el resto del
+     * código cree que tiene una columna que no existe. El fallo aparece meses
+     * después, en un tenant, y no se reproduce en ninguno de los otros.
+     *
+     * Acá la fuente sigue siendo una sola: `tenant-schema.sql`. Esto sólo
+     * ejecuta el subconjunto de sus sentencias que tocan las tablas pedidas.
+     */
+    async ensureCanonicalTables(schemaName: string, tables: readonly string[]): Promise<void> {
+        this.validateSchemaName(schemaName);
+        const template = await this.loadTenantSchemaTemplate();
+        const rendered = template.replace(/\{\{SCHEMA_NAME\}\}/g, schemaName);
+        const statements = this.splitSqlStatements(rendered);
+
+        // Se compara contra `."tabla"` y no contra `tabla`: `ecommerce_products`
+        // contiene `products` como substring, y una coincidencia por substring
+        // arrastraría tablas ajenas en un orden que no respeta sus claves.
+        for (const table of tables) {
+            const needle = `."${table}"`;
+            const matching = statements.filter(statement => statement.includes(needle));
+            if (!matching.length) {
+                // Silencio acá sería peor que el defecto: el módulo creería que
+                // reparó y seguiría escribiendo contra una tabla inexistente.
+                throw new Error(
+                    `tenant-schema.sql no define "${table}": no hay DDL canónico que aplicar`,
+                );
+            }
+            for (const statement of matching) {
+                try {
+                    await this.$executeRawUnsafe(statement);
+                } catch (e: any) {
+                    const code = e?.meta?.code || '';
+                    // Ya existe: es exactamente el caso normal de una reparación.
+                    if (['42P06', '42710', '42P07'].includes(code)) continue;
+                    // Una FK a una tabla que este schema todavía no tiene no
+                    // puede tumbar la reparación de la tabla pedida.
+                    if (['42P01', '42703'].includes(code)) continue;
+                    throw e;
+                }
+            }
+        }
+    }
+
     private async loadTenantSchemaTemplate(): Promise<string> {
         const fs = await import('fs');
         const path = await import('path');

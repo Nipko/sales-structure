@@ -1262,6 +1262,32 @@ jest apps/api       → 2791 passed / 297 suites (1 skipped), 0 fallos
 jest apps/dashboard →  219 passed /  27 suites, 0 fallos
 ```
 
+### U43 — La misma tabla escrita dos veces, y ya no decían lo mismo
+
+**Pendiente interno 13**
+
+Veintisiete tablas tenían su DDL escrito **dos veces**: en `prisma/tenant-schema.sql` y otra vez, a mano, dentro del `ensureTables` perezoso del módulo que las usa. Dos copias no se mantienen iguales solas, y éstas **ya habían divergido en las dos direcciones**:
+
+- **`orders`** en código no tenía la columna `items` —que el canónico declara `JSONB NOT NULL`— y ponía `currency` como `VARCHAR(3)` contra `VARCHAR(10)`. Un tenant creado por ese camino tiene una tabla distinta de la que el resto del código supone.
+- **`campaign_recipients`** en código tenía `provider_message_id`, que el canónico **no** tenía. Y el envío de campañas la escribe en **cada mensaje**. Para un tenant provisto por el camino canónico —o sea, **todos los nuevos**— el `CREATE TABLE IF NOT EXISTS` perezoso era un no-op, esa columna nunca se creaba y el primer envío de campaña fallaba con *"column does not exist"*. La columna se agregó al canónico (aditiva, expand-contract).
+- **`product_categories`** la creaba sin `sort_order` y con `name` más corto.
+
+Ése es el modo de falla que hace cara la duplicación: **aparece meses después, en un tenant, y no se reproduce en ninguno de los otros**.
+
+**La solución no fue borrar la creación perezosa** —existe para reparar schemas viejos y ese trabajo es real—, sino quitarle la *definición*. `PrismaService.ensureCanonicalTables(schema, tablas)` carga `tenant-schema.sql` y ejecuta **el subconjunto de sus sentencias** que tocan esas tablas. La fuente sigue siendo una sola; la reparación perezosa sigue existiendo.
+
+Dos detalles del filtro: compara contra `."tabla"` y no contra `tabla`, porque `ecommerce_products` contiene `products` como substring y una coincidencia por substring arrastraría tablas ajenas en un orden que no respeta sus claves; y si no encuentra DDL para una tabla pedida **tira**, porque el silencio sería peor que el defecto — el módulo creería que reparó y seguiría escribiendo contra una tabla inexistente.
+
+Migradas: `products`, `product_categories`, `stock_movements`, `orders`, `order_items`, `campaign_recipients` — las que divergían. Las otras 21 copias siguen siendo byte-equivalentes hoy, y la prueba de abajo las vigila.
+
+**Pruebas** — `tenant-schema-single-source.spec.ts` (nuevo, 4): parsea el canónico (incluidos los `ADD COLUMN` posteriores, que son igual de canónicos) y cada copia perezosa, y falla si a una le falta una columna **o si inventa una que el canónico no tiene** — que es la dirección que rompe a los tenants nuevos y la que nadie mira. Más un guard de regresión sobre las seis ya unificadas, y una aserción de que el parseo encontró tablas: si falla, todo lo demás pasaría sin verificar nada.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2795 passed / 298 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1370,7 +1396,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~10~~ | ✅ cerrado entre **U35** (las 4 lecturas de proveedor) y **U39** (MCP). El Channel Manager no aporta tools propias: sus reservas entran por `check_property_availability`, que ya tiene política revisada |
 | ~~11~~ | ✅ cerrado entre **U40** (consumidores + default `+57`) y **U41** (revisión regional: API, cron y pantalla) |
 | ~~12~~ | ✅ cerrado en **U42** |
-| 13 | Una sola fuente de schema para `products` |
+| ~~13~~ | ✅ cerrado en **U43** |
 | 14 | `VerticalPromptContractV2`, `IntentContract`, `SlotSchema`, `NavigationPolicy`, `CertificationEvidenceV2` |
 | 15 | Los 76 contratos de dominio en `draft` |
 | 16 | Evals ≥25 escenarios por perfil e idioma prioritario |

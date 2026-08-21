@@ -757,22 +757,16 @@ export class BroadcastService {
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
-        try {
-            await this.prisma.$queryRawUnsafe(`
-                CREATE TABLE IF NOT EXISTS "${schema}".campaign_recipients (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    campaign_id UUID NOT NULL REFERENCES "${schema}".campaigns(id) ON DELETE CASCADE,
-                    contact_id UUID REFERENCES "${schema}".contacts(id) ON DELETE SET NULL,
-                    phone VARCHAR(50) DEFAULT '',
-                    status VARCHAR(50) DEFAULT 'pending',
-                    provider_message_id VARCHAR(255),
-                    error_message TEXT,
-                    sent_at TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    updated_at TIMESTAMP DEFAULT NOW()
-                )
-            `);
-        } catch { /* already exists */ }
+        // Una sola fuente de schema.
+        //
+        // Acá vivía una SEGUNDA definición de `campaign_recipients` que ya
+        // había divergido en las dos direcciones: le faltaban `delivered_at`,
+        // `read_at` y `variant_id`, y tenía `provider_message_id`, que el
+        // canónico NO tenía. Para un tenant provisto por el camino canónico
+        // —o sea, todos los nuevos— `CREATE TABLE IF NOT EXISTS` era un no-op,
+        // esa columna nunca se creaba, y el primer envío de campaña fallaba
+        // con "column does not exist". La columna se agregó al canónico.
+        await this.prisma.ensureCanonicalTables(schema, ['campaign_recipients']);
 
         try {
             await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_campaign ON "${schema}".campaign_recipients(campaign_id)`);

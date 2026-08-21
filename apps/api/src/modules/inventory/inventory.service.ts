@@ -296,49 +296,21 @@ export class InventoryService {
         if (cached) return;
 
         try {
-            await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".product_categories (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    name VARCHAR(100) NOT NULL,
-                    color VARCHAR(20) DEFAULT '#6c5ce7',
-                    created_at TIMESTAMP DEFAULT NOW()
-                )`);
-            await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".products (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    name VARCHAR(500) NOT NULL,
-                    description TEXT,
-                    category VARCHAR(255),
-                    price DECIMAL(15,2) NOT NULL DEFAULT 0,
-                    currency VARCHAR(10) DEFAULT 'COP',
-                    is_available BOOLEAN DEFAULT true,
-                    stock INTEGER,
-                    images TEXT[] DEFAULT '{}',
-                    metadata JSONB DEFAULT '{}',
-                    requires_prescription BOOLEAN NOT NULL DEFAULT false,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    updated_at TIMESTAMP DEFAULT NOW()
-                )`);
-            // Esta definición es una SEGUNDA copia de `products`, paralela a
-            // `tenant-schema.sql`. Un schema creado por acá antes de que la
-            // columna existiera no la tiene, y el INSERT de arriba la nombra:
-            // el ALTER idempotente es lo que impide que ese schema quede
-            // rompiendo cada alta de producto.
-            await this.prisma.$queryRawUnsafe(
-                `ALTER TABLE "${schema}".products
-                    ADD COLUMN IF NOT EXISTS requires_prescription BOOLEAN NOT NULL DEFAULT false`,
-            );
-            await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".stock_movements (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    product_id UUID NOT NULL,
-                    type VARCHAR(30) NOT NULL,
-                    quantity INTEGER NOT NULL,
-                    previous_stock INTEGER,
-                    new_stock INTEGER,
-                    reason TEXT,
-                    created_by VARCHAR(255),
-                    created_at TIMESTAMP DEFAULT NOW()
-                )`);
-            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_products_category ON "${schema}".products(category)`);
-            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON "${schema}".stock_movements(product_id)`);
+            // Una sola fuente de schema.
+            //
+            // Acá vivía una SEGUNDA definición de `products`,
+            // `product_categories` y `stock_movements`, paralela a
+            // `tenant-schema.sql`. Dos copias no se mantienen iguales solas y
+            // ésta ya había divergido: creaba `product_categories` sin
+            // `sort_order` y con `name` más corto, así que un tenant provisto
+            // por este camino tenía una tabla que el resto del código cree que
+            // tiene una columna que no existe — y el fallo aparece meses
+            // después, en un tenant, sin reproducirse en ningún otro.
+            await this.prisma.ensureCanonicalTables(schema, [
+                'product_categories',
+                'products',
+                'stock_movements',
+            ]);
 
             await this.redis.set(cacheKey, 'true', 86400); // Cache for 24h
         } catch (error) {

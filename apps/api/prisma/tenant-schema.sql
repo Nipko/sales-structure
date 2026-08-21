@@ -3495,6 +3495,12 @@ ALTER TABLE "{{SCHEMA_NAME}}"."campaigns" ADD COLUMN IF NOT EXISTS "scheduled_at
 ALTER TABLE "{{SCHEMA_NAME}}"."campaign_recipients" ADD COLUMN IF NOT EXISTS "variant_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."campaign_recipients" ADD COLUMN IF NOT EXISTS "email" VARCHAR(255) DEFAULT '';
 ALTER TABLE "{{SCHEMA_NAME}}"."campaign_recipients" ADD COLUMN IF NOT EXISTS "channel" VARCHAR(50) DEFAULT 'whatsapp';
+-- El id que devuelve el proveedor al aceptar el mensaje. Lo escribe
+-- `broadcast.service.ts` en CADA envío, y sólo existía en la copia perezosa del
+-- DDL: para un tenant provisto por el camino canónico —o sea, todos los
+-- nuevos—, `CREATE TABLE IF NOT EXISTS` era un no-op, la columna nunca se
+-- creaba y el primer envío de campaña fallaba con "column does not exist".
+ALTER TABLE "{{SCHEMA_NAME}}"."campaign_recipients" ADD COLUMN IF NOT EXISTS "provider_message_id" VARCHAR(255);
 ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "satisfaction_score" DECIMAL(3,2);
 ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "feedback_count" INTEGER DEFAULT 0;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "was_handed_off" BOOLEAN DEFAULT false;

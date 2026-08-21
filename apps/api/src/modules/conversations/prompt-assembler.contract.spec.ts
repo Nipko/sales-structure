@@ -68,6 +68,23 @@ describe('Contrato L1 del agente', () => {
         expect(contract).toContain('keeps the exact currency the data carries');
     });
 
+    /**
+     * La regla 8 decía "be a human having a conversation" y la persona lleva
+     * nombre propio. Nada le decía al modelo que no podía afirmar que lo era, y
+     * el cliente no tiene forma de saberlo.
+     */
+    it('no deja que el agente se haga pasar por una persona', () => {
+        expect(contract).toContain('role disclosure');
+        expect(contract).toContain('never say or imply that you are human');
+        // Preguntado de frente, contesta y ofrece derivar.
+        expect(contract).toContain('offer to pass them to someone from the team');
+        // Y el nombre propio no es una excusa.
+        expect(contract).toContain('even when the persona was given a human first name');
+        // La regla 8 ya no se puede leer como permiso.
+        expect(contract).toContain('this is about how you write, never about what you are');
+        expect(contract).not.toContain('be a human having a conversation');
+    });
+
     it('mantiene las salvaguardas de seguridad después de las reglas nuevas', () => {
         // Las reglas se insertaron justo antes de este bloque: si una edición
         // futura lo pisa, el agente pierde los guardarraíles enteros.

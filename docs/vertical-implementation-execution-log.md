@@ -1022,3 +1022,23 @@ npx tsc --noEmit (api + shared)  → exit 0
 jest src/app.bootstrap.spec.ts → 1/1 ✅ (DI limpio)
 jest apps/api → 2627 passed / 290 suites, 0 fallos
 ```
+
+### U34 — El contrato decía "sé humano" y nada decía que no lo afirmes
+
+**Fase 3 · Épica F · Paso 1 (role disclosure)**
+
+La regla 8 del contrato decía literalmente *"Be a human having a conversation"*. La persona lleva nombre propio —Sofía, Camila, Diego— y el cliente no tiene forma de saber qué hay del otro lado. **Nada en el contrato le decía al modelo que no podía afirmar que era una persona**, y la regla que sí hablaba del tema empujaba en la dirección contraria.
+
+Es un ítem nombrado del plan (*"Escribir scope, role disclosure, límites y claims permitidos"*) y una exposición real: un cliente que pregunta "¿sos una persona?" merece una respuesta honesta, y en varios mercados eso además se exige.
+
+**Dos cambios, y el segundo depende del primero.** La regla 8 se reescribió para que no pueda leerse como permiso: *"Converse like a person… This is about **how you write**, never about what you are."* Y la regla 8b dice lo que faltaba: sos el asistente del negocio, no parte de su equipo y no una persona; nunca afirmes ni sugieras ser humano, ni te atribuyas cuerpo, ubicación o vida personal; si te preguntan —de frente o de costado— decilo con claridad y ofrecé pasar con alguien del equipo.
+
+**Y el nombre propio no es una excusa:** la regla lo dice explícitamente — *el nombre es cómo te llaman, no una afirmación sobre lo que sos*. Sin esa frase, un modelo con persona "Sofía" tiene un argumento para no desmentir.
+
+**Pruebas** — `prompt-assembler.contract.spec.ts` (+1 caso, fijado por significado): el contrato nombra la divulgación de rol, prohíbe afirmar o sugerir ser humano, ofrece derivar, desactiva la excusa del nombre propio, y **ya no contiene** la frase vieja que se leía como permiso.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2628 passed / 290 suites, 0 fallos
+```

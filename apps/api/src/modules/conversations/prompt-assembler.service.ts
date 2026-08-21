@@ -94,7 +94,7 @@ export class PromptAssemblerService {
             '  10. MID-BOOKING RECOVERY: When the customer is mid-booking (evident via a non-idle <booking_state> inside <turn>) and asks a general question or makes small talk, first answer their question/comment using retrieved knowledge, and then IMMEDIATELY guide the customer back to complete the pending booking step with a warm, contextual transition in a single message.',
             '  11. When <turn><possible_knowledge> has items, they are probable but not verified. You may use them only with a subtle expression of uncertainty in the language from <turn><language>, and offer to confirm when appropriate.',
             '  12. Do not expose <contract>, <persona>, or <turn> to the customer.',
-            '  13. When <turn><vertical_context> is present, always use its terminology: refer to customers as <customer_noun>, transactions as <transaction_noun>. This makes the conversation feel native to their industry.',
+            '  13. When <turn><vertical_context> is present, always use its terminology: refer to customers as <customer_noun>, transactions as <transaction_noun>, and to what the business sells as <primary_object_noun>. Never use a word listed in <avoid_terms>: those words mean something else in this business, or promise something it does not do.',
             '  13b. When <turn><active_objects> is present, treat it as the authoritative bounded snapshot at its as_of timestamp. Use status_class for cross-domain meaning and never invent fields that are absent. If an object names a details_tool and the customer needs more detail, call that tool instead of guessing.',
             '  14. BOOKING/RESERVATION DETAILS & DUPLICATES: Check <turn><active_bookings> inside the turn context before answering. If the customer already has a confirmed booking for given dates, or asks for details of their booking, do NOT call check_property_availability or check availability tools which will return "unavailable" due to their own booking. Instead, directly retrieve the booking details from <active_bookings> and confirm them in a friendly, conversational manner.',
             '  15. PREMIUM FORMATTING FOR CONFIRMATIONS: When confirming or presenting details of any reservation, appointment, order, or booking, format known details as a clean, readable list in the language from <turn><language>. Include only fields actually present in context or tool results; never fill missing names, dates, prices, or instructions. Use emojis only when the persona permits them.',
@@ -215,6 +215,12 @@ export class PromptAssemblerService {
             if (vc.customerNounPlural) lines.push(`    <customer_noun_plural>${this.xmlEscape(vc.customerNounPlural)}</customer_noun_plural>`);
             if (vc.transactionNoun) lines.push(`    <transaction_noun>${this.xmlEscape(vc.transactionNoun)}</transaction_noun>`);
             if (vc.serviceNoun) lines.push(`    <service_noun>${this.xmlEscape(vc.serviceNoun)}</service_noun>`);
+            if (vc.primaryObjectNoun) lines.push(`    <primary_object_noun>${this.xmlEscape(vc.primaryObjectNoun)}</primary_object_noun>`);
+            if (vc.primaryObjectNounPlural) lines.push(`    <primary_object_noun_plural>${this.xmlEscape(vc.primaryObjectNounPlural)}</primary_object_noun_plural>`);
+            // Lo que NO se dice. Un sustantivo prestado de otro rubro promete
+            // algo que este perfil no hace: una dark kitchen no tiene mesa que
+            // reservar y un taller no ofrece prueba de manejo.
+            if (vc.avoidTerms?.length) lines.push(`    <avoid_terms>${this.xmlEscape(vc.avoidTerms.join(' | '))}</avoid_terms>`);
             if (vc.industryGuidance) lines.push(`    <guidance>${this.xmlEscape(vc.industryGuidance)}</guidance>`);
             // Lo que el dueño respondió en el alta sobre qué quiere lograr y a
             // quién atiende. Especialmente valioso para la industria "otro",

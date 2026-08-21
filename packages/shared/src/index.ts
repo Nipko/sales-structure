@@ -34,6 +34,9 @@ export * from './agent-skillset-policy';
 // ---- Plan gating for navigation: no visible option that ends in 403 ----
 export * from './navigation-plan-gate';
 
+// ---- What each profile calls the things it works with ----
+export * from './subtype-terminology';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
 
@@ -920,6 +923,17 @@ export interface VerticalContext {
     businessGoals?: string[];
     /** Onboarding answers: who the business serves. */
     targetAudiences?: string[];
+    /** Lo que este perfil vende o gestiona, en su propio nombre. */
+    primaryObjectNoun?: string;
+    primaryObjectNounPlural?: string;
+    /**
+     * Palabras que este perfil NO usa con el cliente.
+     *
+     * No es estilo: son términos que significan otra cosa en el rubro o que
+     * prometen algo que el perfil no hace — "reserva de mesa" en una dark
+     * kitchen, "paciente" en una farmacia, "prueba de manejo" en un taller.
+     */
+    avoidTerms?: string[];
 }
 
 // ---- Test Agent Types ----

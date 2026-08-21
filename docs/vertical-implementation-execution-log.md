@@ -714,3 +714,28 @@ El plan no enuncia un "Gate 2" explícito: la aceptación de la Fase 2 es la col
 | **Channel Manager** | 🔒 **BLOQUEADO** | Write-back a Hostaway exige credenciales sandbox y certificación por versión de API. Queda **fail-closed** con motivo tipado (`channel_manager_owns_calendar`) y handoff honesto — U3, reafirmado en U20 |
 
 Un solo paquete queda abierto y su bloqueo es externo, no de código: sin sandbox no hay forma de probar el write-back, y publicarlo sin probarlo sería exactamente la doble reserva que el fail-closed evita.
+
+## Fase 3 — Autoría de prompts, variables, plantillas y lenguaje
+
+### U21 — Cada perfil llama a las cosas por su nombre
+
+**Fase 3 · Épica F · Paso 6 (glosario canónico y avoid-list)**
+
+La terminología vivía a nivel **industria**: 18 juegos de sustantivos para 76 negocios. Un hotel y un alquiler vacacional comparten "Turismo" y no comparten casi nada más —el primero vende habitaciones-noche, el segundo una casa entera— y a los dos la aplicación les decía **Propiedades**. Un taller y un concesionario comparten "Automotriz": uno recibe órdenes de trabajo, el otro vende autos. La palabra equivocada no es cosmética: es lo que el agente le dice al cliente y lo que el dueño busca en el menú.
+
+**ADR-031 — Sólo se declara el perfil donde el sustantivo de la industria está mal.**
+Un subtipo que usa bien el término de su vertical **no aparece** en el pack, y esa ausencia es la señal de que no hace falta — no un olvido. Un pack con las 76 entradas rellenas obligaría a mantener 76 juegos de sinónimos donde 18 alcanzan, y la primera vez que alguien no lo actualice quedará una palabra vieja con aspecto de decisión. 14 perfiles declaran hoy: los cuatro de Turismo, tres de Automotriz, tres de Pet Services, farmacia, dos de Restaurantes, arriendo inmobiliario y bodas.
+
+**ADR-032 — La avoid-list no es estilo: es lo que el perfil no hace.**
+Una dark kitchen no tiene salón, así que "reserva de mesa" promete algo inexistente. Una farmacia que le dice "paciente" a quien compra jabón abre una conversación clínica que no puede tener por chat. Un taller no ofrece prueba de manejo. Las palabras van al turno como `<avoid_terms>` y el contrato L1 dice explícitamente por qué: *esas palabras significan otra cosa en este negocio, o prometen algo que no hace*.
+
+**Una misma resolución para las tres superficies.** El turno del agente (`verticalContext`), el hook del panel (`useVerticalTerms`) y el contrato L1 leen el mismo pack: sub-tipo primero, industria como respaldo. Antes el panel resolvía por industria y el prompt también, así que las dos estaban igual de equivocadas y en el mismo lugar.
+
+**Pruebas** — `subtype-terminology.spec.ts` (9 casos): el pack sólo nombra perfiles del registro canónico (una entrada muerta no puede quedar); **todo sustantivo declarado tiene sus cuatro idiomas**; la resolución respeta el idioma pedido y cae al español para uno que todavía no existe; los tres negocios de turismo quedan separados; un perfil sin palabra propia devuelve `null` y no un objeto vacío; cada avoid-list nombra lo que corresponde; **ninguna palabra prohibida es a la vez un sustantivo que ese mismo perfil debe usar** — eso sería una contradicción que el modelo resolvería solo, mal. Más dos casos sobre el prompt: los términos llegan al turno y, sin términos propios, el bloque no aparece (nada vacío que el modelo interprete).
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared + dashboard)  → exit 0
+jest apps/api      → 2609 passed / 289 suites, 0 fallos
+jest apps/dashboard → 172 passed / 21 suites, 0 fallos
+```

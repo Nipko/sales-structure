@@ -16,7 +16,12 @@ import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.se
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
 import { DripSequenceService } from '../automation/drip-sequence.service';
-import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier, RoutingFactors } from '@parallext/shared';
+import {
+    NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem,
+    ModelTier, RoutingFactors,
+    localizedTerm, subtypeTerminologyFor,
+    type LocalizedTerm,
+} from '@parallext/shared';
 import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
@@ -2013,6 +2018,29 @@ export class ConversationsService {
                     customerNounPlural: t.customerNounPlural?.[lang] || t.customerNounPlural?.es,
                     transactionNoun: t.transactionNoun?.[lang] || t.transactionNoun?.es,
                     serviceNoun: t.serviceNoun?.[lang] || t.serviceNoun?.es,
+                };
+            }
+
+            // La terminología de la industria es el mínimo común denominador de
+            // hasta cinco negocios distintos: un hotel y un alquiler vacacional
+            // comparten "Turismo" y no comparten casi nada más. Donde el
+            // sub-tipo tiene palabra propia, gana sobre la de su vertical.
+            const subtypeTerms = subtypeTerminologyFor(
+                verticalConfig?.industry,
+                verticalConfig?.subType,
+            );
+            if (subtypeTerms) {
+                const lang = userLanguage || 'es';
+                const pick = (term?: LocalizedTerm) => localizedTerm(term, lang) || undefined;
+                const base = turnContext.verticalContext || {};
+                turnContext.verticalContext = {
+                    ...base,
+                    customerNoun: pick(subtypeTerms.customerNoun) || base.customerNoun,
+                    customerNounPlural: pick(subtypeTerms.customerNounPlural) || base.customerNounPlural,
+                    transactionNoun: pick(subtypeTerms.transactionNoun) || base.transactionNoun,
+                    primaryObjectNoun: pick(subtypeTerms.primaryObject),
+                    primaryObjectNounPlural: pick(subtypeTerms.primaryObjectPlural),
+                    avoidTerms: subtypeTerms.avoid?.length ? [...subtypeTerms.avoid] : undefined,
                 };
             }
 

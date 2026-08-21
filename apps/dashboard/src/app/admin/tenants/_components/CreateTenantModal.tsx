@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { X } from "lucide-react";
 import type { TenantPlanSlug, TenantVerticalDefinitions } from "./types";
-import { getVerticalLabel, type VerticalCatalogLocale } from "@/lib/vertical-catalog";
+import {
+  ADMIN_CREATE_AVAILABILITY,
+  getVerticalLabel,
+  offerableSubTypes,
+  type VerticalCatalogLocale,
+} from "@/lib/vertical-catalog";
 
 interface CreateTenantInput {
   name: string;
@@ -63,7 +68,12 @@ export default function CreateTenantModal({
   }, [open, plans]);
 
   const industries = useMemo(() => Object.keys(verticalDefinitions), [verticalDefinitions]);
-  const subTypes = verticalDefinitions[form.industry] || [];
+  // Un super_admin además puede poner al tenant en un piloto; lo cerrado a
+  // altas nuevas sigue cerrado también para él.
+  const subTypes = offerableSubTypes(
+    verticalDefinitions[form.industry] || [],
+    ADMIN_CREATE_AVAILABILITY,
+  );
   const catalogReady = industries.length > 0 && plans.length > 0;
   const isValid = Boolean(
     form.name.trim()

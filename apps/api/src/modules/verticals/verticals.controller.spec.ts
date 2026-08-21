@@ -3,7 +3,7 @@ import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { VerticalsController } from './verticals.controller';
 import { VERTICAL_REGISTRY } from './vertical-definitions';
-import { VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
+import { VERTICAL_CAPABILITY_MANIFEST_VERSION, listBlockedSubtypeProfiles } from '@parallext/shared';
 import {
     VERTICAL_IDENTIFIER_CONTRACT_VERSION,
     VERTICAL_INDUSTRY_ALIASES,
@@ -45,7 +45,7 @@ describe('VerticalsController tenant isolation', () => {
         expect(Object.keys(result.data)).toEqual(Object.keys(VERTICAL_REGISTRY));
         expect(Object.keys(result.data)).toHaveLength(18);
         expect(result.data.otro).toEqual([]);
-        expect(result.meta).toEqual({
+        expect(result.meta).toMatchObject({
             version: VERTICAL_IDENTIFIER_CONTRACT_VERSION,
             contract: 'vertical-identifiers',
             count: 18,
@@ -55,6 +55,48 @@ describe('VerticalsController tenant isolation', () => {
         });
         expect(result.meta.aliases.educacion).toBe('education');
         expect(result.meta.aliases.professional_services).toBe('servicios_profesionales');
+    });
+
+    /**
+     * El catálogo sigue COMPLETO a propósito.
+     *
+     * Sacar del payload lo que ya no se ofrece rompería la pantalla del tenant
+     * que hoy está en uno de esos perfiles: su propio subtipo desaparecería del
+     * selector y la pantalla no sabría cómo llamarlo. Se devuelve todo,
+     * anotado, y cada superficie decide qué ofrece.
+     */
+    it('anota la disponibilidad sin sacar nada del catálogo', async () => {
+        const controller = new VerticalsController({} as any, {} as any, {} as any);
+
+        const result = await controller.getDefinitions();
+
+        // Los 75 siguen ahí: el conteo no cambia porque un perfil se cierre.
+        expect(result.meta.subtypeCount).toBe(75);
+        for (const blocked of listBlockedSubtypeProfiles()) {
+            const id = `${blocked.industry}/${blocked.subtype}`;
+            expect(result.meta.availability[id]).toBe('legacy_only');
+            expect(result.data[blocked.industry].some((s: any) => s.key === blocked.subtype))
+                .toBe(true);
+        }
+        // Y el resto se puede elegir: cerrar siete no cierra el producto.
+        expect(result.meta.availability['restaurantes/comida_rapida']).toBe('selectable');
+        expect(result.meta.signupAvailability).toEqual(['selectable']);
+        expect(result.meta.adminCreateAvailability).toEqual(['selectable', 'pilot']);
+    });
+
+    it('cada subtipo lleva su disponibilidad en la lista, no solo en meta', async () => {
+        const controller = new VerticalsController({} as any, {} as any, {} as any);
+
+        const result = await controller.getDefinitions();
+
+        for (const subTypes of Object.values(result.data)) {
+            for (const subType of subTypes as any[]) {
+                // Sin esto el selector tendría que cruzar dos estructuras para
+                // saber si puede ofrecer una opción, y ese cruce es el que se
+                // olvida cuando se agrega una pantalla nueva.
+                expect(typeof subType.availability).toBe('string');
+            }
+        }
     });
 
     it('publishes and resolves the read-only operational manifest through the service', () => {

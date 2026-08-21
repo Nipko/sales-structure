@@ -1076,6 +1076,31 @@ jest app.bootstrap → 1 passed — DI de NestJS limpio
 ```
 > El bootstrap exige `ENCRYPTION_KEY` de 64 hex en el shell; sin él falla por entorno, no por DI.
 
+### U36 — El selector ofrecía los siete perfiles que el runtime bloquea
+
+**Pendiente interno 6**
+
+El runtime ya no deja que un perfil `stop` cierre operaciones (U32, U33, U35). El **selector del alta seguía ofreciéndolos**: `GET /verticals/definitions/all` itera el registro entero sin mirar el perfil, y `resolveVerticalSelection` sólo validaba pertenencia a la industria. Un dueño podía anotarse hoy en `seguros/aseguradora` y recibir un producto que por diseño no puede reservar, cotizar ni cobrar. La honestidad estaba puesta en el turno; faltaba en la venta.
+
+**Un eje nuevo, separado de la estrategia.** `strategy` dice CÓMO se entrega —nativo, integrado, migrado— y es una decisión de producto; `availability` dice si el selector lo ofrece. Mezclarlos habría sido un error: un perfil `migrate` es perfectamente vendible (es la experiencia que siempre debió ser) y un `build` puede estar en piloto mientras se termina. Cuatro estados: `selectable`, `pilot` (por invitación de un super_admin), `waitlist` (hay demanda registrada y todavía no producto) y `legacy_only`.
+
+**La disponibilidad se DERIVA cuando no se declara** — `stop → legacy_only`, cualquier otra → `selectable`. Anotar las siete entradas a mano habría dejado la puerta abierta a la octava: el día que alguien agregue un perfil bloqueado nuevo y se olvide del campo, el selector lo ofrecería. Se declara explícito sólo cuando la respuesta no se deduce de la estrategia.
+
+**La puerta está en el servidor, no en el `<select>`.** Filtrar una opción la esconde; no la cierra: `industry` y `subType` son strings libres en el DTO del alta. `resolveVerticalSelection` toma ahora una **superficie** — `signup` acepta `selectable`; `admin_create` acepta además `pilot`; `existing` no restringe nada. Los tres puntos de entrada quedaron cableados: alta self-service, alta administrativa y migración de vertical (mover a un tenant HACIA un perfil es una elección nueva).
+
+**`legacy_only` es lo que hace posible cerrar sin romper a nadie.** El tenant que ya está en uno de los siete sigue resolviendo su perfil, guardando y operando; **no se lo migra en silencio**. Por eso el catálogo del API sigue devolviendo los 75 subtipos completos —sacarlos del payload dejaría a su propia pantalla sin saber cómo llamarlo— y lo que se agrega es la anotación: `availability` en cada subtipo y en `meta`. Cada superficie recorta; el helper `offerableSubTypes(subTypes, allowed, keep)` conserva siempre el subtipo que el tenant ya tiene.
+
+**Sin dato = elegible, a propósito.** Un dashboard nuevo contra un API viejo no puede quedarse con el selector vacío y bloquear todas las altas. Es seguro porque la decisión real la toma el servidor.
+
+**Pruebas** — `vertical-identifiers.spec.ts` (+26): los 7 perfiles leídos del registro se rechazan en `signup` y en `admin_create`, y **siguen resolviendo** para el tenant que ya los tiene; un perfil ofrecido pasa en las tres superficies; la derivación cierra al `stop` que nadie anotó. `verticals.controller.spec.ts` (+2): el catálogo no pierde nada y cada subtipo lleva su disponibilidad. `vertical-catalog.spec.ts` (nuevo, dashboard): el recorte por superficie y la conservación de `keep`. Una prueba de concurrencia cambió su fixture porque usaba `retail/marketplace` como vertical arbitraria.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api, dashboard
+jest apps/api       → 2702 passed / 291 suites (1 skipped), 0 fallos
+jest apps/dashboard →  212 passed /  26 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1177,7 +1202,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~3~~ | ✅ cerrado en **U33** |
 | ~~4~~ | ✅ cerrado en **U33** |
 | ~~5~~ | ✅ cerrado en **U33** |
-| 6 | Estados `selectable\|pilot\|waitlist\|legacy_only`; ocultar STOP en altas nuevas sin migrar tenants legacy |
+| ~~6~~ | ✅ cerrado en **U36** |
 | 7 | Bloquear `POST /channel-manager/reservations` cuando el listing tiene SoR externo |
 | 8 | Cifrar credenciales de Channel Manager y de integraciones verticales |
 | 9 | UI de integraciones: probar después de guardar, mostrar health/scopes/freshness, filtrar por subtipo |

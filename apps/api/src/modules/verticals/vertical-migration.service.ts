@@ -761,7 +761,9 @@ export class VerticalMigrationService {
 
     private resolveTarget(industry: string, subType: string | null | undefined): VerticalIdentity {
         try {
-            const resolved = resolveVerticalSelection(industry, subType);
+            // Mover un tenant A un perfil es una elección nueva: no se migra a
+            // nadie hacia algo que no se puede entregar.
+            const resolved = resolveVerticalSelection(industry, subType, 'admin_create');
             return { industry: resolved.industry, subType: resolved.subType };
         } catch (error) {
             if (error instanceof InvalidVerticalSelectionError) {

@@ -9,9 +9,17 @@ export interface VerticalCatalogLabel {
   fr?: string;
 }
 
+export type VerticalAvailability = "selectable" | "pilot" | "waitlist" | "legacy_only";
+
 export interface VerticalCatalogSubType {
   key: string;
   label: VerticalCatalogLabel;
+  /**
+   * Si este subtipo se puede elegir hoy. Puede faltar: un API viejo no lo
+   * manda, y en ese caso se trata como elegible para no romper la pantalla
+   * durante un despliegue parcial. La puerta real está en el servidor.
+   */
+  availability?: VerticalAvailability;
 }
 
 export type VerticalDefinitions = Record<string, VerticalCatalogSubType[]>;
@@ -48,3 +56,30 @@ export function getVerticalLabel(
 ): string {
   return subType.label[locale] || subType.label.es || subType.key;
 }
+
+/**
+ * Los subtipos que esta superficie puede OFRECER.
+ *
+ * `keep` es el subtipo que el tenant ya tiene: se conserva aunque haya dejado
+ * de ofrecerse, porque si no, su propia pantalla no sabría cómo llamarlo y el
+ * primer guardado lo cambiaría por otra cosa. Cerrar la puerta a las altas
+ * nuevas no es migrar a nadie en silencio.
+ */
+export function offerableSubTypes(
+  subTypes: VerticalCatalogSubType[],
+  allowed: readonly VerticalAvailability[],
+  keep?: string | null,
+): VerticalCatalogSubType[] {
+  return subTypes.filter((subType) => {
+    if (keep && subType.key === keep) return true;
+    // Sin dato, elegible: un API anterior a este campo no puede dejar el
+    // selector vacío y bloquear todas las altas.
+    if (!subType.availability) return true;
+    return allowed.includes(subType.availability);
+  });
+}
+
+/** Lo que puede elegir cualquiera en un alta. */
+export const SIGNUP_AVAILABILITY: readonly VerticalAvailability[] = ["selectable"];
+/** Un super_admin además puede poner a un tenant en un piloto. */
+export const ADMIN_CREATE_AVAILABILITY: readonly VerticalAvailability[] = ["selectable", "pilot"];

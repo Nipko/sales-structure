@@ -1986,7 +1986,10 @@ export class AuthService {
         const rawSubType = data.subType || company.subType;
         let verticalSelection;
         try {
-            verticalSelection = resolveVerticalSelection(rawIndustry, rawSubType);
+            // Alta self-service: solo perfiles ofrecidos. El `<select>` del
+            // dashboard ya los filtra, pero filtrar una opción la esconde, no
+            // la cierra: `industry`/`subType` son strings libres en el DTO.
+            verticalSelection = resolveVerticalSelection(rawIndustry, rawSubType, 'signup');
         } catch (error) {
             if (error instanceof InvalidVerticalSelectionError) {
                 throw new BadRequestException({

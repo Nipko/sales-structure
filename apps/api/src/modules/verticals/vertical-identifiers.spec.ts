@@ -4,6 +4,7 @@ import {
     resolveVerticalSelection,
     VERTICAL_IDENTIFIER_CONTRACT_VERSION,
 } from './vertical-identifiers';
+import { listBlockedSubtypeProfiles, subtypeAvailability } from '@parallext/shared';
 
 describe('resolveVerticalSelection', () => {
     it('publishes a versioned identifier contract', () => {
@@ -70,5 +71,72 @@ describe('resolveVerticalSelection', () => {
     it('never silently falls back to the generic vertical', () => {
         expect(() => getVerticalDefinition('inventada'))
             .toThrow('Unknown vertical definition: inventada');
+    });
+});
+
+/**
+ * Filtrar el `<select>` esconde la opción; no la cierra.
+ *
+ * `industry` y `subType` son strings libres en el DTO del alta, así que sin una
+ * puerta del lado del servidor un POST directo sigue creando un tenant sobre un
+ * perfil que no se puede entregar. Y la puerta tiene que ser POR SUPERFICIE: el
+ * tenant que ya está adentro debe poder guardar su propio perfil sin que nadie
+ * se lo migre en silencio.
+ */
+describe('disponibilidad por superficie', () => {
+    const blocked = listBlockedSubtypeProfiles();
+
+    it('hay perfiles cerrados que probar', () => {
+        expect(blocked.length).toBeGreaterThan(0);
+    });
+
+    it.each(blocked.map(p => [`${p.industry}/${p.subtype}`, p] as const))(
+        '%s se rechaza en un alta self-service',
+        (_id, profile) => {
+            expect(() => resolveVerticalSelection(profile.industry, profile.subtype, 'signup'))
+                .toThrow(InvalidVerticalSelectionError);
+        },
+    );
+
+    it.each(blocked.map(p => [`${p.industry}/${p.subtype}`, p] as const))(
+        '%s se rechaza también para un super_admin',
+        (_id, profile) => {
+            // Cerrado es cerrado: `pilot` es la puerta del super_admin, no ésta.
+            expect(() => resolveVerticalSelection(profile.industry, profile.subtype, 'admin_create'))
+                .toThrow(InvalidVerticalSelectionError);
+        },
+    );
+
+    it.each(blocked.map(p => [`${p.industry}/${p.subtype}`, p] as const))(
+        '%s sigue resolviendo para el tenant que ya lo tiene',
+        (_id, profile) => {
+            // Esto es lo que hace que cerrar la puerta no rompa a nadie.
+            expect(resolveVerticalSelection(profile.industry, profile.subtype)).toEqual({
+                industry: profile.industry,
+                subType: profile.subtype,
+            });
+            expect(resolveVerticalSelection(profile.industry, profile.subtype, 'existing')).toEqual({
+                industry: profile.industry,
+                subType: profile.subtype,
+            });
+        },
+    );
+
+    it('un perfil ofrecido se acepta en las tres superficies', () => {
+        for (const surface of ['signup', 'admin_create', 'existing'] as const) {
+            expect(resolveVerticalSelection('restaurantes', 'comida_rapida', surface)).toEqual({
+                industry: 'restaurantes', subType: 'comida_rapida',
+            });
+        }
+    });
+
+    it('un perfil `stop` nuevo queda cerrado sin que nadie lo anote', () => {
+        // La disponibilidad se DERIVA de la estrategia cuando no se declara.
+        // Anotar las siete a mano habría dejado la puerta abierta a la octava.
+        expect(subtypeAvailability({ strategy: 'stop' })).toBe('legacy_only');
+        expect(subtypeAvailability({ strategy: 'build' })).toBe('selectable');
+        // Y lo declarado gana: `migrate` es vendible, `pilot` es por invitación.
+        expect(subtypeAvailability({ strategy: 'build', availability: 'pilot' })).toBe('pilot');
+        expect(subtypeAvailability({ strategy: 'stop', availability: 'waitlist' })).toBe('waitlist');
     });
 });

@@ -15,9 +15,12 @@ import {
     VERTICAL_INDUSTRY_ALIASES,
 } from './vertical-identifiers';
 import {
+    ADMIN_CREATE_AVAILABILITY,
+    SIGNUP_AVAILABILITY,
     VERTICAL_CAPABILITY_MANIFEST_VERSION,
     VERTICAL_PRODUCT_POLICY,
     VERTICAL_PRODUCT_POLICY_VERSION,
+    resolveSubtypeExperienceProfile,
 } from '@parallext/shared';
 
 @ApiTags('verticals')
@@ -34,9 +37,27 @@ export class VerticalsController {
     @Get('definitions/all')
     @ApiOperation({ summary: 'Get all canonical vertical definitions (for subtype selectors)' })
     async getDefinitions() {
+        // El catálogo sigue completo a propósito.
+        //
+        // Sacar del payload lo que ya no se ofrece rompería la pantalla del
+        // tenant que HOY está en uno de esos perfiles: su propio subtipo
+        // desaparecería del selector y la pantalla no sabría cómo llamarlo. Se
+        // devuelve todo, anotado con su disponibilidad, y cada superficie
+        // decide qué ofrece. La puerta que cuenta está en el servidor
+        // (`resolveVerticalSelection`), no en el filtro del `<select>`.
         const subtypes: Record<string, any[]> = {};
+        const availability: Record<string, string> = {};
         for (const [key, def] of Object.entries(VERTICAL_REGISTRY)) {
-            subtypes[key] = def.subTypes;
+            subtypes[key] = def.subTypes.map((subType: any) => ({
+                ...subType,
+                availability: this.availabilityOf(key, subType.key),
+            }));
+            if (def.subTypes.length === 0) {
+                availability[key] = this.availabilityOf(key, null);
+            }
+            for (const subType of def.subTypes) {
+                availability[`${key}/${subType.key}`] = this.availabilityOf(key, subType.key);
+            }
         }
         const subtypeCount = Object.values(subtypes)
             .reduce((total, entries) => total + entries.length, 0);
@@ -54,8 +75,20 @@ export class VerticalsController {
                 subtypeCount,
                 configurationCount,
                 aliases: VERTICAL_INDUSTRY_ALIASES,
+                availability,
+                signupAvailability: SIGNUP_AVAILABILITY,
+                adminCreateAvailability: ADMIN_CREATE_AVAILABILITY,
             },
         };
+    }
+
+    /** Desconocido no se ofrece: sin perfil no hay evidencia de que se pueda. */
+    private availabilityOf(industry: string, subType: string | null): string {
+        try {
+            return resolveSubtypeExperienceProfile(industry, subType).availability;
+        } catch {
+            return 'legacy_only';
+        }
     }
 
     @Get('capability-manifest')

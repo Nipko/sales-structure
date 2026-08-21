@@ -80,6 +80,29 @@ export type SubtypeAlert =
     | 'STOP' | 'MISCLASS' | 'SOR' | 'REG' | 'CAP'
     | 'PAY' | 'LIVE' | 'UX' | 'WRITER' | 'SEC' | 'E2E';
 
+/**
+ * Si este perfil se puede ELEGIR hoy, en un alta nueva.
+ *
+ * Es un eje distinto de `strategy`, y mezclarlos fue el error del primer
+ * intento: `strategy` dice CÓMO se entrega (nativo, integrado, migrado) y es
+ * una decisión de producto; esto dice si el selector lo ofrece. Un perfil
+ * `migrate` es perfectamente vendible —es la experiencia que siempre debió
+ * ser—, y un perfil `build` puede estar en piloto mientras se termina.
+ *
+ * `legacy_only` es lo que hace posible cerrar la puerta sin romper a nadie: el
+ * tenant que ya está adentro sigue resolviendo su perfil, conserva su producto
+ * y NO se lo migra en silencio. Simplemente no entran más.
+ */
+export type SubtypeAvailability =
+    /** Cualquiera lo elige en el alta. */
+    | 'selectable'
+    /** Solo por invitación: lo habilita un super_admin al crear el tenant. */
+    | 'pilot'
+    /** Hay demanda registrada y todavía no producto. Nadie lo elige. */
+    | 'waitlist'
+    /** Cerrado a altas nuevas. Los tenants existentes siguen operando igual. */
+    | 'legacy_only';
+
 export interface SubtypeExperienceProfileEntry {
     industry: VerticalManifestIndustry;
     /** `__none__` for the industry-level `otro` configuration. */
@@ -99,6 +122,13 @@ export interface SubtypeExperienceProfileEntry {
     auditConfidence: string;
     /** What this profile explicitly does not promise. */
     exclusions: readonly string[];
+    /**
+     * Si el selector lo ofrece hoy. Omitido = derivado: un perfil `stop` es
+     * `legacy_only` y cualquier otro es `selectable`. Se declara explícito solo
+     * cuando la respuesta NO se deduce de la estrategia — un piloto, o una
+     * espera con demanda registrada.
+     */
+    availability?: SubtypeAvailability;
     /** Present only when `strategy === 'stop'`. */
     blockedReason?: string;
     /** Present only when `strategy === 'migrate'`: the canonical profile id. */
@@ -1246,6 +1276,8 @@ export interface ResolvedSubtypeExperienceProfile extends SubtypeExperienceProfi
     capability: ResolvedVerticalCapabilityManifest;
     /** False when selling this profile would promise what we cannot deliver. */
     commercialisable: boolean;
+    /** Disponibilidad efectiva: la declarada, o la derivada de la estrategia. */
+    availability: SubtypeAvailability;
 }
 
 export function subtypeProfileId(industry: string, subtype?: string | null): string {
@@ -1281,8 +1313,31 @@ export function resolveSubtypeExperienceProfile(
         // Reads the RESOLVED entry, so a migrated id inherits the target's
         // answer rather than its own historical one.
         commercialisable: entry.strategy !== 'stop',
+        availability: subtypeAvailability(entry),
     };
 }
+
+/**
+ * La disponibilidad efectiva de un perfil.
+ *
+ * Derivar `stop → legacy_only` en vez de anotar las siete entradas a mano es lo
+ * que impide que un perfil bloqueado nuevo aparezca en el selector porque
+ * alguien se olvidó de agregarle el campo. Fail-closed por defecto, con la
+ * declaración explícita como excepción.
+ */
+export function subtypeAvailability(
+    entry: Pick<SubtypeExperienceProfileEntry, 'strategy' | 'availability'>,
+): SubtypeAvailability {
+    if (entry.availability) return entry.availability;
+    return entry.strategy === 'stop' ? 'legacy_only' : 'selectable';
+}
+
+/** Las disponibilidades que pueden elegirse en cada superficie de alta. */
+export const SIGNUP_AVAILABILITY: readonly SubtypeAvailability[] =
+    Object.freeze(['selectable']);
+/** Un super_admin además puede poner a un tenant en un piloto. */
+export const ADMIN_CREATE_AVAILABILITY: readonly SubtypeAvailability[] =
+    Object.freeze(['selectable', 'pilot']);
 
 /** Every canonical profile id. 76: 18 verticals, 75 subtypes and `otro`. */
 export function listSubtypeExperienceProfileIds(): string[] {

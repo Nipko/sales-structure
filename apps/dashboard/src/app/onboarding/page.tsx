@@ -12,8 +12,10 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { saveBillingCheckoutIntent } from "@/lib/billing-checkout-session";
 import {
+    SIGNUP_AVAILABILITY,
     getVerticalLabel,
     isCanonicalVerticalCatalog,
+    offerableSubTypes,
     type VerticalCatalogLocale,
     type VerticalDefinitions,
 } from "@/lib/vertical-catalog";
@@ -425,7 +427,13 @@ export default function OnboardingPage() {
     const [verticalCatalogLoading, setVerticalCatalogLoading] = useState(true);
     const [verticalCatalogError, setVerticalCatalogError] = useState(false);
     const industryKeys = Object.keys(verticalDefinitions);
-    const selectedSubTypes = verticalDefinitions[industry] || [];
+    // Un alta nueva solo ofrece lo que hoy se puede entregar. El catálogo
+    // llega completo a propósito —lo necesitan las pantallas de un tenant que
+    // ya está en un perfil cerrado—, así que el recorte es de esta superficie.
+    const selectedSubTypes = offerableSubTypes(
+        verticalDefinitions[industry] || [],
+        SIGNUP_AVAILABILITY,
+    );
     const verticalCatalogReady = industryKeys.length > 0;
 
     // Step 2

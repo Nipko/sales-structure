@@ -155,7 +155,9 @@ export class TenantsService {
 
         let selection;
         try {
-            selection = resolveVerticalSelection(data.industry, data.subType);
+            // Alta hecha por un super_admin: además de lo ofrecido, puede
+            // poner al tenant en un piloto. Un perfil cerrado sigue cerrado.
+            selection = resolveVerticalSelection(data.industry, data.subType, 'admin_create');
         } catch (error) {
             if (error instanceof InvalidVerticalSelectionError) {
                 throw new BadRequestException({

@@ -1,5 +1,10 @@
 import { VERTICAL_REGISTRY } from './vertical-definitions';
-import { VERTICAL_CAPABILITY_MANIFEST } from '@parallext/shared';
+import {
+    ADMIN_CREATE_AVAILABILITY,
+    SIGNUP_AVAILABILITY,
+    VERTICAL_CAPABILITY_MANIFEST,
+    resolveSubtypeExperienceProfile,
+} from '@parallext/shared';
 
 export interface CanonicalVerticalSelection {
     industry: string;
@@ -63,9 +68,27 @@ function normalizeIdentifier(value: unknown): string {
         : '';
 }
 
+/**
+ * Superficie desde la que se elige. Decide QUÉ disponibilidades se aceptan.
+ *
+ * `existing` es la que hace que cerrar la puerta no rompa a nadie: un tenant
+ * que ya está en un perfil cerrado sigue resolviéndolo, guardando y operando.
+ * Migrarlo en silencio sería cambiarle el producto sin decírselo.
+ */
+export type VerticalSelectionSurface = 'signup' | 'admin_create' | 'existing';
+
+const ALLOWED_AVAILABILITY: Readonly<Record<VerticalSelectionSurface, readonly string[] | null>> =
+    Object.freeze({
+        signup: SIGNUP_AVAILABILITY,
+        admin_create: ADMIN_CREATE_AVAILABILITY,
+        // Sin restricción: no es una elección nueva, es lo que el tenant ya es.
+        existing: null,
+    });
+
 export function resolveVerticalSelection(
     rawIndustry: unknown,
     rawSubType?: unknown,
+    surface: VerticalSelectionSurface = 'existing',
 ): CanonicalVerticalSelection {
     const requestedIndustry = normalizeIdentifier(rawIndustry);
     const requestedSubType = normalizeIdentifier(rawSubType);
@@ -126,5 +149,39 @@ export function resolveVerticalSelection(
         );
     }
 
+    assertAvailableForSurface(industry, requestedSubType, surface);
     return { industry, subType: requestedSubType };
+}
+
+/**
+ * La puerta del alta, del lado del servidor.
+ *
+ * Filtrar el `<select>` en el dashboard esconde la opción; no la cierra. El
+ * `industry`/`subType` del alta es un string libre en el DTO, así que sin esto
+ * un POST directo sigue creando un tenant sobre un perfil que no se puede
+ * entregar.
+ */
+function assertAvailableForSurface(
+    industry: string,
+    subType: string | null,
+    surface: VerticalSelectionSurface,
+): void {
+    const allowed = ALLOWED_AVAILABILITY[surface];
+    if (!allowed) return;
+
+    let availability: string;
+    try {
+        availability = resolveSubtypeExperienceProfile(industry, subType).availability;
+    } catch {
+        // Un id sin perfil ya lo rechazó la validación de pertenencia de
+        // arriba; si igual llegó acá, no se inventa un permiso.
+        return;
+    }
+    if (allowed.includes(availability)) return;
+
+    throw new InvalidVerticalSelectionError(
+        `El subtipo "${subType ?? industry}" no está disponible para nuevas cuentas`,
+        industry,
+        subType,
+    );
 }

@@ -216,7 +216,7 @@ describe('AuthService onboarding provisioning retry', () => {
                 signalBootstrapStarted();
                 await bootstrapBlocked;
             }),
-            getVerticalConfig: jest.fn().mockResolvedValue({ industry: 'retail', subType: 'marketplace' }),
+            getVerticalConfig: jest.fn().mockResolvedValue({ industry: 'retail', subType: 'moda' }),
         };
         const persona: any = { createDefaultAgentFromGoals: jest.fn().mockResolvedValue(undefined) };
         const service = new AuthService(
@@ -241,7 +241,9 @@ describe('AuthService onboarding provisioning retry', () => {
         });
 
         const data = {
-            company: { name: 'Race Store', industry: 'retail', subType: 'marketplace' },
+            // `retail/marketplace` esta cerrado a altas nuevas y la puerta lo
+            // rechaza; esta prueba es sobre concurrencia, no sobre verticales.
+            company: { name: 'Race Store', industry: 'retail', subType: 'moda' },
             plan: 'starter',
             goals: ['support'],
         } as any;
@@ -262,7 +264,7 @@ describe('AuthService onboarding provisioning retry', () => {
             ['support'],
             'race@example.com',
             'retail',
-            'marketplace',
+            'moda',
         );
         expect(redis.releaseLockToken).toHaveBeenCalledTimes(2);
     });

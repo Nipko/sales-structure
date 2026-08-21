@@ -22,6 +22,7 @@ import {
 import type { AddressForm } from './tenant-regional-profile';
 import { skillsetPolicyForIndustry } from './agent-skillset-policy';
 import {
+    canonicalSubtypeId,
     resolveSubtypeExperienceProfile,
     type ResolvedSubtypeExperienceProfile,
 } from './subtype-experience-profile';
@@ -244,8 +245,12 @@ export interface ComposeEvalPackInput {
  * medirlo.
  */
 export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenarioSeed[] {
-    const industry = typeof input.industry === 'string' ? input.industry.trim() : '';
-    const subtype = typeof input.subtype === 'string' ? input.subtype.trim() : '';
+    // Canonizar acá y no en cada consulta: `avoidedTermsFor` recibía el id
+    // crudo mientras `safeProfile` recibía el aliasado, así que un tenant con
+    // id viejo medía el vocabulario de un perfil y la conducta de otro.
+    const canonical = canonicalSubtypeId(input.industry, input.subtype);
+    const industry = canonical?.industry ?? '';
+    const subtype = canonical?.subtype ?? '';
     const requested = input.language || 'es';
     const language: EvalLanguage = (EVAL_LANGUAGES as readonly string[]).includes(requested)
         ? requested as EvalLanguage

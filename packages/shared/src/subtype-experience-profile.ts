@@ -161,6 +161,44 @@ export const SUBTYPE_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /**
+ * ═══ EL ALIAS SE APLICABA EN UN SOLO LUGAR ═══
+ *
+ * `SUBTYPE_ALIASES` existía y lo leía **únicamente**
+ * `resolveSubtypeExperienceProfile`. Todo lo demás —la terminología, la lista de
+ * términos a evitar, el paquete de evaluación— hacía una búsqueda cruda contra
+ * el id guardado.
+ *
+ * El resultado, para un tenant guardado como `veterinaria/peluqueria_canina`:
+ * su perfil resuelve a `pet_services/peluqueria` —peluquería canina, no
+ * clínica— y su vocabulario se busca bajo el id viejo. Media identidad en cada
+ * lado, sin ningún error: el agente opera como peluquería y habla como
+ * veterinaria.
+ *
+ * Un alias que sólo lo conoce un resolutor no es un alias: es una excepción que
+ * un consumidor recuerda y los demás no.
+ */
+export function canonicalSubtypeId(
+    industry: unknown,
+    subtype: unknown,
+): { industry: string; subtype: string } | null {
+    if (typeof industry !== 'string' || !industry.trim()) return null;
+    const rawSubtype = typeof subtype === 'string' ? subtype.trim() : '';
+    const requested = `${industry.trim()}/${rawSubtype || '__none__'}`;
+    const aliased = SUBTYPE_ALIASES[requested];
+    if (!aliased) return { industry: industry.trim(), subtype: rawSubtype };
+    const [canonIndustry, canonSubtype] = aliased.split('/');
+    return { industry: canonIndustry, subtype: canonSubtype };
+}
+
+/** True cuando este par se guardó con un id que ya no es el canónico. */
+export function isAliasedSubtype(industry: unknown, subtype: unknown): boolean {
+    if (typeof industry !== 'string' || typeof subtype !== 'string') return false;
+    return Object.prototype.hasOwnProperty.call(
+        SUBTYPE_ALIASES, `${industry.trim()}/${subtype.trim()}`,
+    );
+}
+
+/**
  * `satisfies` (not a type annotation) so every literal is checked against the
  * entry contract while the ids stay literal for `SubtypeExperienceProfileId`.
  * The exported binding is widened to the interface, because iterating a union

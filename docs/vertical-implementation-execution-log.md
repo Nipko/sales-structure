@@ -2013,6 +2013,39 @@ npm run test:bootstrap → 1 passed (sin errores de DI)
 jest apps/api     → 3187 passed / 316 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
+### U65 — Un alias que sólo conoce un resolutor no es un alias
+
+**P1 · puntos 17 y 19 — CRM mínimo y writer→ActiveObject→deep-link; aliases y migraciones taxonómicas**
+
+**(a) La cadena writer → objeto → deep link, verificada de punta a punta.** U47 y U48 cerraron los dos primeros eslabones —que cada writer deje un objeto declarado y que ese objeto se cargue en el turno— y cada uno tiene su prueba. Lo que no había era la prueba del **enlace entre el primero y el tercero**: que todo lo que el agente crea termine en algo que una persona pueda abrir.
+
+`writer-active-object-chain.spec.ts` declara, writer por writer, qué objeto deja cada una de las escrituras de negocio, y verifica que ese objeto tenga deep link. Un writer nuevo sin clasificar **rompe la prueba con su nombre**, que es exactamente lo que hace falta para clasificarlo — sin eso, es una fila que el agente crea y nadie sabe dónde abrir.
+
+Las excepciones quedaron declaradas como decisiones y no como olvidos: las tres escrituras de CRM (`add_contact_note`, `tag_contact`, `record_contact_interest`) **no dejan objeto a propósito** —la nota, la etiqueta y el interés se leen en la ficha del contacto, que el Inbox ya muestra al lado de la conversación, y darles un tipo habría llenado el turno de ruido sin agregar ningún lugar al que ir—; las de identidad son la llave y no la puerta; y mandar una imagen o un enlace no crea nada. Una prueba verifica que esa lista **no crezca hasta volverse la mayoría**: si casi ningún writer dejara objeto, la cadena habría dejado de existir y todo pasaría en verde igual.
+
+**(b) El alias se aplicaba en un solo lugar.** `SUBTYPE_ALIASES` existía y lo leía **únicamente** `resolveSubtypeExperienceProfile`. La terminología, la lista de términos a evitar y el paquete de evaluación hacían una búsqueda cruda contra el id guardado.
+
+Para un tenant guardado como `veterinaria/peluqueria_canina`: su perfil resuelve a `pet_services/peluqueria` —peluquería canina, no clínica—, y su vocabulario se busca bajo el id viejo, que no existe. **Media identidad en cada lado, sin ningún error**: el agente opera como peluquería y habla como veterinaria. Y en `composeSubtypeEvalPack` la partición era literal: `avoidedTermsFor` recibía el id crudo mientras `safeProfile` recibía el aliasado, así que el tenant medía el vocabulario de un perfil contra la conducta de otro.
+
+Ahora hay un `canonicalSubtypeId()` y los tres consumidores lo usan. Un alias que sólo conoce un resolutor no es un alias: es una excepción que un consumidor recuerda y los demás no.
+
+**Dos invariantes del propio grafo de aliases**, que nadie verificaba: que **ningún alias apunte a un perfil inexistente** —eso convierte la clasificación vieja en un error duro y el turno entero cae con `Unknown subtype experience profile`— y que **ningún alias apunte a otro alias**, porque el canonizador da un solo salto a propósito: dos saltos abren la puerta a un ciclo.
+
+**(c) Canonizar al leer no alcanza.** El runtime se comporta bien, pero lo que mira el valor **guardado** no: el panel le muestra al dueño un subtipo que su propio selector ya no ofrece —no lo puede cambiar ni entender por qué figura—, y cualquier consulta que agrupe por `verticalConfig.subType` cuenta un rubro que el registro no tiene. `scripts/migrate-subtype-aliases.js` tiene los tres modos (`--dry-run`, `--apply`, `--verify`), escribe con `jsonb_set` sobre la fila viva —el script corre en producción con el sistema andando— y condiciona el `UPDATE` a que el valor no haya cambiado.
+
+**Riesgos que quedan**
+- **`fotografia/wedding_planner` sigue sin alias, a propósito y documentado**: un wedding planner no es un fotógrafo, pero "Organización de eventos" no existe como industria y mandarlo de vuelta a fotografía recrearía la mala clasificación que un alias existe para arreglar. Es **decisión de producto del dueño**, sin cambios.
+- **`pet_services/tienda → retail/moda`**: una tienda de mascotas mandada a moda. Hoy es inocuo —los dos perfiles administran `catalog_item` y ninguno declara terminología propia, así que los dos dicen "producto"—, pero el día que `retail/moda` declare vocabulario de indumentaria, una tienda de mascotas empezaría a hablar de talles. Queda anotado: es una **decisión de taxonomía**, no un arreglo de código.
+- La migración **no se corrió**: eso es sobre producción y es del dueño.
+
+**Pruebas** — `writer-active-object-chain.spec.ts` (nuevo, 9) y `subtype-alias-canonicalisation.spec.ts` (nuevo, 21).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api     → 3217 passed / 318 suites (1 skipped, 10 skipped tests), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -2131,9 +2164,9 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 14 | Terminología e idioma por perfil/país | ◐ **U63 + U64** — objeto primario en 4 idiomas para los 76 y registro por país en el set dorado; falta la capa de regionalismos léxicos y la revisión de rubro |
 | 15 | Sacar guidance español global y voseo fuera de su país | ✅ **U64** |
 | 16 | Golden evals reales ES/EN/PT/FR con el resolver de producción | ◐ **U64** — el paquete ya se compone en los 4 idiomas y con el resolutor regional de producción; **correr**los contra los 76 perfiles necesita tenant y presupuesto de LLM |
-| 17 | CRM mínimo + writer→ActiveObject→deep-link | ⏳ pendiente |
+| 17 | CRM mínimo + writer→ActiveObject→deep-link | ✅ **U65** — la cadena quedó verificada writer por writer; el CRM mínimo ya estaba (U47) y su salida se lee en la ficha del Inbox |
 | 18 | Backlog nativo de los 31 `build` y 23 `hybrid` | ⏳ pendiente |
-| 19 | Aliases y migraciones taxonómicas | ⏳ pendiente |
+| 19 | Aliases y migraciones taxonómicas | ◐ **U65** — canonización en todos los consumidores + migración con tres modos; **no se corrió** (producción) y dos decisiones de taxonomía siguen siendo del dueño |
 
 **Además, salido de U55 y no en la lista original:** el reanudador de aprobaciones humanas no re-resuelve el contrato efectivo (ver riesgos de U55). Trabajo interno.
 

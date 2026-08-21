@@ -1,4 +1,5 @@
 import { resolveVerticalCapabilityManifest } from './vertical-capability-manifest';
+import { canonicalSubtypeId } from './subtype-experience-profile';
 
 /**
  * Cómo llama cada perfil a las cosas con las que trabaja.
@@ -330,7 +331,14 @@ export function subtypeTerminologyFor(
 ): SubtypeTerminology | null {
     if (typeof industry !== 'string' || !industry) return null;
     if (typeof subtype !== 'string' || !subtype) return null;
-    const declared = TERMINOLOGY[`${industry.trim()}/${subtype.trim()}`];
+    // El id se canoniza ANTES de buscar. Sin esto, un tenant guardado como
+    // `veterinaria/peluqueria_canina` operaba como peluquería —su perfil
+    // resuelve por alias— y buscaba su vocabulario bajo el id viejo, que no
+    // existe: media identidad en cada lado, sin ningún error.
+    const canonical = canonicalSubtypeId(industry, subtype);
+    if (!canonical) return null;
+    const { industry: canonIndustry, subtype: canonSubtype } = canonical;
+    const declared = TERMINOLOGY[`${canonIndustry}/${canonSubtype}`];
     if (declared) return declared;
     // Sin declaración propia, el nombre sale del objeto primario que el
     // manifiesto ya decidió. No es una suposición sobre el rubro: es ponerle
@@ -341,9 +349,9 @@ export function subtypeTerminologyFor(
         // `__none__` es el marcador de "esta industria no tiene subtipos", no un
         // subtipo. Pasarlo al manifiesto lo hace fallar, y por eso `otro` —la
         // única industria sin subtipos— era el último perfil sin terminología.
-        const requested = subtype.trim();
         const manifest = resolveVerticalCapabilityManifest(
-            industry.trim(), requested === '__none__' ? undefined : requested,
+            canonIndustry,
+            canonSubtype === '__none__' || !canonSubtype ? undefined : canonSubtype,
         );
         return primaryObjectTerminology(manifest?.primaryObject);
     } catch {

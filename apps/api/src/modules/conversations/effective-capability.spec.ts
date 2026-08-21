@@ -235,3 +235,56 @@ describe('el contrato es trazable', () => {
         })).rejects.toThrow();
     });
 });
+
+describe('un perfil bloqueado no cierra nada', () => {
+    /**
+     * `stop` era documentación: el registro lo declaraba, la auditoría lo
+     * contaba y el runtime publicaba los writers igual que en un perfil
+     * certificado. Un perfil bloqueado que igual reserva, cotiza o cobra es
+     * exactamente lo que el bloqueo existía para impedir.
+     */
+    it('no publica ninguna tool que escriba', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'seguros', subType: 'aseguradora',
+            toolsConfig: { insurance: { enabled: true }, faqs: { enabled: true } },
+        });
+
+        expect(contract.publishedTools).not.toContain('file_claim');
+        expect(contract.excluded.some(e => e.reason === 'profile_blocked')).toBe(true);
+    });
+
+    /**
+     * Las lecturas se conservan: el negocio existe y responde preguntas. Lo que
+     * no puede es comprometerse con algo que su modelo de producto no sostiene.
+     */
+    it('conserva las lecturas y el motivo es legible', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'seguros', subType: 'aseguradora',
+            toolsConfig: { insurance: { enabled: true }, faqs: { enabled: true } },
+        });
+
+        // La lectura del rubro sobrevive: la aseguradora sigue pudiendo decir
+        // qué planes tiene. Lo que no puede es abrir un siniestro por chat.
+        expect(contract.publishedTools).toContain('get_insurance_plans');
+        expect(contract.publishedTools.every((tool: string) => tool !== 'file_claim')).toBe(true);
+        const blocked = contract.excluded.find(e => e.reason === 'profile_blocked');
+        expect(blocked?.detail).toMatch(/no puede cerrar operaciones por chat/i);
+    });
+
+    /** Un perfil que NO está bloqueado sigue publicando sus writers. */
+    it('no toca a un perfil que no está bloqueado', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'seguros', subType: 'broker',
+            toolsConfig: { insurance: { enabled: true } },
+        });
+
+        expect(contract.excluded.some(e => e.reason === 'profile_blocked')).toBe(false);
+        expect(contract.publishedTools).toContain('file_claim');
+    });
+});

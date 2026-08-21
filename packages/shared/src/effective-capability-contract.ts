@@ -43,7 +43,17 @@ export type CapabilityExclusionReason =
     /** No reviewed policy (external/opaque tools). */
     | 'not_approved'
     /** The system of record for this object is owned elsewhere. */
-    | 'external_system_of_record';
+    | 'external_system_of_record'
+    /**
+     * El perfil está declarado `stop`: no tiene el modelo de producto que su
+     * rubro exige, así que no puede comprometer al negocio con nada.
+     *
+     * Hasta acá `stop` era documentación: el registro lo declaraba, la
+     * auditoría lo contaba y el runtime publicaba los writers igual que en un
+     * perfil certificado. Un perfil bloqueado que igual reserva, cotiza o cobra
+     * es exactamente lo que el bloqueo existía para impedir.
+     */
+    | 'profile_blocked';
 
 export interface ExcludedCapability {
     /** Tool family, or a single tool name when the exclusion is tool-level. */
@@ -128,6 +138,7 @@ export const CAPABILITY_EXCLUSION_TEXT: Readonly<Record<CapabilityExclusionReaso
     provider_unavailable: 'La integración que necesita no está conectada o no responde.',
     not_approved: 'No tiene una política revisada, así que no puede ejecutarse.',
     external_system_of_record: 'Otro sistema es dueño de este registro; el equipo confirma.',
+    profile_blocked: 'Este tipo de negocio todavía no puede cerrar operaciones por chat; el equipo las confirma.',
 });
 
 export function capabilityForToolGroup(

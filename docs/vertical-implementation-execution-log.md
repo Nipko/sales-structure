@@ -980,3 +980,25 @@ Se resuelve aparte de la terminología porque un perfil puede tener límites sin
 npx tsc --noEmit (api + shared)  → exit 0
 jest apps/api → 2623 passed / 290 suites, 0 fallos
 ```
+
+### U32 — `stop` era documentación: un perfil bloqueado seguía cerrando operaciones
+
+**Fase 2/5 · Épica A/G · El bloqueo que no bloqueaba**
+
+Siete perfiles están declarados `strategy: 'stop'` en el registro desde U11 — `fintech`, `marketplace`, `aseguradora`, `wedding_planner`, `construccion`, `technology/consultoria_ti` y `veterinaria/salud`. El registro lo declaraba, la auditoría lo contaba, los dossiers lo justificaban… **y el runtime publicaba sus writers igual que en un perfil certificado**. Un `stop` que igual reserva, cotiza o abre un siniestro es exactamente lo que el bloqueo existía para impedir.
+
+Grepear `strategy === 'stop'` en todo `apps/api` devolvía cero resultados de negocio. Era el mismo patrón "existente pero inalcanzable" que el plan censó cuatro veces, con la vuelta cruel de que lo inalcanzable era **la protección**.
+
+**ADR-043 — Un perfil bloqueado no cierra nada, pero sigue hablando.**
+El contrato efectivo descarta toda tool cuyo `effect` no sea `read`, con motivo `profile_blocked` y un texto que el panel puede mostrar: *"Este tipo de negocio todavía no puede cerrar operaciones por chat; el equipo las confirma."* Las **lecturas se conservan a propósito**: el negocio existe y responde preguntas con honestidad — una aseguradora sigue pudiendo decir qué planes tiene. Lo que no puede es comprometerse con algo que su modelo de producto todavía no sostiene, y para eso está el handoff, que sigue publicado.
+
+Esto cierra el criterio del Gate 5 por el lado que sí depende de nosotros: *"el flujo central funciona de punta a punta en su alcance declarado, **o el perfil sigue STOP**"*. Hasta acá la segunda mitad de esa frase no tenía código detrás.
+
+**Pruebas** — `effective-capability.spec.ts` (+3 casos): un perfil bloqueado no publica ninguna tool que escriba; conserva la lectura de su rubro y el motivo es legible; y un perfil **no** bloqueado de la misma industria (`seguros/broker`) sigue publicando sus writers — sin eso, el gate podría estar apagando a todos y la prueba no lo notaría.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared)  → exit 0
+jest apps/api       → 2626 passed / 290 suites, 0 fallos
+jest apps/dashboard → 207 passed / 25 suites, 0 fallos
+```

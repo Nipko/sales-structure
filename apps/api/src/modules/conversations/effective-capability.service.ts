@@ -14,6 +14,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { VerticalReadinessService } from '../verticals/vertical-readiness.service';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { enabledToolFamilies, staticToolsForAgentConfig } from './agent-tool-registry';
+import { TOOL_POLICY_REGISTRY } from './tool-policy-registry';
 
 /**
  * Resolves the effective capability contract, server-side and fail-closed.
@@ -143,8 +144,36 @@ export class EffectiveCapabilityService {
         }
 
         const publishedConfig = Object.fromEntries(published.map(g => [g, { enabled: true }]));
-        const publishedTools = staticToolsForAgentConfig(publishedConfig)
+        let publishedTools = staticToolsForAgentConfig(publishedConfig)
             .map((tool: ToolDefinition) => String(tool.name));
+
+        // (5) Un perfil `stop` no cierra nada.
+        //
+        // `stop` era documentación: el registro lo declaraba, la auditoría lo
+        // contaba y el runtime publicaba los writers igual que en un perfil
+        // certificado. Un perfil bloqueado que igual reserva, cotiza o cobra es
+        // exactamente lo que el bloqueo existía para impedir.
+        //
+        // Las LECTURAS se conservan a propósito: el negocio existe y responde
+        // preguntas con honestidad. Lo que no puede es comprometerlo con algo
+        // que su modelo de producto todavía no sostiene — para eso está el
+        // handoff, que sigue publicado.
+        if (profile.strategy === 'stop') {
+            const writers = publishedTools.filter((tool) => {
+                const policy = TOOL_POLICY_REGISTRY[tool];
+                return policy ? policy.effect !== 'read' : false;
+            });
+            if (writers.length) {
+                publishedTools = publishedTools.filter((tool) => !writers.includes(tool));
+                for (const tool of writers) {
+                    excluded.push({
+                        subject: tool,
+                        reason: 'profile_blocked',
+                        detail: CAPABILITY_EXCLUSION_TEXT.profile_blocked,
+                    });
+                }
+            }
+        }
 
         const regional = this.regionalProfile
             ? await this.regionalProfile.resolve(input.tenantId).catch(() => null)

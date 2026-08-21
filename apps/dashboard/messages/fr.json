@@ -635,6 +635,7 @@
     "generatePassword": "Générer un mot de passe"
   },
   "dashboard": {
+    "leadsTodayNoun": "{noun} aujourd’hui",
     "title": "Accueil",
     "welcome": "Bienvenue, {name} · Vue d'ensemble de la plateforme",
     "overview": "Vue d'ensemble",

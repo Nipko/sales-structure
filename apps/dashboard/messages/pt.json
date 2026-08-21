@@ -635,6 +635,7 @@
     "generatePassword": "Gerar senha"
   },
   "dashboard": {
+    "leadsTodayNoun": "{noun} hoje",
     "title": "Início",
     "welcome": "Bem-vindo, {name} · Visao geral da plataforma",
     "overview": "Visão geral",

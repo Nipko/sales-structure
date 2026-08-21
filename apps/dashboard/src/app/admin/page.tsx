@@ -25,6 +25,7 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { resolveVerticalCapabilityManifest } from "@parallext/shared";
 import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { useRole } from "@/hooks/useRole";
@@ -85,20 +86,57 @@ export default function AdminDashboard() {
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
     const defaultStatConfig = [
-        { key: "leadsToday",        label: `${capitalize(vt.customerNounPlural)} Hoy`, icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
+        // "Hoy" estaba escrito en español dentro de una app de cuatro idiomas.
+        { key: "leadsToday",        label: t("leadsTodayNoun", { noun: capitalize(vt.customerNounPlural) }), icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
         { key: "leadsHot",          label: t("leadsHot"),          icon: TrendingUp,    color: "text-emerald-500", bgIcon: "bg-emerald-500/10", suffix: "" },
         { key: "messagesProcessed", label: t("messagesProcessed"), icon: Activity,      color: "text-sky-500",     bgIcon: "bg-sky-500/10", suffix: "" },
         { key: "llmCostToday",      label: t("llmCostToday"),      icon: Brain,         color: "text-amber-500",   bgIcon: "bg-amber-500/10", suffix: "$" },
     ];
 
-    const verticalKpis = verticalConfig?.dashboard?.kpis;
-    const statConfig = verticalKpis?.length
-        ? verticalKpis.map((kpi: { key: string; label: Record<string, string>; icon: string; color: string }) => ({
+    const verticalKpis = verticalConfig?.dashboard?.kpis as
+        Array<{ key: string; label: Record<string, string>; icon: string; color: string }> | undefined;
+
+    /**
+     * Qué KPIs mira este negocio.
+     *
+     * Las claves salen del **contrato del manifiesto**, que se resuelve por
+     * sub-tipo: una farmacia dejó de heredar el tablero de una clínica cuando
+     * ese contrato ganó override propio, y el Home seguía leyendo la lista de
+     * la industria — el promedio de hasta cinco negocios distintos. Las
+     * etiquetas, íconos y colores siguen saliendo de la definición vertical,
+     * que es donde están escritos en cuatro idiomas.
+     */
+    const contractKeys = (() => {
+        const industry = verticalConfig?.industry;
+        if (typeof industry !== "string" || !industry) return null;
+        try {
+            return resolveVerticalCapabilityManifest(industry, verticalConfig?.subType ?? null)
+                .kpiContract.dashboard;
+        } catch {
+            // Industria que el manifiesto no conoce: se usa lo que haya, que es
+            // exactamente el comportamiento anterior.
+            return null;
+        }
+    })();
+
+    const kpiMeta = (key: string) => verticalKpis?.find((kpi) => kpi.key === key);
+    const orderedKpis = contractKeys?.length
+        ? contractKeys.map((key) => kpiMeta(key)).filter(Boolean) as typeof verticalKpis
+        : verticalKpis;
+
+    const statConfig = orderedKpis?.length
+        ? orderedKpis.map((kpi) => ({
             key: kpi.key,
             label: kpi.label[locale] || kpi.label.en || kpi.key,
             icon: ICON_MAP[kpi.icon] || Activity,
-            color: `text-[${kpi.color}]`,
-            bgIcon: `bg-[${kpi.color}]/10`,
+            // El color venía como `text-[#3498db]` armado en tiempo de
+            // ejecución. Tailwind sólo genera las clases que encuentra
+            // ESCRITAS en el código, así que esa clase no existía en el CSS:
+            // todos los KPIs verticales salían sin color mientras los por
+            // defecto —que usan clases literales— sí lo tenían.
+            colorHex: kpi.color,
+            color: "",
+            bgIcon: "",
             // Una tasa sin el % se lee como un conteo: "23 casos ganados" en vez
             // de "23% de cierre". Es el mismo número diciendo otra cosa.
             suffix: kpi.key.toLowerCase().includes("cost") || kpi.key.toLowerCase().includes("revenue")
@@ -567,13 +605,23 @@ export default function AdminDashboard() {
                                         <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">
                                             {displayValue}
                                         </p>
-                                        <p className={cn("mt-2 flex items-center gap-1 text-xs", stat.color)}>
+                                        <p
+                                            className={cn("mt-2 flex items-center gap-1 text-xs", stat.color)}
+                                            style={stat.colorHex ? { color: stat.colorHex } : undefined}
+                                        >
                                             <ArrowUpRight size={14} />
                                             {isLive ? t("live") : t("loading")}
                                         </p>
                                     </div>
-                                    <div className={cn("flex h-11 w-11 items-center justify-center rounded-xl", stat.bgIcon)}>
-                                        <Icon size={22} className={stat.color} />
+                                    <div
+                                        className={cn("flex h-11 w-11 items-center justify-center rounded-xl", stat.bgIcon)}
+                                        style={stat.colorHex ? { backgroundColor: `${stat.colorHex}1a` } : undefined}
+                                    >
+                                        <Icon
+                                            size={22}
+                                            className={stat.color}
+                                            style={stat.colorHex ? { color: stat.colorHex } : undefined}
+                                        />
                                     </div>
                                 </div>
                             </CardContent>

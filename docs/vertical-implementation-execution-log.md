@@ -887,3 +887,23 @@ Registros y catálogos vivían mezclados en **una sola sección** llamada "Opera
 npx tsc --noEmit (dashboard)  → exit 0
 jest apps/dashboard → 185 passed / 23 suites, 0 fallos
 ```
+
+### U28 — El tablero de Inicio muestra los KPIs de ESTE negocio, y con color
+
+**Fase 4 · Épica D/E · Paso 6 de §8.5 (Home dependiente del perfil)**
+
+Tres defectos en la misma pantalla, el primero de los cuales U17 dejó a medio camino sin que se notara.
+
+**1. Las claves salían de la industria, no del perfil.** U17 le dio a `salud/farmacia` un `kpiContract` propio —productos, stock, pedidos, GMV— porque heredaba el tablero de una clínica: citas de hoy, inasistencias, tratamientos activos. Pero el Home leía `verticalConfig.dashboard.kpis`, que es la lista de la **industria**: el promedio de hasta cinco negocios distintos. El override existía y la pantalla no lo miraba. Ahora las **claves** salen del contrato del manifiesto (resuelto por sub-tipo) y las etiquetas, íconos y colores siguen saliendo de la definición vertical, que es donde están escritos en cuatro idiomas.
+
+**2. Los KPIs verticales salían sin color.** El color se armaba como `` `text-[${kpi.color}]` `` en tiempo de ejecución. Tailwind sólo genera las clases que encuentra **escritas** en el código: esa clase nunca existió en el CSS. Los cuatro KPIs por defecto —que usan clases literales— sí tenían color, así que el negocio con tablero propio veía **menos** que el que no lo tenía. Ahora el hex va por `style`, y una prueba prohíbe volver a construir una clase de Tailwind desde un valor de runtime.
+
+**3. "Hoy" en español.** `` `${customerNounPlural} Hoy` `` dentro de una app de cuatro idiomas.
+
+**Pruebas** — `home-kpi-contract.spec.ts` (5 casos): el Home lee el contrato versionado; **ninguna clase de Tailwind se arma desde un valor de runtime** (verificado por patrón, así que tampoco vuelve en otra línea); las 76 configuraciones resuelven un tablero no vacío; el de farmacia no es el de una clínica; y no queda la palabra en español.
+
+**Verificación**
+```
+npx tsc --noEmit (dashboard)  → exit 0
+jest apps/dashboard → 190 passed / 24 suites, 0 fallos
+```

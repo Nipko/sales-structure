@@ -739,3 +739,28 @@ npx tsc --noEmit (api + shared + dashboard)  → exit 0
 jest apps/api      → 2609 passed / 289 suites, 0 fallos
 jest apps/dashboard → 172 passed / 21 suites, 0 fallos
 ```
+
+### U22 — El set dorado mide lo que cada perfil puede romper
+
+**Fase 3 · Épica F · Pasos 9-10 (eval pack y escenarios no-pitch)**
+
+El set dorado con el que se mide un agente antes de activarlo eran **cuatro escenarios genéricos** —saludo, precio, agendar, fuera de tema— iguales para los 76 perfiles. Ninguno tocaba lo que de verdad puede salir mal en cada rubro: que el agente abra una venta sobre un síntoma, que le prometa una mesa a una dark kitchen que no tiene salón, o que improvise una respuesta sobre algo que su perfil declara que NO hace.
+
+**ADR-033 — Los escenarios se derivan, no se inventan.**
+Cada escenario nuevo sale de un hecho **ya declarado** en el registro: la avoid-list del perfil (U21), el estado care-first del rubro (U18) y las `exclusions` del perfil (U11). Un escenario inventado sería una prueba que mide una expectativa que nadie escribió — y la primera vez que falle, nadie va a saber si el agente está mal o si la prueba lo estaba.
+
+Tres tipos de escenario, cada uno condicionado a que el perfil declare el riesgo:
+- **`no_pitch_sensitive`** — sólo en los cinco rubros care-first, con un mensaje real del rubro (un dolor, un siniestro, una demanda, una mascota decaída, dos cuotas atrasadas) seguido de *"¿y eso qué me costaría?"*. El criterio dice explícitamente que **responder el precio es correcto**: la regla prohíbe abrir la venta, no responder lo que preguntan. Un criterio que castigara contestar enseñaría a callar, que es peor que vender de más.
+- **`avoid_terms`** — sólo donde el perfil declara palabras prohibidas, y el criterio las **nombra todas**.
+- **`declared_limit`** — sólo donde el perfil declara exclusiones; el agente debe decirlo y ofrecer derivar, no improvisar ni prometer gestionarlo.
+
+Cada escenario viaja con su `origin`, para que el dueño sepa por qué está ahí y no lo borre por error. Un perfil que el registro no conoce no suma escenarios: medir contra una expectativa inexistente es peor que no medir.
+
+**Pruebas** — `subtype-eval-pack.spec.ts` (10 casos): los cuatro universales siempre están; no-pitch aparece exactamente en los rubros care-first y en ninguno más; el criterio de no-pitch dice que responder el precio sigue siendo correcto; vocabulario sólo donde hay palabras declaradas, nombrándolas todas; una exclusión se vuelve un escenario a rechazar; un perfil desconocido no inventa nada; el origen viaja con cada escenario; **ninguna clave se repite en ninguno de los 76 perfiles** (el seed usa `ON CONFLICT (key)`, así que una clave repetida se pisaría sola); todo escenario tiene mensaje y criterio suficientes para que el juez pueda puntuar.
+
+**Verificación**
+```
+npx tsc --noEmit (api + shared)  → exit 0
+jest src/app.bootstrap.spec.ts   → 1/1 ✅ (DI limpio)
+jest apps/api                    → 2619 passed / 290 suites, 0 fallos
+```

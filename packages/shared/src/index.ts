@@ -36,6 +36,7 @@ export * from './navigation-plan-gate';
 
 // ---- What each profile calls the things it works with ----
 export * from './subtype-terminology';
+export * from './subtype-eval-pack';
 
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';

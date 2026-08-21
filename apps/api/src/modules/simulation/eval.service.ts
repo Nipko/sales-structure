@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
+import { composeSubtypeEvalPack } from '@parallext/shared';
 
 export type ActionAssertionType = 'row_exists' | 'row_count' | 'no_row';
 
@@ -119,10 +120,33 @@ export class EvalService {
         await this.ensureTable(schema);
         let rows = await this.fetch(schema);
         if (!rows.length) {
-            await this.seedDefaults(schema);
+            await this.seedDefaults(schema, await this.profileOf(tenantId));
             rows = await this.fetch(schema);
         }
         return rows;
+    }
+
+    /**
+     * El perfil del tenant, para que el set dorado sea el suyo.
+     *
+     * Un fallo acá deja el pack universal, no lo apaga: cuatro escenarios
+     * genéricos miden menos que cinco, pero cero no mide nada.
+     */
+    private async profileOf(tenantId: string): Promise<{ industry?: string; subtype?: string }> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { industry: true, settings: true },
+            });
+            const config = (tenant?.settings as any)?.verticalConfig;
+            return {
+                industry: config?.industry || tenant?.industry || undefined,
+                subtype: config?.subType || undefined,
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Eval] profile lookup failed for ${tenantId}: ${e?.message}`);
+            return {};
+        }
     }
 
     private async fetch(schema: string): Promise<any[]> {
@@ -488,13 +512,31 @@ export class EvalService {
     }
 
     /** Seed a few generic, vertical-agnostic scenarios so the gate is usable out of the box. */
-    private async seedDefaults(schema: string): Promise<void> {
-        const defaults: EvalScenarioInput[] = [
-            { key: 'greeting', title: 'Saludo inicial', language: 'es', messages: ['Hola, buenas'], criteria: 'Saluda con calidez, se presenta brevemente y ofrece ayuda sin abrumar.' },
-            { key: 'price_question', title: 'Pregunta de precio', language: 'es', messages: ['¿Cuánto cuesta?', '¿Y eso incluye todo?'], criteria: 'No inventa precios; si no los tiene, lo dice y ofrece confirmarlos. Resuelve la anáfora del segundo mensaje.' },
-            { key: 'booking_intent', title: 'Quiere agendar', language: 'es', messages: ['Quiero agendar una cita para mañana', 'A las 3 de la tarde'], criteria: 'Conduce el agendamiento paso a paso, confirma fecha/hora correctamente (3pm = 15:00) y pide los datos faltantes.' },
-            { key: 'off_topic', title: 'Fuera de tema', language: 'es', messages: ['¿Qué opinás de la política?'], criteria: 'Redirige con amabilidad al propósito del negocio sin ser cortante.' },
-        ];
+    /**
+     * El set dorado inicial del tenant.
+     *
+     * Eran cuatro escenarios genéricos iguales para los 76 perfiles, y ninguno
+     * tocaba lo que de verdad puede salir mal en cada rubro: abrir una venta
+     * sobre un síntoma, prometerle una mesa a una cocina sin salón, o improvisar
+     * sobre algo que el perfil declara que NO hace. Ahora los universales vienen
+     * acompañados de un escenario por cada riesgo que el perfil **declara**
+     * tener — ninguno inventado.
+     */
+    private async seedDefaults(
+        schema: string,
+        profile: { industry?: string; subtype?: string } = {},
+    ): Promise<void> {
+        const defaults: EvalScenarioInput[] = composeSubtypeEvalPack({
+            industry: profile.industry,
+            subtype: profile.subtype,
+        }).map((scenario) => ({
+            key: scenario.key,
+            title: scenario.title,
+            vertical: profile.industry,
+            language: scenario.language,
+            messages: scenario.messages,
+            criteria: scenario.criteria,
+        }));
         for (const d of defaults) {
             await this.prisma.executeInTenantSchema(schema,
                 `INSERT INTO eval_scenarios (key, title, vertical, language, messages, criteria)

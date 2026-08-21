@@ -1514,6 +1514,29 @@ jest apps/api → 3016 passed / 305 suites (1 skipped), 0 fallos
 jest app.bootstrap → 1 passed — DI limpio con el módulo global nuevo
 ```
 
+### U52 — El manifiesto declaraba métricas que el agregador no devolvía
+
+**Pendiente interno 19 (analítica)**
+
+El manifiesto declara, por industria, **las claves exactas que devuelve el agregador** —lo dice su propio comentario— y nadie lo comparaba nunca contra el código.
+
+`servicios_hogar` declaraba `completed` y `completionRatePct`. El agregador devolvía `pending` y `avgCompletionRatePct`, y **no devolvía `completed` en absoluto**. La estadística por tenant sí la calculaba, y el agregado la perdía al sumar: el negocio veía cuántas solicitudes quedaban pendientes y **nunca cuántas había cerrado** — que es la cuenta que le dice si el mes fue bueno.
+
+**Las dos mitades se arreglaron cada una en su lado:**
+- El agregador ahora suma `completed`. El dato ya existía; sólo se perdía en el camino.
+- El contrato pasa a declarar `avgCompletionRatePct`, que es como se llama lo que devuelve. A nivel plataforma la tasa es un promedio **entre tenants**; llamarla `completionRatePct` decía que era la tasa de un negocio, que es otro número.
+
+**La semántica y las plantillas de turismo ya estaban.** Los cuatro subtipos tienen su terminología completa en los cuatro idiomas —un hotel vende habitaciones y recibe huéspedes, un alquiler vacacional vende alojamientos y recibe estadías, y ninguno de los dos dice "propiedad", que es una inmobiliaria—, los registros de estadías y salidas existen desde U14/U20 y la plantilla de confirmación de salida está en los cuatro idiomas. Buscarle trabajo pendiente a eso habría sido inventarlo.
+
+**Pruebas** — `vertical-analytics-contract.spec.ts` (nuevo, 8): industria por industria, cada métrica declarada tiene que existir en el agregador. Más la regla que evita el error opuesto: "implementada" sin métricas es **peor** que "no disponible", porque el panel muestra una tarjeta vacía en vez de decir que todavía no hay dato.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api       → 3039 passed / 306 suites (1 skipped), 0 fallos
+jest apps/dashboard →  220 passed /  27 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1628,5 +1651,5 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~16~~ | ✅ cerrado en **U45** |
 | ~~17~~ | ✅ cerrado en **U46** |
 | ~~18~~ | ✅ cerrado entre **U47** (writers CRM) y **U48** (Active Objects) |
-| 19 | ◐ **Hecho en U49** (alquiler y guardería) y **U50** (superficie de `professional_case`). Queda: plantillas/semántica de turismo, y la analítica restante |
+| ~~19~~ | ✅ cerrado entre **U49** (alquiler y guardería), **U50** (superficie de `professional_case`) y **U52** (analítica declarada vs devuelta). La semántica y las plantillas de turismo ya estaban: terminología de los 4 subtipos, registros de estadías y salidas y plantillas de confirmación, hechas en U14/U15/U20 |
 | ~~20~~ | ✅ cerrado en **U51** |

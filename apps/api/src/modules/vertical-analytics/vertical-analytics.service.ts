@@ -1109,6 +1109,11 @@ function aggregateIndustryTotals(industry: string, tenantsData: any[]): Record<s
             requests30d: sum('requests30d'),
             emergencias30d: sum('emergencias30d'),
             pending: sum('pending'),
+            // La estadística por tenant ya calculaba `completed` y el agregado
+            // la perdía al sumar: el negocio veía cuántas quedaban pendientes y
+            // nunca cuántas cerró, que es la cuenta que le dice si el mes fue
+            // bueno.
+            completed: sum('completed'),
             avgCompletionRatePct: avgRate('completionRatePct'),
         };
         case 'salud': return {

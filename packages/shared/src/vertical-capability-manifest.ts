@@ -838,7 +838,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             primaryObject: 'service_request',
             routes: ['/admin/service-requests'],
             events: ['service_request.created'],
-            kpiContract: kpis(DASH_SALES, ['requests30d', 'emergencias30d', 'pending', 'completed', 'completionRatePct']),
+            kpiContract: kpis(DASH_SALES, ['requests30d', 'emergencias30d', 'pending', 'completed', 'avgCompletionRatePct']),
         }),
     },
     pet_services: {

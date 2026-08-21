@@ -48,7 +48,7 @@ import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
 import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
-import { staticToolsForAgentConfig } from './agent-tool-registry';
+import { staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { EffectiveCapabilityService } from './effective-capability.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
@@ -2183,6 +2183,13 @@ export class ConversationsService {
                     + `:${capability.status.reason ?? 'sin_motivo'}`,
             };
 
+        // Los subpermisos que el dueño apagó a mano. `canBook`, `canCancel`,
+        // `canCheckStock` y `canRecommend` existían en el tipo y en la pantalla
+        // del agente, y NADIE los leía: un dueño que destildaba "puede
+        // cancelar" veía la casilla apagada y el agente cancelaba igual.
+        const deniedTools = [...subpermissionDeniedToolNames(cfgTools ?? {})];
+        const bookingDenied = deniedTools.includes('create_appointment');
+
         // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
         // message is the ANSWER to that field — give the procedure engine priority
         // so the booking engine doesn't hijack it and leave the procedure hung.
@@ -2193,7 +2200,11 @@ export class ConversationsService {
         // tools, así que filtrar la lista de tools no lo alcanzaba. Un perfil
         // bloqueado, un rol que no opera o un canal que no cierra operaciones
         // llegaban acá y reservaban igual.
-        if (toolsEnabled && !procedureAwaiting && writesAuthorised) {
+        // El motor determinista CREA la cita llamando a `create_appointment`
+        // por nombre: si el dueño apagó "puede agendar", no corre. Sin esto, la
+        // casilla apagaba la tool del modelo y dejaba viva la del motor, que es
+        // justamente la que reserva.
+        if (toolsEnabled && !procedureAwaiting && writesAuthorised && !bookingDenied) {
             // Tenant-local "today" — toISOString() would be UTC, which rolls over
             // to tomorrow during the evening across all of LatAm (UTC-3…-6) and
             // would make the booking engine treat "hoy" as the next day.
@@ -2344,6 +2355,7 @@ export class ConversationsService {
                         channelType: msg.channelType,
                         authorisedTools: capability.contract?.publishedTools,
                         commitmentBlocked,
+                        deniedTools,
                     },
                 );
                 if (procResult.handled) {
@@ -2399,6 +2411,7 @@ export class ConversationsService {
                                 maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                 jurisdiction: regional?.operatingCountry.value,
                                 commitmentBlocked,
+                                deniedTools,
                             },
                         ),
                         TOOL_TIMEOUT_MS,
@@ -3006,6 +3019,7 @@ export class ConversationsService {
                                     maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                     jurisdiction: regional?.operatingCountry.value,
                                     commitmentBlocked,
+                                    deniedTools,
                                 }),
                                 TOOL_TIMEOUT_MS,
                                 tc.function.name,

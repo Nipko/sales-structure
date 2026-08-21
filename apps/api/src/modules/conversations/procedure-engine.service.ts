@@ -53,6 +53,9 @@ export interface ProcedureAgentContext {
      * acá por otro camino.
      */
     commitmentBlocked?: { reason: string } | null;
+
+    /** Lo que el dueño apagó a mano. Se propaga al ejecutor. */
+    deniedTools?: readonly string[];
 }
 
 const STATE_TTL = 3600; // 1h
@@ -324,6 +327,7 @@ export class ProcedureEngineService {
                         {
                             channelType: agent?.channelType,
                             commitmentBlocked: agent?.commitmentBlocked ?? null,
+                            deniedTools: agent?.deniedTools,
                         },
                     );
                     if (result?.error) {

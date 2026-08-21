@@ -1340,6 +1340,32 @@ npx tsc --noEmit  → exit 0 en shared y api
 jest apps/api → 2910 passed / 300 suites (1 skipped), 0 fallos
 ```
 
+### U46 — Las casillas que el dueño apagaba y no apagaban nada
+
+**Pendiente interno 17**
+
+`canBook`, `canCancel`, `canCheckStock` y `canRecommend` existen en el tipo, la pantalla del agente los muestra como casillas y el bootstrap los siembra por vertical. **Ningún lugar los leía.** Un dueño que destildaba "puede cancelar" veía la casilla apagada y el agente cancelaba igual.
+
+Un control que existe en la interfaz y no en el sistema es **peor que no tenerlo**: el control que no está no se confía, y éste sí — se apaga y se cierra la pantalla creyendo que quedó apagado.
+
+**`reschedule_appointment` cae bajo `canCancel`, a propósito.** Reprogramar libera el turno original. Que no estuviera cubierta por ninguna de las dos casillas era la fuga más silenciosa: el dueño apagaba cancelar y el agente reprogramaba, que para su agenda es exactamente lo mismo.
+
+**El subpermiso recorta, no apaga la familia.** Apagar "puede agendar" saca `create_appointment` y `send_booking_link` y deja `list_services` y `check_availability`: el agente sigue pudiendo hablar de la agenda, que es lo que el dueño quiso.
+
+**Ausente = permitido, deliberadamente.** Un agente guardado antes de que la clave existiera no puede quedarse sin reservar por un cambio de contrato. Sólo un `false` explícito recorta.
+
+**Y no alcanza con no publicarlas.** Publicar cubre el loop del LLM; el motor determinista de reservas, Procedures y la confirmación server-side llaman **por nombre**. Así que la verificación baja también al ejecutor —la misma puerta común de U35—, y el motor de reservas no corre cuando `canBook` está en `false`: sin eso, la casilla apagaba la tool del modelo y dejaba viva la del motor, que es justamente la que reserva.
+
+El mensaje de rechazo **no promete reintentar**: no es un fallo ni una falta de capacidad temporal, es una decisión del dueño.
+
+**Pruebas** — `tool-subpermissions.spec.ts` (nuevo, 9): cada bandera retira lo suyo y sólo lo suyo, reprogramar cae con cancelar, ausente sigue permitido, una familia apagada no publica nada, y el ejecutor rechaza la tool apagada **aunque la llamen por nombre** sin tocar la base.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2919 passed / 301 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1452,7 +1478,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~14~~ | ✅ cerrado en **U44** |
 | ~~15~~ | ✅ cerrado en **U44** |
 | ~~16~~ | ✅ cerrado en **U45** |
-| 17 | Aplicar `canBook`, `canCancel`, `canCheckStock`, `canRecommend` en publicación y executor |
+| ~~17~~ | ✅ cerrado en **U46** |
 | 18 | Writers CRM mínimos + Active Objects para todos los writers |
 | 19 | Profundidad nativa sin proveedor: ocupación/agrupamiento de boarding; conductor/depósito/contrato/calendario de flota; plantillas y semántica de turismo; superficie de `professional_case`; navegación y analítica restantes; perfiles `build` y partes nativas de `hybrid` |
 | 20 | Scaffolding provider-neutral: outbox, webhook inbox, idempotencia, reconciliación y contract-test kit — con los writers externos apagados hasta tener sandbox |

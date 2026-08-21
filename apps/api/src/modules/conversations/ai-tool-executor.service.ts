@@ -158,6 +158,14 @@ export class AIToolExecutorService {
              * todavía no existe.
              */
             commitmentBlocked?: { reason: string } | null;
+            /**
+             * Lo que el dueño apagó a mano en su agente.
+             *
+             * Se verifica acá y no sólo al publicar porque publicar alcanza
+             * para el loop del LLM y no para el motor determinista, Procedures
+             * ni la confirmación server-side — los tres llaman por nombre.
+             */
+            deniedTools?: readonly string[];
         },
     ): Promise<any> {
         this.logger.log(`[Tool] Executing: ${toolName}`);
@@ -183,6 +191,18 @@ export class AIToolExecutorService {
             const mcpApproval = toolName.startsWith('mcp__') && this.mcpClient?.getApproval
                 ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
                 : null;
+
+            // El dueño lo apagó. No es un fallo ni una falta de capacidad: es
+            // una decisión suya, y por eso el mensaje no promete reintentar.
+            if (opts?.deniedTools?.includes(toolName)) {
+                this.logger.warn(`[Tool] ${toolName} apagada por el dueño del agente`);
+                return {
+                    error: 'tool_disabled_by_owner',
+                    tool: toolName,
+                    shouldHandoff: true,
+                    message: 'Eso no lo puedo hacer por chat. Te paso con alguien del equipo.',
+                };
+            }
 
             // La puerta común. Lo que cae es lo que COMPROMETE al negocio, no
             // lo que escribe una fila: una búsqueda en la base de conocimiento

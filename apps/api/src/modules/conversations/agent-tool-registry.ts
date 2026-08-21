@@ -76,13 +76,65 @@ function familyEnabled(cfgTools: any, key: keyof ToolsConfig): boolean {
     return cfgTools?.[key]?.enabled === true;
 }
 
+/**
+ * Los subpermisos que el dueño apaga y que hasta acá no apagaban nada.
+ *
+ * `canBook`, `canCancel`, `canCheckStock` y `canRecommend` existen en el tipo,
+ * la pantalla del agente los muestra como casillas y el bootstrap los siembra
+ * por vertical. **Ningún lugar los leía.** Un dueño que destildaba "puede
+ * cancelar" veía la casilla apagada y el agente cancelaba igual — la clase de
+ * control que existe en la interfaz y no en el sistema, que es peor que no
+ * tenerlo: el que no está no se confía.
+ *
+ * `reschedule_appointment` cae bajo `canCancel` a propósito: reprogramar libera
+ * el turno original. Que no estuviera cubierta por ninguna de las dos casillas
+ * era la fuga más silenciosa — el dueño apagaba cancelar y el agente
+ * reprogramaba, que para su agenda es lo mismo.
+ *
+ * Ausente = permitido, deliberadamente: un agente viejo sin la clave guardada
+ * no puede perder capacidades por un cambio de contrato. Sólo un `false`
+ * explícito recorta.
+ */
+const SUBPERMISSION_TOOLS: readonly {
+    family: keyof ToolsConfig;
+    flag: string;
+    tools: readonly string[];
+}[] = Object.freeze([
+    {
+        family: 'appointments', flag: 'canBook',
+        tools: Object.freeze(['create_appointment', 'send_booking_link']),
+    },
+    {
+        family: 'appointments', flag: 'canCancel',
+        tools: Object.freeze(['cancel_appointment', 'reschedule_appointment']),
+    },
+    { family: 'catalog', flag: 'canCheckStock', tools: Object.freeze(['check_stock']) },
+    { family: 'ecommerce', flag: 'canRecommend', tools: Object.freeze(['recommend_products']) },
+]);
+
+/** Los nombres que un `false` explícito del dueño retira de este agente. */
+export function subpermissionDeniedToolNames(cfgTools: unknown): Set<string> {
+    const denied = new Set<string>();
+    for (const rule of SUBPERMISSION_TOOLS) {
+        const family = (cfgTools as any)?.[rule.family];
+        if (!family) continue;
+        if (family[rule.flag] === false) {
+            for (const name of rule.tools) denied.add(name);
+        }
+    }
+    return denied;
+}
+
 /** Static tool definitions this agent's config authorises, in registration order. */
 export function staticToolsForAgentConfig(cfgTools: unknown): ToolDefinition[] {
     const tools: ToolDefinition[] = [];
     for (const family of TOOL_FAMILIES) {
         if (familyEnabled(cfgTools, family.key)) tools.push(...family.tools);
     }
-    return tools;
+    // El subpermiso recorta DESPUÉS de la familia: apagar "puede cancelar" no
+    // apaga la familia de citas, sólo saca la tool que cancela.
+    const denied = subpermissionDeniedToolNames(cfgTools);
+    return denied.size ? tools.filter(tool => !denied.has(String(tool.name))) : tools;
 }
 
 /**

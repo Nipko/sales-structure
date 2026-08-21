@@ -11241,7 +11241,8 @@
       "returned": "Enregistrer le retour",
       "checked_in": "Enregistrer l’arrivée",
       "checked_out": "Enregistrer le départ",
-      "cancelled": "Annuler"
+      "cancelled": "Annuler",
+      "details": "Détails"
     },
     "noActions": "Aucune action disponible",
     "configuration": {
@@ -11289,6 +11290,42 @@
       "notes": "Notes",
       "cancel": "Annuler",
       "save": "Créer la réservation"
+    },
+    "noActionsOnlyDetails": "Détails seulement",
+    "occupancy": {
+      "title": "Occupation par ressource",
+      "subtitle": "Une ligne par voiture ou par place, et qui l’occupe chaque jour."
+    },
+    "details": {
+      "rentalTitle": "Détails de la location",
+      "boardingTitle": "Détails du séjour",
+      "saveFailed": "Enregistrement impossible",
+      "notSet": "Non défini",
+      "driverName": "Conducteur",
+      "licenseNumber": "N° de permis",
+      "licenseExpiresAt": "Expire le",
+      "depositAmount": "Caution",
+      "depositCurrency": "Devise",
+      "currencyHint": "EUR",
+      "depositStatus": "État de la caution",
+      "deposit_pending": "Convenue",
+      "deposit_held": "Retenue en garantie",
+      "deposit_returned": "Rendue",
+      "deposit_withheld": "Retenue pour dommage",
+      "withheldReason": "Motif de la retenue",
+      "odometerOut": "Km au départ",
+      "odometerIn": "Km au retour",
+      "contractUrl": "Contrat (lien)",
+      "contractSigned": "Le client l’a déjà signé",
+      "unitLabel": "Où il dort",
+      "compatibility": "Avec qui il peut être",
+      "compatibility_social": "Avec tout le monde",
+      "compatibility_group_only": "Uniquement avec son groupe",
+      "compatibility_solo": "Seul",
+      "groupLabel": "Groupe de cour",
+      "mealsPerDay": "Repas par jour",
+      "belongings": "Ce qu’il a apporté",
+      "belongingsHint": "Couverture, jouet, laisse"
     }
   }
 }

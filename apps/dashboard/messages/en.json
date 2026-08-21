@@ -11241,7 +11241,8 @@
       "returned": "Record return",
       "checked_in": "Check in",
       "checked_out": "Check out",
-      "cancelled": "Cancel"
+      "cancelled": "Cancel",
+      "details": "Details"
     },
     "noActions": "No actions available",
     "configuration": {
@@ -11289,6 +11290,42 @@
       "notes": "Notes",
       "cancel": "Cancel",
       "save": "Create reservation"
+    },
+    "noActionsOnlyDetails": "Details only",
+    "occupancy": {
+      "title": "Occupancy by resource",
+      "subtitle": "One row per car or per place, and who has it each day."
+    },
+    "details": {
+      "rentalTitle": "Rental details",
+      "boardingTitle": "Boarding details",
+      "saveFailed": "Could not save",
+      "notSet": "Not set",
+      "driverName": "Driver",
+      "licenseNumber": "Licence number",
+      "licenseExpiresAt": "Expires",
+      "depositAmount": "Deposit",
+      "depositCurrency": "Currency",
+      "currencyHint": "USD",
+      "depositStatus": "Deposit status",
+      "deposit_pending": "Agreed",
+      "deposit_held": "Held",
+      "deposit_returned": "Returned",
+      "deposit_withheld": "Withheld for damage",
+      "withheldReason": "Reason for withholding",
+      "odometerOut": "Odometer out",
+      "odometerIn": "Odometer in",
+      "contractUrl": "Contract (link)",
+      "contractSigned": "The customer already signed it",
+      "unitLabel": "Where it sleeps",
+      "compatibility": "Who it can be with",
+      "compatibility_social": "With anyone",
+      "compatibility_group_only": "Only with its group",
+      "compatibility_solo": "Alone",
+      "groupLabel": "Yard group",
+      "mealsPerDay": "Meals per day",
+      "belongings": "What it brought",
+      "belongingsHint": "Blanket, toy, leash"
     }
   }
 }

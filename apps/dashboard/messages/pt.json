@@ -11241,7 +11241,8 @@
       "returned": "Registrar devolução",
       "checked_in": "Registrar entrada",
       "checked_out": "Registrar saída",
-      "cancelled": "Cancelar"
+      "cancelled": "Cancelar",
+      "details": "Dados"
     },
     "noActions": "Sem ações disponíveis",
     "configuration": {
@@ -11289,6 +11290,42 @@
       "notes": "Notas",
       "cancel": "Cancelar",
       "save": "Criar reserva"
+    },
+    "noActionsOnlyDetails": "Só dados",
+    "occupancy": {
+      "title": "Ocupação por recurso",
+      "subtitle": "Uma linha por carro ou por lugar, e quem o tem em cada dia."
+    },
+    "details": {
+      "rentalTitle": "Dados da locação",
+      "boardingTitle": "Dados da hospedagem",
+      "saveFailed": "Não foi possível salvar",
+      "notSet": "Não definido",
+      "driverName": "Condutor",
+      "licenseNumber": "N.º da habilitação",
+      "licenseExpiresAt": "Vence",
+      "depositAmount": "Caução",
+      "depositCurrency": "Moeda",
+      "currencyHint": "BRL",
+      "depositStatus": "Estado da caução",
+      "deposit_pending": "Acordada",
+      "deposit_held": "Retida em garantia",
+      "deposit_returned": "Devolvida",
+      "deposit_withheld": "Retida por dano",
+      "withheldReason": "Motivo da retenção",
+      "odometerOut": "Km na entrega",
+      "odometerIn": "Km na devolução",
+      "contractUrl": "Contrato (link)",
+      "contractSigned": "O cliente já assinou",
+      "unitLabel": "Onde dorme",
+      "compatibility": "Com quem pode ficar",
+      "compatibility_social": "Com qualquer um",
+      "compatibility_group_only": "Só com seu grupo",
+      "compatibility_solo": "Sozinho",
+      "groupLabel": "Grupo do pátio",
+      "mealsPerDay": "Refeições por dia",
+      "belongings": "O que trouxe",
+      "belongingsHint": "Cobertor, brinquedo, coleira"
     }
   }
 }

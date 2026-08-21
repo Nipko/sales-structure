@@ -303,6 +303,27 @@ export interface ResourceRental {
     service_category?: string | null;
     contact_name?: string | null;
     contact_phone?: string | null;
+    /**
+     * Los datos operativos, con forma declarada.
+     *
+     * Vivían sueltos en `metadata` y cada llamador los escribía distinto —el
+     * panel `driverName`, un import `driver_name`, el agente ninguno—, así que
+     * no había dos filas con la misma forma sobre la cual construir pantalla.
+     */
+    metadata?: {
+        details?: {
+            driver?: { name: string; licenseNumber?: string; licenseExpiresAt?: string };
+            deposit?: { amountCents: number; currency: string; status: string; withheldReason?: string };
+            contract?: { documentUrl?: string; signed: boolean; signedAt?: string };
+            odometerOut?: number;
+            odometerIn?: number;
+            unitLabel?: string;
+            compatibility?: "social" | "group_only" | "solo";
+            groupLabel?: string;
+            mealsPerDay?: number;
+            belongings?: string[];
+        };
+    } | null;
 }
 
 export interface CreateResourceRentalInput {
@@ -2282,6 +2303,13 @@ export const api = {
         rentalId: string,
         status: ResourceRentalStatus,
     ) => apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/status`, { status }),
+    // Separado del estado a proposito: registrar el kilometraje de entrada no
+    // es cerrar el alquiler, y cerrarlo tiene reglas de quien puede hacerlo.
+    updateResourceRentalDetails: (
+        tenantId: string,
+        rentalId: string,
+        details: Record<string, unknown>,
+    ) => apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/details`, details),
 
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),

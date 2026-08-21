@@ -28,6 +28,8 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { resolveVerticalDashboard } from "@/lib/vertical-dashboard-resolver";
+import { OccupancyStrip } from "./_components/OccupancyStrip";
+import { RentalDetailsDialog } from "./_components/RentalDetailsDialog";
 
 const ALL_STATUSES: readonly ResourceRentalStatus[] = [
   "reserved",
@@ -105,6 +107,7 @@ export default function ResourceRentalsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [detailsFor, setDetailsFor] = useState<ResourceRental | null>(null);
   const loadRequestId = useRef(0);
 
   // Never render records fetched for a tenant that is no longer active. The
@@ -344,8 +347,19 @@ export default function ResourceRentalsPage() {
                               {t(`action.${status}`)}
                             </button>
                           ))}
+                          {/* Los datos operativos no son una transición de
+                              estado: registrar el kilometraje de entrada no
+                              cierra el alquiler, y anotar con quién sale al
+                              patio el perro no lo cierra tampoco. */}
+                          <button
+                            type="button"
+                            onClick={() => setDetailsFor(rental)}
+                            className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition hover:bg-muted"
+                          >
+                            {t("action.details")}
+                          </button>
                           {transitions.length === 0 && (
-                            <span className="py-1.5 text-xs text-muted-foreground">{t("noActions")}</span>
+                            <span className="py-1.5 text-xs text-muted-foreground">{t("noActionsOnlyDetails")}</span>
                           )}
                         </div>
                       </td>
@@ -357,6 +371,23 @@ export default function ResourceRentalsPage() {
           </div>
         )}
       </div>
+
+      {/* Una fila por recurso: para saber si el auto 3 está libre el jueves
+          había que leer la lista entera y cruzar fechas a mano, y quien arma
+          los patios por la mañana necesita exactamente lo contrario de una
+          lista. Es la misma vista para los dos rubros porque es el mismo dato. */}
+      {rentals.length > 0 && (
+        <OccupancyStrip rentals={rentals} onSelect={setDetailsFor} />
+      )}
+
+      {detailsFor && activeTenantId && (
+        <RentalDetailsDialog
+          tenantId={activeTenantId}
+          rental={detailsFor}
+          onClose={() => setDetailsFor(null)}
+          onSaved={() => { void load(); }}
+        />
+      )}
 
       {(showVehicleConfig || showPetConfig) && (
         <section className="space-y-3">

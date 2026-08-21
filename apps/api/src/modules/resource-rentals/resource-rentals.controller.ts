@@ -79,4 +79,24 @@ export class ResourceRentalsController {
         const data = await this.service.transition(schemaName, rentalId, body?.status, user?.role);
         return { success: true, data };
     }
+
+    /**
+     * Los datos operativos: conductor, depósito, contrato, jaula, grupo.
+     *
+     * Separado del estado a propósito. Registrar el kilometraje de entrada no
+     * es cerrar el alquiler, y cerrarlo tiene reglas de quién puede hacerlo que
+     * no aplican a anotar con quién sale al patio el perro.
+     */
+    @Put(':tenantId/:rentalId/details')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @ApiOperation({ summary: 'Update the operational details of a rental or boarding stay' })
+    async updateDetails(
+        @Param('tenantId') tenantId: string,
+        @Param('rentalId') rentalId: string,
+        @Body() body: Record<string, unknown>,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.updateDetails(schemaName, rentalId, body);
+        return { success: true, data };
+    }
 }

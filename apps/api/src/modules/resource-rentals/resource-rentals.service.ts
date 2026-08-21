@@ -11,6 +11,7 @@ import {
     requireTenantContact,
 } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import { validateResourceRentalDetails } from '@parallext/shared';
 
 export type ResourceRentalType = 'vehicle_rental' | 'pet_boarding';
 export type VehicleRentalStatus = 'reserved' | 'picked_up' | 'returned' | 'cancelled';
@@ -166,6 +167,26 @@ export class ResourceRentalsService {
         const metadata = input.metadata ?? {};
         if (typeof metadata !== 'object' || Array.isArray(metadata)) {
             throw new BadRequestException('metadata must be an object');
+        }
+        // `metadata.details` deja de ser texto libre.
+        //
+        // El conductor, el depósito, el contrato, la jaula y el grupo de patio
+        // terminaban acá cuando terminaban, y cada llamador los escribía
+        // distinto: el panel guardaba `driverName`, un import ponía
+        // `driver_name` y el agente no escribía ninguno. Nadie podía construir
+        // una pantalla encima porque no había dos filas con la misma forma.
+        if ((metadata as any).details !== undefined) {
+            const validated = validateResourceRentalDetails(type, (metadata as any).details);
+            if (validated.errors.length) {
+                throw new BadRequestException({
+                    error: 'invalid_rental_details',
+                    // Los errores, no un booleano: "los datos son inválidos" sin
+                    // decir cuál es lo que hace que el dueño pruebe cinco veces
+                    // y se rinda.
+                    details: validated.errors,
+                });
+            }
+            (metadata as any).details = validated.details;
         }
 
         if (type === 'vehicle_rental') {
@@ -447,6 +468,53 @@ export class ResourceRentalsService {
                  WHERE id = $2::uuid
                  RETURNING *`,
                 [requestedStatus, id],
+            );
+            return updated[0];
+        });
+    }
+
+    /**
+     * Actualiza los detalles operativos de un alquiler o una estadía.
+     *
+     * Es una fusión superficial a propósito: quien registra el kilometraje de
+     * entrada no debería tener que reenviar el conductor y el depósito para no
+     * borrarlos. Y no toca el estado — para eso está `transition`, que tiene
+     * sus propias reglas de quién puede cerrarlo.
+     */
+    async updateDetails(
+        schemaName: string,
+        rentalId: string,
+        details: unknown,
+    ): Promise<any> {
+        const id = this.assertUuid(rentalId, 'rentalId');
+
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const rows = await query<any[]>(
+                `SELECT id, rental_type, status, metadata FROM resource_rentals
+                  WHERE id = $1::uuid FOR UPDATE`,
+                [id],
+            );
+            const rental = rows?.[0];
+            if (!rental) throw new NotFoundException('Resource rental not found');
+
+            const type = this.assertRentalType(rental.rental_type);
+            const current = (rental.metadata as any)?.details ?? {};
+            const merged = { ...current, ...(details as Record<string, unknown> ?? {}) };
+            const validated = validateResourceRentalDetails(type, merged);
+            if (validated.errors.length) {
+                throw new BadRequestException({
+                    error: 'invalid_rental_details',
+                    details: validated.errors,
+                });
+            }
+
+            const metadata = { ...((rental.metadata as any) || {}), details: validated.details };
+            const updated = await query<any[]>(
+                `UPDATE resource_rentals
+                    SET metadata = $1::jsonb, updated_at = NOW()
+                  WHERE id = $2::uuid
+                  RETURNING *`,
+                [JSON.stringify(metadata), id],
             );
             return updated[0];
         });

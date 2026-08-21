@@ -1420,6 +1420,39 @@ jest apps/api       → 2976 passed / 303 suites (1 skipped), 0 fallos
 jest apps/dashboard →  219 passed /  27 suites, 0 fallos
 ```
 
+### U49 — El cuaderno de la guardería y el de la agencia de autos
+
+**Pendiente interno 19 (alquiler y guardería)**
+
+El conductor de un auto, el depósito en garantía, el contrato firmado, la jaula donde duerme el perro y con qué otros perros puede compartir patio vivían —cuando vivían— sueltos en `metadata`, un JSONB libre. **Libre significa que cada llamador lo escribía distinto**: el panel guardaba `driverName`, un import ponía `driver_name` y el agente no escribía ninguno. Nadie podía construir una pantalla encima porque no había dos filas con la misma forma.
+
+Nada de esto necesita un proveedor externo: es información que el negocio ya tiene **en un cuaderno**.
+
+**Cuatro reglas que el contrato hace cumplir, y por qué:**
+- **Un monto sin moneda no se guarda.** Un número sin moneda es una cifra que alguien va a cobrar en la que le parezca.
+- **Retener el depósito exige decir por qué.** Retener plata sin motivo escrito es el reclamo del mes que viene sin nada con qué contestarlo.
+- **Un contrato "firmado" necesita evidencia** —fecha o documento—, o no está firmado.
+- **"Sólo con su grupo" exige decir cuál.** Sin el grupo, el campo no le sirve a quien arma los patios por la mañana, que es exactamente la información que existe para dar.
+
+**Lo que deliberadamente NO está:** cobrar el depósito (eso es el riel de pagos, con sus propias puertas), firmar el contrato con validez legal (necesita un proveedor certificado) y **la medicación de la mascota** — es dato clínico, vive en el registro de la mascota con su nivel de acceso, no en el metadata de una estadía que el panel lista sin verificar identidad. Una prueba lo fija: si alguien manda `medication`, no se guarda.
+
+**La vista de ocupación es una sola para los dos rubros**, porque es el mismo dato: una flota y una guardería tienen recursos que se ocupan por rangos de días. La pantalla era una lista ordenada por fecha — para saber si el auto 3 está libre el jueves había que leerla entera y cruzar fechas a mano, y quien arma los patios necesita exactamente lo contrario de una lista: **una fila por recurso**. Hacer dos pantallas habría duplicado el mismo cálculo con dos bugs.
+
+**Dos detalles de la tira que son bugs si se hacen mal:** la salida es el día en que se libera —un alquiler que termina el jueves deja el auto disponible **ese** jueves, y pintarlo ocupado perdería un día de flota por reserva—; y las fechas se parsean como UTC explícito, porque `new Date('2026-09-10').getDate()` las corre un día en cualquier huso al oeste, que es medio continente.
+
+**Los detalles se editan por su propio endpoint**, separado del estado: registrar el kilometraje de entrada no es cerrar el alquiler, y cerrarlo tiene reglas de quién puede hacerlo que no aplican a anotar con quién sale al patio el perro. La actualización es una **fusión superficial**: quien registra el kilometraje no debería tener que reenviar el conductor y el depósito para no borrarlos.
+
+**Pruebas** — `resource-rental-details.spec.ts` (nuevo, 21) sobre las cuatro reglas, la ausencia deliberada del campo clínico, el acotado de pertenencias y que el tipo elige el contrato (`compatibility` no significa nada para un auto y se descarta en vez de guardarse como si fuera un campo del vehículo).
+
+**i18n**: `resourceRentals.occupancy.*`, `resourceRentals.details.*` y `action.details` en los 4 idiomas.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api       → 2992 passed / 304 suites (1 skipped), 0 fallos
+jest apps/dashboard →  219 passed /  27 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1534,5 +1567,5 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~16~~ | ✅ cerrado en **U45** |
 | ~~17~~ | ✅ cerrado en **U46** |
 | ~~18~~ | ✅ cerrado entre **U47** (writers CRM) y **U48** (Active Objects) |
-| 19 | Profundidad nativa sin proveedor: ocupación/agrupamiento de boarding; conductor/depósito/contrato/calendario de flota; plantillas y semántica de turismo; superficie de `professional_case`; navegación y analítica restantes; perfiles `build` y partes nativas de `hybrid` |
+| 19 | ◐ **Hecho en U49**: alquiler y guardería completos — conductor, depósito, contrato, kilometraje, jaula, compatibilidad y grupo de patio, con contrato declarado, validación, endpoint propio, editor y **vista de ocupación por recurso**. Queda: plantillas/semántica de turismo, superficie de `professional_case`, navegación y analítica restantes |
 | 20 | Scaffolding provider-neutral: outbox, webhook inbox, idempotencia, reconciliación y contract-test kit — con los writers externos apagados hasta tener sandbox |

@@ -1042,3 +1042,70 @@ Es un ítem nombrado del plan (*"Escribir scope, role disclosure, límites y cla
 npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2628 passed / 290 suites, 0 fallos
 ```
+
+## Cierre de sesión — estado de las fases y bloqueos vigentes
+
+### Verificación completa
+
+```
+npx tsc --noEmit  → exit 0 en shared, api, dashboard, landing, whatsapp, mobile
+jest apps/api        → 2628 passed / 290 suites (1 skipped), 0 fallos
+jest apps/dashboard  →  207 passed /  25 suites, 0 fallos
+jest apps/mobile     →  319 passed /  24 suites, 0 fallos
+jest app.bootstrap   →    1 passed — DI de NestJS limpio
+```
+
+Línea de base al empezar la sesión: 2523 API / 161 dashboard. Ninguna prueba fue debilitada; las que cambiaron de expectativa lo hicieron porque **afirmaban el defecto** (farmacia sin Pedidos, guía de skillset siempre en inglés, cinco plantillas vacías que ganaban a la meta del dueño, fotografía sin paquetes), y cada una quedó anotada con por qué.
+
+### Fases
+
+| Fase | Estado | Detalle |
+|---|---|---|
+| **0 — Decisiones** | ✅ | 76 configuraciones, registro único, alias y migraciones |
+| **1 — Contratos y resolutores únicos** | ✅ | Registro de subtipos + puerta de CI; contrato de capacidad efectiva |
+| **2 — Honestidad P0** | ✅ 15/16 | Sólo Channel Manager abierto, por bloqueo externo |
+| **3 — Prompts, variables y lenguaje** | ◐ | Infraestructura completa; falta autoría de dominio por perfil |
+| **4 — Navegación, home, Inbox y móvil** | ✅ | Los 9 pasos de §8.5, dos con resto anotado |
+| **5 — Profundidad e integraciones** | 🔒 | Cada ola exige credenciales de sandbox |
+| **6 — Piloto y certificación** | 🔒 | Exige tenants reales, evidencia E2E y sign-off |
+
+### Gate 3 — estado
+
+| Criterio | Estado |
+|---|---|
+| Sin fallback silencioso | ✅ contrato de lectura (`empty` ≠ `stale` ≠ `provider_down` ≠ `error`) |
+| Sin política literal sin fuente | ✅ las guías de skillset son contrato de plataforma, versionado y traducido |
+| Sin pregunta múltiple | ✅ regla de oro del contrato L1 |
+| Sin acción sin tool ni handoff | ✅ regla 16 + guardrail con `executedTools` |
+| Cuatro idiomas con paridad | ✅ verificado por prueba en terminología, guías y overrides de etiqueta |
+| Packs de país pilot/certified | ◐ todos en `draft`; ninguno se presenta como certificado |
+| Confirmación determinista | ✅ clasificador único por efecto y país |
+| Formatos coherentes | ✅ reglas 21 y 22 del contrato |
+
+### Gate 4 — cerrado
+
+| Criterio | Evidencia |
+|---|---|
+| Operación primaria a un clic en web | Sección **Trabajo diario** primera después de Esenciales, con los registros; verificado por posición en prueba |
+| Máximo dos taps en móvil | Conmutador de espacios operativos; el primero es el de siempre |
+| Catálogo restringido sin bloquear operación | Clasificación `register`/`catalogue`/`mixed` con prueba que la enfrenta al menú **y** al guardia de rutas |
+| Ningún par de objetos comparte etiqueta | Allowlist de vocabulario comercial + packs de terminología por subtipo, disjuntos por prueba |
+
+### Bloqueos vigentes — qué falta de afuera
+
+| Bloqueo | Qué está hecho | Qué se necesita | Quién |
+|---|---|---|---|
+| **Channel Manager (Hostaway)** | SoR resuelto, lectura con frescura y salud, escritura **fail-closed** con motivo tipado y handoff honesto; la UI muestra ese motivo | Credenciales de sandbox y certificación por versión de API para probar el write-back | Proveedor + dueño |
+| **Olas 2-4 de integraciones** (Toast, Mindbody, Cliniko, PMS farmacéutico, DMS, PAS, core financiero) | Adaptadores desacoplados por interfaz; los perfiles que dependen de ellos siguen `STOP` y ya **no publican writers** | Credenciales y sandbox por proveedor; discovery, mapping y certificación uno por uno | Proveedor + dueño |
+| **`fintech`** | Taxonomía, gating y contratos implementados; perfil `stop` efectivo | Elegir la familia de producto (crédito, pagos, inversión…) antes de definir el flujo | Dueño |
+| **`marketplace`** | No reutiliza el comercio de un solo vendedor; perfil `stop` efectivo | Modelo multi-vendedor, KYB y payouts | Dueño |
+| **`fotografia/wedding_planner`** | No recibe paquetes de fotografía; readiness incumplido a propósito; alias documentado | Crear Event Planning como experiencia propia — cambia el conteo canónico de subtipos | Dueño (decisión irreversible + migración) |
+| **`inmobiliaria/construccion`** | Perfil `stop` efectivo | Decidir si significa venta de proyecto o empresa constructora; lo segundo lo mueve a FSM/proyectos | Dueño (taxonomía + migración) |
+| **Autoría de dominio por perfil (Fase 3, pasos 1-5 y 7-8)** | Todo lo **derivable** ya se deriva: terminología, avoid-list, límites declarados, skillset por rubro, regional, set dorado | Guiones de dominio por perfil y **revisión con experto**, que el propio plan exige antes de certificar | Dueño + experto de dominio |
+| **Fase 6 — pilotos** | Los perfiles llegan con contratos, evals y trazabilidad | 3-5 tenants por perfil funcional, shadow mode, evidencia E2E y sign-off de producto, dominio, seguridad, legal y soporte | Dueño |
+
+### Restos anotados, implementables sin bloqueo
+
+- §8.5 paso 2: separar `customers` y `commercial` como secciones propias exige reestructurar la relación padre/hijo del menú.
+- §8.5 paso 9: tiempo-a-tarea, click depth, búsqueda y backtracking — analítica de producto, no de corrección.
+- `inventory.service.ts` mantiene una **segunda** definición de `products` paralela a `tenant-schema.sql`.

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 interface Plan {
     id: string;
@@ -429,6 +430,7 @@ export default function InsurancePage() {
  * por WhatsApp.
  */
 function IssuePolicyModal({ quote, onClose, onSaved }: { quote: Quote | null; onClose: () => void; onSaved: () => void }) {
+    const operatingCurrency = useOperatingCurrency();
     const t = useTranslations("insurance");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -439,7 +441,10 @@ function IssuePolicyModal({ quote, onClose, onSaved }: { quote: Quote | null; on
         contactId: quote?.contact_id || "",
         policyholderName: quote?.applicant_name || "",
         monthlyPremium: quote?.monthly_premium ? String(quote.monthly_premium) : "",
-        currency: quote?.currency || "COP",
+        // La moneda del negocio, no un literal: `|| "COP"` le ponia pesos
+        // colombianos al primer registro de un tenant mexicano, y esa moneda
+        // queda GUARDADA — el agente despues se la dice al cliente.
+        currency: quote?.currency || operatingCurrency || "",
         startsAt: today,
         endsAt: "",
     });
@@ -606,6 +611,7 @@ function IssuePolicyModal({ quote, onClose, onSaved }: { quote: Quote | null; on
 }
 
 function PlanFormModal({ plan, onClose, onSaved }: { plan: Plan | null; onClose: () => void; onSaved: () => void }) {
+    const operatingCurrency = useOperatingCurrency();
     const t = useTranslations("insurance");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -618,7 +624,10 @@ function PlanFormModal({ plan, onClose, onSaved }: { plan: Plan | null; onClose:
         monthlyPremiumMax: plan?.monthly_premium_max?.toString() || "",
         deductible: plan?.deductible?.toString() || "",
         maxCoverage: plan?.max_coverage?.toString() || "",
-        currency: plan?.currency || "COP",
+        // La moneda del negocio, no un literal: `|| "COP"` le ponia pesos
+        // colombianos al primer registro de un tenant mexicano, y esa moneda
+        // queda GUARDADA — el agente despues se la dice al cliente.
+        currency: plan?.currency || operatingCurrency || "",
         minAge: plan?.min_age?.toString() || "",
         maxAge: plan?.max_age?.toString() || "",
     });

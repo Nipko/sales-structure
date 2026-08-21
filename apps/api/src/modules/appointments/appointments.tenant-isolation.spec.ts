@@ -29,6 +29,7 @@ describe('Agenda tenant isolation and slot safety', () => {
             prisma as any,
             { emit: jest.fn() } as any,
             calendarOutbox as any,
+            { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
         );
         const services = new ServicesService(
             prisma as any,

@@ -9,7 +9,9 @@ describe('AutomationListenerService event bridges', () => {
         const persona = { getActivePersona: jest.fn().mockResolvedValue({ hours: { schedule: {} } }) };
         const throttle = { isLimited: jest.fn(), getPriority: jest.fn() };
         const queue = { add: jest.fn() };
-        const service = new AutomationListenerService(prisma as any, persona as any, throttle as any, queue as any);
+        const service = new AutomationListenerService(prisma as any, persona as any, throttle as any, queue as any,
+        { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
+    );
         jest.spyOn(service, 'runRulesForTrigger').mockResolvedValue(undefined);
         return { service, prisma, persona };
     }

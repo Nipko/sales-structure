@@ -11,6 +11,7 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     buildAppointmentIcs,
     durationMinutes,
@@ -31,6 +32,7 @@ export class AppointmentRemindersService {
         private readonly cronLock: CronLockService,
         private readonly eventEmitter: EventEmitter2,
         private readonly emailTemplates: EmailTemplatesService,
+        private readonly regionalProfile: RegionalProfileService,
     ) {}
 
     /**
@@ -555,17 +557,10 @@ export class AppointmentRemindersService {
     }
 
     private async getTenantTimezone(tenantId: string): Promise<string> {
-        try {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { settings: true },
-            });
-            return (tenant?.settings as any)?.businessHours?.timezone
-                || (tenant?.settings as any)?.timezone
-                || 'America/Bogota';
-        } catch {
-            return 'America/Bogota';
-        }
+        // Este probaba las horas de atención ANTES que `settings.timezone`, al
+        // revés que el servicio de notificaciones. El mismo tenant calculaba el
+        // recordatorio en una zona y escribía el mensaje en otra.
+        return this.regionalProfile.timezoneFor(tenantId);
     }
 
     private async getTenantLanguage(tenantId: string): Promise<string> {

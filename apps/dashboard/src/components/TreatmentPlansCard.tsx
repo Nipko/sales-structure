@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import {
     Activity, ChevronDown, ChevronUp, Plus, Check, X, Trash2, AlertCircle,
 } from "lucide-react";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 interface TreatmentPlan {
     id: string;
@@ -303,13 +304,14 @@ function CreatePlanModal({
     t: any;
     tc: any;
 }) {
+    const operatingCurrency = useOperatingCurrency();
     const [form, setForm] = useState({
         name: "",
         planType: "ortodoncia",
         totalSessions: 12,
         frequencyDays: 30,
         totalCost: "",
-        currency: "COP",
+        currency: operatingCurrency || "",
         startedAt: new Date().toISOString().split("T")[0],
         notes: "",
     });

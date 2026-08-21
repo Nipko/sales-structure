@@ -8,6 +8,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
 import type { OutboundMessage } from '@parallext/shared';
 import { apptMsg, normaliseLang, formatDuration, LANG_LOCALE } from './appointment-notifications-i18n';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     buildAppointmentIcs,
     durationMinutes,
@@ -50,6 +51,7 @@ export class AppointmentNotificationsService {
         private outboundQueue: OutboundQueueService,
         private channelToken: ChannelTokenService,
         private emailTemplates: EmailTemplatesService,
+        private regionalProfile: RegionalProfileService,
     ) {}
 
     @OnEvent('appointment.created')
@@ -364,18 +366,17 @@ export class AppointmentNotificationsService {
         return rows?.[0]?.id || null;
     }
 
-    /** Same resolution order as AppointmentsService: settings.timezone → business hours → Bogotá. */
+    /**
+     * Una sola resolución para toda la plataforma.
+     *
+     * Este método probaba `settings.timezone` antes que las horas de atención y
+     * el de recordatorios lo hacía al revés, así que un tenant con las dos
+     * cosas cargadas recibía el recordatorio calculado en una zona y el mensaje
+     * de confirmación escrito en otra. Nadie lo veía porque cada servicio era
+     * coherente consigo mismo. Y ninguno miraba la zona DECLARADA.
+     */
     private async getTenantTimezone(schemaName: string): Promise<string> {
-        try {
-            const tenant = await this.prisma.tenant.findFirst({
-                where: { schemaName },
-                select: { settings: true },
-            });
-            const settings = (tenant?.settings as any) || {};
-            return settings.timezone || settings.businessHours?.timezone || 'America/Bogota';
-        } catch {
-            return 'America/Bogota';
-        }
+        return this.regionalProfile.timezoneForSchema(schemaName);
     }
 
     /**

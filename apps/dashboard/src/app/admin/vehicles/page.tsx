@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { SkeletonCards, SkeletonTable } from "@/components/ui/skeleton-loader";
 import { BulkImportModal } from "@/components/BulkImportModal";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 const VEHICLES_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 function resolveMediaUrl(url: string): string {
@@ -476,13 +477,14 @@ function VehicleModal({ tenantId, vehicle, onClose, onSaved, t, tc }: {
     t: any;
     tc: any;
 }) {
+    const operatingCurrency = useOperatingCurrency();
     const isEdit = Boolean(vehicle);
     const [form, setForm] = useState({
         make: vehicle?.make || "",
         model: vehicle?.model || "",
         year: vehicle?.year || new Date().getFullYear(),
         price: vehicle ? Number(vehicle.price_cents || 0) / 100 : 0,
-        currency: vehicle?.currency || "COP",
+        currency: vehicle?.currency || operatingCurrency || "",
         mileageKm: vehicle?.mileage_km || 0,
         condition: vehicle?.condition === "used" ? "used" : "new",
         category: vehicle && CATEGORIES.includes(vehicle.category) ? vehicle.category : "sedan",

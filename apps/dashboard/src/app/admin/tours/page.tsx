@@ -11,6 +11,7 @@ import Link from "next/link";
 import {
     Compass, Plus, Clock, MapPin, Users, X, Tag,
 } from "lucide-react";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 const TOURS_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 function resolveMediaUrl(url: string): string {
@@ -180,13 +181,19 @@ function CreatePackageModal({
     t: any;
     tc: any;
 }) {
+    const operatingCurrency = useOperatingCurrency();
     const [form, setForm] = useState({
         name: "",
         description: "",
         durationType: "hours" as "hours" | "days",
         durationValue: 4,
         price: 0,
-        currency: "COP",
+        // La moneda del negocio, no un literal. `|| "COP"` le ponia pesos
+        // colombianos al primer precio que cargaba un tenant mexicano, y esa
+        // moneda queda GUARDADA con el registro: el agente despues se la dice
+        // al cliente. No era un default de presentacion, era una decision
+        // comercial tomada por el codigo.
+        currency: operatingCurrency || "",
         maxCapacity: 10,
         destination: "",
         languages: ["es"] as string[],

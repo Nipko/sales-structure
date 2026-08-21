@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { google, calendar_v3 } from 'googleapis';
@@ -73,6 +74,7 @@ export class CalendarIntegrationService {
         private redis: RedisService,
         private config: ConfigService,
         private throttle: TenantThrottleService,
+        private regionalProfile: RegionalProfileService,
     ) {
         const key = config.get<string>('ENCRYPTION_KEY', '');
         if (typeof key !== 'string' || !/^[0-9a-fA-F]{64}$/.test(key)) {
@@ -1290,36 +1292,19 @@ export class CalendarIntegrationService {
     }
 
     /**
-     * Resolve the tenant timezone from settings.
-     * Falls back to DEFAULT_TIMEZONE if not configured.
+     * La zona del negocio, resuelta donde la resuelve todo el mundo.
+     *
+     * Leía sólo `settings.timezone` y caía a Bogotá. No miraba la zona
+     * DECLARADA ni las horas de atención, así que un negocio mexicano que
+     * declaró su país igual creaba los eventos de Google en horario colombiano
+     * — y el cliente veía la cita una hora corrida en su propio calendario.
      */
     async getTenantTimezone(tenantId: string): Promise<string> {
-        try {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { settings: true },
-            });
-            const settings = (tenant?.settings as any) || {};
-            return settings.timezone || DEFAULT_TIMEZONE;
-        } catch {
-            return DEFAULT_TIMEZONE;
-        }
+        return this.regionalProfile.timezoneFor(tenantId);
     }
 
-    /**
-     * Resolve timezone from schema name (looks up tenant by schema).
-     */
     private async getTimezoneFromSchema(schemaName: string): Promise<string> {
-        try {
-            const tenant = await this.prisma.tenant.findFirst({
-                where: { schemaName },
-                select: { settings: true },
-            });
-            const settings = (tenant?.settings as any) || {};
-            return settings.timezone || DEFAULT_TIMEZONE;
-        } catch {
-            return DEFAULT_TIMEZONE;
-        }
+        return this.regionalProfile.timezoneForSchema(schemaName);
     }
 
     private requireLocalDate(value: string): string {

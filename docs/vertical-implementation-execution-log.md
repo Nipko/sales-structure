@@ -1235,6 +1235,33 @@ jest apps/api       → 2791 passed / 297 suites (1 skipped), 0 fallos
 jest apps/dashboard →  212 passed /  26 suites, 0 fallos
 ```
 
+### U42 — Colombia escrita en el código, en veinte lugares que decidían
+
+**Pendiente interno 12**
+
+Los literales `'America/Bogota'` y `"COP"` no eran defaults de presentación: **decidían**.
+
+**La zona horaria estaba copiada en tres servicios de citas con órdenes DISTINTOS.** Notificaciones probaba `settings.timezone` antes que las horas de atención; recordatorios lo hacía al revés. Un tenant con las dos cosas cargadas recibía el recordatorio **calculado** en una zona y el mensaje de confirmación **escrito** en otra — y nadie lo veía, porque cada servicio era coherente consigo mismo. Ninguno de los tres miraba la zona **declarada**, y los tres terminaban en Bogotá. Ahora hay una sola precedencia, con la declarada arriba de todo. `businessHours.timezone` entró a esa precedencia (como `inferred`: el dueño configuró cuándo atiende, no dónde opera) porque sin él centralizar le habría **cambiado** la zona a todo tenant que la tenía cargada sólo ahí — un arreglo que rompe lo que venía funcionando.
+
+Lo mismo en el calendario (los eventos de Google se creaban en horario colombiano para un negocio mexicano que ya había declarado su país, y el cliente veía la cita corrida en su propio calendario), en el horario comercial de la automatización (a las 8 en Bogotá son las 7 en Ciudad de México: la secuencia de nurturing salía una hora antes de abrir) y en el endpoint de zona horaria del panel. En el **alta**, la zona ahora sale del país que el dueño acaba de elegir — sembrar Bogotá ahí era declarar por él en el único momento en que sí sabemos dónde opera.
+
+**`PLATFORM_FALLBACK_COUNTRY` pasó a ser una constante exportada** en lugar de `'CO'` escrito veinte veces. Un literal repetido no se puede auditar: nadie puede contestar *"¿dónde estamos asumiendo Colombia?"* leyendo el código. Y todo lo que sale de ahí viaja marcado `fallback`, que es lo que permite que el panel diga "puesto por defecto" en vez de hacerlo pasar por una decisión del dueño.
+
+**Y la moneda era peor**, porque queda guardada. Quince pantallas ponían `currency: item?.currency || "COP"` como valor inicial: un negocio mexicano cargando su primer plato, plan, curso, póliza, propiedad o vehículo guardaba el precio **en pesos colombianos** sin verlo, y el agente después se lo dice al cliente en COP. Dos pantallas eran peores todavía —Pedidos y Estadías **ignoraban la moneda que el registro sí traía** y lo pintaban todo en COP—, que es convertir un importe sin tipo de cambio: exactamente lo que la regla 22 del contrato del agente prohíbe, hecho por la pantalla con la que el dueño le cobra al cliente.
+
+`useOperatingCurrency()` resuelve la moneda del negocio y devuelve **`null` mientras carga**: pintar COP "un ratito" es cómo se guardaba antes, porque el dueño puede apretar Guardar en ese ratito. Y `formatMoney` **no pone símbolo cuando no hay moneda** — un número desnudo es incómodo, uno con el símbolo equivocado es una cifra falsa que alguien puede cobrar.
+
+**Lo que se dejó con COP, a propósito y por ruta explícita:** facturación electrónica DIAN (Colombia por definición), el catálogo de paquetes de SMS y el tipo de cambio de la plataforma (se cobran por el riel local, Wompi/COP). La lista es explícita y no una heurística: una lista se puede discutir, un `includes("fiscal")` se olvida.
+
+**Pruebas** — `no-hardcoded-currency.spec.ts` (nuevo, 7): barre el fuente del dashboard buscando la forma que decide (`currency: "COP"`, `|| "COP"`), porque el literal es fácil de volver a escribir y **nadie lo nota — la pantalla se ve bien en Colombia, que es donde se prueba**. Más el contrato de `formatMoney`: sin moneda no hay símbolo, una moneda malformada se trata como ausente, y un importe ausente no se dibuja como `$0` (afirmar un precio que nadie puso).
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en api y dashboard
+jest apps/api       → 2791 passed / 297 suites (1 skipped), 0 fallos
+jest apps/dashboard →  219 passed /  27 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1342,7 +1369,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~9~~ | ✅ cerrado en **U38** |
 | ~~10~~ | ✅ cerrado entre **U35** (las 4 lecturas de proveedor) y **U39** (MCP). El Channel Manager no aporta tools propias: sus reservas entran por `check_property_availability`, que ya tiene política revisada |
 | ~~11~~ | ✅ cerrado entre **U40** (consumidores + default `+57`) y **U41** (revisión regional: API, cron y pantalla) |
-| 12 | Eliminar fallbacks productivos COP / es-CO / Bogotá fuera de decisiones regionales explícitas |
+| ~~12~~ | ✅ cerrado en **U42** |
 | 13 | Una sola fuente de schema para `products` |
 | 14 | `VerticalPromptContractV2`, `IntentContract`, `SlotSchema`, `NavigationPolicy`, `CertificationEvidenceV2` |
 | 15 | Los 76 contratos de dominio en `draft` |

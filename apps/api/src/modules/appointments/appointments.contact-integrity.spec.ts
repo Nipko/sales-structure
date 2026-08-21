@@ -55,6 +55,7 @@ describe('AppointmentsService contact integrity', () => {
             prisma as any,
             { emit: jest.fn() } as any,
             { enqueueWithQuery: jest.fn() } as any,
+            { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
         );
         return { service, prisma, query };
     }

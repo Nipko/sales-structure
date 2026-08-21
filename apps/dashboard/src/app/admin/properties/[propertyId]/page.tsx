@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { AMENITY_CATEGORIES } from "../page";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -260,6 +261,11 @@ function InfoTab({
   t: any;
   tc: any;
 }) {
+  // El hook va en el cuerpo del componente, no dentro de `coerceProperty`:
+  // ahi se llamaria condicionalmente y en cada render, que es justo lo que las
+  // reglas de hooks prohiben.
+  const operatingCurrency = useOperatingCurrency();
+
   function coerceProperty(p: Property) {
     return {
       ...p,
@@ -270,7 +276,7 @@ function InfoTab({
       night_price: Number(p.night_price) || 0,
       cleaning_fee: Number(p.cleaning_fee) || 0,
       min_nights: Number(p.min_nights) || 1,
-      currency: p.currency || "COP",
+      currency: p.currency || operatingCurrency || "",
       amenities: Array.isArray(p.amenities) ? p.amenities : [],
     };
   }

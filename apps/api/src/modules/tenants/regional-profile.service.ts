@@ -6,6 +6,7 @@ import {
     COUNTRY_DEFAULT_LOCALE,
     COUNTRY_DEFAULT_TIMEZONE,
     FALLBACK_COUNTRY_PACK_ID,
+    PLATFORM_FALLBACK_COUNTRY,
     RegionalConflict,
     RegionalValue,
     RegionalValueSource,
@@ -82,7 +83,6 @@ const REVIEW_FIELD_COLUMN: Readonly<Record<string, {
         normalize: (v) => (/^[A-Za-z]{2}(-[A-Za-z0-9]{2,8})*$/.test(v) && v.length <= 35 ? v : null),
     },
 });
-const PLATFORM_FALLBACK_COUNTRY = 'CO';
 
 /** Timezone → country, for the inference step only. */
 const TIMEZONE_COUNTRY: Readonly<Record<string, string>> = {
@@ -243,13 +243,23 @@ export class RegionalProfileService {
         const country = operatingCountry.value;
 
         // ---- timezone -----------------------------------------------------
+        // `businessHours.timezone` entra a la precedencia porque los tres
+        // servicios de citas ya lo leían por su cuenta. Sin él acá, centralizar
+        // la resolución le habría CAMBIADO la zona a todo tenant que la tenía
+        // cargada sólo ahí — un arreglo que rompe lo que venía funcionando.
+        // Es `inferred`: el dueño configuró cuándo atiende, no dónde opera.
+        const businessHoursTimezone = typeof settings.businessHours?.timezone === 'string'
+            ? settings.businessHours.timezone
+            : null;
         const timezone: RegionalValue<string> = tenant?.operatingTimezone
             ? value(String(tenant.operatingTimezone), 'declared', 'tenants.operating_timezone')
             : settingsTimezone
                 ? value(settingsTimezone, 'declared', 'settings.timezone')
-                : COUNTRY_DEFAULT_TIMEZONE[country]
-                    ? value(COUNTRY_DEFAULT_TIMEZONE[country], 'derived', 'operating_country')
-                    : value(COUNTRY_DEFAULT_TIMEZONE[PLATFORM_FALLBACK_COUNTRY], 'fallback');
+                : businessHoursTimezone
+                    ? value(businessHoursTimezone, 'inferred', 'settings.businessHours.timezone')
+                    : COUNTRY_DEFAULT_TIMEZONE[country]
+                        ? value(COUNTRY_DEFAULT_TIMEZONE[country], 'derived', 'operating_country')
+                        : value(COUNTRY_DEFAULT_TIMEZONE[PLATFORM_FALLBACK_COUNTRY], 'fallback');
 
         if (settingsTimezone
             && TIMEZONE_COUNTRY[settingsTimezone]
@@ -393,6 +403,38 @@ export class RegionalProfileService {
             }
         }
         return queued;
+    }
+
+    /**
+     * La zona horaria del negocio, resuelta en UN solo lugar.
+     *
+     * Estaba copiada en tres servicios de citas con **órdenes distintos**:
+     * notificaciones probaba `settings.timezone` antes que las horas de
+     * atención y recordatorios lo hacía al revés. El mismo tenant con las dos
+     * cosas cargadas recibía el recordatorio calculado en una zona y el mensaje
+     * de confirmación escrito en otra — y nadie lo veía, porque cada servicio
+     * era coherente consigo mismo. Ninguna de las tres miraba la columna
+     * declarada, y las tres terminaban en un `'America/Bogota'` literal.
+     *
+     * Acá la precedencia es una sola y la declarada gana.
+     */
+    async timezoneFor(tenantId: string): Promise<string> {
+        const profile = await this.resolve(tenantId).catch(() => null);
+        return profile?.timezone?.value || COUNTRY_DEFAULT_TIMEZONE[PLATFORM_FALLBACK_COUNTRY];
+    }
+
+    /** Igual, para los llamadores que sólo tienen el nombre del schema. */
+    async timezoneForSchema(schemaName: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findFirst({
+                where: { schemaName },
+                select: { id: true },
+            });
+            if (tenant?.id) return this.timezoneFor(tenant.id);
+        } catch (error: any) {
+            this.logger.warn(`[Regional] timezone por schema falló (${schemaName}): ${error?.message}`);
+        }
+        return COUNTRY_DEFAULT_TIMEZONE[PLATFORM_FALLBACK_COUNTRY];
     }
 
     /** Las revisiones abiertas, más el perfil que las produjo. */

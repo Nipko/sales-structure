@@ -21,6 +21,7 @@ import { PlatformSmsService } from './platform-sms.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import { TIMEZONE_COUNTRY, SPANISH_SPEAKING_COUNTRIES } from '../../common/utils/billing-country.util';
 import { validateEmailDomain } from '../../common/utils/email.util';
+import { COUNTRY_DEFAULT_TIMEZONE, PLATFORM_FALLBACK_COUNTRY } from '@parallext/shared';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
@@ -2012,7 +2013,16 @@ export class AuthService {
         }
         const { industry, subType } = verticalSelection;
         const companySize = company.orgSize || data.companySize;
-        const timezone = company.timezone || data.timezone || 'America/Bogota';
+        // La zona del alta sale del PAÍS que el dueño acaba de elegir, no de un
+        // literal. Sembrar Bogotá acá era declarar por él en el único momento
+        // en que sí sabemos dónde opera — y ese valor después decide sus
+        // horarios, sus recordatorios y sus eventos de calendario.
+        const declaredCountry = String(company.country || data.billingCountry || '')
+            .trim().toUpperCase();
+        const timezone = company.timezone
+            || data.timezone
+            || COUNTRY_DEFAULT_TIMEZONE[declaredCountry]
+            || COUNTRY_DEFAULT_TIMEZONE[PLATFORM_FALLBACK_COUNTRY];
         const customerTypes = data.audiences || data.customerTypes;
         const chatReasons = data.goals || data.chatReasons;
         const referralSource = data.referral || data.referralSource;

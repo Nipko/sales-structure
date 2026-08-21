@@ -15,6 +15,7 @@ import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
 import { auditActor } from '../../common/utils/audit-actor.util';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 class LoginDto {
     @IsEmail()
@@ -102,6 +103,7 @@ export class AuthController {
         private authService: AuthService,
         private microsoftAuth: MicrosoftAuthService,
         private configService: ConfigService,
+        private readonly regionalProfile: RegionalProfileService,
         @Optional() private readonly events?: EventEmitter2,
     ) { }
 
@@ -267,12 +269,16 @@ export class AuthController {
     @ApiOperation({ summary: 'Get tenant timezone' })
     async getTenantTimezone(@Request() req: any) {
         const tenantId = req.user?.tenantId;
-        if (!tenantId) return { success: true, data: { timezone: 'America/Bogota' } };
-        const tenant = await this.authService['prisma'].tenant.findUnique({
-            where: { id: tenantId }, select: { settings: true },
-        });
-        const tz = (tenant?.settings as any)?.timezone || 'America/Bogota';
-        return { success: true, data: { timezone: tz } };
+        // Sin tenant no hay zona que dar. Devolver Bogotá le hacía creer al
+        // panel que sabía algo, y ése era el valor con el que después pintaba
+        // las horas de un usuario de plataforma sin tenant asignado.
+        if (!tenantId) return { success: true, data: { timezone: null } };
+        // Leía sólo `settings.timezone`: un tenant que DECLARÓ su zona en la
+        // pantalla de identidad regional seguía viendo Bogotá acá.
+        return {
+            success: true,
+            data: { timezone: await this.regionalProfile.timezoneFor(tenantId) },
+        };
     }
 
     @Post('tenant/timezone')

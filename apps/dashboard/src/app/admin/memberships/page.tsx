@@ -23,6 +23,7 @@ import {
 import { HelpPanel } from "@/components/ui/help-panel";
 import { BulkImportModal } from "@/components/BulkImportModal";
 import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 interface Plan {
     id: string;
@@ -573,6 +574,7 @@ export default function MembershipsPage() {
 function PlanFormModal({
     plan, onClose, onSaved,
 }: { plan: Plan | null; onClose: () => void; onSaved: () => void }) {
+    const operatingCurrency = useOperatingCurrency();
     const t = useTranslations("memberships");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -581,7 +583,12 @@ function PlanFormModal({
         description: plan?.description || "",
         durationDays: plan?.duration_days?.toString() || "30",
         price: plan?.price?.toString() || "",
-        currency: plan?.currency || "COP",
+        // La moneda del negocio, no un literal. `|| "COP"` le ponia pesos
+        // colombianos al primer precio que cargaba un tenant mexicano, y esa
+        // moneda queda GUARDADA con el registro: el agente despues se la dice
+        // al cliente. No era un default de presentacion, era una decision
+        // comercial tomada por el codigo.
+        currency: plan?.currency || operatingCurrency || "",
         classCreditsPerPeriod: plan?.class_credits_per_period?.toString() || "",
         personalTrainingCredits: plan?.personal_training_credits?.toString() || "0",
         guestPasses: plan?.guest_passes?.toString() || "0",

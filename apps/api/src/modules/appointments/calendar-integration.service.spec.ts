@@ -15,7 +15,8 @@ describe('CalendarIntegrationService encryption configuration', () => {
             {} as any,
             config as any,
             {} as any,
-        );
+        { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
+    );
     }
 
     it('fails closed when ENCRYPTION_KEY is missing', () => {
@@ -76,7 +77,8 @@ describe('CalendarIntegrationService.updateEvent', () => {
             {} as any,
             config as any,
             {} as any,
-        );
+        { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
+    );
         return { service, prisma };
     }
 
@@ -566,7 +568,8 @@ describe('CalendarIntegrationService OAuth isolation', () => {
             redis as any,
             config as any,
             throttle as any,
-        );
+        { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
+    );
         return { service, prisma, redisClient, values, throttle };
     }
 

@@ -25,6 +25,8 @@ import {
   Bath,
   X,
 } from "lucide-react";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
+import { formatMoney } from "@/lib/format-money";
 
 interface Property {
   id: string;
@@ -113,12 +115,11 @@ export const AMENITY_CATEGORIES = [
   ]},
 ];
 
-const formatCurrency = (n: number | string, currency = "COP") =>
-  new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "COP",
-    minimumFractionDigits: 0,
-  }).format(Number(n) || 0);
+// Sin moneda no se pone símbolo. La propiedad TRAE la suya; cuando no, la
+// del negocio. Un número con el símbolo equivocado es una tarifa falsa que
+// alguien puede cobrar — y el dueño no tiene por qué notarlo.
+const formatCurrency = (n: number | string, currency?: string | null) =>
+  formatMoney(n, currency);
 
 export default function PropertiesPage() {
   const t = useTranslations("properties");
@@ -131,7 +132,11 @@ export default function PropertiesPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
-  const [defaultCurrency, setDefaultCurrency] = useState("COP");
+  // Arranca sin moneda: el efecto de abajo la resuelve. Pintar COP mientras
+  // tanto es cómo se guardaba antes, porque el dueño puede apretar Guardar en
+  // ese "mientras tanto".
+  const operatingCurrency = useOperatingCurrency();
+  const [defaultCurrency, setDefaultCurrency] = useState("");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -142,7 +147,7 @@ export default function PropertiesPage() {
     bathrooms: 1,
     night_price: 0,
     cleaning_fee: 0,
-    currency: "COP",
+    currency: "",
     min_nights: 1,
     amenities: [] as string[],
   });
@@ -152,9 +157,12 @@ export default function PropertiesPage() {
     if (activeTenantId) {
       api.getBusinessInfo(activeTenantId).then((res: any) => {
         if (res.success && res.data?.country) {
-          const c = COUNTRY_CURRENCY[res.data.country] || "COP";
-          setDefaultCurrency(c);
-          setForm(prev => prev.currency === "COP" || prev.currency === "USD" ? { ...prev, currency: c } : prev);
+          const c = COUNTRY_CURRENCY[res.data.country] || operatingCurrency || "";
+          if (c) {
+            setDefaultCurrency(c);
+            // Sólo se pisa lo que el dueño todavía no eligió.
+            setForm(prev => prev.currency ? prev : { ...prev, currency: c });
+          }
         }
       });
     }

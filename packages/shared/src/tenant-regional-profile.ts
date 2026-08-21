@@ -89,6 +89,21 @@ export const ONBOARDING_COUNTRIES: readonly Iso3166Alpha2[] = [
     'VE', 'CR', 'PA', 'DO', 'GT', 'US', 'CA',
 ];
 
+/**
+ * El país que la plataforma usa cuando NO SABE.
+ *
+ * Existe como constante con nombre, y no como `'CO'` escrito veinte veces,
+ * porque un literal repetido no se puede auditar: nadie puede contestar
+ * "¿dónde estamos asumiendo Colombia?" leyendo el código. Todo valor que salga
+ * de acá viaja marcado `fallback`, y ese marcado es lo que permite que un
+ * teléfono no se normalice y que el panel diga "puesto por defecto" en vez de
+ * hacerlo pasar por una decisión del dueño.
+ *
+ * Cambiarlo NO es una decisión de producto menor: mueve la zona horaria, la
+ * moneda y la forma de trato de todo tenant que todavía no declaró nada.
+ */
+export const PLATFORM_FALLBACK_COUNTRY = 'CO';
+
 /** Default operating currency per country. ISO 4217, never a symbol. */
 export const COUNTRY_DEFAULT_CURRENCY: Readonly<Record<string, Iso4217>> = {
     CO: 'COP', MX: 'MXN', AR: 'ARS', CL: 'CLP', PE: 'PEN', BR: 'BRL',

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { BulkImportModal } from "@/components/BulkImportModal";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 interface Category {
     id: string;
@@ -401,6 +402,7 @@ function ItemFormModal({
     onClose: () => void;
     onSaved: () => void;
 }) {
+    const operatingCurrency = useOperatingCurrency();
     const t = useTranslations("menu");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -410,7 +412,12 @@ function ItemFormModal({
         description: item?.description || "",
         categoryId: item?.category_id || "",
         price: item?.price?.toString() || "",
-        currency: item?.currency || "COP",
+        // La moneda del negocio, no un literal. `|| "COP"` le ponia pesos
+        // colombianos al primer precio que cargaba un tenant mexicano, y esa
+        // moneda queda GUARDADA con el registro: el agente despues se la dice
+        // al cliente. No era un default de presentacion, era una decision
+        // comercial tomada por el codigo.
+        currency: item?.currency || operatingCurrency || "",
         prepTimeMinutes: item?.prep_time_minutes?.toString() || "",
         tags: item?.tags || [],
         allergens: item?.allergens || [],

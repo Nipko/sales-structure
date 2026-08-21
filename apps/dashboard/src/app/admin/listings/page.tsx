@@ -14,6 +14,7 @@ import {
 import { BulkImportModal } from "@/components/BulkImportModal";
 import { SkeletonCards } from "@/components/ui/skeleton-loader";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 interface Listing {
     id: string;
@@ -245,12 +246,18 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
     t: any;
     tc: any;
 }) {
+    const operatingCurrency = useOperatingCurrency();
     const [form, setForm] = useState({
         name: "",
         transactionType: "sale" as "sale" | "rent",
         propertyKind: "apartment",
         price: 0,
-        currency: "COP",
+        // La moneda del negocio, no un literal. `|| "COP"` le ponia pesos
+        // colombianos al primer precio que cargaba un tenant mexicano, y esa
+        // moneda queda GUARDADA con el registro: el agente despues se la dice
+        // al cliente. No era un default de presentacion, era una decision
+        // comercial tomada por el codigo.
+        currency: operatingCurrency || "",
         bedrooms: 2,
         bathrooms: 1,
         areaM2: 0,

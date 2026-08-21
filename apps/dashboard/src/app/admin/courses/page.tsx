@@ -21,6 +21,7 @@ import {
 import { HelpPanel } from "@/components/ui/help-panel";
 import { BulkImportModal } from "@/components/BulkImportModal";
 import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 interface Course {
     id: string;
@@ -422,6 +423,7 @@ export default function CoursesPage() {
 }
 
 function CourseFormModal({ course, onClose, onSaved, onError }: { course: Course | null; onClose: () => void; onSaved: () => void; onError?: () => void }) {
+    const operatingCurrency = useOperatingCurrency();
     const t = useTranslations("courses");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -434,7 +436,12 @@ function CourseFormModal({ course, onClose, onSaved, onError }: { course: Course
         durationHours: course?.duration_hours?.toString() || "",
         durationWeeks: course?.duration_weeks?.toString() || "",
         price: course?.price?.toString() || "",
-        currency: course?.currency || "COP",
+        // La moneda del negocio, no un literal. `|| "COP"` le ponia pesos
+        // colombianos al primer precio que cargaba un tenant mexicano, y esa
+        // moneda queda GUARDADA con el registro: el agente despues se la dice
+        // al cliente. No era un default de presentacion, era una decision
+        // comercial tomada por el codigo.
+        currency: course?.currency || operatingCurrency || "",
         certification: course?.certification || "",
     });
     const [busy, setBusy] = useState(false);

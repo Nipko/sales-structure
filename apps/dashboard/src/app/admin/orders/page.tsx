@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { useRole } from "@/hooks/useRole";
 import { allowedOrderTransitions, type OrderLifecycleStatus } from "@/lib/order-status-contract";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
+import { formatMoney } from "@/lib/format-money";
 import {
     ShoppingCart, Search, Plus, CreditCard, DollarSign, Package, CheckCircle, Clock, XCircle, X, User, Check, FileText,
 } from "lucide-react";
@@ -21,7 +23,11 @@ interface Order { id: string; contactId: string; contactName: string; status: "p
 interface OrdersOverview { totalRevenue: number; pendingRevenue: number; financialsVisible?: boolean; orderCount: number; pendingCount: number; orders: Order[]; }
 interface Product { id: string; name: string; price: number; stock: number; unit: string; }
 
-const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
+// El pedido TRAE su moneda y la pantalla la pisaba con COP: mostrar un
+// pedido mexicano como pesos colombianos es convertir un importe sin tipo de
+// cambio — justo lo que el contrato del agente prohíbe, hecho por la pantalla
+// con la que el dueño le cobra al cliente.
+const formatCurrency = (n: number, currency?: string | null) => formatMoney(n, currency);
 const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return s; } };
 
 const statusStyle = {
@@ -33,6 +39,7 @@ const statusStyle = {
 type OrderStatus = keyof typeof statusStyle;
 
 export default function OrdersPage() {
+    const operatingCurrency = useOperatingCurrency();
     const t = useTranslations('orders');
     const tHelp = useTranslations("help");
     const tc = useTranslations("common");
@@ -125,10 +132,10 @@ export default function OrdersPage() {
             {canSeeGlobalAnalytics && data.financialsVisible !== false && (
             <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-4">
                 {[
-                    { key: "totalRevenue", label: t("kpi.totalRevenue"), value: formatCurrency(data.totalRevenue), icon: DollarSign, color: "#2ecc71", sub: t("kpi.completedOrders", { count: data.orders.filter(o => o.status === "paid").length }) },
-                    { key: "accountsReceivable", label: t("kpi.accountsReceivable"), value: formatCurrency(data.pendingRevenue), icon: Clock, color: "#ffa502", sub: t("kpi.pendingOrders", { count: data.pendingCount }) },
+                    { key: "totalRevenue", label: t("kpi.totalRevenue"), value: formatCurrency(data.totalRevenue, operatingCurrency), icon: DollarSign, color: "#2ecc71", sub: t("kpi.completedOrders", { count: data.orders.filter(o => o.status === "paid").length }) },
+                    { key: "accountsReceivable", label: t("kpi.accountsReceivable"), value: formatCurrency(data.pendingRevenue, operatingCurrency), icon: Clock, color: "#ffa502", sub: t("kpi.pendingOrders", { count: data.pendingCount }) },
                     { key: "totalOrders", label: t("kpi.totalOrders"), value: data.orderCount, icon: ShoppingCart, color: "#6c5ce7", sub: t("kpi.overallHistory") },
-                    { key: "averageTicket", label: t("kpi.averageTicket"), value: formatCurrency(data.orderCount ? (data.totalRevenue + data.pendingRevenue) / data.orderCount : 0), icon: CreditCard, color: "#00b4d8", sub: t("kpi.perTransaction") },
+                    { key: "averageTicket", label: t("kpi.averageTicket"), value: formatCurrency(data.orderCount ? (data.totalRevenue + data.pendingRevenue) / data.orderCount : 0, operatingCurrency), icon: CreditCard, color: "#00b4d8", sub: t("kpi.perTransaction") },
                 ].map((kpi) => {
                     const Icon = kpi.icon;
                     return (
@@ -194,7 +201,7 @@ export default function OrdersPage() {
                                     </td>
                                     <td className="px-5 py-4 text-muted-foreground text-[13px]">{formatDate(order.createdAt)}</td>
                                     <td className="px-5 py-4">
-                                        <div className="font-semibold text-[15px] text-primary">{formatCurrency(order.totalAmount)}</div>
+                                        <div className="font-semibold text-[15px] text-primary">{formatCurrency(order.totalAmount, order.currency || operatingCurrency)}</div>
                                         <div className="text-[11px] text-muted-foreground uppercase">{order.paymentMethod.replace("_", " ")}</div>
                                     </td>
                                     <td className="px-5 py-4">
@@ -243,6 +250,7 @@ export default function OrdersPage() {
 }
 
 function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose: () => void; tenantId: string; products: Product[]; onCreated: () => void }) {
+    const operatingCurrency = useOperatingCurrency();
     const tc = useTranslations("common");
     const t = useTranslations("orders");
     const [status, setStatus] = useState("pending");
@@ -281,7 +289,11 @@ function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose:
     };
 
     const total = selectedItems.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0);
-    const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
+    // El pedido TRAE su moneda y la pantalla la pisaba con COP: mostrar un
+// pedido mexicano como pesos colombianos es convertir un importe sin tipo de
+// cambio — justo lo que el contrato del agente prohíbe, hecho por la pantalla
+// con la que el dueño le cobra al cliente.
+const formatCurrency = (n: number, currency?: string | null) => formatMoney(n, currency);
 
     return (
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
@@ -325,7 +337,7 @@ function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose:
                     <label className="text-[13px] font-semibold block mb-1">{t("createModal.addProducts")}</label>
                     <select onChange={handleAddItem} value="" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
                         <option value="" disabled>{t("createModal.selectProduct")}</option>
-                        {products.filter(p => p.stock > 0).map(p => <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price)} ({t("createModal.stock")}: {p.stock} {p.unit})</option>)}
+                        {products.filter(p => p.stock > 0).map(p => <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price, operatingCurrency)} ({t("createModal.stock")}: {p.stock} {p.unit})</option>)}
                     </select>
                 </div>
                 {selectedItems.length > 0 && (
@@ -334,9 +346,9 @@ function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose:
                         <div className="flex flex-col gap-2">
                             {selectedItems.map(item => (
                                 <div key={item.productId} className="flex items-center gap-3 bg-muted px-3.5 py-2.5 rounded-[10px] border border-border">
-                                    <div className="flex-1"><div className="font-semibold text-sm">{item.productName}</div><div className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} {t("createModal.each")}</div></div>
+                                    <div className="flex-1"><div className="font-semibold text-sm">{item.productName}</div><div className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice, operatingCurrency)} {t("createModal.each")}</div></div>
                                     <input type="number" value={item.quantity} min={1} max={item.maxStock} onChange={e => updateQuantity(item.productId, e.target.value)} className="w-[60px] px-2 py-1.5 rounded-lg border border-border bg-card text-foreground text-center" />
-                                    <div className="font-semibold w-[90px] text-right text-primary">{formatCurrency(item.quantity * item.unitPrice)}</div>
+                                    <div className="font-semibold w-[90px] text-right text-primary">{formatCurrency(item.quantity * item.unitPrice, operatingCurrency)}</div>
                                     <button onClick={() => removeItem(item.productId)} className="bg-transparent border-none cursor-pointer text-destructive p-1"><X size={16} /></button>
                                 </div>
                             ))}
@@ -349,7 +361,7 @@ function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose:
                 </div>
                 <div className="flex items-center justify-between px-5 py-4 bg-primary/10 rounded-xl mb-5">
                     <span className="font-semibold text-muted-foreground">{t("createModal.orderTotal")}:</span>
-                    <span className="text-2xl font-semibold text-primary">{formatCurrency(total)}</span>
+                    <span className="text-2xl font-semibold text-primary">{formatCurrency(total, operatingCurrency)}</span>
                 </div>
                 <button onClick={handleSubmit} disabled={saving || selectedItems.length === 0} className={cn("w-full py-3.5 rounded-xl border-none bg-primary text-white font-semibold text-[15px] cursor-pointer flex items-center justify-center gap-2", (saving || selectedItems.length === 0) && "opacity-50")}>
                     {saving ? tc("saving") : <><Check size={18} /> {t("createModal.create")}</>}

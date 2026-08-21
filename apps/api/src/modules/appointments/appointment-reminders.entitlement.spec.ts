@@ -28,6 +28,7 @@ describe('AppointmentRemindersService subscription boundary', () => {
             {} as any,
             { emit: jest.fn() } as any,
             emailTemplates as any,
+            { timezoneFor: jest.fn().mockResolvedValue('America/Bogota'), timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any,
         );
 
         await service.send24hReminders();

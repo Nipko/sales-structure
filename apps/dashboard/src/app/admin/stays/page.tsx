@@ -22,6 +22,8 @@ import {
     BedDouble, RefreshCw, Loader2, Search, CalendarDays, User, Home,
     ChevronLeft, ChevronRight, Bot, Hand, Plus, X, XCircle,
 } from "lucide-react";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
+import { formatMoney } from "@/lib/format-money";
 
 interface Stay {
     id: string;
@@ -67,6 +69,7 @@ function formatRange(checkIn: string, checkOut: string, locale: string): string 
 }
 
 export default function StaysPage() {
+    const operatingCurrency = useOperatingCurrency();
     const t = useTranslations("stays");
     const tc = useTranslations("common");
     // Fechas y moneda siguen el idioma elegido, no un `es-CO` fijo: la app
@@ -275,13 +278,11 @@ export default function StaysPage() {
                                             </span>
                                         </td>
                                         <td className="px-4 py-2 text-right whitespace-nowrap">
-                                            {stay.total_price != null
-                                                ? new Intl.NumberFormat(locale, {
-                                                    style: "currency",
-                                                    currency: stay.currency || "COP",
-                                                    maximumFractionDigits: 0,
-                                                }).format(Number(stay.total_price))
-                                                : "—"}
+                                            {formatMoney(
+                                                stay.total_price,
+                                                stay.currency || operatingCurrency,
+                                                { locale },
+                                            )}
                                         </td>
                                         <td className="px-4 py-2 text-right">
                                             {stay.status !== "cancelled" && (

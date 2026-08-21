@@ -3,6 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { PersonaService } from '../persona/persona.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LeadCapturedEvent } from './events/lead-captured.event';
@@ -24,6 +25,7 @@ export class AutomationListenerService {
         private readonly personaService: PersonaService,
         private readonly throttle: TenantThrottleService,
         @InjectQueue(AUTOMATION_JOBS_QUEUE) private readonly automationQueue: Queue,
+        private readonly regionalProfile: RegionalProfileService,
     ) {}
 
     @OnEvent('lead.captured')
@@ -36,7 +38,7 @@ export class AutomationListenerService {
             const schemaName = event.schemaName || await this.prisma.getTenantSchemaName(event.tenantId);
             // 1. Verificar horario comercial
             const config = await this.personaService.getActivePersona(event.tenantId);
-            if (config && !this.isWithinBusinessHours(config)) {
+            if (config && !(await this.isWithinBusinessHours(config, event.tenantId))) {
                 this.logger.log(
                     `[AutomationListener] Fuera de horario comercial para tenant ${event.tenantId}. Omitiendo automatizaciones.`,
                 );
@@ -154,7 +156,10 @@ export class AutomationListenerService {
             let businessHoursStatus: 'open' | 'closed' | 'unknown' = 'unknown';
             try {
                 const persona = await this.personaService.getActivePersona(event.tenantId);
-                if (persona) businessHoursStatus = this.isWithinBusinessHours(persona) ? 'open' : 'closed';
+                if (persona) {
+                    businessHoursStatus = await this.isWithinBusinessHours(persona, event.tenantId)
+                        ? 'open' : 'closed';
+                }
             } catch (error: any) {
                 this.logger.warn(`[AutomationListener] No se pudo resolver horario para new_message: ${error.message}`);
             }
@@ -422,10 +427,15 @@ export class AutomationListenerService {
     /**
      * Verifica si estamos dentro del horario comercial configurado en la persona.
      */
-    private isWithinBusinessHours(config: any): boolean {
+    private async isWithinBusinessHours(config: any, tenantId: string): Promise<boolean> {
         if (!config.hours || !config.hours.schedule) return true;
 
-        const timezone = config.hours.timezone || 'America/Bogota';
+        // El literal decidía cuándo un negocio mexicano está "abierto": a las 8
+        // de la mañana en Bogotá son las 7 en Ciudad de México, así que una
+        // secuencia de nurturing salía una hora antes de abrir. Ahora, sin
+        // horario propio en la persona, se usa la zona del negocio.
+        const timezone = config.hours.timezone
+            || await this.regionalProfile.timezoneFor(tenantId);
         const localTime = new Intl.DateTimeFormat('en-US', {
             timeZone: timezone,
             weekday: 'short',

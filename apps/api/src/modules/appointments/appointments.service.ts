@@ -17,6 +17,7 @@ import {
     wallClockEpoch,
 } from './appointment-capacity.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     holdStillAliveSql,
     PAYMENT_HOLD_MS,
@@ -77,6 +78,7 @@ export class AppointmentsService {
         private prisma: PrismaService,
         private eventEmitter: EventEmitter2,
         private calendarOutbox: CalendarSyncOutboxService,
+        private regionalProfile: RegionalProfileService,
     ) {}
 
     // ── Reminder Settings ─────────────────────────────────────
@@ -942,18 +944,10 @@ export class AppointmentsService {
 
     private async resolveTimezoneForSchema(schemaName: string, requested?: unknown): Promise<string> {
         if (typeof requested === 'string' && requested.trim()) return requested.trim();
-        try {
-            const tenant = await this.prisma.tenant.findFirst({
-                where: { schemaName },
-                select: { settings: true },
-            });
-            const settings = (tenant?.settings as any) || {};
-            return settings.timezone || settings.businessHours?.timezone || 'America/Bogota';
-        } catch {
-            // A missing global-tenant fixture must not silently weaken the temporal
-            // contract. The service still validates this deterministic fallback.
-            return 'America/Bogota';
-        }
+        // Una sola precedencia para toda la plataforma, con la zona declarada
+        // arriba de todo. Su propio fallback sigue siendo determinista, así que
+        // el contrato temporal se valida igual.
+        return this.regionalProfile.timezoneForSchema(schemaName);
     }
 
     private mapRow(row: any): Appointment {

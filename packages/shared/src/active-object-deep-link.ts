@@ -50,9 +50,12 @@ const DEEP_LINKS: Readonly<Record<ActiveObjectKind, string | null>> = Object.fre
     course: '/admin/courses',
 
     // ── Seguros: las tres viven en pestañas de una misma pantalla ─────
-    insurance_policy: '/admin/insurance',
-    insurance_claim: '/admin/insurance',
-    insurance_quote: '/admin/insurance',
+    // El `?tab=` es parte del enlace: sin él, quien viene del Inbox por un
+    // siniestro aterriza en la pestaña de planes y tiene que buscar de nuevo.
+    // Llegar a la pantalla no es llegar al objeto.
+    insurance_policy: '/admin/insurance?tab=policies',
+    insurance_claim: '/admin/insurance?tab=claims',
+    insurance_quote: '/admin/insurance?tab=quotes',
 
     // Sin pantalla propia todavía. Se muestra sin enlace: mandar a una ruta
     // inventada es peor que no ofrecer ninguna.
@@ -62,6 +65,12 @@ const DEEP_LINKS: Readonly<Record<ActiveObjectKind, string | null>> = Object.fre
 export function deepLinkForActiveObject(kind: unknown): string | null {
     if (typeof kind !== 'string') return null;
     return DEEP_LINKS[kind as ActiveObjectKind] ?? null;
+}
+
+/** Sólo la ruta, sin el `?tab=`, para verificarla contra el registro. */
+export function deepLinkRouteForActiveObject(kind: unknown): string | null {
+    const href = deepLinkForActiveObject(kind);
+    return href ? href.split('?')[0] : null;
 }
 
 /** Los tipos que hoy tienen dónde abrirse, para pruebas de contrato. */

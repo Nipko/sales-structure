@@ -907,3 +907,22 @@ Tres defectos en la misma pantalla, el primero de los cuales U17 dejó a medio c
 npx tsc --noEmit (dashboard)  → exit 0
 jest apps/dashboard → 190 passed / 24 suites, 0 fallos
 ```
+
+### U29 — Llegar a la pantalla no es llegar al objeto
+
+**Fase 4 · Épica D · Paso 4 de §8.5 (`?tab=` y defaults por rol)**
+
+U26 le dio a cada objeto del panel del Inbox su enlace. Para los tres objetos de seguros —póliza, siniestro, cotización— ese enlace era `/admin/insurance` a secas: quien venía por un siniestro aterrizaba en la **pestaña de planes** y tenía que buscarlo de nuevo. El enlace cumplía la letra y no el trabajo.
+
+**El `?tab=` es parte del enlace.** `insurance_claim` va a `/admin/insurance?tab=claims`, y la pantalla lo lee. La validación es doble y en el orden que importa: contra la lista de pestañas **y contra el permiso**, así que un enlace viejo, uno escrito a mano o uno guardado por alguien con otro rol no abre nada que el rol actual no pueda ver — cae a la primera pestaña que sí puede.
+
+**El default por rol ya estaba** desde U25: sin permiso de catálogo, la primera pestaña es la operativa y no la de planes.
+
+**Pruebas** — `active-object-deep-link.spec.ts` (+2 casos): los tres objetos de seguros abren su pestaña, y la ruta sin query sigue existiendo en el registro de navegación; y —la que evita el enlace muerto— **todo valor de `tab` que se emite existe en la pantalla**, verificado leyendo el archivo: emitir `?tab=siniestros` cuando la pantalla espera `claims` daría un enlace que parece funcionar y aterriza donde no es.
+
+**Verificación**
+```
+npx tsc --noEmit (shared + dashboard)  → exit 0
+jest apps/dashboard → 192 passed / 24 suites, 0 fallos
+jest apps/api       → 2621 passed / 290 suites, 0 fallos
+```

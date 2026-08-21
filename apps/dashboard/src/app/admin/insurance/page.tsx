@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -93,7 +94,23 @@ export default function InsurancePage() {
     // atiende entra —si no, pierde cotizaciones, pólizas y siniestros enteros—
     // y la pestaña de catálogo se cierra acá adentro, no cerrando la pantalla.
     const { canEditPipeline } = useRole();
-    const [tab, setTab] = useState<TabId>(canEditPipeline ? "plans" : "quotes");
+    /**
+     * `?tab=` es cómo llega un enlace del Inbox.
+     *
+     * Sin esto, quien viene por un siniestro aterriza en la pestaña de planes y
+     * tiene que buscarlo de nuevo: llegar a la pantalla no es llegar al objeto.
+     * Se valida contra la lista de pestañas y contra el permiso, así que un
+     * enlace viejo o uno a mano no abre nada que el rol no pueda ver.
+     */
+    const searchParams = useSearchParams();
+    const requestedTab = searchParams.get("tab");
+    const openableTabs: TabId[] = canEditPipeline
+        ? ["plans", "quotes", "policies", "claims"]
+        : ["quotes", "policies", "claims"];
+    const initialTab: TabId = openableTabs.includes(requestedTab as TabId)
+        ? (requestedTab as TabId)
+        : openableTabs[0];
+    const [tab, setTab] = useState<TabId>(initialTab);
     const [plans, setPlans] = useState<Plan[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
     const [policies, setPolicies] = useState<Policy[]>([]);

@@ -12,6 +12,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -67,7 +68,17 @@ export default function MembershipsPage() {
     // Mixta, igual que Seguros: los planes son catálogo y el padrón de socios
     // —congelar, descongelar, renovar— es trabajo de todos los días.
     const { canEditPipeline } = useRole();
-    const [tab, setTab] = useState<TabId>(canEditPipeline ? "plans" : "members");
+    // Mismo contrato que Seguros: `?tab=` abre la pestaña del objeto, validado
+    // contra la lista y contra el permiso.
+    const searchParams = useSearchParams();
+    const requestedTab = searchParams.get("tab");
+    const openableTabs: TabId[] = canEditPipeline
+        ? ["plans", "members", "classes"]
+        : ["members", "classes"];
+    const initialTab: TabId = openableTabs.includes(requestedTab as TabId)
+        ? (requestedTab as TabId)
+        : openableTabs[0];
+    const [tab, setTab] = useState<TabId>(initialTab);
     const [plans, setPlans] = useState<Plan[]>([]);
     const [members, setMembers] = useState<Member[]>([]);
     const [loading, setLoading] = useState(true);

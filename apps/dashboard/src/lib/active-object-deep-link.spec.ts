@@ -5,6 +5,7 @@ import {
     ACTIVE_OBJECT_KINDS,
     LINKED_ACTIVE_OBJECT_KINDS,
     deepLinkForActiveObject,
+    deepLinkRouteForActiveObject,
 } from "@parallext/shared";
 import { NAVIGATION_ROUTES } from "./navigation-contract";
 
@@ -26,9 +27,10 @@ describe("active object deep links", () => {
     it("only points at routes the dashboard really has", () => {
         const known = new Set(NAVIGATION_ROUTES.map((route) => route.pattern));
         for (const kind of LINKED_ACTIVE_OBJECT_KINDS) {
-            const href = ACTIVE_OBJECT_DEEP_LINKS[kind]!;
-            expect(`${kind} -> ${href}`).toBe(
-                known.has(href as `/admin${string}`) ? `${kind} -> ${href}` : `${kind} -> UNKNOWN ROUTE`,
+            // El `?tab=` es parte del enlace pero no de la ruta.
+            const route = deepLinkRouteForActiveObject(kind)!;
+            expect(`${kind} -> ${route}`).toBe(
+                known.has(route as `/admin${string}`) ? `${kind} -> ${route}` : `${kind} -> UNKNOWN ROUTE`,
             );
         }
     });
@@ -38,6 +40,30 @@ describe("active object deep links", () => {
         expect(deepLinkForActiveObject("tour_booking")).toBe("/admin/tour-bookings");
         expect(deepLinkForActiveObject("service_request")).toBe("/admin/service-requests");
         expect(deepLinkForActiveObject("photo_session")).toBe("/admin/photo-sessions");
+    });
+
+    /**
+     * Llegar a la pantalla no es llegar al objeto: sin el `?tab=`, quien viene
+     * del Inbox por un siniestro aterriza en la pestaña de planes y tiene que
+     * buscarlo de nuevo.
+     */
+    it("opens the tab where the object lives on a shared screen", () => {
+        expect(deepLinkForActiveObject("insurance_claim")).toBe("/admin/insurance?tab=claims");
+        expect(deepLinkForActiveObject("insurance_policy")).toBe("/admin/insurance?tab=policies");
+        expect(deepLinkForActiveObject("insurance_quote")).toBe("/admin/insurance?tab=quotes");
+        expect(deepLinkRouteForActiveObject("insurance_claim")).toBe("/admin/insurance");
+    });
+
+    /** El `?tab=` que se emite tiene que ser uno que la pantalla acepte. */
+    it("only emits tab values the screen knows", () => {
+        const page = fs.readFileSync(
+            path.resolve(__dirname, "../app/admin/insurance/page.tsx"),
+            "utf8",
+        );
+        for (const kind of ["insurance_claim", "insurance_policy", "insurance_quote"] as const) {
+            const tab = deepLinkForActiveObject(kind)!.split("tab=")[1];
+            expect(`${kind}:${page.includes(`"${tab}"`)}`).toBe(`${kind}:true`);
+        }
     });
 
     /** `null` es una decisión declarada, no un olvido. */

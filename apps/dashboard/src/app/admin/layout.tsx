@@ -22,6 +22,8 @@ import {
 } from "@/lib/navigation-access";
 import { canAccessPath } from "@/lib/roles";
 import { recordNavigationEvent } from "@/lib/navigation-telemetry";
+import { trackNavigation } from "@/lib/navigation-effort";
+import { isOperationalRoute } from "@/lib/navigation-surface-kind-routes";
 import { OnbordaProvider, Onborda } from "onborda";
 import { TourCard, useProductTourSteps, TourLauncher, TourBoundary } from "@/components/tour/ProductTour";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
@@ -97,6 +99,22 @@ export default function AdminLayout({
       router.replace(landing);
     }
   }, [pathname, role, impersonating, isLoading, isVerticalConfigLoading, isAuthenticated, router, verticalConfig]);
+
+  // Cuánto le cuesta al usuario llegar a lo que vino a hacer.
+  //
+  // Los eventos que había contaban TROPIEZOS —403, callejón sin salida, plan
+  // bloqueado— y eso dice si algo está roto, no si encontrar las cosas cuesta.
+  // Un menú donde todo funciona y nada se encuentra produce cero eventos y
+  // usuarios que se van.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !pathname?.startsWith("/admin")) return;
+    const route = pathname.split("?")[0];
+    trackNavigation(user?.tenantId, route, {
+      // Una pantalla operativa CIERRA el episodio: es lo que vino a hacer.
+      // Cerrarlo en cualquier vista mediría el paseo, no la tarea.
+      isOperationalSurface: isOperationalRoute(route),
+    });
+  }, [pathname, isLoading, isAuthenticated, user?.tenantId]);
 
   useEffect(() => {
     if (isVerticalConfigLoading || !role || !canAccessDashboardNavigationPath(pathname, role, impersonating, verticalConfig)) return;

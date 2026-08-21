@@ -259,6 +259,8 @@
     "sections": {
       "essentials": "Essentials",
       "dailyWork": "Daily work",
+      "customers": "Customers",
+      "commercial": "Commercial",
       "catalogAndResources": "Catalogue & resources",
       "aiGrowth": "AI & growth",
       "insights": "Insights",

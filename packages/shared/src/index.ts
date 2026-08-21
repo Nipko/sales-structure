@@ -454,11 +454,18 @@ export type AnalyticsEventType =
     | 'order_created'
     | 'payment_received'
     | 'model_used'
-    // Navegación: sólo lo excepcional. Un 403 y un callejón sin salida son
-    // raros por construcción, y si dejan de serlo eso es el hallazgo.
+    // Navegación: lo excepcional. Un 403 y un callejón sin salida son raros
+    // por construcción, y si dejan de serlo eso es el hallazgo.
     | 'navigation.access_denied'
     | 'navigation.dead_end'
-    | 'navigation.plan_locked';
+    | 'navigation.plan_locked'
+    // Y el esfuerzo. Los tres de arriba cuentan tropiezos: dicen si algo está
+    // roto, no si encontrar las cosas cuesta. Un menú donde todo funciona y
+    // nada se encuentra produce cero eventos y usuarios que se van. Éstos se
+    // emiten una vez por EPISODIO, no por vista.
+    | 'navigation.task_reached'
+    | 'navigation.backtracked'
+    | 'navigation.search_used';
 
 export interface AnalyticsEvent {
     id: string;

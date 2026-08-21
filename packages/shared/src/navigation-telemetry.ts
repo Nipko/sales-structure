@@ -21,6 +21,35 @@ export const NAVIGATION_TELEMETRY_EVENTS = [
     'navigation.dead_end',
     /** Clic en una opción que el plan del tenant no incluye. */
     'navigation.plan_locked',
+
+    // ── Lo que faltaba para saber si la navegación MEJORÓ ─────────────
+    //
+    // Los tres de arriba cuentan tropiezos: dicen si algo está roto, no si
+    // encontrar las cosas cuesta. Estos tres miden el esfuerzo, y siguen la
+    // misma regla — se emiten UNA vez por episodio, no por vista. Emitir cada
+    // navegación le costaría almacenamiento al tenant para medir lo que ya
+    // funciona.
+
+    /**
+     * Llegó a una pantalla operativa. Trae cuánto tardó y cuántos clics le
+     * llevó, en cubos: el número exacto no aporta y sí permitiría reconstruir
+     * la sesión de una persona.
+     */
+    'navigation.task_reached',
+    /**
+     * Volvió sobre sus pasos poco después de moverse.
+     *
+     * Es la señal más honesta de que el menú lo mandó al lugar equivocado: no
+     * hay error, no hay 403, y aun así el camino no era.
+     */
+    'navigation.backtracked',
+    /**
+     * Usó el buscador en vez del menú.
+     *
+     * Un buscador muy usado no es un buscador exitoso: es un menú donde no se
+     * encuentra lo que se busca.
+     */
+    'navigation.search_used',
 ] as const;
 
 export type NavigationTelemetryEvent = typeof NAVIGATION_TELEMETRY_EVENTS[number];
@@ -42,6 +71,16 @@ export const NAVIGATION_TELEMETRY_FIELDS = [
     'role',
     /** Capacidad o feature de plan que faltó. */
     'requirement',
+    /**
+     * Cuánto tardó, en cubos (`instant`, `fast`, `slow`, `lost`).
+     *
+     * En cubos y no en milisegundos a propósito: el número exacto no cambia
+     * ninguna decisión y sí permitiría reconstruir minuto a minuto lo que hizo
+     * una persona, que es justo lo que esta tabla no debe poder hacer.
+     */
+    'elapsedBucket',
+    /** Cuántos clics le llevó, tope 9: más que eso es "muchos". */
+    'clickDepth',
 ] as const;
 
 export type NavigationTelemetryField = typeof NAVIGATION_TELEMETRY_FIELDS[number];
@@ -52,12 +91,33 @@ export const NAVIGATION_TELEMETRY_REASONS = [
 
 export type NavigationTelemetryReason = typeof NAVIGATION_TELEMETRY_REASONS[number];
 
+/** Los cubos de tiempo. `lost` es el que importa: no encontró. */
+export const NAVIGATION_ELAPSED_BUCKETS = ['instant', 'fast', 'slow', 'lost'] as const;
+export type NavigationElapsedBucket = typeof NAVIGATION_ELAPSED_BUCKETS[number];
+
+/**
+ * Milisegundos → cubo.
+ *
+ * Los cortes son de experiencia, no de percentiles: bajo tres segundos el
+ * usuario fue directo, hasta quince buscó un poco, hasta un minuto estuvo
+ * buscando, y más que eso ya no estaba buscando esa pantalla.
+ */
+export function navigationElapsedBucket(elapsedMs: number): NavigationElapsedBucket {
+    if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return 'lost';
+    if (elapsedMs < 3_000) return 'instant';
+    if (elapsedMs < 15_000) return 'fast';
+    if (elapsedMs < 60_000) return 'slow';
+    return 'lost';
+}
+
 export interface NavigationTelemetryRecord {
     event: NavigationTelemetryEvent;
     route: string;
     reason: NavigationTelemetryReason;
     role?: string;
     requirement?: string;
+    elapsedBucket?: NavigationElapsedBucket;
+    clickDepth?: number;
 }
 
 /** Tope de un lote. Un cliente que manda mil eventos está roto, no midiendo. */
@@ -112,6 +172,29 @@ export function sanitizeNavigationTelemetry(input: unknown): NavigationTelemetry
     if (raw.role !== undefined) {
         if (typeof raw.role !== 'string' || !SHORT_TOKEN_RE.test(raw.role)) return null;
         record.role = raw.role;
+    }
+    if (raw.elapsedBucket !== undefined) {
+        // Sólo el cubo. Un milisegundo crudo acá permitiría reconstruir la
+        // sesión de una persona, que es lo que esta tabla no debe poder hacer.
+        if (typeof raw.elapsedBucket !== 'string'
+            || !(NAVIGATION_ELAPSED_BUCKETS as readonly string[]).includes(raw.elapsedBucket)) {
+            return null;
+        }
+        record.elapsedBucket = raw.elapsedBucket as NavigationElapsedBucket;
+    }
+    if (raw.clickDepth !== undefined) {
+        // Se exige un número, no algo convertible: `Number("3")` es 3, y
+        // aceptarlo dejaría pasar un cliente que manda el campo con el tipo
+        // equivocado — que es exactamente la clase de laxitud que el resto de
+        // este saneo rechaza. Tope 9: más que eso es "muchos", y el número
+        // exacto no cambia ninguna decisión.
+        if (typeof raw.clickDepth !== 'number'
+            || !Number.isInteger(raw.clickDepth)
+            || raw.clickDepth < 1
+            || raw.clickDepth > 9) {
+            return null;
+        }
+        record.clickDepth = raw.clickDepth;
     }
     if (raw.requirement !== undefined) {
         if (typeof raw.requirement !== 'string' || !SHORT_TOKEN_RE.test(raw.requirement)) return null;

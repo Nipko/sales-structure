@@ -1537,6 +1537,36 @@ jest apps/api       → 3039 passed / 306 suites (1 skipped), 0 fallos
 jest apps/dashboard →  220 passed /  27 suites, 0 fallos
 ```
 
+### U53 — Una pantalla que existe y a la que no se llega es lo mismo que no tenerla
+
+**Últimos dos parciales: secciones del shell y telemetría de navegación**
+
+**`/admin/cases` no estaba en el menú.** Se creó completa en U50 —endpoint, página, permisos, i18n, cuatro registros de contrato— y el menú no la listaba. Las tres pruebas de contrato que existían pasaron, porque **las tres miran registros y ninguna mira el menú**. Ahora hay una que lo mira, y recorre los 40 ítems verticales en las dos direcciones: ninguno falta en el menú, y el menú no lista uno que el resolutor no conozca —eso lo dejaría visible para rubros que no tienen esa capacidad—.
+
+**`essentials` mezclaba tres trabajos.** Los contactos colgaban de un ítem llamado "CRM" con el embudo de ventas adentro, así que buscar el teléfono de un cliente obligaba a entrar por una sección que habla de negociaciones. Son dos trabajos y los hace gente distinta: quien atiende busca a la persona, quien vende mira el embudo. Quedan tres secciones —`essentials` (lo que se abre primero), `customers` (las personas), `commercial` (el embudo y las ofertas)— y las ofertas se mudaron del catálogo: una oferta es una palanca comercial, no una ficha de producto.
+
+**La telemetría contaba tropiezos y no esfuerzo.** Un 403, un callejón sin salida, una opción bloqueada por plan: eso dice si algo está **roto**, no si encontrar las cosas **cuesta**. Un menú donde todo funciona y nada se encuentra produce **cero eventos** y usuarios que se van.
+
+Tres episodios nuevos, y ninguno se emite por vista:
+- **Llegó a una pantalla operativa**, con cuánto tardó y cuántos clics le llevó. Una pantalla de catálogo **no** cierra el episodio: pasar por el catálogo suele ser parte del camino, no el destino, y cerrarlo ahí mediría el paseo en vez de la tarea.
+- **Volvió sobre sus pasos** dentro de diez segundos. Es la señal más honesta de que el menú lo mandó al lugar equivocado: no hay error, no hay 403, y el camino no era. Más de diez segundos y volver es una decisión, no un error.
+- **Usó el buscador** en vez del menú. Un buscador muy usado no es un buscador exitoso: es un menú donde no se encuentra lo que se busca. Se cuenta la elección y no la apertura — abrirlo y cerrarlo no dice nada.
+
+**El tiempo viaja en cubos, no en milisegundos**, y la profundidad tiene tope 9. El número exacto no cambia ninguna decisión y sí permitiría reconstruir minuto a minuto lo que hizo una persona, que es justo lo que esta tabla no debe poder hacer. Un valor imposible cae en `lost`, no en `instant`: `instant` diría que el usuario fue directo, que es lo contrario de lo que sabemos cuando el dato no tiene sentido.
+
+**Y qué cuenta como pantalla operativa sale de la clasificación que ya existe** (`register`/`mixed`), no de una lista aparte: una segunda lista se desincroniza el día que alguien agrega una pantalla, y el síntoma sería una métrica que empeora sin que nada haya empeorado.
+
+**Un defecto propio, encontrado al probarlo:** el saneo aceptaba `clickDepth: "3"` porque `Number("3")` es 3. Aceptar algo convertible es la clase de laxitud que el resto de ese saneo rechaza explícitamente.
+
+**Pruebas** — `sidebar-reachability.spec.ts` (nuevo, 27) y `navigation-effort.spec.ts` (nuevo, 17), incluida la que verifica que lo nuevo **no aflojó lo que ya se protegía**: una ruta con un uuid sigue rechazándose.
+
+**Verificación**
+```
+npx tsc --noEmit  → exit 0 en shared, api y dashboard
+jest apps/api       → 3039 passed / 306 suites (1 skipped), 0 fallos
+jest apps/dashboard →  264 passed /  29 suites, 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1600,15 +1630,15 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 
 | Qué | Qué falta para completo |
 |---|---|
-| **Contrato efectivo** | Le faltan entradas: salud/scopes/frescura del proveedor, jurisdicción, **rol** y **canal**. Y se resuelve **después** de Booking Engine y Procedures, no antes |
-| **STOP** | Probado contra tools estáticas y asíncronas; **sin probar** contra Booking Engine, Procedures y fallo del resolutor. No llega al turno como `capability_status` ni produce handoff determinista |
-| **Terminología por sub-tipo** | 14 de 76 perfiles. Los demás heredan de su industria por decisión, pero nadie verificó uno por uno que la herencia sea correcta |
-| **Set dorado** | 4 a 7 escenarios por perfil. El objetivo del plan es **≥25 por perfil e idioma prioritario** |
-| **Packs de país** | Los 15 de LatAm en `draft`. Ninguno se presenta como certificado, que es lo correcto, pero ninguno llegó a `pilot` |
-| **Telemetría de navegación** | Sólo lo excepcional. Faltan tiempo-a-tarea, click depth, búsqueda y backtracking |
-| **Secciones del shell** | `dailyWork` y `catalogAndResources` separadas; faltan `customers` y `commercial` como grupos propios |
-| **Active Objects** | Cubre los objetos con loader. Varios writers crean cosas que el turno siguiente no ve |
-| **Subpermisos de tool** (`canBook`, `canCancel`, `canCheckStock`, `canRecommend`) | Declarados en la config del agente; **no** se aplican en publicación ni en executor |
+| ~~**Contrato efectivo**~~ | ✅ **U33/U35**: entra rol, canal, jurisdicción y salud/scopes/frescura del proveedor, y se resuelve ANTES de los tres motores |
+| ~~**STOP**~~ | ✅ **U35**: los 7 perfiles contra las cinco puertas, `capability_status` en el turno y handoff determinista |
+| **Terminología por sub-tipo** | 14 de 76 perfiles. Los demás heredan de su industria por decisión, pero **nadie verificó uno por uno que la herencia sea correcta** — y esa verificación necesita a alguien que conozca el rubro, no una regla |
+| ~~**Set dorado**~~ | ✅ **U45**: mínimo 29 por perfil en los cuatro idiomas |
+| **Packs de país** | Los 15 de LatAm en `draft`. Ninguno se presenta como certificado, que es lo correcto, pero llegar a `pilot` exige un tenant real de ese país |
+| ~~**Telemetría de navegación**~~ | ✅ **U53**: tiempo-a-tarea, profundidad de clics, búsqueda y backtracking |
+| ~~**Secciones del shell**~~ | ✅ **U53**: `customers` y `commercial` como grupos propios |
+| ~~**Active Objects**~~ | ✅ **U48**: cinco cargadores nuevos, dos tipos que no existían y dos sujetos que faltaban |
+| ~~**Subpermisos de tool**~~ | ✅ **U46**: se aplican en publicación y en el ejecutor |
 
 ### 🔒 Fail-closed temporal — apagado a propósito hasta que llegue lo externo
 

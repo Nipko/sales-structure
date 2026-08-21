@@ -1711,16 +1711,21 @@ Lo que se agrega corre la cadena real —`EffectiveCapabilityService` → autori
 - Escribí un caso con `role: 'tenant_admin'` esperando que bloqueara. No bloquea, y **está bien**: los cuatro roles del producto son operativos. Lo que la puerta atrapa es un rol que no reconocemos —una integración nueva, un token viejo, un valor mal escrito—. El caso quedó reescrito para medir eso.
 - Y afirmé "cero consultas a la base" en los casos del motor de reservas. Falso: el motor lee el catálogo de servicios legítimamente, y `list_services` sobrevive incluso a un perfil bloqueado —que es justamente el punto—. La aserción correcta es que **no se escribió una cita**, y así quedó. Pedir cero llamadas habría pasado en verde midiendo otra cosa.
 
+**El riesgo que sí se cerró, y cómo.** La primera versión del E2E replicaba el armado de la autoridad en un helper del spec, porque la regla vivía dentro de `generateResponse` —mil setecientas líneas, treinta y nueve dependencias— y no había forma de invocarla sin construir el orquestador entero. Replicar es la forma más silenciosa de que la prueba y el código dejen de decir lo mismo: las dos empiezan iguales y una cambia.
+
+Se extrajo a `turn-authority.ts`, tres entradas y ninguna dependencia. Ahora la prueba ejercita **la misma función que corre en producción**, y tres reglas que antes no se podían mirar quedaron fijadas: que un contrato irresoluble produzca una autoridad **vieja** y no una vacía —una lista vacía con fecha de hoy se lee como "alguien decidió no publicar nada", y nadie decidió—; que la lista del bucle del LLM pueda ser más chica que la de los motores compartiendo el mismo sello temporal; y que lo que el dueño apagó viaje **dentro** de la autoridad, con su propio motivo, y no como un parámetro aparte.
+
 **Riesgos que quedan**
-- El E2E entra por `EffectiveCapabilityService.resolve` y por los motores, **no** por `processIncomingMessage`. El armado de la autoridad en `conversations.service` —qué lista se congela y cuándo— se replica en un helper del spec en vez de ejercitarse. Cubrir el turno entero necesita construir el orquestador con sus 39 dependencias; es trabajo interno pendiente, no un bloqueo.
+- El E2E entra por `EffectiveCapabilityService.resolve`, por `buildTurnAuthority` y por los motores, **no** por `processIncomingMessage`. Lo que queda sin cubrir no es la regla sino el *orden*: en qué momento del turno se congela cada lista. Trabajo interno pendiente.
 - No hay corrida contra base real. La cadena de decisión no la toca, pero un `INSERT` que el guard deje pasar y la base rechace por constraint es un caso que estas pruebas no ven.
 
-**Pruebas** — `tool-authority.e2e.spec.ts` (nuevo, 9).
+**Pruebas** — `tool-authority.e2e.spec.ts` (nuevo, 12) + `turn-authority.ts` (nuevo, extracción).
 
 **Verificación**
 ```
 npx tsc --noEmit  → exit 0 en shared, api y dashboard
-jest apps/api     → 3084 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
+npm run test:bootstrap → 1 passed (sin errores de DI)
+jest apps/api     → 3087 passed / 310 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
 ## Estado del programa — cinco categorías, sin mezclar
@@ -1830,7 +1835,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 3 | Autorización exacta en Booking y Procedures | ✅ **U55** |
 | 4 | Separar tools core/globales, verticales, proveedor y MCP | ✅ **U56** |
 | 5 | Handoff STOP sólo ante operación denegada | ✅ **U55** |
-| 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57** — la cadena real sin mocks entre las piezas que deciden; falta el turno entero por `processIncomingMessage` y una corrida contra base real |
+| 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57** — la cadena real sin mocks entre las piezas que deciden, contra la misma función que corre en producción; falta el *orden* del turno (`processIncomingMessage`) y una corrida contra base real |
 | 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ⏳ pendiente |
 | 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ⏳ pendiente |
 | 9 | Unificar freshness, cron y estado mostrado en UI | ⏳ pendiente |

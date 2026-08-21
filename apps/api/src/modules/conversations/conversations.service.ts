@@ -52,6 +52,7 @@ import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-
 import { staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { EffectiveCapabilityService } from './effective-capability.service';
+import { buildTurnAuthority, engineAuthorityFor, type TurnAuthorityInput } from './turn-authority';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -2203,31 +2204,21 @@ export class ConversationsService {
         const deniedTools = [...subpermissionDeniedToolNames(cfgTools ?? {})];
         const bookingDenied = deniedTools.includes('create_appointment');
 
-        /**
-         * La autoridad de este turno, con la lista que se le pase.
-         *
-         * `resolvedAt` sale del contrato y no de `now()`: si el contrato no se
-         * pudo resolver, la autoridad nace vieja y el ejecutor la rechaza por
-         * `authority_stale` en vez de dejar pasar una lista vacía como si fuera
-         * una decisión.
-         */
-        const turnAuthority = (allowedTools: readonly string[]): ToolExecutionAuthority => ({
-            source: 'turn_contract',
-            allowedTools,
+        // Cómo se arma la autoridad vive en `turn-authority.ts`, no acá: este
+        // método tiene mil setecientas líneas y treinta y nueve dependencias,
+        // así que una regla escrita adentro no se puede probar sin construir el
+        // orquestador entero — y lo que un E2E podía hacer era replicarla, que
+        // es la forma más silenciosa de que la prueba y el código dejen de
+        // decir lo mismo.
+        const authorityInput: TurnAuthorityInput = {
+            contract: capability.contract,
             commitmentBlocked,
             deniedTools,
-            resolvedAt: capability.contract?.resolvedAt ?? new Date(0).toISOString(),
             subtypeProfileId: capability.status.profileId,
-        });
-
-        /**
-         * Lo que los motores deterministas pueden invocar.
-         *
-         * Sale del contrato, no de la lista final de tools: el motor de
-         * reservas y Procedures corren ANTES de que se arme esa lista, y darles
-         * la lista final los ataría a un orden de ejecución que no controlan.
-         */
-        const engineAuthority = turnAuthority(capability.contract?.publishedTools ?? []);
+        };
+        const turnAuthority = (allowedTools: readonly string[]): ToolExecutionAuthority =>
+            buildTurnAuthority(authorityInput, allowedTools);
+        const engineAuthority = engineAuthorityFor(authorityInput);
 
         // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
         // message is the ANSWER to that field — give the procedure engine priority

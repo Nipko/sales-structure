@@ -3,6 +3,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { decideToolAuthority, isToolAuthorityDenial, type ToolExecutionAuthority } from '@parallext/shared';
+import { buildTurnAuthority, engineAuthorityFor } from './turn-authority';
 
 /**
  * ═══ LA CADENA COMPLETA, SIN MOCKS ENTRE LAS PIEZAS QUE DECIDEN ═══
@@ -65,23 +66,23 @@ function buildExecutor(overrides: Record<string, any> = {}) {
 }
 
 /**
- * La autoridad del turno, armada como la arma `conversations.service`: la lista
- * publicada del contrato, el bloqueo del perfil y lo que el dueño apagó.
+ * La autoridad del turno, armada con **la misma función que corre en
+ * producción** — no con una copia.
+ *
+ * Replicar el armado acá era el riesgo real de este E2E: la prueba y el código
+ * empiezan diciendo lo mismo y dejan de hacerlo sin que nada falle.
  */
 function turnAuthorityFrom(
     contract: Awaited<ReturnType<EffectiveCapabilityService['resolve']>>,
     deniedTools: readonly string[] = [],
 ): ToolExecutionAuthority {
-    return {
-        source: 'turn_contract',
-        allowedTools: contract.publishedTools,
+    return engineAuthorityFor({
+        contract,
         commitmentBlocked: contract.writersBlocked
             ? { reason: 'capability:blocked:profile_blocked' }
             : null,
         deniedTools,
-        resolvedAt: contract.resolvedAt,
-        subtypeProfileId: contract.subtypeProfileId,
-    };
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -388,5 +389,57 @@ describe('Procedures se detiene con el motivo exacto', () => {
         );
 
         expect(String(result.text)).not.toMatch(/create_appointment|toolsConfig|capability/);
+    });
+});
+
+describe('el armado de la autoridad, ahora probable por sí solo', () => {
+    it('un contrato irresoluble produce una autoridad VIEJA, no una vacía', async () => {
+        // La diferencia es la que decide el caso: una lista vacía con fecha de
+        // hoy se lee como "alguien decidió que no publica nada". Vieja se lee
+        // como lo que es — nadie decidió— y el ejecutor la rechaza por
+        // `authority_stale`, que es un motivo distinto y se repara en otro lado.
+        const authority = engineAuthorityFor({
+            contract: undefined, commitmentBlocked: null, deniedTools: [],
+        });
+
+        expect(authority.allowedTools).toEqual([]);
+        expect(decideToolAuthority(authority, 'search_faqs', { isNonCommittal: true }))
+            .toMatchObject({ allowed: false, reason: 'authority_stale' });
+    });
+
+    it('la lista del bucle del LLM puede ser más chica que la del contrato', async () => {
+        // Los motores ven lo publicado; el bucle ve lo que quedó tras las
+        // familias asincrónicas y el paso de identidad. Son dos listas y la
+        // misma autoridad.
+        const contract = await buildCapabilityService().resolve({
+            tenantId, schemaName, industry: 'moda_belleza', subType: 'barberia',
+            toolsConfig: { appointments: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+        });
+        const input = { contract, commitmentBlocked: null, deniedTools: [] };
+
+        const forEngines = engineAuthorityFor(input);
+        const forLlm = buildTurnAuthority(input, ['check_availability']);
+
+        expect(forEngines.allowedTools).toContain('create_appointment');
+        expect(forLlm.allowedTools).toEqual(['check_availability']);
+        // Y las dos comparten el sello temporal del contrato: son el mismo turno.
+        expect(forLlm.resolvedAt).toBe(forEngines.resolvedAt);
+    });
+
+    it('lo que el dueño apagó viaja en la autoridad, no en un parámetro aparte', async () => {
+        const contract = await buildCapabilityService().resolve({
+            tenantId, schemaName, industry: 'moda_belleza', subType: 'barberia',
+            toolsConfig: { appointments: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+        });
+        const authority = engineAuthorityFor({
+            contract, commitmentBlocked: null, deniedTools: ['cancel_appointment'],
+        });
+
+        // Publicada y apagada a la vez: el motivo tiene que ser el del dueño.
+        expect(authority.allowedTools).toContain('cancel_appointment');
+        expect(decideToolAuthority(authority, 'cancel_appointment', { isNonCommittal: false }))
+            .toMatchObject({ allowed: false, reason: 'disabled_by_owner' });
     });
 });

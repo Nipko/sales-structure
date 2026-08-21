@@ -1551,13 +1551,17 @@ jest apps/dashboard →  220 passed /  27 suites, 0 fallos
 
 ### Verificación completa
 
+Al cerrar los 20 pendientes internos (U33-U52):
+
 ```
-npx tsc --noEmit  → exit 0 en shared, api, dashboard, landing, whatsapp, mobile
-jest apps/api        → 2628 passed / 290 suites (1 skipped), 0 fallos
-jest apps/dashboard  →  207 passed /  25 suites, 0 fallos
-jest apps/mobile     →  319 passed /  24 suites, 0 fallos
+npx tsc --noEmit  → exit 0 en shared, api, dashboard
+jest apps/api        → 3039 passed / 306 suites (1 skipped), 0 fallos
+jest apps/dashboard  →  220 passed /  27 suites, 0 fallos
 jest app.bootstrap   →    1 passed — DI de NestJS limpio
 ```
+> El bootstrap exige `ENCRYPTION_KEY` de 64 hex en el shell; sin él falla por entorno, no por DI.
+
+Línea de base al empezar esta tanda: 2628 API / 207 dashboard. **+411 pruebas en API y +13 en dashboard**, ninguna debilitada. Las que cambiaron de expectativa lo hicieron porque **afirmaban el defecto** y cada una quedó anotada con por qué: el `+57` por defecto que documentaba la corrupción, `professional_case` "sin pantalla propia", el conteo de tools estático, y tres fixtures que usaban `retail/marketplace` —un perfil bloqueado— como vertical arbitraria.
 
 Línea de base al empezar la sesión: 2523 API / 161 dashboard. Ninguna prueba fue debilitada; las que cambiaron de expectativa lo hicieron porque **afirmaban el defecto** (farmacia sin Pedidos, guía de skillset siempre en inglés, cinco plantillas vacías que ganaban a la meta del dueño, fotografía sin paquetes), y cada una quedó anotada con por qué.
 
@@ -1627,9 +1631,11 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | Revisión de dominio de los contratos por perfil | Experto por rubro, que el plan exige antes de certificar | Dueño + experto |
 | Fase 6 — pilotos y certificación | 3-5 tenants por perfil, shadow mode, evidencia E2E, sign-off | Dueño |
 
-### ⏳ Pendiente interno — implementable hoy
+### ⏳ Pendiente interno — los 20, cerrados
 
-Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni tenant piloto.**
+Los veinte quedaron implementados, con pruebas que los fijan y suites completas verdes. **La lista se conserva tachada, no borrada**: lo que se cerró y con qué unidad es la única forma de contestar después "¿esto ya se hizo?" sin volver a auditarlo.
+
+Lo que sigue **no** es una lista de trabajo interno pendiente: es el bloque ⛔ de más arriba —lo que depende de una credencial, un experto o un tenant piloto— y lo que aparezca de auditar de nuevo lo que se acaba de construir.
 
 | # | Pendiente |
 |---|---|

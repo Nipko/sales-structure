@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { SmsCreditsService } from './sms-credits.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { SmsKillSwitchService } from './sms-kill-switch.service';
 
 const TWILIO_API = 'https://api.twilio.com/2010-04-01';
@@ -42,6 +43,7 @@ export class TenantNotificationSmsService {
         private readonly smsCredits: SmsCreditsService,
         private readonly prisma: PrismaService,
         private readonly killSwitch: SmsKillSwitchService,
+        private readonly regionalProfile: RegionalProfileService,
     ) {
         this.accountSid = config.get<string>('SMS_ALERT_ACCOUNT_SID');
         this.authToken = config.get<string>('SMS_ALERT_AUTH_TOKEN');
@@ -174,7 +176,10 @@ export class TenantNotificationSmsService {
         try {
             const schemaName = await this.prisma.getTenantSchemaName(tenantId);
             if (!schemaName) return false;
-            const normalized = normalizePhoneE164(phone) || phone;
+            // Acá un número mal normalizado hace lo PEOR posible: no
+            // encuentra el opt-out y le manda a alguien que pidió no recibir.
+            const region = await this.regionalProfile.phoneRegionFor(tenantId);
+            const normalized = normalizePhoneE164(phone, region) || phone;
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT 1

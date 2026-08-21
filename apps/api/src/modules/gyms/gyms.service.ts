@@ -195,6 +195,8 @@ export class GymsService {
      * único lugar donde se calcula el período y se siembran los créditos.
      */
     async createMemberFromRow(schemaName: string, row: {
+        /** País del negocio. Null = no declarado; el número queda crudo. */
+        phoneRegion?: string | null;
         name?: string;
         phone?: string;
         email?: string;
@@ -205,7 +207,9 @@ export class GymsService {
         const phone = String(row.phone || '').trim();
         if (!phone) throw new BadRequestException('El teléfono es obligatorio para identificar al socio.');
 
-        const normalized = normalizePhoneE164(phone) || phone;
+        // `phone_normalized` es con lo que después el canal reconoce al
+        // socio. Un `+57` inventado lo vuelve irreconocible cuando escribe.
+        const normalized = normalizePhoneE164(phone, row.phoneRegion) || phone;
 
         // Buscar por teléfono normalizado: es el único dato que un padrón trae
         // siempre y el que después usa el canal para reconocerlo.

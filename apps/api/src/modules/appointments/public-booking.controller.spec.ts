@@ -100,6 +100,10 @@ describe('PublicBookingController canonical appointment handoff', () => {
             services as any,
             calendar as any,
             identity as any,
+            // El negocio de estas pruebas opera en Colombia: sin país declarado
+            // un teléfono sin prefijo ya no se normaliza, y la reserva se
+            // rechazaría por "teléfono inválido".
+            { phoneRegionFor: jest.fn().mockResolvedValue('CO') } as any,
         );
         return { controller, prisma, appointments, calendar, identity, redis, existingAppointments };
     }

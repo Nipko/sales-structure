@@ -38,7 +38,8 @@ describe('LeadsRepository column whitelist', () => {
     const pipeline: any = {
       resolveTenantStage: jest.fn().mockResolvedValue({ slug: 'nuevo' }),
     };
-    return { repository: new LeadsRepository(prisma, redis, pipeline), calls };
+    const regionalProfile: any = { phoneRegionFor: jest.fn().mockResolvedValue('CO') };
+    return { repository: new LeadsRepository(prisma, redis, pipeline, regionalProfile), calls };
   }
 
   /** Pulls the column list out of `INSERT INTO leads (a, b, c) VALUES …`. */

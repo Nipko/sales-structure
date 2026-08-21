@@ -7,15 +7,19 @@
  * cosmetic problem: contacts are matched on it, so two different people can be
  * merged into one — and no undo puts that back.
  *
- * `defaultRegion` is now an ISO 3166-1 country the caller resolves from the
- * tenant's operating identity. The numeric-code parameter still works so the
- * existing call sites keep compiling while they are migrated one at a time.
+ * `region` is an ISO 3166-1 country the caller resolves from the tenant's
+ * operating identity, and it **no longer has a default**. A bare national
+ * number with no region is not normalisable: there is no country to attach it
+ * to, and inventing one is the bug this parameter exists to fix. It returns
+ * `null` instead — every call site already keeps the raw value when the
+ * normaliser declines, so nothing is lost except a false certainty.
  *
  * Examples:
  *   normalizePhoneE164('300 123 4567', 'CO')  → '+573001234567'
  *   normalizePhoneE164('55 1234 5678', 'MX')  → '+525512345678'
- *   normalizePhoneE164('+5491112345678')      → '+5491112345678'
- *   normalizePhoneE164('invalid')             → null
+ *   normalizePhoneE164('+5491112345678')      → '+5491112345678'   (explícito)
+ *   normalizePhoneE164('300 123 4567')        → null  (no hay país que asumir)
+ *   normalizePhoneE164('invalid', 'CO')       → null
  */
 
 const COUNTRY_LENGTHS: Record<string, number[]> = {
@@ -67,11 +71,17 @@ function toCallingCode(region: string | null | undefined): string | null {
 
 export function normalizePhoneE164(
     raw: string | null | undefined,
-    defaultRegion: string = '57',
+    region?: string | null,
 ): string | null {
     if (!raw) return null;
 
-    const defaultCountryCode = toCallingCode(defaultRegion) || '57';
+    // Sin región resoluble NO hay país por defecto. El `'57'` que había acá lo
+    // heredaban las trece llamadas —ninguna lo pasaba— y convertía en
+    // colombiano cualquier número mexicano o argentino escrito sin prefijo. En
+    // identidad eso no es cosmético: los contactos se cruzan por este valor,
+    // así que dos personas distintas terminaban fusionadas en una y no hay
+    // deshacer que las separe.
+    const defaultCountryCode = toCallingCode(region);
 
     // Strip everything that isn't a digit or +
     let digits = raw.replace(/[^\d+]/g, '');
@@ -106,8 +116,15 @@ export function normalizePhoneE164(
         countryCode = defaultCountryCode;
         nationalNumber = digits;
     } else {
+        // El barrido genérico exige que el largo nacional sea VÁLIDO para ese
+        // código, no sólo que el número empiece con él. Sin esa condición
+        // `5512345678` se leía como Brasil (`55` + ocho dígitos, que Brasil no
+        // usa) y salía un `+55…` inventado con la misma confianza que uno
+        // real. Un prefijo no es una identificación: coincidir en los dos
+        // primeros dígitos le pasa a cualquier número.
         for (const code of Object.keys(COUNTRY_LENGTHS).sort((a, b) => b.length - a.length)) {
-            if (digits.startsWith(code)) {
+            if (digits.startsWith(code)
+                && COUNTRY_LENGTHS[code].includes(digits.length - code.length)) {
                 countryCode = code;
                 nationalNumber = digits.slice(code.length);
                 break;
@@ -115,8 +132,10 @@ export function normalizePhoneE164(
         }
     }
 
-    // If no country code detected, prepend the tenant's
+    // If no country code detected, prepend the tenant's — y si no hay tenant
+    // que aportar, no se inventa: el número queda sin normalizar.
     if (!countryCode) {
+        if (!defaultCountryCode) return null;
         countryCode = defaultCountryCode;
         nationalNumber = digits;
     }
@@ -125,11 +144,18 @@ export function normalizePhoneE164(
     const validLengths = COUNTRY_LENGTHS[countryCode];
     if (validLengths && !validLengths.includes(nationalNumber.length)) {
         // Try without country code assumption — maybe the whole thing is a national number
-        if (COUNTRY_LENGTHS[defaultCountryCode]?.includes(digits.length)) {
+        if (defaultCountryCode && COUNTRY_LENGTHS[defaultCountryCode]?.includes(digits.length)) {
             countryCode = defaultCountryCode;
             nationalNumber = digits;
+        } else if (!defaultCountryCode) {
+            // Sin país declarado no hay "mejor esfuerzo" posible: un largo que
+            // no corresponde a ningún país conocido es un número que no
+            // sabemos leer, y devolverlo con un prefijo es inventarlo.
+            return null;
         } else {
-            // Still invalid length — return best effort if reasonable
+            // Still invalid length — return best effort if reasonable. Acá sí:
+            // el dueño DECLARÓ dónde opera, y un largo raro dentro de su
+            // propio país es más probablemente un plan nuevo que un error.
             if (nationalNumber.length < 7 || nationalNumber.length > 15) return null;
         }
     }

@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { randomInt } from 'crypto';
 
 /** Cuánto dura la verificación una vez lograda, dentro de la misma conversación. */
@@ -48,6 +49,7 @@ export class ChatIdentityService {
         private readonly redis: RedisService,
         private readonly email: EmailService,
         private readonly sms: TenantNotificationSmsService,
+        @Optional() private readonly regionalProfile?: RegionalProfileService,
     ) {}
 
     private verifiedKey(conversationId: string) { return `chat:verified:${conversationId}`; }
@@ -152,7 +154,13 @@ export class ChatIdentityService {
             // Mientras tanto, un contacto sin correo cae en `no_channel` y la tool
             // escala a un humano — que es lo correcto: sin canal fuera de banda no
             // hay verificación posible, y fingir que sí la hay sería peor.
-            const phone = contact.phone_normalized || normalizePhoneE164(contact.phone || '') || contact.phone;
+            // El normalizado guardado gana; si no hay, se normaliza con el
+            // país del negocio y, sin país, se usa el número crudo. Mandar el
+            // código a un `+57` inventado es mandarlo a otra persona.
+            const identityRegion = await this.regionalProfile?.phoneRegionFor(tenantId) ?? null;
+            const phone = contact.phone_normalized
+                || normalizePhoneE164(contact.phone || '', identityRegion)
+                || contact.phone;
             if (phone && conversationChannel !== 'sms') {
                 const hint = this.maskPhone(phone);
                 await this.storeCode(conversationId, contactId, code, 'sms', hint);

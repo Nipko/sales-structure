@@ -1181,6 +1181,30 @@ npx tsc --noEmit (api)  → exit 0
 jest apps/api → 2756 passed / 295 suites (1 skipped), 0 fallos
 ```
 
+### U40 — El `+57` que nadie pasaba y todos heredaban
+
+**Pendiente interno 11 (primera mitad)**
+
+`normalizePhoneE164` tenía `defaultCountryCode = '57'` y **ninguna** de las catorce llamadas lo pasaba. Un número mexicano o argentino escrito sin prefijo se volvía colombiano. En identidad eso no es cosmético: los contactos se cruzan por `phone_normalized`, así que dos personas distintas terminaban **fusionadas en un solo contacto**, y no hay deshacer que las separe.
+
+**El default se eliminó, no se cambió.** Sin país no hay país: un número nacional sin región devuelve `null`. Todos los llamadores ya hacían `normalizePhoneE164(x) || x`, así que no se pierde el dato — se pierde una certeza falsa. Un E.164 explícito sigue funcionando sin región, porque perder el prefijo que el cliente **sí** escribió es el error opuesto.
+
+**Y el barrido de prefijos también inventaba.** El bucle genérico aceptaba cualquier código con el que el número empezara, sin mirar el largo: `5512345678` se leía como Brasil —`55` más ocho dígitos, un largo que Brasil no usa— y salía un `+55…` con la misma confianza que uno real. Un prefijo no es una identificación; coincidir en dos dígitos le pasa a cualquier número. Ahora el barrido exige un largo nacional válido, y el "mejor esfuerzo" con largo raro sobrevive **sólo** cuando el dueño declaró su país.
+
+**`phoneRegionFor(tenantId)` devuelve `null` cuando la procedencia es `fallback`**, y ésa es toda la idea. Un fallback es "no sabemos, pusimos algo para seguir"; usarlo para decidir a qué país pertenece un número es el `+57` de antes con otro nombre, sólo que escondido detrás de un servicio que parece saber. Un `derived` que cuelga de un país que a su vez es fallback tampoco sabe más que él.
+
+**Los catorce llamadores, con la consecuencia de cada uno anotada** — identidad (fusiona personas), leads y su `phone_normalized` (deduplica), import CSV (mil filas de una, y el error ahora distingue "archivo mal" de "falta declarar el país"), import de CRM externo y su preview (que clasificaba con otra regla que la importación: el dueño veía 12 coincidencias y se creaban 12 contactos), reserva pública, padrón de gimnasio, la llave de identidad y el OTP del portal (mandar el código a un número inventado es mandárselo a otra persona), el opt-out de SMS (el peor: no encuentra el opt-out y le escribe a quien pidió no recibir), el contacto que crea el canal, y el 2FA de un usuario de plataforma.
+
+`RegionalProfileService` pasó a un módulo **global** propio: sus consumidores son transversales y colgarlo de `TenantsModule` obligaba a nueve módulos a importar Tenants entero —con sus controladores— sólo para saber en qué país opera el negocio, cerrando varios ciclos.
+
+**Pruebas** — `phone-region-consumers.spec.ts` (nuevo, 17): que la función no invente un país, que un prefijo no alcance para identificar, que el país declarado gane sobre el barrido, y —la mitad que se pierde primero— que **ningún llamador vuelva a omitir la región**, barriendo el fuente, porque una llamada de un solo argumento compila perfecto. Esa prueba encontró un consumidor que se me había pasado (el preview del import de CRM). `regional-profile.service.spec.ts` invirtió la aserción que documentaba el defecto.
+
+**Verificación**
+```
+npx tsc --noEmit (api)  → exit 0
+jest apps/api → 2774 passed / 296 suites (1 skipped), 0 fallos
+```
+
 ## Estado del programa — cinco categorías, sin mezclar
 
 > **Nota de corrección (ago 2026).** La versión anterior de esta sección declaraba fases "cerradas" apoyándose en que su gate mínimo pasaba, y metía en una sola tabla de "bloqueos" cosas que no dependen de nadie de afuera. Era una lectura optimista: **un gate que pasa no es una fase completa**, y llamar "bloqueo" a trabajo interno pendiente lo saca del radar. Se reclasifica todo en cinco categorías que no se mezclan:
@@ -1287,7 +1311,7 @@ Lo que sigue, en el orden acordado. **Ninguno depende de credencial, experto ni 
 | ~~8~~ | ✅ cerrado en **U37** |
 | ~~9~~ | ✅ cerrado en **U38** |
 | ~~10~~ | ✅ cerrado entre **U35** (las 4 lecturas de proveedor) y **U39** (MCP). El Channel Manager no aporta tools propias: sus reservas entran por `check_property_availability`, que ya tiene política revisada |
-| 11 | Migrar los consumidores de `normalizePhoneE164` al `TenantRegionalProfile`; eliminar el default `+57`; UI/API de revisión regional |
+| 11 | ◐ **Hecho en U40**: los 14 consumidores migrados al `TenantRegionalProfile` y el default `+57` eliminado. Queda la **UI/API de revisión regional** (`queueConflictsForReview` todavía sin llamador, y sin pantalla que escriba el valor declarado) |
 | 12 | Eliminar fallbacks productivos COP / es-CO / Bogotá fuera de decisiones regionales explícitas |
 | 13 | Una sola fuente de schema para `products` |
 | 14 | `VerticalPromptContractV2`, `IntentContract`, `SlotSchema`, `NavigationPolicy`, `CertificationEvidenceV2` |

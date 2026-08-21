@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { TenantThrottleService } from '../../../throttle/tenant-throttle.service';
 import { normalizePhoneE164 } from '../../../../common/utils/phone.util';
+import { RegionalProfileService } from '../../../tenants/regional-profile.service';
 import { PipelineService, resolveTenantNativeStage } from '../../../pipeline/pipeline.service';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class ImportExportService {
         private redis: RedisService,
         private throttle: TenantThrottleService,
         private pipelineService: PipelineService,
+        private regionalProfile: RegionalProfileService,
     ) {}
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {
@@ -38,6 +40,8 @@ export class ImportExportService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant not found');
         const stageCatalog = await this.pipelineService.getTenantStageCatalog(tenantId, schema);
+        // Una vez para todo el archivo: es la misma para las mil filas.
+        const phoneRegion = await this.regionalProfile.phoneRegionFor(tenantId);
 
         // Plan contact cap — enforced incrementally so the bulk import can't
         // bypass the per-plan limit the way single-create (crm.controller) is gated.
@@ -159,9 +163,18 @@ export class ImportExportService {
                 }
 
                 // Phone Normalization using normalizePhoneE164
-                const normalizedPhone = normalizePhoneE164(rawPhone);
+                const normalizedPhone = normalizePhoneE164(rawPhone, phoneRegion);
                 if (!normalizedPhone) {
-                    errors.push(`Fila ${i + 1}: Teléfono inválido o formato no reconocido (${rawPhone})`);
+                    // Sin país declarado, un número escrito sin prefijo no es
+                    // normalizable — y decirlo es mejor que asumir Colombia y
+                    // deduplicar contra la persona equivocada. El mensaje
+                    // distingue los dos casos para que el dueño sepa si el
+                    // problema es el archivo o su configuración.
+                    errors.push(phoneRegion
+                        ? `Fila ${i + 1}: Teléfono inválido o formato no reconocido (${rawPhone})`
+                        : `Fila ${i + 1}: el teléfono (${rawPhone}) no trae código de país y el negocio `
+                            + 'no tiene país declarado. Escribilo en formato internacional (+57…) o '
+                            + 'declará el país en Configuración.');
                     skipped++;
                     continue;
                 }

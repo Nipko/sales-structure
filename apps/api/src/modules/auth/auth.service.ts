@@ -22,6 +22,7 @@ import { JwtPayload, UserRole } from '@parallext/shared';
 import { TIMEZONE_COUNTRY, SPANISH_SPEAKING_COUNTRIES } from '../../common/utils/billing-country.util';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import {
     InvalidVerticalSelectionError,
@@ -86,6 +87,7 @@ export class AuthService {
         private verticalsService: VerticalsService,
         private throttleService: TenantThrottleService,
         private platformSms: PlatformSmsService,
+        private regionalProfile: RegionalProfileService,
     ) { }
 
     /** Public for SAML and any boundary that must mint a tenant-scoped session. */
@@ -1347,7 +1349,14 @@ export class AuthService {
         const code = String(crypto.randomInt(100000, 1000000));
         await this.redis.set(`2fa:sms:${userId}`, code, 300);
 
-        const to = normalizePhoneE164(user.phone) || user.phone;
+        // Éste es un usuario de la plataforma, no un cliente del tenant: el
+        // número lo cargó él mismo en su perfil. Se usa el país del negocio al
+        // que pertenece cuando está declarado y, si no, se manda tal como lo
+        // escribió — que para un código de acceso propio es lo correcto.
+        const userRegion = user.tenantId
+            ? await this.regionalProfile.phoneRegionFor(user.tenantId)
+            : null;
+        const to = normalizePhoneE164(user.phone, userRegion) || user.phone;
         const sent = await this.platformSms.sendTo(to, `Parallly: tu codigo de acceso es ${code}. Valido 5 minutos.`);
         if (!sent) throw new BadRequestException('SMS delivery unavailable. Try email instead.');
 

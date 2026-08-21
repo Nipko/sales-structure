@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ExternalCrmService } from './external-crm.service';
 import { CrmAdapterFactory } from './crm-adapter.factory';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import type { CanonicalContact } from './types/crm.types';
 
 export const CRM_IMPORT_QUEUE = 'crm-import';
@@ -32,6 +33,7 @@ export class CrmImportService {
         private readonly prisma: PrismaService,
         private readonly external: ExternalCrmService,
         private readonly factory: CrmAdapterFactory,
+        private readonly regionalProfile: RegionalProfileService,
         @InjectQueue(CRM_IMPORT_QUEUE) private readonly queue: Queue<CrmImportJob>,
     ) {}
 
@@ -148,6 +150,9 @@ export class CrmImportService {
             [job.importId],
         );
 
+        // Una vez para toda la importación: es la misma para las 20.000 filas.
+        const phoneRegion = await this.regionalProfile.phoneRegionFor(job.tenantId);
+
         let cursor: string | null | undefined = undefined;
         let totalPulled = 0;
         let matched = 0;
@@ -164,7 +169,7 @@ export class CrmImportService {
 
                 for (const c of page.items) {
                     try {
-                        const result = await this.upsertImported(schema, job.provider, c);
+                        const result = await this.upsertImported(schema, job.provider, c, phoneRegion);
                         if (result === 'matched') matched++;
                         else if (result === 'created') created++;
                         else skipped++;
@@ -214,8 +219,12 @@ export class CrmImportService {
         schema: string,
         provider: string,
         c: CanonicalContact,
+        phoneRegion: string | null,
     ): Promise<'matched' | 'created' | 'skipped'> {
-        const phoneE164 = c.phoneE164 ? normalizePhoneE164(c.phoneE164) : null;
+        // Un CRM externo suele traer números nacionales sin prefijo. Sin país
+        // del tenant no se les inventa uno: el contacto se saltea si tampoco
+        // hay correo, en vez de cruzarse contra la persona equivocada.
+        const phoneE164 = c.phoneE164 ? normalizePhoneE164(c.phoneE164, phoneRegion) : null;
         const email = c.email?.trim().toLowerCase() || null;
         if (!phoneE164 && !email) return 'skipped';
 
@@ -261,13 +270,17 @@ export class CrmImportService {
 
     private async classify(tenantId: string, items: CanonicalContact[]) {
         const schema = await this.tenantSchema(tenantId);
+        // El preview clasifica con la MISMA regla que la importación: si acá
+        // se normalizara distinto, el dueño vería "12 coincidencias" y después
+        // se crearían 12 contactos nuevos.
+        const phoneRegion = await this.regionalProfile.phoneRegionFor(tenantId);
         let matchCount = 0;
         let newCount = 0;
         let invalidCount = 0;
         const enriched: Array<CanonicalContact & { matchInternalId?: string | null }> = [];
 
         for (const c of items) {
-            const phoneE164 = c.phoneE164 ? normalizePhoneE164(c.phoneE164) : null;
+            const phoneE164 = c.phoneE164 ? normalizePhoneE164(c.phoneE164, phoneRegion) : null;
             const email = c.email?.trim().toLowerCase() || null;
             if (!phoneE164 && !email) {
                 invalidCount++;

@@ -28,8 +28,11 @@ describe('ImportExportService tenant-native stage validation', () => {
             getTenantStageCatalog: jest.fn().mockResolvedValue(saludCatalog()),
             writeLeadStage: jest.fn(),
         };
+        // El tenant de estas pruebas opera en Colombia: sin región declarada
+        // los números sin prefijo no se normalizan y las filas se saltearían.
+        const regionalProfile: any = { phoneRegionFor: jest.fn().mockResolvedValue('CO') };
         return {
-            service: new ImportExportService(prisma, redis, throttle, pipeline),
+            service: new ImportExportService(prisma, redis, throttle, pipeline, regionalProfile),
             prisma,
         };
     }

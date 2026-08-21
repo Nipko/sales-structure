@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 @Injectable()
 export class IdentityService {
@@ -10,6 +11,7 @@ export class IdentityService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        private readonly regionalProfile: RegionalProfileService,
     ) {}
 
     /**
@@ -33,7 +35,13 @@ export class IdentityService {
     ): Promise<void> {
         const schemaName = await this.getSchema(tenantId);
         const rawPhone = contact.phone && /^\+?[\d\s()-]{7,20}$/.test(contact.phone) ? contact.phone : null;
-        const phoneNorm = rawPhone ? normalizePhoneE164(rawPhone) : null;
+        // Los contactos se cruzan por este valor. Sin país del tenant, un
+        // número escrito sin prefijo se volvía `+57…` y dos personas distintas
+        // terminaban fusionadas en una — sin deshacer que las separe. Ahora,
+        // si no sabemos el país, el número queda sin normalizar y no cruza con
+        // nadie: perder una coincidencia se arregla; una fusión no.
+        const phoneRegion = await this.regionalProfile.phoneRegionFor(tenantId);
+        const phoneNorm = rawPhone ? normalizePhoneE164(rawPhone, phoneRegion) : null;
         const email = contact.email && contact.email.includes('@') ? contact.email.toLowerCase().trim() : null;
         const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidPattern.test(contact.id)) {

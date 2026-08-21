@@ -159,10 +159,18 @@ describe('estado del country pack', () => {
 describe('normalización telefónica por región', () => {
     it('un número nacional mexicano ya no se vuelve colombiano', () => {
         expect(normalizePhoneE164('55 1234 5678', 'MX')).toBe('+525512345678');
-        // Sin región, sigue cayendo a Colombia — que es exactamente la
-        // corrupción original y por qué los llamadores deben pasar la región
-        // del tenant en vez de confiar en el default.
-        expect(normalizePhoneE164('55 1234 5678')).toBe('+575512345678');
+        // Y sin región tampoco cae a Colombia: el default `'57'` era la
+        // corrupción original, y ninguno de los trece llamadores lo pasaba.
+        // No saber el país no es saber que es Colombia — se devuelve null y el
+        // llamador se queda con el número tal como lo escribió el cliente.
+        expect(normalizePhoneE164('55 1234 5678')).toBeNull();
+        expect(normalizePhoneE164('3001234567', null)).toBeNull();
+    });
+
+    it('un E.164 explícito no necesita región', () => {
+        // Perder el prefijo que el cliente SÍ escribió sería el error opuesto.
+        expect(normalizePhoneE164('+573001234567')).toBe('+573001234567');
+        expect(normalizePhoneE164('+52 55 1234 5678')).toBe('+525512345678');
     });
 
     it('respeta un E.164 explícito por encima de la región del tenant', () => {

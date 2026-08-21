@@ -9,6 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { GymsService } from './gyms.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('gyms')
@@ -19,6 +20,7 @@ export class GymsController {
     constructor(
         private readonly service: GymsService,
         private readonly prisma: PrismaService,
+        private readonly regionalProfile: RegionalProfileService,
     ) {}
 
     // Plans
@@ -185,7 +187,14 @@ export class GymsController {
     @ApiOperation({ summary: "Bulk-import gym members from a parsed CSV/XLSX" })
     async bulkImportMembers(@Param('tenantId') tenantId: string, @Body() body: { rows?: any[] }) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await bulkImportRows(body?.rows, row => this.service.createMemberFromRow(schemaName, row));
+        // Una vez para el archivo entero. Sin país declarado los teléfonos
+        // quedan crudos: el socio no se pierde, pero el canal no lo va a
+        // reconocer hasta que el dueño declare dónde opera.
+        const phoneRegion = await this.regionalProfile.phoneRegionFor(tenantId);
+        const data = await bulkImportRows(
+            body?.rows,
+            row => this.service.createMemberFromRow(schemaName, { ...row, phoneRegion }),
+        );
         return { success: true, data };
     }
 }

@@ -7,6 +7,7 @@ import { cpmsg } from './customer-portal-i18n';
 import { SmsSenderService } from '../sms-notifications/sms-sender.service';
 import { EmailService } from '../email/email.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 @Injectable()
 export class CustomerPortalService {
@@ -19,6 +20,7 @@ export class CustomerPortalService {
         private readonly config: ConfigService,
         private readonly smsSender: SmsSenderService,
         private readonly emailService: EmailService,
+        private readonly regionalProfile: RegionalProfileService,
     ) {}
 
     // ---- Helpers ----
@@ -173,7 +175,11 @@ export class CustomerPortalService {
         const message = cpmsg(lang, 'auth.codeMessage').replace('{code}', code);
         try {
             if (channel === 'sms') {
-                const to = normalizePhoneE164(identifier) || identifier;
+                // Sin país del tenant no se reescribe el número: se manda tal
+                // como lo escribió el cliente. Un `+57` inventado manda el
+                // código a un teléfono que no es suyo.
+                const region = await this.regionalProfile.phoneRegionFor(tenantId);
+                const to = normalizePhoneE164(identifier, region) || identifier;
                 const sent = await this.smsSender.sendToNumber(tenantId, to, message);
                 if (!sent) this.logger.warn(`Portal SMS code not delivered for tenant ${tenantId} (SMS channel connected?)`);
             } else {

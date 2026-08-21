@@ -101,6 +101,35 @@ export class RegionalProfileService {
         await this.redis.del(`regional:${tenantId}`).catch(() => undefined);
     }
 
+    /**
+     * La región con la que se puede normalizar un teléfono — o `null`.
+     *
+     * Devuelve `null` cuando la procedencia es `fallback`, y ésa es toda la
+     * idea: un fallback es "no sabemos, pusimos algo para seguir". Usarlo para
+     * decidir a qué país pertenece un número es el `+57` de antes con otro
+     * nombre — sólo que ahora escondido detrás de un servicio que parece
+     * saber. Sin región, el normalizador devuelve `null` y el llamador se
+     * queda con el número tal como lo escribió el cliente, que es la verdad.
+     *
+     * Un fallo de lectura tampoco inventa: `null` es "no sé", no "Colombia".
+     */
+    async phoneRegionFor(tenantId: string): Promise<string | null> {
+        try {
+            const profile = await this.resolve(tenantId);
+            const region = profile.phoneRegion;
+            if (!region || region.source === 'fallback') return null;
+            // `derived` de un país que a su vez es fallback no sabe más que él.
+            if (region.source === 'derived'
+                && profile.operatingCountry?.source === 'fallback') {
+                return null;
+            }
+            return region.value || null;
+        } catch (error: any) {
+            this.logger.warn(`[Regional] phoneRegion unavailable for ${tenantId}: ${error?.message}`);
+            return null;
+        }
+    }
+
     private async build(tenantId: string): Promise<TenantRegionalProfileV1> {
         let tenant: any = null;
         try {

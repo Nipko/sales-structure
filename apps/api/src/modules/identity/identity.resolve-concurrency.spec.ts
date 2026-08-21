@@ -104,7 +104,11 @@ describe('IdentityService serialized profile resolution', () => {
             get: jest.fn().mockResolvedValue(schemaName),
             set: jest.fn().mockResolvedValue(undefined),
         };
-        const service = new IdentityService(prisma as any, redis as any);
+        // El tenant de esta prueba opera en Colombia: sin región declarada el
+        // número queda sin normalizar y no cruzaría con nada, que es
+        // exactamente lo que estas pruebas de concurrencia miden.
+        const regionalProfile = { phoneRegionFor: jest.fn().mockResolvedValue('CO') };
+        const service = new IdentityService(prisma as any, redis as any, regionalProfile as any);
         return { service, prisma, profiles, identities, suggestions, calls };
     }
 

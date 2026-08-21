@@ -47,6 +47,7 @@ describe('AuthService tenant readiness claims', () => {
             {} as any,
             {} as any,
             {} as any,
+            { phoneRegionFor: jest.fn().mockResolvedValue(null) } as any,
         );
         return { service };
     }

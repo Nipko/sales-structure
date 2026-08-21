@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { Lead } from '../interfaces/lead.interface';
 import { normalizePhoneE164 } from '../../../common/utils/phone.util';
+import { RegionalProfileService } from '../../tenants/regional-profile.service';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 /**
@@ -62,6 +63,7 @@ export class LeadsRepository {
     private prisma: PrismaService,
     private redis: RedisService,
     private pipelineService: PipelineService,
+    private regionalProfile: RegionalProfileService,
   ) {}
 
   private async getTenantSchema(tenantId: string): Promise<string | null> {
@@ -288,7 +290,11 @@ export class LeadsRepository {
     record.stage = canonicalStage.slug;
     // Auto-normalize phone
     if (record.phone) {
-      record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
+      // Sin país del tenant no se inventa uno: queda el número tal como lo
+      // escribieron. Un `+57` falso acá deduplica leads que no son la misma
+      // persona.
+      const phoneRegion = await this.regionalProfile.phoneRegionFor(tenantId);
+      record.phone_normalized = normalizePhoneE164(record.phone, phoneRegion) || record.phone;
     }
     const fields = Object.keys(record).filter(k => record[k] !== undefined && (LEAD_WRITABLE_COLUMNS as readonly string[]).includes(k));
     const values = fields.map(k => record[k]);
@@ -322,7 +328,8 @@ export class LeadsRepository {
     }
     // Auto-normalize phone on update
     if (record.phone) {
-      record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
+      const phoneRegion = await this.regionalProfile.phoneRegionFor(tenantId);
+      record.phone_normalized = normalizePhoneE164(record.phone, phoneRegion) || record.phone;
     }
     const fields = Object.keys(record).filter(k => record[k] !== undefined && (LEAD_WRITABLE_COLUMNS as readonly string[]).includes(k));
     if (fields.length === 0) return this.getLeadById(tenantId, id);

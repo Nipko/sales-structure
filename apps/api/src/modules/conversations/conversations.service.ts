@@ -991,7 +991,13 @@ export class ConversationsService {
         const metaPic = (msg.metadata as any)?.contactProfilePic || '';
 
         if (!contact) {
-            const phoneNorm = normalizePhoneE164(contactId);
+            // `contactId` es el identificador del canal. En WhatsApp ES un
+            // teléfono, y el normalizado que se guarda acá es con el que
+            // después se cruza la identidad entre canales — así que un país
+            // inventado fusiona a dos personas. Sin país declarado se guarda
+            // null y el cruce simplemente no ocurre.
+            const contactRegion = await this.regionalProfile?.phoneRegionFor(tenantId) ?? null;
+            const phoneNorm = normalizePhoneE164(contactId, contactRegion);
             contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `INSERT INTO contacts (external_id, channel_type, name, phone, phone_normalized, avatar_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
                 [contactId, channelType, metaName || 'Unknown', contactId, phoneNorm, metaPic || null],

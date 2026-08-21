@@ -21,6 +21,7 @@ import { AppointmentsService } from './appointments.service';
 import { ServicesService } from './services.service';
 import { CalendarIntegrationService } from './calendar-integration.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { IdentityService } from '../identity/identity.service';
 import { resolveTrustedClientIp } from '../../common/utils/trusted-client-ip.util';
 import {
@@ -61,6 +62,7 @@ export class PublicBookingController {
         private servicesService: ServicesService,
         private calendarService: CalendarIntegrationService,
         private identityService: IdentityService,
+        private regionalProfile: RegionalProfileService,
     ) {}
 
     /** Max 10 attempts per tenant/IP and 30 total attempts per IP each minute. */
@@ -267,8 +269,10 @@ export class PublicBookingController {
         name: string;
         phone: string;
         email?: string;
+        /** País del negocio dueño del formulario. Null = no declarado. */
+        phoneRegion?: string | null;
     }): Promise<{ id: string; channelType: string; externalId: string; phoneAmbiguous: boolean }> {
-        const phoneNormalized = normalizePhoneE164(input.phone);
+        const phoneNormalized = normalizePhoneE164(input.phone, input.phoneRegion);
         if (!phoneNormalized) {
             throw new BadRequestException('customerPhone must be a valid phone number');
         }
@@ -475,12 +479,16 @@ export class PublicBookingController {
         if (!body.serviceId || !body.date || !body.startTime || !body.customerName || !body.customerPhone) {
             throw new BadRequestException('serviceId, date, startTime, customerName, and customerPhone are required');
         }
-        const phoneNormalized = normalizePhoneE164(body.customerPhone);
+        // El tenant se resuelve ANTES de normalizar: sin su país, un número
+        // escrito sin prefijo se volvía colombiano y la reserva quedaba
+        // atada al contacto equivocado.
+        const t = await this.resolveSchema(tenantSlug, 'write');
+        const phoneRegion = await this.regionalProfile.phoneRegionFor(t.tenantId);
+        const phoneNormalized = normalizePhoneE164(body.customerPhone, phoneRegion);
         if (!phoneNormalized) {
             throw new BadRequestException('customerPhone must be a valid phone number');
         }
 
-        const t = await this.resolveSchema(tenantSlug, 'write');
         this.requireBookingEnabled(t);
         const schemaName = t.schemaName;
         const svc = await this.servicesService.getById(schemaName, body.serviceId);
@@ -551,6 +559,7 @@ export class PublicBookingController {
         }
 
         const contact = await this.upsertPublicBookingContact(schemaName, {
+            phoneRegion,
             name: body.customerName,
             phone: body.customerPhone,
             email: body.customerEmail,

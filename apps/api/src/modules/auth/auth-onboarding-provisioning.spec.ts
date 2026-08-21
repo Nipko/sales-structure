@@ -83,6 +83,7 @@ describe('AuthService onboarding provisioning retry', () => {
             verticals,
             {} as any,
             {} as any,
+            { phoneRegionFor: jest.fn().mockResolvedValue(null) } as any,
         );
         const createSession = jest.spyOn(service as any, 'createSession').mockResolvedValue('session-id');
         const generateTokens = jest.spyOn(service as any, 'generateTokens').mockResolvedValue({
@@ -233,6 +234,7 @@ describe('AuthService onboarding provisioning retry', () => {
             verticals,
             {} as any,
             {} as any,
+            { phoneRegionFor: jest.fn().mockResolvedValue(null) } as any,
         );
         jest.spyOn(service as any, 'createSession').mockResolvedValue('session-id');
         jest.spyOn(service as any, 'generateTokens').mockResolvedValue({

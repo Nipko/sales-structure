@@ -696,6 +696,7 @@ jobs:
           GHCR_PAT: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
           GIT_SHA: ${{ github.sha }}
+          GIT_REF_NAME: ${{ github.ref_name }}
           PROD_DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PROD_DB_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
           PROD_REDIS_HOST: ${{ secrets.REDIS_HOST }}
@@ -720,6 +721,8 @@ jobs:
           PROD_META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
           PROD_META_CONFIG_ID: ${{ secrets.META_CONFIG_ID }}
           PROD_SYSTEM_USER_ID: ${{ secrets.SYSTEM_USER_ID }}
+          PROD_MESSENGER_FB_LOGIN_CONFIG_ID: ${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
+          PROD_INSTAGRAM_APP_SECRET: ${{ secrets.INSTAGRAM_APP_SECRET }}
           PROD_INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
           PROD_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           PROD_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
@@ -804,7 +807,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
           envs: |
-            GHCR_PAT,GITHUB_ACTOR,GIT_SHA,
+            GHCR_PAT,GITHUB_ACTOR,GIT_SHA,GIT_REF_NAME,
             PROD_DATABASE_URL,PROD_DB_PASSWORD,
             PROD_REDIS_HOST,PROD_REDIS_PASSWORD,
             PROD_INTERNAL_JWT_SECRET,PROD_JWT_SECRET,PROD_ENCRYPTION_KEY,
@@ -812,6 +815,7 @@ jobs:
             PROD_TENANT_SECRET_KEY,PROD_TENANT_SECRET_KEY_ID,PROD_TENANT_SECRET_PREVIOUS_KEYS,PROD_TENANT_SECRET_PLAINTEXT,
             PROD_VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS,PROD_VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS,PROD_INTEGRATION_WRITE_PROVIDERS,
             PROD_META_APP_ID,PROD_META_APP_SECRET,PROD_META_VERIFY_TOKEN,PROD_META_CONFIG_ID,PROD_SYSTEM_USER_ID,
+            PROD_MESSENGER_FB_LOGIN_CONFIG_ID,PROD_INSTAGRAM_APP_SECRET,
             PROD_INTERNAL_API_KEY,
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
             PROD_SENTRY_DSN,PROD_SENTRY_AUTH_TOKEN,PROD_SENTRY_ORG,PROD_SENTRY_PROJECT,PROD_SENTRY_API_URL,PROD_TELEGRAM_ALERT_BOT_TOKEN,PROD_TELEGRAM_ALERT_CHAT_ID,
@@ -832,6 +836,9 @@ jobs:
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
           timeout: 120s
           command_timeout: 20m
+          # This scalar is intentionally free of GitHub expressions. At more than
+          # 21k escaped characters, adding even one expression makes GitHub reject
+          # the whole workflow before any job starts. Pass values through envs.
           script: |
             set -e
             cd /opt/parallext-engine
@@ -902,8 +909,8 @@ jobs:
             # `git stash list`) so drifted infra scripts can't block the fast-forward,
             # then hard-reset to origin.
             git stash push -m "pre-deploy-$(date +%s)" || true
-            git checkout ${{ github.ref_name }}
-            git reset --hard "origin/${{ github.ref_name }}"
+            git checkout "$GIT_REF_NAME"
+            git reset --hard "origin/$GIT_REF_NAME"
 
             echo "===> Removing Watchtower (deploys happen only via this script)..."
             # Watchtower raced this pipeline: it pulled the :latest images pushed
@@ -970,11 +977,11 @@ jobs:
             echo "INTERNAL_API_KEY=${PROD_INTERNAL_API_KEY}" >> .env
             echo "WHATSAPP_VERIFY_TOKEN=${PROD_META_VERIFY_TOKEN}" >> .env
             echo "# Messenger OAuth" >> .env
-            echo "MESSENGER_FB_LOGIN_CONFIG_ID=${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}" >> .env
+            echo "MESSENGER_FB_LOGIN_CONFIG_ID=${PROD_MESSENGER_FB_LOGIN_CONFIG_ID}" >> .env
             echo "MESSENGER_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/messenger" >> .env
             echo "# Instagram OAuth" >> .env
             echo "INSTAGRAM_APP_ID=1472258884595741" >> .env
-            echo "INSTAGRAM_APP_SECRET=${{ secrets.INSTAGRAM_APP_SECRET }}" >> .env
+            echo "INSTAGRAM_APP_SECRET=${PROD_INSTAGRAM_APP_SECRET}" >> .env
             echo "INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback" >> .env
             echo "# Frontend Defaults" >> .env
             echo "NEXT_PUBLIC_API_URL=https://api.parallly-chat.cloud/api/v1" >> .env

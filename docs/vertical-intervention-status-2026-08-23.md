@@ -87,6 +87,8 @@ Límites honestos del alcance:
 
 ## 4. Los 17 `decision_gate` auditables
 
+> **Actualización del 24 de agosto de 2026:** las 34 decisiones del dueño —incluidos estos 17 gates, los siete perfiles `strategy: stop`, ocho decisiones transversales y dos de mercados/locales— fueron cerradas en el [registro de decisiones de producto](./product-decision-ledger-2026-08-24.md). Esta sección conserva la cola que originó la decisión; el alcance aprobado y sus condiciones de implementación se leen en el registro nuevo. Las revisiones expertas, culturales, de proveedor y piloto continúan abiertas.
+
 Estos 17 gates pertenecen al ledger de los 54 perfiles `build/hybrid`. Son 17 alertas en 14 perfiles; **no son las decisiones de los siete perfiles cuya estrategia runtime sí es `stop` y que aparecen en la sección 5.1**. Algunos perfiles `build/hybrid` conservan una alerta histórica `STOP` aunque no tengan estrategia `stop`. La decisión requerida es retirar formalmente la alerta/contención o redefinir el alcance, no asumir que una etiqueta histórica bloquea por sí sola el runtime.
 
 | Perfil | Gates | Decisión auditable pendiente |
@@ -107,6 +109,8 @@ Estos 17 gates pertenecen al ledger de los 54 perfiles `build/hybrid`. Son 17 al
 | `fotografia/producto` | `STOP`, `MISCLASS` | Confirmar si sigue como fotografía o migra a un flujo DAM/producción comercial. |
 
 ## 5. Cola FINAL de toma de decisiones y evidencia
+
+> **Estado vigente:** la toma de decisiones del dueño está cerrada 34/34 en el [registro del 24 de agosto](./product-decision-ledger-2026-08-24.md). Las tablas de decisiones siguientes son el inventario histórico previo al acta y no deben volver a tratarse como preguntas abiertas. La cola vigente comienza en revisión experta, proveedores, taxonomía/migración, packs de país y pilotos.
 
 Esta es la única cola posterior al cierre interno. Su orden evita construir sobre una taxonomía equivocada o encender una integración sin evidencia.
 

@@ -21,6 +21,8 @@ Parallly debe pasar de un selector de 75 etiquetas sobre 27 perfiles efectivos a
 
 ## 2. Decisiones de producto que deben aprobarse antes de desarrollar
 
+> **Actualización del 24 de agosto de 2026:** las decisiones del dueño quedaron aprobadas 34/34 y detalladas en el [registro de decisiones de producto](./product-decision-ledger-2026-08-24.md). Esta sección conserva los principios que deben materializarse en el plan y en código; no representa ya una cola de preguntas abiertas. Las validaciones expertas, culturales, de proveedor y piloto siguen siendo gates obligatorios.
+
 1. **Posicionamiento:** Parallly será capa conversacional y operativa ligera; no prometerá ser EHR, PMS hotelero, POS/KDS, DMS, core bancario, PAS de aseguradora o software de construcción completo.
 2. **Taxonomía:** retirar del selector cualquier subtipo sin diferencia defendible o comprometerse a su contrato mínimo. `wedding_planner` debe salir de Fotografía; `construccion`, `fintech`, `marketplace` y `aseguradora` requieren definición o división antes de código.
 3. **Semántica:** una oportunidad del CRM nunca adoptará el mismo nombre que una reserva, orden, caso, póliza, trabajo o solicitud operativa.

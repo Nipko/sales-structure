@@ -88,14 +88,17 @@ describe('photography date capacity contract', () => {
 
     it('provisions the hold clock for new and existing tenant schemas', () => {
         const sql = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8');
+        const compatibilityAlter =
+            'ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions"\n    ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;';
+        const capacityIndex = 'CREATE INDEX IF NOT EXISTS "idx_photo_sessions_capacity"';
         const photoTable = sql.slice(
             sql.indexOf('CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions"'),
             sql.indexOf('-- ============================================================',
                 sql.indexOf('CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions"')),
         );
         expect(photoTable).toContain('"hold_expires_at" TIMESTAMPTZ');
-        expect(sql).toContain(
-            'ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions"\n    ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;',
-        );
+        expect(sql).toContain(compatibilityAlter);
+        expect(sql).toContain(capacityIndex);
+        expect(sql.indexOf(compatibilityAlter)).toBeLessThan(sql.indexOf(capacityIndex));
     });
 });

@@ -64,6 +64,65 @@ async function schemaExists(tenantSchema) {
   return row.exists;
 }
 
+async function createLegacyPhotoSessions(tenantSchema) {
+  // Reproduce the production shape immediately before quote holds shipped:
+  // CREATE TABLE IF NOT EXISTS is a no-op because the table already exists,
+  // but hold_expires_at is not there yet.
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "${tenantSchema}"."photo_sessions" (
+      "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+      "contact_id" UUID,
+      "opportunity_id" UUID,
+      "conversation_id" UUID,
+      "session_type" VARCHAR(50) NOT NULL,
+      "package_name" VARCHAR(255),
+      "package_description" TEXT,
+      "client_name" VARCHAR(255),
+      "client_phone" VARCHAR(50),
+      "scheduled_at" TIMESTAMP,
+      "duration_minutes" INTEGER,
+      "location" TEXT,
+      "deliverables" JSONB DEFAULT '[]',
+      "deliverable_count" INTEGER,
+      "delivered_count" INTEGER DEFAULT 0,
+      "gallery_url" TEXT,
+      "gallery_password" VARCHAR(100),
+      "delivery_due_at" DATE,
+      "delivered_at" TIMESTAMP,
+      "price" DECIMAL(10,2),
+      "currency" VARCHAR(10) DEFAULT 'COP',
+      "deposit_paid" DECIMAL(10,2) DEFAULT 0,
+      "status" VARCHAR(30) DEFAULT 'scheduled',
+      "notes" TEXT,
+      "metadata" JSONB DEFAULT '{}',
+      "created_at" TIMESTAMP DEFAULT NOW(),
+      "updated_at" TIMESTAMP DEFAULT NOW()
+    )
+  `);
+}
+
+async function assertPhotoHoldMigration(tenantSchema) {
+  const [result] = await prisma.$queryRawUnsafe(
+    `SELECT
+       EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = $1 AND table_name = 'photo_sessions'
+           AND column_name = 'hold_expires_at'
+       ) AS column_exists,
+       EXISTS (
+         SELECT 1 FROM pg_indexes
+         WHERE schemaname = $1 AND tablename = 'photo_sessions'
+           AND indexname = 'idx_photo_sessions_capacity'
+       ) AS index_exists`,
+    tenantSchema,
+  );
+  assert.deepEqual(
+    result,
+    { column_exists: true, index_exists: true },
+    `legacy photo_sessions in ${tenantSchema} must add the hold clock before its capacity index`,
+  );
+}
+
 async function main() {
   await createTenant({
     name: 'CI legacy tenant',
@@ -92,6 +151,8 @@ async function main() {
 
   await prisma.$executeRawUnsafe(`CREATE SCHEMA "${schemaName}"`);
   await prisma.$executeRawUnsafe(`CREATE SCHEMA "${retainedSchemaName}"`);
+  await createLegacyPhotoSessions(schemaName);
+  await createLegacyPhotoSessions(retainedSchemaName);
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "${schemaName}"."agent_personas" (
       "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -135,6 +196,8 @@ async function main() {
   assert.equal(await schemaExists(retainedSchemaName), true, 'retained inactive schema must be migrated');
   assert.equal(await schemaExists(archivedSchemaName), false, 'archived inactive schema must not be recreated');
   assert.equal(await schemaExists(missingActiveSchemaName), false, 'missing active schema must not be recreated');
+  await assertPhotoHoldMigration(schemaName);
+  await assertPhotoHoldMigration(retainedSchemaName);
 
   const [column] = await prisma.$queryRawUnsafe(
     `SELECT EXISTS (

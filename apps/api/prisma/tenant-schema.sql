@@ -2925,7 +2925,6 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions" (
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_status" ON "{{SCHEMA_NAME}}"."photo_sessions" ("status", "scheduled_at" DESC);
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_contact" ON "{{SCHEMA_NAME}}"."photo_sessions" ("contact_id", "scheduled_at" DESC) WHERE "contact_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_delivery" ON "{{SCHEMA_NAME}}"."photo_sessions" ("delivery_due_at") WHERE "status" IN ('scheduled', 'in_progress');
-CREATE INDEX IF NOT EXISTS "idx_photo_sessions_capacity" ON "{{SCHEMA_NAME}}"."photo_sessions" ("scheduled_at", "status", "hold_expires_at");
 
 -- ============================================================
 -- Lazy/runtime tables folded into the canonical template (2026-06-23).
@@ -4060,6 +4059,8 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments"
 -- migration; only requests created by the atomic writer receive a clock.
 ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions"
     ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS "idx_photo_sessions_capacity"
+    ON "{{SCHEMA_NAME}}"."photo_sessions" ("scheduled_at", "status", "hold_expires_at");
 
 -- Tours: el cupo funciona AL REVÉS que las fechas.
 --

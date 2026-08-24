@@ -51,10 +51,10 @@ function resolveCanonical(industry: string, subtype: string | null) {
 }
 
 describe("resolveVerticalDashboard", () => {
-  it("projects all 76 canonical configurations across all 18 verticals", () => {
+  it("projects all 76 canonical configurations across all 20 verticals", () => {
     const configurations = listVerticalCapabilityConfigurations();
     expect(configurations).toHaveLength(76);
-    expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(18);
+    expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(20);
     expect(new Set(configurations.map(({ industry }) => industry))).toEqual(
       new Set(VERTICAL_MANIFEST_INDUSTRIES),
     );

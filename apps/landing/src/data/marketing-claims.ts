@@ -41,7 +41,7 @@ export const MARKETING_CLAIMS = Object.freeze({
     ],
     scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-08-08', expiresAt: '2026-11-08', owner: 'product-engineering',
     evidence: [
-      { id: 'vertical-manifest', repositoryPath: 'packages/shared/src/vertical-capability-manifest.ts', description: 'Canonical 18-industry manifest.' },
+      { id: 'vertical-manifest', repositoryPath: 'packages/shared/src/vertical-capability-manifest.ts', description: '18 public industries; two additional canonical industries remain waitlisted.' },
       { id: 'vertical-matrix', repositoryPath: 'apps/api/scripts/run-vertical-contract-matrix.cjs', description: 'Static 76 x 4 x 5 contract runner.' },
     ],
   },

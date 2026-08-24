@@ -2,7 +2,7 @@
 
 Fecha: 24 de agosto de 2026
 
-Estado: plan aprobado para preparación; **no inicia código, migraciones ni activaciones por sí solo**.
+Estado: ejecución autorizada. **Fase 1 implementada en código el 24 de agosto de 2026; el inventario read-only debe ejecutarse en el entorno productivo antes de abrir cualquier `apply` o migración de tenants.**
 
 ## 1. Autoridad, objetivo y alcance
 
@@ -58,7 +58,7 @@ El ledger histórico de 54 perfiles `build/hybrid` cerró con `open=0`. Este pla
 
 ### 3.1 Conteo objetivo
 
-El catálogo comercial objetivo tendrá **20 verticales y 77 perfiles canónicos activos**. El registro resolverá además los IDs heredados necesarios para compatibilidad, por lo que el total técnico de entradas/aliases será mayor y no debe confundirse con el conteo comercial.
+El catálogo objetivo tendrá **20 verticales y 76 configuraciones canónicas** (75 subtipos y `otro`). El registro resolverá además cinco IDs heredados necesarios para compatibilidad, por lo que el total técnico será de **81 IDs resolubles** y no debe confundirse con el conteo canónico. Los destinos nuevos permanecen en `waitlist`; canónico no significa comercializable.
 
 Cambios sobre las 18 verticales y 76 perfiles históricos:
 
@@ -68,7 +68,7 @@ Cambios sobre las 18 verticales y 76 perfiles históricos:
 - `technology/consultoria_ti` migra a `technology/soporte_ti_msp`;
 - `retail/marketplace`, `seguros/aseguradora` y `seguros/salud` conservan ID, pero reciben contrato y estrategia nuevos.
 
-El resultado comercial es `76 - 2 + 3 = 77` perfiles activos y dos verticales nuevas: `event_planning` y `construccion`.
+El resultado canónico es `76 - 5 + 5 = 76`: salen de la lista activa los cuatro IDs que requieren migración y `veterinaria/peluqueria_canina`, que ya era alias; entran cinco destinos correctos. Los cinco IDs anteriores siguen resolviendo solo por compatibilidad. Las dos verticales nuevas son `event_planning` y `construccion`.
 
 ### 3.2 Matriz de taxonomía aprobada
 
@@ -118,9 +118,9 @@ Ninguna migración modifica simultáneamente taxonomía, datos operativos y acti
 | Fase | Resultado | Estado inicial | Puerta de salida |
 |---:|---|---|---|
 | 0. Decisión y baseline | 34 resoluciones, alcance, exclusiones y estado real fijados. | **Cerrada** | P01–P34 aprobadas; backlog externo separado; plan versionado. |
-| 1. Taxonomía y preflight | Registro v2, IDs, aliases, clasificador y reporte de tenants afectados. | Pendiente | 20/77 validados; 100% de tenants legacy clasificados o marcados para revisión; dry-run sin escrituras. |
+| 1. Taxonomía y preflight | Registro v2, IDs, aliases, clasificador y reporte de tenants afectados. | **Código cerrado; ejecución del inventario productivo pendiente** | 20 verticales/76 configuraciones canónicas y 81 IDs resolubles validados; 100% de tenants legacy clasificados o marcados para revisión; dry-run sin escrituras. |
 | 2. Contratos compartidos | Tipos, schemas, resolvers, entitlements, availability y compatibilidad de configuración. | Pendiente | Web/API/mobile/test/marketing consumen el mismo snapshot; cero fork paralelo. |
-| 3. Autoría 1:1 y país | Prompts, variables, templates, términos, menús, tools, SoR y evals por perfil/locale. | Pendiente | 77/77 paquetes mecánicos completos; regulados no promocionados sin firma; cuatro idiomas base verdes. |
+| 3. Autoría 1:1 y país | Prompts, variables, templates, términos, menús, tools, SoR y evals por perfil/locale. | Pendiente | 76/76 paquetes canónicos completos y compatibilidad legacy validada; regulados no promocionados sin firma; cuatro idiomas base verdes. |
 | 4. Plataforma transversal | P25–P32: identidad, analytics, canales, planner, freshness, binding y Mindbody. | Pendiente | Ocho decisiones demostradas E2E sin divergencia backend/UI/BI. |
 | 5. Profundidad de producto | Nuevos objetos y workflows nativos/híbridos, más P08–P24. | Pendiente | Cada writer produce objeto visible, reversible e idempotente; task principal a ≤2 interacciones. |
 | 6. Proveedores y regulación | PSP, ITSM, PAS/core, LMS/GDS/DMS/PMS y revisiones expertas. | Dependencia externa | Adapter/version/SoR certificados; 21 expert gates firmados; writers allowlisted individualmente. |
@@ -134,13 +134,13 @@ No existe salto válido de Fase 3 a Fase 8. Un perfil puede avanzar independient
 | WP | Fase | Entregable | Dependencias | Criterio de aceptación |
 |---|---:|---|---|---|
 | GOV-01 | 0 | Registro P01–P34 y este plan. | Ninguna | 34/34 resoluciones trazables. |
-| TAX-01 | 1 | `SubtypeExperienceProfile` v2 y manifest para 20/77. | GOV-01 | Conteo generado; IDs únicos; selector, landing y API coinciden. |
+| TAX-01 | 1 | `SubtypeExperienceProfile` v2 y manifest para 20 verticales/76 configuraciones canónicas, más cinco IDs legacy. | GOV-01 | Conteo generado; IDs únicos; selector, landing y API coinciden. |
 | TAX-02 | 1 | Clasificador y migrador multi-destino con `business_model`. | TAX-01 | Dry-run lista tenant, destino, razones, riesgos y rollback; no escribe. |
 | TAX-03 | 1 | Inventario read-only de producción y owners de migración. | TAX-02 | Ningún legacy sin estado `candidate`, `needs_owner`, `approved`, `migrated` o `rejected`. |
 | CTR-01 | 2 | Contrato compartido de disponibilidad/certificación por perfil, país y provider. | TAX-01 | Runtime, UI, Agent Test y marketing muestran el mismo estado y razón. |
 | CTR-02 | 2 | Objeto/acción/permisos/readiness/SoR versionados. | CTR-01 | Cada writer tiene objeto, owner, efecto, assurance, confirmación e idempotencia. |
 | CFG-01 | 2 | Matriz de variables, secrets, precedencia y cutover. | CTR-01 | Deployment arranca con variables actuales; fallbacks probados; secretos nunca impresos. |
-| AUTH-01 | 3 | Paquete autoral por los 77 perfiles. | CTR-02 | Schema completo y validado; ningún campo crítico se hereda silenciosamente. |
+| AUTH-01 | 3 | Paquete autoral por las 76 configuraciones canónicas, con cobertura de compatibilidad legacy. | CTR-02 | Schema completo y validado; ningún campo crítico se hereda silenciosamente. |
 | TERM-01 | 3/6 | Revisión de los 60 perfiles con terminología heredada. | AUTH-01 + experto | Glosario/aliases/términos prohibidos/template firmados y versionados. |
 | LOC-01 | 3/6 | 15 packs existentes + US/CA + política de mercados. | CFG-01 | Estados `recognized/preview/pilot/certified`, evals y fallbacks consistentes. |
 | NAV-01 | 3/4 | IA de menú, rutas, roles y paridad móvil por perfil. | AUTH-01 | Trabajo diario primero; catálogo separado; todas las rutas existen y respetan permisos. |
@@ -390,7 +390,7 @@ Landing, onboarding, billing, agente, tool resolver y soporte leen el mismo esta
 
 ### 9.1 Paquete obligatorio por perfil
 
-Cada uno de los 77 perfiles activos tendrá un artefacto versionado con estos campos:
+Cada una de las 76 configuraciones canónicas tendrá un artefacto versionado con estos campos; los cinco IDs legacy tendrán fixture de compatibilidad y migración:
 
 1. identidad del negocio, cliente objetivo y jobs-to-be-done;
 2. objeto primario y objetos relacionados;
@@ -579,7 +579,7 @@ PHI, documentos legales/financieros, llaves/accesos, menores, invitados, conduct
 
 | Capa | Qué demuestra | Ejecución mínima |
 |---|---|---|
-| Schema/contract | Catálogo, manifest, i18n, rutas, tools, permisos y SoR completos. | Cada PR; 77/77 perfiles y cuatro idiomas. |
+| Schema/contract | Catálogo, manifest, i18n, rutas, tools, permisos y SoR completos. | Cada PR; 76/76 configuraciones canónicas, compatibilidad legacy y cuatro idiomas. |
 | Unit/policy | Validadores, resolvers, assurance, normalizadores y estados. | Cada PR; casos positivos/negativos/boundary. |
 | DB/Redis/queue | Integridad, locks, idempotencia, cache generation, jobs y tenant isolation. | CI con PostgreSQL/Redis efímeros. |
 | Migration compatibility | Schema actual y legacy mínimo por tenant. | Cada cambio DDL; dry-run y apply repetido. |
@@ -592,7 +592,7 @@ PHI, documentos legales/financieros, llaves/accesos, menores, invitados, conduct
 
 ### 12.2 Matriz mínima por perfil
 
-Cada perfil tiene al menos 25 escenarios base por idioma soportado. Para 77 perfiles y ES/EN/PT/FR, el baseline mecánico es **7.700 ejecuciones scenario-language**, generadas desde contratos y complementadas con casos específicos; no 7.700 prompts copiados.
+Cada configuración tiene al menos 25 escenarios base por idioma soportado. Para 76 configuraciones y ES/EN/PT/FR, el baseline mecánico es **7.600 ejecuciones scenario-language**, generadas desde contratos y complementadas con casos específicos; no 7.600 prompts copiados. Los fixtures legacy se ejecutan adicionalmente y no inflan el conteo canónico.
 
 Los escenarios cubren:
 
@@ -818,7 +818,7 @@ Los estados previos son `defined`, `contracted`, `mechanically_complete`, `exper
 
 El primer bloque de implementación debe limitarse a fundamentos reversibles:
 
-1. `TAX-01`: registro objetivo 20/77 y estado legacy, sin cambiar selector productivo;
+1. `TAX-01`: registro objetivo de 20 verticales/76 configuraciones canónicas y cinco IDs legacy, sin publicar destinos `waitlist` en el selector productivo;
 2. `TAX-02`: contrato de migración multi-destino y clasificador, solo dry-run;
 3. `TAX-03`: reporte read-only de tenants afectados, sin imprimir secretos ni PII innecesaria;
 4. `CTR-01`: certification/availability por perfil-país-provider;
@@ -847,4 +847,4 @@ Se detiene el frente afectado si:
 
 Cualquier cambio posterior a P01–P34 requiere una nueva decisión enlazada, impacto en catálogo/tenants/menús/prompts/variables/tools/SoR/país/migración y actualización de este plan. Los cambios compatibles incrementan versión menor; cambios de objeto, autoridad, taxonomía o exclusión incrementan versión mayor y exigen nueva migración/piloto.
 
-El programa se considera completamente terminado únicamente cuando los 77 perfiles objetivo tienen estado explícito y ninguno comercializado conserva gates obligatorios abiertos. Los perfiles no certificados pueden seguir en `waitlist`, `legacy_only`, `preview` o `pilot` sin convertir esa dependencia externa en deuda de código oculta.
+El programa se considera completamente terminado únicamente cuando las 76 configuraciones canónicas y los cinco IDs legacy tienen estado explícito y ninguna configuración comercializada conserva gates obligatorios abiertos. Los perfiles no certificados pueden seguir en `waitlist`, `legacy_only`, `preview` o `pilot` sin convertir esa dependencia externa en deuda de código oculta.

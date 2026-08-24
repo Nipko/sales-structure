@@ -13,7 +13,7 @@ describe('canonical vertical manifest dashboard consumers', () => {
 
         expect(page).toContain('api.getVerticalDefinitions()');
         expect(page).toContain('isCanonicalVerticalCatalog(verticalsResult.data)');
-        expect(modal).toContain('Object.keys(verticalDefinitions)');
+        expect(modal).toContain('offerableIndustries(verticalDefinitions');
     });
 
     it('keeps self-service onboarding on the same API manifest without a subtype copy', () => {
@@ -21,15 +21,15 @@ describe('canonical vertical manifest dashboard consumers', () => {
 
         expect(onboarding).toContain('api.getVerticalDefinitions()');
         expect(onboarding).toContain('isCanonicalVerticalCatalog(result.data)');
-        expect(onboarding).toContain('Object.keys(verticalDefinitions)');
+        expect(onboarding).toContain('offerableIndustries(verticalDefinitions');
         expect(onboarding).not.toMatch(/\bconst\s+SUB_TYPES\b/);
         expect(onboarding).not.toMatch(/\bconst\s+INDUSTRY_KEYS\b/);
     });
 
-    it('fails both selectors closed unless the complete 18-vertical catalog arrives', () => {
+    it('fails both selectors closed unless the complete 20-vertical catalog arrives', () => {
         const catalogBoundary = readDashboardSource('lib/vertical-catalog.ts');
 
-        expect(catalogBoundary).toContain('CANONICAL_VERTICAL_COUNT = 18');
+        expect(catalogBoundary).toContain('CANONICAL_VERTICAL_COUNT = 20');
         expect(catalogBoundary).toContain('entries.length !== CANONICAL_VERTICAL_COUNT');
     });
 });

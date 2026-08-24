@@ -39,10 +39,10 @@ describe('OpportunitiesRepository terminal outcome propagation', () => {
     return { repository, pipeline };
   }
 
-  it('publishes at least one explicit terminal outcome for all 18 verticals', () => {
-    expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(18);
-    expect(new Set(TERMINAL_STAGES.map((stage) => stage.industry)).size).toBe(18);
-    expect(TERMINAL_STAGES.length).toBeGreaterThanOrEqual(18);
+  it('publishes at least one explicit terminal outcome for all 20 verticals', () => {
+    expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(20);
+    expect(new Set(TERMINAL_STAGES.map((stage) => stage.industry)).size).toBe(20);
+    expect(TERMINAL_STAGES.length).toBeGreaterThanOrEqual(20);
   });
 
   it.each(TERMINAL_STAGES)(

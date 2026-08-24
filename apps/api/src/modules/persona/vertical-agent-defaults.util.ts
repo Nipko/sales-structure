@@ -121,11 +121,15 @@ export function resolveVerticalAgentDefaults(settings: unknown): ResolvedVertica
     }
 
     const persistedVersion = verticalConfig.manifestVersion;
-    const migratesV1 = persistedVersion === 1 && VERTICAL_CAPABILITY_MANIFEST_VERSION === 2;
+    // v3 changes taxonomy/catalogue truth but preserves the v1/v2 runtime
+    // shapes. Existing production tenants keep resolving while provisioning
+    // republishes the current snapshot; no bulk rewrite is required here.
+    const migratesLegacy = (persistedVersion === 1 || persistedVersion === 2)
+        && VERTICAL_CAPABILITY_MANIFEST_VERSION === 3;
     if (
         persistedVersion !== undefined
         && persistedVersion !== VERTICAL_CAPABILITY_MANIFEST_VERSION
-        && !migratesV1
+        && !migratesLegacy
     ) {
         throw new VerticalAgentDefaultsError(
             'vertical_manifest_version_unsupported',
@@ -151,11 +155,11 @@ export function resolveVerticalAgentDefaults(settings: unknown): ResolvedVertica
         );
     }
 
-    // v2 removes generic appointments from several native-operation
-    // subtypes. A persisted v1 capability list is therefore not authoritative
-    // for a newly-created agent; derive v2 from the current manifest and let
+    // Later manifests remove inherited tools from several profiles. A legacy
+    // capability list is therefore not authoritative for a newly-created
+    // agent; derive the current contract and let
     // the provisioning reconciler persist it on the tenant.
-    const capabilitySource = migratesV1
+    const capabilitySource = migratesLegacy
         ? Object.fromEntries(
             Object.entries(verticalConfig).filter(([key]) => key !== 'effectiveCapabilities'),
         )

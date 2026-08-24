@@ -1,4 +1,4 @@
-export const CANONICAL_VERTICAL_COUNT = 18;
+export const CANONICAL_VERTICAL_COUNT = 20;
 
 export type VerticalCatalogLocale = "es" | "en" | "pt" | "fr";
 
@@ -76,6 +76,29 @@ export function offerableSubTypes(
     // selector vacío y bloquear todas las altas.
     if (!subType.availability) return true;
     return allowed.includes(subType.availability);
+  });
+}
+
+/**
+ * Hide an industry when every one of its subtypes is closed on this surface.
+ * The API intentionally returns waitlist/legacy entries for compatibility; an
+ * empty-looking industry in onboarding would still be a misleading offer.
+ */
+export function offerableIndustries(
+  definitions: VerticalDefinitions,
+  allowed: readonly VerticalAvailability[],
+  keepIndustry?: string | null,
+  keepSubtype?: string | null,
+): string[] {
+  return Object.keys(definitions).filter((industry) => {
+    if (keepIndustry && industry === keepIndustry) return true;
+    const subTypes = definitions[industry] || [];
+    if (subTypes.length === 0) return true;
+    return offerableSubTypes(
+      subTypes,
+      allowed,
+      keepIndustry === industry ? keepSubtype : undefined,
+    ).length > 0;
   });
 }
 

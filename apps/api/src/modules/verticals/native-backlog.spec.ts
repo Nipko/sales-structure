@@ -11,7 +11,10 @@ import {
 } from './native-backlog';
 
 const BUILD_AND_HYBRID = Object.entries(SUBTYPE_EXPERIENCE_PROFILES as Record<string, any>)
-    .filter(([, profile]) => profile.strategy === 'build' || profile.strategy === 'hybrid');
+    .filter(([, profile]) => (
+        (profile.strategy === 'build' || profile.strategy === 'hybrid')
+        && !profile.availability
+    ));
 
 describe('native backlog scope and state model', () => {
     it('covers exactly every build/hybrid profile and no blocked integration slice', () => {

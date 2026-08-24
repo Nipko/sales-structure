@@ -3,8 +3,9 @@ import { EffectiveCapabilityService } from './effective-capability.service';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { getToolPolicy, isNonCommittalTool } from './tool-policy-registry';
 import {
-    listBlockedSubtypeProfiles,
+    SUBTYPE_EXPERIENCE_PROFILES,
     resolveVerticalCapabilityManifest,
+    resolveSubtypeExperienceProfile,
     type ProcedureDefinition,
     type ProcedureRunState,
 } from '@parallext/shared';
@@ -35,7 +36,9 @@ const schemaName = 'tenant_stop';
 const contactId = '22222222-2222-4222-8222-222222222222';
 const conversationId = '33333333-3333-4333-8333-333333333333';
 
-const BLOCKED = listBlockedSubtypeProfiles();
+const BLOCKED = Object.values(SUBTYPE_EXPERIENCE_PROFILES).filter((profile) => (
+    !resolveSubtypeExperienceProfile(profile.industry, profile.subtype).commercialisable
+));
 
 /** Cada perfil bloqueado, con TODA su superficie encendida a propósito. */
 const CASES = BLOCKED.map((profile) => {
@@ -121,17 +124,22 @@ const blockedInputFor = (...tools: string[]) => ({
     commitmentBlocked: { reason: 'capability:blocked:profile_blocked' },
 });
 
-describe('los siete perfiles bloqueados no comprometen al negocio', () => {
-    it('hay siete y el registro no los perdió por el camino', () => {
-        expect(CASES).toHaveLength(7);
+describe('los perfiles no comercializables no comprometen al negocio', () => {
+    it('cubre legacy, waitlist y perfiles regulados cerrados', () => {
+        expect(CASES).toHaveLength(12);
         expect(CASES.map(c => c.id).sort()).toEqual([
+            'construccion/contratista_general',
+            'event_planning/weddings',
             'finanzas/fintech',
+            'finanzas/pagos_recaudos',
             'fotografia/wedding_planner',
             'inmobiliaria/construccion',
+            'inmobiliaria/promotora',
             'retail/marketplace',
             'seguros/aseguradora',
             'seguros/salud',
             'technology/consultoria_ti',
+            'technology/soporte_ti_msp',
         ]);
     });
 

@@ -2890,6 +2890,8 @@ export class PersonaService {
             servicios_hogar,
             pet_services,
             fotografia,
+            event_planning: otro,
+            construccion: otro,
             otro,
         };
 

@@ -19,8 +19,8 @@ describe('catalog profiles publish their orders register', () => {
 
     it('finds the catalog profiles at all', () => {
         expect(catalogProfiles.length).toBeGreaterThan(0);
-        expect(VERTICAL_MANIFEST_INDUSTRIES.length).toBe(18);
-        expect(Object.keys(VERTICAL_CAPABILITY_MANIFEST).length).toBe(18);
+        expect(VERTICAL_MANIFEST_INDUSTRIES.length).toBe(20);
+        expect(Object.keys(VERTICAL_CAPABILITY_MANIFEST).length).toBe(20);
     });
 
     it.each(

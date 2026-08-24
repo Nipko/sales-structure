@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Optional, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -7,6 +7,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { VerticalsService } from './verticals.service';
 import { OperatingCurrencyService } from './operating-currency.service';
 import { VerticalMigrationService } from './vertical-migration.service';
+import { VerticalTaxonomyInventoryService } from './vertical-taxonomy-inventory.service';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions';
 import { resolveVerticalPipelineStages } from './vertical-pipeline-contract';
@@ -22,7 +23,11 @@ import {
     VERTICAL_PRODUCT_POLICY_VERSION,
     SUBTYPE_ALIASES,
     isAliasedSubtype,
+    listCanonicalSubtypeExperienceProfileIds,
+    listSubtypeExperienceProfileIds,
+    listVerticalCapabilityConfigurations,
     resolveSubtypeExperienceProfile,
+    VERTICAL_MANIFEST_INDUSTRIES,
 } from '@parallext/shared';
 
 @ApiTags('verticals')
@@ -34,6 +39,7 @@ export class VerticalsController {
         private readonly verticalsService: VerticalsService,
         private readonly operatingCurrency: OperatingCurrencyService,
         private readonly verticalMigrations: VerticalMigrationService,
+        @Optional() private readonly taxonomyInventory?: VerticalTaxonomyInventoryService,
     ) {}
 
     @Get('definitions/all')
@@ -76,6 +82,10 @@ export class VerticalsController {
                 count: Object.keys(subtypes).length,
                 subtypeCount,
                 configurationCount,
+                canonicalIndustryCount: VERTICAL_MANIFEST_INDUSTRIES.length,
+                canonicalConfigurationCount: listVerticalCapabilityConfigurations().length,
+                canonicalProfileCount: listCanonicalSubtypeExperienceProfileIds().length,
+                resolvableProfileCount: listSubtypeExperienceProfileIds().length,
                 aliases: VERTICAL_INDUSTRY_ALIASES,
                 subtypeAliases: SUBTYPE_ALIASES,
                 availability,
@@ -108,7 +118,7 @@ export class VerticalsController {
     }
 
     @Get('product-policy')
-    @ApiOperation({ summary: 'Get certification priority and honest product mode for all 18 verticals' })
+    @ApiOperation({ summary: 'Get certification priority and honest product mode for all 20 verticals' })
     getProductPolicy() {
         return {
             success: true,
@@ -116,6 +126,19 @@ export class VerticalsController {
                 version: VERTICAL_PRODUCT_POLICY_VERSION,
                 entries: VERTICAL_PRODUCT_POLICY,
             },
+        };
+    }
+
+    @Get('taxonomy-migrations/inventory')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Read-only inventory and dry-run classification of legacy subtype identities' })
+    async getTaxonomyMigrationInventory() {
+        if (!this.taxonomyInventory) {
+            throw new Error('VerticalTaxonomyInventoryService is unavailable');
+        }
+        return {
+            success: true,
+            data: await this.taxonomyInventory.inventory(),
         };
     }
 

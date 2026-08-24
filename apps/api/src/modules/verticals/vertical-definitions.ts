@@ -214,6 +214,7 @@ const INMOBILIARIA: VerticalDefinition = {
         { key: 'arriendo', label: { es: 'Arriendo', en: 'Rental', pt: 'Aluguel', fr: 'Location' } },
         { key: 'comercial', label: { es: 'Inmuebles comerciales', en: 'Commercial real estate', pt: 'Imóveis comerciais', fr: 'Immobilier commercial' } },
         { key: 'construccion', label: { es: 'Construcción y proyectos', en: 'Construction & development', pt: 'Construção e projetos', fr: 'Construction et projets' } },
+        { key: 'promotora', label: { es: 'Promotora inmobiliaria', en: 'Property developer', pt: 'Incorporadora imobiliária', fr: 'Promoteur immobilier' } },
     ],
     terminology: {
         customerNoun: { es: 'interesado', en: 'prospect', pt: 'interessado', fr: 'prospect' },
@@ -560,6 +561,7 @@ const FINANZAS = createGenericVertical('finanzas', {
     subTypes: [
         { key: 'asesoria', label: { es: 'Asesoría financiera', en: 'Financial advisory', pt: 'Assessoria financeira', fr: 'Conseil financier' } },
         { key: 'fintech', label: { es: 'Fintech', en: 'Fintech', pt: 'Fintech', fr: 'Fintech' } },
+        { key: 'pagos_recaudos', label: { es: 'Pagos y recaudos', en: 'Payments & collections', pt: 'Pagamentos e cobranças', fr: 'Paiements et encaissements' } },
         { key: 'creditos', label: { es: 'Créditos y préstamos', en: 'Loans & credit', pt: 'Créditos e empréstimos', fr: 'Crédits et prêts' } },
     ],
     terminology: { customerNoun: { es: 'cliente', en: 'client', pt: 'cliente', fr: 'client' }, customerNounPlural: { es: 'clientes', en: 'clients', pt: 'clientes', fr: 'clients' }, transactionNoun: { es: 'solicitud', en: 'application', pt: 'solicitação', fr: 'demande' }, serviceNoun: { es: 'producto financiero', en: 'financial product', pt: 'produto financeiro', fr: 'produit financier' }, pipelineNoun: { es: 'solicitudes', en: 'applications', pt: 'solicitações', fr: 'demandes' } },
@@ -692,6 +694,7 @@ const TECHNOLOGY = createGenericVertical('technology', {
     subTypes: [
         { key: 'saas', label: { es: 'SaaS', en: 'SaaS', pt: 'SaaS', fr: 'SaaS' } },
         { key: 'consultoria_ti', label: { es: 'Consultoría TI', en: 'IT Consulting', pt: 'Consultoria TI', fr: 'Conseil IT' } },
+        { key: 'soporte_ti_msp', label: { es: 'Soporte TI y MSP', en: 'IT support & MSP', pt: 'Suporte de TI e MSP', fr: 'Support informatique et MSP' } },
         { key: 'desarrollo', label: { es: 'Desarrollo de software', en: 'Software development', pt: 'Desenvolvimento de software', fr: 'Développement logiciel' } },
         { key: 'hardware', label: { es: 'Hardware y redes', en: 'Hardware & networking', pt: 'Hardware e redes', fr: 'Matériel et réseaux' } },
     ],
@@ -1295,6 +1298,32 @@ const VETERINARIA: VerticalDefinition = {
 
 const OTRO = createGenericVertical('otro', {});
 
+const EVENT_PLANNING = createGenericVertical('event_planning', {
+    subTypes: [
+        { key: 'weddings', label: { es: 'Planeación de bodas', en: 'Wedding planning', pt: 'Planejamento de casamentos', fr: 'Organisation de mariages' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'pareja', en: 'couple', pt: 'casal', fr: 'couple' },
+        customerNounPlural: { es: 'parejas', en: 'couples', pt: 'casais', fr: 'couples' },
+        transactionNoun: { es: 'evento', en: 'event', pt: 'evento', fr: 'événement' },
+        serviceNoun: { es: 'planeación', en: 'planning service', pt: 'planejamento', fr: 'organisation' },
+        pipelineNoun: { es: 'eventos', en: 'events', pt: 'eventos', fr: 'événements' },
+    },
+});
+
+const CONSTRUCCION = createGenericVertical('construccion', {
+    subTypes: [
+        { key: 'contratista_general', label: { es: 'Contratista general', en: 'General contractor', pt: 'Empreiteiro geral', fr: 'Entrepreneur général' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'cliente', en: 'client', pt: 'cliente', fr: 'client' },
+        customerNounPlural: { es: 'clientes', en: 'clients', pt: 'clientes', fr: 'clients' },
+        transactionNoun: { es: 'obra', en: 'project', pt: 'obra', fr: 'chantier' },
+        serviceNoun: { es: 'servicio de construcción', en: 'construction service', pt: 'serviço de construção', fr: 'service de construction' },
+        pipelineNoun: { es: 'proyectos', en: 'projects', pt: 'projetos', fr: 'projets' },
+    },
+});
+
 // ─────────────────────────────────────────────────────────
 // REGISTRY — The single lookup map
 // ─────────────────────────────────────────────────────────
@@ -1317,6 +1346,8 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
     servicios_hogar: SERVICIOS_HOGAR,
     pet_services: PET_SERVICES,
     fotografia: FOTOGRAFIA,
+    event_planning: EVENT_PLANNING,
+    construccion: CONSTRUCCION,
     otro: OTRO,
 };
 

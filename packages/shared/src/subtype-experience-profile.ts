@@ -26,7 +26,7 @@ import {
  * can live in a shared component, it must not live in 76 entries.
  */
 
-export const SUBTYPE_EXPERIENCE_PROFILE_VERSION = 1 as const;
+export const SUBTYPE_EXPERIENCE_PROFILE_VERSION = 2 as const;
 
 /** How Parallly delivers this profile. */
 export type SubtypeStrategy =
@@ -129,7 +129,9 @@ export interface SubtypeExperienceProfileEntry {
      * espera con demanda registrada.
      */
     availability?: SubtypeAvailability;
-    /** Present only when `strategy === 'stop'`. */
+    /** Canonical by default; legacy ids remain resolvable but never selectable. */
+    catalogStatus?: 'canonical' | 'legacy';
+    /** Why the profile is closed or waitlisted. */
     blockedReason?: string;
     /** Present only when `strategy === 'migrate'`: the canonical profile id. */
     migratesTo?: string;
@@ -378,6 +380,7 @@ const PROFILES = Object.freeze({
         industry: 'inmobiliaria',
         subtype: 'construccion',
         strategy: 'stop',
+        catalogStatus: 'legacy',
         wave: 0,
         scope: 'captacion',
         alerts: ['STOP', 'MISCLASS', 'SOR', 'PAY', 'E2E'],
@@ -391,6 +394,40 @@ const PROFILES = Object.freeze({
             + 'son dos negocios con objetos, ciclos y compradores distintos. '
             + '`business_model` es obligatorio antes de escribir prompt, variables o '
             + 'menu.',
+    },
+    'inmobiliaria/promotora': {
+        industry: 'inmobiliaria',
+        subtype: 'promotora',
+        strategy: 'hybrid',
+        wave: 3,
+        scope: 'coordinacion',
+        alerts: ['SOR', 'PAY', 'LIVE', 'E2E'],
+        benchmark: 'HubSpot+Procore',
+        primaryGap: 'Proyecto, unidades, separaciones, hitos, documentos y recaudo',
+        auditedReadiness: 29,
+        auditedDemand: 60,
+        auditConfidence: 'C',
+        exclusions: ['obra como contratista', 'avaluo', 'cierre de escritura'],
+        availability: 'waitlist',
+        blockedReason: 'El destino taxonómico existe, pero no se habilita hasta tener objetos '
+            + 'de proyecto/unidad, pagos y evidencia E2E.',
+    },
+    'construccion/contratista_general': {
+        industry: 'construccion',
+        subtype: 'contratista_general',
+        strategy: 'hybrid',
+        wave: 3,
+        scope: 'operacion_integrada',
+        alerts: ['SOR', 'CAP', 'PAY', 'LIVE', 'E2E'],
+        benchmark: 'Buildertrend',
+        primaryGap: 'Obra, presupuesto, cronograma, subcontratos, cambios y avance',
+        auditedReadiness: 29,
+        auditedDemand: 60,
+        auditConfidence: 'C',
+        exclusions: ['venta de unidades', 'diseño firmado', 'licenciamiento automatico'],
+        availability: 'waitlist',
+        blockedReason: 'El destino taxonómico existe, pero sus writers esperan sistema de '
+            + 'registro, permisos de obra y evidencia E2E.',
     },
     'restaurantes/casual_dining': {
         industry: 'restaurantes',
@@ -634,6 +671,7 @@ const PROFILES = Object.freeze({
         industry: 'finanzas',
         subtype: 'fintech',
         strategy: 'stop',
+        catalogStatus: 'legacy',
         wave: 0,
         scope: 'captacion',
         alerts: ['STOP', 'MISCLASS', 'SOR', 'REG', 'LIVE', 'E2E'],
@@ -646,6 +684,23 @@ const PROFILES = Object.freeze({
         blockedReason: '"Fintech" no es un producto: pagos, wallet, remesas, neobanco e inversion '
             + 'tienen licencias, ledgers y riesgos incompatibles. Taxonomia, gating y '
             + 'contratos existen; el perfil no se comercializa hasta elegir familia.',
+    },
+    'finanzas/pagos_recaudos': {
+        industry: 'finanzas',
+        subtype: 'pagos_recaudos',
+        strategy: 'hybrid',
+        wave: 4,
+        scope: 'operacion_integrada',
+        alerts: ['SOR', 'REG', 'PAY', 'LIVE', 'SEC', 'E2E'],
+        benchmark: 'Stripe Connect',
+        primaryGap: 'PSP conectado, comercio, transacción, conciliación, disputa y auditoría',
+        auditedReadiness: 17,
+        auditedDemand: 55,
+        auditConfidence: 'C',
+        exclusions: ['wallet', 'inversion', 'credito', 'remesas', 'custodia de fondos'],
+        availability: 'waitlist',
+        blockedReason: 'Solo se habilita con PSP y modelo contractual definidos; el catálogo '
+            + 'no autoriza mover dinero ni crear KYC ficticio.',
     },
     'finanzas/creditos': {
         industry: 'finanzas',
@@ -762,9 +817,9 @@ const PROFILES = Object.freeze({
     'retail/marketplace': {
         industry: 'retail',
         subtype: 'marketplace',
-        strategy: 'stop',
-        wave: 0,
-        scope: 'captacion',
+        strategy: 'hybrid',
+        wave: 4,
+        scope: 'operacion_integrada',
         alerts: ['STOP', 'MISCLASS', 'SOR', 'REG', 'PAY', 'E2E'],
         benchmark: 'Mirakl',
         primaryGap: 'Seller/KYB, catálogo multi-vendor, comisión, payout y disputas',
@@ -772,6 +827,7 @@ const PROFILES = Object.freeze({
         auditedDemand: 60,
         auditConfidence: 'C',
         exclusions: ['ERP propio', 'contabilidad'],
+        availability: 'waitlist',
         blockedReason: 'Operar un marketplace exige merchant of record, alta de vendedores con '
             + 'KYB, orden multi-vendedor, comision, payout y disputas. Reutilizar el '
             + 'comercio monovendedor produciria ordenes que nadie puede liquidar.',
@@ -794,6 +850,7 @@ const PROFILES = Object.freeze({
         industry: 'technology',
         subtype: 'consultoria_ti',
         strategy: 'stop',
+        catalogStatus: 'legacy',
         wave: 0,
         scope: 'captacion',
         alerts: ['STOP', 'SOR', 'CAP', 'PAY', 'E2E'],
@@ -806,6 +863,23 @@ const PROFILES = Object.freeze({
         blockedReason: 'Mesa de servicio MSP y consultoria por proyectos son dos productos: uno '
             + 'vive de SLA y activos, el otro de alcance y entregables. Elegir antes de '
             + 'construir.',
+    },
+    'technology/soporte_ti_msp': {
+        industry: 'technology',
+        subtype: 'soporte_ti_msp',
+        strategy: 'hybrid',
+        wave: 3,
+        scope: 'operacion_integrada',
+        alerts: ['SOR', 'CAP', 'SEC', 'PAY', 'E2E'],
+        benchmark: 'ConnectWise PSA',
+        primaryGap: 'Ticket/SLA, activos, dispatch, contrato, cambios y billing',
+        auditedReadiness: 22,
+        auditedDemand: 55,
+        auditConfidence: 'C',
+        exclusions: ['entrega de proyectos', 'acceso remoto no autorizado', 'RMM propio'],
+        availability: 'waitlist',
+        blockedReason: 'El perfil MSP queda cerrado hasta integrar el sistema de registro y '
+            + 'probar identidad, autorización y auditoría E2E.',
     },
     'technology/desarrollo': {
         industry: 'technology',
@@ -983,7 +1057,7 @@ const PROFILES = Object.freeze({
     'seguros/aseguradora': {
         industry: 'seguros',
         subtype: 'aseguradora',
-        strategy: 'stop',
+        strategy: 'integrate',
         wave: 4,
         scope: 'captacion',
         alerts: ['STOP', 'MISCLASS', 'SOR', 'REG', 'LIVE', 'E2E'],
@@ -993,6 +1067,7 @@ const PROFILES = Object.freeze({
         auditedDemand: 58,
         auditConfidence: 'C',
         exclusions: ['suscripcion', 'ajuste de siniestro', 'cobertura vinculante'],
+        availability: 'waitlist',
         blockedReason: 'Una carrier necesita PAS, billing y claims con autoridad de suscripcion. '
             + 'Parallly es capa conversacional sobre esos sistemas, nunca su reemplazo.',
     },
@@ -1027,7 +1102,7 @@ const PROFILES = Object.freeze({
     'seguros/salud': {
         industry: 'seguros',
         subtype: 'salud',
-        strategy: 'stop',
+        strategy: 'integrate',
         wave: 4,
         scope: 'captacion',
         alerts: ['STOP', 'SOR', 'REG', 'LIVE', 'E2E'],
@@ -1037,6 +1112,7 @@ const PROFILES = Object.freeze({
         auditedDemand: 70,
         auditConfidence: 'B',
         exclusions: ['suscripcion', 'ajuste de siniestro', 'cobertura vinculante'],
+        availability: 'waitlist',
         blockedReason: 'Elegibilidad, autorizaciones y EOB son PHI con verificacion reforzada y '
             + 'core del pagador. Sin ese sistema no hay respuesta correcta que dar.',
     },
@@ -1268,6 +1344,7 @@ const PROFILES = Object.freeze({
         industry: 'fotografia',
         subtype: 'wedding_planner',
         strategy: 'stop',
+        catalogStatus: 'legacy',
         wave: 0,
         scope: 'captacion',
         alerts: ['STOP', 'MISCLASS', 'SOR', 'PAY', 'E2E'],
@@ -1280,6 +1357,23 @@ const PROFILES = Object.freeze({
         blockedReason: 'Recibe el producto de fotografia completo, que no es su negocio: un '
             + 'planner opera evento, presupuesto, proveedores, invitados y seating. Migra '
             + 'a Event Planning.',
+    },
+    'event_planning/weddings': {
+        industry: 'event_planning',
+        subtype: 'weddings',
+        strategy: 'hybrid',
+        wave: 3,
+        scope: 'coordinacion',
+        alerts: ['SOR', 'CAP', 'PAY', 'LIVE', 'E2E'],
+        benchmark: 'Aisle Planner',
+        primaryGap: 'Evento, presupuesto, proveedores, invitados, timeline y seating',
+        auditedReadiness: 11,
+        auditedDemand: 70,
+        auditConfidence: 'B',
+        exclusions: ['servicio fotografico implicito', 'pagos sin proveedor', 'contrato legal'],
+        availability: 'waitlist',
+        blockedReason: 'La clasificación ya es correcta; la operación sigue cerrada hasta '
+            + 'implementar objetos, permisos, pagos y evidencia E2E.',
     },
     'otro/__none__': {
         industry: 'otro',
@@ -1350,7 +1444,8 @@ export function resolveSubtypeExperienceProfile(
         capability,
         // Reads the RESOLVED entry, so a migrated id inherits the target's
         // answer rather than its own historical one.
-        commercialisable: entry.strategy !== 'stop',
+        commercialisable: entry.strategy !== 'stop'
+            && ['selectable', 'pilot'].includes(subtypeAvailability(entry)),
         availability: subtypeAvailability(entry),
     };
 }
@@ -1364,8 +1459,9 @@ export function resolveSubtypeExperienceProfile(
  * declaración explícita como excepción.
  */
 export function subtypeAvailability(
-    entry: Pick<SubtypeExperienceProfileEntry, 'strategy' | 'availability'>,
+    entry: Pick<SubtypeExperienceProfileEntry, 'strategy' | 'availability' | 'catalogStatus'>,
 ): SubtypeAvailability {
+    if (entry.catalogStatus === 'legacy') return 'legacy_only';
     if (entry.availability) return entry.availability;
     return entry.strategy === 'stop' ? 'legacy_only' : 'selectable';
 }
@@ -1377,9 +1473,17 @@ export const SIGNUP_AVAILABILITY: readonly SubtypeAvailability[] =
 export const ADMIN_CREATE_AVAILABILITY: readonly SubtypeAvailability[] =
     Object.freeze(['selectable', 'pilot']);
 
-/** Every canonical profile id. 76: 18 verticals, 75 subtypes and `otro`. */
+/** Every resolvable profile id, including compatibility-only ids. */
 export function listSubtypeExperienceProfileIds(): string[] {
     return Object.keys(SUBTYPE_EXPERIENCE_PROFILES);
+}
+
+/** 76 canonical configurations: 75 subtypes across 20 verticals plus `otro`. */
+export function listCanonicalSubtypeExperienceProfileIds(): string[] {
+    const aliasedTargets = new Set(Object.keys(SUBTYPE_ALIASES));
+    return Object.entries(SUBTYPE_EXPERIENCE_PROFILES)
+        .filter(([id, profile]) => profile.catalogStatus !== 'legacy' && !aliasedTargets.has(id))
+        .map(([id]) => id);
 }
 
 /** Profiles that must not be sold yet, with the reason. */

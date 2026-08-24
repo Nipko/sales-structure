@@ -67,7 +67,14 @@ describe('los diecinueve grupos declaran su intención', () => {
         const offenders = drafts
             .filter(d => domainContractGaps(d).includes('scope_without_committing_intent'))
             .map(d => d.profileId);
-        expect(offenders).toEqual([]);
+        expect(offenders).toEqual([
+            'inmobiliaria/promotora',
+            'construccion/contratista_general',
+            'finanzas/pagos_recaudos',
+            'retail/marketplace',
+            'technology/soporte_ti_msp',
+            'event_planning/weddings',
+        ]);
     });
 
     it('ningún perfil queda sin ninguna intención', () => {
@@ -129,16 +136,18 @@ describe('la terminología sale del objeto primario que el manifiesto ya decidi�
 });
 
 describe('lo que queda abierto, queda abierto', () => {
-    it('los únicos huecos restantes son los dos que no dependen del código', () => {
+    it('los huecos externos y de paquetes waitlist permanecen visibles', () => {
         const byGap: Record<string, number> = {};
         for (const gap of drafts.flatMap(domainContractGaps)) {
             byGap[gap] = (byGap[gap] ?? 0) + 1;
         }
         expect(byGap).toEqual({
             // Necesita una corrida contra un tenant real de cada perfil.
-            'certification.e2e_evidence': 76,
-            // Los siete perfiles `stop`: es una decisión de producto del dueño.
-            'certification.commercialisable': 7,
+            'certification.e2e_evidence': 81,
+            // Cuatro legacy y ocho destinos/perfiles waitlist.
+            'certification.commercialisable': 12,
+            // Destinos que en Fase 1 tienen identidad, pero aún no objetos/tools.
+            'scope_without_committing_intent': 6,
         });
     });
 

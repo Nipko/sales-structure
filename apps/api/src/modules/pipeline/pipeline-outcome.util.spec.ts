@@ -18,8 +18,8 @@ describe('resolveTerminalOutcome', () => {
             .toThrow('requires explicit terminal_outcome');
     });
 
-    it('requires an explicit outcome on every terminal stage across all 18 verticals', () => {
-        expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(18);
+    it('requires an explicit outcome on every terminal stage across all 20 verticals', () => {
+        expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(20);
 
         for (const definition of Object.values(VERTICAL_REGISTRY)) {
             for (const stage of definition.pipeline.stages) {

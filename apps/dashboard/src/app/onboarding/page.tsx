@@ -19,6 +19,7 @@ import {
     SIGNUP_AVAILABILITY,
     getVerticalLabel,
     isCanonicalVerticalCatalog,
+    offerableIndustries,
     offerableSubTypes,
     type VerticalCatalogLocale,
     type VerticalDefinitions,
@@ -430,7 +431,7 @@ export default function OnboardingPage() {
     const [verticalDefinitions, setVerticalDefinitions] = useState<VerticalDefinitions>({});
     const [verticalCatalogLoading, setVerticalCatalogLoading] = useState(true);
     const [verticalCatalogError, setVerticalCatalogError] = useState(false);
-    const industryKeys = Object.keys(verticalDefinitions);
+    const industryKeys = offerableIndustries(verticalDefinitions, SIGNUP_AVAILABILITY);
     // Un alta nueva solo ofrece lo que hoy se puede entregar. El catálogo
     // llega completo a propósito —lo necesitan las pantallas de un tenant que
     // ya está en un perfil cerrado—, así que el recorte es de esta superficie.

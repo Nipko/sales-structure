@@ -1,6 +1,7 @@
 import {
   ADMIN_CREATE_AVAILABILITY,
   SIGNUP_AVAILABILITY,
+  offerableIndustries,
   offerableSubTypes,
   type VerticalCatalogSubType,
 } from "./vertical-catalog";
@@ -49,5 +50,29 @@ describe("offerableSubTypes", () => {
     const before = catalog.length;
     offerableSubTypes(catalog, SIGNUP_AVAILABILITY);
     expect(catalog).toHaveLength(before);
+  });
+});
+
+describe("offerableIndustries", () => {
+  const definitions = {
+    restaurantes: catalog,
+    event_planning: [
+      { key: "weddings", label: { es: "Bodas" }, availability: "waitlist" as const },
+    ],
+    otro: [],
+  };
+
+  it("oculta una industria que solo tiene subtipos en espera", () => {
+    expect(offerableIndustries(definitions, SIGNUP_AVAILABILITY))
+      .toEqual(["restaurantes", "otro"]);
+  });
+
+  it("conserva la industria actual en una superficie de edición", () => {
+    expect(offerableIndustries(
+      definitions,
+      SIGNUP_AVAILABILITY,
+      "event_planning",
+      "weddings",
+    )).toContain("event_planning");
   });
 });

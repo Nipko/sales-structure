@@ -24,8 +24,8 @@ function catalogFor(definition: (typeof VERTICAL_CASES)[number]['definition']): 
 }
 
 describe('tenant-native pipeline stage resolver', () => {
-    it('covers exactly the 18 canonical vertical catalogs', () => {
-        expect(VERTICAL_CASES).toHaveLength(18);
+    it('covers exactly the 20 canonical vertical catalogs', () => {
+        expect(VERTICAL_CASES).toHaveLength(20);
     });
 
     it.each(VERTICAL_CASES)('$industry never resolves outside its own pipeline', ({ definition }) => {

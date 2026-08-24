@@ -46,7 +46,7 @@ interface VerticalPersonaPolicy {
 }
 
 /**
- * The 18 canonical verticals. Missing goal entries are intentional: the
+ * The 20 canonical verticals. Missing goal entries are intentional: the
  * catalog has no dedicated template, or choosing one would be a product
  * decision (notably promotions/response-time in several verticals).
  */
@@ -237,6 +237,16 @@ export const ONBOARDING_VERTICAL_PERSONA_POLICIES: Readonly<Record<string, Verti
             sales: 'tpl_foto_reservas',
             support: 'tpl_foto_entrega',
         },
+    },
+    event_planning: {
+        // Taxonomy-only waitlist target: generic capture, no invented planner tools.
+        defaultTemplateId: 'tpl_otro_ventas',
+        goalTemplateIds: { lead_qualification: 'tpl_otro_ventas', sales: 'tpl_otro_ventas' },
+    },
+    construccion: {
+        // Taxonomy-only waitlist target: generic capture, no invented field tools.
+        defaultTemplateId: 'tpl_otro_ventas',
+        goalTemplateIds: { lead_qualification: 'tpl_otro_ventas', sales: 'tpl_otro_ventas' },
     },
     otro: {
         defaultTemplateId: 'tpl_otro_ventas',

@@ -28,13 +28,13 @@ function resolve(industry: string, subType: string | null, goals: string[], lang
 }
 
 describe('versioned onboarding persona resolver', () => {
-    it('covers all 78 canonical/legacy profiles in four locales for every onboarding goal', () => {
+    it('covers all 83 canonical/legacy profiles in four locales for every onboarding goal', () => {
         expect(Object.keys(ONBOARDING_VERTICAL_PERSONA_POLICIES).sort())
             .toEqual(Object.keys(VERTICAL_REGISTRY).sort());
-        expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(18);
+        expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(20);
 
         const configurations = listVerticalCapabilityCompatibilityConfigurations();
-        expect(configurations).toHaveLength(78);
+        expect(configurations).toHaveLength(83);
         for (const configuration of configurations) {
             const industry = configuration.industry;
             const subType = configuration.subtype;

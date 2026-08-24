@@ -10,7 +10,7 @@ import {
 } from '@parallext/shared';
 import { VERTICAL_REGISTRY } from './vertical-definitions';
 
-describe('VerticalCapabilityManifest v1 contract', () => {
+describe('VerticalCapabilityManifest v3 contract', () => {
     it('uses only sidebar label keys consumed by the canonical navigation', () => {
         const supportedLabelOverrides = new Set([
             'appointments',
@@ -63,9 +63,9 @@ describe('VerticalCapabilityManifest v1 contract', () => {
         expect(assuranceLevelSatisfies('A2', 'A3')).toBe(false);
     });
 
-    it('covers the same 18 industries, 75 subtypes and 76 catalogued configurations', () => {
-        expect(VERTICAL_CAPABILITY_MANIFEST_VERSION).toBe(2);
-        expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(18);
+    it('covers 20 industries, 75 canonical subtypes and 76 configurations', () => {
+        expect(VERTICAL_CAPABILITY_MANIFEST_VERSION).toBe(3);
+        expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(20);
         expect([...VERTICAL_MANIFEST_INDUSTRIES]).toEqual(Object.keys(VERTICAL_REGISTRY));
 
         let subtypeCount = 0;
@@ -73,7 +73,13 @@ describe('VerticalCapabilityManifest v1 contract', () => {
             const manifestEntry = VERTICAL_CAPABILITY_MANIFEST[industry];
             const definitionSubtypes = VERTICAL_REGISTRY[industry].subTypes.map(({ key }) => key);
             expect(manifestEntry.industry).toBe(industry);
-            expect(manifestEntry.subtypes).toEqual(definitionSubtypes);
+            expect(definitionSubtypes).toEqual(expect.arrayContaining([...manifestEntry.subtypes]));
+            for (const definitionSubtype of definitionSubtypes) {
+                expect([
+                    ...manifestEntry.subtypes,
+                    ...(manifestEntry.legacySubtypes || []),
+                ]).toContain(definitionSubtype);
+            }
             subtypeCount += manifestEntry.subtypes.length;
 
             for (const overrideKey of Object.keys(manifestEntry.subtypeOverrides || {})) {
@@ -245,11 +251,11 @@ describe('VerticalCapabilityManifest v1 contract', () => {
             .toMatchObject({ get_check_in_instructions: 'A2' });
     });
 
-    it('publishes a non-empty implemented analytics contract for all 18 verticals', () => {
-        const implemented = VERTICAL_MANIFEST_INDUSTRIES.filter((industry) => (
+    it('does not invent vertical analytics for the two waitlist-only industries', () => {
+        const unavailable = VERTICAL_MANIFEST_INDUSTRIES.filter((industry) => (
             VERTICAL_CAPABILITY_MANIFEST[industry]
-                .profile.kpiContract.verticalAnalytics.availability === 'implemented'
+                .profile.kpiContract.verticalAnalytics.availability === 'unavailable'
         ));
-        expect(implemented).toEqual(VERTICAL_MANIFEST_INDUSTRIES);
+        expect(unavailable).toEqual(['event_planning', 'construccion']);
     });
 });

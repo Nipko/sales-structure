@@ -11,17 +11,17 @@ import {
 } from './vertical-commercial-units-matrix';
 
 describe('vertical commercial-units contract/static matrix', () => {
-    it('derives exactly 18 industries, 75 subtypes and 76 operational configurations', () => {
+    it('derives exactly 20 industries, 75 subtypes and 76 operational configurations', () => {
         const matrix = buildVerticalCommercialUnitsMatrix();
 
         expect(matrix.layer).toBe(VERTICAL_COMMERCIAL_UNITS_LAYER);
         expect(matrix.bootstrapCertified).toBe(false);
         expect(matrix.dimensions).toEqual({
-            industries: 18,
+            industries: 20,
             subtypes: 75,
             operationalConfigurations: 76,
         });
-        expect(matrix.industries).toHaveLength(18);
+        expect(matrix.industries).toHaveLength(20);
         expect(matrix.configurations).toHaveLength(76);
         expect(matrix.configurations.filter((row) => row.subtype !== null)).toHaveLength(75);
         expect(matrix.failures).toEqual([]);

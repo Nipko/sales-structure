@@ -8,7 +8,7 @@ import { SUBTYPE_ALIASES, listBlockedSubtypeProfiles, subtypeAvailability } from
 
 describe('resolveVerticalSelection', () => {
     it('publishes a versioned identifier contract', () => {
-        expect(VERTICAL_IDENTIFIER_CONTRACT_VERSION).toBe(2);
+        expect(VERTICAL_IDENTIFIER_CONTRACT_VERSION).toBe(3);
     });
 
     it('accepts every canonical industry/subtype pair in the registry', () => {
@@ -140,6 +140,24 @@ describe('disponibilidad por superficie', () => {
         }
     });
 
+    it.each([
+        ['finanzas', 'pagos_recaudos'],
+        ['retail', 'marketplace'],
+        ['event_planning', 'weddings'],
+        ['inmobiliaria', 'promotora'],
+        ['construccion', 'contratista_general'],
+        ['technology', 'soporte_ti_msp'],
+        ['seguros', 'aseguradora'],
+        ['seguros', 'salud'],
+    ])('%s/%s existe pero no puede entrar antes de su gate', (industry, subType) => {
+        expect(() => resolveVerticalSelection(industry, subType, 'signup'))
+            .toThrow(InvalidVerticalSelectionError);
+        expect(() => resolveVerticalSelection(industry, subType, 'admin_create'))
+            .toThrow(InvalidVerticalSelectionError);
+        expect(resolveVerticalSelection(industry, subType, 'existing'))
+            .toEqual({ industry, subType });
+    });
+
     it('un perfil `stop` nuevo queda cerrado sin que nadie lo anote', () => {
         // La disponibilidad se DERIVA de la estrategia cuando no se declara.
         // Anotar las siete a mano habría dejado la puerta abierta a la octava.
@@ -148,5 +166,8 @@ describe('disponibilidad por superficie', () => {
         // Y lo declarado gana: `migrate` es vendible, `pilot` es por invitación.
         expect(subtypeAvailability({ strategy: 'build', availability: 'pilot' })).toBe('pilot');
         expect(subtypeAvailability({ strategy: 'stop', availability: 'waitlist' })).toBe('waitlist');
+        expect(subtypeAvailability({
+            strategy: 'build', availability: 'selectable', catalogStatus: 'legacy',
+        })).toBe('legacy_only');
     });
 });

@@ -1,12 +1,12 @@
 /**
- * Versioned operational contract for the 18 canonical verticals.
+ * Versioned operational contract for the 20 canonical verticals.
  *
  * This manifest deliberately describes only code-backed behaviour that exists
  * today. It is not a product roadmap: an unavailable KPI contract stays
  * unavailable and an action without an enforced identity gate is not labelled
  * as protected.
  */
-export const VERTICAL_CAPABILITY_MANIFEST_VERSION = 2 as const;
+export const VERTICAL_CAPABILITY_MANIFEST_VERSION = 3 as const;
 
 export const VERTICAL_MANIFEST_INDUSTRIES = [
     'salud',
@@ -26,6 +26,8 @@ export const VERTICAL_MANIFEST_INDUSTRIES = [
     'servicios_hogar',
     'pet_services',
     'fotografia',
+    'event_planning',
+    'construccion',
     'otro',
 ] as const;
 
@@ -448,6 +450,13 @@ const DASH_APPOINTMENTS = ['appointmentsToday', 'leadsToday', 'noShowsWeek', 'me
 const DASH_SALES = ['leadsToday', 'leadsHot', 'messagesProcessed', 'llmCostToday'];
 const DASH_CONVERSION = ['leadsToday', 'appointmentsToday', 'conversionRate', 'llmCostToday'];
 
+/**
+ * A taxonomy destination may exist before its domain product does. While that
+ * destination is waitlisted it publishes only the horizontal CRM/FAQ contract;
+ * inheriting a neighbouring vertical's objects would be an operational lie.
+ */
+const BASE_ONLY_KPIS = kpis(DASH_SALES);
+
 export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
     salud: {
         industry: 'salud',
@@ -567,7 +576,8 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
     },
     inmobiliaria: {
         industry: 'inmobiliaria',
-        subtypes: ['venta', 'arriendo', 'comercial', 'construccion'],
+        subtypes: ['venta', 'arriendo', 'comercial', 'promotora'],
+        legacySubtypes: ['construccion'],
         profile: profile({
             capabilities: ['appointment_booking', 'real_estate_listings'],
             toolGroups: ['appointments', 'realEstate'],
@@ -580,6 +590,17 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 ['listingsForSale', 'listingsForRent', 'soldThisMonth', 'rentedThisMonth', 'avgSalePrice', 'avgRentPrice'],
             ),
         }),
+        subtypeOverrides: {
+            promotora: {
+                removeCapabilities: ['appointment_booking', 'real_estate_listings'],
+                removeToolGroups: ['appointments', 'realEstate'],
+                primaryObject: 'lead',
+                removeRoutes: ['/admin/appointments', '/admin/listings'],
+                removeReadiness: ['appointment_services', 'listings'],
+                removeEvents: APPOINTMENT_EVENTS,
+                kpiContract: BASE_ONLY_KPIS,
+            },
+        },
     },
     restaurantes: {
         industry: 'restaurantes',
@@ -715,7 +736,8 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
     },
     finanzas: {
         industry: 'finanzas',
-        subtypes: ['asesoria', 'fintech', 'creditos'],
+        subtypes: ['asesoria', 'pagos_recaudos', 'creditos'],
+        legacySubtypes: ['fintech'],
         profile: profile({
             capabilities: ['appointment_booking'],
             toolGroups: ['appointments'],
@@ -732,6 +754,13 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 ],
             ),
         }),
+        subtypeOverrides: {
+            pagos_recaudos: {
+                ...APPOINTMENT_PATCH_REMOVAL,
+                primaryObject: 'lead',
+                kpiContract: BASE_ONLY_KPIS,
+            },
+        },
     },
     servicios_profesionales: {
         industry: 'servicios_profesionales',
@@ -784,11 +813,20 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addReadiness: ['appointment_services'],
                 addEvents: APPOINTMENT_EVENTS,
             },
+            marketplace: {
+                removeCapabilities: ['catalog_search'],
+                removeToolGroups: ['catalog'],
+                primaryObject: 'lead',
+                removeRoutes: ['/admin/inventory', '/admin/orders'],
+                removeReadiness: ['catalog_items'],
+                kpiContract: BASE_ONLY_KPIS,
+            },
         },
     },
     technology: {
         industry: 'technology',
-        subtypes: ['saas', 'consultoria_ti', 'desarrollo', 'hardware'],
+        subtypes: ['saas', 'soporte_ti_msp', 'desarrollo', 'hardware'],
+        legacySubtypes: ['consultoria_ti'],
         profile: profile({
             capabilities: ['appointment_booking'],
             toolGroups: ['appointments'],
@@ -803,6 +841,11 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             ]),
         }),
         subtypeOverrides: {
+            soporte_ti_msp: {
+                ...APPOINTMENT_PATCH_REMOVAL,
+                primaryObject: 'lead',
+                kpiContract: BASE_ONLY_KPIS,
+            },
             hardware: {
                 ...APPOINTMENT_PATCH_REMOVAL,
                 addCapabilities: ['catalog_search'],
@@ -815,7 +858,8 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
     },
     veterinaria: {
         industry: 'veterinaria',
-        subtypes: ['clinica_general', 'hospital_24h', 'exoticos', 'peluqueria_canina'],
+        subtypes: ['clinica_general', 'hospital_24h', 'exoticos'],
+        legacySubtypes: ['peluqueria_canina'],
         profile: profile({
             capabilities: ['appointment_booking', 'pet_records'],
             toolGroups: ['appointments', 'pets'],
@@ -931,7 +975,8 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
     },
     fotografia: {
         industry: 'fotografia',
-        subtypes: ['estudio', 'bodas', 'eventos', 'producto', 'wedding_planner'],
+        subtypes: ['estudio', 'bodas', 'eventos', 'producto'],
+        legacySubtypes: ['wedding_planner'],
         profile: profile({
             capabilities: ['photo_sessions'],
             toolGroups: ['photography'],
@@ -943,6 +988,22 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 'sessionsScheduled', 'sessionsInProgress', 'sessionsDelivered',
                 'sessions30d', 'revenue30d', 'deliveriesDue7d',
             ]),
+        }),
+    },
+    event_planning: {
+        industry: 'event_planning',
+        subtypes: ['weddings'],
+        profile: profile({
+            primaryObject: 'lead',
+            kpiContract: BASE_ONLY_KPIS,
+        }),
+    },
+    construccion: {
+        industry: 'construccion',
+        subtypes: ['contratista_general'],
+        profile: profile({
+            primaryObject: 'lead',
+            kpiContract: BASE_ONLY_KPIS,
         }),
     },
     otro: {
@@ -1025,7 +1086,7 @@ export function resolveVerticalCapabilityManifest(
     };
 }
 
-/** Enumerates the 75 subtype configurations plus the subtype-less `otro`. */
+/** Enumerates the 75 canonical subtype configurations plus subtype-less `otro`. */
 export function listVerticalCapabilityConfigurations(): ResolvedVerticalCapabilityManifest[] {
     const configurations: ResolvedVerticalCapabilityManifest[] = [];
     for (const industry of VERTICAL_MANIFEST_INDUSTRIES) {

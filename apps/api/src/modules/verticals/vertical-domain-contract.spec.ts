@@ -26,22 +26,22 @@ import {
  * oportunidades de prometer por escrito algo que el runtime no hace.
  */
 
-describe('los 76 contratos de dominio', () => {
+describe('los contratos de dominio canónicos y de compatibilidad', () => {
     const drafts = listDomainContractDrafts();
 
     it('hay uno por perfil y ninguno se perdió', () => {
         expect(drafts).toHaveLength(listSubtypeExperienceProfileIds().length);
-        expect(drafts).toHaveLength(76);
+        expect(drafts).toHaveLength(81);
     });
 
     it('un id con alias resuelve al contrato de su destino, no a uno propio', () => {
         // `veterinaria/peluqueria_canina` es un alias de
-        // `pet_services/peluqueria`: son 76 ids y 75 contratos distintos. Que
+        // `pet_services/peluqueria`: son 81 ids y 80 contratos distintos. Que
         // el alias tuviera contrato PROPIO sería la misclasificación que el
         // alias existe para reparar — una peluquería canina con persona
         // clínica y "recorrido del paciente".
         const distinct = new Set(drafts.map(d => d.profileId));
-        expect(distinct.size).toBe(75);
+        expect(distinct.size).toBe(80);
         expect(buildDomainContractDraft('veterinaria', 'peluqueria_canina').profileId)
             .toBe('pet_services/peluqueria');
     });
@@ -65,7 +65,7 @@ describe('los 76 contratos de dominio', () => {
 
     it('un perfil bloqueado sale `blocked`, no `draft`', () => {
         const blocked = drafts.filter(d => d.status === 'blocked');
-        expect(blocked.length).toBe(7);
+        expect(blocked.length).toBe(12);
         for (const draft of blocked) {
             expect(draft.certification.blockers).toContain('commercialisable');
         }
@@ -187,21 +187,26 @@ describe('el prompt del perfil dice hasta dónde llega', () => {
 });
 
 describe('los huecos se declaran en vez de rellenarse', () => {
-    it('lo que sí se pudo derivar ya no figura como hueco', () => {
+    it('solo los destinos waitlist sin producto declaran el hueco operativo', () => {
         // Antes había 87 huecos derivables: 59 perfiles sin nombre para su
         // objeto primario y 28 cuyo alcance prometía cerrar sin ninguna
         // intención que se comprometiera. Los dos se cerraron —el objeto
         // primario ya estaba declarado en el manifiesto y le faltaba el
         // nombre; las intenciones faltaban en 15 de los 19 grupos—, así que
-        // `unresolved` queda vacío.
-        //
-        // Esta prueba dejó de medir "hay huecos declarados" y pasa a medir lo
-        // contrario, que es lo que corresponde: si vuelve a aparecer uno, es
-        // regresión y no estado normal.
+        // Los destinos taxonómicos de Fase 1 existen antes que sus objetos y
+        // tools por diseño. El hueco debe quedar visible hasta implementar su
+        // paquete; rellenarlo con una intención vecina sería prometer producto.
         const withGaps = listDomainContractDrafts()
             .filter(d => d.unresolved.length > 0)
             .map(d => ({ profile: d.profileId, gaps: d.unresolved }));
-        expect(withGaps).toEqual([]);
+        expect(withGaps).toEqual([
+            { profile: 'inmobiliaria/promotora', gaps: ['scope_without_committing_intent'] },
+            { profile: 'construccion/contratista_general', gaps: ['scope_without_committing_intent'] },
+            { profile: 'finanzas/pagos_recaudos', gaps: ['scope_without_committing_intent'] },
+            { profile: 'retail/marketplace', gaps: ['scope_without_committing_intent'] },
+            { profile: 'technology/soporte_ti_msp', gaps: ['scope_without_committing_intent'] },
+            { profile: 'event_planning/weddings', gaps: ['scope_without_committing_intent'] },
+        ]);
     });
 
     it('...y lo que no se puede derivar sigue declarado como bloqueo', () => {

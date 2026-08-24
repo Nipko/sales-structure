@@ -4,10 +4,12 @@ import {
     VERTICAL_CAPABILITY_MANIFEST,
     VERTICAL_MANIFEST_INDUSTRIES,
     listBlockedSubtypeProfiles,
+    listCanonicalSubtypeExperienceProfileIds,
     listSubtypeExperienceProfileIds,
     listVerticalCapabilityConfigurations,
     resolveSubtypeExperienceProfile,
     subtypeProfileId,
+    subtypeAvailability,
 } from '@parallext/shared';
 import { VERTICAL_TOOL_CAPABILITY } from '../../common/contracts/vertical-capability-tools';
 import { STATIC_TOOL_NAMES, TOOL_POLICY_REGISTRY } from '../conversations/tool-policy-registry';
@@ -31,11 +33,12 @@ import { staticToolsForAgentConfig } from '../conversations/agent-tool-registry'
 const CANONICAL_PROFILE_COUNT = 76;
 
 describe('conteos canónicos', () => {
-    it('hay exactamente 18 verticales, 75 subtipos y `otro`', () => {
-        expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(18);
+    it('hay 20 verticales, 76 configuraciones canónicas y 81 ids resolubles', () => {
+        expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(20);
 
-        const ids = listSubtypeExperienceProfileIds();
+        const ids = listCanonicalSubtypeExperienceProfileIds();
         expect(ids).toHaveLength(CANONICAL_PROFILE_COUNT);
+        expect(listSubtypeExperienceProfileIds()).toHaveLength(81);
 
         const withSubtype = ids.filter(id => !id.endsWith('/__none__'));
         expect(withSubtype).toHaveLength(75);
@@ -47,14 +50,14 @@ describe('conteos canónicos', () => {
         // ningún perfil inventa un subtipo que el manifiesto no conoce.
         const manifestIds = listVerticalCapabilityConfigurations()
             .map(c => subtypeProfileId(c.industry, c.subtype));
-        const profileIds = listSubtypeExperienceProfileIds();
+        const profileIds = listCanonicalSubtypeExperienceProfileIds();
 
         expect(new Set(profileIds)).toEqual(new Set(manifestIds));
     });
 
     it('cada industria del manifiesto tiene al menos un perfil', () => {
         for (const industry of VERTICAL_MANIFEST_INDUSTRIES) {
-            const profiles = listSubtypeExperienceProfileIds()
+            const profiles = listCanonicalSubtypeExperienceProfileIds()
                 .filter(id => id.startsWith(`${industry}/`));
             expect(profiles.length).toBeGreaterThan(0);
         }
@@ -66,7 +69,7 @@ describe('conteos canónicos', () => {
             const expected = entry.subtypes.length
                 ? entry.subtypes.map(s => `${industry}/${s}`)
                 : [`${industry}/__none__`];
-            const actual = listSubtypeExperienceProfileIds()
+            const actual = listCanonicalSubtypeExperienceProfileIds()
                 .filter(id => id.startsWith(`${industry}/`));
             expect(new Set(actual)).toEqual(new Set(expected));
         }
@@ -101,27 +104,39 @@ describe('cada perfil declara lo que se puede vender de él', () => {
         }
     });
 
-    it('solo un perfil bloqueado lleva motivo de bloqueo', () => {
+    it('todo perfil cerrado o en espera explica el motivo', () => {
         for (const profile of Object.values(SUBTYPE_EXPERIENCE_PROFILES)) {
-            if (profile.strategy !== 'stop') {
-                expect(profile.blockedReason).toBeUndefined();
-            }
+            const closed = profile.strategy === 'stop'
+                || ['waitlist', 'legacy_only'].includes(subtypeAvailability(profile));
+            if (closed) expect(profile.blockedReason).toEqual(expect.any(String));
         }
     });
 
-    it('las seis taxonomías que el plan marcó como ambiguas están bloqueadas o migradas', () => {
-        // Las decisiones del dueño: construcción, fintech y marketplace se
-        // definen antes de venderse; aseguradora es integración sobre PAS;
-        // wedding planner sale de fotografía; grooming vive en Pet Services.
+    it('las decisiones P01-P07 conservan compatibilidad y quedan fail-closed', () => {
         for (const id of [
             'inmobiliaria/construccion',
             'finanzas/fintech',
-            'retail/marketplace',
-            'seguros/aseguradora',
             'fotografia/wedding_planner',
+            'technology/consultoria_ti',
         ]) {
-            expect(SUBTYPE_EXPERIENCE_PROFILES[id as never]).toBeDefined();
-            expect((SUBTYPE_EXPERIENCE_PROFILES as any)[id].strategy).toBe('stop');
+            expect((SUBTYPE_EXPERIENCE_PROFILES as any)[id]).toMatchObject({
+                strategy: 'stop', catalogStatus: 'legacy',
+            });
+        }
+        for (const id of [
+            'finanzas/pagos_recaudos',
+            'retail/marketplace',
+            'event_planning/weddings',
+            'inmobiliaria/promotora',
+            'construccion/contratista_general',
+            'technology/soporte_ti_msp',
+            'seguros/aseguradora',
+            'seguros/salud',
+        ]) {
+            const [industry, subtype] = id.split('/');
+            expect(resolveSubtypeExperienceProfile(industry, subtype)).toMatchObject({
+                availability: 'waitlist', commercialisable: false,
+            });
         }
         // Grooming resuelve a la experiencia de Pet Services, no a la clínica.
         expect(resolveSubtypeExperienceProfile('veterinaria', 'peluqueria_canina').id)
@@ -132,6 +147,7 @@ describe('cada perfil declara lo que se puede vender de él', () => {
         for (const profile of Object.values(SUBTYPE_EXPERIENCE_PROFILES)) {
             if (!profile.scope.startsWith('operacion')) continue;
             const resolved = resolveSubtypeExperienceProfile(profile.industry, profile.subtype);
+            if (!resolved.commercialisable) continue;
             // Vender "operación" sobre un embudo es exactamente la confusión que
             // el plan prohíbe: una oportunidad del CRM no es una reserva.
             expect(resolved.capability.primaryObject).not.toBe('lead');
@@ -150,6 +166,7 @@ describe('cada perfil declara lo que se puede vender de él', () => {
 
         for (const [id, profile] of misclassified) {
             if (profile.strategy === 'stop') continue;
+            if (!resolveSubtypeExperienceProfile(profile.industry, profile.subtype).commercialisable) continue;
             if (profile.strategy === 'migrate') {
                 // Migrado: el id resuelve a la experiencia correcta.
                 expect(profile.migratesTo).toEqual(expect.any(String));
@@ -183,7 +200,7 @@ describe('el registro compone, no duplica', () => {
         const dental = resolveSubtypeExperienceProfile('salud', 'dental');
         expect(dental.capability.capabilities).toContain('appointment_booking');
         expect(dental.capability.routes).toContain('/admin/appointments');
-        expect(dental.manifestVersion).toBe(2);
+        expect(dental.manifestVersion).toBe(3);
     });
 
     it('no guarda su propia copia de capacidades ni rutas', () => {
@@ -219,7 +236,10 @@ describe('el registro compone, no duplica', () => {
             const resolved = resolveSubtypeExperienceProfile(profile.industry, profile.subtype);
             const target = SUBTYPE_ALIASES[id] ?? id;
             const targetProfile = SUBTYPE_EXPERIENCE_PROFILES[target];
-            expect(resolved.commercialisable).toBe(targetProfile.strategy !== 'stop');
+            expect(resolved.commercialisable).toBe(
+                targetProfile.strategy !== 'stop'
+                && ['selectable', 'pilot'].includes(subtypeAvailability(targetProfile)),
+            );
         }
     });
 });

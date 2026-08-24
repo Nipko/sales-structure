@@ -23,6 +23,7 @@ export * from './country-language-pack';
 
 // ---- The single registry for what a subtype is ----
 export * from './subtype-experience-profile';
+export * from './subtype-taxonomy-migration';
 export * from './vertical-domain-contract';
 export * from './resource-rental-details';
 export * from './integration-scaffolding';

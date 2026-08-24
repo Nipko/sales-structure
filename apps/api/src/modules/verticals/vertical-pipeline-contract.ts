@@ -26,10 +26,19 @@ const APPOINTMENT_RULE_BY_SUBTYPE: Readonly<
         // Legacy clothing boutiques use catalogue operations, not salon seats.
         boutique: null,
     },
+    inmobiliaria: {
+        // Taxonomy-only Phase 1 target: no operational visit writer yet.
+        promotora: null,
+    },
+    finanzas: {
+        // Payments/collections is provider-bound, not an appointment flow.
+        pagos_recaudos: null,
+    },
     technology: {
         // Hardware sellers use catalogue/order operations and the manifest
         // explicitly removes appointment booking for this subtype.
         hardware: 'order_required',
+        soporte_ti_msp: null,
     },
     restaurantes: {
         comida_rapida: 'food_order_required',

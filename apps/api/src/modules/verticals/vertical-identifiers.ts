@@ -27,7 +27,7 @@ export class InvalidVerticalSelectionError extends Error {
  * Historical identifiers accepted at API boundaries. Internal persistence always
  * uses the registry key so feature gates, sidebar routing and bootstrap agree.
  */
-export const VERTICAL_IDENTIFIER_CONTRACT_VERSION = 2 as const;
+export const VERTICAL_IDENTIFIER_CONTRACT_VERSION = 3 as const;
 
 export const VERTICAL_INDUSTRY_ALIASES: Readonly<Record<string, string>> = {
     education: 'education',
@@ -50,6 +50,11 @@ export const VERTICAL_INDUSTRY_ALIASES: Readonly<Record<string, string>> = {
     gyms: 'gimnasios',
     insurance: 'seguros',
     photography: 'fotografia',
+    event_planning: 'event_planning',
+    planeacion_eventos: 'event_planning',
+    organizacion_eventos: 'event_planning',
+    construction: 'construccion',
+    construccion: 'construccion',
     ecommerce: 'retail',
     e_commerce: 'retail',
     tecnologia: 'technology',

@@ -5,7 +5,7 @@ import {
 } from './vertical-agent-defaults.util';
 
 describe('vertical agent defaults', () => {
-    it('migrates a persisted v1 native-operation profile to manifest v2 defaults', () => {
+    it('migrates a persisted v1 native-operation profile to current manifest defaults', () => {
         const defaults = resolveVerticalAgentDefaults({
             verticalConfig: {
                 industry: 'turismo',
@@ -17,7 +17,7 @@ describe('vertical agent defaults', () => {
         });
 
         expect(defaults).toEqual(expect.objectContaining({
-            manifestVersion: 2,
+            manifestVersion: 3,
             industry: 'turismo',
             subType: 'hotel',
             effectiveCapabilities: ['crm_pipeline', 'faq_search', 'nightly_booking'],

@@ -528,7 +528,10 @@ export class EffectiveCapabilityService {
         const roleBlocked = input.role !== undefined && !OPERATIONAL_ROLES.includes(input.role);
         const channelBlocked = input.channelType !== undefined
             && !CONVERSATIONAL_CHANNELS.includes(input.channelType);
-        const writersBlocked = profile.strategy === 'stop' || roleBlocked || channelBlocked;
+        // Availability is an execution boundary, not only selector metadata.
+        // Waitlisted and legacy profiles may resolve for audit/compatibility,
+        // but cannot publish writers until their product gate is promoted.
+        const writersBlocked = !profile.commercialisable || roleBlocked || channelBlocked;
         if (writersBlocked) {
             // Lo que cae es lo que COMPROMETE, no lo que escribe una fila. Con
             // `effect !== 'read'` se llevaba puestas siete lecturas —FAQs, base
@@ -543,6 +546,16 @@ export class EffectiveCapabilityService {
             const reason = roleBlocked ? 'role_not_operational'
                 : channelBlocked ? 'channel_not_certified'
                     : 'profile_blocked';
+            // A waitlist target can intentionally have zero domain writers.
+            // It still needs a typed, localized explanation in the contract;
+            // otherwise Ops sees `writersBlocked=true` with no repair reason.
+            if (!profile.commercialisable) {
+                excluded.push({
+                    subject: `profile:${profile.id}`,
+                    reason: 'profile_blocked',
+                    detail: CAPABILITY_EXCLUSION_TEXT.profile_blocked,
+                });
+            }
             if (writers.length) {
                 publishedTools = publishedTools.filter((tool) => !writers.includes(tool));
                 for (const tool of writers) {

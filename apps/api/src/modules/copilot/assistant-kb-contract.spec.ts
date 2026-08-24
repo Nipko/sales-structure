@@ -193,10 +193,12 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
-  it.each(LOCALES)('%s documents every canonical vertical profile', (locale) => {
+  it.each(LOCALES)('%s documents every currently public vertical profile', (locale) => {
     const labels = VERTICAL_LABELS[locale];
-    expect(canonicalVerticalIds).toHaveLength(18);
-    expect(new Set(Object.keys(labels))).toEqual(new Set(canonicalVerticalIds));
+    expect(canonicalVerticalIds).toHaveLength(20);
+    expect(canonicalVerticalIds.filter((id) => !Object.hasOwn(labels, id)))
+      .toEqual(['event_planning', 'construccion']);
+    expect(canonicalVerticalIds).toEqual(expect.arrayContaining(Object.keys(labels)));
 
     const article = byLocale[locale].find(
       (candidate) => candidate.id === 'modulos-industria',

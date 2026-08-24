@@ -108,7 +108,7 @@ function validateService(
 }
 
 /**
- * Deterministic 18-industry / 75-subtype matrix. It consumes the actual
+ * Deterministic 20-industry / 75-subtype matrix. It consumes the actual
  * manifest, definitions and bootstrap resolver; it does not duplicate a
  * currency map or reinterpret package/night units.
  */
@@ -120,6 +120,10 @@ export function buildVerticalCommercialUnitsMatrix(): VerticalCommercialUnitsMat
     for (const industry of VERTICAL_MANIFEST_INDUSTRIES) {
         const definition = getVerticalDefinition(industry);
         const manifestSubtypes = [...VERTICAL_CAPABILITY_MANIFEST[industry].subtypes];
+        const acceptedManifestSubtypes = [
+            ...manifestSubtypes,
+            ...(VERTICAL_CAPABILITY_MANIFEST[industry].legacySubtypes || []),
+        ];
         const definitionSubtypes = definition.subTypes.map((subtype) => subtype.key);
 
         for (const subtype of manifestSubtypes) {
@@ -134,7 +138,7 @@ export function buildVerticalCommercialUnitsMatrix(): VerticalCommercialUnitsMat
             }
         }
         for (const subtype of definitionSubtypes) {
-            if (!manifestSubtypes.includes(subtype)) {
+            if (!acceptedManifestSubtypes.includes(subtype)) {
                 failures.push({
                     industry,
                     subtype,

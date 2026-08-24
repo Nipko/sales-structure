@@ -16,6 +16,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { EmailModule } from '../email/email.module';
 import { VerticalAuditController } from './vertical-audit.controller';
+import { VerticalTaxonomyInventoryService } from './vertical-taxonomy-inventory.service';
 
 @Module({
     // TenantsModule aporta el resolutor regional: el perfil efectivo tiene que
@@ -36,6 +37,7 @@ import { VerticalAuditController } from './vertical-audit.controller';
         OperatingCurrencyService,
         TemporalCapacityContractService,
         VerticalMigrationService,
+        VerticalTaxonomyInventoryService,
         ServiceRequestListener,
     ],
     exports: [
@@ -47,6 +49,7 @@ import { VerticalAuditController } from './vertical-audit.controller';
         OperatingCurrencyService,
         TemporalCapacityContractService,
         VerticalMigrationService,
+        VerticalTaxonomyInventoryService,
     ],
 })
 export class VerticalsModule {}

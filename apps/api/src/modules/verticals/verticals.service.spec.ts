@@ -5,7 +5,11 @@ import {
     VERTICAL_PROVISIONING_VERSION,
 } from './verticals.service';
 import { resolveVerticalSelection } from './vertical-identifiers';
-import { SUBTYPE_ALIASES, VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
+import {
+    SUBTYPE_ALIASES,
+    VERTICAL_CAPABILITY_MANIFEST_VERSION,
+    listVerticalCapabilityConfigurations,
+} from '@parallext/shared';
 import { resolveVerticalSubtypePersonaContract } from '../persona/vertical-subtype-persona-contract';
 
 describe('selectQuotaAwareVerticalDefaults', () => {
@@ -17,8 +21,8 @@ describe('selectQuotaAwareVerticalDefaults', () => {
         custom: { pipelineStages: -1, appointmentServices: -1 },
     };
 
-    it('keeps all 18 vertical defaults within every real plan quota', () => {
-        expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(18);
+    it('keeps all 20 vertical defaults within every real plan quota', () => {
+        expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(20);
         for (const [industry, definition] of Object.entries(VERTICAL_REGISTRY)) {
             for (const [plan, limits] of Object.entries(plans)) {
                 const selected = selectQuotaAwareVerticalDefaults(
@@ -58,14 +62,12 @@ describe('selectQuotaAwareVerticalDefaults', () => {
             subType: string | null;
             definition: (typeof VERTICAL_REGISTRY)[string];
         }> = [];
-        for (const [industry, definition] of Object.entries(VERTICAL_REGISTRY)) {
-            if (definition.subTypes.length === 0) {
-                configurations.push({ industry, subType: null, definition });
-            } else {
-                for (const subType of definition.subTypes) {
-                    configurations.push({ industry, subType: subType.key, definition });
-                }
-            }
+        for (const manifest of listVerticalCapabilityConfigurations()) {
+            configurations.push({
+                industry: manifest.industry,
+                subType: manifest.subtype,
+                definition: VERTICAL_REGISTRY[manifest.industry],
+            });
         }
 
         expect(configurations).toHaveLength(76);
@@ -794,10 +796,10 @@ describe('VerticalsService resumable bootstrap', () => {
         expect((service as any).invalidateRuntimeCaches).not.toHaveBeenCalled();
     });
 
-    it('keeps v2 unpublished after an invariant failure and replays idempotent steps', async () => {
+    it('keeps the current manifest unpublished after an invariant failure and replays idempotent steps', async () => {
         const legacyConfig = {
             industry: 'retail',
-            subType: 'marketplace',
+            subType: 'moda',
             terminology: VERTICAL_REGISTRY.retail.terminology,
             sidebar: VERTICAL_REGISTRY.retail.sidebar,
             dashboard: VERTICAL_REGISTRY.retail.dashboard,
@@ -818,7 +820,7 @@ describe('VerticalsService resumable bootstrap', () => {
                 requiredTools: ['faqs', 'appointments', 'catalog'],
             });
 
-        await expect(service.bootstrapVertical(tenantId, 'retail', 'marketplace', 'es'))
+        await expect(service.bootstrapVertical(tenantId, 'retail', 'moda', 'es'))
             .rejects.toThrow('injected readiness mismatch');
         expect(settings.verticalProvisioning).toMatchObject({
             status: 'failed',
@@ -839,7 +841,7 @@ describe('VerticalsService resumable bootstrap', () => {
             },
         });
 
-        await service.bootstrapVertical(tenantId, 'retail', 'marketplace', 'es');
+        await service.bootstrapVertical(tenantId, 'retail', 'moda', 'es');
 
         expect(seedPipelineStages).toHaveBeenCalledTimes(2);
         expect(patchDefaultAgent).toHaveBeenCalledTimes(2);

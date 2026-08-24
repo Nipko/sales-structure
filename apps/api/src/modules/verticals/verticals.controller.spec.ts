@@ -39,6 +39,7 @@ describe('VerticalsController tenant isolation', () => {
         expect(methodGuards('getDefinitions')).not.toContain(TenantGuard);
         expect(methodGuards('getCapabilityManifest')).not.toContain(TenantGuard);
         expect(methodGuards('resolveCapabilityManifest')).not.toContain(TenantGuard);
+        expect(methodGuards('getTaxonomyMigrationInventory')).not.toContain(TenantGuard);
     });
 
     it('publishes every canonical vertical, including entries with no subtypes', async () => {
@@ -47,14 +48,18 @@ describe('VerticalsController tenant isolation', () => {
         const result = await controller.getDefinitions();
 
         expect(Object.keys(result.data)).toEqual(Object.keys(VERTICAL_REGISTRY));
-        expect(Object.keys(result.data)).toHaveLength(18);
+        expect(Object.keys(result.data)).toHaveLength(20);
         expect(result.data.otro).toEqual([]);
         expect(result.meta).toMatchObject({
             version: VERTICAL_IDENTIFIER_CONTRACT_VERSION,
             contract: 'vertical-identifiers',
-            count: 18,
-            subtypeCount: 75,
-            configurationCount: 76,
+            count: 20,
+            subtypeCount: 80,
+            configurationCount: 81,
+            canonicalIndustryCount: 20,
+            canonicalConfigurationCount: 76,
+            canonicalProfileCount: 76,
+            resolvableProfileCount: 81,
             aliases: VERTICAL_INDUSTRY_ALIASES,
         });
         expect(result.meta.aliases.educacion).toBe('education');
@@ -74,8 +79,8 @@ describe('VerticalsController tenant isolation', () => {
 
         const result = await controller.getDefinitions();
 
-        // Los 75 siguen ahí: el conteo no cambia porque un perfil se cierre.
-        expect(result.meta.subtypeCount).toBe(75);
+        // Los 80 ids del payload incluyen destinos y compatibilidad legacy.
+        expect(result.meta.subtypeCount).toBe(80);
         for (const blocked of listBlockedSubtypeProfiles()) {
             const id = `${blocked.industry}/${blocked.subtype}`;
             expect(result.meta.availability[id]).toBe('legacy_only');
@@ -84,6 +89,8 @@ describe('VerticalsController tenant isolation', () => {
         }
         // Y el resto se puede elegir: cerrar siete no cierra el producto.
         expect(result.meta.availability['restaurantes/comida_rapida']).toBe('selectable');
+        expect(result.meta.availability['retail/marketplace']).toBe('waitlist');
+        expect(result.meta.availability['event_planning/weddings']).toBe('waitlist');
         expect(result.meta.signupAvailability).toEqual(['selectable']);
         expect(result.meta.adminCreateAvailability).toEqual(['selectable', 'pilot']);
     });
@@ -166,6 +173,22 @@ describe('VerticalsController tenant isolation', () => {
     it('keeps content reseeding restricted to tenant administrators', () => {
         expect(Reflect.getMetadata(ROLES_KEY, VerticalsController.prototype.reseedContent))
             .toEqual(['tenant_admin']);
+    });
+
+    it('restricts the read-only taxonomy inventory to super admins', async () => {
+        const inventory = { inventory: jest.fn().mockResolvedValue({ applySupported: false }) };
+        const controller = new VerticalsController(
+            {} as any, {} as any, {} as any, inventory as any,
+        );
+
+        expect(Reflect.getMetadata(
+            ROLES_KEY,
+            VerticalsController.prototype.getTaxonomyMigrationInventory,
+        )).toEqual(['super_admin']);
+        await expect(controller.getTaxonomyMigrationInventory()).resolves.toEqual({
+            success: true,
+            data: { applySupported: false },
+        });
     });
 
     it.each([

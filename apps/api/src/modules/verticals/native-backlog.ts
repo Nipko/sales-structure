@@ -628,7 +628,10 @@ export function deriveNativeBacklog(profileId: string): NativeBacklogEntry | nul
 
 export function deriveNativeBacklogAll(): NativeBacklogEntry[] {
     return Object.entries(SUBTYPE_EXPERIENCE_PROFILES as Record<string, any>)
-        .filter(([, entry]) => entry.strategy === 'build' || entry.strategy === 'hybrid')
+        .filter(([, entry]) => (
+            (entry.strategy === 'build' || entry.strategy === 'hybrid')
+            && resolveSubtypeExperienceProfile(entry.industry, entry.subtype).commercialisable
+        ))
         .map(([id]) => deriveNativeBacklog(id)!)
         .filter(Boolean);
 }

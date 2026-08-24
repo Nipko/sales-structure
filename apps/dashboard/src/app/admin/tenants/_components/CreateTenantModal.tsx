@@ -7,6 +7,7 @@ import type { TenantPlanSlug, TenantVerticalDefinitions } from "./types";
 import {
   ADMIN_CREATE_AVAILABILITY,
   getVerticalLabel,
+  offerableIndustries,
   offerableSubTypes,
   type VerticalCatalogLocale,
 } from "@/lib/vertical-catalog";
@@ -67,7 +68,10 @@ export default function CreateTenantModal({
     }
   }, [open, plans]);
 
-  const industries = useMemo(() => Object.keys(verticalDefinitions), [verticalDefinitions]);
+  const industries = useMemo(
+    () => offerableIndustries(verticalDefinitions, ADMIN_CREATE_AVAILABILITY),
+    [verticalDefinitions],
+  );
   // Un super_admin además puede poner al tenant en un piloto; lo cerrado a
   // altas nuevas sigue cerrado también para él.
   const subTypes = offerableSubTypes(

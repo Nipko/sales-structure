@@ -65,6 +65,13 @@ describe('negación, condición y corrección le ganan a cualquier afirmación',
         }
     });
 
+    it('distingue el sí afirmativo del si condicional después de normalizar acentos', () => {
+        expect(normalizeCustomerIntent('sí').intent).toBe('affirm');
+        expect(normalizeCustomerIntent('si').intent).toBe('affirm');
+        expect(normalizeCustomerIntent('si tienen disponibilidad para diciembre').intent).toBe('unclear');
+        expect(normalizeCustomerIntent('si, confirmo la reserva').intent).toBe('affirm');
+    });
+
     it('una negación se lee como negación, no como duda', () => {
         for (const text of ['no', 'no gracias', 'mejor no', 'todavía no', 'não', 'melhor não', 'je refuse']) {
             expect(classifyConfirmation(text)).toBe('rejected');

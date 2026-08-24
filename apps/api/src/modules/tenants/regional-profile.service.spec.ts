@@ -31,6 +31,12 @@ describe('precedencia: declarado > derivado > inferido > fallback', () => {
         expect(profile.operatingCountry).toMatchObject({ value: 'MX', source: 'declared' });
     });
 
+    it('carries country generation terms and prohibited registers into the resolved profile', () => {
+        const profile = build().compose(tenantId, { operatingCountry: 'CO' });
+        expect(profile.preferredTerms).toMatchObject({ appointment: 'cita', rental: 'arriendo' });
+        expect(profile.prohibitedRegisters).toEqual(expect.arrayContaining(['parce', 'bro']));
+    });
+
     it('Business Info pesa más que la relación de facturación', () => {
         const profile = build().compose(tenantId, {
             billingCountry: 'CO',

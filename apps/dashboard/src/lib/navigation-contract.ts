@@ -172,6 +172,11 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "settingsReviews", pattern: "/admin/settings/integrations/reviews", titleKey: "settings.items.reviews.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsSlack", pattern: "/admin/settings/integrations/slack", titleKey: "settings.items.slack.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsSmsNotifications", pattern: "/admin/settings/integrations/sms-notifications", titleKey: "settings.items.smsNotifications.label", scope: "tenant", parentId: "settingsIntegrations" },
+  // Contextual destination for turismo/hotel and alquiler_vacacional. It is
+  // linked from Vertical Integrations only when the subtype can use it; a
+  // global command-palette entry would advertise a plan/subtype-gated screen
+  // to unrelated businesses.
+  { id: "settingsChannelManager", pattern: "/admin/settings/integrations/channel-manager", titleKey: "channelManager.title", scope: "tenant", parentId: "settingsIntegrations", discoverable: false },
   { id: "settingsVerticalIntegrations", pattern: "/admin/settings/integrations/vertical", titleKey: "settings.items.verticalIntegrations.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsWebChat", pattern: "/admin/settings/integrations/web-chat", titleKey: "settings.items.webChat.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsWebChatTriggers", pattern: "/admin/settings/integrations/web-chat/triggers", titleKey: "navigation.routes.settingsWebChatTriggers", scope: "tenant", parentId: "settingsWebChat" },
@@ -181,6 +186,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "platformTenants", pattern: "/admin/tenants", titleKey: "nav.items.tenants", scope: "platform" },
   { id: "platformTenantDetail", pattern: "/admin/tenants/:tenantId", titleKey: "navigation.routes.platformTenantDetail", scope: "platform", parentId: "platformTenants", dynamicTitleParam: "tenantId" },
   { id: "platformOps", pattern: "/admin/ops", titleKey: "nav.items.ops", scope: "platform" },
+  { id: "platformIntegrationOutbox", pattern: "/admin/ops/integrations", titleKey: "nav.items.integrationOutbox", scope: "platform", parentId: "platformOps" },
   { id: "platformOpsAlerts", pattern: "/admin/ops/alerts", titleKey: "topbar.breadcrumbs.alerts", scope: "platform", parentId: "platformOps" },
   { id: "platformIncidents", pattern: "/admin/incidents", titleKey: "nav.items.incidents", scope: "platform" },
   { id: "platformFinancials", pattern: "/admin/financials", titleKey: "nav.items.financials", scope: "platform" },
@@ -195,6 +201,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "platformCompliance", pattern: "/admin/compliance-admin", titleKey: "nav.items.complianceAdmin", scope: "platform" },
   { id: "platformFunnel", pattern: "/admin/funnel", titleKey: "nav.items.funnel", scope: "platform" },
   { id: "platformVerticalAnalytics", pattern: "/admin/vertical-analytics", titleKey: "nav.items.verticalAnalytics", scope: "platform" },
+  { id: "platformVerticalAudit", pattern: "/admin/vertical-audit", titleKey: "nav.items.verticalAudit", scope: "platform" },
   { id: "platformCoupons", pattern: "/admin/coupons", titleKey: "nav.items.coupons", scope: "platform" },
   { id: "platformPlans", pattern: "/admin/plans", titleKey: "nav.items.plans", scope: "platform" },
   { id: "platformBillingOps", pattern: "/admin/billing-ops", titleKey: "nav.items.billingOps", scope: "platform" },

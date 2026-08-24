@@ -130,14 +130,16 @@ describe('el interés se registra sin pisar lo que una persona clasificó', () =
     });
 });
 
-describe('lo que las tres NO pueden hacer', () => {
-    it('no existe una tool que mueva la etapa del embudo', () => {
-        // El motor de transiciones mira señales y tiene reglas que el dueño
-        // configuró. Dejar que el modelo salte por encima lo volvería
-        // decorativo.
+describe('las escrituras operativas de CRM tienen límites explícitos', () => {
+    it('mover una etapa existe sólo bajo aprobación humana A4', () => {
         const published = staticToolsForAgentConfig({ crm: { enabled: true } })
             .map(t => String(t.name));
-        expect(published.some(name => /stage|etapa|pipeline/i.test(name))).toBe(false);
+        expect(published).toContain('move_crm_opportunity_stage');
+        expect(getToolPolicy('move_crm_opportunity_stage')).toMatchObject({
+            assurance: 'A4',
+            humanApproval: 'runtime_enforced',
+            ownership: 'resource_owner',
+        });
     });
 
     it('no comprometen al negocio: sobreviven con la escritura bloqueada', () => {
@@ -165,5 +167,106 @@ describe('lo que las tres NO pueden hacer', () => {
             .map(t => String(t.name));
         expect(published).toContain('add_contact_note');
         expect(published).toContain('get_customer_context');
+        expect(published).toEqual(expect.arrayContaining([
+            'ensure_crm_lead',
+            'create_crm_opportunity',
+            'move_crm_opportunity_stage',
+            'create_follow_up_task',
+            'record_contact_consent',
+        ]));
+    });
+});
+
+describe('el CRM mínimo crea registros sin duplicarlos ni inventar autoridad', () => {
+    it('ensure_crm_lead reutiliza el lead actual', async () => {
+        const { executor, queries } = buildExecutor([[{ id: leadId }]]);
+        const createLead = jest.fn();
+        (executor as any).leadsRepository = { createLead };
+
+        const result = await (executor as any).ensureCrmLead(
+            tenantId, schemaName, contactId, 'Pidió cotización del plan anual',
+        );
+
+        expect(result).toMatchObject({ success: true, leadId, created: false });
+        expect(createLead).not.toHaveBeenCalled();
+        expect(queries).toHaveLength(1);
+    });
+
+    it('ensure_crm_lead crea desde el contacto server-side, no desde argumentos del modelo', async () => {
+        const { executor } = buildExecutor([
+            [],
+            [{ name: 'Ana Torres', phone: '+573001234567', phone_normalized: '+573001234567', email: 'ana@example.com' }],
+        ]);
+        const ensureActiveLeadForContact = jest.fn().mockResolvedValue({
+            lead: { id: leadId },
+            created: true,
+        });
+        (executor as any).leadsRepository = { ensureActiveLeadForContact };
+
+        const result = await (executor as any).ensureCrmLead(
+            tenantId, schemaName, contactId, 'Pidió una propuesta',
+        );
+
+        expect(result).toMatchObject({ success: true, leadId, created: true });
+        expect(ensureActiveLeadForContact).toHaveBeenCalledWith(tenantId, contactId, expect.objectContaining({
+            contact_id: contactId,
+            phone: '+573001234567',
+            first_name: 'Ana',
+            last_name: 'Torres',
+        }));
+    });
+
+    it('create_crm_opportunity reutiliza la misma oportunidad de la conversación', async () => {
+        const opportunityId = '55555555-5555-4555-8555-555555555555';
+        const { executor } = buildExecutor([
+            [{ id: leadId }],
+        ]);
+        const createOpportunityIdempotently = jest.fn().mockResolvedValue({
+            opportunity: { id: opportunityId, stage: 'nuevo' },
+            created: false,
+        });
+        (executor as any).opportunitiesRepository = { createOpportunityIdempotently };
+
+        const result = await (executor as any).createCrmOpportunity(
+            tenantId,
+            schemaName,
+            contactId,
+            conversationId,
+            { title: 'Plan anual' },
+        );
+
+        expect(result).toMatchObject({ success: true, opportunityId, created: false });
+        expect(createOpportunityIdempotently).toHaveBeenCalledTimes(1);
+    });
+
+    it('el consentimiento descarta versión y hash aportados por el modelo', async () => {
+        const { executor } = buildExecutor();
+        (executor as any).policiesService = {
+            getActive: jest.fn().mockResolvedValue({
+                id: '66666666-6666-4666-8666-666666666666',
+                type: 'privacy',
+                title: 'Privacidad',
+                content: 'Texto canónico del tenant',
+                version: 7,
+            }),
+        };
+
+        const prepared = await (executor as any).prepareContactConsent(tenantId, {
+            policyType: 'privacy',
+            scope: 'contact_follow_up',
+            policyVersion: 999,
+            legalTextHash: 'inventado',
+        });
+
+        expect(prepared).toMatchObject({
+            ok: true,
+            consent: {
+                policyVersion: 7,
+                policyTitle: 'Privacidad',
+                scope: 'contact_follow_up',
+            },
+        });
+        expect(prepared.consent.legalTextHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(prepared.consent.legalTextHash).not.toBe('inventado');
     });
 });

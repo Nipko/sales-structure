@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { InboundQueueProcessor } from './inbound-queue.processor';
 import { INBOUND_QUEUE } from './inbound-queue.constants';
+import { InboundFailedRedriveService } from './inbound-failed-redrive.service';
 
 /**
  * Consumer side. Imports the business graph it needs and exports nothing, so
@@ -14,6 +15,6 @@ import { INBOUND_QUEUE } from './inbound-queue.constants';
         BullModule.registerQueue({ name: INBOUND_QUEUE }),
         ConversationsModule,
     ],
-    providers: [InboundQueueProcessor],
+    providers: [InboundQueueProcessor, InboundFailedRedriveService],
 })
 export class InboundProcessorModule {}

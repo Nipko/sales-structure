@@ -6,14 +6,21 @@ import { RedisService } from '../redis/redis.service';
 import { Cron } from '@nestjs/schedule';
 import { CronLockService } from '../redis/cron-lock.service';
 import {
+    VERTICAL_INTEGRATION_SYNC_CRON,
+    providerFitsProfile,
+    providerFreshnessFor,
+} from '@parallext/shared';
+import { randomUUID } from 'crypto';
+import {
     TENANT_SECRET_MASK,
     TenantSecretCryptoService,
     isMaskedSecret,
 } from '../../common/crypto/tenant-secret-crypto.service';
 import {
     deleteTenantSettingsLeaf,
-    replaceTenantSettingsLeaf,
+    mutateTenantSettingsLeafAtomic,
 } from '../../common/utils/tenant-settings-branch.util';
+import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import {
     OUTBOUND_MAX_REQUEST_BYTES,
     OUTBOUND_MAX_RESPONSE_BYTES,
@@ -42,6 +49,7 @@ export interface ToastConfig {
     clientId: string;
     clientSecret: string;
     locationGuid: string;   // Toast-Restaurant-External-ID
+    configRevision?: number;
 }
 export interface MindbodyConfig {
     provider: 'mindbody';
@@ -50,6 +58,7 @@ export interface MindbodyConfig {
     sourceName?: string;
     username?: string;
     password?: string;
+    configRevision?: number;
 }
 export interface ClinikoConfig {
     provider: 'cliniko';
@@ -57,10 +66,21 @@ export interface ClinikoConfig {
     baseUrl: string;        // shard base, e.g. https://api.au1.cliniko.com/v1
     businessId?: string;
     practitionerId?: string;
+    configRevision?: number;
 }
 export type VerticalIntegrationConfig = ToastConfig | MindbodyConfig | ClinikoConfig;
+export type VerticalIntegrationConfigPatch = Partial<
+    Omit<ToastConfig, 'provider'>
+    & Omit<MindbodyConfig, 'provider'>
+    & Omit<ClinikoConfig, 'provider'>
+> & { provider?: VerticalProvider };
 
 const PROVIDERS: VerticalProvider[] = ['toast', 'mindbody', 'cliniko'];
+const CONFIG_FIELDS: Readonly<Record<VerticalProvider, readonly string[]>> = Object.freeze({
+    toast: Object.freeze(['hostname', 'clientId', 'clientSecret', 'locationGuid']),
+    mindbody: Object.freeze(['apiKey', 'siteId', 'sourceName', 'username', 'password']),
+    cliniko: Object.freeze(['apiKey', 'baseUrl', 'businessId', 'practitionerId']),
+});
 
 /**
  * Los campos que son un secreto, por proveedor.
@@ -94,6 +114,19 @@ const STATIC_PROVIDER_HTTP_LIMITS = {
     maxBodyLength: OUTBOUND_MAX_REQUEST_BYTES,
     proxy: false as const,
 };
+const MAX_PROVIDER_SYNC_PAGES = 500;
+const MAX_PROVIDER_SYNC_ITEMS = 100_000;
+
+interface VerticalMirrorItem {
+    provider: VerticalProvider;
+    itemType: string;
+    externalId: string;
+    title?: string;
+    subtitle?: string;
+    priceCents?: number | null;
+    currency?: string;
+    data?: any;
+}
 
 /**
  * Real vertical integrations (T3.19) — "thin vertical, deep horizontal".
@@ -118,6 +151,27 @@ export class VerticalIntegrationsService {
         private readonly appConfig: ConfigService,
         private readonly secrets: TenantSecretCryptoService,
     ) {}
+
+    private async assertProviderApplicable(
+        tenantId: string,
+        provider: VerticalProvider,
+    ): Promise<void> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true, industry: true },
+        });
+        if (!tenant) throw new NotFoundException('Tenant not found');
+        const settings = (tenant.settings as any) || {};
+        const industry = settings.verticalConfig?.industry || tenant.industry;
+        const subType = settings.verticalConfig?.subType ?? settings.subType ?? null;
+        if (providerFitsProfile(provider, industry, subType)) return;
+        throw new BadRequestException({
+            error: 'provider_not_applicable',
+            provider,
+            profileId: subType ? `${industry}/${subType}` : industry,
+            message: `La integración ${provider} no corresponde a este subtipo de negocio.`,
+        });
+    }
 
     /**
      * Validates tenant-configurable provider endpoints before they are stored or
@@ -204,10 +258,16 @@ export class VerticalIntegrationsService {
      * `getAllConfigs`, que enmascara.
      */
     async getConfig(tenantId: string, provider: VerticalProvider): Promise<any | null> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true, industry: true } });
         const stored = (tenant?.settings as any)?.verticalIntegrations?.[provider];
         if (!stored) return null;
-        return this.decryptSecrets(tenantId, provider, stored);
+        const config = await this.decryptSecrets(tenantId, provider, stored);
+        return { ...config, configRevision: this.configRevisionOf(config) };
+    }
+
+    private configRevisionOf(config: unknown): number {
+        const value = Number((config as any)?.configRevision);
+        return Number.isSafeInteger(value) && value >= 0 ? value : 0;
     }
 
     /**
@@ -254,7 +314,7 @@ export class VerticalIntegrationsService {
             }
         }
         if (Object.keys(rewrap).length) {
-            this.persistRewrappedSecrets(tenantId, provider, rewrap).catch((error: any) => {
+            this.persistRewrappedSecrets(tenantId, provider, stored, rewrap).catch((error: any) => {
                 this.logger.warn(`[VI] no se pudo re-cifrar ${provider}: ${error?.message}`);
             });
         }
@@ -264,25 +324,38 @@ export class VerticalIntegrationsService {
     private async persistRewrappedSecrets(
         tenantId: string,
         provider: VerticalProvider,
+        expected: Record<string, any>,
         rewrap: Record<string, string>,
     ): Promise<void> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        if (!tenant) return;
-        const settings = (tenant.settings as any) || {};
-        const current = settings.verticalIntegrations?.[provider];
-        if (!current) return;
-        // Merge sobre la fila viva. Este camino lo dispara una LECTURA en
-        // segundo plano: reescribir desde una foto competía con el dueño
-        // guardando, y el perdedor de esa carrera desaparecía sin traza.
-        await replaceTenantSettingsLeaf(
-            this.prisma, tenantId, 'verticalIntegrations', provider,
-            { ...current, ...rewrap },
+        let changed = false;
+        await mutateTenantSettingsLeafAtomic(
+            this.prisma,
+            tenantId,
+            'verticalIntegrations',
+            provider,
+            (raw) => {
+                const current = raw && typeof raw === 'object' ? raw as Record<string, any> : null;
+                if (!current) return current;
+
+                // A rewrap is derived from a particular stored secret. Preserve
+                // an owner's newer save by replacing only fields whose live
+                // value still equals what the read observed.
+                const applicable = Object.fromEntries(
+                    Object.entries(rewrap).filter(([field]) => current[field] === expected[field]),
+                );
+                if (!Object.keys(applicable).length) return current;
+                changed = true;
+                return { ...current, ...applicable };
+            },
         );
-        this.logger.log(`[VI] secretos de ${provider} re-cifrados para ${tenantId}`);
+        if (changed) this.logger.log(`[VI] secretos de ${provider} re-cifrados para ${tenantId}`);
     }
 
     async getAllConfigs(tenantId: string): Promise<Record<string, any>> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true, industry: true },
+        });
         const settings = (tenant?.settings as any) || {};
         const vi = settings.verticalIntegrations || {};
         const storedHealth = settings.verticalIntegrationHealth || {};
@@ -290,7 +363,11 @@ export class VerticalIntegrationsService {
         const out: Record<string, any> = {};
         for (const p of PROVIDERS) {
             if (vi[p]) {
-                const health = materializeIntegrationHealth(p, true, storedHealth[p]);
+                const health = materializeIntegrationHealth(
+                    p, true, storedHealth[p], new Date(),
+                    (settings.verticalConfig?.industry || tenant?.industry) as string | undefined,
+                    settings.verticalConfig?.subType,
+                );
                 out[p] = {
                     ...vi[p],
                     // Derivado del registro por proveedor: escrito a mano, un
@@ -315,65 +392,90 @@ export class VerticalIntegrationsService {
         return out;
     }
 
-    async updateConfig(tenantId: string, provider: VerticalProvider, config: Partial<VerticalIntegrationConfig>): Promise<any> {
+    async updateConfig(tenantId: string, provider: VerticalProvider, config: VerticalIntegrationConfigPatch): Promise<any> {
         if (!PROVIDERS.includes(provider)) throw new BadRequestException('Proveedor no soportado');
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        if (!tenant) throw new NotFoundException('Tenant not found');
-        const settings = (tenant.settings as any) || {};
-        const vi = settings.verticalIntegrations || {};
-        const healthStore = settings.verticalIntegrationHealth || {};
-        const current = vi[provider] || {};
-        // Merge — keep existing secrets if masked/omitted
-        const merged: any = { ...current, ...config, provider };
-        const cfgAny = config as any;
-        // La lista sale del registro por proveedor, no de la unión escrita a
-        // mano de los tres. Hoy coinciden por casualidad; un proveedor nuevo con
-        // un nombre de campo distinto rompería la conservación del secreto sin
-        // que nada lo dijera.
-        for (const secretKey of SECRET_FIELDS[provider]) {
-            if (isMaskedSecret(cfgAny[secretKey]) || cfgAny[secretKey] === undefined) {
-                merged[secretKey] = current[secretKey];
-            }
+        await this.assertProviderApplicable(tenantId, provider);
+        const suppliedFields = Object.keys(config as Record<string, unknown>)
+            .filter(field => (config as any)[field] !== undefined && field !== 'provider');
+        const invalidFields = suppliedFields.filter(field => !CONFIG_FIELDS[provider].includes(field));
+        if (invalidFields.length) {
+            throw new BadRequestException(`Campos no válidos para ${provider}: ${invalidFields.join(', ')}`);
         }
+        const normalizedConfig: any = Object.fromEntries(
+            suppliedFields.map(field => [field, (config as any)[field]]),
+        );
         if (provider === 'toast') {
-            merged.hostname = await this.validateProviderEndpoint('toast', merged.hostname);
+            if (normalizedConfig.hostname !== undefined) {
+                normalizedConfig.hostname = await this.validateProviderEndpoint('toast', normalizedConfig.hostname);
+            }
         } else if (provider === 'cliniko') {
-            merged.baseUrl = await this.validateProviderEndpoint('cliniko', merged.baseUrl);
-            if (merged.businessId) {
-                merged.businessId = this.validateClinikoIdentifier(merged.businessId, 'negocio Cliniko');
+            if (normalizedConfig.baseUrl !== undefined) {
+                normalizedConfig.baseUrl = await this.validateProviderEndpoint('cliniko', normalizedConfig.baseUrl);
             }
-            if (merged.practitionerId) {
-                merged.practitionerId = this.validateClinikoIdentifier(merged.practitionerId, 'profesional Cliniko');
+            if (normalizedConfig.businessId) {
+                normalizedConfig.businessId = this.validateClinikoIdentifier(normalizedConfig.businessId, 'negocio Cliniko');
             }
-        }
-        // Los secretos se cifran ANTES de tocar la base. `merged` puede traer
-        // un valor viejo que ya estaba cifrado (se conservó porque el panel
-        // mandó `***`) o uno nuevo en claro: se cifra sólo lo segundo.
-        const persisted: any = { ...merged };
-        for (const field of SECRET_FIELDS[provider]) {
-            const value = persisted[field];
-            if (value === undefined || value === null || value === '') continue;
-            if (this.secrets.isEnvelope(value)) continue;
-            persisted[field] = this.secrets.encrypt(String(value), {
-                tenantId, scope: 'vertical_integration', provider, field: secretFieldId(field),
-            });
+            if (normalizedConfig.practitionerId) {
+                normalizedConfig.practitionerId = this.validateClinikoIdentifier(normalizedConfig.practitionerId, 'profesional Cliniko');
+            }
         }
 
-        // Una hoja por proveedor, sobre la fila viva. Reescribir las dos ramas
-        // enteras desde una foto significaba que guardar Toast borraba lo que se
-        // hubiera guardado de Cliniko en el mismo instante — y también lo que
-        // hubiera escrito cualquier otro módulo en `settings`.
-        await replaceTenantSettingsLeaf(
-            this.prisma, tenantId, 'verticalIntegrations', provider, persisted,
-        );
-        // Saving credentials never means they were validated. Reset health and
-        // require an explicit check/sync before tools exist.
-        await replaceTenantSettingsLeaf(
-            this.prisma, tenantId, 'verticalIntegrationHealth', provider,
-            initialIntegrationHealth(provider),
-        );
+        let response: any;
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, (currentSettings) => {
+                const settings = currentSettings as Record<string, any>;
+                const integrations = settings.verticalIntegrations && typeof settings.verticalIntegrations === 'object'
+                    ? settings.verticalIntegrations as Record<string, any>
+                    : {};
+                const current = integrations[provider] && typeof integrations[provider] === 'object'
+                    ? integrations[provider] as Record<string, any>
+                    : {};
+                const merged: any = { ...current, ...normalizedConfig, provider };
+
+                // Keep the live secret for masked/omitted fields. This merge is
+                // performed under the row lock, so two saves to the same
+                // provider cannot silently restore each other's stale value.
+                for (const secretKey of SECRET_FIELDS[provider]) {
+                    if (isMaskedSecret(normalizedConfig[secretKey]) || normalizedConfig[secretKey] === undefined) {
+                        merged[secretKey] = current[secretKey];
+                    }
+                }
+
+                const persisted: any = { ...merged };
+                // Revision is assigned under the same row lock that writes the
+                // credentials. A response from revision N can therefore never
+                // certify revision N+1 after a concurrent save/provider switch.
+                persisted.configRevision = this.configRevisionOf(current) + 1;
+                for (const field of SECRET_FIELDS[provider]) {
+                    const value = persisted[field];
+                    if (value === undefined || value === null || value === '') continue;
+                    if (this.secrets.isEnvelope(value)) continue;
+                    persisted[field] = this.secrets.encrypt(String(value), {
+                        tenantId, scope: 'vertical_integration', provider, field: secretFieldId(field),
+                    });
+                }
+                response = {
+                    ...persisted,
+                    ...Object.fromEntries(SECRET_FIELDS[provider].map(field => [
+                        field, persisted[field] ? TENANT_SECRET_MASK : undefined,
+                    ])),
+                };
+                const health = settings.verticalIntegrationHealth
+                    && typeof settings.verticalIntegrationHealth === 'object'
+                    ? settings.verticalIntegrationHealth as Record<string, any>
+                    : {};
+                return {
+                    ...settings,
+                    verticalIntegrations: { ...integrations, [provider]: persisted },
+                    // Config and health reset are one transaction. There is no
+                    // instant in which new credentials inherit old green health.
+                    verticalIntegrationHealth: {
+                        ...health,
+                        [provider]: initialIntegrationHealth(provider, persisted.configRevision),
+                    },
+                };
+            });
         await this.invalidateHealthCache(tenantId);
-        return merged;
+        return response;
     }
 
     async disconnect(tenantId: string, provider: VerticalProvider): Promise<void> {
@@ -403,7 +505,8 @@ export class VerticalIntegrationsService {
             !!settings.verticalIntegrations?.[provider],
             settings.verticalIntegrationHealth?.[provider],
             new Date(),
-            tenant?.industry,
+            settings.verticalConfig?.industry || tenant?.industry,
+            settings.verticalConfig?.subType,
         );
     }
 
@@ -419,9 +522,32 @@ export class VerticalIntegrationsService {
         return Object.fromEntries(PROVIDERS.map(provider => [
             provider,
             materializeIntegrationHealth(
-                provider, !!configured[provider], stored[provider], now, tenant?.industry,
+                provider, !!configured[provider], stored[provider], now,
+                settings.verticalConfig?.industry || tenant?.industry,
+                settings.verticalConfig?.subType,
             ),
         ])) as Record<VerticalProvider, IntegrationHealth>;
+    }
+
+    /**
+     * Ownership snapshot independent from provider health.
+     *
+     * A configured POS/PMS remains the authoritative owner while its API is
+     * down. Callers fetch this separately from health so a failed health read
+     * cannot silently reactivate local writers and create split-brain state.
+     */
+    async getConfiguredProviderBindings(
+        tenantId: string,
+    ): Promise<Record<VerticalProvider, boolean>> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const configured = ((tenant?.settings as any)?.verticalIntegrations || {}) as Record<string, unknown>;
+        return Object.fromEntries(PROVIDERS.map(provider => [
+            provider,
+            !!configured[provider] && typeof configured[provider] === 'object',
+        ])) as Record<VerticalProvider, boolean>;
     }
 
     /**
@@ -434,49 +560,84 @@ export class VerticalIntegrationsService {
         observation: IntegrationHealthObservation,
     ): Promise<IntegrationHealth> {
         if (!PROVIDERS.includes(provider)) throw new BadRequestException('Proveedor no soportado');
+        let settings: Record<string, any> = {};
+        let changed = false;
+        let staleObservation = false;
+        let next: StoredIntegrationHealth = initialIntegrationHealth(provider);
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, (currentSettings) => {
+                settings = currentSettings as Record<string, any>;
+                const integrations = settings.verticalIntegrations as Record<string, any> | undefined;
+                const config = integrations?.[provider];
+                const configRevision = this.configRevisionOf(config);
+                const healthBranch = settings.verticalIntegrationHealth
+                    && typeof settings.verticalIntegrationHealth === 'object'
+                    ? settings.verticalIntegrationHealth as Record<string, any>
+                    : {};
+                const current = healthBranch[provider] && typeof healthBranch[provider] === 'object'
+                    ? healthBranch[provider] as StoredIntegrationHealth
+                    : undefined;
+
+                if (observation.configRevision !== undefined
+                    && observation.configRevision !== configRevision) {
+                    staleObservation = true;
+                    next = current || initialIntegrationHealth(provider, configRevision);
+                    return settings;
+                }
+
+                const reduced = reduceIntegrationHealth(current, provider, {
+                    ...observation,
+                    configRevision,
+                });
+                changed = reduced !== current;
+                next = reduced;
+                if (!changed) return settings;
+                return {
+                    ...settings,
+                    verticalIntegrationHealth: { ...healthBranch, [provider]: reduced },
+                };
+            });
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true },
+            select: { industry: true },
         });
-        if (!tenant) throw new NotFoundException('Tenant not found');
-        const settings = (tenant.settings as any) || {};
-        const current = settings.verticalIntegrationHealth?.[provider] as StoredIntegrationHealth | undefined;
-        const next = reduceIntegrationHealth(current, provider, observation);
-        if (next !== current) {
-            const affected = await this.prisma.$executeRawUnsafe(
-                `UPDATE public.tenants
-                    SET settings = jsonb_set(
-                        COALESCE(settings, '{}'::jsonb),
-                        '{verticalIntegrationHealth}',
-                        COALESCE(settings->'verticalIntegrationHealth', '{}'::jsonb)
-                            || jsonb_build_object($2::text, $3::jsonb),
-                        true
-                    ),
-                    updated_at = NOW()
-                  WHERE id = $1::uuid`,
-                tenantId,
-                provider,
-                JSON.stringify(next),
+        const tenantIndustry = tenant?.industry;
+        if (staleObservation) {
+            this.logger.warn(
+                `[VI health] stale observation ignored tenant=${tenantId} provider=${provider} `
+                + `observedRevision=${observation.configRevision} currentRevision=${next.configRevision}`,
             );
-            if (Number(affected) !== 1) throw new NotFoundException('Tenant not found');
-            await this.invalidateHealthCache(tenantId);
         }
+        if (changed) await this.invalidateHealthCache(tenantId);
         return materializeIntegrationHealth(
             provider,
             !!settings.verticalIntegrations?.[provider],
             next,
+            new Date(),
+            settings.verticalConfig?.industry || tenantIndustry,
+            settings.verticalConfig?.subType,
         );
     }
 
     async getToolGate(
         tenantId: string,
         provider: VerticalProvider,
+        toolName: string,
     ): Promise<{ allowed: boolean; health: IntegrationHealth }> {
         const health = await this.getProviderHealth(tenantId, provider);
-        const allowed = health.status === 'healthy';
+        const policy = providerFreshnessFor(provider);
+        const isLive = !!policy?.liveTools.includes(toolName);
+        const isMirror = !!policy?.mirrorBackedTools.includes(toolName);
+        // Live tools need a usable credential/scope/circuit. Mirror-backed
+        // tools need all of that plus a fresh completed sync generation.
+        const connectionUsable = health.connected
+            && health.industryEligible
+            && health.scopeStatus !== 'missing'
+            && health.circuitState !== 'open'
+            && !['unavailable', 'unhealthy', 'not_applicable'].includes(health.status);
+        const allowed = connectionUsable && (isLive || (isMirror && !health.freshness.stale));
         if (!allowed) {
             this.logger.warn(
-                `[VI health] tool blocked tenant=${tenantId} provider=${provider} `
+                `[VI health] tool blocked tenant=${tenantId} provider=${provider} tool=${toolName} `
                 + `status=${health.status} circuit=${health.circuitState}`,
             );
         }
@@ -488,10 +649,23 @@ export class VerticalIntegrationsService {
         // Deliberately read durable health on every turn. A five-minute boolean
         // cache could keep registering a provider after it crossed staleAt.
         const health = await this.getAllHealth(tenantId);
+        const usable = (provider: VerticalProvider): boolean => {
+            const value = health[provider];
+            const policy = providerFreshnessFor(provider);
+            const connection = value.connected
+                && value.industryEligible
+                && value.scopeStatus !== 'missing'
+                && value.circuitState !== 'open'
+                && !['unavailable', 'unhealthy', 'not_applicable'].includes(value.status);
+            return connection && (
+                !!policy?.liveTools.length
+                || (!!policy?.mirrorBackedTools.length && !value.freshness.stale)
+            );
+        };
         const result = {
-            toast: health.toast.status === 'healthy',
-            mindbody: health.mindbody.status === 'healthy',
-            cliniko: health.cliniko.status === 'healthy',
+            toast: usable('toast'),
+            mindbody: usable('mindbody'),
+            cliniko: usable('cliniko'),
         } as Record<VerticalProvider, boolean>;
         return result;
     }
@@ -502,7 +676,7 @@ export class VerticalIntegrationsService {
         // tenantId passed where a schema name belongs would poison the cache and
         // only surface later as a raw Postgres 3F000. Fail readably, here.
         this.prisma.assertTenantSchemaName(schemaName);
-        const cacheKey = `vi_cols:${schemaName}`;
+        const cacheKey = `vi_cols:v2:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
         try {
             await this.prisma.executeInTenantSchema(
@@ -518,6 +692,9 @@ export class VerticalIntegrationsService {
                     currency VARCHAR(10),
                     data JSONB DEFAULT '{}'::jsonb,
                     synced_at TIMESTAMPTZ DEFAULT NOW(),
+                    sync_generation UUID,
+                    is_deleted BOOLEAN NOT NULL DEFAULT false,
+                    deleted_at TIMESTAMPTZ,
                     UNIQUE(provider, item_type, external_id)
                 )`,
                 [],
@@ -527,26 +704,63 @@ export class VerticalIntegrationsService {
                 `CREATE INDEX IF NOT EXISTS idx_vi_items_lookup ON vi_items(provider, item_type)`,
                 [],
             );
+            // Existing tenant schemas predate generation/tombstones. Keep each
+            // ALTER in its own statement for PgBouncer transaction mode.
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS sync_generation UUID`,
+                [],
+            );
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
+                [],
+            );
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+                [],
+            );
         } catch (e: any) {
             if (!/already exists|42P07|23505/.test(e.message || '')) throw e;
         }
         await this.redis.set(cacheKey, '1', 86400);
     }
 
-    private async upsertItem(schemaName: string, item: {
-        provider: string; itemType: string; externalId: string;
-        title?: string; subtitle?: string; priceCents?: number | null; currency?: string; data?: any;
-    }): Promise<void> {
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `INSERT INTO vi_items (provider, item_type, external_id, title, subtitle, price_cents, currency, data, synced_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
+    private async upsertItem(
+        query: <R = any[]>(sql: string, params?: any[]) => Promise<R>,
+        item: VerticalMirrorItem,
+        generation: string,
+    ): Promise<void> {
+        await query(
+            `INSERT INTO vi_items (provider, item_type, external_id, title, subtitle, price_cents, currency, data, synced_at, sync_generation, is_deleted, deleted_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW(), $9::uuid, false, NULL)
              ON CONFLICT (provider, item_type, external_id) DO UPDATE SET
                 title = EXCLUDED.title, subtitle = EXCLUDED.subtitle, price_cents = EXCLUDED.price_cents,
-                currency = EXCLUDED.currency, data = EXCLUDED.data, synced_at = NOW()`,
+                currency = EXCLUDED.currency, data = EXCLUDED.data, synced_at = NOW(),
+                sync_generation = EXCLUDED.sync_generation, is_deleted = false, deleted_at = NULL`,
             [item.provider, item.itemType, item.externalId, item.title || null, item.subtitle || null,
-             item.priceCents ?? null, item.currency || null, JSON.stringify(item.data || {})],
+             item.priceCents ?? null, item.currency || null, JSON.stringify(item.data || {}), generation],
         );
+    }
+
+    /** Mark only rows missing from a fully completed generation as removed. */
+    private async tombstoneMissingItems(
+        query: <R = any[]>(sql: string, params?: any[]) => Promise<R>,
+        provider: VerticalProvider,
+        itemType: string,
+        generation: string,
+    ): Promise<number> {
+        const rows = await query<any[]>(
+            `UPDATE vi_items
+                SET is_deleted = true, deleted_at = NOW()
+              WHERE provider = $1 AND item_type = $2
+                AND is_deleted = false
+                AND sync_generation IS DISTINCT FROM $3::uuid
+              RETURNING id`,
+            [provider, itemType, generation],
+        );
+        return rows?.length ?? 0;
     }
 
     /**
@@ -565,6 +779,7 @@ export class VerticalIntegrationsService {
         await this.ensureTables(schemaName);
         const conds: string[] = [];
         const params: any[] = [];
+        conds.push('is_deleted = false');
         if (provider) { conds.push(`provider = $${params.length + 1}`); params.push(provider); }
         if (itemType) { conds.push(`item_type = $${params.length + 1}`); params.push(itemType); }
         params.push(limit);
@@ -579,24 +794,40 @@ export class VerticalIntegrationsService {
 
     // ── Sync dispatch ────────────────────────────────────────
     async sync(tenantId: string, provider: VerticalProvider): Promise<{ synced: number }> {
+        await this.assertProviderApplicable(tenantId, provider);
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) throw new NotFoundException('Tenant not found');
         const config = await this.getConfig(tenantId, provider);
         if (!config) throw new BadRequestException(`${provider} no está configurado`);
 
         await this.ensureTables(schemaName);
-        let result: { synced: number };
+        let result: { synced: number; items: VerticalMirrorItem[] };
+        const generation = randomUUID();
+        const itemType = provider === 'toast'
+            ? 'menu_item'
+            : provider === 'mindbody' ? 'class' : 'appointment_type';
         try {
             switch (provider) {
-                case 'toast': result = await this.syncToast(schemaName, config); break;
-                case 'mindbody': result = await this.syncMindbody(schemaName, config); break;
-                case 'cliniko': result = await this.syncCliniko(schemaName, config); break;
+                case 'toast': result = await this.syncToast(config); break;
+                case 'mindbody': result = await this.syncMindbody(config); break;
+                case 'cliniko': result = await this.syncCliniko(config); break;
             }
+            // The provider is fetched completely before this transaction. A
+            // failed page or failed row therefore leaves the previous complete
+            // generation untouched instead of exposing a mixed mirror.
+            await this.prisma.transactionInTenantSchema(
+                schemaName,
+                async (query) => {
+                    for (const item of result.items) await this.upsertItem(query, item, generation);
+                    await this.tombstoneMissingItems(query, provider, itemType, generation);
+                },
+                { timeout: 120_000 },
+            );
         } catch (error: any) {
             const health = await this.updateHealth(
                 tenantId,
                 provider,
-                this.failureObservation(provider, error),
+                this.failureObservation(provider, error, this.configRevisionOf(config)),
             ).catch(() => null);
             this.logger.warn(
                 `[VI health] sync failed tenant=${tenantId} provider=${provider} `
@@ -612,12 +843,13 @@ export class VerticalIntegrationsService {
             syncSucceeded: true,
             credentialValidated: true,
             grantedScopes: requiredScopesForProvider(provider),
+            configRevision: this.configRevisionOf(config),
         });
         this.logger.log(
             `[VI health] tenant=${tenantId} provider=${provider} status=${health.status} `
             + `synced=${result.synced}`,
         );
-        return result;
+        return { synced: result.synced };
     }
 
     /**
@@ -638,7 +870,7 @@ export class VerticalIntegrationsService {
      * Una vez por día alcanza: son catálogos (menú, grilla de clases, servicios
      * de la clínica), no inventario en tiempo real.
      */
-    @Cron('0 5 * * *')
+    @Cron(VERTICAL_INTEGRATION_SYNC_CRON)
     async resyncAllCron(): Promise<void> {
         await this.cronLock.runExclusive('vertical-integrations.resyncAll', 3600, () => this.resyncAll());
     }
@@ -684,6 +916,7 @@ export class VerticalIntegrationsService {
     private failureObservation(
         provider: VerticalProvider,
         error: any,
+        configRevision?: number,
     ): IntegrationHealthObservation {
         const status = Number(error?.response?.status ?? error?.status ?? error?.statusCode);
         return {
@@ -691,6 +924,7 @@ export class VerticalIntegrationsService {
             credentialValidated: status === 401 ? false : undefined,
             missingScopes: status === 403 ? requiredScopesForProvider(provider) : undefined,
             error,
+            configRevision,
         };
     }
 
@@ -698,6 +932,7 @@ export class VerticalIntegrationsService {
         tenantId: string,
         provider: VerticalProvider,
     ): Promise<{ ok: boolean; message?: string; health: IntegrationHealth }> {
+        await this.assertProviderApplicable(tenantId, provider);
         const config = await this.getConfig(tenantId, provider);
         if (!config) {
             return {
@@ -731,7 +966,7 @@ export class VerticalIntegrationsService {
             const health = await this.updateHealth(
                 tenantId,
                 provider,
-                this.failureObservation(provider, e),
+                this.failureObservation(provider, e, this.configRevisionOf(config)),
             ).catch(() => materializeIntegrationHealth(provider, true, undefined));
             this.logger.warn(
                 `[VI health] check failed tenant=${tenantId} provider=${provider} `
@@ -748,6 +983,7 @@ export class VerticalIntegrationsService {
                 outcome: 'success',
                 credentialValidated: true,
                 grantedScopes,
+                configRevision: this.configRevisionOf(config),
             });
             this.logger.log(
                 `[VI health] check tenant=${tenantId} provider=${provider} status=${health.status}`,
@@ -781,31 +1017,54 @@ export class VerticalIntegrationsService {
         return token;
     }
 
-    private async syncToast(schemaName: string, config: ToastConfig): Promise<{ synced: number }> {
+    private async syncToast(
+        config: ToastConfig,
+    ): Promise<{ synced: number; items: VerticalMirrorItem[] }> {
         const token = await this.toastToken(config);
         const { baseUrl: hostname, target } = await this.prepareProviderEndpoint('toast', config.hostname);
-        const res = await this.http.axiosRef.get(`${hostname}/menus/v2/menus`, {
-            ...safeAxiosOptions(target, 30000),
-            headers: { Authorization: `Bearer ${token}`, 'Toast-Restaurant-External-ID': config.locationGuid },
-        });
-        const menus = res.data?.menus || res.data || [];
-        let synced = 0;
-        for (const menu of Array.isArray(menus) ? menus : []) {
-            for (const group of menu.menuGroups || []) {
-                for (const item of group.menuItems || []) {
-                    const priceCents = item.price != null ? Math.round(Number(item.price) * 100) : null;
-                    await this.upsertItem(schemaName, {
-                        provider: 'toast', itemType: 'menu_item',
-                        externalId: String(item.guid || item.referenceId || item.name),
-                        title: item.name, subtitle: group.name, priceCents, currency: 'USD',
-                        data: { description: item.description, group: group.name, menu: menu.name },
-                    });
-                    synced++;
+        const items: VerticalMirrorItem[] = [];
+        let pageToken: string | undefined;
+        const seenTokens = new Set<string>();
+        for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page++) {
+            const res = await this.http.axiosRef.get(`${hostname}/menus/v2/menus`, {
+                ...safeAxiosOptions(target, 30000),
+                headers: { Authorization: `Bearer ${token}`, 'Toast-Restaurant-External-ID': config.locationGuid },
+                params: pageToken ? { pageToken } : undefined,
+            });
+            const menus = res.data?.menus || (Array.isArray(res.data) ? res.data : []);
+            for (const menu of Array.isArray(menus) ? menus : []) {
+                for (const group of menu.menuGroups || []) {
+                    for (const item of group.menuItems || []) {
+                        const priceCents = item.price != null ? Math.round(Number(item.price) * 100) : null;
+                        items.push({
+                            provider: 'toast', itemType: 'menu_item',
+                            externalId: String(item.guid || item.referenceId || item.name),
+                            title: item.name, subtitle: group.name, priceCents, currency: 'USD',
+                            data: { description: item.description, group: group.name, menu: menu.name },
+                        });
+                        if (items.length > MAX_PROVIDER_SYNC_ITEMS) {
+                            throw new Error('Toast excedió el límite seguro de ítems');
+                        }
+                    }
                 }
             }
+            const rawNext = res.data?.nextPageToken
+                || res.data?.next_page_token
+                || res.headers?.['toast-next-page-token']
+                || res.headers?.['x-next-page-token'];
+            const next = typeof rawNext === 'string' ? rawNext.trim() : '';
+            if (!next) break;
+            if (next.length > 500 || seenTokens.has(next)) {
+                throw new Error('Toast devolvió un cursor de paginación inválido');
+            }
+            seenTokens.add(next);
+            pageToken = next;
+            if (page === MAX_PROVIDER_SYNC_PAGES - 1) {
+                throw new Error('Toast excedió el límite seguro de páginas');
+            }
         }
-        this.logger.log(`[Toast] Synced ${synced} menu items`);
-        return { synced };
+        this.logger.log(`[Toast] Fetched ${items.length} menu items`);
+        return { synced: items.length, items };
     }
 
     // ── Mindbody (gimnasios) ─────────────────────────────────
@@ -813,34 +1072,54 @@ export class VerticalIntegrationsService {
         return { 'Api-Key': config.apiKey, SiteId: config.siteId };
     }
 
-    private async syncMindbody(schemaName: string, config: MindbodyConfig): Promise<{ synced: number }> {
+    private async syncMindbody(
+        config: MindbodyConfig,
+    ): Promise<{ synced: number; items: VerticalMirrorItem[] }> {
         const now = new Date();
         const end = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-        const res = await this.http.axiosRef.get('https://api.mindbodyonline.com/public/v6/class/classes', {
-            ...STATIC_PROVIDER_HTTP_LIMITS,
-            headers: this.mindbodyHeaders(config),
-            params: { StartDateTime: now.toISOString(), EndDateTime: end.toISOString(), Limit: 200 },
-            timeout: 30000,
-        });
-        const classes = res.data?.Classes || [];
-        let synced = 0;
-        for (const c of classes) {
-            await this.upsertItem(schemaName, {
-                provider: 'mindbody', itemType: 'class',
-                externalId: String(c.Id),
-                title: c.ClassDescription?.Name || 'Clase',
-                subtitle: c.Staff?.Name,
-                data: {
-                    startDateTime: c.StartDateTime, endDateTime: c.EndDateTime,
-                    staff: c.Staff?.Name, maxCapacity: c.MaxCapacity, totalBooked: c.TotalBooked,
-                    isAvailable: (c.MaxCapacity ?? 0) > (c.TotalBooked ?? 0),
-                    location: c.Location?.Name,
+        const items: VerticalMirrorItem[] = [];
+        const limit = 200;
+        let offset = 0;
+        for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page++) {
+            const res = await this.http.axiosRef.get('https://api.mindbodyonline.com/public/v6/class/classes', {
+                ...STATIC_PROVIDER_HTTP_LIMITS,
+                headers: this.mindbodyHeaders(config),
+                params: {
+                    StartDateTime: now.toISOString(), EndDateTime: end.toISOString(),
+                    Limit: limit, Offset: offset,
                 },
+                timeout: 30000,
             });
-            synced++;
+            const classes = Array.isArray(res.data?.Classes) ? res.data.Classes : [];
+            for (const c of classes) {
+                items.push({
+                    provider: 'mindbody', itemType: 'class',
+                    externalId: String(c.Id),
+                    title: c.ClassDescription?.Name || 'Clase',
+                    subtitle: c.Staff?.Name,
+                    data: {
+                        startDateTime: c.StartDateTime, endDateTime: c.EndDateTime,
+                        staff: c.Staff?.Name, maxCapacity: c.MaxCapacity, totalBooked: c.TotalBooked,
+                        isAvailable: (c.MaxCapacity ?? 0) > (c.TotalBooked ?? 0),
+                        location: c.Location?.Name,
+                    },
+                });
+                if (items.length > MAX_PROVIDER_SYNC_ITEMS) {
+                    throw new Error('Mindbody excedió el límite seguro de ítems');
+                }
+            }
+            const total = Number(res.data?.PaginationResponse?.TotalResults);
+            offset += classes.length;
+            const complete = classes.length === 0
+                || classes.length < limit
+                || (Number.isFinite(total) && offset >= total);
+            if (complete) break;
+            if (page === MAX_PROVIDER_SYNC_PAGES - 1) {
+                throw new Error('Mindbody excedió el límite seguro de páginas');
+            }
         }
-        this.logger.log(`[Mindbody] Synced ${synced} classes`);
-        return { synced };
+        this.logger.log(`[Mindbody] Fetched ${items.length} classes`);
+        return { synced: items.length, items };
     }
 
     // ── Cliniko (salud) ──────────────────────────────────────
@@ -849,32 +1128,45 @@ export class VerticalIntegrationsService {
         return { Authorization: `Basic ${basic}`, Accept: 'application/json', 'User-Agent': 'Parallly (vertical-integration)' };
     }
 
-    private async syncCliniko(schemaName: string, config: ClinikoConfig): Promise<{ synced: number }> {
+    private async syncCliniko(
+        config: ClinikoConfig,
+    ): Promise<{ synced: number; items: VerticalMirrorItem[] }> {
         const { baseUrl, target } = await this.prepareProviderEndpoint('cliniko', config.baseUrl);
-        const res = await this.http.axiosRef.get(`${baseUrl}/appointment_types?per_page=100`, {
-            ...safeAxiosOptions(target, 30000),
-            headers: this.clinikoHeaders(config),
-        });
-        const types = res.data?.appointment_types || [];
-        let synced = 0;
-        for (const t of types) {
-            await this.upsertItem(schemaName, {
-                provider: 'cliniko', itemType: 'appointment_type',
-                externalId: String(t.id),
-                title: t.name,
-                subtitle: t.category?.name,
-                priceCents: t.billable_item?.price != null ? Math.round(Number(t.billable_item.price) * 100) : null,
-                data: { durationInMinutes: t.duration_in_minutes, description: t.description },
+        const items: VerticalMirrorItem[] = [];
+        const perPage = 100;
+        for (let page = 1; page <= MAX_PROVIDER_SYNC_PAGES; page++) {
+            const res = await this.http.axiosRef.get(`${baseUrl}/appointment_types`, {
+                ...safeAxiosOptions(target, 30000),
+                headers: this.clinikoHeaders(config),
+                params: { per_page: perPage, page },
             });
-            synced++;
+            const types = Array.isArray(res.data?.appointment_types) ? res.data.appointment_types : [];
+            for (const t of types) {
+                items.push({
+                    provider: 'cliniko', itemType: 'appointment_type',
+                    externalId: String(t.id),
+                    title: t.name,
+                    subtitle: t.category?.name,
+                    priceCents: t.billable_item?.price != null ? Math.round(Number(t.billable_item.price) * 100) : null,
+                    data: { durationInMinutes: t.duration_in_minutes, description: t.description },
+                });
+                if (items.length > MAX_PROVIDER_SYNC_ITEMS) {
+                    throw new Error('Cliniko excedió el límite seguro de ítems');
+                }
+            }
+            const hasNextLink = typeof res.data?.links?.next === 'string' && !!res.data.links.next;
+            if (!hasNextLink && types.length < perPage) break;
+            if (page === MAX_PROVIDER_SYNC_PAGES) {
+                throw new Error('Cliniko excedió el límite seguro de páginas');
+            }
         }
-        this.logger.log(`[Cliniko] Synced ${synced} appointment types`);
-        return { synced };
+        this.logger.log(`[Cliniko] Fetched ${items.length} appointment types`);
+        return { synced: items.length, items };
     }
 
     /** Live availability lookup for Cliniko (availability is dynamic, not synced). */
     async checkClinikoAvailability(tenantId: string, appointmentTypeId: string, from?: string, to?: string): Promise<any> {
-        const gate = await this.getToolGate(tenantId, 'cliniko');
+        const gate = await this.getToolGate(tenantId, 'cliniko', 'check_clinic_availability');
         if (!gate.allowed) return this.blockedToolResult(gate.health);
         const config: ClinikoConfig = await this.getConfig(tenantId, 'cliniko');
         if (!config) return { error: 'Cliniko no está configurado' };
@@ -899,6 +1191,7 @@ export class VerticalIntegrationsService {
                 outcome: 'success',
                 credentialValidated: true,
                 grantedScopes: requiredScopesForProvider('cliniko'),
+                configRevision: this.configRevisionOf(config),
             });
             return { availableTimes: times };
         } catch (e: any) {
@@ -907,7 +1200,7 @@ export class VerticalIntegrationsService {
                 : await this.updateHealth(
                     tenantId,
                     'cliniko',
-                    this.failureObservation('cliniko', e),
+                    this.failureObservation('cliniko', e, this.configRevisionOf(config)),
                 ).catch(() => gate.health);
             this.logger.warn(
                 `[VI health] availability failed tenant=${tenantId} provider=cliniko `
@@ -936,7 +1229,7 @@ export class VerticalIntegrationsService {
     }
 
     async getMenuForAI(tenantId: string, schemaName: string): Promise<any> {
-        const gate = await this.getToolGate(tenantId, 'toast');
+        const gate = await this.getToolGate(tenantId, 'toast', 'get_restaurant_menu');
         if (!gate.allowed) return this.blockedToolResult(gate.health);
         const rows = await this.listItemsInSchema(schemaName, 'toast', 'menu_item', 80);
         return {
@@ -951,7 +1244,7 @@ export class VerticalIntegrationsService {
     }
 
     async getScheduleForAI(tenantId: string, schemaName: string): Promise<any> {
-        const gate = await this.getToolGate(tenantId, 'mindbody');
+        const gate = await this.getToolGate(tenantId, 'mindbody', 'get_fitness_schedule');
         if (!gate.allowed) return this.blockedToolResult(gate.health);
         const rows = await this.listItemsInSchema(schemaName, 'mindbody', 'class', 80);
         // El sync de Mindbody trae una ventana de ~14 días que caduca sola: sin
@@ -976,7 +1269,7 @@ export class VerticalIntegrationsService {
     }
 
     async getClinicServicesForAI(tenantId: string, schemaName: string): Promise<any> {
-        const gate = await this.getToolGate(tenantId, 'cliniko');
+        const gate = await this.getToolGate(tenantId, 'cliniko', 'list_clinic_services');
         if (!gate.allowed) return this.blockedToolResult(gate.health);
         const rows = await this.listItemsInSchema(schemaName, 'cliniko', 'appointment_type', 80);
         return {

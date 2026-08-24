@@ -5,6 +5,10 @@ import {
 } from '@parallext/shared';
 import { STATIC_TOOL_NAMES, isBusinessWriteTool, toolOrigin } from './tool-policy-registry';
 import { ACTIVE_OBJECT_EXPOSURE_POLICY } from './active-object-policy';
+import {
+    attachWriterActiveObject,
+    WRITER_ACTIVE_OBJECTS,
+} from './writer-active-object';
 
 /**
  * ═══ EL AGENTE ESCRIBE UNA FILA; ¿DÓNDE LA ABRE UNA PERSONA? ═══
@@ -33,67 +37,11 @@ import { ACTIVE_OBJECT_EXPOSURE_POLICY } from './active-object-policy';
  * anotar lo que el cliente dijo no crea un registro operativo que alguien
  * tenga que abrir; se lee en la ficha del contacto, que el Inbox ya muestra.
  */
-const WRITER_OBJECT: Readonly<Record<string, ActiveObjectKind | null>> = Object.freeze({
-    create_appointment: 'appointment',
-    cancel_appointment: 'appointment',
-    reschedule_appointment: 'appointment',
-    place_catalog_order: 'order',
-    place_order: 'food_order',
-    cancel_order: 'food_order',
-    create_property_booking: 'property_booking',
-    cancel_property_booking: 'property_booking',
-    create_tour_booking: 'tour_booking',
-    cancel_tour_booking: 'tour_booking',
-    schedule_test_drive: 'appointment',
-    enroll_student: 'enrollment',
-    cancel_enrollment: 'enrollment',
-    register_pet: 'pet',
-    update_pet: 'pet',
-    book_class: 'class_booking',
-    cancel_class_booking: 'class_booking',
-    freeze_membership: 'membership',
-    calculate_quote: 'insurance_quote',
-    cancel_quote: 'insurance_quote',
-    file_claim: 'insurance_claim',
-    create_service_request: 'service_request',
-    cancel_service_request: 'service_request',
-    create_vehicle_rental: 'vehicle_rental',
-    cancel_vehicle_rental: 'vehicle_rental',
-    create_pet_boarding: 'pet_boarding',
-    cancel_pet_boarding: 'pet_boarding',
-    request_photo_quote: 'photo_session',
-    cancel_photo_session: 'photo_session',
-    triage_pet_emergency: null,
-    // ── Identidad: la llave, no la puerta ─────────────────────────────
-    //
-    // Las tres escriben —un código, un enlace de examen, un intento verificado—
-    // y ninguna deja un registro operativo: son el paso previo a leer algo, no
-    // la cosa que se lee.
-    request_identity_code: null,
-    verify_identity_code: null,
-    get_placement_test_link: null,
-    // ── CRM: anotar no crea un registro operativo ─────────────────────
-    //
-    // Las tres escriben en el CRM y ninguna deja algo que alguien tenga que
-    // "abrir": la nota, la etiqueta y el interés se leen en la ficha del
-    // contacto, que el Inbox muestra al lado de la conversación. Declararles un
-    // tipo de objeto habría llenado el turno de ruido sin agregar ningún lugar
-    // al que ir.
-    add_contact_note: null,
-    tag_contact: null,
-    record_contact_interest: null,
-    // ── Dinero: el enlace de pago no es un objeto del panel ───────────
-    create_payment_link: null,
-    refund_payment: null,
-    apply_discount: null,
-    // ── Salidas al canal: mandar algo no crea nada ───────────────────
-    send_product_image: null,
-    send_property_image: null,
-    send_listing_image: null,
-    send_vehicle_image: null,
-    send_portfolio: null,
-    send_booking_link: null,
-});
+const WRITER_OBJECT: Readonly<Record<string, ActiveObjectKind | null>> = Object.freeze(
+    Object.fromEntries(Object.entries(WRITER_ACTIVE_OBJECTS).map(([name, definition]) => (
+        [name, definition.kind]
+    ))),
+);
 
 const BUSINESS_WRITERS = STATIC_TOOL_NAMES.filter(isBusinessWriteTool);
 
@@ -162,6 +110,14 @@ describe('las excepciones son decisiones, no olvidos', () => {
         }
     });
 
+    it('los writers CRM que crean registros sí dejan objeto', () => {
+        expect(WRITER_OBJECT.ensure_crm_lead).toBe('crm_lead');
+        expect(WRITER_OBJECT.create_crm_opportunity).toBe('crm_opportunity');
+        expect(WRITER_OBJECT.move_crm_opportunity_stage).toBe('crm_opportunity');
+        expect(WRITER_OBJECT.create_follow_up_task).toBe('crm_task');
+        expect(WRITER_OBJECT.record_contact_consent).toBe('consent_record');
+    });
+
     it('mandar una imagen o un enlace tampoco crea nada', () => {
         for (const tool of Object.keys(WRITER_OBJECT).filter(t => t.startsWith('send_'))) {
             expect({ tool, kind: WRITER_OBJECT[tool] }).toEqual({ tool, kind: null });
@@ -174,5 +130,42 @@ describe('las excepciones son decisiones, no olvidos', () => {
         const withObject = Object.values(WRITER_OBJECT).filter(Boolean).length;
         const without = Object.values(WRITER_OBJECT).length - withObject;
         expect(withObject).toBeGreaterThan(without);
+    });
+});
+
+describe('la cadena corre sobre el resultado real del writer', () => {
+    it('adjunta objeto y deep link cuando el handler devuelve un id', () => {
+        expect(attachWriterActiveObject(
+            'create_crm_opportunity',
+            { success: true, opportunityId: 'opp-1' },
+        )).toEqual({
+            success: true,
+            opportunityId: 'opp-1',
+            activeObject: {
+                version: 1,
+                kind: 'crm_opportunity',
+                id: 'opp-1',
+                href: '/admin/pipeline',
+            },
+        });
+    });
+
+    it('usa el id autorizado de los argumentos para cancelaciones', () => {
+        expect(attachWriterActiveObject(
+            'cancel_appointment',
+            { success: true },
+            { appointmentId: 'appt-1' },
+        )).toMatchObject({ activeObject: { kind: 'appointment', id: 'appt-1' } });
+    });
+
+    it('no fabrica evidencia ante error o éxito sin identificador', () => {
+        expect(attachWriterActiveObject(
+            'create_crm_opportunity',
+            { error: 'db_failed' },
+        )).toEqual({ error: 'db_failed' });
+        expect(attachWriterActiveObject(
+            'create_crm_opportunity',
+            { success: true },
+        )).toEqual({ success: true });
     });
 });

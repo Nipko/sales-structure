@@ -169,17 +169,18 @@ async function bootstrap() {
         shuttingDown = true;
         console.log(`\n${signal} received — draining connections...`);
 
-        // A CEILING, not a guillotine. The previous version exited at a fixed
-        // 10s regardless of progress, which severed any in-flight work past
-        // that mark — on this codebase an AI turn runs 10-60s, so a rolling
-        // restart cut nearly every conversation mid-reply. enableShutdownHooks
-        // makes Nest close the BullMQ workers properly (bullmq's worker.close()
-        // waits for active jobs), so the right move is to AWAIT that and keep
-        // the timer only as a backstop against a hung close.
+        // A CEILING, not a guillotine. The API intentionally keeps one inbound
+        // consumer alive while the dedicated worker restarts. Its measured p99
+        // is about 100s and the BullMQ lock is 120s, so the old 40s ceiling
+        // killed a healthy turn during every deploy and consumed its only
+        // stalled-job rescue. Docker gives this process 160s; 150s leaves a
+        // final ten-second margin for the container runtime while still letting
+        // Nest/BullMQ drain the active job.
+        const shutdownGraceMs = 150_000;
         const hard = setTimeout(() => {
-            console.error('Forced exit after 40s — drain did not finish');
+            console.error(`Forced exit after ${shutdownGraceMs / 1000}s — drain did not finish`);
             process.exit(1);
-        }, 40_000);
+        }, shutdownGraceMs);
         hard.unref?.();
 
         server.close(() => console.log('HTTP server closed'));

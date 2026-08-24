@@ -7,7 +7,19 @@ import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CurrentUser, CurrentTenant } from '../../common/decorators/tenant.decorator';
-import { EcommerceService, EcommerceConfig } from './ecommerce.service';
+import { ECOMMERCE_SECRET_FIELDS, EcommerceService, EcommerceConfig } from './ecommerce.service';
+import { TENANT_SECRET_MASK } from '../../common/crypto/tenant-secret-crypto.service';
+
+function redactEcommerceConfig(config: EcommerceConfig | Record<string, any> | null) {
+    if (!config) return null;
+    return {
+        ...config,
+        ...Object.fromEntries(ECOMMERCE_SECRET_FIELDS.map((field) => [
+            field,
+            config[field] ? TENANT_SECRET_MASK : undefined,
+        ])),
+    };
+}
 
 @ApiTags('ecommerce')
 @Controller('ecommerce')
@@ -23,10 +35,10 @@ export class EcommerceController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Get e-commerce integration config' })
     async getConfig(@CurrentUser() user: any) {
-        const config = await this.ecommerce.getConfig(user.tenantId);
+        const config = await this.ecommerce.getRedactedConfig(user.tenantId);
         return {
             success: true,
-            data: config ? { ...config, apiSecret: '***', accessToken: config.accessToken ? '***' : undefined } : null,
+            data: redactEcommerceConfig(config),
         };
     }
 
@@ -37,7 +49,7 @@ export class EcommerceController {
         const config = await this.ecommerce.updateConfig(user.tenantId, body);
         return {
             success: true,
-            data: { ...config, apiSecret: '***', accessToken: config.accessToken ? '***' : undefined },
+            data: redactEcommerceConfig(config),
         };
     }
 

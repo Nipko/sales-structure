@@ -13,6 +13,7 @@ import {
     TenantRegionalProfileV1,
     countryPackIdFor,
     countryPackStatusFor,
+    packForCountry,
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -337,6 +338,7 @@ export class RegionalProfileService {
         const addressForm: RegionalValue<AddressForm> = COUNTRY_DEFAULT_ADDRESS_FORM[country]
             ? value(COUNTRY_DEFAULT_ADDRESS_FORM[country], 'derived', 'operating_country')
             : value('usted', 'fallback');
+        const languagePack = packForCountry(country);
 
         return {
             version: 1,
@@ -354,6 +356,12 @@ export class RegionalProfileService {
             countryPackId: String(tenant?.countryPackId || countryPackIdFor(country) || FALLBACK_COUNTRY_PACK_ID),
             countryPackVersion: String(tenant?.countryPackVersion || '1'),
             countryPackStatus: countryPackStatusFor(country),
+            preferredTerms: languagePack?.preferredTerms
+                ? Object.freeze({ ...languagePack.preferredTerms })
+                : undefined,
+            prohibitedRegisters: languagePack?.prohibitedRegisters
+                ? Object.freeze([...languagePack.prohibitedRegisters])
+                : undefined,
             conflicts,
             resolvedAt: new Date().toISOString(),
         };

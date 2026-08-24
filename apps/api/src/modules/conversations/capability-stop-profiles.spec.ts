@@ -189,7 +189,11 @@ describe('los siete perfiles bloqueados no comprometen al negocio', () => {
                     (e: { reason: string }) => e.reason === 'profile_blocked',
                 );
                 expect(blocked).toBeDefined();
-                expect(blocked!.detail.length).toBeGreaterThan(20);
+                expect(blocked!.detail).toEqual(expect.objectContaining({
+                    es: expect.any(String), en: expect.any(String),
+                    pt: expect.any(String), fr: expect.any(String),
+                }));
+                expect(blocked!.detail.en.length).toBeGreaterThan(20);
             },
         );
     });

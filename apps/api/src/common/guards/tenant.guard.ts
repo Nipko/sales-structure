@@ -9,8 +9,9 @@ export class TenantGuard implements CanActivate {
     private readonly logger = new Logger(TenantGuard.name);
 
     /** Loose UUID v4 check to prevent injection via tenantId param */
-    private isValidUuid(value: string): boolean {
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+    private isValidUuid(value: unknown): value is string {
+        return typeof value === 'string'
+            && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
     }
 
     canActivate(context: ExecutionContext): boolean {
@@ -21,16 +22,22 @@ export class TenantGuard implements CanActivate {
             return false;
         }
 
-        // Super admin can access any tenant via query param
+        const routeTenantId = request.params?.tenantId;
+        const queryTenantId = request.query?.tenantId;
+        if (routeTenantId && queryTenantId && routeTenantId !== queryTenantId) {
+            throw new ForbiddenException('Conflicting tenant identifiers');
+        }
+        const requestedTenantId = routeTenantId || queryTenantId;
+
+        // Super admin can access any tenant via route/query param.
         if (user.role === 'super_admin') {
-            const tenantIdParam = request.params.tenantId || request.query.tenantId;
-            if (tenantIdParam) {
+            if (requestedTenantId) {
                 // Validate UUID format to prevent SQL injection
-                if (!this.isValidUuid(tenantIdParam)) {
+                if (!this.isValidUuid(requestedTenantId)) {
                     throw new ForbiddenException('Invalid tenant ID format');
                 }
-                request.tenantId = tenantIdParam;
-                this.logger.log(`[AUDIT] super_admin ${user.email || user.id} accessing tenant ${tenantIdParam}`);
+                request.tenantId = requestedTenantId;
+                this.logger.log(`[AUDIT] super_admin ${user.email || user.id} accessing tenant ${requestedTenantId}`);
             }
             // If no tenantId provided, request.tenantId stays undefined.
             // Controllers must handle this case (e.g., reject or show tenant picker).
@@ -42,9 +49,9 @@ export class TenantGuard implements CanActivate {
             throw new ForbiddenException('No tenant assigned to this user');
         }
 
-        // If a tenantId is in the route, verify it matches
-        const routeTenantId = request.params.tenantId;
-        if (routeTenantId && routeTenantId !== user.tenantId) {
+        // A tenant selector in either transport location is a resource request,
+        // not a hint. Check both before a controller can consume the raw query.
+        if (requestedTenantId && requestedTenantId !== user.tenantId) {
             throw new ForbiddenException('Access denied: tenant mismatch');
         }
 

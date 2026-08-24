@@ -45,8 +45,6 @@ export default function PrechatPage() {
         { value: "metadata", label: t("mapMetadata") },
     ];
 
-    useEffect(() => { loadConfig(); }, [activeTenantId]);
-
     async function loadConfig() {
         if (!activeTenantId) return;
         setLoading(true);
@@ -72,6 +70,8 @@ export default function PrechatPage() {
         } catch { /* first time — no form yet */ }
         setLoading(false);
     }
+
+    useEffect(() => { loadConfig(); }, [activeTenantId]);
 
     function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2500); }
     function addField() { setConfig(prev => ({ ...prev, fields: [...prev.fields, emptyField()] })); }

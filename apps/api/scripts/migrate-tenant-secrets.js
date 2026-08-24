@@ -61,6 +61,27 @@ const SECRET_MAP = {
         },
         scope: 'vertical_integration',
     },
+    ecommerce: {
+        flat: true,
+        fields: {
+            apiKey: 'api_key',
+            apiSecret: 'api_secret',
+            accessToken: 'access_token',
+            webhookSecret: 'webhook_secret',
+        },
+        scope: 'ecommerce',
+    },
+    slack: {
+        flat: true,
+        fields: { webhookUrl: 'webhook_url' },
+        scope: 'slack',
+        provider: 'slack',
+    },
+    mcpServers: {
+        array: true,
+        fields: { authHeader: 'auth_header' },
+        scope: 'mcp',
+    },
 };
 
 const ENVELOPE_PREFIX = 'tsc:v1:';
@@ -144,6 +165,48 @@ function findPending(tenant) {
             }
         }
     }
+
+    const ecommerce = settings.ecommerce;
+    if (ecommerce && typeof ecommerce === 'object') {
+        const provider = String(ecommerce.provider || 'shopify').toLowerCase();
+        for (const [field, fieldId] of Object.entries(SECRET_MAP.ecommerce.fields)) {
+            if (isPlaintextSecret(ecommerce[field])) {
+                pending.push({
+                    branch: 'ecommerce', leaf: null, field, fieldId,
+                    scope: 'ecommerce', provider,
+                });
+            }
+        }
+    }
+
+    const slack = settings.slack;
+    if (slack && typeof slack === 'object') {
+        for (const [field, fieldId] of Object.entries(SECRET_MAP.slack.fields)) {
+            if (isPlaintextSecret(slack[field])) {
+                pending.push({
+                    branch: 'slack', leaf: null, field, fieldId,
+                    scope: 'slack', provider: 'slack',
+                });
+            }
+        }
+    }
+
+    const mcpServers = Array.isArray(settings.mcpServers) ? settings.mcpServers : [];
+    for (let index = 0; index < mcpServers.length; index += 1) {
+        const server = mcpServers[index];
+        const provider = String(server && server.id || '').toLowerCase();
+        // The runtime AAD accepts only canonical short names. A legacy invalid
+        // id must be repaired explicitly, not encrypted into an unreadable AAD.
+        if (!/^[a-z0-9_]{1,40}$/.test(provider)) continue;
+        for (const [field, fieldId] of Object.entries(SECRET_MAP.mcpServers.fields)) {
+            if (isPlaintextSecret(server && server[field])) {
+                pending.push({
+                    branch: 'mcpServers', leaf: null, index, field, fieldId,
+                    scope: 'mcp', provider,
+                });
+            }
+        }
+    }
     return pending;
 }
 
@@ -178,7 +241,7 @@ async function main() {
         // deja en el log de Docker, que es exactamente de donde se la quiere
         // sacar.
         const detail = pending
-            .map((p) => `${p.branch}${p.leaf ? `.${p.leaf}` : ''}.${p.field}`)
+            .map((p) => `${p.branch}${p.index !== undefined ? `[${p.index}]` : ''}${p.leaf ? `.${p.leaf}` : ''}.${p.field}`)
             .join(', ');
         console.log(`  ${tenant.id}  ${tenant.name}: ${detail}`);
     }
@@ -222,9 +285,11 @@ async function main() {
     for (const { tenant, pending } of rows) {
         for (const item of pending) {
             const settings = tenant.settings || {};
-            const container = item.leaf
-                ? settings[item.branch][item.leaf]
-                : settings[item.branch];
+            const container = item.index !== undefined
+                ? settings[item.branch][item.index]
+                : item.leaf
+                    ? settings[item.branch][item.leaf]
+                    : settings[item.branch];
             const plaintext = container[item.field];
             try {
                 const envelope = encrypt(plaintext, {
@@ -237,10 +302,12 @@ async function main() {
                 // `settings` entero desde esta foto pisaría cualquier cosa que
                 // otro proceso haya guardado mientras el script corre — y el
                 // script corre sobre producción, con el sistema andando.
-                const path = item.leaf
-                    ? `{${item.branch},${item.leaf},${item.field}}`
-                    : `{${item.branch},${item.field}}`;
-                await prisma.$executeRawUnsafe(
+                const path = item.index !== undefined
+                    ? `{${item.branch},${item.index},${item.field}}`
+                    : item.leaf
+                        ? `{${item.branch},${item.leaf},${item.field}}`
+                        : `{${item.branch},${item.field}}`;
+                const affected = await prisma.$executeRawUnsafe(
                     `UPDATE public.tenants
                         SET settings = jsonb_set(settings, $2::text[], $3::jsonb, false),
                             updated_at = NOW()
@@ -248,6 +315,7 @@ async function main() {
                         AND settings #>> $2::text[] = $4`,
                     tenant.id, path, JSON.stringify(envelope), plaintext,
                 );
+                if (Number(affected) !== 1) throw new Error('tenant_secret_cas_lost');
                 applied += 1;
             } catch (error) {
                 failed += 1;

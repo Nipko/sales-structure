@@ -4,26 +4,53 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
-import { composeSubtypeEvalPack, type AddressForm } from '@parallext/shared';
+import {
+    composeSubtypeEvalPack,
+    EVAL_LANGUAGES,
+    VERTICAL_DOMAIN_CONTRACT_VERSION,
+    type AddressForm,
+} from '@parallext/shared';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
+import { EVAL_SANDBOX_FIXTURE_IDS } from '../conversations/eval-writer-sandbox';
 
 export type ActionAssertionType = 'row_exists' | 'row_count' | 'no_row';
 
 /** A declarative assertion about a DB side-effect the agent should (or shouldn't) cause. */
-export interface ExpectedAction {
+export interface DatabaseExpectedAction {
+    kind?: 'db_effect';
     type: ActionAssertionType;
-    table: string;                  // must be in VERIFIABLE_TABLES
+    /** Verifier family. Legacy rows may omit it and are resolved by table. */
+    family?: string;
+    table: string;
     /** column → expected value, or { op:'eq'|'ilike'|'date_eq'|'time_eq', value }. */
     where?: Record<string, any>;
     count?: number;                 // for row_count
     description?: string;
 }
 
+export interface ToolCallExpectedAction {
+    kind: 'tool_call';
+    type: 'called' | 'not_called';
+    tool: string;
+    description?: string;
+}
+
+export type ExpectedAction = DatabaseExpectedAction | ToolCallExpectedAction;
+
 export interface EvalScenarioInput {
     key: string;
     title: string;
     vertical?: string;
     language?: string;
+    locale?: string;
+    profileId?: string;
+    contractVersion?: number;
+    seedOrigin?: string;
+    /** Human key owned by the managed seed; absent for user-authored rows. */
+    managedSeedKey?: string;
+    /** Active by default; legacy collisions can be retained outside the gate. */
+    seedState?: 'active' | 'retired' | 'review_required';
     /** Ordered customer messages (deterministic — this is what makes the gate stable). */
     messages: string[];
     /** Free-text description of what a correct handling looks like (judged). */
@@ -46,10 +73,23 @@ const MAX_K = 5;
 // Fixed sandbox contact (valid UUID, hex-only) used for action verification. All
 // writes/asserts/cleanup are scoped to it so an eval never touches real customer data.
 const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
-// Tables verifyActions may read + cleanupSandbox may delete from. Limited to writers
-// whose tool path was audited for evalMode (suppresses outbound side-effects). Add a
-// table here ONLY after its writer honours evalMode.
-const VERIFIABLE_TABLES = new Set(['appointments']);
+
+/**
+ * Extensible effect-verifier registry. A family enters only after its writer
+ * honours evalMode and cleanup is proven. This replaces the anonymous table
+ * allowlist that could not describe ownership columns or future verifiers.
+ */
+export const EVAL_EFFECT_VERIFIERS: Readonly<Record<string, {
+    table: string;
+    contactColumn: string;
+}>> = Object.freeze(Object.fromEntries(
+    Object.entries(EVAL_WRITER_SANDBOX_FAMILIES)
+        .filter(([, family]) => family.status === 'audited' && !!family.contactColumn)
+        .map(([name, family]) => [name, Object.freeze({
+            table: family.table,
+            contactColumn: family.contactColumn!,
+        })]),
+));
 
 export const AGENT_EVAL_COMPLETED_EVENT = 'agent.eval.completed';
 export const AGENT_EVAL_FAILED_EVENT = 'agent.eval.failed';
@@ -69,6 +109,7 @@ export const AGENT_EVAL_FAILED_EVENT = 'agent.eval.failed';
 export class EvalService {
     private readonly logger = new Logger(EvalService.name);
     private readonly ensured = new Set<string>();
+    private readonly seeded = new Set<string>();
 
     constructor(
         private readonly prisma: PrismaService,
@@ -93,10 +134,24 @@ export class EvalService {
                     language TEXT NOT NULL DEFAULT 'es',
                     messages JSONB NOT NULL DEFAULT '[]'::jsonb,
                     criteria TEXT,
+                    profile_id TEXT,
+                    locale TEXT,
+                    contract_version INT,
+                    seed_origin TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                  )`);
             await this.prisma.executeInTenantSchema(schema,
                 `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS expected_actions JSONB NOT NULL DEFAULT '[]'::jsonb`);
+            for (const ddl of [
+                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS profile_id TEXT`,
+                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS locale TEXT`,
+                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS contract_version INT`,
+                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS seed_origin TEXT`,
+                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS managed_seed_key TEXT`,
+                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS seed_state TEXT NOT NULL DEFAULT 'active'`,
+            ]) {
+                await this.prisma.executeInTenantSchema(schema, ddl);
+            }
             await this.prisma.executeInTenantSchema(schema,
                 `CREATE TABLE IF NOT EXISTS eval_runs (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -122,12 +177,21 @@ export class EvalService {
     async listScenarios(tenantId: string): Promise<any[]> {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTable(schema);
-        let rows = await this.fetch(schema);
-        if (!rows.length) {
-            await this.seedDefaults(schema, await this.profileOf(tenantId));
-            rows = await this.fetch(schema);
+        const profile = await this.profileOf(tenantId);
+        const seedSignature = [
+            schema,
+            profile.industry || '',
+            profile.subtype || '',
+            profile.locale || profile.language || 'es',
+            profile.addressForm || 'neutral',
+            VERTICAL_DOMAIN_CONTRACT_VERSION,
+        ].join(':');
+        if (!this.seeded.has(seedSignature)) {
+            await this.migrateLegacyScenarios(schema, profile);
+            await this.seedDefaults(schema, profile);
+            this.seeded.add(seedSignature);
         }
-        return rows;
+        return this.fetch(schema);
     }
 
     /**
@@ -154,6 +218,7 @@ export class EvalService {
         industry?: string;
         subtype?: string;
         language?: string;
+        locale?: string;
         addressForm?: AddressForm | null;
     }> {
         try {
@@ -162,11 +227,15 @@ export class EvalService {
                 select: { industry: true, settings: true, language: true },
             });
             const config = (tenant?.settings as any)?.verticalConfig;
+            const regional = this.regionalProfile
+                ? await this.regionalProfile.resolve(tenantId).catch(() => null)
+                : null;
             return {
                 industry: config?.industry || tenant?.industry || undefined,
                 subtype: config?.subType || undefined,
                 language: tenant?.language || undefined,
-                addressForm: await this.addressFormOf(tenantId),
+                locale: regional?.locale?.value || tenant?.language || undefined,
+                addressForm: (regional?.addressForm?.value as AddressForm) || null,
             };
         } catch (e: any) {
             this.logger.warn(`[Eval] profile lookup failed for ${tenantId}: ${e?.message}`);
@@ -175,30 +244,109 @@ export class EvalService {
     }
 
     /**
-     * La forma de trato del país operativo, resuelta como en producción.
-     *
-     * Sin resolutor regional cableado o sin país declarado devuelve `null`, que
-     * significa neutro: el default de la plataforma y lo correcto en quince de
-     * los dieciocho países del mapa. Suponer `vos` era el defecto.
+     * Versionless rows predate managed seed identity. They are never deleted.
+     * Exact generated rows are retired; unrelated keys remain active custom
+     * scenarios; ambiguous managed-key edits are retained as review_required
+     * and excluded from gates until an owner explicitly saves/reactivates them.
      */
-    private async addressFormOf(tenantId: string): Promise<AddressForm | null> {
-        if (!this.regionalProfile) return null;
-        try {
-            const regional = await this.regionalProfile.resolve(tenantId);
-            return (regional?.addressForm?.value as AddressForm) ?? null;
-        } catch {
-            return null;
+    private async migrateLegacyScenarios(
+        schema: string,
+        profile: {
+            industry?: string;
+            subtype?: string;
+            language?: string;
+            locale?: string;
+            addressForm?: AddressForm | null;
+        },
+    ): Promise<void> {
+        const legacy = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, key, title, vertical, language, messages, criteria
+               FROM eval_scenarios
+              WHERE contract_version IS NULL
+                AND profile_id IS NULL
+                AND seed_origin IS NULL`);
+        if (!legacy?.length) return;
+
+        const candidates = new Map<string, Set<string>>();
+        const forms: Array<AddressForm | null> = [null, 'usted', 'tu', 'vos'];
+        for (const language of EVAL_LANGUAGES) {
+            const languageForms = language === 'es' ? forms : [null];
+            for (const addressForm of languageForms) {
+                for (const scenario of composeSubtypeEvalPack({
+                    industry: profile.industry,
+                    subtype: profile.subtype,
+                    language,
+                    locale: language,
+                    addressForm,
+                })) {
+                    const bucket = candidates.get(scenario.key) || new Set<string>();
+                    bucket.add(this.legacyScenarioFingerprint(scenario));
+                    candidates.set(scenario.key, bucket);
+                }
+            }
         }
+
+        for (const row of legacy) {
+            const key = String(row.key || '');
+            const exactManaged = candidates.get(key)?.has(this.legacyScenarioFingerprint(row)) === true;
+            // Older derived packs used the source term/limit inside the key;
+            // those cannot be reconstructed safely after terminology changes.
+            // Keep them for review instead of guessing that they were untouched.
+            const managedCollision = candidates.has(key)
+                || /^(?:avoid_.+|limit_.+|intent_.+|profile_.+)$/i.test(key);
+            const seedOrigin = exactManaged
+                ? 'legacy_managed'
+                : managedCollision
+                    ? 'legacy_ambiguous'
+                    : 'custom_legacy';
+            const seedState = exactManaged
+                ? 'retired'
+                : managedCollision
+                    ? 'review_required'
+                    : 'active';
+            await this.prisma.executeInTenantSchema(schema,
+                `UPDATE eval_scenarios
+                    SET seed_origin = $2, managed_seed_key = $3, seed_state = $4
+                  WHERE id = $1::uuid
+                    AND contract_version IS NULL
+                    AND profile_id IS NULL
+                    AND seed_origin IS NULL`,
+                [row.id, seedOrigin, managedCollision ? key : null, seedState]);
+        }
+    }
+
+    private legacyScenarioFingerprint(scenario: {
+        title?: unknown;
+        language?: unknown;
+        messages?: unknown;
+        criteria?: unknown;
+    }): string {
+        return JSON.stringify({
+            title: String(scenario.title || ''),
+            language: String(scenario.language || 'es').slice(0, 2).toLowerCase(),
+            messages: Array.isArray(scenario.messages)
+                ? scenario.messages.map(message => String(message))
+                : [],
+            criteria: String(scenario.criteria || ''),
+        });
     }
 
     private async fetch(schema: string): Promise<any[]> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, key, title, vertical, language, messages, criteria, expected_actions FROM eval_scenarios ORDER BY created_at`);
+            `SELECT id, key, title, vertical, language, locale, profile_id, contract_version,
+                    seed_origin, managed_seed_key, seed_state, messages, criteria, expected_actions
+               FROM eval_scenarios ORDER BY created_at`);
         return (rows || []).map(r => ({
             id: r.id, key: r.key, title: r.title, vertical: r.vertical, language: r.language,
             messages: Array.isArray(r.messages) ? r.messages : [],
             criteria: r.criteria || undefined,
             expectedActions: Array.isArray(r.expected_actions) ? r.expected_actions : [],
+            locale: r.locale || undefined,
+            profileId: r.profile_id || undefined,
+            contractVersion: r.contract_version == null ? undefined : Number(r.contract_version),
+            seedOrigin: r.seed_origin || undefined,
+            managedSeedKey: r.managed_seed_key || undefined,
+            seedState: r.seed_state || 'active',
         }));
     }
 
@@ -209,12 +357,20 @@ export class EvalService {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTable(schema);
         await this.prisma.executeInTenantSchema(schema,
-            `INSERT INTO eval_scenarios (key, title, vertical, language, messages, criteria, expected_actions)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb)
+            `INSERT INTO eval_scenarios (key, title, vertical, language, locale, profile_id,
+                                         contract_version, seed_origin, managed_seed_key, seed_state,
+                                         messages, criteria, expected_actions)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13::jsonb)
              ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title, vertical = EXCLUDED.vertical,
-                 language = EXCLUDED.language, messages = EXCLUDED.messages, criteria = EXCLUDED.criteria,
+                 language = EXCLUDED.language, locale = EXCLUDED.locale,
+                 profile_id = EXCLUDED.profile_id, contract_version = EXCLUDED.contract_version,
+                 seed_origin = EXCLUDED.seed_origin, managed_seed_key = EXCLUDED.managed_seed_key,
+                 seed_state = EXCLUDED.seed_state, messages = EXCLUDED.messages, criteria = EXCLUDED.criteria,
                  expected_actions = EXCLUDED.expected_actions`,
             [def.key, def.title, def.vertical || null, def.language || 'es',
+             def.locale || def.language || 'es', def.profileId || null,
+             def.contractVersion || null, def.seedOrigin || 'custom', def.managedSeedKey || null,
+             def.seedState || 'active',
              JSON.stringify(def.messages.slice(0, MAX_SCENARIO_MESSAGES)), def.criteria || null,
              JSON.stringify(Array.isArray(def.expectedActions) ? def.expectedActions : [])]);
     }
@@ -228,7 +384,8 @@ export class EvalService {
     async runGate(tenantId: string, agentId: string, threshold = DEFAULT_THRESHOLD): Promise<EvalGateResult> {
         if (!agentId) throw new BadRequestException('agentId is required');
         try {
-            const scenarios = await this.listScenarios(tenantId);
+            const scenarios = (await this.listScenarios(tenantId))
+                .filter(scenario => (scenario.seedState || 'active') === 'active');
             if (!scenarios.length) {
                 const result = { passed: true, avgScore: 0, threshold, total: 0, scenarios: [] };
                 this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
@@ -306,7 +463,8 @@ export class EvalService {
             await this.ensureTable(schema);
             await this.ensureSandboxContact(schema);
 
-            const scenarios = await this.listScenarios(tenantId);
+            const scenarios = (await this.listScenarios(tenantId))
+                .filter(scenario => (scenario.seedState || 'active') === 'active');
             const threshold = opts?.threshold ?? DEFAULT_THRESHOLD;
             const k = Math.max(1, Math.min(opts?.k ?? 1, MAX_K));
             const passPolicy = opts?.passPolicy ?? 'all';
@@ -364,58 +522,101 @@ export class EvalService {
 
     /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
     private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean) {
-        if (hasActions) await this.cleanupSandbox(schema); // start from a clean slate
-        // A scenario that asserts side-effects runs on a real sandbox
-        // conversation: the guard binds writes to one, and reads the customer's
-        // latest inbound message to decide whether they confirmed.
-        const sandboxConversationId = hasActions ? await this.ensureSandboxConversation(schema) : undefined;
-        const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-        const lines: string[] = [];
-        for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
-            if (sandboxConversationId) {
-                await this.recordSandboxInbound(schema, sandboxConversationId, msg);
+        let cleanupRequired = false;
+        try {
+            if (hasActions) {
+                await this.cleanupSandbox(schema); // start from a clean slate
+                cleanupRequired = true;
+                await this.prepareSandboxFixtures(schema);
             }
-            const res = await this.agentTest.test(
-                tenantId, agentId,
-                { message: msg, conversationHistory: [...history] },
-                hasActions
-                    ? {
-                        disableTools: false,
-                        evalMode: true,
-                        sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
-                        sandboxConversationId,
-                    }
-                    : { disableTools: true },
-            );
-            const reply = res?.reply || '';
-            lines.push(`Cliente: ${msg}`, `Agente: ${reply}`);
-            history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
-        }
-        let transcript = lines.join('\n');
-        if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
-        const judge = await this.quality.judgeTranscript(tenantId, transcript);
-        const score = judge.overall;
+            // A scenario that asserts side-effects runs on a real sandbox
+            // conversation: the guard binds writes to one, and reads the customer's
+            // latest inbound message to decide whether they confirmed.
+            const sandboxConversationId = hasActions ? await this.ensureSandboxConversation(schema) : undefined;
+            const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+            const lines: string[] = [];
+            const observedToolCalls: Array<{ name: string; result: unknown }> = [];
+            for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
+                if (sandboxConversationId) {
+                    await this.recordSandboxInbound(schema, sandboxConversationId, msg);
+                }
+                const res = await this.agentTest.test(
+                    tenantId, agentId,
+                    { message: msg, conversationHistory: [...history] },
+                    hasActions
+                        ? {
+                            disableTools: false,
+                            evalMode: true,
+                            sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
+                            sandboxConversationId,
+                        }
+                        : { disableTools: true },
+                );
+                const reply = res?.reply || '';
+                for (const call of res?.debug?.toolCalls || []) {
+                    observedToolCalls.push({ name: call.name, result: call.result });
+                }
+                lines.push(`Cliente: ${msg}`, `Agente: ${reply}`);
+                history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
+            }
+            let transcript = lines.join('\n');
+            if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
+            const judge = await this.quality.judgeTranscript(tenantId, transcript);
+            const score = judge.overall;
 
-        let actionsPassed = true;
-        let actionChecks: any[] | undefined;
-        if (hasActions) {
-            const v = await this.verifyActions(schema, sc.expectedActions, EVAL_SANDBOX_CONTACT_ID);
-            actionsPassed = v.passed;
-            actionChecks = v.checks;
-            await this.cleanupSandbox(schema); // rollback — no residue in the tenant DB
+            let actionsPassed = true;
+            let actionChecks: any[] | undefined;
+            if (hasActions) {
+                const v = await this.verifyActions(
+                    schema,
+                    sc.expectedActions,
+                    EVAL_SANDBOX_CONTACT_ID,
+                    observedToolCalls,
+                );
+                actionsPassed = v.passed;
+                actionChecks = v.checks;
+            }
+            return { score, passed: score >= threshold && actionsPassed, actionChecks };
+        } finally {
+            // A failed model/provider/judge call is precisely when residue used
+            // to survive. Cleanup is unconditional once fixture setup starts;
+            // cleanup failures are surfaced instead of turning into a green run.
+            if (cleanupRequired) await this.cleanupSandbox(schema);
         }
-        return { score, passed: score >= threshold && actionsPassed, actionChecks };
     }
 
     /** Assert each expected DB side-effect, scoped strictly to the sandbox contact. */
-    private async verifyActions(schema: string, expected: ExpectedAction[], contactId: string): Promise<{ passed: boolean; checks: any[] }> {
+    private async verifyActions(
+        schema: string,
+        expected: ExpectedAction[],
+        contactId: string,
+        observedToolCalls: ReadonlyArray<{ name: string; result: unknown }> = [],
+    ): Promise<{ passed: boolean; checks: any[] }> {
         const checks: any[] = [];
         for (const a of expected || []) {
-            if (!VERIFIABLE_TABLES.has(a.table)) {
-                checks.push({ ok: false, description: a.description || a.table, detail: 'tabla no permitida' });
+            if (a.kind === 'tool_call') {
+                const matches = observedToolCalls.filter(call => call.name === a.tool);
+                const ok = a.type === 'called' ? matches.length > 0 : matches.length === 0;
+                checks.push({
+                    ok,
+                    description: a.description || `${a.type} ${a.tool}`,
+                    detail: `calls=${matches.length}`,
+                });
                 continue;
             }
-            const conds = ['contact_id = $1::uuid'];
+
+            const verifier = a.family
+                ? EVAL_EFFECT_VERIFIERS[a.family]
+                : Object.values(EVAL_EFFECT_VERIFIERS).find(candidate => candidate.table === a.table);
+            if (!verifier || verifier.table !== a.table) {
+                checks.push({
+                    ok: false,
+                    description: a.description || a.table,
+                    detail: `verificador no auditado para familia=${a.family || 'legacy'} tabla=${a.table}`,
+                });
+                continue;
+            }
+            const conds = [`${verifier.contactColumn} = $1::uuid`];
             const params: any[] = [contactId];
             for (const [col, raw] of Object.entries(a.where || {})) {
                 if (!/^[a-z_][a-z0-9_]*$/i.test(col)) continue; // safe identifier only (no injection)
@@ -454,22 +655,167 @@ export class EvalService {
         // the INSERT fail (23502) → the sandbox contact never exists → appointments FK
         // violation → the whole action-verification gate becomes a no-op. Provide a
         // dedicated (channel_type, external_id) pair and surface failures (don't swallow).
-        try {
-            await this.prisma.executeInTenantSchema(schema,
-                `INSERT INTO contacts (id, external_id, channel_type, name, phone, created_at, updated_at)
-                 VALUES ($1::uuid, 'eval-sandbox', 'web_widget', 'Eval Sandbox', 'eval-sandbox-0000', NOW(), NOW())
-                 ON CONFLICT (id) DO NOTHING`,
-                [EVAL_SANDBOX_CONTACT_ID]);
-        } catch (e: any) {
-            this.logger.warn(`[Eval] ensureSandboxContact failed: ${e.message}`);
+        await this.prisma.executeInTenantSchema(schema,
+            `INSERT INTO contacts (id, external_id, channel_type, name, phone, created_at, updated_at)
+             VALUES ($1::uuid, 'eval-sandbox', 'web_widget', 'Eval Sandbox', 'eval-sandbox-0000', NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [EVAL_SANDBOX_CONTACT_ID]);
+    }
+
+    /**
+     * Deterministic catalog rows the model can discover through production read
+     * tools before invoking a writer. Reserved UUIDs plus an ownership marker
+     * make setup and cleanup reversible without matching user-facing names.
+     */
+    private async prepareSandboxFixtures(schema: string): Promise<void> {
+        const f = EVAL_SANDBOX_FIXTURE_IDS;
+        const marker = JSON.stringify({ evalSandbox: true });
+        const statements: Array<[string, any[]]> = [
+            [
+                `INSERT INTO "${schema}".services
+                    (id, name, description, duration_minutes, price, currency, is_active,
+                     category, max_concurrent, metadata)
+                 VALUES ($1::uuid, '[EVAL] Sandbox Service', 'Evaluation-only fixture', 30, 10,
+                         'COP', true, 'eval', 5, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
+                     max_concurrent = EXCLUDED.max_concurrent, metadata = EXCLUDED.metadata`,
+                [f.service, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".services
+                    (id, name, description, duration_minutes, price, currency, is_active,
+                     category, max_concurrent, metadata)
+                 VALUES ($1::uuid, '[EVAL] Boarding Service', 'Evaluation-only fixture', 1440, 10,
+                         'COP', true, 'guarderia', 5, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
+                     max_concurrent = EXCLUDED.max_concurrent, metadata = EXCLUDED.metadata`,
+                [f.boardingService, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".properties
+                    (id, name, description, city, max_guests, night_price, currency, is_active, metadata)
+                 VALUES ($1::uuid, '[EVAL] Sandbox Property', 'Evaluation-only fixture', 'Eval City',
+                         4, 100, 'COP', true, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
+                     metadata = EXCLUDED.metadata`,
+                [f.property, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".tour_packages
+                    (id, name, description, duration_type, duration_value, price, currency,
+                     max_capacity, destination, is_active, metadata)
+                 VALUES ($1::uuid, '[EVAL] Sandbox Tour', 'Evaluation-only fixture', 'hours', 2,
+                         50, 'COP', 10, 'Eval City', true, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
+                     metadata = EXCLUDED.metadata`,
+                [f.tourPackage, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".tour_inventory
+                    (id, package_id, departure_date, departure_time, available_seats, total_seats,
+                     is_active, notes)
+                 VALUES ($1::uuid, $2::uuid, '2099-06-01'::date, '10:00'::time, 10, 10, true,
+                         '[EVAL] fixture')
+                 ON CONFLICT (id) DO UPDATE SET available_seats = 10, total_seats = 10,
+                     is_active = true, notes = EXCLUDED.notes`,
+                [f.tourInventory, f.tourPackage],
+            ],
+            [
+                `INSERT INTO "${schema}".menu_items
+                    (id, name, description, price, currency, is_available, is_active, metadata)
+                 VALUES ($1::uuid, '[EVAL] Sandbox Menu Item', 'Evaluation-only fixture', 10,
+                         'COP', true, true, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_available = true,
+                     is_active = true, metadata = EXCLUDED.metadata`,
+                [f.menuItem, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".members
+                    (id, contact_id, member_number, current_period_start, current_period_end,
+                     class_credits_remaining, status, metadata)
+                 VALUES ($1::uuid, $2::uuid, 'EVAL-SANDBOX', '2099-01-01'::date,
+                         '2099-12-31'::date, 10, 'active', $3::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET contact_id = EXCLUDED.contact_id,
+                     current_period_end = EXCLUDED.current_period_end, status = 'active',
+                     class_credits_remaining = 10, metadata = EXCLUDED.metadata`,
+                [f.member, EVAL_SANDBOX_CONTACT_ID, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".fitness_classes
+                    (id, name, class_type, scheduled_at, duration_minutes, max_capacity,
+                     available_spots, credits_required, is_cancelled, metadata)
+                 VALUES ($1::uuid, '[EVAL] Sandbox Class', 'eval', '2099-06-01 10:00'::timestamp,
+                         60, 20, 20, 1, false, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, scheduled_at = EXCLUDED.scheduled_at,
+                     available_spots = 20, is_cancelled = false, metadata = EXCLUDED.metadata`,
+                [f.fitnessClass, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".courses
+                    (id, name, slug, description, price, currency, subject, level, is_active, metadata)
+                 VALUES ($1::uuid, '[EVAL] Sandbox Course', 'eval-sandbox-course',
+                         'Evaluation-only fixture', 100, 'COP', 'eval', 'A1', true, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, slug = EXCLUDED.slug,
+                     is_active = true, metadata = EXCLUDED.metadata`,
+                [f.course, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".course_cohorts
+                    (id, course_id, cohort_code, starts_at, ends_at, schedule, max_capacity,
+                     available_seats, status, metadata)
+                 VALUES ($1::uuid, $2::uuid, 'EVAL-2099', '2099-06-01'::date, '2099-06-30'::date,
+                         'Mon 10:00', 20, 20, 'open', $3::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET course_id = EXCLUDED.course_id,
+                     available_seats = 20, status = 'open', metadata = EXCLUDED.metadata`,
+                [f.cohort, f.course, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".products
+                    (id, name, description, category, price, currency, is_available, stock, metadata)
+                 VALUES ($1::uuid, '[EVAL] Sandbox Product', 'Evaluation-only fixture', 'eval',
+                         10, 'COP', true, 100, $2::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_available = true,
+                     stock = 100, metadata = EXCLUDED.metadata`,
+                [f.product, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".vehicles
+                    (id, make, model, year, price_cents, currency, status, category, description)
+                 VALUES ($1::uuid, '[EVAL]', 'Sandbox Vehicle', 2099, 1000, 'COP', 'available',
+                         'eval', 'Evaluation-only fixture')
+                 ON CONFLICT (id) DO UPDATE SET status = 'available', description = EXCLUDED.description`,
+                [f.vehicle],
+            ],
+            [
+                `INSERT INTO "${schema}".pets
+                    (id, contact_id, name, species, is_active, metadata)
+                 VALUES ($1::uuid, $2::uuid, '[EVAL] Sandbox Pet', 'dog', true, $3::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET contact_id = EXCLUDED.contact_id,
+                     is_active = true, metadata = EXCLUDED.metadata`,
+                [f.pet, EVAL_SANDBOX_CONTACT_ID, marker],
+            ],
+            [
+                `INSERT INTO "${schema}".insurance_policies
+                    (id, policy_number, contact_id, policyholder_name, monthly_premium, currency,
+                     starts_at, ends_at, status, metadata)
+                 VALUES ($1::uuid, 'EVAL-SANDBOX-POLICY', $2::uuid, 'Eval Policyholder', 10, 'COP',
+                         '2099-01-01'::date, '2099-12-31'::date, 'active', $3::jsonb)
+                 ON CONFLICT (id) DO UPDATE SET contact_id = EXCLUDED.contact_id,
+                     status = 'active', metadata = EXCLUDED.metadata`,
+                [f.insurancePolicy, EVAL_SANDBOX_CONTACT_ID, marker],
+            ],
+        ];
+        for (const [sql, params] of statements) {
+            await this.prisma.executeInTenantSchema(schema, sql, params);
         }
     }
 
     /** Delete the sandbox contact's rows from the verifiable tables (deterministic rollback). */
     private async cleanupSandbox(schema: string): Promise<void> {
-        for (const t of VERIFIABLE_TABLES) {
+        for (const verifier of Object.values(EVAL_EFFECT_VERIFIERS)) {
             await this.prisma.executeInTenantSchema(schema,
-                `DELETE FROM "${schema}".${t} WHERE contact_id = $1::uuid`, [EVAL_SANDBOX_CONTACT_ID]).catch(() => {});
+                `DELETE FROM "${schema}".${verifier.table} WHERE ${verifier.contactColumn} = $1::uuid`,
+                [EVAL_SANDBOX_CONTACT_ID]);
         }
         // The conversation the writer needed to bind to, its messages, and the
         // execution ledger rows the guard wrote. Ordered child-first so foreign
@@ -481,7 +827,31 @@ export class EvalService {
              )`,
             `DELETE FROM "${schema}".conversations WHERE contact_id = $1::uuid`,
         ]) {
-            await this.prisma.executeInTenantSchema(schema, sql, [EVAL_SANDBOX_CONTACT_ID]).catch(() => {});
+            await this.prisma.executeInTenantSchema(schema, sql, [EVAL_SANDBOX_CONTACT_ID]);
+        }
+
+        // Reserved id AND ownership marker are both required. Names are never
+        // used as deletion selectors, so a tenant-authored catalog row cannot
+        // be swept by an eval rollback.
+        const f = EVAL_SANDBOX_FIXTURE_IDS;
+        const fixtureDeletes: Array<[string, any[]]> = [
+            [`DELETE FROM "${schema}".tour_inventory WHERE id = $1::uuid AND notes = '[EVAL] fixture'`, [f.tourInventory]],
+            [`DELETE FROM "${schema}".course_cohorts WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.cohort]],
+            [`DELETE FROM "${schema}".members WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.member]],
+            [`DELETE FROM "${schema}".fitness_classes WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.fitnessClass]],
+            [`DELETE FROM "${schema}".insurance_policies WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.insurancePolicy]],
+            [`DELETE FROM "${schema}".pets WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.pet]],
+            [`DELETE FROM "${schema}".vehicles WHERE id = $1::uuid AND description = 'Evaluation-only fixture'`, [f.vehicle]],
+            [`DELETE FROM "${schema}".tour_packages WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.tourPackage]],
+            [`DELETE FROM "${schema}".properties WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.property]],
+            [`DELETE FROM "${schema}".menu_items WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.menuItem]],
+            [`DELETE FROM "${schema}".products WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.product]],
+            [`DELETE FROM "${schema}".courses WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.course]],
+            [`DELETE FROM "${schema}".services WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.service]],
+            [`DELETE FROM "${schema}".services WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.boardingService]],
+        ];
+        for (const [sql, params] of fixtureDeletes) {
+            await this.prisma.executeInTenantSchema(schema, sql, params);
         }
     }
 
@@ -494,17 +864,14 @@ export class EvalService {
      * expected actions failed for a reason that had nothing to do with the agent.
      */
     private async ensureSandboxConversation(schema: string): Promise<string | undefined> {
-        try {
-            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `INSERT INTO conversations (contact_id, channel_type, status, stage)
-                 VALUES ($1::uuid, 'web_widget', 'active', 'greeting')
-                 RETURNING id::text`,
-                [EVAL_SANDBOX_CONTACT_ID]);
-            return rows?.[0]?.id;
-        } catch (e: any) {
-            this.logger.warn(`[Eval] ensureSandboxConversation failed: ${e.message}`);
-            return undefined;
-        }
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `INSERT INTO conversations (contact_id, channel_type, status, stage)
+             VALUES ($1::uuid, 'web_widget', 'active', 'greeting')
+             RETURNING id::text`,
+            [EVAL_SANDBOX_CONTACT_ID]);
+        const conversationId = rows?.[0]?.id;
+        if (!conversationId) throw new Error('eval_sandbox_conversation_not_created');
+        return conversationId;
     }
 
     /**
@@ -519,14 +886,10 @@ export class EvalService {
         conversationId: string,
         text: string,
     ): Promise<void> {
-        try {
-            await this.prisma.executeInTenantSchema(schema,
-                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, created_at)
-                 VALUES ($1::uuid, 'inbound', 'text', $2, 'delivered', NOW())`,
-                [conversationId, text]);
-        } catch (e: any) {
-            this.logger.warn(`[Eval] recordSandboxInbound failed: ${e.message}`);
-        }
+        await this.prisma.executeInTenantSchema(schema,
+            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, created_at)
+             VALUES ($1::uuid, 'inbound', 'text', $2, 'delivered', NOW())`,
+            [conversationId, text]);
     }
 
     private async persistRun(schema: string, agentId: string, result: any, trigger: string): Promise<void> {
@@ -570,31 +933,73 @@ export class EvalService {
             industry?: string;
             subtype?: string;
             language?: string;
+            locale?: string;
             addressForm?: AddressForm | null;
         } = {},
     ): Promise<void> {
-        const defaults: EvalScenarioInput[] = composeSubtypeEvalPack({
-            industry: profile.industry,
-            subtype: profile.subtype,
-            // Sin estos dos, el set dorado se sembraba en español rioplatense
-            // para todos: un tenant brasileño medía a su agente contra un
-            // cliente que escribía en español.
-            language: profile.language,
-            addressForm: profile.addressForm,
-        }).map((scenario) => ({
-            key: scenario.key,
-            title: scenario.title,
-            vertical: profile.industry,
-            language: scenario.language,
-            messages: scenario.messages,
-            criteria: scenario.criteria,
-        }));
+        const tenantLocale = String(profile.locale || profile.language || 'es');
+        const tenantLanguage = tenantLocale.slice(0, 2).toLowerCase();
+        const defaults: EvalScenarioInput[] = EVAL_LANGUAGES.flatMap(language => {
+            const locale = language === tenantLanguage ? tenantLocale : language;
+            return composeSubtypeEvalPack({
+                industry: profile.industry,
+                subtype: profile.subtype,
+                language,
+                locale,
+                addressForm: language === 'es' ? profile.addressForm : null,
+            }).map((scenario) => ({
+                key: scenario.storageKey || scenario.key,
+                title: scenario.title,
+                vertical: profile.industry,
+                language: scenario.language,
+                locale: scenario.locale,
+                profileId: scenario.profileId,
+                contractVersion: scenario.contractVersion,
+                seedOrigin: scenario.origin,
+                managedSeedKey: scenario.key,
+                seedState: 'active',
+                messages: scenario.messages,
+                criteria: scenario.criteria,
+                expectedActions: (scenario.expectedActions || []) as ExpectedAction[],
+            }));
+        });
+        // A tenant can change subtype or operating locale while the API stays
+        // up. Keep earlier managed packs for audit, but retire them from the
+        // gate. User-authored scenarios have no managed_seed_key and are never
+        // touched by this policy.
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE eval_scenarios
+                SET seed_state = 'retired'
+              WHERE contract_version IS NOT NULL
+                AND managed_seed_key IS NOT NULL
+                AND NOT (key = ANY($1::text[]))`,
+            [defaults.map(scenario => scenario.key)]);
         for (const d of defaults) {
             await this.prisma.executeInTenantSchema(schema,
-                `INSERT INTO eval_scenarios (key, title, vertical, language, messages, criteria)
-                 VALUES ($1, $2, $3, $4, $5::jsonb, $6) ON CONFLICT (key) DO NOTHING`,
-                [d.key, d.title, d.vertical || null, d.language || 'es', JSON.stringify(d.messages), d.criteria || null])
-                .catch(() => {});
+                `INSERT INTO eval_scenarios (key, title, vertical, language, locale, profile_id,
+                                             contract_version, seed_origin, managed_seed_key, seed_state,
+                                             messages, criteria, expected_actions)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13::jsonb)
+                 ON CONFLICT (key) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    vertical = EXCLUDED.vertical,
+                    language = EXCLUDED.language,
+                    locale = EXCLUDED.locale,
+                    profile_id = EXCLUDED.profile_id,
+                    contract_version = EXCLUDED.contract_version,
+                    seed_origin = EXCLUDED.seed_origin,
+                    managed_seed_key = EXCLUDED.managed_seed_key,
+                    seed_state = EXCLUDED.seed_state,
+                    messages = EXCLUDED.messages,
+                    criteria = EXCLUDED.criteria,
+                    expected_actions = EXCLUDED.expected_actions`,
+                [
+                    d.key, d.title, d.vertical || null, d.language || 'es', d.locale || d.language || 'es',
+                    d.profileId || null, d.contractVersion || null, d.seedOrigin || null,
+                    d.managedSeedKey || null, d.seedState || 'active',
+                    JSON.stringify(d.messages), d.criteria || null,
+                    JSON.stringify(d.expectedActions || []),
+                ]);
         }
     }
 }

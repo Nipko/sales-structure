@@ -28,9 +28,9 @@ import { InvitationsService } from '../invitations/invitations.service';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import {
-    hasReservedTenantSetting,
     mergeTenantSettingsAtomic,
     firstReservedTenantSetting,
+    firstUnsupportedGenericTenantSetting,
     redactReservedTenantSettings,
     redactReservedTenantSettingsFromRecord,
 } from '../../common/utils/tenant-settings.util';
@@ -1030,6 +1030,16 @@ export class TenantsService {
                 allowedLanguages: TENANT_LANGUAGE_TAGS,
             });
         }
+        // Normalize historic subtype aliases before comparing an immutable
+        // selection. Otherwise saving an unrelated field on a legacy tenant
+        // looks like a forbidden vertical change (old id vs canonical target),
+        // or persists the split identity again. The vertical service fences
+        // the target contract pending full reprovisioning.
+        if (typeof (this.verticalsService as any)?.getVerticalConfig === 'function') {
+            await this.verticalsService.getVerticalConfig(id).catch((error: any) => {
+                this.logger.warn(`Could not reconcile vertical identity before tenant update ${id}: ${error?.message}`);
+            });
+        }
         const existing = await this.prisma.tenant.findUnique({
             where: { id },
             select: { industry: true, settings: true },
@@ -1055,6 +1065,15 @@ export class TenantsService {
                 error: 'reserved_tenant_setting',
                 key: reservedKey,
                 message: `settings.${reservedKey} solo puede administrarse mediante su integración dedicada.`,
+            });
+        }
+
+        const unsupportedKey = firstUnsupportedGenericTenantSetting(requestedSettings);
+        if (unsupportedKey) {
+            throw new BadRequestException({
+                error: 'unsupported_tenant_setting',
+                key: unsupportedKey,
+                message: `settings.${unsupportedKey} no pertenece al contrato genérico del tenant.`,
             });
         }
 
@@ -1099,14 +1118,7 @@ export class TenantsService {
         }
 
         if (requestedSettings) {
-            const {
-                verticalConfig: _ignoredVerticalConfig,
-                subType: _ignoredNestedSubType,
-                provisioning: _ignoredProvisioning,
-                verticalProvisioning: _ignoredVerticalProvisioning,
-                ...safeSettings
-            } = requestedSettings;
-            await mergeTenantSettingsAtomic(this.prisma, id, safeSettings);
+            await mergeTenantSettingsAtomic(this.prisma, id, requestedSettings);
         }
 
         const tenant = Object.keys(tenantData).length > 0
@@ -1938,55 +1950,64 @@ export class TenantsService {
     }
 
     /**
-     * Acquisition funnel: signups → onboarding done → first message
-     * → first paying. Counts tenants created within the window plus
-     * step-to-step conversion rates and a signup-source breakdown.
+     * Acquisition funnel: account signup → onboarding done → first message →
+     * paying. The first event lives on User because a Tenant does not exist
+     * until onboarding completes; counting tenants made the first transition
+     * tautologically 100% and erased every abandoned signup.
      */
     async getOnboardingFunnel(since: Date) {
-        const tenants = await this.prisma.tenant.findMany({
-            where: { createdAt: { gte: since } },
+        const signups = await this.prisma.user.findMany({
+            where: {
+                isSelfServeSignup: true,
+                createdAt: { gte: since },
+            },
             select: {
                 id: true,
                 createdAt: true,
-                onboardingCompletedAt: true,
-                firstChannelConnectedAt: true,
-                firstMessageAt: true,
                 signupSource: true,
-                subscriptionStatus: true,
+                tenant: {
+                    select: {
+                        onboardingCompletedAt: true,
+                        firstChannelConnectedAt: true,
+                        firstMessageAt: true,
+                        subscriptionStatus: true,
+                    },
+                },
             },
             orderBy: { createdAt: 'desc' },
         });
 
-        const totalSignups = tenants.length;
-        const onboardingDone = tenants.filter((t: any) => t.onboardingCompletedAt).length;
-        const channelConnected = tenants.filter((t: any) => t.firstChannelConnectedAt).length;
-        const firstMessage = tenants.filter((t: any) => t.firstMessageAt).length;
-        const paying = tenants.filter((t: any) =>
-            t.subscriptionStatus === 'active' || t.subscriptionStatus === 'past_due'
+        const totalSignups = signups.length;
+        const onboardingDone = signups.filter((s: any) => s.tenant?.onboardingCompletedAt).length;
+        const channelConnected = signups.filter((s: any) => s.tenant?.firstChannelConnectedAt).length;
+        const firstMessage = signups.filter((s: any) => s.tenant?.firstMessageAt).length;
+        const paying = signups.filter((s: any) =>
+            s.tenant?.subscriptionStatus === 'active' || s.tenant?.subscriptionStatus === 'past_due'
         ).length;
 
         const bySource = new Map<string, { source: string; signups: number; onboarded: number; channelConnected: number; activated: number; paying: number }>();
-        for (const t of tenants as any[]) {
-            const key = (t.signupSource || 'unknown').slice(0, 40);
+        for (const signup of signups as any[]) {
+            const tenant = signup.tenant;
+            const key = (signup.signupSource || 'unknown').slice(0, 40);
             const row = bySource.get(key) || { source: key, signups: 0, onboarded: 0, channelConnected: 0, activated: 0, paying: 0 };
             row.signups += 1;
-            if (t.onboardingCompletedAt) row.onboarded += 1;
-            if (t.firstChannelConnectedAt) row.channelConnected += 1;
-            if (t.firstMessageAt) row.activated += 1;
-            if (t.subscriptionStatus === 'active' || t.subscriptionStatus === 'past_due') row.paying += 1;
+            if (tenant?.onboardingCompletedAt) row.onboarded += 1;
+            if (tenant?.firstChannelConnectedAt) row.channelConnected += 1;
+            if (tenant?.firstMessageAt) row.activated += 1;
+            if (tenant?.subscriptionStatus === 'active' || tenant?.subscriptionStatus === 'past_due') row.paying += 1;
             bySource.set(key, row);
         }
 
         // TTFV (time-to-first-value): horas signup → primer canal conectado.
-        const ttfc = (tenants as any[])
-            .filter(t => t.firstChannelConnectedAt && t.createdAt)
-            .map(t => (t.firstChannelConnectedAt.getTime() - t.createdAt.getTime()) / 3_600_000);
+        const ttfc = (signups as any[])
+            .filter(s => s.tenant?.firstChannelConnectedAt && s.createdAt)
+            .map(s => (s.tenant.firstChannelConnectedAt.getTime() - s.createdAt.getTime()) / 3_600_000);
         ttfc.sort((a, b) => a - b);
         const medianTtfcHours = ttfc.length > 0 ? ttfc[Math.floor(ttfc.length / 2)] : null;
 
-        const ttfm = (tenants as any[])
-            .filter(t => t.firstMessageAt && t.createdAt)
-            .map(t => (t.firstMessageAt.getTime() - t.createdAt.getTime()) / 3_600_000);
+        const ttfm = (signups as any[])
+            .filter(s => s.tenant?.firstMessageAt && s.createdAt)
+            .map(s => (s.tenant.firstMessageAt.getTime() - s.createdAt.getTime()) / 3_600_000);
         ttfm.sort((a, b) => a - b);
         const medianTtfmHours = ttfm.length > 0 ? ttfm[Math.floor(ttfm.length / 2)] : null;
         const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 1000) / 10 : 0;

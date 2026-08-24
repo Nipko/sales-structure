@@ -65,6 +65,8 @@ import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
 import { TenantPaymentsModule } from '../tenant-payments/tenant-payments.module';
 import { TenantMercadoPagoOperationProvider } from '../tenant-payments/tenant-mercadopago-operation.provider';
 import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
+import { VerticalTurnContextService } from './vertical-turn-context.service';
+import { TurnCapabilityComposerService } from './turn-capability-composer.service';
 
 @Module({
     imports: [
@@ -120,6 +122,8 @@ import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
         AIToolExecutorService,
         ToolExecutionControlService,
         EffectiveCapabilityService,
+        VerticalTurnContextService,
+        TurnCapabilityComposerService,
         ToolApprovalWorkflowService,
         PaymentOperationService,
         {
@@ -143,6 +147,6 @@ import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
         ChatIdentityService,
     ],
     controllers: [ConversationsController, AgentTestController, ToolApprovalController],
-    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService],
+    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService],
 })
 export class ConversationsModule {}

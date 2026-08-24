@@ -83,8 +83,9 @@ services:
     image: ghcr.io/nipko/parallext-api:${IMAGE_TAG:-latest}
     container_name: parallext-api
     restart: unless-stopped
-    # Must exceed the drain ceiling in main.ts (40s) or Docker SIGKILLs mid-drain.
-    stop_grace_period: 45s
+    # Must exceed the 150s drain ceiling in main.ts or Docker SIGKILLs the
+    # API's active inbound turn before BullMQ can close it cleanly.
+    stop_grace_period: 160s
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8

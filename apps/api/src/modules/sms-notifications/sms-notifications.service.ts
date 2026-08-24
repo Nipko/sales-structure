@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 
 /**
  * Per-tenant opt-in config for transactional SMS notifications, stored in
@@ -46,18 +47,20 @@ export class SmsNotificationsService {
         });
         if (!tenant) throw new BadRequestException('Tenant not found');
 
-        const currentSettings = (tenant.settings as Record<string, any>) || {};
-        const current: SmsNotificationsConfig = currentSettings.smsNotifications || DEFAULT_CONFIG;
-
-        const merged: SmsNotificationsConfig = {
-            enabled: updates.enabled ?? current.enabled ?? false,
-            events: { handoff: updates.events?.handoff ?? current.events?.handoff ?? true },
-        };
-
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings: { ...currentSettings, smsNotifications: merged } as any },
-        });
+        const merged = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'smsNotifications',
+            (value): SmsNotificationsConfig => {
+                const current = (value && typeof value === 'object'
+                    ? value
+                    : DEFAULT_CONFIG) as SmsNotificationsConfig;
+                return {
+                    enabled: updates.enabled ?? current.enabled ?? false,
+                    events: { handoff: updates.events?.handoff ?? current.events?.handoff ?? true },
+                };
+            },
+        );
         return merged;
     }
 }

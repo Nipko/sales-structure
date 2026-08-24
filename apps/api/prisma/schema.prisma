@@ -95,8 +95,28 @@ model Tenant {
   invitations     TenantInvitation[]
   paymentSources  BillingPaymentSource[]
   customerPaymentProviderConfig TenantPaymentProviderConfig?
+  integrationWorkRegistry IntegrationWorkTenant?
 
   @@map("tenants")
+  @@schema("public")
+}
+
+// Durable index of tenant schemas that have ever received provider-neutral
+// integration work. Workers query this small public table instead of probing
+// every active tenant schema every minute.
+model IntegrationWorkTenant {
+  tenantId      String    @id @map("tenant_id") @db.Uuid
+  schemaName    String    @map("schema_name") @db.VarChar(63)
+  outboxSeenAt  DateTime? @map("outbox_seen_at") @db.Timestamptz(6)
+  webhookSeenAt DateTime? @map("webhook_seen_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([outboxSeenAt], map: "idx_integration_work_tenants_outbox")
+  @@index([webhookSeenAt], map: "idx_integration_work_tenants_webhook")
+  @@map("integration_work_tenants")
   @@schema("public")
 }
 
@@ -140,6 +160,11 @@ model User {
   twoFactorMethod     String?   @map("two_factor_method")
   backupCodes         String[]  @default([]) @map("backup_codes")
   onboardingCompleted Boolean   @default(false) @map("onboarding_completed")
+  // Durable pre-tenant acquisition event. Tenant creation happens only after
+  // onboarding, so funnel signup counts cannot be reconstructed from Tenant.
+  isSelfServeSignup   Boolean   @default(false) @map("is_self_serve_signup")
+  signupSource        String?   @map("signup_source")
+  signupAttribution   Json?     @map("signup_attribution")
   phone               String?
   jobTitle            String?   @map("job_title")
   availabilityStatus  String    @default("offline") @map("availability_status")
@@ -154,6 +179,7 @@ model User {
   trustedDevices TrustedDevice[]
 
   @@index([tenantId])
+  @@index([isSelfServeSignup, createdAt(sort: Desc)], map: "idx_users_self_serve_signup_created")
   @@map("users")
   @@schema("public")
 }

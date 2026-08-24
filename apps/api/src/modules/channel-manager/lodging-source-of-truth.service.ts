@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelManagerService } from './channel-manager.service';
+import {
+    lodgingSorCacheValueKey,
+    lodgingSorCacheVersionKey,
+} from './lodging-cache-key.util';
 
 /**
  * Which system owns a lodging unit's calendar.
@@ -122,12 +126,17 @@ export class LodgingSourceOfTruthService {
         schemaName: string,
         propertyId: string,
     ): Promise<LodgingSorResolution> {
-        const cacheKey = `lodging:sor:${tenantId}:${propertyId}`;
-        try {
-            const cached = await this.redis.getJson<LodgingSorResolution>(cacheKey);
-            if (cached) return cached;
-        } catch {
-            // Cache misses are not failures; fall through to the live read.
+        const cacheVersion = await this.readCacheVersion(tenantId);
+        const cacheKey = cacheVersion === null
+            ? null
+            : lodgingSorCacheValueKey(tenantId, cacheVersion, propertyId);
+        if (cacheKey) {
+            try {
+                const cached = await this.redis.getJson<LodgingSorResolution>(cacheKey);
+                if (cached) return cached;
+            } catch {
+                // Cache misses are not failures; fall through to the live read.
+            }
         }
 
         const resolution = await this.readResolution(tenantId, schemaName, propertyId);
@@ -135,7 +144,7 @@ export class LodgingSourceOfTruthService {
         // convertiría un tropiezo de una consulta en un minuto entero de
         // reservas directas bloqueadas para ese alojamiento. La próxima llamada
         // vuelve a preguntar.
-        if (resolution.sor !== 'unknown') {
+        if (cacheKey && resolution.sor !== 'unknown') {
             try {
                 await this.redis.setJson(cacheKey, resolution, CACHE_TTL_SECONDS);
             } catch {
@@ -145,14 +154,32 @@ export class LodgingSourceOfTruthService {
         return resolution;
     }
 
-    /** Drop the cached decision after a mapping or config change. */
-    async invalidate(tenantId: string, propertyId?: string): Promise<void> {
-        if (propertyId) {
-            await this.redis.del(`lodging:sor:${tenantId}:${propertyId}`).catch(() => undefined);
-            return;
+    /**
+     * Invalidate every cached ownership decision for a tenant atomically.
+     *
+     * Channel Manager sync knows the tenant but not which mappings changed.
+     * Enumerating Redis keys is expensive and racy: a resolver can publish a
+     * stale key immediately after a scan deletes it. A tenant generation in
+     * the key makes the cut atomic instead. Old generations are unreachable
+     * immediately and disappear naturally with the 60-second value TTL.
+     *
+     * `propertyId` is retained for API compatibility. Invalidating the whole
+     * tenant is intentionally broader and safe; mapping/config changes are
+     * rare, while accepting one stale `local` decision can double-book a unit.
+     */
+    async invalidate(tenantId: string, _propertyId?: string): Promise<void> {
+        await this.redis.incr(lodgingSorCacheVersionKey(tenantId));
+    }
+
+    /** Null disables caching for this resolution when Redis cannot be trusted. */
+    private async readCacheVersion(tenantId: string): Promise<string | null> {
+        try {
+            const stored = await this.redis.get(lodgingSorCacheVersionKey(tenantId));
+            if (stored === null) return '0';
+            return /^\d+$/.test(stored) ? stored : null;
+        } catch {
+            return null;
         }
-        // Without a property we cannot enumerate keys cheaply; the 60s TTL
-        // bounds how long a stale decision can survive.
     }
 
     private async readResolution(
@@ -179,7 +206,7 @@ export class LodgingSourceOfTruthService {
                 schemaName,
                 `SELECT id, provider, last_synced_at
                    FROM cm_listings
-                  WHERE property_id = $1::uuid AND status = 'active'
+                  WHERE property_id = $1::uuid AND status = 'active' AND is_deleted = false
                   ORDER BY last_synced_at DESC NULLS LAST
                   LIMIT 1`,
                 [propertyId],
@@ -249,18 +276,38 @@ export class LodgingSourceOfTruthService {
         base: LodgingSorResolution,
     ): Promise<LodgingSorResolution> {
         const config = await this.safeConfig(tenantId);
-        if (!config?.provider || config.provider === 'direct') return base;
-        return { ...base, connected: true, provider: config.provider };
+        // `undefined` means the config lookup itself failed; `null` is the
+        // definitive answer "this tenant has no connection". Conflating both
+        // reopened local writes during a settings/decryption outage.
+        if (config === undefined) {
+            return {
+                sor: 'unknown', connected: false, stale: true, health: 'unknown',
+                writerBlockedReason: 'ownership_unknown',
+            };
+        }
+        if (!config?.provider || config.provider === 'direct' || config.provider === 'ical') return base;
+
+        // Once an external PMS is connected, every local unit needs an
+        // explicit one-to-one mapping. "Not mapped" is not evidence that the
+        // unit is local: it is an incomplete migration and must fail closed.
+        return {
+            sor: 'unknown',
+            connected: true,
+            provider: config.provider,
+            stale: true,
+            health: 'degraded',
+            writerBlockedReason: 'ownership_unknown',
+        };
     }
 
     private async safeConfig(
         tenantId: string,
-    ): Promise<Awaited<ReturnType<ChannelManagerService['getConfig']>>> {
+    ): Promise<Awaited<ReturnType<ChannelManagerService['getConfig']>> | undefined> {
         try {
             return await this.channelManager.getConfig(tenantId);
         } catch (error: any) {
             this.logger.warn(`[LodgingSoR] config read failed for ${tenantId}: ${error?.message}`);
-            return null;
+            return undefined;
         }
     }
 }

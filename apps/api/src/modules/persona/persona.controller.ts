@@ -10,6 +10,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
+import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 
 @ApiTags('persona')
 @Controller('persona')
@@ -238,26 +239,16 @@ export class PersonaController {
         // chat de prueba respondía con el agente viejo y el usuario concluía —con razón—
         // que nada de lo que había escrito se había guardado.
         const markCompleted = body.markCompleted !== false;
-        const currentSettings = (await this.prisma.tenant.findUnique({
-            where: { id: tenantId }, select: { settings: true },
-        }))?.settings as any || {};
-
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    ...currentSettings,
-                    // Los horarios son configuración del tenant, no del wizard: se
-                    // guardan igual aunque todavía no se haya cerrado el asistente.
-                    ...(businessHours ? { businessHours } : {}),
-                    ...(markCompleted ? {
-                        setupWizardCompleted: true,
-                        setupWizardTemplate: body.templateId,
-                        setupWizardChannels: body.selectedChannels || [],
-                        setupWizardCompletedAt: new Date().toISOString(),
-                    } : {}),
-                },
-            },
+        await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+            // Los horarios son configuración del tenant, no del wizard: se
+            // guardan igual aunque todavía no se haya cerrado el asistente.
+            ...(businessHours ? { businessHours } : {}),
+            ...(markCompleted ? {
+                setupWizardCompleted: true,
+                setupWizardTemplate: body.templateId,
+                setupWizardChannels: body.selectedChannels || [],
+                setupWizardCompletedAt: new Date().toISOString(),
+            } : {}),
         });
 
         this.logger.log(
@@ -272,21 +263,10 @@ export class PersonaController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Mark the setup wizard as skipped without applying a template — prevents redirect loop' })
     async skipSetupWizard(@Param('tenantId') tenantId: string) {
-        const existing = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
-        });
-        const settings = (existing?.settings as any) || {};
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    ...settings,
-                    setupWizardCompleted: true,
-                    setupWizardSkipped: true,
-                    setupWizardCompletedAt: new Date().toISOString(),
-                },
-            },
+        await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+            setupWizardCompleted: true,
+            setupWizardSkipped: true,
+            setupWizardCompletedAt: new Date().toISOString(),
         });
         this.logger.log(`Setup wizard skipped for tenant ${tenantId}`);
         return { success: true };

@@ -18,8 +18,9 @@
  * Los tres modos, en el orden en que esto se hace sin romper nada:
  *
  *   --dry-run   Cuenta y ubica. No escribe. Es lo primero.
- *   --apply     Reescribe `verticalConfig.industry`/`subType` al id canónico,
- *               sin tocar el resto de `settings`. Idempotente.
+ *   --apply     Reescribe la identidad al id canónico y deja el provisioning
+ *               `pending` con capacidades vacías. No publica el perfil nuevo
+ *               hasta que el reconciliador repare persona/seeds/tools.
  *   --verify    Confirma que no queda ninguno. Falla si queda.
  *
  * Uso:
@@ -107,10 +108,28 @@ async function main() {
                 `UPDATE public.tenants
                     SET settings = jsonb_set(
                         jsonb_set(
-                            settings,
-                            '{verticalConfig,industry}', to_jsonb($2::text), true
+                            jsonb_set(
+                                jsonb_set(
+                                    jsonb_set(
+                                        COALESCE(settings, '{}'::jsonb),
+                                        '{verticalConfig,industry}', to_jsonb($2::text), true
+                                    ),
+                                    '{verticalConfig,subType}', to_jsonb($3::text), true
+                                ),
+                                '{verticalConfig,effectiveCapabilities}', '[]'::jsonb, true
+                            ),
+                            '{subType}', to_jsonb($3::text), true
                         ),
-                        '{verticalConfig,subType}', to_jsonb($3::text), true
+                        '{verticalProvisioning}',
+                        COALESCE(settings->'verticalProvisioning', '{}'::jsonb)
+                            || jsonb_build_object(
+                                'status', 'pending',
+                                'industry', $2::text,
+                                'subType', $3::text,
+                                'completedSteps', '[]'::jsonb,
+                                'updatedAt', NOW()
+                            ),
+                        true
                     ),
                     industry = $2,
                     updated_at = NOW()
@@ -125,6 +144,12 @@ async function main() {
         }
     }
     console.log(`\nMigrados: ${applied}. Con error: ${failed}.`);
+    if (applied) {
+        console.log(
+            'Contrato nuevo bloqueado hasta reprovisionar. Ejecutá: '
+            + 'node scripts/reconcile-vertical-provisioning.js --dry-run y luego --apply',
+        );
+    }
     if (failed) process.exitCode = 1;
 }
 

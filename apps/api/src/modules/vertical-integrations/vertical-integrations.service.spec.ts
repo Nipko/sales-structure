@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { promises as dns } from 'node:dns';
 import { VerticalIntegrationsService } from './vertical-integrations.service';
 import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+import { fakeSettingsTransaction, fakeSettingsWriter } from '../../common/utils/tenant-settings-branch.fixture';
 
 // El sobre de credenciales ata el valor a su tenant, asi que el id tiene que
 // ser un UUID real y no una etiqueta.
@@ -14,19 +15,28 @@ describe('VerticalIntegrationsService endpoint security', () => {
     let http: any;
     let appConfig: any;
     let lookupSpy: jest.SpyInstance;
+    let settings: Record<string, any>;
 
     beforeEach(() => {
         // Guardar una credencial que no se puede cifrar es exactamente lo que
         // este servicio ya no hace: sin clave, `updateConfig` falla cerrado.
         process.env.TENANT_SECRET_KEY = 'a'.repeat(64);
+        settings = {};
         prisma = {
-            $executeRawUnsafe: jest.fn().mockResolvedValue(1),
             tenant: {
-                findUnique: jest.fn().mockResolvedValue({ settings: {} }),
+                findUnique: jest.fn(async () => ({ settings })),
                 update: jest.fn().mockResolvedValue({}),
                 findMany: jest.fn(),
             },
         };
+        prisma.$executeRawUnsafe = jest.fn(fakeSettingsWriter(
+            () => settings,
+            (next) => { settings = next; },
+        ));
+        prisma.$transaction = jest.fn(fakeSettingsTransaction(
+            () => settings,
+            (next) => { settings = next; },
+        ));
         redis = {
             del: jest.fn().mockResolvedValue(undefined),
         };
@@ -121,28 +131,20 @@ describe('VerticalIntegrationsService endpoint security', () => {
             baseUrl: 'https://api.au1.cliniko.com/v1/',
         });
 
-        // La escritura pasó a `jsonb_set` sobre la fila viva: mandar
-        // `{...settings, verticalIntegrations}` era mandar una foto vieja del
-        // objeto completo, y guardar Toast borraba lo que se hubiera guardado
-        // de Cliniko en el mismo instante. Lo que se verifica es lo mismo —qué
-        // queda persistido— contra el camino que hoy corre.
-        const writes = prisma.$executeRawUnsafe.mock.calls;
-        const configWrite = writes.find((c: any[]) => c[3] === '{verticalIntegrations,cliniko}');
-        expect(configWrite).toBeDefined();
-        expect(JSON.parse(configWrite![4])).toEqual(expect.objectContaining({
+        // Config + revision + health reset are one row-locked mutation: a
+        // health response from the old credential cannot win afterwards.
+        expect(settings.verticalIntegrations.cliniko).toEqual(expect.objectContaining({
             provider: 'cliniko',
             baseUrl: 'https://api.au1.cliniko.com/v1',
+            configRevision: 1,
         }));
 
         // Guardar una credencial nunca es haberla validado: la salud se
         // reinicia en la misma operación.
-        const healthWrite = writes.find(
-            (c: any[]) => c[3] === '{verticalIntegrationHealth,cliniko}',
-        );
-        expect(healthWrite).toBeDefined();
-        expect(JSON.parse(healthWrite![4])).toEqual(expect.objectContaining({
+        expect(settings.verticalIntegrationHealth.cliniko).toEqual(expect.objectContaining({
             credentialValidated: false,
             lastCheckedAt: null,
+            configRevision: 1,
         }));
     });
 
@@ -155,11 +157,9 @@ describe('VerticalIntegrationsService endpoint security', () => {
             hostname: 'https://toast-api.partner.example',
         });
 
-        expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
-            expect.stringContaining('UPDATE public.tenants'),
-            TENANT_ID, '{verticalIntegrations}', '{verticalIntegrations,toast}',
-            expect.any(String),
-        );
+        expect(settings.verticalIntegrations.toast).toEqual(expect.objectContaining({
+            hostname: 'https://toast-api.partner.example', configRevision: 1,
+        }));
 
         await expect(service.updateConfig(TENANT_ID, 'toast', {
             hostname: 'https://sub.toast-api.partner.example',
@@ -167,8 +167,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('disables redirects on tenant-configured Cliniko requests', async () => {
-        prisma.tenant.findUnique.mockResolvedValue({
-            settings: {
+        settings = {
                 verticalIntegrations: {
                     cliniko: {
                         provider: 'cliniko',
@@ -176,8 +175,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
                         baseUrl: 'https://api.au1.cliniko.com/v1',
                     },
                 },
-            },
-        });
+        };
 
         await expect(service.testConnection(TENANT_ID, 'cliniko')).resolves.toEqual(expect.objectContaining({
             ok: true,
@@ -202,8 +200,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('pins the validated public address so a later DNS rebind cannot change the connection', async () => {
-        prisma.tenant.findUnique.mockResolvedValue({
-            settings: {
+        settings = {
                 verticalIntegrations: {
                     cliniko: {
                         provider: 'cliniko',
@@ -211,8 +208,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
                         baseUrl: 'https://api.au1.cliniko.com/v1',
                     },
                 },
-            },
-        });
+        };
 
         await service.testConnection(TENANT_ID, 'cliniko');
         const requestConfig = http.axiosRef.get.mock.calls[0][1];
@@ -227,8 +223,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('rejects an agent lookup for any hostname other than the one that was validated', async () => {
-        prisma.tenant.findUnique.mockResolvedValue({
-            settings: {
+        settings = {
                 verticalIntegrations: {
                     cliniko: {
                         provider: 'cliniko',
@@ -236,8 +231,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
                         baseUrl: 'https://api.au1.cliniko.com/v1',
                     },
                 },
-            },
-        });
+        };
 
         await service.testConnection(TENANT_ID, 'cliniko');
         const pinnedLookup = http.axiosRef.get.mock.calls[0][1].httpsAgent.options.lookup;
@@ -248,8 +242,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('disables redirects when exchanging Toast credentials', async () => {
-        prisma.tenant.findUnique.mockResolvedValue({
-            settings: {
+        settings = {
                 verticalIntegrations: {
                     toast: {
                         provider: 'toast',
@@ -259,8 +252,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
                         locationGuid: 'location',
                     },
                 },
-            },
-        });
+        };
 
         await expect(service.testConnection(TENANT_ID, 'toast')).resolves.toEqual(expect.objectContaining({
             ok: true,
@@ -285,8 +277,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
     });
 
     it('records a sanitized unhealthy/missing-scope result when a provider returns 403', async () => {
-        prisma.tenant.findUnique.mockResolvedValue({
-            settings: {
+        settings = {
                 verticalIntegrations: {
                     cliniko: {
                         provider: 'cliniko',
@@ -294,8 +285,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
                         baseUrl: 'https://api.au1.cliniko.com/v1',
                     },
                 },
-            },
-        });
+        };
         http.axiosRef.get.mockRejectedValue({
             response: { status: 403, data: { token: 'never-persist-this' } },
             message: 'request failed with secret-au1',
@@ -317,14 +307,13 @@ describe('VerticalIntegrationsService endpoint security', () => {
                 },
             },
         });
-        const persistedHealth = prisma.$executeRawUnsafe.mock.calls[0][3];
+        const persistedHealth = JSON.stringify(settings.verticalIntegrationHealth.cliniko);
         expect(persistedHealth).not.toContain('never-persist-this');
         expect(persistedHealth).not.toContain('secret-au1');
     });
 
     it('does not interpolate untrusted Cliniko identifiers into the request path', async () => {
-        prisma.tenant.findUnique.mockResolvedValue({
-            settings: {
+        settings = {
                 verticalIntegrations: {
                     cliniko: {
                         provider: 'cliniko',
@@ -349,8 +338,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
                         lastError: null,
                     },
                 },
-            },
-        });
+        };
 
         await expect(service.checkClinikoAvailability(
             TENANT_ID,

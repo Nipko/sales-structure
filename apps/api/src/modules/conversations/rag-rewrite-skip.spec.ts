@@ -17,9 +17,9 @@ const prismaQueExplota: any = {
     }),
 };
 
-const rewrite = (text: string) =>
+const rewrite = (text: string, country?: string) =>
     (ConversationsService.prototype as any).rewriteSearchQuery.call(
-        { prisma: prismaQueExplota }, text, 'tenant_x', 'conv-1', 't1',
+        { prisma: prismaQueExplota }, text, 'tenant_x', 'conv-1', 't1', country,
     );
 
 beforeEach(() => prismaQueExplota.executeInTenantSchema.mockClear());
@@ -34,6 +34,15 @@ describe('confirmaciones: pasan de largo', () => {
 
     it('un agradecimiento tampoco', async () => {
         await expect(rewrite('gracias')).resolves.toBe('gracias');
+    });
+
+    it.each([
+        ['hágale', 'CO'],
+        ['ya po', 'CL'],
+        ['beleza', 'BR'],
+    ])('la expresión local "%s" usa el pack %s y no reescribe', async (texto, pais) => {
+        await expect(rewrite(texto, pais)).resolves.toBe(texto);
+        expect(prismaQueExplota.executeInTenantSchema).not.toHaveBeenCalled();
     });
 });
 

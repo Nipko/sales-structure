@@ -1,7 +1,11 @@
-export const SIGNUP_URL = "https://admin.parallly-chat.cloud/signup";
+export const SITE_URL = "https://parallly-chat.cloud";
+export const DASHBOARD_SIGNUP_URL = "https://admin.parallly-chat.cloud/signup";
+// Route every marketing CTA through a same-origin bridge. The bridge can read
+// the full landing referrer (including UTMs) before the cross-origin hop strips
+// it, then forwards only an allowlisted attribution payload to the dashboard.
+export const SIGNUP_URL = `${SITE_URL}/signup`;
 export const LOGIN_URL = "https://admin.parallly-chat.cloud/login";
 export const CONTACT_EMAIL = "it.executive@parallext.com";
-export const SITE_URL = "https://parallly-chat.cloud";
 export const ANDROID_EARLY_ACCESS_URL = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
   "Parallly Android — early access",
 )}`;

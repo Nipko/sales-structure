@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException, NotFoundException } from '@nest
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 
 export interface WhiteLabelConfig {
     enabled: boolean;
@@ -66,30 +67,30 @@ export class WhiteLabelService {
         });
         if (!tenant) throw new NotFoundException('Tenant not found');
 
-        const currentSettings = (tenant.settings as Record<string, any>) || {};
-        const current = currentSettings.whiteLabel || {};
-
-        const merged: WhiteLabelConfig = {
-            enabled: updates.enabled ?? current.enabled ?? false,
-            brandName: updates.brandName ?? current.brandName ?? '',
-            logoUrl: updates.logoUrl ?? current.logoUrl,
-            faviconUrl: updates.faviconUrl ?? current.faviconUrl,
-            primaryColor: updates.primaryColor ?? current.primaryColor ?? '#6c5ce7',
-            accentColor: updates.accentColor ?? current.accentColor ?? '#2ecc71',
-            customDomain: updates.customDomain ?? current.customDomain,
-            customCss: updates.customCss ?? current.customCss,
-            footerText: updates.footerText ?? current.footerText,
-            hidePoweredBy: updates.hidePoweredBy ?? current.hidePoweredBy ?? false,
-            customEmailFromName: updates.customEmailFromName ?? current.customEmailFromName,
-            customEmailFromDomain: updates.customEmailFromDomain ?? current.customEmailFromDomain,
-            kbHeaderHtml: updates.kbHeaderHtml ?? current.kbHeaderHtml,
-            bookingHeaderHtml: updates.bookingHeaderHtml ?? current.bookingHeaderHtml,
-        };
-
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings: { ...currentSettings, whiteLabel: { ...merged } } as any },
-        });
+        const merged = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'whiteLabel',
+            (value): WhiteLabelConfig => {
+                const current = (value && typeof value === 'object' ? value : {}) as Partial<WhiteLabelConfig>;
+                return {
+                    enabled: updates.enabled ?? current.enabled ?? false,
+                    brandName: updates.brandName ?? current.brandName ?? '',
+                    logoUrl: updates.logoUrl ?? current.logoUrl,
+                    faviconUrl: updates.faviconUrl ?? current.faviconUrl,
+                    primaryColor: updates.primaryColor ?? current.primaryColor ?? '#6c5ce7',
+                    accentColor: updates.accentColor ?? current.accentColor ?? '#2ecc71',
+                    customDomain: updates.customDomain ?? current.customDomain,
+                    customCss: updates.customCss ?? current.customCss,
+                    footerText: updates.footerText ?? current.footerText,
+                    hidePoweredBy: updates.hidePoweredBy ?? current.hidePoweredBy ?? false,
+                    customEmailFromName: updates.customEmailFromName ?? current.customEmailFromName,
+                    customEmailFromDomain: updates.customEmailFromDomain ?? current.customEmailFromDomain,
+                    kbHeaderHtml: updates.kbHeaderHtml ?? current.kbHeaderHtml,
+                    bookingHeaderHtml: updates.bookingHeaderHtml ?? current.bookingHeaderHtml,
+                };
+            },
+        );
 
         await this.redis.del(`whitelabel:${tenantId}`);
         this.logger.log(`White-label config updated for tenant ${tenantId}`);

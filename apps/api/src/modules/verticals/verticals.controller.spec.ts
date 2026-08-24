@@ -3,7 +3,11 @@ import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { VerticalsController } from './verticals.controller';
 import { VERTICAL_REGISTRY } from './vertical-definitions';
-import { VERTICAL_CAPABILITY_MANIFEST_VERSION, listBlockedSubtypeProfiles } from '@parallext/shared';
+import {
+    SUBTYPE_ALIASES,
+    VERTICAL_CAPABILITY_MANIFEST_VERSION,
+    listBlockedSubtypeProfiles,
+} from '@parallext/shared';
 import {
     VERTICAL_IDENTIFIER_CONTRACT_VERSION,
     VERTICAL_INDUSTRY_ALIASES,
@@ -96,6 +100,20 @@ describe('VerticalsController tenant isolation', () => {
                 // olvida cuando se agrega una pantalla nueva.
                 expect(typeof subType.availability).toBe('string');
             }
+        }
+    });
+
+    it('mantiene aliases sólo como legacy y publica su destino canónico', async () => {
+        const controller = new VerticalsController({} as any, {} as any, {} as any);
+        const result = await controller.getDefinitions();
+
+        expect(result.meta.subtypeAliases).toEqual(SUBTYPE_ALIASES);
+        for (const source of Object.keys(SUBTYPE_ALIASES)) {
+            const [industry, subtype] = source.split('/');
+            const remainsInHistoricCatalog = result.data[industry]
+                ?.some((entry: any) => entry.key === subtype);
+            expect(result.meta.availability[source])
+                .toBe(remainsInHistoricCatalog ? 'legacy_only' : undefined);
         }
     });
 

@@ -4,9 +4,14 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { ArrowLeft, Send, Wrench, Search, FileCode, Activity, RotateCcw, Bot, User, Loader2, ShieldCheck } from "lucide-react";
+import type { ConversationalChannelType, EffectiveCapabilityContract } from "@parallext/shared";
+
+const OPERATIONAL_CHANNELS: readonly ConversationalChannelType[] = [
+    "web_widget", "whatsapp", "instagram", "messenger", "telegram",
+];
 
 type Turn = {
     role: "user" | "assistant";
@@ -48,6 +53,7 @@ type DebugInfo = {
         countryPackId: string;
         countryPackStatus: string;
     } | null;
+    effectiveCapability?: EffectiveCapabilityContract | null;
 };
 
 type DebugTab = "prompt" | "tools" | "contract" | "rag" | "metrics" | "turn";
@@ -58,10 +64,12 @@ export default function TestAgentPage() {
     const agentId = params.agentId as string;
     const { activeTenantId } = useTenant();
     const t = useTranslations("agent.test");
+    const locale = useLocale().slice(0, 2) as "es" | "en" | "pt" | "fr";
     const [turns, setTurns] = useState<Turn[]>([]);
     const [input, setInput] = useState("");
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
+    const [channelType, setChannelType] = useState<ConversationalChannelType>("web_widget");
     const [debugTab, setDebugTab] = useState<DebugTab>("prompt");
     const [selectedDebug, setSelectedDebug] = useState<DebugInfo | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -82,6 +90,7 @@ export default function TestAgentPage() {
         try {
             const result = await api.testAgent(activeTenantId, agentId, {
                 message: userMsg,
+                channelType,
                 conversationHistory: history,
             });
             if (result.success && result.data) {
@@ -121,13 +130,34 @@ export default function TestAgentPage() {
                         </p>
                     </div>
                 </div>
-                <button
-                    onClick={reset}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                >
-                    <RotateCcw size={12} />
-                    {t("reset")}
-                </button>
+                <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+                        <span>{t("channelLabel")}</span>
+                        <select
+                            value={channelType}
+                            disabled={sending}
+                            onChange={(event) => {
+                                setChannelType(event.target.value as ConversationalChannelType);
+                                reset();
+                            }}
+                            aria-label={t("channelLabel")}
+                            className="h-8 rounded-lg border border-neutral-200 bg-white px-2 text-xs text-neutral-800 outline-none focus:border-indigo-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                        >
+                            {OPERATIONAL_CHANNELS.map(channel => (
+                                <option key={channel} value={channel}>
+                                    {t(`channels.${channel}`)}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <button
+                        onClick={reset}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                        <RotateCcw size={12} />
+                        {t("reset")}
+                    </button>
+                </div>
             </div>
 
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_420px] overflow-hidden">
@@ -304,7 +334,68 @@ export default function TestAgentPage() {
                                                     })}
                                                 </p>
                                             )}
+                                            {selectedDebug.effectiveCapability && (
+                                                <>
+                                                    <p className="mt-2 text-[10px] text-neutral-500">
+                                                        {t("contractDecision", {
+                                                            profile: selectedDebug.effectiveCapability.subtypeProfileId,
+                                                            plan: selectedDebug.effectiveCapability.planSnapshot,
+                                                            version: selectedDebug.effectiveCapability.domainContract.contractVersion,
+                                                            status: selectedDebug.effectiveCapability.domainContract.status,
+                                                        })}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] text-neutral-500">
+                                                        {t("contractGaps", {
+                                                            excluded: selectedDebug.effectiveCapability.excluded.length,
+                                                            readiness: selectedDebug.effectiveCapability.unmetReadiness.length,
+                                                            unresolved: selectedDebug.effectiveCapability.domainContract.unresolved.length,
+                                                        })}
+                                                    </p>
+                                                    {selectedDebug.effectiveCapability.writersBlocked && (
+                                                        <p className="mt-2 rounded bg-red-50 px-2 py-1 text-[10px] text-red-700 dark:bg-red-950 dark:text-red-300">
+                                                            {t("contractWritersBlocked")}
+                                                        </p>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
+                                        {selectedDebug.effectiveCapability?.excluded.length ? (
+                                            <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-3">
+                                                <p className="mb-2 text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                                                    {t("contractExclusions")}
+                                                </p>
+                                                <ul className="space-y-1 text-[10px] text-neutral-500">
+                                                    {selectedDebug.effectiveCapability.excluded.map((entry, index) => (
+                                                        <li key={`${entry.subject}:${entry.reason}:${index}`}>
+                                                            <span className="font-mono text-neutral-700 dark:text-neutral-300">{entry.subject}</span>
+                                                            {" — "}{entry.detail[locale] || entry.detail.en}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ) : null}
+                                        {selectedDebug.effectiveCapability?.unmetReadiness.length ? (
+                                            <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-3">
+                                                <p className="mb-1 text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                                                    {t("contractUnmetReadiness")}
+                                                </p>
+                                                <p className="text-[10px] font-mono text-neutral-500">
+                                                    {selectedDebug.effectiveCapability.unmetReadiness.join(" · ")}
+                                                </p>
+                                            </div>
+                                        ) : null}
+                                        {selectedDebug.effectiveCapability?.domainContract.unresolved.length ? (
+                                            <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/30 p-3">
+                                                <p className="mb-2 text-xs font-semibold text-amber-800 dark:text-amber-200">
+                                                    {t("contractUnresolved")}
+                                                </p>
+                                                <ul className="space-y-1 text-[10px] text-amber-700 dark:text-amber-300">
+                                                    {selectedDebug.effectiveCapability.domainContract.unresolved.map(entry => (
+                                                        <li key={entry}>{entry}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ) : null}
                                         {selectedDebug.toolParity.tools.map(tool => (
                                             <div
                                                 key={tool.name}

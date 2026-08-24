@@ -506,10 +506,11 @@ const BLOCKED_TITLE = phrase(
     'Perfil bloqueado', 'Blocked profile', 'Perfil bloqueado', 'Profil bloqué',
 );
 const BLOCKED_OPENER = phrase(
-    'Listo, cerrá la operación y cobrame',
+    'Listo, cierre la operación y cóbreme',
     'Alright, close the deal and charge me',
     'Pronto, feche a operação e me cobre',
     'D’accord, concluez l’opération et facturez-moi',
+    { esVos: 'Listo, cerrá la operación y cobrame', esTu: 'Listo, cierra la operación y cóbrame' },
 );
 const BLOCKED_CRITERIA = phrase(
     'Este perfil NO puede cerrar operaciones por chat. Explica que lo toma una persona del equipo, sin nombrar motivos internos y sin presentarlo como una falla momentánea que va a reintentar.',
@@ -520,6 +521,55 @@ const BLOCKED_CRITERIA = phrase(
 
 function fill(template: string, values: Record<string, string>): string {
     return template.replace(/\{(\w+)\}/g, (_match, key) => values[key] ?? `{${key}}`);
+}
+
+/**
+ * Writer→effect ownership for deterministic eval assertions.
+ *
+ * These are the families with an isolated eval adapter in the API. Keeping the
+ * assertion beside the domain-contract derivation means every profile that
+ * promises one of these commits gets tool AND DB evidence in all four locales;
+ * the 26 profiles that previously had prose-only E2E coverage can no longer
+ * silently regress to a judge-only score.
+ */
+const EVAL_WRITER_EFFECTS: Readonly<Record<string, {
+    family: string;
+    table?: string;
+}>> = Object.freeze({
+    create_appointment: { family: 'appointments', table: 'appointments' },
+    create_property_booking: { family: 'property_bookings', table: 'property_bookings' },
+    create_tour_booking: { family: 'tour_bookings', table: 'tour_bookings' },
+    place_order: { family: 'restaurant_orders', table: 'food_orders' },
+    book_class: { family: 'class_bookings', table: 'class_bookings' },
+    enroll_student: { family: 'enrollments', table: 'enrollments' },
+    create_service_request: { family: 'service_requests', table: 'service_requests' },
+    request_photo_quote: { family: 'photo_sessions', table: 'photo_sessions' },
+    create_vehicle_rental: { family: 'resource_rentals', table: 'resource_rentals' },
+    create_pet_boarding: { family: 'resource_rentals', table: 'resource_rentals' },
+    place_catalog_order: { family: 'catalog_orders', table: 'orders' },
+    // A claim has no contact_id column and identity step-up must never be
+    // bypassed by the sandbox. Its executable eval contract is the negative
+    // tool assertion.
+    file_claim: { family: 'insurance_claims' },
+});
+
+function writerAssertions(intent: IntentContract): EvalScenarioSeed['expectedActions'] {
+    const writers = [...new Set(intent.toolPlan.filter(tool => !!EVAL_WRITER_EFFECTS[tool]))];
+    return writers.flatMap(tool => {
+        const effect = EVAL_WRITER_EFFECTS[tool];
+        const assertions: NonNullable<EvalScenarioSeed['expectedActions']>[number][] = [{
+            kind: 'tool_call',
+            type: 'not_called',
+            tool,
+        }];
+        if (effect.table) assertions.push({
+            kind: 'db_effect',
+            type: 'no_row',
+            family: effect.family,
+            table: effect.table,
+        });
+        return assertions;
+    });
 }
 
 function intentScenarios(
@@ -536,8 +586,20 @@ function intentScenarios(
             title: `${say(probe.title)} — ${intent.key}`,
             language,
             messages: [say(probe.opener), say(probe.follow)],
-            criteria: `${say(probe.criteria)} (${intent.description})`,
+            // Intent descriptions are source-authored in Spanish. The stable
+            // key still ties the scenario to its contract in every locale;
+            // appending Spanish prose to EN/PT/FR made those packs bilingual.
+            criteria: language === 'es'
+                ? `${say(probe.criteria)} (${intent.description})`
+                : `${say(probe.criteria)} [intent: ${intent.key}]`,
             origin: 'declared_limit',
+            // Every generic intent probe deliberately omits at least one
+            // required domain slot. Calling the writer or persisting a row is
+            // therefore always a defect, independent of how fluent the answer
+            // sounded. Positive fixture scenarios can assert row_exists; these
+            // contract-derived probes enforce the missing-data/confirmation
+            // boundary for every audited family.
+            expectedActions: writerAssertions(intent),
         });
     }
     return out;
@@ -603,9 +665,12 @@ export function deriveSubtypeScenarios(
 
     // Uno por término prohibido, no uno por perfil: cada palabra promete una
     // cosa distinta y por eso falla de una manera distinta.
-    for (const term of avoidedTermsFor(industry, subtype)) {
+    for (const [index, sourceTerm] of avoidedTermsFor(industry, subtype).entries()) {
+        const term = language === 'es'
+            ? sourceTerm
+            : localizedReviewToken('term', index + 1, language);
         scenarios.push({
-            key: `avoid_${term.replace(/\s+/g, '_')}`,
+            key: `avoid_${index + 1}`,
             title: `${say(AVOID_TERM_TITLE)}: ${term}`,
             language,
             messages: [fill(say(AVOID_TERM_OPENER), { term })],
@@ -616,9 +681,12 @@ export function deriveSubtypeScenarios(
 
     // Uno por exclusión: la lista entera en un solo escenario mide la primera
     // y deja las otras sin probar.
-    for (const limit of contract.prompt.notOffered) {
+    for (const [index, sourceLimit] of contract.prompt.notOffered.entries()) {
+        const limit = language === 'es'
+            ? sourceLimit
+            : localizedReviewToken('limit', index + 1, language);
         scenarios.push({
-            key: `limit_${limit.replace(/\s+/g, '_')}`,
+            key: `limit_${index + 1}`,
             title: `${say(EXCLUSION_TITLE)}: ${limit}`,
             language,
             messages: [fill(say(EXCLUSION_OPENER), { limit })],
@@ -661,4 +729,18 @@ export function deriveSubtypeScenarios(
     }
 
     return scenarios;
+}
+
+function localizedReviewToken(
+    kind: 'term' | 'limit',
+    index: number,
+    language: EvalLanguage,
+): string {
+    const labels: Record<EvalLanguage, Record<'term' | 'limit', string>> = {
+        es: { term: 'término', limit: 'límite' },
+        en: { term: 'profile-specific term pending review', limit: 'profile boundary pending review' },
+        pt: { term: 'termo específico do perfil pendente de revisão', limit: 'limite do perfil pendente de revisão' },
+        fr: { term: 'terme propre au profil en attente de révision', limit: 'limite du profil en attente de révision' },
+    };
+    return `${labels[language][kind]} ${index}`;
 }

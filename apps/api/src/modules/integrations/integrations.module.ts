@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { IntegrationOutboxService } from './integration-outbox.service';
 import { IntegrationOutboxWorker } from './integration-outbox.worker';
 import { IntegrationsController } from './integrations.controller';
+import { IntegrationWebhookWorker } from './integration-webhook.worker';
+import { SystemOfRecordBoundaryService } from './system-of-record-boundary.service';
 
 /**
  * El andamiaje compartido de integraciones.
@@ -16,7 +18,17 @@ import { IntegrationsController } from './integrations.controller';
 @Global()
 @Module({
     controllers: [IntegrationsController],
-    providers: [IntegrationOutboxService, IntegrationOutboxWorker],
-    exports: [IntegrationOutboxService, IntegrationOutboxWorker],
+    providers: [
+        IntegrationOutboxService,
+        IntegrationOutboxWorker,
+        IntegrationWebhookWorker,
+        SystemOfRecordBoundaryService,
+    ],
+    exports: [
+        IntegrationOutboxService,
+        IntegrationOutboxWorker,
+        IntegrationWebhookWorker,
+        SystemOfRecordBoundaryService,
+    ],
 })
 export class IntegrationsModule {}

@@ -18,6 +18,8 @@ import {
 } from './appointment-capacity.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
+import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import {
     holdStillAliveSql,
     PAYMENT_HOLD_MS,
@@ -106,23 +108,16 @@ export class AppointmentsService {
         reminder24h: boolean; reminder2h: boolean;
         attendanceCheck: boolean; autoComplete: boolean;
     }>): Promise<typeof this.REMINDER_DEFAULTS> {
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
-        });
-        const currentSettings = (tenant?.settings as any) || {};
-        const currentReminders = currentSettings.appointmentReminders || {};
-        const merged = { ...this.REMINDER_DEFAULTS, ...currentReminders, ...input };
-
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    ...currentSettings,
-                    appointmentReminders: merged,
-                } as any,
-            },
-        });
+        const merged = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'appointmentReminders',
+            value => ({
+                ...this.REMINDER_DEFAULTS,
+                ...((value && typeof value === 'object' ? value : {}) as Record<string, boolean>),
+                ...input,
+            }),
+        ) as typeof this.REMINDER_DEFAULTS;
         return merged;
     }
 
@@ -154,34 +149,26 @@ export class AppointmentsService {
         enabled: boolean; flowId: string; flowCta: string;
         flowMode: 'published' | 'draft';
     }>): Promise<typeof this.BOOKING_FLOWS_DEFAULTS> {
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
-        });
-        const currentSettings = (tenant?.settings as any) || {};
-        const merged = {
-            ...this.BOOKING_FLOWS_DEFAULTS,
-            ...(currentSettings.bookingFlows || {}),
-            ...input,
-        };
-
-        // A Meta Flow ID is a numeric string; require it when enabling so we never
-        // ship a 400 to Meta at send time (the engine would then fall back to text).
-        if (merged.enabled && !/^\d{6,}$/.test(String(merged.flowId || ''))) {
-            throw new BadRequestException(
-                'A valid published Flow ID (numeric) is required to enable WhatsApp Flows',
-            );
-        }
-
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    ...currentSettings,
-                    bookingFlows: merged,
-                } as any,
+        const merged = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'bookingFlows',
+            value => {
+                const next = {
+                    ...this.BOOKING_FLOWS_DEFAULTS,
+                    ...((value && typeof value === 'object' ? value : {}) as Record<string, unknown>),
+                    ...input,
+                };
+                // A Meta Flow ID is a numeric string; require it when enabling so
+                // invalid configuration never reaches Meta at send time.
+                if (next.enabled && !/^\d{6,}$/.test(String(next.flowId || ''))) {
+                    throw new BadRequestException(
+                        'A valid published Flow ID (numeric) is required to enable WhatsApp Flows',
+                    );
+                }
+                return next;
             },
-        });
+        ) as typeof this.BOOKING_FLOWS_DEFAULTS;
         return merged;
     }
 
@@ -1132,20 +1119,19 @@ export class AppointmentsService {
         tenantId: string,
         input: { enabled?: boolean; welcomeText?: string; brandColor?: string },
     ) {
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
-        });
-        if (!tenant) throw new BadRequestException('Tenant not found');
-        const settings = (tenant.settings as any) ?? {};
-        const pb = { ...(settings.publicBooking ?? {}) };
-        if (input.enabled !== undefined) pb.enabled = input.enabled;
-        if (input.welcomeText !== undefined) pb.welcomeText = input.welcomeText;
-        const next: any = { ...settings, publicBooking: pb };
-        if (input.brandColor !== undefined) next.brandColor = input.brandColor;
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings: next },
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, current => {
+            const publicBooking = {
+                ...((current.publicBooking && typeof current.publicBooking === 'object'
+                    ? current.publicBooking
+                    : {}) as Record<string, unknown>),
+                ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+                ...(input.welcomeText !== undefined ? { welcomeText: input.welcomeText } : {}),
+            };
+            return {
+                ...current,
+                publicBooking,
+                ...(input.brandColor !== undefined ? { brandColor: input.brandColor } : {}),
+            };
         });
         return this.getPublicBookingConfig(tenantId);
     }

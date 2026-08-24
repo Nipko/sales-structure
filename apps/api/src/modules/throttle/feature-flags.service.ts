@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 
 /**
  * Per-tenant feature flag service. Lets super_admin enable / disable
@@ -86,27 +87,27 @@ export class FeatureFlagsService {
      * Set a single flag. Pass `undefined` to revert to the registry default.
      */
     async setFlag(tenantId: string, flagKey: string, value: boolean | undefined, setBy?: string): Promise<Record<string, boolean>> {
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
+        const setAt = new Date().toISOString();
+        const next = await mutateTenantSettingsAtomic(this.prisma, tenantId, current => {
+            const flags = {
+                ...((current.featureFlags && typeof current.featureFlags === 'object'
+                    ? current.featureFlags
+                    : {}) as Record<string, boolean>),
+            };
+            if (value === undefined) delete flags[flagKey];
+            else flags[flagKey] = Boolean(value);
+            return {
+                ...current,
+                featureFlags: flags,
+                featureFlagsMeta: {
+                    ...((current.featureFlagsMeta && typeof current.featureFlagsMeta === 'object'
+                        ? current.featureFlagsMeta
+                        : {}) as Record<string, unknown>),
+                    [flagKey]: { setBy: setBy || 'super_admin', setAt },
+                },
+            };
         });
-        const settings = (tenant?.settings as any) || {};
-        const flags = (settings.featureFlags || {}) as Record<string, boolean>;
-        if (value === undefined) {
-            delete flags[flagKey];
-        } else {
-            flags[flagKey] = Boolean(value);
-        }
-        settings.featureFlags = flags;
-        // Audit metadata
-        settings.featureFlagsMeta = {
-            ...(settings.featureFlagsMeta || {}),
-            [flagKey]: { setBy: setBy || 'super_admin', setAt: new Date().toISOString() },
-        };
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings },
-        });
+        const flags = next.featureFlags as Record<string, boolean>;
         // Invalidate cache
         await this.redis.del(`${CACHE_PREFIX}${tenantId}`);
         return flags;
@@ -116,26 +117,23 @@ export class FeatureFlagsService {
      * Replace the entire flag map for a tenant (used by the bulk PUT endpoint).
      */
     async setFlags(tenantId: string, flags: Record<string, boolean>, setBy?: string): Promise<Record<string, boolean>> {
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
-        });
-        const settings = (tenant?.settings as any) || {};
         // Strip unknown keys defensively
         const known = new Set(FEATURE_FLAGS_REGISTRY.map(f => f.key));
         const sanitized: Record<string, boolean> = {};
         for (const [k, v] of Object.entries(flags)) {
             if (known.has(k)) sanitized[k] = Boolean(v);
         }
-        settings.featureFlags = sanitized;
-        settings.featureFlagsMeta = {
-            ...(settings.featureFlagsMeta || {}),
-            __lastBulk: { setBy: setBy || 'super_admin', setAt: new Date().toISOString() },
-        };
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings },
-        });
+        const setAt = new Date().toISOString();
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, current => ({
+            ...current,
+            featureFlags: sanitized,
+            featureFlagsMeta: {
+                ...((current.featureFlagsMeta && typeof current.featureFlagsMeta === 'object'
+                    ? current.featureFlagsMeta
+                    : {}) as Record<string, unknown>),
+                __lastBulk: { setBy: setBy || 'super_admin', setAt },
+            },
+        }));
         await this.redis.del(`${CACHE_PREFIX}${tenantId}`);
         return sanitized;
     }

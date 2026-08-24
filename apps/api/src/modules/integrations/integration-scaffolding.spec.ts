@@ -8,6 +8,8 @@ import {
     reconcile,
     webhookDedupeKey,
 } from '@parallext/shared';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { IntegrationOutboxService } from './integration-outbox.service';
 
 /**
@@ -27,8 +29,39 @@ import { IntegrationOutboxService } from './integration-outbox.service';
 
 const schemaName = 'tenant_integrations';
 const tenantId = '11111111-1111-4111-8111-111111111111';
+const claimedOutbox = (attempts = 0) => ({
+    id: '22222222-2222-4222-8222-222222222222',
+    provider: 'hostaway',
+    operation: 'create_reservation',
+    idempotencyKey: 'idem-1',
+    payload: {},
+    status: 'in_flight' as const,
+    attempts,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    claim: {
+        token: '55555555-5555-4555-8555-555555555555',
+        generation: 4,
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    },
+});
+const claimedWebhook = () => ({
+    id: '33333333-3333-4333-8333-333333333333',
+    provider: 'hostaway',
+    externalEventId: 'evt-1',
+    eventType: 'reservation.updated',
+    payload: {},
+    status: 'processing' as const,
+    attempts: 0,
+    receivedAt: new Date().toISOString(),
+    claim: {
+        token: '66666666-6666-4666-8666-666666666666',
+        generation: 2,
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    },
+});
 
-function buildService(rows: any[][] = []) {
+function buildService(rows: any[][] = [], registryMatch = true) {
     const queries: Array<{ sql: string; params: any[] }> = [];
     const executeInTenantSchema = jest.fn(async (_schema: string, sql: string, params: any[] = []) => {
         queries.push({ sql, params });
@@ -38,12 +71,27 @@ function buildService(rows: any[][] = []) {
     // de que existiera el andamiaje no tienen sus tablas, y un `42P01` ahí
     // hacía perder la intención en silencio.
     const ensureCanonicalTables = jest.fn().mockResolvedValue(undefined);
+    const transactionInTenantSchema = jest.fn(async (_schema: string, callback: any) => callback(
+        async (sql: string, params: any[] = []) => {
+            queries.push({ sql, params });
+            if (/INSERT INTO public\.integration_work_tenants/.test(sql)) {
+                return registryMatch ? [{ tenant_id: tenantId }] : [];
+            }
+            return rows.shift() ?? [];
+        },
+    ));
+    const $queryRawUnsafe = jest.fn().mockResolvedValue([]);
     const service = new IntegrationOutboxService(
-        { executeInTenantSchema, ensureCanonicalTables } as any,
+        {
+            executeInTenantSchema,
+            transactionInTenantSchema,
+            ensureCanonicalTables,
+            $queryRawUnsafe,
+        } as any,
     );
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     jest.spyOn((service as any).logger, 'debug').mockImplementation(() => undefined);
-    return { service, queries };
+    return { service, queries, transactionInTenantSchema, $queryRawUnsafe };
 }
 
 describe('las escrituras externas están apagadas', () => {
@@ -74,6 +122,34 @@ describe('las escrituras externas están apagadas', () => {
 
         expect(result.suppressed).toBe(true);
         expect(queries[0].params).toContain('suppressed');
+    });
+
+    it('registra el tenant en la misma transacción que la intención durable', async () => {
+        const { service, queries, transactionInTenantSchema } = buildService([
+            [{ id: 'o1', status: 'suppressed' }],
+        ]);
+
+        await service.enqueue(schemaName, {
+            tenantId, provider: 'hostaway', operation: 'create_reservation', subjectId: 'b1',
+        });
+
+        expect(transactionInTenantSchema).toHaveBeenCalledTimes(1);
+        expect(queries.map(query => query.sql)).toEqual(expect.arrayContaining([
+            expect.stringContaining('INSERT INTO integration_outbox'),
+            expect.stringContaining('INSERT INTO public.integration_work_tenants'),
+        ]));
+        expect(queries.find(query => /integration_work_tenants/.test(query.sql))?.params)
+            .toEqual([tenantId, schemaName]);
+        expect(queries.find(query => /integration_work_tenants/.test(query.sql))?.sql)
+            .toContain('AND schema_name = $2');
+    });
+
+    it('revierte la intención si tenant y schema no pertenecen al mismo registro', async () => {
+        const { service } = buildService([[{ id: 'o1', status: 'suppressed' }]], false);
+
+        await expect(service.enqueue(schemaName, {
+            tenantId, provider: 'hostaway', operation: 'create_reservation', subjectId: 'b1',
+        })).rejects.toThrow('tenant/schema mismatch');
     });
 
     it('no se toma nada para correr mientras esté apagado', async () => {
@@ -136,6 +212,8 @@ describe('un worker muerto no congela una escritura', () => {
 
         expect(queries[0].sql).toContain('lease_expires_at < NOW()');
         expect(queries[0].sql).toContain('FOR UPDATE SKIP LOCKED');
+        expect(queries[0].sql).toContain('claim_token = gen_random_uuid()');
+        expect(queries[0].sql).toContain('claim_generation = claim_generation + 1');
     });
 
     it('la espera crece pero tiene techo', () => {
@@ -148,15 +226,37 @@ describe('un worker muerto no congela una escritura', () => {
 
     it('morir es una decisión, no un accidente', async () => {
         // Una escritura que reintenta para siempre es una que nadie mira nunca.
-        const { service, queries } = buildService([[{ attempts: OUTBOX_MAX_ATTEMPTS - 1 }], []]);
+        const entry = claimedOutbox(OUTBOX_MAX_ATTEMPTS - 1);
+        const { service, queries } = buildService([[{ status: 'dead' }]]);
 
-        expect(await service.markFailed(schemaName, 'o1', 'timeout')).toBe('dead');
-        expect(queries[1].params).toContain('dead');
+        expect(await service.markFailed(schemaName, entry, 'timeout')).toBe('dead');
+        expect(queries[0].params).toContain('dead');
+        expect(queries[0].params).toEqual(expect.arrayContaining([
+            entry.claim.token,
+            entry.claim.generation,
+        ]));
     });
 
     it('antes del límite, reintenta', async () => {
-        const { service } = buildService([[{ attempts: 1 }], []]);
-        expect(await service.markFailed(schemaName, 'o1', 'timeout')).toBe('retrying');
+        const { service } = buildService([[{ status: 'retrying' }]]);
+        expect(await service.markFailed(schemaName, claimedOutbox(1), 'timeout')).toBe('retrying');
+    });
+
+    it('un resultado de una generación vencida no puede pisar la nueva', async () => {
+        const entry = claimedOutbox();
+        const { service, queries } = buildService([[]]);
+
+        await expect(service.markDelivered(schemaName, entry, 'remote-1')).resolves.toBe(false);
+
+        expect(queries[0].sql).toContain('claim_token = $3::uuid');
+        expect(queries[0].sql).toContain('claim_generation = $4');
+        expect(queries[0].sql).toContain('lease_expires_at > NOW()');
+        expect(queries[0].params).toEqual([
+            entry.id,
+            'remote-1',
+            entry.claim.token,
+            entry.claim.generation,
+        ]);
     });
 });
 
@@ -171,7 +271,7 @@ describe('un webhook no se procesa dos veces', () => {
         const { service } = buildService([[], [{ id: 'w1' }]]);
 
         const result = await service.receiveWebhook(schemaName, {
-            provider: 'hostaway', externalEventId: 'evt-1', eventType: 'reservation.created',
+            tenantId, provider: 'hostaway', externalEventId: 'evt-1', eventType: 'reservation.created',
         });
 
         expect(result.duplicate).toBe(true);
@@ -181,10 +281,68 @@ describe('un webhook no se procesa dos veces', () => {
         const { service } = buildService([[{ id: 'w1' }]]);
 
         const result = await service.receiveWebhook(schemaName, {
-            provider: 'hostaway', externalEventId: 'evt-1', eventType: 'reservation.created',
+            tenantId, provider: 'hostaway', externalEventId: 'evt-1', eventType: 'reservation.created',
         });
 
         expect(result).toEqual({ id: 'w1', duplicate: false });
+    });
+
+    it('registra el tenant en la misma transacción que el webhook', async () => {
+        const { service, queries, transactionInTenantSchema } = buildService([[{ id: 'w1' }]]);
+
+        await service.receiveWebhook(schemaName, {
+            tenantId, provider: 'hostaway', externalEventId: 'evt-1', eventType: 'reservation.created',
+        });
+
+        expect(transactionInTenantSchema).toHaveBeenCalledTimes(1);
+        expect(queries[0].sql).toContain('INSERT INTO integration_webhook_inbox');
+        expect(queries[1].sql).toContain('INSERT INTO public.integration_work_tenants');
+        expect(queries[1].sql).toContain('webhook_seen_at');
+    });
+
+    it('un worker webhook vencido tampoco puede confirmar sobre el reclaim', async () => {
+        const entry = claimedWebhook();
+        const { service, queries } = buildService([[]]);
+
+        await expect(service.markWebhookProcessed(schemaName, entry)).resolves.toBe(false);
+
+        expect(queries[0].sql).toContain('claim_token = $4::uuid');
+        expect(queries[0].sql).toContain('claim_generation = $5');
+        expect(queries[0].sql).toContain('lease_expires_at > NOW()');
+        expect(queries[0].params).toEqual(expect.arrayContaining([
+            entry.claim.token,
+            entry.claim.generation,
+        ]));
+    });
+});
+
+describe('el registro global de trabajo de integraciones', () => {
+    it('se crea indexado, con borrado en cascada y backfill único', () => {
+        const migration = fs.readFileSync(path.resolve(
+            __dirname,
+            '../../../prisma/migrations/20260824100000_add_integration_work_registry/migration.sql',
+        ), 'utf8');
+
+        expect(migration).toContain('CREATE TABLE IF NOT EXISTS "public"."integration_work_tenants"');
+        expect(migration).toContain('ON DELETE CASCADE');
+        expect(migration).toContain('idx_integration_work_tenants_outbox');
+        expect(migration).toContain('idx_integration_work_tenants_webhook');
+        expect(migration).toContain('integration_outbox LIMIT 1');
+        expect(migration).toContain('integration_webhook_inbox LIMIT 1');
+    });
+
+    it.each([
+        ['outbox', 'outbox_seen_at'],
+        ['webhook', 'webhook_seen_at'],
+    ] as const)('consulta %s por su columna fija, nunca todos los tenants', async (kind, column) => {
+        const { service, $queryRawUnsafe } = buildService();
+
+        await service.trackedTenants(kind);
+
+        const statement = String($queryRawUnsafe.mock.calls[0][0]);
+        expect(statement).toContain('public.integration_work_tenants');
+        expect(statement).toContain(column);
+        expect(statement).not.toMatch(/FROM public\.tenants\s+WHERE/i);
     });
 });
 

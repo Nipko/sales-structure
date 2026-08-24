@@ -58,8 +58,6 @@ export default function ListingDetailPage() {
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
-    useEffect(() => { load(); }, [activeTenantId, listingId]);
-
     async function load() {
         if (!activeTenantId) return;
         setLoading(true);
@@ -95,6 +93,8 @@ export default function ListingDetailPage() {
         }
         setLoading(false);
     }
+
+    useEffect(() => { load(); }, [activeTenantId, listingId]);
 
     async function handleSave() {
         if (!activeTenantId || !listing) return;

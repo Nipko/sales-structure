@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { PublicApiKeyService } from '../public-api/public-api-key.service';
 
 /**
  * Resolves the BI API key before global interceptors run.
@@ -21,6 +22,7 @@ export class BiApiGuard implements CanActivate {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
+        private readonly apiKeys: PublicApiKeyService,
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -31,14 +33,15 @@ export class BiApiGuard implements CanActivate {
             throw new UnauthorizedException('X-API-Key header required');
         }
 
-        const tenant = await this.prisma.tenant.findFirst({
-            where: {
-                isActive: true,
-                settings: { path: ['biApiKey'], equals: apiKey },
-            },
-            select: { id: true },
+        const key = await this.apiKeys.validateKey(apiKey);
+        if (!key || !key.scopes.includes('read:analytics')) {
+            throw new UnauthorizedException('Invalid API key');
+        }
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: key.tenantId },
+            select: { id: true, isActive: true },
         });
-        if (!tenant) throw new UnauthorizedException('Invalid API key');
+        if (!tenant?.isActive) throw new UnauthorizedException('Invalid API key');
 
         const enabled = await this.throttle.isFeatureEnabled(tenant.id, 'biApi');
         if (!enabled) {
@@ -49,6 +52,8 @@ export class BiApiGuard implements CanActivate {
 
         request.tenantId = tenant.id;
         request.apiKeyKind = 'bi';
+        request.apiKeyId = key.keyId;
+        request.apiKeyRateLimitRpm = key.rateLimitRpm;
         return true;
     }
 }

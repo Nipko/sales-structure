@@ -259,10 +259,10 @@ export class WhatsappController {
   @Roles('super_admin', 'tenant_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get WhatsApp Business profile and phone number details from Meta' })
-  async getBusinessProfile(@Request() req: any) {
+  async getBusinessProfile(@Request() req: any, @Query('phoneNumberId') phoneNumberId?: string) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    const result = await this.connectionService.getBusinessProfile(schemaName);
+    const result = await this.connectionService.getBusinessProfile(schemaName, phoneNumberId);
     return { success: true, data: result };
   }
 
@@ -278,10 +278,12 @@ export class WhatsappController {
     email?: string;
     websites?: string[];
     vertical?: string;
+    phoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.connectionService.updateBusinessProfile(schemaName, body);
+    const { phoneNumberId, ...profile } = body;
+    return this.connectionService.updateBusinessProfile(schemaName, profile, phoneNumberId);
   }
 
   @Post('business-profile/photo')
@@ -291,11 +293,15 @@ export class WhatsappController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
   @ApiOperation({ summary: 'Upload WhatsApp Business profile photo to Meta' })
-  async uploadProfilePhoto(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
+  async uploadProfilePhoto(
+    @Request() req: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('phoneNumberId') phoneNumberId?: string,
+  ) {
     if (!file) throw new BadRequestException('No file received');
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.connectionService.uploadProfilePhoto(schemaName, file);
+    return this.connectionService.uploadProfilePhoto(schemaName, file, phoneNumberId);
   }
 
   @Post('business-profile/photo/delete')
@@ -303,10 +309,10 @@ export class WhatsappController {
   @Roles('super_admin', 'tenant_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete WhatsApp Business profile photo' })
-  async deleteProfilePhoto(@Request() req: any) {
+  async deleteProfilePhoto(@Request() req: any, @Body() body: { phoneNumberId?: string }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
-    return this.connectionService.deleteProfilePhoto(schemaName);
+    return this.connectionService.deleteProfilePhoto(schemaName, body?.phoneNumberId);
   }
 
   // ======================== TEMPLATES ========================

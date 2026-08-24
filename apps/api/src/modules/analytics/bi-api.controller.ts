@@ -7,7 +7,9 @@ import { BiApiGuard } from './bi-api.guard';
  * BI API: External-facing analytics endpoints authenticated via API key.
  * No JWT required — designed for Grafana, Metabase, custom BI dashboards.
  *
- * API key is stored in tenant.settings.biApiKey
+ * API keys use the hashed, revocable Public API key store and require the
+ * `read:analytics` scope. Legacy tenant.settings.biApiKey values must be
+ * migrated before this surface is promoted.
  * Header: X-API-Key: <key>
  */
 @ApiTags('bi-api')

@@ -158,10 +158,26 @@ describe('VerticalCapabilityManifest v1 contract', () => {
         const homeServices = resolveVerticalCapabilityManifest('servicios_hogar', 'plomeria');
         expect(homeServices.capabilities).toContain('service_requests');
         expect(homeServices.capabilities).not.toContain('appointment_booking');
-        expect(homeServices.toolGroups).toEqual(expect.arrayContaining(['homeServices']));
+        expect(homeServices.toolGroups).toContain('homeServices');
         expect(homeServices.toolGroups).not.toContain('appointments');
+        expect(homeServices.routes).toEqual(expect.arrayContaining([
+            '/admin/service-requests', '/admin/service-catalog',
+        ]));
         expect(homeServices.routes).not.toContain('/admin/appointments');
-        expect(homeServices.readiness.requirements).not.toContain('service_catalog');
+        expect(homeServices.readiness.requirements).toContain('service_catalog');
+        expect(homeServices.readiness.requirements).not.toContain('appointment_services');
+
+        const homeRetail = resolveVerticalCapabilityManifest('retail', 'hogar');
+        expect(homeRetail.capabilities).toEqual(expect.arrayContaining([
+            'catalog_search', 'appointment_booking',
+        ]));
+        expect(homeRetail.toolGroups).toEqual(expect.arrayContaining(['catalog', 'appointments']));
+        expect(homeRetail.routes).toEqual(expect.arrayContaining([
+            '/admin/inventory', '/admin/appointments', '/admin/service-catalog',
+        ]));
+        expect(homeRetail.readiness.requirements).toEqual(expect.arrayContaining([
+            'catalog_items', 'appointment_services',
+        ]));
 
         const petHotel = resolveVerticalCapabilityManifest('pet_services', 'hotel');
         expect(petHotel.capabilities).toContain('pet_boarding');

@@ -74,7 +74,20 @@ describe('TenantsController DTO contracts', () => {
 
         expect(errors.some((error) => (
             error.property === 'settings'
-            && error.constraints?.doesNotContainReservedTenantSettings !== undefined
+            && error.constraints?.containsOnlyGenericTenantSettings !== undefined
+        ))).toBe(true);
+    });
+
+    it('rejects unknown generic branches so a future dedicated config cannot bypass its API', async () => {
+        const dto = plainToInstance(UpdateTenantDto, {
+            settings: { futureIntegrationConfig: { enabled: true } },
+        });
+
+        const errors = await validate(dto, { whitelist: true });
+
+        expect(errors.some((error) => (
+            error.property === 'settings'
+            && error.constraints?.containsOnlyGenericTenantSettings !== undefined
         ))).toBe(true);
     });
 
@@ -168,6 +181,10 @@ describe('TenantsController tenant settings response boundary', () => {
             timezone: 'America/Bogota',
             verticalConfig: { industry: 'retail', subType: 'ecommerce' },
             tenantPayments: { encryptedPrivateKey: 'ciphertext' },
+            ecommerce: { apiSecret: 'secret' },
+            slack: { webhookUrl: 'https://hooks.slack.com/services/secret' },
+            mcpServers: [{ id: 'erp', authHeader: 'Bearer secret' }],
+            biApiKey: 'legacy-secret',
         },
         _count: { channelAccounts: 1 },
     };
@@ -200,6 +217,10 @@ describe('TenantsController tenant settings response boundary', () => {
             settings: expect.objectContaining({ timezone: 'America/Bogota' }),
         }));
         expect(response.data[0].settings).not.toHaveProperty('tenantPayments');
+        expect(response.data[0].settings).not.toHaveProperty('ecommerce');
+        expect(response.data[0].settings).not.toHaveProperty('slack');
+        expect(response.data[0].settings).not.toHaveProperty('mcpServers');
+        expect(response.data[0].settings).not.toHaveProperty('biApiKey');
         expect(unsafeTenant.settings).toHaveProperty('tenantPayments');
     });
 

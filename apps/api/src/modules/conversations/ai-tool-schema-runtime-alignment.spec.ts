@@ -1,8 +1,9 @@
+import { ConflictException } from '@nestjs/common';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { INSURANCE_TOOLS } from './tools/insurance-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
-import { PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
+import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
 import { CREATE_PAYMENT_LINK_TOOL, GET_PAYMENT_STATUS_TOOL } from './tools/payment-tools';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
@@ -29,7 +30,10 @@ describe('AI tool schema and runtime alignment', () => {
             )),
         };
         const eventEmitter = { emit: jest.fn() };
-        const photographyService = { create: jest.fn() };
+        const photographyService = {
+            create: jest.fn(),
+            checkDateAvailability: jest.fn(),
+        };
         const executor = new AIToolExecutorService(
             prisma as any,
             {} as any,
@@ -114,6 +118,7 @@ describe('AI tool schema and runtime alignment', () => {
         ]);
         expect(photoRequest.parameters.required).toEqual(['date', 'customerName']);
         expect(photoRequest.description).toContain('does not calculate or promise a price');
+        expect(photoRequest.description).toContain('atomically hold');
     });
 
     it('never lets the model supply payment money, description or provider', () => {
@@ -223,10 +228,80 @@ describe('AI tool schema and runtime alignment', () => {
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
     });
 
+    it('separates a home-service preference from an atomically scheduled visit', () => {
+        const list = tool(HOME_SERVICES_TOOLS, 'list_home_services');
+        const availability = tool(HOME_SERVICES_TOOLS, 'check_home_service_availability');
+        const create = tool(HOME_SERVICES_TOOLS, 'create_service_request');
+
+        expect(list.description).toContain('authoritative serviceId');
+        expect(availability.parameters.required).toEqual(['serviceId', 'startAt']);
+        expect(Object.keys(availability.parameters.properties).sort()).toEqual(['serviceId', 'startAt']);
+        expect(availability.description).toContain('rechecks atomically');
+        expect(create.parameters.properties).toEqual(expect.objectContaining({
+            serviceId: expect.objectContaining({ type: 'string' }),
+            scheduledAt: expect.objectContaining({ type: 'string' }),
+        }));
+        expect(create.description).toContain('preferred date/window is intake only');
+        expect(create.description).toContain('both serviceId and scheduledAt');
+    });
+
+    it('uses the canonical photography occupancy read, including live quote holds', async () => {
+        const harness = createHarness();
+        harness.photographyService.checkDateAvailability.mockResolvedValue({
+            date: '2026-09-10',
+            blocked: false,
+            appointmentCount: 0,
+            sessionCount: 1,
+            taken: 1,
+            available: false,
+        });
+
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'check_date_availability',
+            { date: '2026-09-10' },
+            conversationId,
+            { authority: authorityFor('check_date_availability') },
+        );
+
+        expect(harness.photographyService.checkDateAvailability)
+            .toHaveBeenCalledWith(schemaName, '2026-09-10');
+        expect(result).toMatchObject({
+            date: '2026-09-10',
+            sessionCount: 1,
+            available: false,
+        });
+    });
+
+    it('returns a typed retryable result when the date loses the atomic race', async () => {
+        const harness = createHarness();
+        harness.photographyService.create.mockRejectedValue(new ConflictException({
+            error: 'photo_date_unavailable',
+            date: '2026-09-10',
+        }));
+
+        await expect(harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'request_photo_quote',
+            { date: '2026-09-10', customerName: 'Ana' },
+            conversationId,
+            { authority: authorityFor('request_photo_quote') },
+        )).resolves.toMatchObject({
+            error: 'photo_date_unavailable',
+            received: false,
+            date: '2026-09-10',
+        });
+    });
+
     it('delegates a photography request to the canonical service as requested', async () => {
         const harness = createHarness();
         const sessionId = '55555555-5555-4555-8555-555555555555';
-        harness.photographyService.create.mockResolvedValue([{ id: sessionId }][0]);
+        const holdExpiresAt = new Date('2026-09-11T00:00:00.000Z');
+        harness.photographyService.create.mockResolvedValue({ id: sessionId, hold_expires_at: holdExpiresAt });
 
         const args = {
             sessionType: 'wedding',
@@ -268,6 +343,7 @@ describe('AI tool schema and runtime alignment', () => {
             received: true,
             sessionId,
             sessionType: 'wedding',
+            heldUntil: holdExpiresAt,
         });
     });
 

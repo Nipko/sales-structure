@@ -130,6 +130,7 @@ export function normalizeCustomerIntent(
     raw: unknown,
     options: NormalizeOptions = {},
 ): NormalizedIntent {
+    const rawLower = String(raw ?? '').trim().toLowerCase();
     const normalized = normalizeForIntent(raw);
     const base: NormalizedIntent = { intent: 'unclear', confidence: 'low', normalized };
     if (!normalized) return base;
@@ -185,6 +186,19 @@ export function normalizeCustomerIntent(
             return { ...matched, intent: 'unclear', confidence: 'low' };
         }
         const withoutAlias = normalized.slice(alias.value.length).trim();
+        // Accent stripping makes Spanish `sí` (yes) and `si` (if) identical.
+        // An isolated `si` is still a normal affirmative response, but an
+        // unaccented `si` followed by a clause ("si tienen disponibilidad")
+        // is conditional/question language unless it also contains an explicit
+        // consent verb. Treating that query as consent can commit the pending
+        // operation and, less severely, suppress the knowledge lookup it asked.
+        const unaccentedSiClause = alias.value === 'si'
+            && !!withoutAlias
+            && /^si(?:\s|[,;])/i.test(rawLower)
+            && !/^sí(?:\s|[,;])/i.test(rawLower);
+        if (unaccentedSiClause && !EXPLICIT_CONSENT_VERB.test(normalized)) {
+            return { ...matched, intent: 'unclear', confidence: 'low' };
+        }
         if (withoutAlias && NEGATION_ANYWHERE.test(withoutAlias)) {
             return { ...matched, intent: 'unclear', confidence: 'low' };
         }

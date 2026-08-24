@@ -88,8 +88,10 @@ describe('unit-specific vertical writers', () => {
             prisma.executeInTenantSchema.mock.calls[0][2],
         ];
         expect(sql).toContain('estimated_duration_minutes, estimated_cost, currency');
-        expect(params[13]).toBe(90);
-        expect(params[15]).toBe('PEN');
+        // service_id is now persisted before service_type, so the commercial
+        // unit fields map to SQL placeholders $15/$17 respectively.
+        expect(params[14]).toBe(90);
+        expect(params[16]).toBe('PEN');
     });
 });
 

@@ -75,6 +75,36 @@ export type VerticalToolGroup =
     | 'petBoarding'
     | 'photography';
 
+/**
+ * Runtime counterpart of `VerticalToolGroup`.
+ *
+ * The type alone disappears after compilation. Capability resolution needs the
+ * concrete set to distinguish subtype-scoped families from horizontal/core
+ * families such as CRM, policies and knowledge. Keeping the value beside the
+ * union prevents a second, drifting taxonomy in the API.
+ */
+export const VERTICAL_TOOL_GROUPS: readonly VerticalToolGroup[] = Object.freeze([
+    'faqs',
+    'appointments',
+    'catalog',
+    'treatments',
+    'realEstate',
+    'restaurants',
+    'vehicles',
+    'tours',
+    'properties',
+    'education',
+    'professionalServices',
+    'pets',
+    'gyms',
+    'insurance',
+    'homeServices',
+    'petServices',
+    'vehicleRentals',
+    'petBoarding',
+    'photography',
+]);
+
 export type VerticalPrimaryObject =
     | 'lead'
     | 'appointment'
@@ -742,6 +772,19 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 'averageOrderValue30d',
             ]),
         }),
+        subtypeOverrides: {
+            // Furniture/home-goods sales also commit scarce delivery and
+            // installation windows. Reuse the canonical appointment capacity
+            // engine (service, staff, max_concurrent, calendar and atomic
+            // recheck) instead of inventing a second scheduler for one subtype.
+            hogar: {
+                addCapabilities: ['appointment_booking'],
+                addToolGroups: ['appointments'],
+                addRoutes: ['/admin/appointments', '/admin/service-catalog'],
+                addReadiness: ['appointment_services'],
+                addEvents: APPOINTMENT_EVENTS,
+            },
+        },
     },
     technology: {
         industry: 'technology',
@@ -833,10 +876,15 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
         industry: 'servicios_hogar',
         subtypes: ['plomeria', 'electricidad', 'fumigacion', 'limpieza', 'jardineria', 'cerrajeria', 'pintura'],
         profile: profile({
+            // Field visits have their own request lifecycle (urgency, address,
+            // dispatch and technician). Capacity is enforced against that same
+            // record; publishing generic appointments would create two sources
+            // of truth for one visit.
             capabilities: ['service_requests'],
             toolGroups: ['homeServices'],
             primaryObject: 'service_request',
-            routes: ['/admin/service-requests'],
+            routes: ['/admin/service-requests', '/admin/service-catalog'],
+            readiness: ['service_catalog'],
             events: ['service_request.created'],
             kpiContract: kpis(DASH_SALES, ['requests30d', 'emergencias30d', 'pending', 'completed', 'avgCompletionRatePct']),
         }),

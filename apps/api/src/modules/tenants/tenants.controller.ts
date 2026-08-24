@@ -12,6 +12,7 @@ import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { IsBoolean, IsEmail, IsIn, IsObject, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateBy } from 'class-validator';
 import {
     hasReservedTenantSetting,
+    hasOnlyGenericWritableTenantSettings,
     redactReservedTenantSettingsFromRecord,
 } from '../../common/utils/tenant-settings.util';
 
@@ -91,10 +92,15 @@ export class UpdateTenantDto {
     @IsOptional()
     @IsObject()
     @ValidateBy({
-        name: 'doesNotContainReservedTenantSettings',
+        name: 'containsOnlyGenericTenantSettings',
         validator: {
-            validate: (value: unknown) => !hasReservedTenantSetting(value),
-            defaultMessage: () => 'settings.tenantPayments is reserved and cannot be managed through the tenant settings endpoint',
+            validate: (value: unknown) => (
+                !hasReservedTenantSetting(value)
+                && hasOnlyGenericWritableTenantSettings(value)
+            ),
+            defaultMessage: () => (
+                'settings contains a branch owned by a dedicated configuration endpoint'
+            ),
         },
     })
     settings?: any;

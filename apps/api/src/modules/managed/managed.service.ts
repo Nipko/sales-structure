@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 
 export interface ManagedConfig {
     enabled: boolean;
@@ -36,16 +37,24 @@ export class ManagedService {
     async setConfig(tenantId: string, patch: Partial<ManagedConfig>): Promise<ManagedConfig> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) throw new NotFoundException('Tenant not found');
-        const settings = (tenant.settings as any) || {};
-        const current: ManagedConfig = settings.managed || { enabled: false };
-        const merged: ManagedConfig = {
-            enabled: patch.enabled ?? current.enabled,
-            resolutionTargetPct: patch.resolutionTargetPct ?? current.resolutionTargetPct ?? 70,
-            monthlyFeeCents: patch.monthlyFeeCents ?? current.monthlyFeeCents,
-            notes: patch.notes ?? current.notes,
-            startedAt: current.startedAt || (patch.enabled ? new Date().toISOString() : undefined),
-        };
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: { ...settings, managed: merged } as any } });
+        const now = new Date().toISOString();
+        const merged = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'managed',
+            (value): ManagedConfig => {
+                const current = (value && typeof value === 'object'
+                    ? value
+                    : { enabled: false }) as ManagedConfig;
+                return {
+                    enabled: patch.enabled ?? current.enabled,
+                    resolutionTargetPct: patch.resolutionTargetPct ?? current.resolutionTargetPct ?? 70,
+                    monthlyFeeCents: patch.monthlyFeeCents ?? current.monthlyFeeCents,
+                    notes: patch.notes ?? current.notes,
+                    startedAt: current.startedAt || (patch.enabled ? now : undefined),
+                };
+            },
+        );
         return merged;
     }
 

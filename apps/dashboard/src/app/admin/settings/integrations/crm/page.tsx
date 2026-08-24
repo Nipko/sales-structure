@@ -47,6 +47,14 @@ export default function CrmIntegrationsPage() {
         setTimeout(() => setToast(null), 3000);
     }
 
+    async function load() {
+        setLoading(true);
+        const [a, c] = await Promise.all([api.listCrmProviders(), api.listCrmConnections(tenantId!)]);
+        setAvailable(a.data?.providers ?? []);
+        setConnections(c.data ?? []);
+        setLoading(false);
+    }
+
     useEffect(() => {
         if (!tenantId) return;
         load();
@@ -66,14 +74,6 @@ export default function CrmIntegrationsPage() {
             router.replace("/admin/settings/integrations/crm");
         }
     }, [search]);
-
-    async function load() {
-        setLoading(true);
-        const [a, c] = await Promise.all([api.listCrmProviders(), api.listCrmConnections(tenantId!)]);
-        setAvailable(a.data?.providers ?? []);
-        setConnections(c.data ?? []);
-        setLoading(false);
-    }
 
     async function connect(provider: string) {
         if (!tenantId) return;
@@ -268,10 +268,6 @@ function ImportModal({ tenantId, connection, onClose, onDone, notify, t }: any) 
     const [status, setStatus] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        loadPreview();
-    }, [connection?.id]);
-
     async function loadPreview() {
         setLoading(true);
         const r = await api.previewCrmImport(tenantId, connection.id);
@@ -282,6 +278,10 @@ function ImportModal({ tenantId, connection, onClose, onDone, notify, t }: any) 
             setPhase("error");
         }
     }
+
+    useEffect(() => {
+        loadPreview();
+    }, [connection?.id]);
 
     async function startImport() {
         const r = await api.startCrmImport(tenantId, connection.id);

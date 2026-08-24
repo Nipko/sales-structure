@@ -52,10 +52,10 @@ interface ReadinessDefinition {
 /**
  * One definition per key, pointing at the SAME table the tools query.
  *
- * `professional_cases` and `pipeline` are deliberately absent: the first is
- * derived from CRM opportunities that exist for every tenant, and the second is
- * seeded at provisioning. Gating on either would block a profile for a reason
- * the tenant cannot act on.
+ * `pipeline` is deliberately absent because it is seeded at provisioning.
+ * Professional cases reuse CRM opportunities, but the profile still needs at
+ * least one open case before it can truthfully publish case-status reads; the
+ * tenant can create it from the dedicated Cases register.
  */
 /**
  * Exportado para que el contrato de "a dónde manda el CTA de reparación" sea
@@ -149,7 +149,13 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         table: 'services',
         where: 'is_active = true',
         repair: 'Definí los servicios que despachás, con su duración y precio.',
-        repairRoute: '/admin/appointments/config',
+        repairRoute: '/admin/service-catalog',
+    },
+    professional_cases: {
+        table: 'opportunities',
+        where: 'won_at IS NULL AND lost_at IS NULL',
+        repair: 'Creá al menos un caso activo para poder consultar su estado.',
+        repairRoute: '/admin/cases',
     },
     photo_sessions: {
         table: 'services',

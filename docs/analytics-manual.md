@@ -1,10 +1,10 @@
 # Parallly Analytics — Manual Completo
 
-_Ultima actualizacion: jul-2026 · v2_
+_Ultima actualizacion: 24-ago-2026 · v2_
 
 ## Resumen
 
-El sistema de analytics de Parallly proporciona visibilidad completa sobre el rendimiento del tenant: conversaciones, agentes, IA (resolucion + calidad), canales, automatizaciones, campanas, anomalias y retension de clientes. Incluye alertas por umbral, reportes programados por email (plan-gated), un constructor de reportes personalizados (Custom Report Builder) y una API externa para herramientas de BI (plan-gated).
+El sistema de analytics de Parallly proporciona visibilidad consolidada sobre el rendimiento del tenant: conversaciones, agentes, IA (resolucion + calidad), canales, automatizaciones, campanas, anomalias y retension de clientes. Incluye alertas por umbral, reportes programados por email (plan-gated), un constructor de reportes personalizados (Custom Report Builder) y una API externa para herramientas de BI (plan-gated). La granularidad y los limites conocidos se declaran expresamente en la seccion 12.
 
 **Rutas de endpoints (prefijo global `/api/v1`):**
 
@@ -33,7 +33,7 @@ El orden real de tabs (de `analytics-v2/page.tsx`, constante `TABS`) es:
   - Tiempo promedio de respuesta
   - CSAT promedio (1-5)
   - Costo LLM total ($)
-- **Grafico de barras apiladas**: volumen diario por canal (WhatsApp/Instagram/Messenger/Telegram)
+- **Grafico de barras apiladas**: volumen diario por canal (WhatsApp/Instagram/Messenger/Telegram/Web Chat)
 - **Grafico de lineas**: tiempos de respuesta (mediana + P90) y tiempos de resolucion
 - **Heatmap de horas pico**: grid 7 dias x 24 horas con intensidad de color
 
@@ -69,9 +69,9 @@ El orden real de tabs (de `analytics-v2/page.tsx`, constante `TABS`) es:
 - **Tabla por campana**: nombre, canal, total, enviados, entregados, leidos, fallidos, tasa de entrega (%), tasa de lectura (%)
 
 #### Tab 9: Canales
-- **4 cards**: una por canal con total de conversaciones, porcentaje del total, barra de progreso
+- **5 cards**: una por canal conversacional certificado con total de conversaciones, porcentaje del total y barra de progreso
 - **Grafico de area apilada**: volumen por canal a lo largo del tiempo
-- Nota: el pivot de canales cubre solo WhatsApp/Instagram/Messenger/Telegram (ver seccion **Limitaciones**)
+- El pivot cubre WhatsApp, Instagram, Messenger, Telegram y Web Chat. El desglose por conexion individual sigue sujeto al limite `channel_account` de la seccion **Limitaciones**.
 
 #### Tab 10: CSAT
 - **Score prominente**: numero grande con estrellas visuales, color-coded (verde >= 4, naranja >= 3, rojo < 3)
@@ -164,7 +164,7 @@ Los crones `sendWeeklyReports` (`@Cron('0 8 * * 1')`) y `sendMonthlyReports` (`@
 
 Constructor de reportes personalizados: el tenant elige metricas y tipo de grafico y guarda la configuracion como reporte reutilizable (16 metricas, 4 tipos de grafico; save / edit / duplicate / favorite).
 
-- Persistencia: tabla lazy **`saved_reports`** por-tenant (`id`, `name`, `description`, `config JSONB`, `created_by`, `is_favorite`, `created_at`, `updated_at`). La config del grafico/metricas vive en `config`
+- Persistencia: tabla canonica **`saved_reports`** por-tenant (`id`, `name`, `description`, `config JSONB`, `created_by`, `is_favorite`, `created_at`, `updated_at`). La config del grafico/metricas vive en `config`; el servicio conserva una reparacion `CREATE TABLE IF NOT EXISTS` para schemas heredados.
 - Endpoints (base `/analytics-config`, servicio `SavedReportsService`):
 
 ```
@@ -193,8 +193,11 @@ Devuelve KPIs de citas, volumen diario, desglose por servicio, desglose por fuen
 
 ### Autenticacion
 - Header: `X-API-Key: <api-key>`
-- La API key se almacena en `tenant.settings.biApiKey` (campo JSONB del tenant)
+- La clave se crea en **Configuracion → API Keys** y se guarda como hash en el registro revocable `api_keys`; el valor completo solo se muestra al crearla
+- Debe estar activa, pertenecer a un tenant activo y tener el scope `read:analytics`
 - No requiere JWT — disenado para integracion con Grafana, Metabase, etc.
+
+> **Compatibilidad heredada:** `tenant.settings.biApiKey` ya no es una fuente de autorizacion del runtime. Si produccion conserva claves en ese campo, desde `apps/api` se deben migrar con `npm run migrate:bi-api-keys -- --dry-run`, luego `--apply` y finalmente `--cutover`. Esta documentacion no declara esa migracion ejecutada.
 
 ### Endpoints disponibles
 
@@ -298,23 +301,23 @@ csat_surveys (id, conversation_id UNIQUE, contact_id, agent_id, rating 1-5, feed
 -- Asignaciones de conversacion (para response time tracking)
 conversation_assignments (id, conversation_id, agent_id, assigned_at, first_response_at, resolved_at)
 
--- Reglas de alerta (tabla lazy por-tenant: se crea on-demand)
+-- Reglas de alerta (tabla canonica por-tenant; reparacion compatible on-demand)
 alert_rules (id, tenant_id, name, metric, operator, threshold, channel, notify_emails[], is_active, last_triggered_at, cooldown_minutes)
 
--- Historial de alertas (tabla lazy por-tenant)
+-- Historial de alertas (tabla canonica por-tenant; reparacion compatible on-demand)
 alert_history (id, rule_id, metric_value, threshold, notified_via, created_at)
 
--- Configuracion de reportes programados (tabla lazy por-tenant)
+-- Configuracion de reportes programados (tabla canonica por-tenant; reparacion compatible on-demand)
 scheduled_reports (id, tenant_id, frequency, recipients[], is_active, last_sent_at)
 
--- Reportes personalizados guardados (Custom Report Builder, tabla lazy por-tenant)
+-- Reportes personalizados guardados (Custom Report Builder, tabla canonica por-tenant; reparacion compatible on-demand)
 saved_reports (id, name, description, config JSONB, created_by, is_favorite, created_at, updated_at)
 
 -- Preferencias de dashboard por usuario
 dashboard_preferences (id, user_id UNIQUE, layout_json JSONB)
 ```
 
-> **Tablas lazy**: `alert_rules`, `alert_history`, `scheduled_reports` y `saved_reports` se crean con `CREATE TABLE IF NOT EXISTS` la primera vez que el tenant usa la funcion (no vienen del bootstrap). `alert_rules`/`scheduled_reports` incluyen una migracion in-place de `tenant_id` text -> uuid para esquemas antiguos.
+> **Fuente canonica y reparacion heredada**: `alert_rules`, `alert_history`, `scheduled_reports` y `saved_reports` si forman parte de `apps/api/prisma/tenant-schema.sql`, por lo que un tenant nuevo las recibe en el bootstrap. Los servicios conservan `CREATE TABLE IF NOT EXISTS` como reparacion compatible para schemas antiguos; no es la fuente de definicion de un tenant nuevo. `alert_rules`/`scheduled_reports` incluyen ademas reconciliacion in-place de `tenant_id` text -> uuid para esquemas heredados.
 
 ---
 
@@ -357,8 +360,8 @@ ratelimit:{tenantId}:{window}
 
 ## 12. Limitaciones conocidas
 
-- **Sin segmentacion por `channel_account`**: con multi-cuenta por tipo (p. ej. 2 numeros WhatsApp o 2 cuentas de Instagram), el pivot de volumen agrupa por `channel_type` (`GROUP BY DATE(created_at), channel_type`), por lo que las conexiones del mismo tipo se **colapsan** en un solo bucket. No hay desglose por numero/cuenta emisora.
-- **Pivot de canales incompleto**: el grafico y el CSV de volumen por canal solo contemplan `whatsapp`, `instagram`, `messenger`, `telegram`. **SMS queda fuera** (es notificacion one-way por creditos reseller, no canal conversacional), y **Email** y **Web Chat Widget** tampoco figuran en el pivot de canales.
+- **Sin segmentacion por `channel_account`**: con multi-cuenta por tipo (p. ej. 2 numeros WhatsApp o 2 cuentas de Instagram), el pivot de volumen agrupa por `channel_type` (`GROUP BY DATE(created_at), channel_type`), por lo que las conexiones del mismo tipo se **colapsan** en un solo bucket. El total por tipo es correcto, pero no hay desglose por numero/cuenta emisora. Agregar drill-down/filtro/CSV/BI por conexion es la decision 11 de la cola final de `vertical-intervention-status-2026-08-23.md`.
+- **Alcance del pivot de canales**: el grafico, CSV y breakdown de BI contemplan `whatsapp`, `instagram`, `messenger`, `telegram` y **Web Chat** (`web_widget`). **SMS queda fuera** por diseño: es una notificacion one-way por creditos reseller, no un canal conversacional. **Email** tambien queda fuera por ahora porque solo tiene adapter inbound interno y no una configuracion tenant self-service certificada; incorporarlo o convertirlo en canal operativo es la decision 12 de la cola final.
 - **Realtime es puntual**: los 6 indicadores del panel en vivo son un snapshot del momento (polling 30s), no una serie historica.
 - **Alertas sobre metricas realtime/diarias**: las 6 metricas de alerta se leen de `getRealtime` + contadores Redis del dia; no cubren metricas historicas arbitrarias.
 

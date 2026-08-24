@@ -163,6 +163,8 @@ describe('AuthService onboarding provisioning retry', () => {
             role: 'tenant_admin',
             tenantId: null,
             onboardingCompleted: false,
+            signupSource: 'google',
+            signupAttribution: { source: 'google', utmCampaign: 'durable-campaign' },
         };
         const linkedUser = { ...user, tenantId, onboardingCompleted: false };
         const createdTenant = {
@@ -248,6 +250,8 @@ describe('AuthService onboarding provisioning retry', () => {
             company: { name: 'Race Store', industry: 'retail', subType: 'moda' },
             plan: 'starter',
             goals: ['support'],
+            signupSource: 'forged-partner',
+            signupAttribution: { source: 'forged-partner', utmCampaign: 'forged' },
         } as any;
         const first = service.completeOnboarding(userId, data);
         await bootstrapStarted;
@@ -258,6 +262,15 @@ describe('AuthService onboarding provisioning retry', () => {
         expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
         expect(prisma.$transaction).toHaveBeenCalledTimes(1);
         expect(tx.tenant.create).toHaveBeenCalledTimes(1);
+        expect(tx.tenant.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ signupSource: 'google' }),
+        }));
+        expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                signupSource: 'google',
+                signupAttribution: expect.objectContaining({ utmCampaign: 'durable-campaign' }),
+            }),
+        }));
 
         unblockBootstrap();
         await first;

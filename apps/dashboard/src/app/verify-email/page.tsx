@@ -129,7 +129,7 @@ export default function VerifyEmailPage() {
             }
             setIsSubmitting(false);
         },
-        [router]
+        [router, t]
     );
 
     const handleChange = (index: number, value: string) => {

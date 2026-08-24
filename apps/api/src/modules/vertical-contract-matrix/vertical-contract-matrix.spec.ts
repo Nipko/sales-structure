@@ -1,6 +1,8 @@
+import { deepLinkRouteForActiveObject } from '@parallext/shared';
 import { loadFactoryPlanContracts } from './factory-plan-contracts';
 import {
     getVerticalContractLocales,
+    PRIMARY_OBJECT_ROUTE,
     runVerticalContractMatrix,
     summarizeVerticalContractMatrix,
     VERTICAL_CONTRACT_LAYER,
@@ -51,5 +53,17 @@ describe('vertical contract/static matrix', () => {
                 outcomes: ['lost', 'won'],
             });
         }
+    });
+
+    it('derives primary-object routes from the same deep-link registry used by operations', () => {
+        for (const [primaryObject, route] of Object.entries(PRIMARY_OBJECT_ROUTE)) {
+            if (primaryObject === 'lead') continue; // Lead uses the commercial pipeline summary.
+            expect({ primaryObject, route }).toEqual({
+                primaryObject,
+                route: deepLinkRouteForActiveObject(primaryObject),
+            });
+        }
+        expect(PRIMARY_OBJECT_ROUTE.property_booking).toBe('/admin/stays');
+        expect(PRIMARY_OBJECT_ROUTE.professional_case).toBe('/admin/cases');
     });
 });

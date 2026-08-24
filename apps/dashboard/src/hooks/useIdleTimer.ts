@@ -36,7 +36,7 @@ export function useIdleTimer({
     onTimeout,
     enabled,
 }: UseIdleTimerOptions) {
-    const lastActivityRef = useRef(Date.now());
+    const lastActivityRef = useRef(0);
     const warningFiredRef = useRef(false);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const channelRef = useRef<BroadcastChannel | null>(null);
@@ -62,6 +62,7 @@ export function useIdleTimer({
 
     useEffect(() => {
         if (!enabled || typeof window === "undefined") return;
+        lastActivityRef.current = Date.now();
 
         // ── BroadcastChannel for multi-tab sync ──
         let bc: BroadcastChannel | null = null;

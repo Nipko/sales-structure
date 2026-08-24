@@ -1,5 +1,7 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { EVAL_SANDBOX_CONTACT_ID } from './agent-test-tool-policy';
 
 describe('AIToolExecutorService vertical safety contracts', () => {
     const schemaName = 'tenant_vertical';
@@ -126,6 +128,42 @@ describe('AIToolExecutorService vertical safety contracts', () => {
         expect(harness.chatIdentity.startVerification).not.toHaveBeenCalled();
         expect(harness.insuranceService.getPolicyByNumber).not.toHaveBeenCalled();
         expect(harness.insuranceService.fileClaim).not.toHaveBeenCalled();
+    });
+
+    it('proves the identity-step-up eval denial without sending OTP, writing a claim, or emitting effects', async () => {
+        const harness = createHarness();
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            EVAL_SANDBOX_CONTACT_ID,
+            'file_claim',
+            {
+                policyNumber: 'EVAL-SANDBOX-POLICY',
+                incidentType: 'collision',
+                incidentAt: '2099-06-01',
+                description: 'Evaluation-only incident',
+            },
+            conversationId,
+            {
+                authority: authorityFor('file_claim'),
+                channelType: 'whatsapp',
+                evalMode: true,
+                executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+            },
+        );
+
+        expect(result).toMatchObject({
+            error: 'identity_verification_required',
+            needsVerification: true,
+            outboundSuppressed: true,
+            persisted: false,
+        });
+        expect(harness.chatIdentity.isVerified).not.toHaveBeenCalled();
+        expect(harness.chatIdentity.startVerification).not.toHaveBeenCalled();
+        expect(harness.insuranceService.getPolicyByNumber).not.toHaveBeenCalled();
+        expect(harness.insuranceService.fileClaim).not.toHaveBeenCalled();
+        expect(harness.prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+        expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
     });
 
     it('keeps the ownership check after OTP verification for claim filing', async () => {

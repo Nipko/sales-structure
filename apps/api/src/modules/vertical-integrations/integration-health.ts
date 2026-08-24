@@ -1,4 +1,4 @@
-import { providerFitsIndustry, providerFreshnessFor } from '@parallext/shared';
+import { providerFitsProfile, providerFreshnessFor } from '@parallext/shared';
 
 export type VerticalProvider = 'toast' | 'mindbody' | 'cliniko';
 
@@ -56,6 +56,8 @@ export interface StoredIntegrationHealth {
     consecutiveFailures: number;
     circuitState: IntegrationCircuitState;
     lastError: SanitizedIntegrationError | null;
+    /** Configuration revision this observation was produced against. */
+    configRevision?: number;
     /** Internal dedupe token. Never returned by the public health contract. */
     lastUpdateId?: string;
 }
@@ -63,6 +65,13 @@ export interface StoredIntegrationHealth {
 export interface IntegrationHealth {
     version: typeof INTEGRATION_HEALTH_VERSION;
     provider: VerticalProvider;
+    /**
+     * A provider configuration exists and therefore owns the covered domain
+     * boundary. This is deliberately independent from `connected`: an outage,
+     * missing scope or open circuit must not hand ownership back to local
+     * writers and create two systems of record.
+     */
+    configured: boolean;
     status: IntegrationHealthStatus;
     connected: boolean;
     credentialValidated: boolean;
@@ -87,6 +96,7 @@ export interface IntegrationHealth {
     consecutiveFailures: number;
     circuitState: IntegrationCircuitState;
     lastError: SanitizedIntegrationError | null;
+    configRevision: number;
 }
 
 export interface IntegrationHealthObservation {
@@ -99,6 +109,8 @@ export interface IntegrationHealthObservation {
     grantedScopes?: readonly string[];
     missingScopes?: readonly string[];
     error?: unknown;
+    /** Reject the observation if credentials changed while the request ran. */
+    configRevision?: number;
 }
 
 const REQUIRED_SCOPES: Record<VerticalProvider, readonly string[]> = {
@@ -111,7 +123,10 @@ export function requiredScopesForProvider(provider: VerticalProvider): string[] 
     return [...REQUIRED_SCOPES[provider]];
 }
 
-export function initialIntegrationHealth(provider: VerticalProvider): StoredIntegrationHealth {
+export function initialIntegrationHealth(
+    provider: VerticalProvider,
+    configRevision = 0,
+): StoredIntegrationHealth {
     return {
         version: INTEGRATION_HEALTH_VERSION,
         provider,
@@ -124,6 +139,7 @@ export function initialIntegrationHealth(provider: VerticalProvider): StoredInte
         consecutiveFailures: 0,
         circuitState: 'closed',
         lastError: null,
+        configRevision,
     };
 }
 
@@ -205,6 +221,7 @@ export function reduceIntegrationHealth(
             circuitState: 'closed',
             lastError: null,
             lastUpdateId: observation.updateId,
+            configRevision: observation.configRevision ?? previous.configRevision ?? 0,
         };
     }
 
@@ -224,6 +241,7 @@ export function reduceIntegrationHealth(
             : previous.circuitState,
         lastError: sanitizeIntegrationError(observation.error, checkedAt),
         lastUpdateId: observation.updateId,
+        configRevision: observation.configRevision ?? previous.configRevision ?? 0,
     };
 }
 
@@ -234,6 +252,8 @@ export function materializeIntegrationHealth(
     now = new Date(),
     /** La industria del negocio. Ausente = no se juzga elegibilidad. */
     industry?: string | null,
+    /** El subtipo permite distinguir, por ejemplo, clínica de farmacia. */
+    subtype?: string | null,
 ): IntegrationHealth {
     const state = stored?.provider === provider ? stored : initialIntegrationHealth(provider);
     const syncMs = state.lastSuccessfulSyncAt ? Date.parse(state.lastSuccessfulSyncAt) : NaN;
@@ -246,7 +266,7 @@ export function materializeIntegrationHealth(
         && state.credentialValidated
         && state.scopeStatus !== 'missing';
 
-    const industryEligible = providerFitsIndustry(provider, industry);
+    const industryEligible = providerFitsProfile(provider, industry, subtype);
 
     let status: IntegrationHealthStatus;
     if (!configured || !stored || !state.lastCheckedAt) {
@@ -274,6 +294,7 @@ export function materializeIntegrationHealth(
     return {
         version: INTEGRATION_HEALTH_VERSION,
         provider,
+        configured,
         status,
         connected,
         credentialValidated: state.credentialValidated,
@@ -291,5 +312,6 @@ export function materializeIntegrationHealth(
         consecutiveFailures: state.consecutiveFailures,
         circuitState: state.circuitState,
         lastError: state.lastError ? { ...state.lastError } : null,
+        configRevision: state.configRevision ?? 0,
     };
 }

@@ -15,6 +15,7 @@ import { FactusAdapter } from './adapters/factus.adapter';
 import { computeNitDv } from './nit.util';
 import { buildBrandedInvoiceData } from './fiscal-branded.util';
 import { billingCountryRequiresFiscalData, isFiscalDataComplete } from './fiscal-data.util';
+import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-branch.util';
 
 /** Acquirer fiscal profile saved on Tenant.settings.fiscalData. */
 class FiscalDataDto {
@@ -132,8 +133,7 @@ export class FiscalController {
                 tributeId: '21', // no responsable de IVA
                 email: body.email,
             };
-            const settings = { ...((tenant.settings as object) ?? {}), fiscalData };
-            await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: settings as any } });
+            await replaceTenantSettingsBranch(this.prisma, tenantId, 'fiscalData', fiscalData);
             return { success: true, data: { fiscalData } };
         }
 
@@ -175,8 +175,7 @@ export class FiscalController {
             phone: body.phone,
         };
 
-        const settings = { ...((tenant.settings as object) ?? {}), fiscalData };
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: settings as any } });
+        await replaceTenantSettingsBranch(this.prisma, tenantId, 'fiscalData', fiscalData);
         return { success: true, data: { fiscalData } };
     }
 

@@ -68,6 +68,24 @@ describe('TenantSecretCryptoService', () => {
         expect(() => service.decrypt(envelope, context)).toThrow(TenantSecretCryptoError);
     });
 
+    it.each([
+        ['mcp', 'remote', 'auth_header'],
+        ['ecommerce', 'shopify', 'access_token'],
+        ['slack', 'slack', 'webhook_url'],
+    ] as const)('ata los secretos de %s a su scope/proveedor/campo', (scope, provider, field) => {
+        const service = new TenantSecretCryptoService();
+        const context = { tenantId, scope, provider, field };
+        const envelope = service.encrypt('secreto-dedicado', context);
+
+        expect(service.decrypt(envelope, context)).toBe('secreto-dedicado');
+        expect(() => service.decrypt(envelope, { ...context, provider: `${provider}_otro` }))
+            .toThrow(TenantSecretCryptoError);
+        expect(() => service.decrypt(envelope, { ...context, field: `${field}_otro` }))
+            .toThrow(TenantSecretCryptoError);
+        expect(() => service.decrypt(envelope, { ...context, scope: 'channel_manager' }))
+            .toThrow(TenantSecretCryptoError);
+    });
+
     it('una clave distinta no abre el sobre', () => {
         const service = new TenantSecretCryptoService();
         const envelope = service.encrypt('secreto', CONTEXT);

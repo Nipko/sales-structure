@@ -467,7 +467,7 @@ function serializeFlow(nodes: Node[], edges: Edge[]): {
 
 export default function FlowBuilder({ rule, onSave, onCancel }: FlowBuilderProps) {
     const t = useTranslations("automation");
-    const initial = useMemo(() => buildInitialNodes(rule), []);
+    const initial = useMemo(() => buildInitialNodes(rule), [rule]);
     const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
     const [ruleName, setRuleName] = useState(rule?.name || "");

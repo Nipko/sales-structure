@@ -18,6 +18,8 @@ indicados abajo.
 | Hub de Configuración | `apps/dashboard/src/app/admin/settings/_settings-config.ts` |
 | Capacidades verticales | `packages/shared/src/vertical-capability-manifest.ts` |
 | Estado de certificación vertical | `packages/shared/src/vertical-product-policy.ts` |
+| Contrato efectivo por turno | `effective-capability.service.ts` + `turn-capability-composer.service.ts` |
+| Backlog vertical comprobable | endpoint `/verticals/audit/native-backlog` y ruta de plataforma `/admin/vertical-audit` |
 | Workspace móvil | `apps/mobile/src/lib/verticalWorkspace.ts` |
 | Acciones móviles por rol | `apps/mobile/src/lib/verticalOperationPolicy.ts` |
 | Límites y precios de planes | Filas activas de `billing_plans`; el seed solo es un valor inicial |
@@ -116,14 +118,18 @@ explica una prioridad y ofrece rutas permitidas; no ejecuta la corrección.
 
 El menú tenant prioriza el trabajo diario y agrupa los destinos en:
 
-1. **Esenciales**: Inicio, Conversaciones y CRM.
-2. **IA y crecimiento**: Agente IA, Procedimientos, Base de conocimiento,
+1. **Esenciales**: Inicio y Conversaciones.
+2. **Clientes**: contactos y organizaciones.
+3. **Comercial**: embudo y ofertas.
+4. **Trabajo diario**: registros operativos —reservas, citas, pedidos, casos,
+   solicitudes y demás objetos del subtipo— antes de sus catálogos.
+5. **Catálogo y recursos**: propiedades, inventario, menú, cursos y demás datos
+   que configuran el trabajo anterior.
+6. **IA y crecimiento**: Agente IA, Procedimientos, Base de conocimiento,
    Automatización y Campañas, según rol.
-3. **Operación**: destinos derivados de la vertical, subtipo y capacidades
-   efectivas del tenant.
-4. **Insights**: analítica, Salud de agentes, rendimiento, atribución e informes.
-5. **Administración**: canales, usuarios, cumplimiento, facturación y solicitudes.
-6. **Configuración**: zona estable al fondo, con retorno seguro a la página de origen.
+7. **Insights**: analítica, Salud de agentes, rendimiento, atribución e informes.
+8. **Administración y Configuración**: canales, usuarios, cumplimiento,
+   facturación y ajustes estables.
 
 `Ctrl/Cmd+K` abre la búsqueda global. Favoritos, recientes, breadcrumbs y atajos se
 filtran por el mismo contrato de acceso; no deben revelar rutas incompatibles con el
@@ -164,6 +170,27 @@ del sector. La pantalla exacta depende del subtipo, capacidades publicadas, rol 
 | `pet_services` | Servicios para mascotas | Agenda o hospedaje según subtipo |
 | `fotografia` | Fotografía | Sesiones fotográficas y seguimiento de entrega |
 | `otro` | Otro | Fallback genérico de CRM, catálogo y pedidos |
+
+Para `turismo/hotel` y `turismo/alquiler_vacacional`, **Reservas** abre el registro
+directo `/admin/stays`; **Propiedades** es su catálogo. Si una unidad está vinculada
+a un Channel Manager, esa vinculación gobierna su disponibilidad y el writer local
+falla cerrado para evitar dos calendarios. Una unidad sin vínculo conserva el flujo
+nativo. La mera pertenencia al subtipo no obliga a contratar un proveedor externo.
+
+## Auditoría vertical operativa
+
+La consola `super_admin` expone **Auditoría vertical**. Sus conteos se derivan de los
+manifiestos, policies de tools, readiness, navegación, contratos de dominio y evals
+vigentes; no guarda porcentajes manuales. Separa explícitamente:
+
+- trabajo interno de código todavía abierto;
+- hallazgos históricos ya obsoletos por evidencia de código;
+- gates de proveedor/piloto;
+- decisiones de producto;
+- revisión experta o regulatoria.
+
+Un gate externo no se presenta como una función incompleta: la acción permanece
+fail-closed con motivo y ruta de reparación hasta recibir evidencia real.
 
 ### Qué significa `implemented_not_certified`
 

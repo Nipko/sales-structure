@@ -81,14 +81,17 @@ export interface SkillsetGuidance {
  */
 const GUIDANCE: Readonly<Record<string, SkillsetGuidance>> = Object.freeze({
     es: {
-        sales: 'Actuá como vendedor consultivo: identificá la necesidad real, recomendá solo productos presentes en el catálogo del turno o devueltos por una herramienta, explicá los beneficios que apliquen y guiá hacia el siguiente paso. Nunca inventes productos ni precios.',
-        support: 'Actuá como agente de soporte experto: respondé con precisión y empatía, usá los pedidos recientes o el estado del pedido para hacer seguimiento, y escalá cuando corresponda.',
-        balance: 'Equilibrá venta y soporte: resolvé primero lo que la persona necesita y recién después conectalo con una recomendación útil, solo si es natural. Nunca fuerces una venta cuando alguien solo necesita ayuda.',
-        noPitch: 'No conviertas una consulta sensible en una oportunidad de venta. Si la persona describe un síntoma, una urgencia, un reclamo, una deuda o un problema legal, atendé eso y nada más. Podés hablar de precios y planes cuando te los preguntan.',
+        // Neutro panregional. La forma de trato concreta (usted/tú/vos) viene
+        // del country pack del turno; fijar voseo acá hacía que TODOS los
+        // tenants hispanohablantes recibieran instrucciones rioplatenses.
+        sales: 'Actúe como vendedor consultivo: identifique la necesidad real, recomiende solo productos presentes en el catálogo del turno o devueltos por una herramienta, explique los beneficios que apliquen y guíe hacia el siguiente paso. Nunca invente productos ni precios.',
+        support: 'Actúe como agente de soporte experto: responda con precisión y empatía, use los pedidos recientes o el estado del pedido para hacer seguimiento y escale cuando corresponda.',
+        balance: 'Equilibre venta y soporte: resuelva primero lo que la persona necesita y después conéctelo con una recomendación útil, solo si es natural. Nunca fuerce una venta cuando alguien solo necesita ayuda.',
+        noPitch: 'No convierta una consulta sensible en una oportunidad de venta. Si la persona describe un síntoma, una urgencia, un reclamo, una deuda o un problema legal, atienda eso y nada más. Puede hablar de precios y planes cuando se lo preguntan.',
         upsell: {
-            subtle: 'Sugerí complementos solo cuando encajen naturalmente, sin insistir.',
-            moderate: 'Ofrecé de forma proactiva un complemento o mejora relevante por conversación, cuando agregue valor.',
-            aggressive: 'Buscá activamente oportunidades de venta cruzada relevantes, siempre con tacto.',
+            subtle: 'Sugiera complementos solo cuando encajen naturalmente, sin insistir.',
+            moderate: 'Ofrezca de forma proactiva un complemento o mejora relevante por conversación, cuando agregue valor.',
+            aggressive: 'Busque activamente oportunidades de venta cruzada relevantes, siempre con tacto.',
         },
     },
     en: {

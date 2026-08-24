@@ -2,6 +2,7 @@ import {
     EVAL_LANGUAGES,
     RIOPLATENSE_MARKERS,
     composeSubtypeEvalPack,
+    buildDomainContractDraft,
     listSubtypeExperienceProfileIds,
     localizedPhrase,
     phrase,
@@ -76,6 +77,46 @@ describe('el paquete se compone en el idioma que dice hablar', () => {
             industry: 'salud', subtype: 'dental', language: 'de',
         });
         expect(pack.every(s => s.language === 'es')).toBe(true);
+    });
+});
+
+describe('barrido semántico de todos los perfiles', () => {
+    it('ningún escenario EN/PT/FR contiene prosa española del contrato fuente', () => {
+        const offenders: string[] = [];
+        for (const id of PROFILES) {
+            const [industry, subtype] = id.split('/');
+            const contract = buildDomainContractDraft(industry, subtype);
+            const spanishSource = [
+                ...contract.intents.map(intent => intent.description),
+                ...contract.prompt.notOffered,
+                ...contract.prompt.terminology.avoid,
+            ]
+                .map(value => value.trim().toLowerCase())
+                .filter(value => value.length >= 6);
+
+            for (const language of ['en', 'pt', 'fr'] as const) {
+                const pack = composeSubtypeEvalPack({ industry, subtype, language });
+                for (const scenario of pack) {
+                    const text = [scenario.title, scenario.criteria, ...scenario.messages]
+                        .join('\n').toLowerCase();
+                    for (const source of spanishSource) {
+                        if (text.includes(source)) offenders.push(`${id}/${language}/${scenario.key}: ${source}`);
+                    }
+                }
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
+
+    it('la identidad persistente incluye contrato, perfil y locale sin cambiar la key legible', () => {
+        const packs = EVAL_LANGUAGES.flatMap(language => composeSubtypeEvalPack({
+            industry: 'turismo', subtype: 'alquiler_vacacional', language, locale: language,
+        }));
+        expect(packs.some(scenario => scenario.key === 'greeting')).toBe(true);
+        expect(packs.every(scenario => scenario.storageKey?.startsWith(
+            'eval:v2:turismo/alquiler_vacacional:',
+        ))).toBe(true);
+        expect(new Set(packs.map(scenario => scenario.storageKey)).size).toBe(packs.length);
     });
 });
 

@@ -40,17 +40,107 @@ export function isAgentTestSafeToolName(name: unknown): name is string {
  * because it teaches everyone to ignore it.
  *
  * Membership is earned, not assumed. A tool enters this list only once its
- * handler honours `evalMode` (suppressing calendar sync, notifications and
- * domain events) AND its table is in the eval service's cleanup allowlist, so a
- * verified run leaves nothing behind. Today that is exactly one tool.
+ * handler is replaced by the isolated `evalMode` adapter (which has no access
+ * to calendar sync, notifications, providers or domain events) AND its table
+ * is in the eval service's cleanup registry, so a verified run leaves nothing
+ * behind. The registry below is the complete audited surface.
  */
-export const EVAL_WRITABLE_TOOL_NAMES: readonly string[] = Object.freeze([
-    'create_appointment',
-]);
+export interface EvalWriterSandboxFamily {
+    /**
+     * audited: may persist only through the isolated eval adapter.
+     * identity_challenge: may be invoked only to prove the identity step-up
+     * denial; it
+     * never reaches a domain writer and never sends an OTP from an eval.
+     */
+    status: 'audited' | 'identity_challenge' | 'pending';
+    tools: readonly string[];
+    table: string;
+    contactColumn?: string;
+    /** Why a pending family is not executable yet. */
+    pendingReason?: string;
+}
+
+/**
+ * Family-level sandbox registry. Pending entries are intentionally visible:
+ * they are implementation work, not writers that silently disappear from the
+ * eval plan. A family becomes executable only after its external effects are
+ * suppressed and deterministic cleanup is proven.
+ */
+export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSandboxFamily>> = Object.freeze({
+    appointments: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_appointment']),
+        table: 'appointments', contactColumn: 'contact_id',
+    }),
+    property_bookings: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_property_booking']),
+        table: 'property_bookings', contactColumn: 'contact_id',
+    }),
+    tour_bookings: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_tour_booking']),
+        table: 'tour_bookings', contactColumn: 'contact_id',
+    }),
+    restaurant_orders: Object.freeze({
+        status: 'audited', tools: Object.freeze(['place_order']),
+        table: 'food_orders', contactColumn: 'contact_id',
+    }),
+    class_bookings: Object.freeze({
+        status: 'audited', tools: Object.freeze(['book_class']),
+        table: 'class_bookings', contactColumn: 'contact_id',
+    }),
+    enrollments: Object.freeze({
+        status: 'audited', tools: Object.freeze(['enroll_student']),
+        table: 'enrollments', contactColumn: 'contact_id',
+    }),
+    service_requests: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_service_request']),
+        table: 'service_requests', contactColumn: 'contact_id',
+    }),
+    photo_sessions: Object.freeze({
+        status: 'audited', tools: Object.freeze(['request_photo_quote']),
+        table: 'photo_sessions', contactColumn: 'contact_id',
+    }),
+    resource_rentals: Object.freeze({
+        status: 'audited', tools: Object.freeze(['create_vehicle_rental', 'create_pet_boarding']),
+        table: 'resource_rentals', contactColumn: 'contact_id',
+    }),
+    catalog_orders: Object.freeze({
+        status: 'audited', tools: Object.freeze(['place_catalog_order']),
+        table: 'orders', contactColumn: 'contact_id',
+    }),
+    insurance_claims: Object.freeze({
+        status: 'identity_challenge', tools: Object.freeze(['file_claim']),
+        table: 'insurance_claims',
+    }),
+});
+
+export const EVAL_WRITABLE_TOOL_NAMES: readonly string[] = Object.freeze(
+    Object.values(EVAL_WRITER_SANDBOX_FAMILIES)
+        .filter(family => family.status !== 'pending')
+        .flatMap(family => family.tools),
+);
+export const EVAL_SANDBOX_MUTATING_TOOL_NAMES: readonly string[] = Object.freeze(
+    Object.values(EVAL_WRITER_SANDBOX_FAMILIES)
+        .filter(family => family.status === 'audited')
+        .flatMap(family => family.tools),
+);
 const EVAL_WRITABLE_TOOLS = new Set(EVAL_WRITABLE_TOOL_NAMES);
+const EVAL_SANDBOX_MUTATING_TOOLS = new Set(EVAL_SANDBOX_MUTATING_TOOL_NAMES);
+const EVAL_IDENTITY_CHALLENGE_TOOLS = new Set(
+    Object.values(EVAL_WRITER_SANDBOX_FAMILIES)
+        .filter(family => family.status === 'identity_challenge')
+        .flatMap(family => family.tools),
+);
 
 export function isEvalWritableToolName(name: unknown): name is string {
     return typeof name === 'string' && EVAL_WRITABLE_TOOLS.has(name);
+}
+
+export function isEvalSandboxMutatingToolName(name: unknown): name is string {
+    return typeof name === 'string' && EVAL_SANDBOX_MUTATING_TOOLS.has(name);
+}
+
+export function isEvalIdentityChallengeToolName(name: unknown): name is string {
+    return typeof name === 'string' && EVAL_IDENTITY_CHALLENGE_TOOLS.has(name);
 }
 
 /**

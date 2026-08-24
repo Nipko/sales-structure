@@ -9,8 +9,25 @@ import { ToolDefinition } from '@parallext/shared';
 
 export const HOME_SERVICES_TOOLS: ToolDefinition[] = [
     {
+        name: 'list_home_services',
+        description: 'List the active field-service visit types configured by this business. Returns the authoritative serviceId, duration and simultaneous capacity. Call this before checking or scheduling a visit.',
+        parameters: { type: 'object', properties: {} },
+    },
+    {
+        name: 'check_home_service_availability',
+        description: 'Check live capacity for one configured field-service visit at a tenant-local start time. Duration and end time come from the service catalogue, never from the model. This is a read only; create_service_request rechecks atomically before it confirms a scheduled visit.',
+        parameters: {
+            type: 'object',
+            properties: {
+                serviceId: { type: 'string', description: 'Service UUID returned by list_home_services' },
+                startAt: { type: 'string', description: 'Tenant-local ISO date-time, for example 2026-09-10T09:00:00' },
+            },
+            required: ['serviceId', 'startAt'],
+        },
+    },
+    {
         name: 'create_service_request',
-        description: 'Create a field-service request (plomería, electricidad, fumigación, limpieza, jardinería, otro). Use when a customer reports a problem at home/office. Captures urgency, address, and issue description so a technician can be dispatched. Always confirm address + name + phone before calling.',
+        description: 'Create a field-service request (plomería, electricidad, fumigación, limpieza, jardinería, otro). A preferred date/window is intake only and does not promise a visit. To confirm a scheduled visit, first call list_home_services and check_home_service_availability, then send both serviceId and scheduledAt; the writer rechecks capacity atomically. Always confirm address + name + phone before calling.',
         parameters: {
             type: 'object',
             properties: {
@@ -31,6 +48,8 @@ export const HOME_SERVICES_TOOLS: ToolDefinition[] = [
                 issueDescription: { type: 'string', description: 'What is the problem? Free-form description' },
                 preferredDate: { type: 'string', description: 'YYYY-MM-DD if customer mentions a date' },
                 preferredTimeWindow: { type: 'string', description: 'mañana / tarde / noche or HH:MM-HH:MM' },
+                serviceId: { type: 'string', description: 'Configured service UUID; required together with scheduledAt to confirm a visit' },
+                scheduledAt: { type: 'string', description: 'Tenant-local ISO date-time; requires serviceId. Omit both to record a pending request without promising a slot.' },
             },
             required: ['serviceType', 'issueDescription'],
         },
@@ -133,7 +152,7 @@ export const PHOTOGRAPHY_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'request_photo_quote',
-        description: 'Register a photography session request for team follow-up. This creates a photo_sessions record but does not calculate or promise a price. Confirm the date and customer name before calling; include phone, package, location, session type, and special requests when known.',
+        description: 'Register a photography session request for team follow-up and atomically hold its full-day date for a limited time. This creates a photo_sessions record but does not calculate or promise a price. If the date was taken after the availability check, it fails with photo_date_unavailable: offer another date and never claim it was reserved. Confirm the date and customer name before calling; include phone, package, location, session type, and special requests when known.',
         parameters: {
             type: 'object',
             properties: {

@@ -15,6 +15,7 @@ import {
     Gauge, RefreshCw, Loader2, AlertCircle, AlertTriangle, Info, CheckCircle2,
     Server, Database, HardDrive, Siren, TrendingUp, Brain, DollarSign, Building2,
     Activity, ChevronRight,
+    Waypoints,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 
@@ -103,6 +104,7 @@ export default function OpsCenterPage() {
 
     const quickLinks = [
         { href: "/admin/incidents", label: tNav("items.incidents"), icon: Siren, accent: "text-rose-500" },
+        { href: "/admin/ops/integrations", label: tNav("items.integrationOutbox"), icon: Waypoints, accent: "text-indigo-500" },
         { href: "/admin/health", label: tNav("items.platformHealth"), icon: Activity, accent: "text-emerald-500" },
         { href: "/admin/storage", label: tNav("items.storage"), icon: HardDrive, accent: "text-cyan-500" },
         { href: "/admin/usage", label: tNav("items.platformUsage"), icon: TrendingUp, accent: "text-blue-500" },

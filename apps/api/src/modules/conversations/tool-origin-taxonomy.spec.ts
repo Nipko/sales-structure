@@ -47,7 +47,7 @@ function toolsOfFamilies(families: readonly string[]): Set<string> {
 }
 
 describe('cada tool estática declara de dónde viene', () => {
-    it('las 107 tienen procedencia y ninguna queda sin clasificar', () => {
+    it('todas las tools estáticas tienen procedencia y ninguna queda sin clasificar', () => {
         const missing = STATIC_TOOL_NAMES.filter(
             name => !['core', 'vertical', 'provider'].includes(TOOL_POLICY_REGISTRY[name].origin),
         );

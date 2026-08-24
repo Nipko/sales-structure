@@ -4,6 +4,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { McpClientService } from './mcp-client.service';
+import { TENANT_SECRET_MASK } from '../../common/crypto/tenant-secret-crypto.service';
 
 /**
  * Dashboard config for external MCP servers the agent consumes (T3.20).
@@ -23,7 +24,10 @@ export class McpController {
     @Roles('super_admin', 'tenant_admin')
     async save(@Param('tenantId') tenantId: string, @Body() body: any) {
         const server = await this.mcpClient.saveServer(tenantId, body);
-        return { success: true, data: { ...server, authHeader: server.authHeader ? '***' : undefined } };
+        return {
+            success: true,
+            data: { ...server, authHeader: server.authHeader ? TENANT_SECRET_MASK : undefined },
+        };
     }
 
     @Delete(':tenantId/servers/:id')

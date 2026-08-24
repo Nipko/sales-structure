@@ -40,6 +40,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useServiceCatalog } from "@/hooks/useServiceCatalog";
+import { io, type Socket } from "socket.io-client";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -366,9 +367,8 @@ export default function AppointmentsPage() {
     if (!activeTenantId) return;
     const accessToken = localStorage.getItem("accessToken");
     if (!accessToken) return;
-    let socket: any;
+    let socket: Socket | undefined;
     try {
-      const { io } = require("socket.io-client");
       const socketUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace("/api/v1", "");
       socket = io(`${socketUrl}/inbox`, {
         auth: { token: accessToken },

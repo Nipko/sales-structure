@@ -3,6 +3,7 @@ import {
     ADMIN_CREATE_AVAILABILITY,
     SIGNUP_AVAILABILITY,
     VERTICAL_CAPABILITY_MANIFEST,
+    canonicalSubtypeId,
     resolveSubtypeExperienceProfile,
 } from '@parallext/shared';
 
@@ -26,7 +27,7 @@ export class InvalidVerticalSelectionError extends Error {
  * Historical identifiers accepted at API boundaries. Internal persistence always
  * uses the registry key so feature gates, sidebar routing and bootstrap agree.
  */
-export const VERTICAL_IDENTIFIER_CONTRACT_VERSION = 1 as const;
+export const VERTICAL_IDENTIFIER_CONTRACT_VERSION = 2 as const;
 
 export const VERTICAL_INDUSTRY_ALIASES: Readonly<Record<string, string>> = {
     education: 'education',
@@ -116,41 +117,55 @@ export function resolveVerticalSelection(
         return { industry: 'seguros', subType: 'broker' };
     }
 
-    const definition = VERTICAL_REGISTRY[industry];
+    // Canonicalise the complete pair BEFORE checking membership. Some legacy
+    // subtypes moved to another industry, so validating against the source
+    // definition first either rejected a valid alias (`pet_services/tienda`)
+    // or persisted the old split-brain identity (`veterinaria/peluqueria_canina`).
+    const canonical = canonicalSubtypeId(industry, requestedSubType);
+    const canonicalIndustry = canonical?.industry ?? industry;
+    const canonicalSubType = canonical?.subtype ?? requestedSubType;
+    const definition = VERTICAL_REGISTRY[canonicalIndustry];
+    if (!definition) {
+        throw new InvalidVerticalSelectionError(
+            `La industria canónica "${canonicalIndustry}" no está soportada`,
+            canonicalIndustry,
+            canonicalSubType || null,
+        );
+    }
     if (definition.subTypes.length === 0) {
-        if (requestedSubType) {
+        if (canonicalSubType) {
             throw new InvalidVerticalSelectionError(
-                `La industria "${industry}" no admite subtipos`,
-                industry,
-                requestedSubType,
+                `La industria "${canonicalIndustry}" no admite subtipos`,
+                canonicalIndustry,
+                canonicalSubType,
             );
         }
-        return { industry, subType: null };
+        return { industry: canonicalIndustry, subType: null };
     }
 
-    if (!requestedSubType) {
+    if (!canonicalSubType) {
         throw new InvalidVerticalSelectionError(
-            `Debes seleccionar un subtipo válido para "${industry}"`,
-            industry,
+            `Debes seleccionar un subtipo válido para "${canonicalIndustry}"`,
+            canonicalIndustry,
             null,
         );
     }
 
-    const isCanonicalSubType = definition.subTypes.some((subType) => subType.key === requestedSubType);
+    const isCanonicalSubType = definition.subTypes.some((subType) => subType.key === canonicalSubType);
     const isSupportedLegacySubType = (
-        VERTICAL_CAPABILITY_MANIFEST[industry as keyof typeof VERTICAL_CAPABILITY_MANIFEST]
+        VERTICAL_CAPABILITY_MANIFEST[canonicalIndustry as keyof typeof VERTICAL_CAPABILITY_MANIFEST]
             ?.legacySubtypes || []
-    ).includes(requestedSubType);
+    ).includes(canonicalSubType);
     if (!isCanonicalSubType && !isSupportedLegacySubType) {
         throw new InvalidVerticalSelectionError(
-            `El subtipo "${requestedSubType}" no pertenece a la industria "${industry}"`,
-            industry,
-            requestedSubType,
+            `El subtipo "${canonicalSubType}" no pertenece a la industria "${canonicalIndustry}"`,
+            canonicalIndustry,
+            canonicalSubType,
         );
     }
 
-    assertAvailableForSurface(industry, requestedSubType, surface);
-    return { industry, subType: requestedSubType };
+    assertAvailableForSurface(canonicalIndustry, canonicalSubType, surface);
+    return { industry: canonicalIndustry, subType: canonicalSubType };
 }
 
 /**

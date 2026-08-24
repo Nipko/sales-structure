@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as sharp from 'sharp';
 import * as fs from 'fs';
@@ -281,11 +282,7 @@ export class MediaService {
     async uploadLogo(tenantId: string, schemaName: string, file: Express.Multer.File): Promise<{ logoUrl: string }> {
         const mediaFile = await this.upload(schemaName, tenantId, file, 'tenant_logo', undefined, 'Logo', undefined, ['logo']);
 
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const settings = (tenant?.settings as Record<string, any>) || {};
-        settings.logoUrl = mediaFile.url;
-
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings } });
+        await mergeTenantSettingsAtomic(this.prisma, tenantId, { logoUrl: mediaFile.url });
         this.logger.log(`Logo updated for tenant ${tenantId}: ${mediaFile.url}`);
         return { logoUrl: mediaFile.url };
     }

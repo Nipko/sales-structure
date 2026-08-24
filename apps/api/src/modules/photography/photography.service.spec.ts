@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PhotographyService } from './photography.service';
 
 describe('PhotographyService contact integrity', () => {
@@ -54,6 +54,10 @@ describe('PhotographyService contact integrity', () => {
         const query = jest.fn(async (sql: string, params?: any[]) => {
             if (sql.includes('FROM contacts')) return [{ id: contactId }];
             if (sql.includes('FROM opportunities o')) return [];
+            if (sql.includes('pg_advisory_xact_lock')) return [{ lock_acquired: '' }];
+            if (sql.includes('AS appointment_count')) {
+                return [{ blocked: false, appointment_count: 0, session_count: 0 }];
+            }
             if (sql.includes('INSERT INTO photo_sessions')) {
                 expect(params?.[0]).toBe(contactId);
                 expect(sql).toContain('scheduled_at_text');
@@ -68,7 +72,7 @@ describe('PhotographyService contact integrity', () => {
             sessionType: 'wedding',
             scheduledAt: '2026-09-10',
         })).resolves.toEqual(stored);
-        expect(query).toHaveBeenCalledTimes(3);
+        expect(query).toHaveBeenCalledTimes(5);
         expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
@@ -77,6 +81,10 @@ describe('PhotographyService contact integrity', () => {
         const query = jest.fn(async (sql: string) => {
             if (sql.includes('FROM contacts')) return [{ id: contactId }];
             if (sql.includes('FROM opportunities o')) return [];
+            if (sql.includes('pg_advisory_xact_lock')) return [{ lock_acquired: '' }];
+            if (sql.includes('AS appointment_count')) {
+                return [{ blocked: false, appointment_count: 0, session_count: 0 }];
+            }
             if (sql.includes('INSERT INTO photo_sessions')) return [stored];
             throw new Error(`Unexpected SQL: ${sql}`);
         });
@@ -99,6 +107,7 @@ describe('PhotographyService contact integrity', () => {
                 contactId,
                 customerName: 'Ana',
                 date: '2026-09-10',
+                holdExpiresAt: expect.any(Date),
             }),
         );
     });
@@ -164,6 +173,10 @@ describe('PhotographyService contact integrity', () => {
             if (sql.includes('SELECT status, scheduled_at')) {
                 return [{ status: 'requested', scheduled_at: scheduledAt }];
             }
+            if (sql.includes('pg_advisory_xact_lock')) return [{ lock_acquired: '' }];
+            if (sql.includes('AS appointment_count')) {
+                return [{ blocked: false, appointment_count: 0, session_count: 0 }];
+            }
             if (sql.includes('UPDATE photo_sessions')) return [updated];
             throw new Error(`Unexpected SQL: ${sql}`);
         });
@@ -171,8 +184,32 @@ describe('PhotographyService contact integrity', () => {
 
         await expect(service.update(schemaName, contactId, { status: 'scheduled' }))
             .resolves.toEqual(updated);
-        expect(query).toHaveBeenCalledTimes(2);
+        expect(query).toHaveBeenCalledTimes(4);
         expect(query.mock.calls[0][0]).toContain('FOR UPDATE');
+        expect(query.mock.calls[1][0]).toContain('pg_advisory_xact_lock');
+        expect(query.mock.calls[3][0]).toContain('hold_expires_at');
+    });
+
+    it('rejects a quote atomically when the date became occupied before insert', async () => {
+        const query = jest.fn(async (sql: string) => {
+            if (sql.includes('FROM contacts')) return [{ id: contactId }];
+            if (sql.includes('FROM opportunities o')) return [];
+            if (sql.includes('pg_advisory_xact_lock')) return [{ lock_acquired: '' }];
+            if (sql.includes('AS appointment_count')) {
+                return [{ blocked: false, appointment_count: 0, session_count: 1 }];
+            }
+            throw new Error(`Unexpected SQL: ${sql}`);
+        });
+        const { service, eventEmitter } = buildService(query);
+
+        await expect(service.create(schemaName, {
+            contactId,
+            sessionType: 'wedding',
+            scheduledAt: '2026-09-10',
+            status: 'requested',
+        })).rejects.toBeInstanceOf(ConflictException);
+        expect(query.mock.calls.some(([sql]) => sql.includes('INSERT INTO photo_sessions'))).toBe(false);
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
     it('orders and counts requested sessions explicitly', async () => {

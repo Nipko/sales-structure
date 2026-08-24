@@ -42,7 +42,10 @@ const CHANNEL_COLORS: Record<string, string> = {
     instagram: "#E4405F",
     messenger: "#0084FF",
     telegram: "#0088CC",
+    web_widget: "#7C3AED",
 };
+
+const ANALYTICS_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "web_widget"] as const;
 
 const MODEL_COLORS = ["#6c5ce7", "#00cec9", "#fdcb6e", "#e17055", "#0984e3", "#d63031", "#00b894"];
 
@@ -257,7 +260,8 @@ function OverviewTab({ kpis, volume, heatmap, responseTimes }: any) {
                         <Bar dataKey="whatsapp" stackId="a" fill={CHANNEL_COLORS.whatsapp} name="WhatsApp" radius={[0, 0, 0, 0]} />
                         <Bar dataKey="instagram" stackId="a" fill={CHANNEL_COLORS.instagram} name="Instagram" />
                         <Bar dataKey="messenger" stackId="a" fill={CHANNEL_COLORS.messenger} name="Messenger" />
-                        <Bar dataKey="telegram" stackId="a" fill={CHANNEL_COLORS.telegram} name="Telegram" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="telegram" stackId="a" fill={CHANNEL_COLORS.telegram} name="Telegram" />
+                        <Bar dataKey="web_widget" stackId="a" fill={CHANNEL_COLORS.web_widget} name={t("web_widget")} radius={[4, 4, 0, 0]} />
                     </BarChart>
                 </ResponsiveContainer>
             </div>
@@ -369,12 +373,11 @@ function ChannelsTab({ volume }: { volume: any[] }) {
     const t = useTranslations("analyticsV2");
 
     // Aggregate per channel
-    const totals: Record<string, number> = { whatsapp: 0, instagram: 0, messenger: 0, telegram: 0 };
+    const totals: Record<string, number> = Object.fromEntries(
+        ANALYTICS_CHANNELS.map(channel => [channel, 0]),
+    );
     for (const row of volume) {
-        totals.whatsapp += row.whatsapp || 0;
-        totals.instagram += row.instagram || 0;
-        totals.messenger += row.messenger || 0;
-        totals.telegram += row.telegram || 0;
+        for (const channel of ANALYTICS_CHANNELS) totals[channel] += row[channel] || 0;
     }
     const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
 
@@ -385,7 +388,7 @@ function ChannelsTab({ volume }: { volume: any[] }) {
     return (
         <div className="space-y-6">
             {/* Channel cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 {channels.map(ch => (
                     <div key={ch.channel} className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                         <div className="flex items-center gap-3 mb-3">
@@ -419,6 +422,7 @@ function ChannelsTab({ volume }: { volume: any[] }) {
                         <Area type="monotone" dataKey="instagram" stackId="1" fill={CHANNEL_COLORS.instagram} stroke={CHANNEL_COLORS.instagram} fillOpacity={0.6} name="Instagram" />
                         <Area type="monotone" dataKey="messenger" stackId="1" fill={CHANNEL_COLORS.messenger} stroke={CHANNEL_COLORS.messenger} fillOpacity={0.6} name="Messenger" />
                         <Area type="monotone" dataKey="telegram" stackId="1" fill={CHANNEL_COLORS.telegram} stroke={CHANNEL_COLORS.telegram} fillOpacity={0.6} name="Telegram" />
+                        <Area type="monotone" dataKey="web_widget" stackId="1" fill={CHANNEL_COLORS.web_widget} stroke={CHANNEL_COLORS.web_widget} fillOpacity={0.6} name={t("web_widget")} />
                     </AreaChart>
                 </ResponsiveContainer>
             </div>

@@ -31,6 +31,7 @@ import {
     EVAL_LANGUAGES,
     type EvalLanguage,
 } from './subtype-eval-derivation';
+import { VERTICAL_DOMAIN_CONTRACT_VERSION } from './vertical-domain-contract';
 
 export interface EvalScenarioSeed {
     key: string;
@@ -40,7 +41,32 @@ export interface EvalScenarioSeed {
     criteria: string;
     /** De dónde salió: para que el dueño sepa por qué está y no la borre por error. */
     origin: 'universal' | 'no_pitch' | 'avoid_terms' | 'declared_limit';
+    /** Canonical profile/locale/version identity used by persistent seed keys. */
+    profileId?: string;
+    locale?: string;
+    contractVersion?: number;
+    /** Versioned persistent identity; `key` remains the human-readable scenario id. */
+    storageKey?: string;
+    /** Extensible action assertions; empty until a family has audited fixtures. */
+    expectedActions?: readonly EvalActionAssertionSeed[];
 }
+
+export type EvalActionAssertionSeed =
+    | {
+        kind: 'tool_call';
+        type: 'called' | 'not_called';
+        tool: string;
+        description?: string;
+    }
+    | {
+        kind: 'db_effect';
+        type: 'row_exists' | 'row_count' | 'no_row';
+        family: string;
+        table: string;
+        where?: Record<string, unknown>;
+        count?: number;
+        description?: string;
+    };
 
 /**
  * Los cuatro de siempre: valen para cualquier negocio.
@@ -204,6 +230,12 @@ const AVOID_CRITERIA = phrase(
     'Usa o vocabulário do negócio e NUNCA estas palavras, que significam outra coisa aqui ou prometem algo que não faz: {terms}.',
     'Utilise le vocabulaire du métier et JAMAIS ces mots, qui signifient autre chose ici ou promettent ce qu’il ne fait pas : {terms}.',
 );
+const AVOID_REVIEW_REFERENCE = phrase(
+    'los términos declarados del perfil',
+    'the profile-specific terms pending language review',
+    'os termos específicos do perfil pendentes de revisão linguística',
+    'les termes propres au profil en attente de révision linguistique',
+);
 
 const LIMIT_TITLE = phrase(
     'Límite declarado del perfil', 'Declared limit of the profile',
@@ -219,12 +251,20 @@ const LIMIT_CRITERIA = phrase(
     'Este perfil declara explicitamente que NÃO faz isto: {limits}. Deve dizê-lo com clareza e oferecer encaminhar a uma pessoa. Não improvisa uma resposta nem promete resolver.',
     'Ce profil déclare explicitement qu’il ne fait PAS ceci : {limits}. Il doit le dire clairement et proposer de transférer à une personne. Il n’improvise pas de réponse et ne promet pas de s’en charger.',
 );
+const LIMIT_REVIEW_REFERENCE = phrase(
+    'el límite declarado del perfil',
+    'the declared profile boundary pending language review',
+    'o limite declarado do perfil pendente de revisão linguística',
+    'la limite déclarée du profil en attente de révision linguistique',
+);
 
 export interface ComposeEvalPackInput {
     industry?: string | null;
     subtype?: string | null;
     /** Idioma del agente. Los escenarios se componen EN ese idioma. */
     language?: string;
+    /** BCP-47 locale. Defaults to the scenario language. */
+    locale?: string;
     /**
      * La forma de trato del país del tenant.
      *
@@ -256,6 +296,8 @@ export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenari
         ? requested as EvalLanguage
         : 'es';
     const form = input.addressForm ?? null;
+    const profileId = canonical ? `${canonical.industry}/${canonical.subtype}` : 'generic/__none__';
+    const locale = String(input.locale || language).trim() || language;
     const say = (value: LocalizedPhrase) => localizedPhrase(value, language, form);
 
     const pack: EvalScenarioSeed[] = UNIVERSAL.map((scenario) => ({
@@ -270,7 +312,7 @@ export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenari
         criteria: say(scenario.criteria),
         origin: scenario.origin,
     }));
-    if (!industry) return pack;
+    if (!industry) return versionEvalPack(pack, profileId, locale);
 
     // ── No-pitch: el rubro arranca con un problema, no con una compra ──
     const policy = skillsetPolicyForIndustry(industry);
@@ -289,12 +331,13 @@ export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenari
     // ── Vocabulario: una palabra prestada promete algo que no existe ──
     const avoid = avoidedTermsFor(industry, subtype);
     if (avoid.length) {
+        const avoidReference = language === 'es' ? avoid.join(', ') : say(AVOID_REVIEW_REFERENCE);
         pack.push({
             key: 'avoid_terms',
             title: say(AVOID_TITLE),
             language,
             messages: [say(AVOID_OPENER), say(AVOID_FOLLOW)],
-            criteria: say(AVOID_CRITERIA).replace('{terms}', avoid.join(', ')),
+            criteria: say(AVOID_CRITERIA).replace('{terms}', avoidReference),
             origin: 'avoid_terms',
         });
     }
@@ -303,12 +346,14 @@ export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenari
     const profile = safeProfile(industry, subtype);
     const limits = profile?.exclusions || [];
     if (limits.length) {
+        const limitReference = language === 'es' ? limits[0] : say(LIMIT_REVIEW_REFERENCE);
+        const limitsReference = language === 'es' ? limits.join(' | ') : say(LIMIT_REVIEW_REFERENCE);
         pack.push({
             key: 'declared_limit',
             title: say(LIMIT_TITLE),
             language,
-            messages: [say(LIMIT_OPENER).replace('{limit}', limits[0])],
-            criteria: say(LIMIT_CRITERIA).replace('{limits}', limits.join(' | ')),
+            messages: [say(LIMIT_OPENER).replace('{limit}', limitReference)],
+            criteria: say(LIMIT_CRITERIA).replace('{limits}', limitsReference),
             origin: 'declared_limit',
         });
     }
@@ -326,7 +371,23 @@ export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenari
         pack.push(derived);
     }
 
-    return pack;
+    return versionEvalPack(pack, profileId, locale);
+}
+
+function versionEvalPack(
+    pack: readonly EvalScenarioSeed[],
+    profileId: string,
+    locale: string,
+): EvalScenarioSeed[] {
+    const safeLocale = locale.replace(/[^A-Za-z0-9_-]/g, '-');
+    return pack.map(scenario => ({
+        ...scenario,
+        storageKey: `eval:v${VERTICAL_DOMAIN_CONTRACT_VERSION}:${profileId}:${safeLocale}:${scenario.key}`,
+        profileId,
+        locale,
+        contractVersion: VERTICAL_DOMAIN_CONTRACT_VERSION,
+        expectedActions: scenario.expectedActions ? [...scenario.expectedActions] : [],
+    }));
 }
 
 function safeProfile(industry: string, subtype: string): ResolvedSubtypeExperienceProfile | null {

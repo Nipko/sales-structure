@@ -7,7 +7,7 @@
  * `salud` (the parent decides whether to mount this component).
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import {
@@ -65,16 +65,16 @@ export function TreatmentPlansCard({
     const [showCreate, setShowCreate] = useState(false);
     const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!open || loaded) return;
-        loadPlans();
-    }, [open]);
-
-    async function loadPlans() {
+    const loadPlans = useCallback(async () => {
         const res = await api.listTreatmentPlans(tenantId, contactId);
         if (res.success && Array.isArray(res.data)) setPlans(res.data);
         setLoaded(true);
-    }
+    }, [contactId, tenantId]);
+
+    useEffect(() => {
+        if (!open || loaded) return;
+        loadPlans();
+    }, [loadPlans, loaded, open]);
 
     const activePlans = plans.filter(p => p.status === "active");
     const otherPlans = plans.filter(p => p.status !== "active");
@@ -169,18 +169,18 @@ function PlanRow({
         ? Math.round((plan.completed_sessions / plan.total_sessions) * 100)
         : 0;
 
-    useEffect(() => {
-        if (!isExpanded || sessionsLoaded) return;
-        loadSessions();
-    }, [isExpanded]);
-
-    async function loadSessions() {
+    const loadSessions = useCallback(async () => {
         const res = await api.getTreatmentPlan(tenantId, plan.id);
         if (res.success && res.data?.sessions) {
             setSessions(res.data.sessions);
         }
         setSessionsLoaded(true);
-    }
+    }, [plan.id, tenantId]);
+
+    useEffect(() => {
+        if (!isExpanded || sessionsLoaded) return;
+        loadSessions();
+    }, [isExpanded, loadSessions, sessionsLoaded]);
 
     async function completeSession(id: string) {
         await api.completeTreatmentSession(tenantId, id);

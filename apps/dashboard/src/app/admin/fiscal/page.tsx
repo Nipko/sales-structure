@@ -143,7 +143,7 @@ export default function FiscalAdminPage() {
         setBusy(false);
     };
 
-    const useRange = async (id: number | string) => {
+    const selectRange = async (id: number | string) => {
         if (!config) return;
         await doSave({ ...config, factusNumberingRangeId: String(id) });
     };
@@ -463,7 +463,7 @@ export default function FiscalAdminPage() {
                                                     <td className="py-2.5 pr-3">{r.prefix}</td>
                                                     <td className="py-2.5 pr-3 text-neutral-500">{r.from}–{r.to}</td>
                                                     <td className="py-2.5 pr-3">{r.is_active ? <CheckCircle2 size={14} className="text-emerald-500" /> : <XCircle size={14} className="text-neutral-400" />}</td>
-                                                    <td className="py-2.5">{String(r.id) === String(config?.factusNumberingRangeId) ? <span className="text-xs font-semibold text-emerald-600">{t("rangeInUse")}</span> : <button onClick={() => useRange(r.id)} className="text-xs text-teal-600 hover:underline">{t("useThis")}</button>}</td>
+                                                    <td className="py-2.5">{String(r.id) === String(config?.factusNumberingRangeId) ? <span className="text-xs font-semibold text-emerald-600">{t("rangeInUse")}</span> : <button onClick={() => selectRange(r.id)} className="text-xs text-teal-600 hover:underline">{t("useThis")}</button>}</td>
                                                 </tr>
                                             ))}
                                         </tbody>

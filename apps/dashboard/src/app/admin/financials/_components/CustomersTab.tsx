@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Users, Clock, TrendingUp } from "lucide-react";
 import {
@@ -23,6 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function CustomersTab({ overview, trialMetrics, churnTrend }: Props) {
   const t = useTranslations("financials");
+  const [now] = useState(Date.now);
 
   const kpis = [
     { label: t("kpi.activeTrials"), value: trialMetrics?.activeTrials ?? 0, icon: Users, color: "text-indigo-500", bg: "bg-indigo-500/10" },
@@ -81,7 +83,7 @@ export default function CustomersTab({ overview, trialMetrics, churnTrend }: Pro
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                 {trialsEndingSoon.map((trial: any, i: number) => {
                   const daysLeft = trial.daysLeft ?? Math.ceil(
-                    (new Date(trial.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                    (new Date(trial.trialEndsAt).getTime() - now) / (1000 * 60 * 60 * 24)
                   );
                   return (
                     <tr key={i}>

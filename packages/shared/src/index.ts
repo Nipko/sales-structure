@@ -26,6 +26,7 @@ export * from './subtype-experience-profile';
 export * from './vertical-domain-contract';
 export * from './resource-rental-details';
 export * from './integration-scaffolding';
+export * from './system-of-record-policy';
 
 // ---- Effective agent capability: subtype x agent x plan x readiness ----
 export * from './effective-capability-contract';
@@ -55,6 +56,8 @@ export * from './subtype-eval-derivation';
 
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
+/** Certified two-way conversational surfaces available to live Agent Test. */
+export type ConversationalChannelType = Exclude<ChannelType, 'sms' | 'email'>;
 
 export type MessageContentType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker' | 'reaction';
 
@@ -748,6 +751,12 @@ export const ACTIVE_OBJECT_KINDS = [
     'insurance_quote',
     'service_request',
     'photo_session',
+    // CRM writers return these exact records so the agent console can open
+    // what was created instead of treating every mutation as an opaque success.
+    'crm_lead',
+    'crm_opportunity',
+    'crm_task',
+    'consent_record',
     // Los alquileres de recurso —un auto, una estadía de mascota— no tenían
     // NINGÚN tipo declarado, así que `create_vehicle_rental` y
     // `create_pet_boarding` escribían una fila que el turno siguiente no podía
@@ -782,6 +791,9 @@ export const ACTIVE_OBJECT_SOURCES = [
     'insurance_quotes',
     'service_requests',
     'photo_sessions',
+    'leads',
+    'tasks',
+    'consent_records',
     'resource_rentals',
     'external_integration',
     'legacy_active_bookings',
@@ -868,6 +880,10 @@ export interface TurnRegionalContext {
     countryPackVersion: string;
     /** `draft` packs must not be presented as certified market coverage. */
     countryPackStatus: string;
+    /** Country-reviewed vocabulary the agent may generate. Internal keys are stable. */
+    preferredTerms?: Readonly<Record<string, string>>;
+    /** Registers the agent must never imitate for this operating country. */
+    prohibitedRegisters?: readonly string[];
 }
 
 /**
@@ -1004,11 +1020,42 @@ export interface VerticalContext {
      * kitchen, "paciente" en una farmacia, "prueba de manejo" en un taller.
      */
     avoidTerms?: string[];
+    /**
+     * Compact, runtime-safe projection of VerticalDomainContractV2.
+     *
+     * The complete draft remains available to audit APIs; the turn only needs
+     * the promises, intent/tool boundary and unresolved review flags. Keeping
+     * this typed stops the audit contract from being documentation-only.
+     */
+    domainContract?: {
+        contractVersion: number;
+        profileId: string;
+        status: string;
+        scope: string;
+        claims: readonly string[];
+        intents: ReadonlyArray<{
+            key: string;
+            commits: boolean;
+            /** Domain-authored sequence; stable across tenants and plans. */
+            toolPlan: readonly string[];
+            /** Subset actually published by the effective contract for this turn. */
+            runtimeToolPlan?: readonly string[];
+            /** Whether this turn can complete the authored sequence end to end. */
+            runtimeStatus?: 'available' | 'partial' | 'unavailable';
+            /** Authored steps withheld by plan, readiness, provider or policy. */
+            missingTools?: readonly string[];
+        }>;
+        unresolved: readonly string[];
+    };
+    /** Expert-authored localization is still pending for these source fields. */
+    domainReviewRequired?: readonly string[];
 }
 
 // ---- Test Agent Types ----
 export interface TestAgentRequest {
     message: string;
+    /** Resolve the exact live capability contract for this certified channel. */
+    channelType?: ConversationalChannelType;
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
     options?: {
         /** Public endpoint control. Internal eval/sandbox controls are not exposed. */
@@ -1058,6 +1105,8 @@ export interface TestAgentDebugInfo {
     toolParity?: TestAgentToolParity;
     /** Operating identity the run used, so a wrong clock is visible. */
     regional?: TurnRegionalContext | null;
+    /** Exact capability decision used to publish the Agent Test toolset. */
+    effectiveCapability?: import('./effective-capability-contract').EffectiveCapabilityContract | null;
 }
 
 export interface TestAgentResponse {

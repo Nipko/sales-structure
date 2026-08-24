@@ -105,15 +105,56 @@ describe('A4 approval workflow e2e', () => {
         const executor = {
             execute: jest.fn().mockResolvedValue({ success: true, discountId: 'discount-1' }),
         };
+        const currentAuthority = {
+            source: 'turn_contract' as const,
+            allowedTools: ['apply_discount'],
+            resolvedAt: new Date().toISOString(),
+            subtypeProfileId: 'retail/ecommerce',
+        };
+        const capabilityComposer = {
+            resolve: jest.fn().mockResolvedValue({
+                status: { status: 'ok', profileId: 'retail/ecommerce' },
+                authority: currentAuthority,
+            }),
+        };
+        const personaService = {
+            getAgent: jest.fn().mockResolvedValue({
+                id: 'agent-1',
+                is_active: true,
+                version: 3,
+                config_json: { industry: 'retail', tools: { ecommerce: { enabled: true, canApplyDiscount: true } } },
+            }),
+            resolvePersonaForChannel: jest.fn().mockResolvedValue({
+                config: { industry: 'retail', tools: { ecommerce: { enabled: true, canApplyDiscount: true } } },
+                agentId: 'agent-1',
+                version: 3,
+            }),
+        };
         const events = new EventEmitter2();
         const notifications: any[] = [];
         events.on('tool.approval.notification', (event) => notifications.push(event));
         const workflow = new ToolApprovalWorkflowService(
-            { tenant: { findMany: jest.fn().mockResolvedValue([]) } } as any,
+            {
+                executeInTenantSchema: jest.fn().mockResolvedValue([{
+                    channel_type: 'whatsapp',
+                    channel_account_id: 'wa-number-1',
+                    agent_persona_id: 'agent-1',
+                }]),
+                tenant: {
+                    findMany: jest.fn().mockResolvedValue([]),
+                    findUnique: jest.fn().mockResolvedValue({
+                        industry: 'retail',
+                        settings: { verticalConfig: { industry: 'retail', subType: 'ecommerce' } },
+                        operatingCountry: 'CO',
+                    }),
+                },
+            } as any,
             controls as any,
             executor as any,
             events,
             { runExclusive: jest.fn() } as any,
+            capabilityComposer as any,
+            personaService as any,
         );
         const controller = new ToolApprovalController(workflow);
 
@@ -147,6 +188,8 @@ describe('A4 approval workflow e2e', () => {
             resume: { state: 'completed', result: { discountId: 'discount-1' } },
         });
         expect(executor.execute).toHaveBeenCalledTimes(1);
+        expect(personaService.getAgent).toHaveBeenCalledWith(tenantId, 'agent-1');
+        expect(personaService.resolvePersonaForChannel).not.toHaveBeenCalled();
         expect(executor.execute).toHaveBeenCalledWith(
             schemaName,
             tenantId,
@@ -155,16 +198,9 @@ describe('A4 approval workflow e2e', () => {
             { percent: 10, reason: 'retención' },
             conversationId,
             {
-                // La aprobación de una persona ES la autoridad, y alcanza sólo
-                // a la tool del ticket: aprobar un descuento no habilita a
-                // reembolsar.
-                authority: {
-                    source: 'human_approval',
-                    allowedTools: ['apply_discount'],
-                    resolvedAt: expect.stringMatching(
-                        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
-                    ),
-                },
+                // Human approval satisfies A4, but execution still uses the
+                // complete contract rebuilt at resume time.
+                authority: currentAuthority,
                 channelType: 'whatsapp',
             },
         );
@@ -175,6 +211,73 @@ describe('A4 approval workflow e2e', () => {
         ]);
         expect(notifications).toHaveLength(3);
         expect(notifications.every((event) => event.tenantId === tenantId)).toBe(true);
+    });
+
+    it('does not execute an approved ticket after the current contract revokes the tool', async () => {
+        const claim = {
+            tenantId,
+            schemaName,
+            ticketId,
+            leaseToken: '66666666-6666-4666-8666-666666666666',
+            toolName: 'apply_discount',
+            contactId,
+            conversationId,
+            channelType: 'whatsapp',
+            args: { percent: 10 },
+        };
+        const controls = {
+            claimApprovalResume: jest.fn().mockResolvedValue({ state: 'claimed', claim }),
+            finishApprovalResume: jest.fn(async (_claim: any, result: any) => ({
+                state: 'completed',
+                result,
+            })),
+        };
+        const executor = { execute: jest.fn() };
+        const workflow = new ToolApprovalWorkflowService(
+            {
+                tenant: {
+                    findUnique: jest.fn().mockResolvedValue({
+                        industry: 'retail',
+                        settings: { verticalConfig: { industry: 'retail', subType: 'ecommerce' } },
+                        operatingCountry: 'CO',
+                    }),
+                },
+            } as any,
+            controls as any,
+            executor as any,
+            new EventEmitter2(),
+            { runExclusive: jest.fn() } as any,
+            {
+                resolve: jest.fn().mockResolvedValue({
+                    status: { status: 'blocked', reason: 'profile_blocked' },
+                    authority: {
+                        source: 'turn_contract',
+                        allowedTools: [],
+                        commitmentBlocked: { reason: 'capability:blocked:profile_blocked' },
+                        resolvedAt: new Date().toISOString(),
+                    },
+                }),
+            } as any,
+            {
+                resolvePersonaForChannel: jest.fn().mockResolvedValue({
+                    config: { industry: 'retail', tools: {} },
+                    agentId: 'agent-1',
+                    version: 4,
+                }),
+            } as any,
+        );
+
+        const resumed = await workflow.resumeApprovedTicket(tenantId, ticketId);
+
+        expect(resumed).toEqual({
+            state: 'completed',
+            result: expect.objectContaining({
+                error: 'approval_authority_revoked',
+                shouldHandoff: true,
+            }),
+        });
+        expect(executor.execute).not.toHaveBeenCalled();
+        expect(controls.finishApprovalResume).toHaveBeenCalledTimes(1);
     });
 
     it('sweeps expired pending tickets before claiming cron recovery work', async () => {

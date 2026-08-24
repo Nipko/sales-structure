@@ -4,6 +4,15 @@ import { RedisService } from '../../redis/redis.service';
 import { Opportunity } from '../interfaces/opportunity.interface';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
+type TenantQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
+
+interface PreparedOpportunityInsert {
+  record: Record<string, any>;
+  canonicalStage: any;
+  sql: string;
+  values: any[];
+}
+
 @Injectable()
 export class OpportunitiesRepository {
   private readonly logger = new Logger(OpportunitiesRepository.name);
@@ -62,6 +71,59 @@ export class OpportunitiesRepository {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) return null;
 
+    const prepared = await this.prepareOpportunityInsert(tenantId, schema, data);
+    if (!prepared) return null;
+    return this.prisma.transactionInTenantSchema(schema, async (query) => (
+      this.insertPreparedOpportunity(query, tenantId, prepared)
+    ));
+  }
+
+  /**
+   * Atomically reuses or creates the open opportunity represented by one
+   * conversational intent. The lock and the read/insert share the same tenant
+   * transaction, so simultaneous channel jobs cannot both pass the lookup.
+   */
+  async createOpportunityIdempotently(
+    tenantId: string,
+    data: Partial<Opportunity>,
+  ): Promise<{ opportunity: Opportunity | null; created: boolean }> {
+    const schema = await this.getTenantSchema(tenantId);
+    if (!schema) return { opportunity: null, created: false };
+
+    const prepared = await this.prepareOpportunityInsert(tenantId, schema, data);
+    if (!prepared) return { opportunity: null, created: false };
+    const leadId = String(prepared.record.lead_id || '');
+    const conversationId = String(prepared.record.conversation_id || '');
+    const title = String(prepared.record.metadata?.title || '').trim();
+    if (!leadId || !conversationId || !title) {
+      throw new BadRequestException('Idempotent opportunity requires lead, conversation and title');
+    }
+
+    return this.prisma.transactionInTenantSchema(schema, async (query) => {
+      await query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || lower($2), 0))::text AS lock_acquired`,
+        [`crm:open-opportunity:${tenantId}:${leadId}:${conversationId}`, title],
+      );
+      const existing = await query<Opportunity[]>(
+        `SELECT * FROM opportunities
+          WHERE lead_id = $1::uuid AND conversation_id = $2::uuid
+            AND lower(COALESCE(metadata->>'title', '')) = lower($3)
+            AND won_at IS NULL AND lost_at IS NULL
+          ORDER BY created_at DESC LIMIT 1`,
+        [leadId, conversationId, title],
+      );
+      if (existing?.[0]) return { opportunity: existing[0], created: false };
+
+      const opportunity = await this.insertPreparedOpportunity(query, tenantId, prepared);
+      return { opportunity, created: !!opportunity };
+    });
+  }
+
+  private async prepareOpportunityInsert(
+    tenantId: string,
+    schema: string,
+    data: Partial<Opportunity>,
+  ): Promise<PreparedOpportunityInsert | null> {
     // Map friendly inputs to the REAL opportunities schema. This table is
     // lead-centric: it has `estimated_value` (not `value`) and no `title`/`notes`
     // columns — those live on `deals`. Fold title/notes into `metadata` so a
@@ -110,22 +172,30 @@ export class OpportunitiesRepository {
       return `$${i + 1}${suffix}`;
     }).join(', ');
 
-    return this.prisma.transactionInTenantSchema(schema, async (query) => {
-      const results = await query<Opportunity[]>(
-        `INSERT INTO opportunities (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
-        values,
-      );
-      const created = results?.[0] || null;
-      if (!created) return null;
-      await this.pipelineService.syncExactOpportunityDealTx(
-        query,
-        tenantId,
-        String(d.lead_id),
-        String((created as any).id),
-        canonicalStage,
-      );
-      return created;
-    });
+    return {
+      record: d,
+      canonicalStage,
+      sql: `INSERT INTO opportunities (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+      values,
+    };
+  }
+
+  private async insertPreparedOpportunity(
+    query: TenantQuery,
+    tenantId: string,
+    prepared: PreparedOpportunityInsert,
+  ): Promise<Opportunity | null> {
+    const results = await query<Opportunity[]>(prepared.sql, prepared.values);
+    const created = results?.[0] || null;
+    if (!created) return null;
+    await this.pipelineService.syncExactOpportunityDealTx(
+      query,
+      tenantId,
+      String(prepared.record.lead_id),
+      String((created as any).id),
+      prepared.canonicalStage,
+    );
+    return created;
   }
 
   async updateOpportunity(tenantId: string, id: string, data: Partial<Opportunity>): Promise<Opportunity | null> {

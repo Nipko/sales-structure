@@ -1,12 +1,15 @@
 import { HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
+    ConversationalChannelType,
     TenantConfig,
     TurnContext,
     TestAgentRequest,
     TestAgentResponse,
     TestAgentToolCall,
     RetrievedKnowledgeItem,
+    ToolExecutionAuthority,
 } from '@parallext/shared';
+import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
 import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -44,6 +47,18 @@ import {
     clampModelTiersToBudget,
 } from './agent-test-plan-policy';
 import { ActiveOperationsContextService } from './active-operations-context.service';
+import { EffectiveCapabilityService, type ProviderHealthInput } from './effective-capability.service';
+import {
+    projectVerticalIntentAvailability,
+    VerticalTurnContextService,
+} from './vertical-turn-context.service';
+import {
+    ASYNC_GATED_TOOL_NAMES,
+    isNonCommittalTool,
+    toolOrigin,
+} from './tool-policy-registry';
+import type { EffectiveCapabilityContract } from '@parallext/shared';
+import { TurnCapabilityComposerService } from './turn-capability-composer.service';
 
 /**
  * AgentTestService — runs the bounded prompt/read-only-tool preview for one
@@ -73,6 +88,9 @@ export class AgentTestService {
         private readonly paymentOperations?: PaymentOperationService,
         private readonly verticalIntegrations?: VerticalIntegrationsService,
         private readonly mcpClient?: McpClientService,
+        private readonly effectiveCapability?: EffectiveCapabilityService,
+        private readonly verticalTurnContext?: VerticalTurnContextService,
+        private readonly turnCapabilityComposer?: TurnCapabilityComposerService,
     ) {}
 
     async test(
@@ -94,6 +112,12 @@ export class AgentTestService {
         },
     ): Promise<TestAgentResponse> {
         const startedAt = Date.now();
+        // Public DTO validation rejects non-operational channels. This second
+        // normalization protects direct/internal callers and keeps the default
+        // compatible with existing tests.
+        const channelType = (req.channelType && CONVERSATIONAL_CHANNELS.includes(req.channelType)
+            ? req.channelType
+            : 'web_widget') as ConversationalChannelType;
 
         // 1. Resolve the agent config (may be a draft the user just saved)
         const executionContext = AGENT_TEST_EXECUTION_CONTEXT;
@@ -139,6 +163,12 @@ export class AgentTestService {
                 countryPackId: regional.countryPackId,
                 countryPackVersion: regional.countryPackVersion,
                 countryPackStatus: regional.countryPackStatus,
+                preferredTerms: detectedLanguage.slice(0, 2).toLowerCase()
+                    === regional.locale.value.slice(0, 2).toLowerCase()
+                    ? regional.preferredTerms : undefined,
+                prohibitedRegisters: detectedLanguage.slice(0, 2).toLowerCase()
+                    === regional.locale.value.slice(0, 2).toLowerCase()
+                    ? regional.prohibitedRegisters : undefined,
             };
         }
 
@@ -170,6 +200,20 @@ export class AgentTestService {
                 };
             }
         } catch { /* Business identity is optional in Agent Test. */ }
+
+        // Same subtype/terminology/domain-contract projection as a live turn.
+        // This runs after Business Identity for the same ordering as production
+        // and before prompt assembly, RAG or tool publication can observe it.
+        try {
+            const verticalContext = await this.verticalTurnContext?.resolve({
+                tenantId,
+                language: detectedLanguage,
+                toolsConfig: (config.tools ?? (config as any)?.tools) as any,
+            });
+            if (verticalContext) turnContext.verticalContext = verticalContext;
+        } catch (e: any) {
+            this.logger.debug(`[Test] vertical context unavailable: ${e.message}`);
+        }
 
         // 3. RAG (respects agent config topK + threshold)
         const ragHits: RetrievedKnowledgeItem[] = [];
@@ -214,53 +258,135 @@ export class AgentTestService {
         // In simulation mode (T2.13) tools are disabled so a pre-deploy run can
         // execute dozens of scenarios without ever writing to production
         // (no real appointments/orders created, no events emitted).
-        const cfgTools = options?.disableTools ? null : ((config.tools ?? (config as any)?.tools) as any);
+        const cfgTools = ((config.tools ?? (config as any)?.tools) as any) || {};
+
+        // Resolve the exact server-side contract production uses. Publication
+        // parity and execution safety are deliberately separate: disableTools
+        // may make the executable set empty, but it must not rewrite what the
+        // production contract says the agent has.
+        let effectiveContract: EffectiveCapabilityContract | null = null;
+        let composedTools: any[] | null = null;
+        let composedAuthority: ToolExecutionAuthority | null = null;
+        if (this.turnCapabilityComposer) {
+            const composed = await this.turnCapabilityComposer.resolve({
+                tenantId,
+                schemaName,
+                config,
+                industry: turnContext.verticalContext?.industry || config.industry || '',
+                subType: turnContext.verticalContext?.subType,
+                agentId,
+                role: 'tenant_agent',
+                channelType,
+                operatingCountry: turnContext.regional?.operatingCountry,
+                jurisdiction: turnContext.regional?.operatingCountry,
+            });
+            effectiveContract = composed.contract;
+            turnContext.capability = composed.status;
+            composedTools = [...composed.tools];
+            composedAuthority = composed.authority;
+        } else if (this.effectiveCapability) {
+            const providers = await this.providerHealth(tenantId);
+            try {
+                effectiveContract = await this.effectiveCapability.resolve({
+                    tenantId,
+                    schemaName,
+                    industry: turnContext.verticalContext?.industry || config.industry || '',
+                    subType: turnContext.verticalContext?.subType,
+                    toolsConfig: cfgTools,
+                    agentId,
+                    role: 'tenant_agent',
+                    channelType,
+                    operatingCountry: turnContext.regional?.operatingCountry,
+                    jurisdiction: turnContext.regional?.operatingCountry,
+                    providers,
+                });
+                turnContext.capability = effectiveContract.writersBlocked
+                    ? { status: 'blocked', reason: 'profile_blocked', profileId: effectiveContract.subtypeProfileId }
+                    : effectiveContract.degraded
+                        ? { status: 'degraded', reason: 'gate_unevaluable', profileId: effectiveContract.subtypeProfileId }
+                        : { status: 'ok', profileId: effectiveContract.subtypeProfileId };
+            } catch (e: any) {
+                this.logger.warn(`[Test] effective capability unresolved: ${e.message}`);
+                turnContext.capability = {
+                    status: 'unresolved',
+                    reason: 'resolver_failed',
+                    profileId: turnContext.verticalContext?.domainContract?.profileId,
+                };
+            }
+        }
+        if (this.turnCapabilityComposer || this.effectiveCapability) {
+            turnContext.verticalContext = projectVerticalIntentAvailability(
+                turnContext.verticalContext,
+                effectiveContract?.publishedTools ?? [],
+            );
+        }
         // Same registry as production. This block used to be its own copy of the
         // family list, so a tool family added to the pipeline silently never
         // appeared in Agent Test — a test that cannot see a tool cannot catch a
         // regression in it.
-        const tools: any[] = [...staticToolsForAgentConfig(cfgTools)];
+        const tools: any[] = composedTools ?? [...staticToolsForAgentConfig(cfgTools)];
 
         // Resolution parity with production. These four families were simply
         // ABSENT from Agent Test, so an owner could test an agent and ship
         // something whose real contract they had never seen. They are resolved
         // here and reported; whether the test may RUN them is a separate
         // question, answered per tool below.
-        try {
-            const capability = await this.paymentOperations?.getRuntimeCapability(tenantId);
-            if (capability) {
-                if (cfgTools?.payments?.enabled === true) {
-                    tools.push(...paymentToolsForRuntime(cfgTools.payments, capability));
+        if (composedTools === null) {
+            try {
+                const capability = await this.paymentOperations?.getRuntimeCapability(tenantId);
+                if (capability) {
+                    if (cfgTools?.payments?.enabled === true) {
+                        tools.push(...paymentToolsForRuntime(cfgTools.payments, capability));
+                    }
+                    tools.push(...discountToolsForRuntime(
+                        {
+                            canApplyDiscount: cfgTools?.ecommerce?.canApplyDiscount,
+                            maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
+                        },
+                        capability,
+                    ));
                 }
-                tools.push(...discountToolsForRuntime(
-                    {
-                        canApplyDiscount: cfgTools?.ecommerce?.canApplyDiscount,
-                        maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
-                    },
-                    capability,
-                ));
+            } catch (e: any) {
+                this.logger.debug(`[Test] payment capability unavailable: ${e.message}`);
             }
-        } catch (e: any) {
-            this.logger.debug(`[Test] payment capability unavailable: ${e.message}`);
+            const providerToolDefs: Record<string, any> = {
+                get_restaurant_menu: GET_RESTAURANT_MENU_TOOL,
+                get_fitness_schedule: GET_FITNESS_SCHEDULE_TOOL,
+                list_clinic_services: LIST_CLINIC_SERVICES_TOOL,
+                check_clinic_availability: CHECK_CLINIC_AVAILABILITY_TOOL,
+            };
+            for (const [name, definition] of Object.entries(providerToolDefs)) {
+                if (effectiveContract?.publishedTools.includes(name)) tools.push(definition);
+            }
+            try {
+                const mcp = await this.mcpClient?.listPublishableTools(tenantId);
+                if (mcp?.tools?.length) tools.push(...mcp.tools);
+            } catch (e: any) {
+                this.logger.debug(`[Test] MCP tool resolution skipped: ${e.message}`);
+            }
+            tools.push(...identityStepUpToolsFor(tools));
+
+            if (this.effectiveCapability) {
+                if (!effectiveContract) {
+                    const reads = tools.filter((tool: any) => isNonCommittalTool(tool?.name));
+                    tools.length = 0;
+                    tools.push(...reads);
+                } else {
+                    const allowed = new Set(effectiveContract.publishedTools);
+                    const filtered = tools.filter((tool: any) => {
+                        const name = String(tool?.name || '');
+                        if (toolOrigin(name) === 'mcp') return true;
+                        if (ASYNC_GATED_TOOL_NAMES.has(name)) return true;
+                        return allowed.has(name);
+                    });
+                    const published = effectiveContract.writersBlocked
+                        ? filtered.filter((tool: any) => isNonCommittalTool(tool?.name))
+                        : filtered;
+                    tools.length = 0;
+                    tools.push(...published);
+                }
+            }
         }
-        try {
-            const connected = await this.verticalIntegrations?.getConnectedProviders(tenantId);
-            if (connected?.toast) tools.push(GET_RESTAURANT_MENU_TOOL);
-            if (connected?.mindbody) tools.push(GET_FITNESS_SCHEDULE_TOOL);
-            if (connected?.cliniko) tools.push(LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL);
-        } catch (e: any) {
-            this.logger.debug(`[Test] vertical integration gating skipped: ${e.message}`);
-        }
-        try {
-            const mcp = await this.mcpClient?.listPublishableTools(tenantId);
-            if (mcp?.tools?.length) tools.push(...mcp.tools);
-        } catch (e: any) {
-            this.logger.debug(`[Test] MCP tool resolution skipped: ${e.message}`);
-        }
-        // The OTP pair is derived from the A2 tools actually resolved, exactly
-        // as production does — so a test can show that a guarded read has its
-        // key, which is the failure this environment most needs to surface.
-        tools.push(...identityStepUpToolsFor(tools));
 
         // What production would publish vs what this environment may execute.
         // The gap is the report: a tool that quietly disappears teaches the
@@ -279,10 +405,38 @@ export class AgentTestService {
         const evalWritesAllowed = options?.evalMode === true
             && !!options?.sandboxConversationId
             && EVAL_WRITABLE_TOOL_NAMES.some(name => canEvalExecuteWriter(name, testContactId));
-        const safeTools = tools.filter((t: any) => (
-            isAgentTestSafeToolName(t?.name)
-            || (evalWritesAllowed && isEvalWritableToolName(t?.name))
-        ));
+        const safeTools = options?.disableTools
+            ? []
+            : tools.filter((t: any) => (
+                isAgentTestSafeToolName(t?.name)
+                || (evalWritesAllowed && isEvalWritableToolName(t?.name))
+            ));
+        const executableToolNames = new Set(safeTools.map((tool: any) => String(tool?.name || '')));
+        // Agent Test narrows production authority; it never manufactures a new
+        // permission. This matters even for a globally "safe" read: the model
+        // may emit a valid tool name that this specific subtype/plan/owner did
+        // not publish, and the executor must still reject it default-deny.
+        const executionAuthority: ToolExecutionAuthority = composedAuthority
+            ? {
+                ...composedAuthority,
+                source: 'agent_test',
+                allowedTools: composedAuthority.allowedTools.filter(name => executableToolNames.has(name)),
+            }
+            : {
+                source: 'agent_test',
+                allowedTools: effectiveContract
+                    ? effectiveContract.publishedTools.filter(name => executableToolNames.has(name))
+                    : this.effectiveCapability
+                        ? []
+                        : [...executableToolNames],
+                commitmentBlocked: effectiveContract?.writersBlocked
+                    ? { reason: 'capability:blocked:profile_blocked' }
+                    : null,
+                deniedTools: [],
+                resolvedAt: effectiveContract?.resolvedAt
+                    ?? (this.effectiveCapability ? new Date(0).toISOString() : new Date().toISOString()),
+                subtypeProfileId: effectiveContract?.subtypeProfileId,
+            };
         tools.length = 0;
         tools.push(...safeTools);
 
@@ -375,7 +529,10 @@ export class AgentTestService {
                         // Enforce the same default-deny policy at the execution boundary.
                         const isAuditedEvalWriter = evalWritesAllowed
                             && canEvalExecuteWriter(tc.function.name, testContactId);
-                        const result = (isAgentTestSafeToolName(tc.function.name) || isAuditedEvalWriter)
+                        const publishedInTest = executableToolNames.has(tc.function.name)
+                            && executionAuthority.allowedTools.includes(tc.function.name);
+                        const result = (publishedInTest
+                            && (isAgentTestSafeToolName(tc.function.name) || isAuditedEvalWriter))
                             ? await this.toolExecutor.execute(
                                 schemaName,
                                 tenantId,
@@ -387,18 +544,13 @@ export class AgentTestService {
                                 // nowhere to record the confirmation.
                                 isAuditedEvalWriter ? options?.sandboxConversationId : undefined,
                                 {
-                                    // La autoridad del banco de pruebas alcanza
-                                    // exactamente la tool que este `if` ya
-                                    // aprobó: la lista segura o el writer
-                                    // auditado, nunca las dos cosas a la vez.
-                                    authority: {
-                                        source: 'agent_test',
-                                        allowedTools: [tc.function.name],
-                                        resolvedAt: new Date().toISOString(),
-                                    },
+                                    // Exact production authority intersected
+                                    // with the audited Agent Test sandbox.
+                                    authority: executionAuthority,
                                     evalMode: isAuditedEvalWriter,
                                     readOnly: !isAuditedEvalWriter,
                                     executionContext,
+                                    channelType,
                                 },
                             )
                             : agentTestBlockedToolResult(tc.function.name);
@@ -454,8 +606,44 @@ export class AgentTestService {
                 // currency in a test is visible instead of being blamed on the
                 // model.
                 regional: turnContext.regional ?? null,
+                effectiveCapability: effectiveContract,
             },
         };
+    }
+
+    private async providerHealth(tenantId: string): Promise<Record<string, ProviderHealthInput> | undefined> {
+        if (!this.verticalIntegrations) return undefined;
+        try {
+            const health = await this.verticalIntegrations.getAllHealth(tenantId);
+            return Object.fromEntries(Object.entries(health).map(([name, value]: [string, any]) => [
+                name,
+                {
+                    configured: value?.configured === undefined
+                        ? !!value?.connected
+                        : !!value.configured,
+                    connected: !!value?.connected,
+                    healthy: !!value?.connected
+                        && !['unavailable', 'unhealthy', 'not_applicable'].includes(value?.status)
+                        && value?.scopeStatus !== 'missing'
+                        && value?.circuitState !== 'open',
+                    scopes: value?.grantedScopes,
+                    mirrorAsOf: value?.lastSuccessfulSyncAt || undefined,
+                },
+            ]));
+        } catch (e: any) {
+            this.logger.debug(`[Test] provider health unavailable: ${e.message}`);
+            try {
+                const bindings = await this.verticalIntegrations
+                    .getConfiguredProviderBindings(tenantId);
+                return Object.fromEntries(Object.entries(bindings).map(([name, configured]) => [
+                    name,
+                    { configured, connected: false, healthy: undefined },
+                ]));
+            } catch (bindingError: any) {
+                this.logger.debug(`[Test] provider ownership unavailable: ${bindingError.message}`);
+                return undefined;
+            }
+        }
     }
 
     private safeJsonParse(s: string): Record<string, any> {

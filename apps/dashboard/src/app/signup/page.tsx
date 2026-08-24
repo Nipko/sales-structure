@@ -10,6 +10,11 @@ import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import PasswordInput, { isPasswordValid } from "@/components/PasswordInput";
+import {
+    captureSignupAttribution,
+    readSignupAttribution,
+    saveSignupAttribution,
+} from "@/lib/signup-attribution";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 const GOOGLE_CLIENT_ID =
@@ -110,6 +115,9 @@ export default function SignupPage() {
         if (pricingIntent.plan || pricingIntent.country || pricingIntent.cycle) {
             try { sessionStorage.setItem(PRICING_INTENT_KEY, JSON.stringify(pricingIntent)); } catch { /* noop */ }
         }
+        try {
+            saveSignupAttribution(captureSignupAttribution(window.location.search, document.referrer));
+        } catch { /* attribution must never block signup */ }
     }, []);
 
     const updateField = (field: string, value: string) => {
@@ -187,7 +195,7 @@ export default function SignupPage() {
             const res = await fetch(`${API_URL}/auth/signup`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(form),
+                body: JSON.stringify({ ...form, attribution: readSignupAttribution() }),
             });
 
             const data = await res.json();

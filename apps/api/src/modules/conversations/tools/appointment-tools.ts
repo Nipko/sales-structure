@@ -3,6 +3,10 @@
  * Uses the ToolDefinition interface from @parallext/shared.
  */
 import { ToolDefinition } from '@parallext/shared';
+import {
+    authorizesEffect,
+    normalizeCustomerIntent,
+} from '../../../common/conversation/intent-normalizer';
 
 export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     {
@@ -292,10 +296,12 @@ export function advanceStateFromMessage(state: BookingState, userText: string, s
         }
     }
 
-    // Detect confirmation ("si", "yes", "ok", "confirmo", "dale")
+    // Compatibility state helper: even this legacy projection uses the same
+    // confirmation semantics as Booking and the central execution guard. It
+    // must never grow a fifth independent list of affirmative words.
     if (state.step === 'has_time' || state.step === 'collecting_info') {
-        const confirmWords = ['si', 'sí', 'yes', 'ok', 'confirmo', 'dale', 'listo', 'confirmar', 'perfecto'];
-        if (confirmWords.some(w => text === w || text.startsWith(w + ' ') || text.startsWith(w + ','))) {
+        const confirmation = normalizeCustomerIntent(text, { answeringExplicitQuestion: true });
+        if (authorizesEffect(confirmation, 'transactional', { answeringExplicitQuestion: true })) {
             if (next.customerName && next.customerEmail) {
                 next.step = 'collecting_info'; // Ready to call create_appointment
             }

@@ -32,7 +32,8 @@ export type ActiveOperationsLoaderName =
     | 'class_bookings'
     | 'enrollments'
     | 'photo_sessions'
-    | 'resource_rentals';
+    | 'resource_rentals'
+    | 'crm_opportunities';
 
 export interface ActiveOperationsContextInput {
     tenantId: string;
@@ -178,6 +179,7 @@ export function resolveActiveOperationsLoaders(
         || enabled(['petBoarding'], 'pet_boarding', 'petBoarding')) {
         loaders.push('resource_rentals');
     }
+    if (enabled(['crm'], 'crm_pipeline')) loaders.push('crm_opportunities');
     return loaders;
 }
 
@@ -353,6 +355,8 @@ export class ActiveOperationsContextService {
                 return this.loadPhotoSessions(schemaName, contactId, Math.min(3, maxItems), detailsTool);
             case 'resource_rentals':
                 return this.loadResourceRentals(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+            case 'crm_opportunities':
+                return this.loadCrmOpportunities(schemaName, contactId, Math.min(3, maxItems), detailsTool);
         }
     }
 
@@ -384,7 +388,43 @@ export class ActiveOperationsContextService {
             case 'resource_rentals':
                 if (tools.vehicleRentals?.enabled === true) return 'list_my_vehicle_rentals';
                 return tools.petBoarding?.enabled === true ? 'list_my_pet_boardings' : undefined;
+            case 'crm_opportunities':
+                return tools.crm?.enabled === true ? 'get_customer_context' : undefined;
         }
+    }
+
+    private async loadCrmOpportunities(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT o.id, o.stage, o.estimated_value, o.currency,
+                    o.metadata->>'title' AS title, o.won_at, o.lost_at,
+                    to_char(o.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+               FROM opportunities o
+               JOIN leads l ON l.id = o.lead_id
+              WHERE l.contact_id = $1::uuid
+                AND o.won_at IS NULL AND o.lost_at IS NULL
+              ORDER BY o.updated_at DESC LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'crm_opportunity',
+            id: String(row.id),
+            source: 'opportunities',
+            status: safeText(row.stage, 80) || 'unknown',
+            // The open-row predicate is authoritative even when a tenant uses
+            // custom stage slugs that cannot appear in the global status map.
+            statusClass: 'active',
+            label: safeText(row.title),
+            amount: nullableNumber(row.estimated_value),
+            currency: currency(row.currency),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            detailsTool,
+        }));
     }
 
     /**

@@ -216,9 +216,11 @@ describe('el resolutor de fuente de verdad', () => {
             ? jest.fn().mockRejectedValue(listingRows)
             : jest.fn().mockResolvedValue(listingRows);
         const redis = {
+            get: jest.fn().mockResolvedValue(null),
             getJson: jest.fn().mockResolvedValue(null),
             setJson: jest.fn(),
             del: jest.fn(),
+            incr: jest.fn(),
         };
         const channelManager = { getConfig: jest.fn().mockResolvedValue(config) };
         const service = new LodgingSourceOfTruthService(
@@ -240,10 +242,14 @@ describe('el resolutor de fuente de verdad', () => {
         expect(result.sor).toBe('local');
     });
 
-    it('conectado pero sin enlazar esta unidad sigue siendo local', async () => {
+    it('conectado pero sin enlazar esta unidad falla cerrado', async () => {
         const { service } = buildResolver({ provider: 'hostaway', syncInterval: 60 }, []);
         const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
-        expect(result).toMatchObject({ sor: 'local', connected: true, provider: 'hostaway' });
+        expect(result).toMatchObject({
+            sor: 'unknown', connected: true, provider: 'hostaway',
+            writerBlockedReason: 'ownership_unknown',
+        });
+        expect(localWriterAllowed(result)).toBe(false);
     });
 
     it('una unidad enlazada pasa a ser propiedad del channel manager y bloquea el writer', async () => {
@@ -279,20 +285,20 @@ describe('el resolutor de fuente de verdad', () => {
         expect(result.stale).toBe(true);
     });
 
-    it('un tenant sin tablas cm_* no se rompe: es local con conexión declarada', async () => {
+    it('un tenant conectado pero sin tablas cm_* queda bloqueado hasta sincronizar/mapear', async () => {
         const { service } = buildResolver(
             { provider: 'hostaway', syncInterval: 60 },
             new Error('relation "cm_listings" does not exist'),
         );
         const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
-        expect(result).toMatchObject({ sor: 'local', connected: true });
+        expect(result).toMatchObject({ sor: 'unknown', connected: true });
     });
 
     it('cachea la decisión para no resolverla en cada turno', async () => {
-        const { service, redis } = buildResolver({ provider: 'hostaway', syncInterval: 60 }, []);
+        const { service, redis } = buildResolver({ provider: 'direct', syncInterval: 60 }, []);
         await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
         expect(redis.setJson).toHaveBeenCalledWith(
-            `lodging:sor:${tenantId}:${PROPERTY_ID}`, expect.any(Object), expect.any(Number),
+            `lodging:sor:${tenantId}:v0:${PROPERTY_ID}`, expect.any(Object), expect.any(Number),
         );
     });
 });
@@ -314,9 +320,11 @@ describe('una unidad mapeada nunca degrada a escritura local', () => {
             ? jest.fn().mockRejectedValue(listingResult)
             : jest.fn().mockResolvedValue(listingResult);
         const redis = {
+            get: jest.fn().mockResolvedValue(null),
             getJson: jest.fn().mockResolvedValue(null),
             setJson: jest.fn(),
             del: jest.fn(),
+            incr: jest.fn(),
         };
         const getConfig = configResult instanceof Error
             ? jest.fn().mockRejectedValue(configResult)
@@ -371,7 +379,7 @@ describe('una unidad mapeada nunca degrada a escritura local', () => {
             .toBe('unknown');
     });
 
-    it('la tabla ausente SÍ concluye `local`: es una respuesta, no una falla', async () => {
+    it('la tabla ausente sólo concluye local cuando no hay PMS externo', async () => {
         // Es el único error que puede concluir `local`, y por eso se reconoce
         // por el código de PostgreSQL y no por "algo salió mal".
         const absent: any = new Error('relation "tenant_x.cm_listings" does not exist');
@@ -380,8 +388,8 @@ describe('una unidad mapeada nunca degrada a escritura local', () => {
 
         const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
 
-        expect(result).toMatchObject({ sor: 'local', connected: true, provider: 'hostaway' });
-        expect(localWriterAllowed(result)).toBe(true);
+        expect(result).toMatchObject({ sor: 'unknown', connected: true, provider: 'hostaway' });
+        expect(localWriterAllowed(result)).toBe(false);
     });
 
     it('`unknown` no se cachea: un tropiezo no bloquea un minuto entero', async () => {
@@ -400,15 +408,12 @@ describe('una unidad mapeada nunca degrada a escritura local', () => {
         expect(redis.setJson).toHaveBeenCalled();
     });
 
-    it('sin mapeo y con la config ilegible sigue siendo local: no hay nada que proteger', async () => {
-        // El tenant común no tiene channel manager. Bloquearle las reservas
-        // directas porque una lectura tropezó sería romper a la mayoría para
-        // proteger a la minoría — y acá no hay unidad puenteada que proteger.
+    it('sin mapeo y con la config ilegible queda unknown, nunca local', async () => {
         const { service } = buildResolver(new Error('settings unreadable'), []);
 
         const result = await service.resolveForProperty(tenantId, schemaName, PROPERTY_ID);
 
-        expect(result.sor).toBe('local');
-        expect(localWriterAllowed(result)).toBe(true);
+        expect(result.sor).toBe('unknown');
+        expect(localWriterAllowed(result)).toBe(false);
     });
 });

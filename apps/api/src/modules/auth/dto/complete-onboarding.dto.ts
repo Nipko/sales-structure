@@ -84,6 +84,7 @@ export class CompleteOnboardingDto {
     @IsOptional() @IsString() @MaxLength(300) referralSource?: string;
     @IsOptional() @IsString() @MaxLength(80) planSlug?: string;
     @IsOptional() @IsString() @MaxLength(100) signupSource?: string;
+    @IsOptional() @IsObject() signupAttribution?: Record<string, unknown>;
     @IsOptional() @IsString() @MaxLength(30) phone?: string;
     @IsOptional() @IsEmail() @MaxLength(254) businessEmail?: string;
     @IsOptional() @IsString() @MaxLength(5000) about?: string;

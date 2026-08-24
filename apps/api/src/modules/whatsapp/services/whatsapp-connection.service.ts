@@ -82,7 +82,50 @@ export class WhatsappConnectionService {
     });
     await this.throttle.enforceChannelAccountLimit(tenantId, 'whatsapp', existingActive);
 
-    const encryptedToken = this.cryptoService.encryptToken(accessToken);
+    // A tenant-wide credential must cover every connected WABA. Validate this
+    // BEFORE replacing channel rows, so a token from a second Business Manager
+    // cannot silently break the first number. Never downgrade a permanent token
+    // to an unclassified/expiring user token.
+    const connectedWabas = await this.prisma.executeInTenantSchema<any[]>(
+      schemaName,
+      `SELECT DISTINCT meta_waba_id FROM whatsapp_channels WHERE meta_waba_id IS NOT NULL`,
+    );
+    const requiredWabas = [...new Set([
+      ...connectedWabas.map((row: any) => String(row.meta_waba_id)),
+      String(wabaId),
+    ])];
+    const existingCredential = await this.prisma.whatsappCredential.findFirst({
+      where: { tenantId, credentialType: 'system_user_token' },
+    });
+    const candidateIsPermanent = data.tokenType === 'system_user' || data.expiresInSeconds === 0;
+    let credentialToken = accessToken;
+    let credentialExpiresAt = candidateIsPermanent
+      ? null
+      : new Date(Date.now() + Math.max(Number(data.expiresInSeconds) || 60 * 24 * 60 * 60, 60) * 1000);
+    let replaceCredential = true;
+
+    if (existingCredential?.expiresAt === null) {
+      const permanentToken = this.cryptoService.decryptToken(existingCredential.encryptedValue);
+      try {
+        await this.assertTokenCoversWabas(permanentToken, requiredWabas);
+        credentialToken = permanentToken;
+        credentialExpiresAt = null;
+        replaceCredential = false;
+      } catch {
+        if (!candidateIsPermanent) {
+          throw new BadRequestException({
+            error: 'whatsapp_token_coverage_required',
+            message: 'El token permanente actual no cubre la nueva WABA y no se reemplazará por un token temporal. Reconecta mediante Embedded Signup para autorizar todas las cuentas.',
+            wabaId,
+          });
+        }
+        await this.assertTokenCoversWabas(accessToken, requiredWabas);
+      }
+    } else {
+      await this.assertTokenCoversWabas(accessToken, requiredWabas);
+    }
+
+    const encryptedToken = this.cryptoService.encryptToken(credentialToken);
 
     // Upsert del canal en schema tenant.
     await this.prisma.executeInTenantSchema(
@@ -150,20 +193,20 @@ export class WhatsappConnectionService {
     void this.markFirstChannelConnected(tenantId);
 
     // Upsert credencial cifrada.
-    const existingCredential = await this.prisma.whatsappCredential.findFirst({
-      where: { tenantId, credentialType: 'system_user_token' },
-    });
     if (existingCredential) {
-      await this.prisma.whatsappCredential.update({
-        where: { id: existingCredential.id },
-        data: { encryptedValue: encryptedToken, rotationState: 'active' },
-      });
+      if (replaceCredential) {
+        await this.prisma.whatsappCredential.update({
+          where: { id: existingCredential.id },
+          data: { encryptedValue: encryptedToken, expiresAt: credentialExpiresAt, rotationState: 'active' },
+        });
+      }
     } else {
       await this.prisma.whatsappCredential.create({
         data: {
           tenantId,
           credentialType: 'system_user_token',
           encryptedValue: encryptedToken,
+          expiresAt: credentialExpiresAt,
           rotationState: 'active',
         },
       });
@@ -175,6 +218,24 @@ export class WhatsappConnectionService {
       source: 'channel_credential',
     });
     return { success: true, channelId: rows[0].id };
+  }
+
+  private async assertTokenCoversWabas(accessToken: string, wabaIds: string[]): Promise<void> {
+    for (const wabaId of wabaIds) {
+      const response = await fetch(`${META_GRAPH}/${encodeURIComponent(wabaId)}?fields=id`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const body = await response.json().catch(() => ({})) as any;
+      if (!response.ok || body.error || String(body.id || '') !== String(wabaId)) {
+        this.logger.warn(`WhatsApp credential does not cover WABA ${wabaId}`);
+        throw new BadRequestException({
+          error: 'whatsapp_token_missing_waba_scope',
+          message: 'El token no tiene permiso sobre todas las cuentas de WhatsApp conectadas.',
+          wabaId,
+        });
+      }
+    }
   }
 
   /**
@@ -254,8 +315,8 @@ export class WhatsappConnectionService {
 
   // ======================== BUSINESS PROFILE ========================
 
-  async getBusinessProfile(schemaName: string) {
-    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+  async getBusinessProfile(schemaName: string, requestedPhoneNumberId?: string) {
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName, requestedPhoneNumberId);
 
     const [profileRes, phoneRes] = await Promise.all([
       fetch(
@@ -278,7 +339,8 @@ export class WhatsappConnectionService {
 
     const channels = await this.prisma.executeInTenantSchema<any[]>(
       schemaName,
-      `SELECT messaging_limit_tier FROM whatsapp_channels LIMIT 1`,
+      `SELECT messaging_limit_tier FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
+      [phoneNumberId],
     );
     const messagingLimit = channels?.[0]?.messaging_limit_tier || null;
 
@@ -292,8 +354,8 @@ export class WhatsappConnectionService {
     email?: string;
     websites?: string[];
     vertical?: string;
-  }) {
-    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+  }, requestedPhoneNumberId?: string) {
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName, requestedPhoneNumberId);
 
     const payload: Record<string, any> = { messaging_product: 'whatsapp' };
 
@@ -334,7 +396,7 @@ export class WhatsappConnectionService {
     return { success: true };
   }
 
-  async uploadProfilePhoto(schemaName: string, file: Express.Multer.File) {
+  async uploadProfilePhoto(schemaName: string, file: Express.Multer.File, requestedPhoneNumberId?: string) {
     if (!file.mimetype.match(/^image\/(jpeg|png)$/)) {
       throw new BadRequestException('Only JPEG and PNG images are accepted');
     }
@@ -342,7 +404,7 @@ export class WhatsappConnectionService {
       throw new BadRequestException('Image exceeds 5MB limit');
     }
 
-    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName, requestedPhoneNumberId);
     const appId = this.configService.get<string>('META_APP_ID');
     if (!appId) throw new BadRequestException('META_APP_ID not configured');
 
@@ -385,8 +447,8 @@ export class WhatsappConnectionService {
     return { success: true };
   }
 
-  async deleteProfilePhoto(schemaName: string) {
-    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+  async deleteProfilePhoto(schemaName: string, requestedPhoneNumberId?: string) {
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName, requestedPhoneNumberId);
 
     const res = await fetch(`${META_GRAPH}/${phoneNumberId}/whatsapp_business_profile`, {
       method: 'POST',

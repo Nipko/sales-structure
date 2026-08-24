@@ -13,6 +13,7 @@ describe('IntegrationHealth contract', () => {
 
         expect(health).toMatchObject({
             provider: 'toast',
+            configured: true,
             status: 'unavailable',
             connected: false,
             credentialValidated: false,
@@ -85,6 +86,7 @@ describe('IntegrationHealth contract', () => {
 
         expect(health).toMatchObject({
             status: 'unhealthy',
+            configured: true,
             connected: false,
             credentialValidated: true,
             scopeStatus: 'missing',

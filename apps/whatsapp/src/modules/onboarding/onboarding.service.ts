@@ -316,21 +316,12 @@ export class OnboardingService {
         `WABA=${wabaId}, Phone=${primaryPhone.id}, businessSource=${businessIdSource}, wabaSource=${wabaSource}`,
       );
 
-      // ---- 9-10. Persist channel + routing (CRITICAL — if this fails, onboarding must fail) ----
-      this.logger.log(`[Onboarding][${onboardingId}] Step 9: Persisting WhatsApp channel in tenant schema`);
-      await this.persistWhatsAppChannel(
-        tenantId,
-        onboardingId,
-        businessId,
-        waba,
-        primaryPhone,
-        dto.mode === OnboardingMode.COEXISTENCE,
-      );
+      // Gate quota before any channel or credential mutation. Previously the
+      // tenant-schema row was inserted first and a later quota rejection left a
+      // number that looked connected but had no public routing account.
+      await this.assertChannelAccountQuotaViaApi(tenantId, 'whatsapp', primaryPhone.id);
 
-      this.logger.log(`[Onboarding][${onboardingId}] Step 10: Registering channel_account for webhook routing`);
-      await this.registerChannelAccount(tenantId, primaryPhone);
-
-      // ---- 11. Try to generate permanent System User Token (Tech Partner flow) ----
+      // ---- 9. Resolve a credential that covers ALL connected WABAs ----
       let finalToken = longLivedToken;
       let finalExpiresIn = longLivedExpiresIn;
       try {
@@ -347,9 +338,31 @@ export class OnboardingService {
         this.logger.warn(`[Onboarding][${onboardingId}] System User Token failed (non-blocking): ${sysUserError.message}`);
       }
 
-      // ---- 11b. Store the best available token ----
-      this.logger.log(`[Onboarding][${onboardingId}] Step 11b: Storing encrypted credential (expiresIn=${finalExpiresIn}s)`);
+      const usableCredential = await this.resolveCredentialForCoverage(
+        tenantId,
+        wabaId,
+        finalToken,
+        finalExpiresIn,
+      );
+      finalToken = usableCredential.accessToken;
+      finalExpiresIn = usableCredential.expiresInSeconds;
+      this.logger.log(`[Onboarding][${onboardingId}] Step 9b: Storing coverage-verified credential (expiresIn=${finalExpiresIn}s)`);
       await this.storeEncryptedCredential(tenantId, finalToken, finalExpiresIn);
+
+      // ---- 10-11. Persist channel + routing only after entitlement and token
+      // coverage have both passed (CRITICAL — any failure aborts onboarding). ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 10: Persisting WhatsApp channel in tenant schema`);
+      await this.persistWhatsAppChannel(
+        tenantId,
+        onboardingId,
+        businessId,
+        waba,
+        primaryPhone,
+        dto.mode === OnboardingMode.COEXISTENCE,
+      );
+
+      this.logger.log(`[Onboarding][${onboardingId}] Step 11: Registering channel_account for webhook routing`);
+      await this.registerChannelAccount(tenantId, primaryPhone, wabaId, businessId);
 
       // ---- 12. Suscribir webhook ----
       await this.updateStatus(onboardingId, OnboardingStatus.WEBHOOK_VALIDATION_IN_PROGRESS);
@@ -1074,10 +1087,7 @@ export class OnboardingService {
   /**
    * Registrar en channel_accounts público para routing de webhooks
    */
-  private async registerChannelAccount(tenantId: string, phone: any) {
-    // Plan gate (authoritative): block adding a number beyond the plan limit.
-    await this.assertChannelAccountQuotaViaApi(tenantId, 'whatsapp', phone.id);
-
+  private async registerChannelAccount(tenantId: string, phone: any, wabaId: string, businessId?: string) {
     // Upsert — actualiza si ya existe
     const existing = await this.prisma.channelAccount.findFirst({
       where: {
@@ -1094,6 +1104,15 @@ export class OnboardingService {
           displayName: phone.verifiedName || phone.displayPhoneNumber,
           accessToken: 'encrypted_ref', // No en texto plano
           isActive: true,
+          metadata: {
+            ...((existing.metadata as Record<string, unknown>) || {}),
+            displayPhoneNumber: phone.displayPhoneNumber,
+            qualityRating: phone.qualityRating,
+            phoneNumberId: phone.id,
+            wabaId,
+            businessId: businessId || null,
+            source: 'embedded_signup',
+          },
         },
       });
     } else {
@@ -1108,12 +1127,87 @@ export class OnboardingService {
           metadata: {
             displayPhoneNumber: phone.displayPhoneNumber,
             qualityRating: phone.qualityRating,
+            phoneNumberId: phone.id,
+            wabaId,
+            businessId: businessId || null,
+            source: 'embedded_signup',
           },
         },
       });
     }
 
     this.logger.log(`Channel account registered for phone: ${phone.id}`);
+  }
+
+  /**
+   * Select a tenant-wide credential without sacrificing an already permanent
+   * token. Direct WABA reads are stronger evidence than merely seeing a scope
+   * name in debug_token: every required asset must be accessible now.
+   */
+  private async resolveCredentialForCoverage(
+    tenantId: string,
+    targetWabaId: string,
+    candidateToken: string,
+    candidateExpiresIn: number,
+  ): Promise<{ accessToken: string; expiresInSeconds: number }> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { schemaName: true },
+    });
+    if (!tenant?.schemaName) throw new NotFoundException('Tenant no válido para validar la credencial');
+
+    const rows = await this.prisma.executeInTenantSchema<any[]>(
+      tenant.schemaName,
+      `SELECT DISTINCT meta_waba_id FROM whatsapp_channels WHERE meta_waba_id IS NOT NULL`,
+    );
+    const requiredWabas = [...new Set([
+      ...rows.map((row: any) => String(row.meta_waba_id)),
+      String(targetWabaId),
+    ])];
+    const existing = await this.prisma.whatsappCredential.findFirst({
+      where: { tenantId, credentialType: 'system_user_token' },
+    });
+
+    // A freshly generated permanent token is the preferred candidate, but it
+    // still has to prove coverage of every older WABA before replacing one.
+    if (candidateExpiresIn === 0) {
+      await this.assertTokenCoverage(candidateToken, requiredWabas);
+      return { accessToken: candidateToken, expiresInSeconds: 0 };
+    }
+
+    if (existing?.expiresAt === null) {
+      const permanentToken = this.decryptToken(existing.encryptedValue);
+      try {
+        await this.assertTokenCoverage(permanentToken, requiredWabas);
+        this.logger.log(`[Credential] Retaining permanent token for tenant=${tenantId}; it covers ${requiredWabas.length} WABA(s)`);
+        return { accessToken: permanentToken, expiresInSeconds: 0 };
+      } catch {
+        throw new ConflictException({
+          code: 'WHATSAPP_TOKEN_COVERAGE_REQUIRED',
+          userMessage: 'El token permanente actual no cubre la nueva cuenta y no se reemplazará por uno temporal. Reintenta Embedded Signup con autorización de todas las cuentas.',
+          targetWabaId,
+        });
+      }
+    }
+
+    await this.assertTokenCoverage(candidateToken, requiredWabas);
+    return { accessToken: candidateToken, expiresInSeconds: candidateExpiresIn };
+  }
+
+  private async assertTokenCoverage(accessToken: string, wabaIds: string[]): Promise<void> {
+    for (const wabaId of wabaIds) {
+      try {
+        const resolved = await this.metaGraph.getWabaDirectly(wabaId, accessToken);
+        if (String(resolved?.id || '') !== wabaId) throw new Error('asset mismatch');
+      } catch (error: any) {
+        this.logger.warn(`Credential coverage check failed for WABA=${wabaId}: ${error?.message}`);
+        throw new ConflictException({
+          code: 'WHATSAPP_TOKEN_MISSING_WABA_SCOPE',
+          userMessage: 'La credencial no tiene permiso sobre todas las cuentas de WhatsApp conectadas.',
+          wabaId,
+        });
+      }
+    }
   }
 
   /**

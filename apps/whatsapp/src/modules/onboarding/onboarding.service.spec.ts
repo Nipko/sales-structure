@@ -63,21 +63,33 @@ describe('OnboardingService Business Portfolio resolution', () => {
 
     jest.spyOn(service as any, 'registerChannelAccount').mockResolvedValue(undefined);
     jest.spyOn(service as any, 'storeEncryptedCredential').mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'resolveCredentialForCoverage').mockImplementation(
+      async (_tenantId: string, _wabaId: string, accessToken: string, expiresInSeconds: number) => ({
+        accessToken, expiresInSeconds,
+      }),
+    );
     jest.spyOn(service as any, 'syncTemplatesInBackground').mockImplementation(() => undefined);
 
-    const continueOnboarding = (businessId?: string) => (service as any).continueOnboardingFromDiscovery(
-      onboardingId,
-      tenantId,
-      'user-1',
-      'long-lived-token',
-      5184000,
-      {
-        businessId,
-        phoneNumberId: phone.id,
-        wabaId,
-        mode: OnboardingMode.COEXISTENCE,
-      },
-    );
+    const continueOnboarding = async (businessId?: string) => {
+      const quota = jest.spyOn(service as any, 'assertChannelAccountQuotaViaApi').mockResolvedValue(undefined);
+      try {
+        return await (service as any).continueOnboardingFromDiscovery(
+          onboardingId,
+          tenantId,
+          'user-1',
+          'long-lived-token',
+          5184000,
+          {
+            businessId,
+            phoneNumberId: phone.id,
+            wabaId,
+            mode: OnboardingMode.COEXISTENCE,
+          },
+        );
+      } finally {
+        quota.mockRestore();
+      }
+    };
 
     return { service, prisma, metaGraph, audit, config, continueOnboarding };
   }

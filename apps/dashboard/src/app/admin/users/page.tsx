@@ -57,17 +57,6 @@ function SkillTagsEditor({ userId, skills, onSave, t }: { userId: string; skills
         if (editing && inputRef.current) inputRef.current.focus();
     }, [editing]);
 
-    useEffect(() => {
-        if (!editing) return;
-        function handleClickOutside(e: MouseEvent) {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-                handleSave();
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [editing, tags]);
-
     function addTag(tag: string) {
         const trimmed = tag.trim().toLowerCase();
         if (trimmed && !tags.includes(trimmed)) {
@@ -89,6 +78,17 @@ function SkillTagsEditor({ userId, skills, onSave, t }: { userId: string; skills
             setSaving(false);
         }
     }
+
+    useEffect(() => {
+        if (!editing) return;
+        function handleClickOutside(e: MouseEvent) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                handleSave();
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [editing, tags]);
 
     function handleKeyDown(e: React.KeyboardEvent) {
         if (e.key === "Enter") {

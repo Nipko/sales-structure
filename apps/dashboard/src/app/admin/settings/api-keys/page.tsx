@@ -245,7 +245,7 @@ export default function ApiKeysPage() {
             {t("authGuideDesc")}
           </p>
           <code className="block font-mono text-[11px] bg-neutral-100 dark:bg-neutral-800 p-2.5 rounded-lg border border-border text-neutral-700 dark:text-neutral-300 mb-3 select-all">
-            Authorization: Bearer pk_live_YOUR_KEY_HERE
+            X-API-Key: pk_live_YOUR_KEY_HERE
           </code>
           <p className="mb-1.5">
             <strong>{t("baseEndpoint")}</strong> <code className="font-mono bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-[11px]">https://api.parallly-chat.cloud/api/v1</code>

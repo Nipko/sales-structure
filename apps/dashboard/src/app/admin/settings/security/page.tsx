@@ -452,10 +452,6 @@ function TrustedDevicesSettings() {
     const [showConfirmAll, setShowConfirmAll] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
 
-    useEffect(() => {
-        loadDevices();
-    }, []);
-
     const loadDevices = async () => {
         setLoading(true);
         try {
@@ -466,6 +462,10 @@ function TrustedDevicesSettings() {
         } catch { /* noop */ }
         setLoading(false);
     };
+
+    useEffect(() => {
+        loadDevices();
+    }, []);
 
     const handleRevoke = async (deviceId: string) => {
         setRevoking(deviceId);
@@ -625,10 +625,6 @@ function SsoSettings() {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
     const tenantId = (user as any)?.tenantId;
 
-    useEffect(() => {
-        loadConfig();
-    }, []);
-
     const loadConfig = async () => {
         setLoading(true);
         try {
@@ -653,6 +649,10 @@ function SsoSettings() {
         }
         setLoading(false);
     };
+
+    useEffect(() => {
+        loadConfig();
+    }, []);
 
     const handleSave = async () => {
         setSaving(true);

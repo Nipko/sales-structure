@@ -33,6 +33,7 @@ export default function DealDetailPage() {
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const [form, setForm] = useState({ estimated_value: "", notes: "", assigned_to: "" });
+    const [now] = useState(Date.now);
 
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -139,7 +140,7 @@ export default function DealDetailPage() {
         ? tc(`stages.${currentStage}`)
         : currentStage;
     const title = lead ? `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || t("dealDetail.untitled") : t("dealDetail.untitled");
-    const createdDays = Math.floor((Date.now() - new Date(opp.created_at).getTime()) / 86400000);
+    const createdDays = Math.floor((now - new Date(opp.created_at).getTime()) / 86400000);
 
     const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40";
 

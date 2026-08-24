@@ -222,6 +222,43 @@ const TOOL_POLICY_ENTRIES = [
         idempotency: 'state_guarded',
         commitsBusiness: false,
     })),
+    entry('ensure_crm_lead', contactWrite({
+        confirmation: 'not_required',
+        idempotency: 'state_guarded',
+        commitsBusiness: false,
+    })),
+    entry('create_crm_opportunity', contactWrite({
+        confirmation: 'not_required',
+        idempotency: 'state_guarded',
+        commitsBusiness: false,
+    })),
+    // A stage transition is not model judgement.  The model may request it,
+    // but a human must approve it and the canonical pipeline validates the
+    // target before anything moves.
+    entry('move_crm_opportunity_stage', contactWrite({
+        dataClassification: 'sensitive',
+        assurance: 'A4',
+        assuranceEnforcement: 'central_guard',
+        ownership: 'resource_owner',
+        idempotency: 'central_ledger',
+        confirmation: 'not_required',
+        humanApproval: 'runtime_enforced',
+    })),
+    entry('create_follow_up_task', contactWrite({
+        confirmation: 'not_required',
+        idempotency: 'state_guarded',
+        commitsBusiness: false,
+    })),
+    // A consent record is signature-grade evidence. The active policy and its
+    // hash are rebound by the server before this reaches the central guard.
+    entry('record_contact_consent', contactWrite({
+        dataClassification: 'sensitive',
+        assurance: 'A3',
+        assuranceEnforcement: 'step_up',
+        idempotency: 'central_ledger',
+        confirmation: 'runtime_enforced',
+        commitsBusiness: true,
+    })),
     // In production this may lazily prepare its local search tables. Agent Test
     // supplies persistence:disabled, which forces the audited read-only path.
     entry('recommend_products', publicRead({
@@ -405,6 +442,8 @@ const TOOL_POLICY_ENTRIES = [
     entry('cancel_quote', contactWrite({ dataClassification: 'sensitive', ownership: 'resource_owner', idempotency: 'state_guarded' })),
 
     // Home services
+    entry('list_home_services', publicRead({ agentTestAllowed: true })),
+    entry('check_home_service_availability', publicRead({ agentTestAllowed: true })),
     entry('create_service_request', contactWrite({ downstreamEffects: ['domain_event', 'notification', 'handoff'] })),
     entry('check_request_status', contactRead({ ownership: 'resource_owner', agentTestAllowed: true })),
     entry('list_my_requests', sensitiveRead({ agentTestAllowed: true })),
@@ -523,6 +562,7 @@ const VERTICAL_ORIGIN_TOOLS: ReadonlySet<string> = new Set([
     'get_insurance_plans', 'calculate_quote', 'check_policy_status',
     'file_claim', 'list_my_claims', 'cancel_quote',
     // homeServices
+    'list_home_services', 'check_home_service_availability',
     'create_service_request', 'check_request_status', 'list_my_requests',
     'cancel_service_request',
     // petServices

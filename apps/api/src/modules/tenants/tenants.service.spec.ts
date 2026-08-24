@@ -266,6 +266,33 @@ describe('TenantsService administrative provisioning', () => {
             .toHaveBeenCalledWith('lock:tenant-provision:slug:clinica-norte', 'provision-lock-token');
     });
 
+    it('canonicalizes a legacy subtype alias before every admin provisioning stage', async () => {
+        const ctx = setup();
+
+        await ctx.service.create({
+            ...input,
+            industry: 'veterinaria',
+            subType: 'peluqueria_canina',
+        });
+
+        expect(ctx.prisma.tenant.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                industry: 'pet_services',
+                settings: expect.objectContaining({ subType: 'peluqueria' }),
+            }),
+        }));
+        expect(ctx.persona.createDefaultAgentFromGoals)
+            .toHaveBeenCalledWith(tenantId, [], 'super_admin', 'pet_services', 'peluqueria');
+        expect(ctx.verticals.bootstrapVertical)
+            .toHaveBeenCalledWith(
+                tenantId,
+                'pet_services',
+                'peluqueria',
+                'es',
+                expect.objectContaining({ assertLifecycleOwned: expect.any(Function) }),
+            );
+    });
+
     it('always runs the UUID allocator even when a stale placeholder schema looks ready', async () => {
         const ctx = setup();
         ctx.setSchemaReady(true);
@@ -508,8 +535,6 @@ describe('TenantsService administrative provisioning', () => {
         const updated = await ctx.service.update(tenantId, {
             settings: {
                 timezone: 'America/Lima',
-                verticalConfig: { industry: 'retail' },
-                provisioning: { status: 'forged' },
             },
         });
 
@@ -518,7 +543,8 @@ describe('TenantsService administrative provisioning', () => {
             timezone: 'America/Lima',
         }));
         expect((updated.settings as any).verticalConfig).toEqual(expect.objectContaining({ industry: 'salud' }));
-        expect((updated.settings as any).provisioning.status).toBe('complete');
+        expect(updated.settings).not.toHaveProperty('provisioning');
+        expect(ctx.getStoredTenant().settings.provisioning.status).toBe('complete');
     });
 
     it('rejects tenantPayments before the generic settings merge', async () => {
@@ -541,6 +567,45 @@ describe('TenantsService administrative provisioning', () => {
         expect(ctx.prisma.$executeRawUnsafe).toHaveBeenCalledTimes(mergeCallsBeforeUpdate);
         expect(ctx.getStoredTenant().settings).not.toHaveProperty('tenantPayments');
     });
+
+    it.each([
+        'ecommerce',
+        'slack',
+        'mcpServers',
+        'biApiKey',
+        'quotaOverrides',
+        'featureFlags',
+        'fiscalData',
+    ])('rejects the dedicated %s branch before the generic settings merge', async (key) => {
+        const ctx = setup();
+        await ctx.service.create(input);
+        const mergeCallsBeforeUpdate = ctx.prisma.$executeRawUnsafe.mock.calls.length;
+
+        await expect(ctx.service.update(tenantId, {
+            settings: { [key]: { forged: true } },
+        })).rejects.toMatchObject({
+            response: expect.objectContaining({
+                error: 'reserved_tenant_setting',
+                key,
+            }),
+        });
+
+        expect(ctx.prisma.$executeRawUnsafe).toHaveBeenCalledTimes(mergeCallsBeforeUpdate);
+    });
+
+    it('rejects an unknown generic setting so new modules fail closed', async () => {
+        const ctx = setup();
+        await ctx.service.create(input);
+
+        await expect(ctx.service.update(tenantId, {
+            settings: { futureIntegrationConfig: { enabled: true } },
+        })).rejects.toMatchObject({
+            response: expect.objectContaining({
+                error: 'unsupported_tenant_setting',
+                key: 'futureIntegrationConfig',
+            }),
+        });
+    });
 });
 
 describe('TenantsService secure tenant detail', () => {
@@ -562,6 +627,11 @@ describe('TenantsService secure tenant detail', () => {
                 provider: 'wompi',
                 encryptedPrivateKey: 'ciphertext',
             },
+            ecommerce: { apiKey: 'shop-key', webhookSecret: 'shop-hook' },
+            slack: { webhookUrl: 'https://hooks.slack.com/services/secret' },
+            mcpServers: [{ id: 'erp', authHeader: 'Bearer secret' }],
+            biApiKey: 'legacy-bi-secret',
+            fiscalData: { documentId: '900123456' },
         },
         operatingCurrency: 'COP',
         operatingCurrencyLockedAt: now,
@@ -685,6 +755,9 @@ describe('TenantsService secure tenant detail', () => {
             settings: { timezone: 'America/Bogota' },
             _count: { users: 3 },
         }));
+        for (const key of ['tenantPayments', 'ecommerce', 'slack', 'mcpServers', 'biApiKey', 'fiscalData']) {
+            expect(result.settings).not.toHaveProperty(key);
+        }
         expect(result).not.toHaveProperty('schemaName');
         expect(result).not.toHaveProperty('paymentProviderCustomerId');
         expect(result.channelAccounts).toEqual([{

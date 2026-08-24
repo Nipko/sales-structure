@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { rmsg } from './reviews-i18n';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 
 const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 const GBP_BASE = 'https://mybusiness.googleapis.com/v4';
@@ -75,9 +76,16 @@ export class ReviewsService {
         const oauth2 = new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri);
         const { tokens } = await oauth2.getToken(code);
         if (!tokens.refresh_token) throw new BadRequestException(rmsg(null, 'oauth.noRefreshToken'));
-        const cfg = await this.getConfigRaw(tenantId);
-        cfg.encryptedRefreshToken = this.encrypt(tokens.refresh_token);
-        await this.saveConfigRaw(tenantId, cfg);
+        const encryptedRefreshToken = this.encrypt(tokens.refresh_token);
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'googleBusiness',
+            (value): GbpConfig => ({
+                ...((value && typeof value === 'object' ? value : {}) as GbpConfig),
+                encryptedRefreshToken,
+            }),
+        );
     }
 
     private async getAccessToken(tenantId: string, lang?: string): Promise<string> {
@@ -96,10 +104,12 @@ export class ReviewsService {
         return ((tenant?.settings as any)?.googleBusiness as GbpConfig) || {};
     }
     private async saveConfigRaw(tenantId: string, cfg: GbpConfig): Promise<void> {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        if (!tenant) throw new NotFoundException('Tenant not found');
-        const settings = (tenant.settings as any) || {};
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: { ...settings, googleBusiness: cfg } as any } });
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'googleBusiness',
+            () => ({ ...cfg }),
+        );
     }
 
     async getConfig(tenantId: string): Promise<any> {
@@ -115,12 +125,18 @@ export class ReviewsService {
     }
 
     async updateConfig(tenantId: string, patch: { accountId?: string; locationId?: string; locationName?: string; autoReply?: boolean }): Promise<any> {
-        const cfg = await this.getConfigRaw(tenantId);
-        if (patch.accountId !== undefined) cfg.accountId = patch.accountId;
-        if (patch.locationId !== undefined) cfg.locationId = patch.locationId;
-        if (patch.locationName !== undefined) cfg.locationName = patch.locationName;
-        if (patch.autoReply !== undefined) cfg.autoReply = patch.autoReply;
-        await this.saveConfigRaw(tenantId, cfg);
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'googleBusiness',
+            (value): GbpConfig => ({
+                ...((value && typeof value === 'object' ? value : {}) as GbpConfig),
+                ...(patch.accountId !== undefined ? { accountId: patch.accountId } : {}),
+                ...(patch.locationId !== undefined ? { locationId: patch.locationId } : {}),
+                ...(patch.locationName !== undefined ? { locationName: patch.locationName } : {}),
+                ...(patch.autoReply !== undefined ? { autoReply: patch.autoReply } : {}),
+            }),
+        );
         return this.getConfig(tenantId);
     }
 

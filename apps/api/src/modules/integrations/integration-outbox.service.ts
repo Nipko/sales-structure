@@ -10,6 +10,8 @@ import {
     reconcile,
     webhookDedupeKey,
     type ExternalWriteGate,
+    type ClaimedOutboxEntry,
+    type ClaimedWebhookInboxEntry,
     type OutboxEntry,
     type ReconciliationReport,
     type WebhookInboxEntry,
@@ -27,6 +29,14 @@ const OUTBOX_TABLES = Object.freeze([
     'integration_outbox',
     'integration_webhook_inbox',
 ]);
+
+export type IntegrationWorkKind = 'outbox' | 'webhook';
+
+export interface TrackedIntegrationTenant {
+    id: string;
+    schemaName: string;
+    name: string;
+}
 
 /**
  * La escritura que todavía no salió, el evento que ya llegó, y la diferencia
@@ -85,23 +95,26 @@ export class IntegrationOutboxService {
         // sería perder la operación silenciosamente.
         const status = gate.enabled ? 'pending' : 'suppressed';
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO integration_outbox
-                 (provider, connection_id, operation, idempotency_key, payload, status, next_attempt_at)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6, NOW())
-             ON CONFLICT (provider, idempotency_key) DO UPDATE
-                 SET updated_at = NOW()
-             RETURNING id, status`,
-            [
-                input.provider,
-                input.connectionId ?? null,
-                input.operation,
-                idempotencyKey,
-                JSON.stringify(input.payload ?? {}),
-                status,
-            ],
-        );
+        const rows = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const inserted = await query<any[]>(
+                `INSERT INTO integration_outbox
+                     (provider, connection_id, operation, idempotency_key, payload, status, next_attempt_at)
+                 VALUES ($1, $2, $3, $4, $5::jsonb, $6, NOW())
+                 ON CONFLICT (provider, idempotency_key) DO UPDATE
+                     SET updated_at = NOW()
+                 RETURNING id, status`,
+                [
+                    input.provider,
+                    input.connectionId ?? null,
+                    input.operation,
+                    idempotencyKey,
+                    JSON.stringify(input.payload ?? {}),
+                    status,
+                ],
+            );
+            await this.trackTenant(query, input.tenantId, schemaName, 'outbox');
+            return inserted;
+        });
         return {
             id: String(rows[0]?.id),
             idempotencyKey,
@@ -121,8 +134,15 @@ export class IntegrationOutboxService {
      * Vence primero y libera después, en ese orden: liberar una entrada de hace
      * tres meses la mandaría al proveedor como si fuera de hoy.
      */
-    async releaseSuppressed(schemaName: string, provider: string): Promise<number> {
-        if (!this.gateFor(provider).enabled) return 0;
+    async releaseSuppressed(
+        schemaName: string,
+        provider: string,
+        adapterReady: boolean,
+    ): Promise<number> {
+        // Certification and an executable adapter are both required. Merely
+        // putting a provider in the environment cannot turn durable intent
+        // into `pending` work that will immediately die as no_adapter.
+        if (!this.gateFor(provider).enabled || !adapterReady) return 0;
         await this.expireStale(schemaName, provider);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -223,13 +243,16 @@ export class IntegrationOutboxService {
      * arrendamiento vence. Sin eso, un reinicio en el momento equivocado
      * congela una reserva pendiente hasta que alguien la mira a mano.
      */
-    async claim(schemaName: string, provider: string, limit = 20): Promise<OutboxEntry[]> {
+    async claim(schemaName: string, provider: string, limit = 20): Promise<ClaimedOutboxEntry[]> {
         if (!this.gateFor(provider).enabled) return [];
+        await this.prisma.ensureCanonicalTables(schemaName, OUTBOX_TABLES).catch(() => undefined);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE integration_outbox
                 SET status = 'in_flight',
                     lease_expires_at = NOW() + INTERVAL '5 minutes',
+                    claim_token = gen_random_uuid(),
+                    claim_generation = claim_generation + 1,
                     updated_at = NOW()
               WHERE id IN (
                   SELECT id FROM integration_outbox
@@ -245,19 +268,54 @@ export class IntegrationOutboxService {
               RETURNING *`,
             [provider],
         );
-        return (rows || []).map(row => this.mapOutbox(row));
+        return (rows || []).map(row => this.mapClaimedOutbox(row));
+    }
+
+    /**
+     * Tenant schemas that can contain integration work.
+     *
+     * This public registry is written atomically with the tenant-schema row.
+     * Workers therefore do one indexed global read and never probe every
+     * active tenant each minute. The payload remains exclusively in its tenant
+     * schema; the registry contains only routing metadata.
+     */
+    async trackedTenants(kind: IntegrationWorkKind): Promise<TrackedIntegrationTenant[]> {
+        const seenColumn = kind === 'outbox' ? 'outbox_seen_at' : 'webhook_seen_at';
+        const rows = await this.prisma.$queryRawUnsafe(
+            `SELECT t.id, t.schema_name AS "schemaName", t.name
+               FROM public.integration_work_tenants work
+               JOIN public.tenants t ON t.id = work.tenant_id
+              WHERE t.is_active = true
+                AND work.${seenColumn} IS NOT NULL
+              ORDER BY work.${seenColumn} ASC`,
+        ) as any[];
+        return (rows || []).map(row => ({
+            id: String(row.id),
+            schemaName: String(row.schemaName),
+            name: String(row.name),
+        }));
     }
 
     /** El proveedor la aceptó. */
-    async markDelivered(schemaName: string, id: string, externalId?: string): Promise<void> {
-        await this.prisma.executeInTenantSchema(
+    async markDelivered(
+        schemaName: string,
+        entry: ClaimedOutboxEntry,
+        externalId?: string,
+    ): Promise<boolean> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE integration_outbox
                 SET status = 'delivered', external_id = $2, lease_expires_at = NULL,
-                    last_error = NULL, updated_at = NOW()
-              WHERE id = $1::uuid`,
-            [id, externalId || null],
+                    claim_token = NULL, last_error = NULL, updated_at = NOW()
+              WHERE id = $1::uuid
+                AND status = 'in_flight'
+                AND claim_token = $3::uuid
+                AND claim_generation = $4
+                AND lease_expires_at > NOW()
+              RETURNING id`,
+            [entry.id, externalId || null, entry.claim.token, entry.claim.generation],
         );
+        return (rows?.length ?? 0) === 1;
     }
 
     /**
@@ -266,33 +324,70 @@ export class IntegrationOutboxService {
      * Morir es una decisión, no un accidente: una escritura que reintenta para
      * siempre es una que nadie mira nunca.
      */
-    async markFailed(schemaName: string, id: string, error: string): Promise<'retrying' | 'dead'> {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT attempts FROM integration_outbox WHERE id = $1::uuid`,
-            [id],
-        );
-        const attempts = Number(rows?.[0]?.attempts ?? 0) + 1;
+    async markFailed(
+        schemaName: string,
+        entry: ClaimedOutboxEntry,
+        error: string,
+    ): Promise<'retrying' | 'dead' | 'stale_claim'> {
+        const attempts = Number(entry.attempts ?? 0) + 1;
         const dead = attempts >= OUTBOX_MAX_ATTEMPTS;
-        await this.prisma.executeInTenantSchema(
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE integration_outbox
                 SET status = $2, attempts = $3, last_error = $4,
                     lease_expires_at = NULL,
+                    claim_token = NULL,
                     next_attempt_at = CASE WHEN $2 = 'retrying'
                         THEN NOW() + ($5 || ' seconds')::interval ELSE NULL END,
                     updated_at = NOW()
-              WHERE id = $1::uuid`,
+              WHERE id = $1::uuid
+                AND status = 'in_flight'
+                AND claim_token = $6::uuid
+                AND claim_generation = $7
+                AND lease_expires_at > NOW()
+              RETURNING status`,
             [
-                id,
+                entry.id,
                 dead ? 'dead' : 'retrying',
                 attempts,
                 String(error).slice(0, 1000),
                 String(outboxBackoffSeconds(attempts)),
+                entry.claim.token,
+                entry.claim.generation,
             ],
         );
-        if (dead) this.logger.warn(`[Outbox] ${id} agotó ${attempts} intentos: ${error}`);
+        if (!rows?.length) return 'stale_claim';
+        if (dead) this.logger.warn(`[Outbox] ${entry.id} agotó ${attempts} intentos: ${error}`);
         return dead ? 'dead' : 'retrying';
+    }
+
+    /** Terminal failure, fenced by the exact lease that made the decision. */
+    async markDead(
+        schemaName: string,
+        entry: ClaimedOutboxEntry,
+        reason: string,
+    ): Promise<boolean> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE integration_outbox
+                SET status = 'dead', attempts = GREATEST(attempts, $2),
+                    last_error = $3, lease_expires_at = NULL,
+                    claim_token = NULL, next_attempt_at = NULL, updated_at = NOW()
+              WHERE id = $1::uuid
+                AND status = 'in_flight'
+                AND claim_token = $4::uuid
+                AND claim_generation = $5
+                AND lease_expires_at > NOW()
+              RETURNING id`,
+            [
+                entry.id,
+                OUTBOX_MAX_ATTEMPTS,
+                String(reason).slice(0, 1000),
+                entry.claim.token,
+                entry.claim.generation,
+            ],
+        );
+        return (rows?.length ?? 0) === 1;
     }
 
     // ── Webhook inbox ────────────────────────────────────────────────────
@@ -307,38 +402,44 @@ export class IntegrationOutboxService {
     async receiveWebhook(
         schemaName: string,
         input: {
+            tenantId: string;
             provider: string;
             externalEventId: string;
             eventType: string;
             payload?: Record<string, unknown>;
         },
     ): Promise<{ id: string; duplicate: boolean }> {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO integration_webhook_inbox
-                 (provider, external_event_id, event_type, payload)
-             VALUES ($1, $2, $3, $4::jsonb)
-             ON CONFLICT (provider, external_event_id) DO NOTHING
-             RETURNING id`,
-            [
-                input.provider,
-                input.externalEventId,
-                input.eventType,
-                JSON.stringify(input.payload ?? {}),
-            ],
-        );
-        if (rows?.length) return { id: String(rows[0].id), duplicate: false };
-
-        const existing = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT id FROM integration_webhook_inbox
-              WHERE provider = $1 AND external_event_id = $2`,
-            [input.provider, input.externalEventId],
-        );
+        await this.prisma.ensureCanonicalTables(schemaName, OUTBOX_TABLES).catch(() => undefined);
+        const outcome = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const rows = await query<any[]>(
+                `INSERT INTO integration_webhook_inbox
+                     (provider, external_event_id, event_type, payload)
+                 VALUES ($1, $2, $3, $4::jsonb)
+                 ON CONFLICT (provider, external_event_id) DO NOTHING
+                 RETURNING id`,
+                [
+                    input.provider,
+                    input.externalEventId,
+                    input.eventType,
+                    JSON.stringify(input.payload ?? {}),
+                ],
+            );
+            await this.trackTenant(query, input.tenantId, schemaName, 'webhook');
+            if (rows?.length) {
+                return { id: String(rows[0].id), duplicate: false };
+            }
+            const existing = await query<any[]>(
+                `SELECT id FROM integration_webhook_inbox
+                  WHERE provider = $1 AND external_event_id = $2`,
+                [input.provider, input.externalEventId],
+            );
+            return { id: String(existing?.[0]?.id || ''), duplicate: true };
+        });
+        if (!outcome.duplicate) return outcome;
         this.logger.debug(
             `[WebhookInbox] duplicado ${webhookDedupeKey(input.provider, input.externalEventId)}`,
         );
-        return { id: String(existing?.[0]?.id || ''), duplicate: true };
+        return outcome;
     }
 
     /** Los eventos que todavía nadie procesó. */
@@ -365,17 +466,102 @@ export class IntegrationOutboxService {
             receivedAt: new Date(row.received_at).toISOString(),
             processedAt: row.processed_at ? new Date(row.processed_at).toISOString() : undefined,
             lastError: row.last_error || undefined,
+            attempts: Number(row.attempts || 0),
         }));
     }
 
-    async markWebhookProcessed(schemaName: string, id: string, error?: string): Promise<void> {
-        await this.prisma.executeInTenantSchema(
+    /** Lease webhook events so two API/worker processes never apply one twice. */
+    async claimWebhooks(
+        schemaName: string,
+        provider: string,
+        limit = 50,
+    ): Promise<ClaimedWebhookInboxEntry[]> {
+        await this.prisma.ensureCanonicalTables(schemaName, OUTBOX_TABLES).catch(() => undefined);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE integration_webhook_inbox
-                SET status = $2, processed_at = NOW(), last_error = $3
-              WHERE id = $1::uuid`,
-            [id, error ? 'failed' : 'processed', error ? String(error).slice(0, 1000) : null],
+                SET status = 'processing',
+                    lease_expires_at = NOW() + INTERVAL '5 minutes',
+                    claim_token = gen_random_uuid(),
+                    claim_generation = claim_generation + 1
+              WHERE id IN (
+                  SELECT id FROM integration_webhook_inbox
+                   WHERE provider = $1
+                     AND (
+                         (status = 'received' AND COALESCE(next_attempt_at, NOW()) <= NOW())
+                         OR (status = 'processing' AND lease_expires_at < NOW())
+                     )
+                   ORDER BY received_at
+                   FOR UPDATE SKIP LOCKED
+                   LIMIT ${Math.max(1, Math.min(200, limit))}
+              )
+              RETURNING *`,
+            [provider],
         );
+        return (rows || []).map(row => this.mapClaimedWebhook(row));
+    }
+
+    async markWebhookProcessed(
+        schemaName: string,
+        entry: ClaimedWebhookInboxEntry,
+        error?: string,
+    ): Promise<boolean> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE integration_webhook_inbox
+                SET status = $2, processed_at = NOW(), last_error = $3,
+                    lease_expires_at = NULL, claim_token = NULL
+              WHERE id = $1::uuid
+                AND status = 'processing'
+                AND claim_token = $4::uuid
+                AND claim_generation = $5
+                AND lease_expires_at > NOW()
+              RETURNING id`,
+            [
+                entry.id,
+                error ? 'failed' : 'processed',
+                error ? String(error).slice(0, 1000) : null,
+                entry.claim.token,
+                entry.claim.generation,
+            ],
+        );
+        return (rows?.length ?? 0) === 1;
+    }
+
+    async markWebhookFailed(
+        schemaName: string,
+        entry: ClaimedWebhookInboxEntry,
+        error: string,
+        retryable = true,
+    ): Promise<'received' | 'failed' | 'stale_claim'> {
+        const attempts = Number(entry.attempts || 0) + 1;
+        const terminal = !retryable || attempts >= OUTBOX_MAX_ATTEMPTS;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE integration_webhook_inbox
+                SET status = $2, attempts = $3, last_error = $4,
+                    lease_expires_at = NULL, claim_token = NULL,
+                    processed_at = CASE WHEN $2 = 'failed' THEN NOW() ELSE NULL END,
+                    next_attempt_at = CASE WHEN $2 = 'received'
+                        THEN NOW() + ($5 || ' seconds')::interval ELSE NULL END
+              WHERE id = $1::uuid
+                AND status = 'processing'
+                AND claim_token = $6::uuid
+                AND claim_generation = $7
+                AND lease_expires_at > NOW()
+              RETURNING status`,
+            [
+                entry.id,
+                terminal ? 'failed' : 'received',
+                attempts,
+                String(error).slice(0, 1000),
+                String(outboxBackoffSeconds(attempts)),
+                entry.claim.token,
+                entry.claim.generation,
+            ],
+        );
+        if (!rows?.length) return 'stale_claim';
+        return terminal ? 'failed' : 'received';
     }
 
     // ── Reconciliación ───────────────────────────────────────────────────
@@ -435,6 +621,7 @@ export class IntegrationOutboxService {
         return {
             id: String(row.id),
             provider: String(row.provider),
+            connectionId: row.connection_id || undefined,
             operation: String(row.operation),
             idempotencyKey: String(row.idempotency_key),
             payload: row.payload || {},
@@ -446,5 +633,79 @@ export class IntegrationOutboxService {
             createdAt: new Date(row.created_at).toISOString(),
             updatedAt: new Date(row.updated_at).toISOString(),
         };
+    }
+
+    private mapClaimedOutbox(row: any): ClaimedOutboxEntry {
+        const token = row.claim_token ? String(row.claim_token) : '';
+        const generation = Number(row.claim_generation);
+        const expiresAt = row.lease_expires_at
+            ? new Date(row.lease_expires_at).toISOString()
+            : '';
+        if (!token || !Number.isSafeInteger(generation) || generation < 1 || !expiresAt) {
+            throw new Error('integration_outbox claim missing fencing token');
+        }
+        return {
+            ...this.mapOutbox(row),
+            claim: { token, generation, expiresAt },
+        };
+    }
+
+    private mapWebhook(row: any): WebhookInboxEntry {
+        return {
+            id: String(row.id),
+            provider: String(row.provider),
+            externalEventId: String(row.external_event_id),
+            eventType: String(row.event_type),
+            payload: row.payload || {},
+            status: row.status,
+            attempts: Number(row.attempts || 0),
+            receivedAt: new Date(row.received_at).toISOString(),
+            processedAt: row.processed_at ? new Date(row.processed_at).toISOString() : undefined,
+            lastError: row.last_error || undefined,
+        };
+    }
+
+    private mapClaimedWebhook(row: any): ClaimedWebhookInboxEntry {
+        const token = row.claim_token ? String(row.claim_token) : '';
+        const generation = Number(row.claim_generation);
+        const expiresAt = row.lease_expires_at
+            ? new Date(row.lease_expires_at).toISOString()
+            : '';
+        if (!token || !Number.isSafeInteger(generation) || generation < 1 || !expiresAt) {
+            throw new Error('integration webhook claim missing fencing token');
+        }
+        return {
+            ...this.mapWebhook(row),
+            claim: { token, generation, expiresAt },
+        };
+    }
+
+    private async trackTenant(
+        query: <R = any[]>(sql: string, params?: any[]) => Promise<R>,
+        tenantId: string,
+        schemaName: string,
+        kind: IntegrationWorkKind,
+    ): Promise<void> {
+        const seenColumn = kind === 'outbox' ? 'outbox_seen_at' : 'webhook_seen_at';
+        const rows = await query<any[]>(
+            `INSERT INTO public.integration_work_tenants
+                 (tenant_id, schema_name, ${seenColumn}, created_at, updated_at)
+             SELECT id, schema_name, NOW(), NOW(), NOW()
+               FROM public.tenants
+              WHERE id = $1::uuid
+                AND schema_name = $2
+             ON CONFLICT (tenant_id) DO UPDATE SET
+                 schema_name = EXCLUDED.schema_name,
+                 ${seenColumn} = NOW(),
+                 updated_at = NOW()
+             RETURNING tenant_id`,
+            [tenantId, schemaName],
+        );
+        // Never let a mismatched (tenantId, schemaName) pair poison the public
+        // routing registry. Throwing here rolls back the tenant-schema insert
+        // because both statements share one database transaction.
+        if (!rows?.length) {
+            throw new Error('integration work tenant/schema mismatch');
+        }
     }
 }

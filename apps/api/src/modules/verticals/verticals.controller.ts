@@ -20,6 +20,8 @@ import {
     VERTICAL_CAPABILITY_MANIFEST_VERSION,
     VERTICAL_PRODUCT_POLICY,
     VERTICAL_PRODUCT_POLICY_VERSION,
+    SUBTYPE_ALIASES,
+    isAliasedSubtype,
     resolveSubtypeExperienceProfile,
 } from '@parallext/shared';
 
@@ -75,6 +77,7 @@ export class VerticalsController {
                 subtypeCount,
                 configurationCount,
                 aliases: VERTICAL_INDUSTRY_ALIASES,
+                subtypeAliases: SUBTYPE_ALIASES,
                 availability,
                 signupAvailability: SIGNUP_AVAILABILITY,
                 adminCreateAvailability: ADMIN_CREATE_AVAILABILITY,
@@ -84,6 +87,10 @@ export class VerticalsController {
 
     /** Desconocido no se ofrece: sin perfil no hay evidencia de que se pueda. */
     private availabilityOf(industry: string, subType: string | null): string {
+        // An alias remains in the complete catalogue only so an existing
+        // tenant can render its historic value. It must never reappear as a
+        // selectable signup/admin option after its target became canonical.
+        if (isAliasedSubtype(industry, subType)) return 'legacy_only';
         try {
             return resolveSubtypeExperienceProfile(industry, subType).availability;
         } catch {

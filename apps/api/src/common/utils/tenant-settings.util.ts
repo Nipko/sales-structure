@@ -4,17 +4,75 @@ import type { PrismaService } from '../../modules/prisma/prisma.service';
  * Keys owned by a dedicated persistence/API boundary. They must never be
  * writable or serializable through the generic `tenants.settings` contract.
  *
- * `channelManager` y `verticalIntegrations` guardan credenciales de proveedor.
- * Cada una tiene su propio endpoint, que enmascara; el genérico devolvía el
- * JSONB entero, así que `GET /tenants/:id` entregaba la clave de Hostaway y la
- * de Toast en claro a cualquiera que pudiera leer el tenant. Estar cifradas en
- * la base no alcanza: una respuesta que las devuelve las saca del sobre.
+ * This is deliberately an ownership registry, not only a list of fields that
+ * happen to contain a password today. Every branch below has a dedicated API
+ * which applies validation, plan/role gates, compare-and-swap semantics or
+ * secret masking. Letting the generic tenant endpoint read or replace one of
+ * them either discloses credentials/PII or bypasses that dedicated contract.
+ *
+ * `verticalConfig` stays visible because the tenant list needs the canonical
+ * vertical identity. Its mutation is still rejected by `TenantsService` and
+ * can only happen through the explicit vertical migration workflow.
  */
 export const RESERVED_TENANT_SETTING_KEYS = [
     'tenantPayments',
     'channelManager',
     'verticalIntegrations',
+    'verticalIntegrationHealth',
+    'mcpServers',
+    'mcpToolApprovals',
+    'ecommerce',
+    'slack',
+    'googleBusiness',
+    'biApiKey',
+    'saml',
+    'whiteLabel',
+    'managed',
+    'quotaOverrides',
+    'featureFlags',
+    'featureFlagsMeta',
+    'fiscalData',
+    'appointmentReminders',
+    'bookingFlows',
+    'publicBooking',
+    'brandColor',
+    'nurturing',
+    'pipeline',
+    'smsNotifications',
+    'recallConfig',
+    'businessInfoDraft',
+    'purgeSaga',
+    'provisioning',
+    'verticalProvisioning',
+    'verticalConfigPending',
 ] as const;
+
+/**
+ * The generic PATCH is intentionally small and fail-closed. A new product
+ * setting must get a typed, dedicated owner instead of silently becoming
+ * writable through `settings: any` and bypassing validation added later.
+ */
+export const GENERIC_WRITABLE_TENANT_SETTING_KEYS = [
+    'timezone',
+    'currency',
+    'dateFormat',
+    'timeFormat',
+    'weekStart',
+    'businessHours',
+    'chatReasons',
+    'customerTypes',
+] as const;
+
+export function firstUnsupportedGenericTenantSetting(settings: unknown): string | null {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+    const allowed = new Set<string>(GENERIC_WRITABLE_TENANT_SETTING_KEYS);
+    return Object.keys(settings as Record<string, unknown>)
+        .find((key) => !allowed.has(key)) ?? null;
+}
+
+export function hasOnlyGenericWritableTenantSettings(settings: unknown): boolean {
+    return firstUnsupportedGenericTenantSetting(settings) === null;
+}
 
 /** La primera clave reservada presente, para nombrarla en el error. */
 export function firstReservedTenantSetting(settings: unknown): string | null {
@@ -91,4 +149,53 @@ export async function mergeTenantSettingsAtomic(
     if (affected !== 1) {
         throw new Error(`Tenant ${tenantId} not found while merging settings`);
     }
+}
+
+/**
+ * Atomically transform several related top-level settings keys.
+ *
+ * Use the narrower branch helper when one branch is enough. This variant is
+ * reserved for invariants spanning multiple keys (for example feature flags +
+ * their audit metadata, or public-booking copy + brand colour). The row lock
+ * makes replacing the complete JSON document safe: all concurrent UPDATEs wait
+ * and then operate on the version written here.
+ */
+export async function mutateTenantSettingsAtomic(
+    prisma: PrismaService,
+    tenantId: string,
+    transform: (current: Readonly<Record<string, unknown>>) => Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+    return prisma.$transaction(async (tx: any) => {
+        const rows = await tx.$queryRawUnsafe(
+            `SELECT COALESCE(settings, '{}'::jsonb) AS settings
+               FROM public.tenants
+              WHERE id = $1::uuid
+              FOR UPDATE`,
+            tenantId,
+        ) as Array<{ settings: Record<string, unknown> | null }>;
+        if (!rows.length) throw new Error(`Tenant ${tenantId} not found while mutating settings`);
+
+        const current = { ...(rows[0].settings || {}) };
+        const next = transform(Object.freeze(current));
+        if (!next || typeof next !== 'object' || Array.isArray(next)) {
+            throw new Error('Tenant settings transformer must return an object');
+        }
+        // Returning the selected object is the transformer's explicit no-op
+        // signal. This matters for idempotent health observations and stale
+        // CAS results: taking the lock is required, rewriting identical JSON is
+        // not (and would create misleading updated_at churn).
+        if (next === current) return current;
+        const affected = await tx.$executeRawUnsafe(
+            `UPDATE public.tenants
+                SET settings = $2::jsonb,
+                    updated_at = NOW()
+              WHERE id = $1::uuid`,
+            tenantId,
+            JSON.stringify(next),
+        );
+        if (Number(affected) !== 1) {
+            throw new Error(`Tenant ${tenantId} not found while mutating settings`);
+        }
+        return next;
+    });
 }

@@ -31,6 +31,7 @@ import {
 } from '../verticals/vertical-identifiers';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { sanitizeSignupAttribution } from '../../common/utils/signup-attribution.util';
 import {
     resolveReadyTenantContext,
     resolveReadyUserTenantContext,
@@ -368,6 +369,7 @@ export class AuthService {
         password: string;
         firstName: string;
         lastName: string;
+        attribution?: Record<string, unknown>;
     }) {
         validateEmailDomain(data.email);
         // Check if email is already taken
@@ -387,6 +389,7 @@ export class AuthService {
         this.validatePasswordStrength(data.password);
 
         const hashedPassword = await bcrypt.hash(data.password, 12);
+        const signupAttribution = sanitizeSignupAttribution(data.attribution);
 
         // Create user without tenant — tenant will be created during onboarding
         const user = await this.prisma.user.create({
@@ -397,6 +400,9 @@ export class AuthService {
                 lastName: data.lastName,
                 role: 'tenant_admin',
                 authProvider: 'email',
+                isSelfServeSignup: true,
+                signupSource: signupAttribution?.source || 'direct',
+                signupAttribution: signupAttribution as any,
             },
             select: {
                 id: true,
@@ -770,7 +776,15 @@ export class AuthService {
 
     // ── Google OAuth ──────────────────────────────────────────────
 
-    async googleLogin(idToken: string, rememberMe = false, force = false, deviceTrustToken?: string, deviceFingerprint?: string, clientType?: ClientType) {
+    async googleLogin(
+        idToken: string,
+        rememberMe = false,
+        force = false,
+        deviceTrustToken?: string,
+        deviceFingerprint?: string,
+        clientType?: ClientType,
+        attribution?: Record<string, unknown>,
+    ) {
         const googleUser = await this.googleAuthService.verifyIdToken(idToken);
 
         // Find existing user by email or googleId
@@ -785,6 +799,7 @@ export class AuthService {
         });
 
         const isNewUser = !user;
+        const signupAttribution = sanitizeSignupAttribution(attribution);
 
         // El alta NO ocurre desde la app: crear la empresa exige el wizard web
         // (vertical, canales, agente). Sin este guard, tocar "Continuar con
@@ -808,6 +823,9 @@ export class AuthService {
                     picture: googleUser.picture,
                     emailVerified: true,
                     role: 'tenant_admin',
+                    isSelfServeSignup: true,
+                    signupSource: signupAttribution?.source || 'direct',
+                    signupAttribution: signupAttribution as any,
                 },
                 include: { tenant: true },
             });
@@ -2026,6 +2044,16 @@ export class AuthService {
         const customerTypes = data.audiences || data.customerTypes;
         const chatReasons = data.goals || data.chatReasons;
         const referralSource = data.referral || data.referralSource;
+        const requestAttribution = sanitizeSignupAttribution(data.signupAttribution);
+        const durableAttribution = sanitizeSignupAttribution((user as any).signupAttribution);
+        // Acquisition is fixed when the principal is created. The onboarding
+        // payload is browser-controlled and must not be able to rewrite a
+        // durable Google/partner/campaign source later in the funnel.
+        const signupSource = (user as any).signupSource
+            || durableAttribution?.source
+            || requestAttribution?.source
+            || referralSource
+            || 'direct';
         const phone = company.phone || data.phone;
         const businessEmail = company.email || data.businessEmail;
         const about = company.about || data.about;
@@ -2105,7 +2133,7 @@ export class AuthService {
                         subType,
                         businessInfoDraft,
                     },
-                    signupSource: data.signupSource || referralSource || null,
+                    signupSource,
                 },
             });
 
@@ -2118,6 +2146,9 @@ export class AuthService {
                     role: 'tenant_admin',
                     // Se marca true solo después de schema + bootstrap verificados.
                     onboardingCompleted: false,
+                    isSelfServeSignup: true,
+                    signupSource,
+                    signupAttribution: ((user as any).signupAttribution || durableAttribution || requestAttribution) as any,
                 },
                 select: {
                     id: true,

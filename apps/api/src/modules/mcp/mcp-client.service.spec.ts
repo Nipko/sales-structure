@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { promises as dns } from 'node:dns';
 import { McpClientService } from './mcp-client.service';
+import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
 
 describe('McpClientService outbound URL security', () => {
     let lookupSpy: jest.SpyInstance;
@@ -28,7 +29,7 @@ describe('McpClientService outbound URL security', () => {
                     .mockResolvedValueOnce({ headers: {}, data: { result: { tools: [] } } }),
             },
         };
-        service = new McpClientService(prisma, redis, http);
+        service = new McpClientService(prisma, redis, http, new TenantSecretCryptoService());
     });
 
     afterEach(() => lookupSpy.mockRestore());

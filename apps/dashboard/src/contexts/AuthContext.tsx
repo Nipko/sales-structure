@@ -10,6 +10,7 @@ import {
 import { useIdleTimer } from "@/hooks/useIdleTimer";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import SessionConflictModal from "@/components/SessionConflictModal";
+import { readSignupAttribution } from "@/lib/signup-attribution";
 
 // ============================================
 // Constants
@@ -437,7 +438,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const res = await fetch(`${API_URL}/auth/google`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ idToken, rememberMe, force, deviceTrustToken }),
+                body: JSON.stringify({
+                    idToken,
+                    rememberMe,
+                    force,
+                    deviceTrustToken,
+                    attribution: readSignupAttribution(),
+                }),
             });
 
             if (res.status === 409) {

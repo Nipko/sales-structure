@@ -121,6 +121,7 @@ export class PropertiesService {
                         check_out::text AS check_out
                    FROM cm_reservations
                   WHERE listing_id = $1::uuid
+                    AND is_deleted = false
                     AND status NOT IN ('cancelled', 'declined', 'expired')
                     AND check_in < $3::date
                     AND check_out > $2::date

@@ -209,8 +209,6 @@ jobs:
           apps/api/src/modules/push/push.service.expo-bounds.spec.ts
           apps/api/src/modules/prisma/prisma.service.spec.ts
           apps/api/src/common/utils/sentry-redaction.util.spec.ts
-          apps/api/src/modules/conversations/tool-execution-control.service.spec.ts
-          apps/api/src/modules/conversations/tool-policy-registry.spec.ts
           apps/api/src/modules/tenant-payments/tenant-payments.service.spec.ts
           apps/api/src/modules/tenant-payments/tenant-payment-store.service.spec.ts
           apps/api/src/modules/tenant-payments/tenant-wompi-webhook.service.spec.ts
@@ -222,6 +220,96 @@ jobs:
           apps/api/src/modules/tenant-payments/tenant-payments-webhook.service.spec.ts
           apps/api/src/modules/pipeline/pipeline-opportunity-mirror-guard.spec.ts
 
+      # Promotion gate for the intervention contracts that also run in
+      # vertical-quality.yml. That workflow is independent, so branch pushes
+      # must enforce this evidence here before build-and-push can start.
+      - name: Intervention closure promotion gate
+        run: >-
+          npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/common/conversation/intent-normalizer.spec.ts
+          apps/api/src/common/crypto/tenant-secret-crypto.service.spec.ts
+          apps/api/src/common/crypto/tenant-secret-migration.spec.ts
+          apps/api/src/common/guards/tenant.guard.spec.ts
+          apps/api/src/common/utils/signup-attribution-migration.spec.ts
+          apps/api/src/common/utils/signup-attribution.util.spec.ts
+          apps/api/src/common/utils/tenant-settings-branch.util.spec.ts
+          apps/api/src/common/utils/tenant-settings-leaf-atomic.spec.ts
+          apps/api/src/common/utils/tenant-settings.util.spec.ts
+          apps/api/src/main.shutdown-contract.spec.ts
+          apps/api/src/modules/analytics/bi-api-key-migration.spec.ts
+          apps/api/src/modules/analytics/bi-api.guard.spec.ts
+          apps/api/src/modules/analytics/dashboard-analytics.channels.spec.ts
+          apps/api/src/modules/appointments/services.service.integrity.spec.ts
+          apps/api/src/modules/auth/auth-onboarding-provisioning.spec.ts
+          apps/api/src/modules/automation/nurturing-settings-cas.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-mapping.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-reservations.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-secrets.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-sync.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager.dto.spec.ts
+          apps/api/src/modules/channel-manager/lodging-cache-invalidation.spec.ts
+          apps/api/src/modules/conversations/active-objects-coverage.spec.ts
+          apps/api/src/modules/conversations/agent-test-eval-writer.spec.ts
+          apps/api/src/modules/conversations/agent-test-live-parity.spec.ts
+          apps/api/src/modules/conversations/agent-test-request.spec.ts
+          apps/api/src/modules/conversations/agent-test.service.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.vertical-safety.spec.ts
+          apps/api/src/modules/conversations/capability-exclusion-localization.spec.ts
+          apps/api/src/modules/conversations/capability-stop-profiles.spec.ts
+          apps/api/src/modules/conversations/crm-writer-concurrency.spec.ts
+          apps/api/src/modules/conversations/crm-writers.spec.ts
+          apps/api/src/modules/conversations/effective-capability.spec.ts
+          apps/api/src/modules/conversations/eval-writer-sandbox.spec.ts
+          apps/api/src/modules/conversations/media-delivery-dedupe.spec.ts
+          apps/api/src/modules/conversations/prompt-assembler.contract.spec.ts
+          apps/api/src/modules/conversations/prompt-assembler.service.spec.ts
+          apps/api/src/modules/conversations/rag-rewrite-skip.spec.ts
+          apps/api/src/modules/conversations/system-of-record-capability.spec.ts
+          apps/api/src/modules/conversations/tool-authority.e2e.spec.ts
+          apps/api/src/modules/conversations/tool-origin-taxonomy.spec.ts
+          apps/api/src/modules/conversations/tool-timeout-policy.spec.ts
+          apps/api/src/modules/conversations/turn-capability-composer.spec.ts
+          apps/api/src/modules/conversations/vertical-turn-context.service.spec.ts
+          apps/api/src/modules/conversations/writer-active-object-chain.spec.ts
+          apps/api/src/modules/ecommerce/ecommerce-secrets.spec.ts
+          apps/api/src/modules/ecommerce/ecommerce.service.spec.ts
+          apps/api/src/modules/health/alert-config.service.spec.ts
+          apps/api/src/modules/health/platform-monitor.queue-failures.spec.ts
+          apps/api/src/modules/home-services/home-service-capacity.contract.spec.ts
+          apps/api/src/modules/inbound/inbound-failed-redrive.service.spec.ts
+          apps/api/src/modules/integrations/integration-outbox.worker.spec.ts
+          apps/api/src/modules/integrations/integration-scaffolding.spec.ts
+          apps/api/src/modules/integrations/integration-webhook.worker.spec.ts
+          apps/api/src/modules/integrations/integrations.controller.spec.ts
+          apps/api/src/modules/integrations/system-of-record-boundary.spec.ts
+          apps/api/src/modules/mcp/mcp-client.service.spec.ts
+          apps/api/src/modules/mcp/mcp-secrets.spec.ts
+          apps/api/src/modules/media/media-cleanup.storage-report.spec.ts
+          apps/api/src/modules/photography/photography-date-capacity.contract.spec.ts
+          apps/api/src/modules/simulation/eval-infrastructure.spec.ts
+          apps/api/src/modules/slack/slack-secrets.spec.ts
+          apps/api/src/modules/tenants/onboarding-funnel-acquisition.spec.ts
+          apps/api/src/modules/tenants/regional-profile.service.spec.ts
+          apps/api/src/modules/tenants/tenants.controller.spec.ts
+          apps/api/src/modules/tenants/tenants.service.spec.ts
+          apps/api/src/modules/trace/trace.controller.spec.ts
+          apps/api/src/modules/trace/turn-trace-context.spec.ts
+          apps/api/src/modules/vacation-rental/lodging-source-of-truth.spec.ts
+          apps/api/src/modules/vertical-integrations/integration-health.spec.ts
+          apps/api/src/modules/vertical-integrations/provider-freshness-coherence.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.credentials.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.health.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.pagination.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.service.spec.ts
+          apps/api/src/modules/verticals/eval-pack-language.spec.ts
+          apps/api/src/modules/verticals/native-backlog.spec.ts
+          apps/api/src/modules/verticals/subtype-navigation-config.spec.ts
+          apps/api/src/modules/verticals/vertical-audit.controller.spec.ts
+          apps/api/src/modules/verticals/vertical-identifiers.spec.ts
+          apps/api/src/modules/verticals/vertical-readiness.contract.spec.ts
+          apps/api/src/modules/whatsapp/services/whatsapp-business-profile-multinumber.spec.ts
+          apps/api/src/modules/whatsapp/services/whatsapp-token-coverage.spec.ts
+
       - name: TypeScript check (all apps)
         run: |
           (cd apps/api && npx tsc --noEmit)
@@ -231,7 +319,10 @@ jobs:
           (cd apps/mobile && npx tsc --noEmit)
 
       - name: WhatsApp Agent Quality bridge regression
-        run: npm test --prefix apps/whatsapp -- --runInBand src/modules/onboarding/onboarding.service.spec.ts
+        run: >-
+          npm test --prefix apps/whatsapp -- --runInBand
+          src/modules/onboarding/onboarding.service.spec.ts
+          src/modules/onboarding/onboarding-token-coverage.spec.ts
 
       - name: Mobile vertical and privacy regression
         run: npm test --prefix apps/mobile -- --runInBand
@@ -247,6 +338,8 @@ jobs:
           apps/dashboard/src/lib/initial-setup.spec.ts
           apps/dashboard/src/lib/navigation-contract.spec.ts
           apps/dashboard/src/lib/roles.spec.ts
+          apps/dashboard/src/lib/integration-outbox-review.contract.spec.ts
+          apps/dashboard/src/lib/signup-attribution.spec.ts
           apps/dashboard/src/lib/billing-checkout-session.spec.ts
           apps/dashboard/src/lib/wompi-payment-methods.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts
@@ -255,8 +348,11 @@ jobs:
       # 28 errores → 0). Es el único gate automático que atrapa la clase de bug
       # "emoji astral en character class sin flag u" (no-misleading-character-class)
       # que corrompía mensajes del cliente — tsc no la ve porque la regex compila.
-      - name: Lint (API)
-        run: cd apps/api && npx eslint "src/**/*.ts"
+      - name: Lint (API, dashboard and WhatsApp)
+        run: |
+          (cd apps/api && npx eslint "src/**/*.ts" --quiet)
+          (cd apps/dashboard && npx eslint . --quiet)
+          (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
 
       # MercadoPago fue RETIRADO como PSP de plataforma (ago 2026): su adapter,
       # su config service, sus scripts y sus specs salieron del repo. El riel
@@ -612,6 +708,13 @@ jobs:
           PROD_TENANT_PAYMENT_CREDENTIAL_KEY: ${{ secrets.TENANT_PAYMENT_CREDENTIAL_KEY }}
           PROD_TENANT_PAYMENT_CREDENTIAL_KEY_ID: ${{ secrets.TENANT_PAYMENT_CREDENTIAL_KEY_ID }}
           PROD_TENANT_PAYMENT_CREDENTIAL_PREVIOUS_KEYS: ${{ secrets.TENANT_PAYMENT_CREDENTIAL_PREVIOUS_KEYS }}
+          PROD_TENANT_SECRET_KEY: ${{ secrets.TENANT_SECRET_KEY }}
+          PROD_TENANT_SECRET_KEY_ID: ${{ secrets.TENANT_SECRET_KEY_ID }}
+          PROD_TENANT_SECRET_PREVIOUS_KEYS: ${{ secrets.TENANT_SECRET_PREVIOUS_KEYS }}
+          PROD_TENANT_SECRET_PLAINTEXT: ${{ secrets.TENANT_SECRET_PLAINTEXT }}
+          PROD_VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS: ${{ secrets.VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS }}
+          PROD_VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS: ${{ secrets.VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS }}
+          PROD_INTEGRATION_WRITE_PROVIDERS: ${{ secrets.INTEGRATION_WRITE_PROVIDERS }}
           PROD_META_APP_ID: ${{ secrets.META_APP_ID }}
           PROD_META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
           PROD_META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
@@ -706,6 +809,8 @@ jobs:
             PROD_REDIS_HOST,PROD_REDIS_PASSWORD,
             PROD_INTERNAL_JWT_SECRET,PROD_JWT_SECRET,PROD_ENCRYPTION_KEY,
             PROD_TENANT_PAYMENT_CREDENTIAL_KEY,PROD_TENANT_PAYMENT_CREDENTIAL_KEY_ID,PROD_TENANT_PAYMENT_CREDENTIAL_PREVIOUS_KEYS,
+            PROD_TENANT_SECRET_KEY,PROD_TENANT_SECRET_KEY_ID,PROD_TENANT_SECRET_PREVIOUS_KEYS,PROD_TENANT_SECRET_PLAINTEXT,
+            PROD_VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS,PROD_VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS,PROD_INTEGRATION_WRITE_PROVIDERS,
             PROD_META_APP_ID,PROD_META_APP_SECRET,PROD_META_VERIFY_TOKEN,PROD_META_CONFIG_ID,PROD_SYSTEM_USER_ID,
             PROD_INTERNAL_API_KEY,
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
@@ -779,6 +884,16 @@ jobs:
               *) echo "ERROR: FACTUS_BASE_URL must be an HTTPS production endpoint"; exit 1 ;;
             esac
 
+            echo "===> Validating external integration write rail..."
+            # No external write adapter is certified in this release. A secret
+            # alone must never activate the rail: without this preflight the
+            # worker released durable `suppressed` intent and immediately
+            # killed it as `no_adapter_registered`.
+            if [ -n "$(printf '%s' "${PROD_INTEGRATION_WRITE_PROVIDERS}" | tr -d '[:space:],')" ]; then
+              echo "ERROR: INTEGRATION_WRITE_PROVIDERS must remain empty until a write adapter ships and passes sandbox certification"
+              exit 1
+            fi
+
             echo "===> Pulling latest infrastructure code..."
             git fetch origin
             # The deploy server tracks origin exactly (config comes from .env, which is
@@ -834,6 +949,19 @@ jobs:
                 printf '%s\n' "TENANT_PAYMENT_CREDENTIAL_PREVIOUS_KEYS=${PROD_TENANT_PAYMENT_CREDENTIAL_PREVIOUS_KEYS}" >> .env
               fi
             fi
+            if [ -n "${PROD_TENANT_SECRET_KEY}" ]; then
+              printf '%s\n' "TENANT_SECRET_KEY=${PROD_TENANT_SECRET_KEY}" >> .env
+              printf '%s\n' "TENANT_SECRET_KEY_ID=${PROD_TENANT_SECRET_KEY_ID:-primary}" >> .env
+            fi
+            if [ -n "${PROD_TENANT_SECRET_PREVIOUS_KEYS}" ]; then
+              printf '%s\n' "TENANT_SECRET_PREVIOUS_KEYS=${PROD_TENANT_SECRET_PREVIOUS_KEYS}" >> .env
+            fi
+            if [ -n "${PROD_TENANT_SECRET_PLAINTEXT}" ]; then
+              printf '%s\n' "TENANT_SECRET_PLAINTEXT=${PROD_TENANT_SECRET_PLAINTEXT}" >> .env
+            fi
+            printf '%s\n' "VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS=${PROD_VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS}" >> .env
+            printf '%s\n' "VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS=${PROD_VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS}" >> .env
+            printf '%s\n' "INTEGRATION_WRITE_PROVIDERS=${PROD_INTEGRATION_WRITE_PROVIDERS}" >> .env
             echo "META_APP_ID=${PROD_META_APP_ID}" >> .env
             echo "META_APP_SECRET=${PROD_META_APP_SECRET}" >> .env
             echo "META_VERIFY_TOKEN=${PROD_META_VERIFY_TOKEN}" >> .env

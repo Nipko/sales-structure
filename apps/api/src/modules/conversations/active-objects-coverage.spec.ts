@@ -46,7 +46,7 @@ describe('todo tipo que puede entrar al turno tiene quien lo cargue', () => {
      * detalle—, no cuando arranca el turno. Cargarlo sería meterle al agente el
      * catálogo entero en cada mensaje.
      */
-    const PRODUCED_BY_TOOLS: readonly string[] = ['catalog_item'];
+    const PRODUCED_BY_TOOLS: readonly string[] = ['catalog_item', 'crm_lead'];
 
     it.each(BOUNDED_KINDS.map(kind => [kind] as const))(
         '%s se produce en algún cargador',

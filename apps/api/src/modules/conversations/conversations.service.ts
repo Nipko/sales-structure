@@ -52,7 +52,13 @@ import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-
 import { staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { EffectiveCapabilityService } from './effective-capability.service';
-import { buildTurnAuthority, engineAuthorityFor, type TurnAuthorityInput } from './turn-authority';
+import {
+    bookingEngineAuthorityDecision,
+    buildTurnAuthority,
+    deniedOperationalIntent,
+    engineAuthorityFor,
+    type TurnAuthorityInput,
+} from './turn-authority';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -60,6 +66,7 @@ import { MediaProcessingService } from '../media-processing/media-processing.ser
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import {
     ASYNC_GATED_TOOL_NAMES,
+    getToolPolicy,
     isBusinessWriteTool,
     isConfirmableWriteTool,
     isNonCommittalTool,
@@ -67,6 +74,7 @@ import {
     toolOrigin,
     toolRequiresSequentialExecution,
 } from './tool-policy-registry';
+import { awaitToolWithSafeTimeout } from './tool-timeout-policy';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
     ToolExecutionControlService,
@@ -76,6 +84,12 @@ import { ActiveOperationsContextService } from './active-operations-context.serv
 import { ToolRetrievalService } from './tool-retrieval.service';
 import { EmotionService } from './emotion.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import {
+    projectVerticalIntentAvailability,
+    VerticalTurnContextService,
+} from './vertical-turn-context.service';
+import { TurnCapabilityComposerService, type ComposedTurnCapability } from './turn-capability-composer.service';
+import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 // History budget in TOKENS (not chars), measured against the smallest context window
@@ -109,24 +123,24 @@ const VERTICAL_FLOW_GUIDANCE: Array<{
     requires: string;
     guidance: string;
 }> = [
-    { industry: 'turismo', requires: 'properties', guidance: 'Para una estadía: list_properties → check_property_availability para las fechas exactas → resumí precio total y fechas → pedí confirmación → create_property_booking. Nunca ofrezcas una propiedad sin haber verificado esas fechas.' },
-    { industry: 'turismo', requires: 'tours', guidance: 'Para un paquete: search_packages → check_package_availability para la fecha de salida → resumí precio y cupos → pedí confirmación → create_tour_booking.' },
-    { industry: 'restaurantes', requires: 'restaurants', guidance: 'Para un pedido: get_menu → armá el pedido con el cliente → repetí los ítems, el total y la dirección → pedí confirmación → place_order. Para una mesa usá el flujo de reservas de agenda.' },
-    { industry: 'gimnasios', requires: 'gyms', guidance: 'Para una clase: get_class_schedule → verificá que el contacto tenga membresía con get_my_membership → pedí confirmación → book_class. Si no es socio, ofrecé get_membership_plans antes de intentar reservar.' },
-    { industry: 'education', requires: 'education', guidance: 'Para una inscripción: get_courses → get_course_schedule del curso elegido → resumí curso, horario y precio → pedí confirmación → enroll_student.' },
-    { industry: 'seguros', requires: 'insurance', guidance: 'Para cotizar: get_insurance_plans → pedí sólo los datos que falten → calculate_quote y presentá el resultado. Para un reclamo, file_claim requiere verificar identidad primero (request_identity_code y verify_identity_code).' },
-    { industry: 'servicios_hogar', requires: 'homeServices', guidance: 'Para una solicitud: entendé el problema y la dirección → resumí lo que vas a registrar → create_service_request. Después del registro la conversación pasa a una persona del equipo.' },
+    { industry: 'turismo', requires: 'properties', guidance: 'Para una estadía: list_properties → check_property_availability para las fechas exactas → resuma precio total y fechas → pida confirmación → create_property_booking. Nunca ofrezca una propiedad sin verificar esas fechas.' },
+    { industry: 'turismo', requires: 'tours', guidance: 'Para un paquete: search_packages → check_package_availability para la fecha de salida → resuma precio y cupos → pida confirmación → create_tour_booking.' },
+    { industry: 'restaurantes', requires: 'restaurants', guidance: 'Para un pedido: get_menu → arme el pedido con el cliente → repita los ítems, el total y la dirección → pida confirmación → place_order. Para una mesa use el flujo de reservas de agenda.' },
+    { industry: 'gimnasios', requires: 'gyms', guidance: 'Para una clase: get_class_schedule → verifique que el contacto tenga membresía con get_my_membership → pida confirmación → book_class. Si no es socio, ofrezca get_membership_plans antes de intentar reservar.' },
+    { industry: 'education', requires: 'education', guidance: 'Para una inscripción: get_courses → get_course_schedule del curso elegido → resuma curso, horario y precio → pida confirmación → enroll_student.' },
+    { industry: 'seguros', requires: 'insurance', guidance: 'Para cotizar: get_insurance_plans → pida sólo los datos que falten → calculate_quote y presente el resultado. Para un reclamo, file_claim requiere verificar identidad primero (request_identity_code y verify_identity_code).' },
+    { industry: 'servicios_hogar', requires: 'homeServices', guidance: 'Para una solicitud: entienda el problema y la dirección → resuma lo que registrará → create_service_request. Después del registro la conversación pasa a una persona del equipo.' },
     { industry: 'fotografia', requires: 'photography', guidance: 'Para una sesión: list_photo_packages → send_portfolio si el cliente quiere ver trabajo previo → check_date_availability de la fecha → request_photo_quote.' },
-    { industry: 'inmobiliaria', requires: 'realEstate', guidance: 'Para una visita: search_listings → get_listing_details del inmueble concreto → send_listing_image si ayuda → agendá la visita dejando SIEMPRE registrado de qué inmueble se trata.' },
-    { industry: 'automotriz', requires: 'vehicles', guidance: 'Para una prueba de manejo: search_vehicles → get_vehicle_details del vehículo concreto → send_vehicle_image si ayuda → acordá día y hora → schedule_test_drive. Si el horario está tomado, ofrecé otro; nunca digas que quedó agendada sin que schedule_test_drive haya tenido éxito.' },
-    { industry: 'veterinaria', requires: 'pets', guidance: 'Registrá la mascota con register_pet antes de agendar (list_pets_for_contact primero para no duplicarla). Ante señales de urgencia usá triage_pet_emergency de inmediato.' },
+    { industry: 'inmobiliaria', requires: 'realEstate', guidance: 'Para una visita: search_listings → get_listing_details del inmueble concreto → send_listing_image si ayuda → agende la visita dejando SIEMPRE registrado de qué inmueble se trata.' },
+    { industry: 'automotriz', requires: 'vehicles', guidance: 'Para una prueba de manejo: search_vehicles → get_vehicle_details del vehículo concreto → send_vehicle_image si ayuda → acuerde día y hora → schedule_test_drive. Si el horario está tomado, ofrezca otro; nunca diga que quedó agendada sin que schedule_test_drive haya tenido éxito.' },
+    { industry: 'veterinaria', requires: 'pets', guidance: 'Registre la mascota con register_pet antes de agendar (list_pets_for_contact primero para no duplicarla). Ante señales de urgencia use triage_pet_emergency de inmediato.' },
     // `salud` + catálogo es la farmacia: ninguna otra subespecialidad de salud
     // enciende catálogo. La regla de la fórmula médica vive en el writer, no
     // acá; esto sólo hace que el agente sepa POR QUÉ le van a decir que no y
     // qué ofrecer en su lugar.
-    { industry: 'salud', requires: 'catalog', guidance: 'Para una venta de mostrador: search_products → check_stock antes de prometer disponibilidad → confirmá qué y cuántos → place_catalog_order. Lo que sale marcado como venta bajo fórmula médica NO se pide por chat: decilo con el nombre del producto y pasá la conversación a una persona del equipo para validar la receta. Nunca sugieras un medicamento para un síntoma, ni una dosis, ni un reemplazo de otro producto.' },
-    { industry: 'retail', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock antes de prometer disponibilidad → send_product_image si ayuda → confirmá qué y cuántos → place_catalog_order. Los precios salen del catálogo: vos sólo pasás productId y cantidad.' },
-    { industry: 'otro', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock → confirmá qué y cuántos → place_catalog_order. Nunca digas que el pedido quedó registrado sin que place_catalog_order haya tenido éxito.' },
+    { industry: 'salud', requires: 'catalog', guidance: 'Para una venta de mostrador: search_products → check_stock antes de prometer disponibilidad → confirme producto y cantidad → place_catalog_order. Lo que sale marcado como venta bajo fórmula médica NO se pide por chat: dígalo con el nombre del producto y pase la conversación a una persona del equipo para validar la receta. Nunca sugiera un medicamento para un síntoma, ni una dosis, ni un reemplazo de otro producto.' },
+    { industry: 'retail', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock antes de prometer disponibilidad → send_product_image si ayuda → confirme producto y cantidad → place_catalog_order. Los precios salen del catálogo; pase sólo productId y cantidad.' },
+    { industry: 'otro', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock → confirme producto y cantidad → place_catalog_order. Nunca diga que el pedido quedó registrado sin que place_catalog_order haya tenido éxito.' },
 ];
 
 function verticalFlowGuidance(industry: unknown, tools: any): string | undefined {
@@ -173,30 +187,35 @@ const HANDOFF_MSG: Record<string, {
     queueHead: string;
     queueN: (p: number) => string;
     transferring: string;
+    unavailable: string;
 }> = {
     es: {
         withAgent: n => `Entiendo tu solicitud. Te estoy transfiriendo con *${n}* de nuestro equipo. Te responderá en un momento. 🙋`,
         queueHead: 'Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋',
         queueN: p => `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${p} en cola. Un agente te atenderá lo antes posible. 🙋`,
         transferring: 'Te voy a transferir con un agente de nuestro equipo.',
+        unavailable: 'No pude conectarte con un agente en este momento. No realizaré la operación automáticamente; por favor, inténtalo de nuevo en unos minutos.',
     },
     en: {
         withAgent: n => `Got it. I'm transferring you to *${n}* from our team. They'll reply shortly. 🙋`,
         queueHead: `Got it. I'm transferring you to our support team. An agent will reply shortly. 🙋`,
         queueN: p => `Got it. I'm transferring you to our support team. You're #${p} in the queue. An agent will assist you as soon as possible. 🙋`,
         transferring: `I'll transfer you to an agent from our team.`,
+        unavailable: `I couldn't connect you with an agent right now. I won't perform the operation automatically; please try again in a few minutes.`,
     },
     pt: {
         withAgent: n => `Entendi. Estou te transferindo para *${n}* da nossa equipe. Em breve responderá. 🙋`,
         queueHead: 'Entendi. Estou te transferindo para nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
         queueN: p => `Entendi. Estou te transferindo para nossa equipe. Você é o #${p} na fila. Um atendente vai te atender o quanto antes. 🙋`,
         transferring: 'Vou te transferir para um atendente da nossa equipe.',
+        unavailable: 'Não consegui conectar você a um atendente agora. Não farei a operação automaticamente; tente novamente em alguns minutos.',
     },
     fr: {
         withAgent: n => `Compris. Je vous transfère à *${n}* de notre équipe. Il/elle vous répondra dans un instant. 🙋`,
         queueHead: 'Compris. Je vous transfère à notre équipe support. Un agent vous répondra sous peu. 🙋',
         queueN: p => `Compris. Je vous transfère à notre équipe. Vous êtes #${p} dans la file. Un agent vous répondra dès que possible. 🙋`,
         transferring: 'Je vais vous transférer à un agent de notre équipe.',
+        unavailable: "Je n'ai pas pu vous mettre en relation avec un agent pour le moment. Je n'effectuerai pas l'opération automatiquement ; veuillez réessayer dans quelques minutes.",
     },
 };
 const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_MSG.es;
@@ -210,7 +229,7 @@ const EXECUTED_OPERATION_MSG: Record<string, { done: string; doneNoDetails: stri
         done: 'La operación que el cliente acaba de confirmar YA quedó realizada. Confírmasela con naturalidad usando estos datos reales:',
         doneNoDetails: 'La operación que el cliente acaba de confirmar YA quedó realizada. Confírmasela con naturalidad.',
         failed: 'La operación NO se pudo completar. Explícaselo al cliente con claridad, NO afirmes que quedó hecha, y ofrécele una alternativa concreta. Motivo interno (no lo cites textualmente): {reason}',
-        awaitingPayment: 'La solicitud quedó registrada pero NO está confirmada: este ítem requiere pago para confirmarse, y las fechas siguen disponibles para otros hasta que el pago se acredite. NO digas que quedó confirmada ni reservada. Decile con naturalidad qué falta pagar y pasale el enlace de pago. Datos reales:',
+        awaitingPayment: 'La solicitud quedó registrada pero NO está confirmada: este ítem requiere pago para confirmarse, y las fechas siguen disponibles para otros hasta que el pago se acredite. NO diga que quedó confirmada ni reservada. Dígale con naturalidad qué falta pagar y pásele el enlace de pago. Datos reales:',
     },
     en: {
         done: 'The operation the customer just confirmed HAS been completed. Confirm it naturally using these real details:',
@@ -372,6 +391,8 @@ export class ConversationsService {
         // compiling; the turn falls back to the previous behaviour when absent.
         private regionalProfile?: RegionalProfileService,
         private effectiveCapability?: EffectiveCapabilityService,
+        private verticalTurnContext?: VerticalTurnContextService,
+        private turnCapabilityComposer?: TurnCapabilityComposerService,
     ) {}
 
     /**
@@ -873,7 +894,18 @@ export class ConversationsService {
         );
         this.logger.log(`[Pipeline] Generating AI response...`);
         const response = resumedReply
-            || await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours, inboundMessageId);
+            || await this.generateResponse(
+                tenantId,
+                conversation,
+                normalizedMsg,
+                config,
+                contact,
+                lead,
+                previousMessageAt,
+                bizHours,
+                inboundMessageId,
+                personaResolution.agentId ?? undefined,
+            );
 
         // Persist the decision BEFORE any of it goes out, so a crash between the
         // first bubble and the last one is resumed with the same words instead of
@@ -1677,7 +1709,14 @@ export class ConversationsService {
         await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
     }
 
-    private async sendMedia(tenantId: string, inboundMsg: NormalizedMessage, mediaUrl: string, caption: string | undefined, delayMs?: number) {
+    private async sendMedia(
+        tenantId: string,
+        inboundMsg: NormalizedMessage,
+        mediaUrl: string,
+        caption: string | undefined,
+        delayMs?: number,
+        dedupeIndex?: number,
+    ) {
         const outbound: OutboundMessage = {
             tenantId,
             channelType: inboundMsg.channelType,
@@ -1685,6 +1724,9 @@ export class ConversationsService {
             to: inboundMsg.contactId,
             content: { type: 'image', mediaUrl, caption },
             metadata: { inboundTs: this.inboundTs(inboundMsg) },
+            ...(dedupeIndex !== undefined
+                ? { dedupeId: outboundDedupeId(inboundMsg, 'media', dedupeIndex) }
+                : {}),
         };
         const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
         await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
@@ -1774,7 +1816,18 @@ export class ConversationsService {
      * Orchestrate the LLM call using the Router and Persona System Prompt.
      * Includes smart history truncation to stay within context window limits.
      */
-    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any, bizHours?: any, inboundMessageId?: string): Promise<string> {
+    private async generateResponse(
+        tenantId: string,
+        conversation: any,
+        msg: NormalizedMessage,
+        config: TenantConfig,
+        contact?: any,
+        lead?: any,
+        previousMessageAt?: any,
+        bizHours?: any,
+        inboundMessageId?: string,
+        resolvedAgentId?: string,
+    ): Promise<string> {
         let userText = msg.content.text || '';
 
         // Opt-in WhatsApp Flow completion: the adapter sets content.text to the
@@ -1936,6 +1989,12 @@ export class ConversationsService {
                 countryPackId: regional.countryPackId,
                 countryPackVersion: regional.countryPackVersion,
                 countryPackStatus: regional.countryPackStatus,
+                preferredTerms: userLanguage.slice(0, 2).toLowerCase()
+                    === regional.locale.value.slice(0, 2).toLowerCase()
+                    ? regional.preferredTerms : undefined,
+                prohibitedRegisters: userLanguage.slice(0, 2).toLowerCase()
+                    === regional.locale.value.slice(0, 2).toLowerCase()
+                    ? regional.prohibitedRegisters : undefined,
             } : undefined,
             now: now.toISOString(),
             upcomingDays: this.promptAssembler.computeUpcomingDays(now, tz, 8),
@@ -2123,6 +2182,40 @@ export class ConversationsService {
             this.logger.debug(`Vertical context lookup skipped: ${e.message}`);
         }
 
+        // Rebuild through the same component Agent Test uses. The legacy block
+        // above remains as a compatibility fallback for hand-built specs where
+        // this optional provider is absent; production always replaces it with
+        // this contract-backed projection.
+        try {
+            const sharedVerticalContext = await this.verticalTurnContext?.resolve({
+                tenantId,
+                language: userLanguage,
+                toolsConfig: (config.tools ?? (config as any)?.tools) as any,
+            });
+            if (sharedVerticalContext) turnContext.verticalContext = sharedVerticalContext;
+        } catch (e: any) {
+            this.logger.debug(`Shared vertical context lookup skipped: ${e.message}`);
+        }
+
+        // Durable, non-PII evidence of the exact operating identity and subtype
+        // that governed the turn. Without this, a regional/subtype defect could
+        // only be reproduced from mutable tenant settings after the fact.
+        turnTrace.add('turn_context', 'Resolved turn context', {
+            language: turnContext.language,
+            timezone: turnContext.timezone,
+            businessHoursStatus: turnContext.businessHoursStatus,
+            operatingCountry: turnContext.regional?.operatingCountry,
+            currency: turnContext.regional?.currency,
+            locale: turnContext.regional?.locale,
+            countryPackId: turnContext.regional?.countryPackId,
+            countryPackVersion: turnContext.regional?.countryPackVersion,
+            countryPackStatus: turnContext.regional?.countryPackStatus,
+            industry: turnContext.verticalContext?.industry,
+            subType: turnContext.verticalContext?.subType,
+            activeObjectCount: turnContext.activeObjects?.items?.length || 0,
+            activeObjectKinds: turnContext.activeObjects?.items?.map(item => item.kind),
+        });
+
         // 4. Deterministic Booking Engine (runs BEFORE the LLM — emits interactive
         // messages directly for WhatsApp, or produces text for the LLM to voice).
         const toolsConfig = config.tools?.appointments ?? (config as any)?.tools?.appointments;
@@ -2149,7 +2242,26 @@ export class ConversationsService {
         // Acá se resuelve UNA vez, antes que nada, y el resultado gobierna el
         // motor determinista, Procedures y la publicación de tools.
         const cfgTools = (config.tools ?? (config as any)?.tools) as any;
-        const capability = await this.resolveTurnCapability({
+        // Production resolves the COMPLETE snapshot here: subtype/core,
+        // readiness, providers, money, approved MCP and identity. The legacy
+        // resolver remains only for hand-built specs that omit the optional
+        // composer; it is never allowed to widen the production snapshot.
+        let composedCapability: ComposedTurnCapability | null = null;
+        if (this.turnCapabilityComposer) {
+            composedCapability = await this.turnCapabilityComposer.resolve({
+                tenantId,
+                schemaName,
+                config,
+                industry: turnContext.verticalContext?.industry || config.industry,
+                subType: turnContext.verticalContext?.subType,
+                agentId: resolvedAgentId,
+                role: 'tenant_agent',
+                channelType: msg.channelType,
+                operatingCountry: turnContext.regional?.operatingCountry,
+                jurisdiction: turnContext.regional?.operatingCountry,
+            });
+        }
+        const capability = composedCapability ?? await this.resolveTurnCapability({
             tenantId,
             schemaName,
             config,
@@ -2158,13 +2270,27 @@ export class ConversationsService {
             channelType: msg.channelType,
         });
         turnContext.capability = capability.status;
+        turnContext.verticalContext = projectVerticalIntentAvailability(
+            turnContext.verticalContext,
+            capability.contract?.publishedTools ?? [],
+        );
         turnTrace.add('capability_contract', 'Capability', {
+            contractVersion: capability.contract?.version,
             status: capability.status.status,
             reason: capability.status.reason,
             profile: capability.status.profileId,
             plan: capability.contract?.planSnapshot,
+            countryPackId: capability.contract?.countryPackId,
+            domainContractVersion: capability.contract?.domainContract?.contractVersion,
+            decisionInputs: capability.contract?.decisionInputs,
             published: capability.contract?.publishedGroups,
+            publishedByOrigin: capability.contract?.publishedByOrigin,
             unmetReadiness: capability.contract?.unmetReadiness,
+            exclusions: capability.contract?.excluded?.map(entry => ({
+                subject: entry.subject,
+                reason: entry.reason,
+                repairRoute: entry.repairRoute,
+            })),
             degraded: capability.contract?.degraded,
         });
 
@@ -2190,19 +2316,19 @@ export class ConversationsService {
         // ejecutor devuelve `capability_blocked`, `tool_disabled_by_owner`,
         // `tool_not_authorised` o `authority_stale`, y eso es un pedido real
         // que el sistema no pudo cumplir.
-        const commitmentBlocked = writesAuthorised
+        const commitmentBlocked = composedCapability?.commitmentBlocked ?? (writesAuthorised
             ? null
             : {
                 reason: `capability:${capability.status.status}`
                     + `:${capability.status.reason ?? 'sin_motivo'}`,
-            };
+            });
 
         // Los subpermisos que el dueño apagó a mano. `canBook`, `canCancel`,
         // `canCheckStock` y `canRecommend` existían en el tipo y en la pantalla
         // del agente, y NADIE los leía: un dueño que destildaba "puede
         // cancelar" veía la casilla apagada y el agente cancelaba igual.
-        const deniedTools = [...subpermissionDeniedToolNames(cfgTools ?? {})];
-        const bookingDenied = deniedTools.includes('create_appointment');
+        const deniedTools = composedCapability?.deniedTools
+            ?? [...subpermissionDeniedToolNames(cfgTools ?? {})];
 
         // Cómo se arma la autoridad vive en `turn-authority.ts`, no acá: este
         // método tiene mil setecientas líneas y treinta y nueve dependencias,
@@ -2218,7 +2344,37 @@ export class ConversationsService {
         };
         const turnAuthority = (allowedTools: readonly string[]): ToolExecutionAuthority =>
             buildTurnAuthority(authorityInput, allowedTools);
-        const engineAuthority = engineAuthorityFor(authorityInput);
+        const engineAuthority = composedCapability?.authority ?? engineAuthorityFor(authorityInput);
+        const composedTurnTools = composedCapability?.tools ?? null;
+
+        // A blocked profile may answer greetings and questions normally. It
+        // escalates only a concrete action verb, and the handoff happens here —
+        // not as prose the model merely promises. This is intentionally before
+        // Booking/Procedures/pending confirmation so none can race it.
+        const blockedOperation = capability.contract?.writersBlocked
+            ? deniedOperationalIntent(userText)
+            : null;
+        if (blockedOperation) {
+            const reason = `capability_denied_intent:${blockedOperation}`;
+            try {
+                await this.handoffService.executeHandoff(tenantId, conversation.id, msg, reason);
+                this.analyticsService.trackEvent({
+                    tenantId,
+                    eventType: 'handoff_triggered',
+                    conversationId: conversation.id,
+                    contactId: conversation.contact_id || undefined,
+                    data: { reason, deterministic: true },
+                }).catch(() => {});
+                engineProducedText = handoffText(userLanguage).transferring;
+                this.recordAgentSignal(tenantId, 'capability_denied_intent_handoff');
+            } catch (error: any) {
+                // Do not start a blocked operation when the queue itself is
+                // unavailable. The model still receives writes=blocked, but we
+                // do not claim an operation succeeded.
+                this.logger.error(`[Capability] deterministic handoff failed (${reason}): ${error?.message}`);
+                engineProducedText = handoffText(userLanguage).unavailable;
+            }
+        }
 
         // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
         // message is the ANSWER to that field — give the procedure engine priority
@@ -2234,7 +2390,17 @@ export class ConversationsService {
         // por nombre: si el dueño apagó "puede agendar", no corre. Sin esto, la
         // casilla apagaba la tool del modelo y dejaba viva la del motor, que es
         // justamente la que reserva.
-        if (toolsEnabled && !procedureAwaiting && writesAuthorised && !bookingDenied) {
+        // Invoke the engine when the family is enabled even if the effective
+        // authority is incomplete. Its first instruction is the exact
+        // three-tool authority check, before cache reads or PII collection: a
+        // booking request then receives a deterministic handoff, while a
+        // greeting simply falls through. Skipping the engine here would also
+        // skip that fail-safe and leave the model to improvise an unavailable
+        // booking flow.
+        const bookingAuthority = bookingEngineAuthorityDecision(engineAuthority);
+        if (toolsEnabled
+            && !engineProducedText
+            && !procedureAwaiting) {
             // Tenant-local "today" — toISOString() would be UTC, which rolls over
             // to tomorrow during the evening across all of LatAm (UTC-3…-6) and
             // would make the booking engine treat "hoy" as the next day.
@@ -2267,7 +2433,40 @@ export class ConversationsService {
             const isGreetOrFarewell = intent.intent === 'greet' || intent.intent === 'farewell';
             const isIdleOrBooked = bookingState.step === 'idle' || bookingState.step === 'booked' || !bookingState.step;
 
-            if (isGreetOrFarewell && isIdleOrBooked) {
+            if (!bookingAuthority.allowed) {
+                // Let the engine's first-line authority guard decide whether
+                // this is an actual booking request or ordinary conversation.
+                // No booking cache/tool/PII step can run before that guard.
+                const deniedResult = await this.bookingEngine.process(
+                    schemaName, tenantId, conversation.contact_id || '',
+                    intent, userText, bookingState, customerProfile, todayISO, userLanguage,
+                    {
+                        authority: engineAuthority,
+                        flowCapable: false,
+                        flowData: undefined,
+                        conversationId: conversation.id,
+                    },
+                );
+                bookingState = deniedResult.state;
+                await this.persistBookingState(schemaName, conversation.id, deniedResult.state);
+                if (deniedResult.handled) {
+                    engineProducedText = deniedResult.text || null;
+                    tools = [];
+                    if (deniedResult.handoff) {
+                        try {
+                            await this.handoffService.executeHandoff(
+                                tenantId,
+                                conversation.id,
+                                msg,
+                                deniedResult.handoffReason || 'booking_unavailable',
+                            );
+                        } catch (e: any) {
+                            this.logger.warn(`[Booking] authority handoff failed: ${e.message}`);
+                            engineProducedText = handoffText(userLanguage).unavailable;
+                        }
+                    }
+                }
+            } else if (isGreetOrFarewell && isIdleOrBooked) {
                 this.logger.log(`[Pipeline] ${intent.intent} (idle): LLM handles with full persona`);
                 // Refresh services from DB and update cache so booking engine gets fresh data next turn
                 try {
@@ -2353,6 +2552,7 @@ export class ConversationsService {
                             );
                         } catch (e: any) {
                             this.logger.warn(`[Booking] handoff failed: ${e.message}`);
+                            engineProducedText = handoffText(userLanguage).unavailable;
                         }
                     }
                 } else {
@@ -2535,88 +2735,49 @@ export class ConversationsService {
             }
         }
 
-        // Every static tool family this agent's config authorises, resolved from
-        // the ONE registry that the procedure engine and Agent Test also compile
-        // against. This was an inline chain of `if (cfgTools?.x?.enabled)`
-        // duplicated in three places — which is exactly why a Procedure could
-        // call a family the agent had switched off and Agent Test could
-        // advertise a different set than production.
-        //
-        // Plan, quota, provider health and readiness are NOT decided here: the
-        // money families below and the central guard apply those per turn, so a
-        // tool can be authorised by config and still be refused at execution.
-        tools = [...tools, ...staticToolsForAgentConfig(cfgTools)];
-
-        // Customer checkout is independent from ecommerce and fails closed on
-        // every turn. A saved agent toggle alone never advertises a money tool:
-        // the runtime plan and the tenant-owned provider must both be ready.
-        // The discount tool shares this gate because it is a money action too:
-        // it was published from a saved toggle while the only live provider
-        // supports payment links and nothing else, so every call the model made
-        // ended in an apology and a handoff.
-        const needsPaymentCapability = cfgTools?.payments?.enabled === true
-            || cfgTools?.ecommerce?.canApplyDiscount === true;
-        if (needsPaymentCapability) {
-            try {
-                const capability = await this.paymentOperations.getRuntimeCapability(tenantId);
-                if (cfgTools?.payments?.enabled === true) {
-                    tools = [...tools, ...paymentToolsForRuntime(cfgTools.payments, capability)];
-                }
-                tools = [...tools, ...discountToolsForRuntime(
-                    {
+        if (composedTurnTools) {
+            // This is the exact set whose authority Booking, Procedures and the
+            // pending-confirmation path already received above. Do not resolve
+            // or append another family here: publication and execution must be
+            // two views of one snapshot, never two independently timed queries.
+            tools = [...tools, ...composedTurnTools];
+        } else {
+            // Compatibility fallback for hand-built unit tests that construct
+            // ConversationsService without the production composer.
+            tools = [...tools, ...staticToolsForAgentConfig(cfgTools)];
+            const needsPaymentCapability = cfgTools?.payments?.enabled === true
+                || cfgTools?.ecommerce?.canApplyDiscount === true;
+            if (needsPaymentCapability) {
+                try {
+                    const runtimePayment = await this.paymentOperations.getRuntimeCapability(tenantId);
+                    if (cfgTools?.payments?.enabled === true) {
+                        tools = [...tools, ...paymentToolsForRuntime(cfgTools.payments, runtimePayment)];
+                    }
+                    tools = [...tools, ...discountToolsForRuntime({
                         canApplyDiscount: cfgTools?.ecommerce?.canApplyDiscount,
                         maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
-                    },
-                    capability,
-                )];
-            } catch (error: any) {
-                this.logger.warn(`[TenantPayments] capability unavailable for ${tenantId}: ${error?.message || 'unknown'}`);
+                    }, runtimePayment)];
+                } catch (error: any) {
+                    this.logger.warn(`[TenantPayments] capability unavailable for ${tenantId}: ${error?.message || 'unknown'}`);
+                }
             }
-        }
-
-        // Lecturas de proveedor (T3.19: Toast / Mindbody / Cliniko).
-        //
-        // Se publicaban por estar CONECTADAS, con su propia puerta al margen del
-        // contrato. Ahora las decide el contrato —que ademas mira salud, scopes
-        // y frescura— y aca solo se traducen los nombres que autorizo a sus
-        // definiciones. Sin contrato no se publica ninguna: un resolutor caido
-        // no es permiso para leer de un tercero.
-        const providerToolDefs: Record<string, typeof GET_RESTAURANT_MENU_TOOL> = {
-            get_restaurant_menu: GET_RESTAURANT_MENU_TOOL,
-            get_fitness_schedule: GET_FITNESS_SCHEDULE_TOOL,
-            list_clinic_services: LIST_CLINIC_SERVICES_TOOL,
-            check_clinic_availability: CHECK_CLINIC_AVAILABILITY_TOOL,
-        };
-        for (const [name, def] of Object.entries(providerToolDefs)) {
-            if (capability.contract?.publishedTools.includes(name)) tools = [...tools, def];
-        }
-
-        // External MCP tools (T3.20). Discovery is not authorisation: the model
-        // only ever sees tools whose effect, confirmation and human-approval
-        // policy a person reviewed and signed. Publishing everything a server
-        // reported while the central guard rejected every `mcp__*` call was a
-        // dead end the model kept walking into.
-        try {
-            const { tools: mcpTools, discoveredCount, approvedCount } =
-                await this.mcpClient.listPublishableTools(tenantId);
-            if (mcpTools.length) tools = [...tools, ...mcpTools];
-            if (discoveredCount > approvedCount) {
-                this.logger.debug(
-                    `[MCP] ${discoveredCount - approvedCount} tool(s) connected for inspection but not approved for the agent`,
-                );
+            const providerToolDefs: Record<string, typeof GET_RESTAURANT_MENU_TOOL> = {
+                get_restaurant_menu: GET_RESTAURANT_MENU_TOOL,
+                get_fitness_schedule: GET_FITNESS_SCHEDULE_TOOL,
+                list_clinic_services: LIST_CLINIC_SERVICES_TOOL,
+                check_clinic_availability: CHECK_CLINIC_AVAILABILITY_TOOL,
+            };
+            for (const [name, def] of Object.entries(providerToolDefs)) {
+                if (capability.contract?.publishedTools.includes(name)) tools = [...tools, def];
             }
-        } catch (e: any) {
-            this.logger.debug(`[T3.20] MCP tool registration skipped: ${e.message}`);
+            try {
+                const { tools: mcpTools } = await this.mcpClient.listPublishableTools(tenantId);
+                if (mcpTools.length) tools = [...tools, ...mcpTools];
+            } catch (e: any) {
+                this.logger.debug(`[T3.20] MCP tool registration skipped: ${e.message}`);
+            }
+            tools = [...tools, ...identityStepUpToolsFor(tools)];
         }
-
-        // The identity step-up is the only key to the A2-guarded reads, and it
-        // is derived from the tools actually published this turn — not from a
-        // hand-kept list of four families. Any A2 tool outside that list (a
-        // rental's check-in instructions, a groomer's vaccination status, a case
-        // status) made the guard send a code the agent had no tool to consume:
-        // the customer typed it into a conversation that could not read it.
-        // Derivation runs last, after every family, so it sees the real set.
-        tools = [...tools, ...identityStepUpToolsFor(tools)];
 
         // El contrato tiene la última palabra sobre QUÉ se publica. El registro
         // de arriba contesta "qué encendió el dueño"; esto contesta "qué puede
@@ -2658,6 +2819,7 @@ export class ConversationsService {
                 // que no reconocemos NO pasa: desconocido no es permiso.
                 tools = tools.filter(t => {
                     const name = String(t?.name);
+                    if (composedTurnTools) return allowed.has(name);
                     if (toolOrigin(name) === 'mcp') return true;
                     if (ASYNC_GATED_TOOL_NAMES.has(name)) return true;
                     return allowed.has(name);
@@ -2689,7 +2851,7 @@ export class ConversationsService {
         // en "esta tool no está autorizada", y mandaría a una persona una
         // conversación que no lo necesita.
         const turnAllowedTools = tools.map(t => String(t?.name)).filter(Boolean);
-        const llmAuthority = turnAuthority(turnAllowedTools);
+        const llmAuthority = composedCapability?.authority ?? turnAuthority(turnAllowedTools);
 
         // D2: Tool retrieval — keep the turn's toolset small (Gorilla: >30 tools
         // degrades selection). Relevance is scored against the CURRENT message,
@@ -2756,7 +2918,13 @@ export class ConversationsService {
                 const searchThreshold = Math.min(0.25, similarityThreshold);
                 // RAG 2.0: rewrite follow-up questions into a standalone search query
                 // so anaphora ("¿y eso cuánto sale?") don't embed garbage.
-                const searchQuery = await this.rewriteSearchQuery(userText, schemaName, conversation.id, tenantId);
+                const searchQuery = await this.rewriteSearchQuery(
+                    userText,
+                    schemaName,
+                    conversation.id,
+                    tenantId,
+                    turnContext.regional?.operatingCountry,
+                );
                 const ragResults = await this.knowledgeService.searchRelevant(
                     tenantId, searchQuery, topK,
                     {
@@ -3099,10 +3267,24 @@ export class ConversationsService {
                     // sanitized result (media marker stripped) for the tool message.
                     const runTool = async (tc: any): Promise<any> => {
                         let result: any;
+                        let argumentKeys: string[] = [];
+                        const policy = getToolPolicy(tc.function.name);
                         try {
                             const args = typeof tc.function.arguments === 'string'
                                 ? JSON.parse(tc.function.arguments)
                                 : (tc.function.arguments || {});
+                            argumentKeys = args && typeof args === 'object' && !Array.isArray(args)
+                                ? Object.keys(args).slice(0, 30)
+                                : [];
+                            turnTrace.add('tool_call', tc.function.name, {
+                                origin: toolOrigin(tc.function.name) || (tc.function.name.startsWith('mcp__') ? 'mcp' : 'unknown'),
+                                effect: policy?.effect || 'opaque',
+                                externalEffect: policy?.externalEffect || 'opaque',
+                                assurance: policy?.assurance,
+                                confirmation: policy?.confirmation,
+                                humanApproval: policy?.humanApproval,
+                                argumentKeys,
+                            });
                             result = await this.withTimeout(
                                 this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, {
                                     authority: llmAuthority,
@@ -3125,6 +3307,12 @@ export class ConversationsService {
                         turnTrace.add('tool_result', tc.function.name, {
                             ok: !(result && result.error),
                             error: result?.error,
+                            status: result?.status,
+                            effect: policy?.effect || 'opaque',
+                            externalEffect: policy?.externalEffect || 'opaque',
+                            activeObjectKind: result?.activeObject?.kind,
+                            activeObjectHref: result?.activeObject?.href,
+                            argumentKeys,
                         });
 
                         // Capture any media the tool wants sent (e.g. a product image)
@@ -3278,16 +3466,36 @@ export class ConversationsService {
             const paymentLinks = executedToolsThisTurn
                 .map(t => (t?.result as any)?.paymentLink)
                 .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u));
+            let paymentLinkIndex = 0;
             for (const url of new Set(paymentLinks)) {
                 await this.sendPaymentLink(tenantId, msg, url);
-                await this.saveAiMessage(tenantId, conversation.id, url, msg.channelType);
+                await this.saveAiMessage(
+                    tenantId,
+                    conversation.id,
+                    url,
+                    msg.channelType,
+                    outboundDedupeId(msg, 'payment-link-history', paymentLinkIndex++),
+                );
             }
 
             // Multimodal out (#13): dispatch product images the LLM requested,
             // staggered AFTER the text reply so they land in a natural order.
             for (let i = 0; i < mediaToSend.length; i++) {
-                await this.sendMedia(tenantId, msg, mediaToSend[i].url, mediaToSend[i].caption, 2000 + i * 1200);
-                await this.saveAiMessage(tenantId, conversation.id, `[📷 ${mediaToSend[i].caption || 'imagen'}]`, msg.channelType);
+                await this.sendMedia(
+                    tenantId,
+                    msg,
+                    mediaToSend[i].url,
+                    mediaToSend[i].caption,
+                    2000 + i * 1200,
+                    i,
+                );
+                await this.saveAiMessage(
+                    tenantId,
+                    conversation.id,
+                    `[📷 ${mediaToSend[i].caption || 'imagen'}]`,
+                    msg.channelType,
+                    outboundDedupeId(msg, 'media-history', i),
+                );
             }
 
             // Reset failedAttempts on successful AI response
@@ -3336,6 +3544,13 @@ export class ConversationsService {
                 finalResponseLength: finalResponse?.length || 0,
                 mediaCount: mediaToSend.length,
                 postToolHandoff: postToolHandoff || undefined,
+                committedTools: executedToolsThisTurn
+                    .filter(item => toolResultSucceeded(item.result) && isBusinessWriteTool(item.name))
+                    .map(item => item.name),
+                activeObjects: executedToolsThisTurn
+                    .map(item => item.result?.activeObject)
+                    .filter(Boolean)
+                    .map(item => ({ kind: item.kind, href: item.href })),
             });
             // Persist the step-by-step trace, fire-and-forget — tracing never breaks the turn.
             try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
@@ -3578,7 +3793,13 @@ export class ConversationsService {
      * using recent history (cheap tier). Self-contained questions pass through
      * unchanged so we don't add latency where it isn't needed.
      */
-    private async rewriteSearchQuery(userText: string, schemaName: string, conversationId: string, tenantId: string): Promise<string> {
+    private async rewriteSearchQuery(
+        userText: string,
+        schemaName: string,
+        conversationId: string,
+        tenantId: string,
+        operatingCountry?: string | null,
+    ): Promise<string> {
         // Una confirmación no tiene nada que expandir.
         //
         // El guard de abajo es `length < 80`, así que "sí" entraba: una consulta
@@ -3586,13 +3807,13 @@ export class ConversationsService {
         // tienen referente. Y justo en el turno que cierra la venta, que es el
         // que menos puede permitirse latencia de más.
         //
-        // Sin `` a propósito: en JavaScript se apoya en `\w`, que no incluye
-        // `í`, así que `sí` no casa nunca. El anclaje al final ya exige que la
-        // confirmación sea todo el mensaje — "si tienen lugar" no entra.
-        // El patrón es el mismo que usa el intérprete de intención para decidir
-        // `isConfirmation`, a propósito: si mañana alguien agrega una forma de
-        // decir que sí, los dos lugares tienen que verla igual.
-        if (/^(si|sí|yes|ok|oka|okay|confirmo|confirmar|confirma|confirmado|dale|listo|perfecto|claro|correcto|de acuerdo|por supuesto|sure|oui|sim|va|vamos|exacto|gracias|thanks|obrigad|merci)[\s.!]*$/i.test(userText.trim())) {
+        // Use the same country-aware classifier as Booking and the execution
+        // guard. A manual regex here drifted immediately: national expressions
+        // such as "hágale", "ya po" and "beleza" were correctly understood by
+        // the action flow but still triggered a DB read and an LLM rewrite.
+        // `unclear` deliberately keeps going: "si tienen disponibilidad" is a
+        // real query, not an isolated acknowledgement or confirmation.
+        if (normalizeCustomerIntent(userText, { country: operatingCountry }).intent !== 'unclear') {
             return userText;
         }
 
@@ -3981,12 +4202,12 @@ export class ConversationsService {
         return chunks.length ? chunks : [text];
     }
 
-    /** Resolve `p`, or reject after `ms` so one slow tool can't stall the turn. */
+    /**
+     * Bound explicitly read-only tools. Writers are awaited because a Promise
+     * timeout cannot cancel their underlying commit.
+     */
     private withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-        return Promise.race([
-            p,
-            new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Tool ${label} timed out after ${ms}ms`)), ms)),
-        ]);
+        return awaitToolWithSafeTimeout(p, ms, label, getToolPolicy(label));
     }
 
     private truncateHistory(
@@ -4118,24 +4339,45 @@ export class ConversationsService {
         // `undefined` —no un snapshot vacio—: vacio significa "medi y no hay
         // ninguno" y apagaria integraciones sanas por una consulta caida.
         let providers: Record<string, {
-            connected: boolean; healthy?: boolean;
-            scopes?: readonly string[]; asOf?: string;
+            configured?: boolean; connected: boolean; healthy?: boolean;
+            scopes?: readonly string[]; mirrorAsOf?: string;
         }> | undefined;
         try {
             const health = await this.verticalIntegrations.getAllHealth(input.tenantId);
             providers = Object.fromEntries(Object.entries(health).map(([name, h]: [string, any]) => [
                 name,
                 {
+                    configured: h?.configured === undefined
+                        ? !!h?.connected
+                        : !!h.configured,
                     connected: !!h?.connected,
                     // Scopes incompletos es lo mismo que no poder leer: el token
                     // esta conectado y aun asi la lectura vuelve vacia.
-                    healthy: h?.status === 'healthy' && h?.scopeStatus !== 'missing',
+                    healthy: !!h?.connected
+                        && !['unavailable', 'unhealthy', 'not_applicable'].includes(h?.status)
+                        && h?.scopeStatus !== 'missing'
+                        && h?.circuitState !== 'open',
                     scopes: h?.grantedScopes,
-                    asOf: h?.lastSuccessfulSyncAt || h?.lastCheckedAt || undefined,
+                    mirrorAsOf: h?.lastSuccessfulSyncAt || undefined,
                 },
             ]));
         } catch (error: any) {
             this.logger.debug(`[Capability] salud de proveedores no disponible: ${error?.message}`);
+            // Health can fail without changing who owns the domain. Recover
+            // the durable binding independently so an outage cannot reactivate
+            // a local writer against the same POS/PMS.
+            try {
+                const bindings = await this.verticalIntegrations
+                    .getConfiguredProviderBindings(input.tenantId);
+                providers = Object.fromEntries(Object.entries(bindings).map(([name, configured]) => [
+                    name,
+                    { configured, connected: false, healthy: undefined },
+                ]));
+            } catch (bindingError: any) {
+                this.logger.debug(
+                    `[Capability] ownership de proveedores no disponible: ${bindingError?.message}`,
+                );
+            }
         }
 
         try {

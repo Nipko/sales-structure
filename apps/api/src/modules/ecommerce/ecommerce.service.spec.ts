@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { promises as dns } from 'node:dns';
 import { EcommerceService } from './ecommerce.service';
+import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+
+const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
 describe('EcommerceService Agent Test read-only search', () => {
     // The catalog SELECT now runs through executeInTenantSchema (which validates
@@ -23,7 +26,12 @@ describe('EcommerceService Agent Test read-only search', () => {
             $queryRawUnsafe: jest.fn().mockResolvedValueOnce([]),
             executeInTenantSchema: jest.fn(),
         };
-        const service = new EcommerceService(prisma as any, {} as any, {} as any);
+        const service = new EcommerceService(
+            prisma as any,
+            {} as any,
+            {} as any,
+            new TenantSecretCryptoService(),
+        );
 
         const result = await service.searchProductsForAI(
             'tenant_test',
@@ -49,7 +57,12 @@ describe('EcommerceService Agent Test read-only search', () => {
             $queryRawUnsafe: jest.fn().mockResolvedValueOnce([{ exists: 1 }]),
             executeInTenantSchema: jest.fn().mockResolvedValueOnce([{ external_id: 'sku-1', title: 'Camisa' }]),
         };
-        const service = new EcommerceService(prisma as any, {} as any, {} as any);
+        const service = new EcommerceService(
+            prisma as any,
+            {} as any,
+            {} as any,
+            new TenantSecretCryptoService(),
+        );
 
         const result = await service.searchProductsForAI(
             'tenant_test',
@@ -76,13 +89,23 @@ describe('EcommerceService outbound URL security', () => {
     let http: any;
     let service: EcommerceService;
     let lookupSpy: jest.SpyInstance;
+    let storedSettings: Record<string, any>;
 
     beforeEach(() => {
+        storedSettings = {};
+        const transactionClient = {
+            $queryRawUnsafe: jest.fn(async () => [{ value: storedSettings.ecommerce ?? null }]),
+            $executeRawUnsafe: jest.fn(async (_sql: string, ...params: any[]) => {
+                storedSettings.ecommerce = JSON.parse(params[2]);
+                return 1;
+            }),
+        };
         prisma = {
             tenant: {
                 findUnique: jest.fn().mockResolvedValue({ settings: {} }),
                 update: jest.fn().mockResolvedValue({}),
             },
+            $transaction: jest.fn(async (callback: any) => callback(transactionClient)),
             $queryRawUnsafe: jest.fn().mockResolvedValue([{ exists: 1 }]),
             executeInTenantSchema: jest.fn().mockResolvedValue([]),
             // The product sync upserts a whole page inside ONE transaction.
@@ -94,7 +117,8 @@ describe('EcommerceService outbound URL security', () => {
         lookupSpy = jest.spyOn(dns, 'lookup').mockResolvedValue([
             { address: '203.0.114.20', family: 4 },
         ] as any);
-        service = new EcommerceService(prisma, redis, http);
+        process.env.TENANT_SECRET_KEY = 'a'.repeat(64);
+        service = new EcommerceService(prisma, redis, http, new TenantSecretCryptoService());
     });
 
     afterEach(() => {
@@ -102,15 +126,15 @@ describe('EcommerceService outbound URL security', () => {
     });
 
     it('rejects non-HTTPS, path-bearing and lookalike Shopify origins before persisting', async () => {
-        await expect(service.updateConfig('tenant-1', {
+        await expect(service.updateConfig(TENANT_ID, {
             provider: 'shopify',
             shopUrl: 'http://store.myshopify.com',
         })).rejects.toBeInstanceOf(BadRequestException);
-        await expect(service.updateConfig('tenant-1', {
+        await expect(service.updateConfig(TENANT_ID, {
             provider: 'shopify',
             shopUrl: 'https://store.myshopify.com/admin',
         })).rejects.toBeInstanceOf(BadRequestException);
-        await expect(service.updateConfig('tenant-1', {
+        await expect(service.updateConfig(TENANT_ID, {
             provider: 'shopify',
             shopUrl: 'https://store.myshopify.com.attacker.example',
         })).rejects.toBeInstanceOf(BadRequestException);
@@ -122,7 +146,7 @@ describe('EcommerceService outbound URL security', () => {
     it('rejects a WooCommerce hostname that resolves to a private address', async () => {
         lookupSpy.mockResolvedValue([{ address: '169.254.169.254', family: 4 }] as any);
 
-        await expect(service.updateConfig('tenant-1', {
+        await expect(service.updateConfig(TENANT_ID, {
             provider: 'woocommerce',
             shopUrl: 'https://commerce.example.com',
         })).rejects.toBeInstanceOf(BadRequestException);
@@ -131,21 +155,17 @@ describe('EcommerceService outbound URL security', () => {
     });
 
     it('normalizes and persists an official public Shopify origin', async () => {
-        await service.updateConfig('tenant-1', {
+        await service.updateConfig(TENANT_ID, {
             provider: 'shopify',
             shopUrl: 'https://store-name.myshopify.com/',
         });
 
-        expect(prisma.tenant.update).toHaveBeenCalledWith(expect.objectContaining({
-            data: {
-                settings: {
-                    ecommerce: expect.objectContaining({
-                        provider: 'shopify',
-                        shopUrl: 'https://store-name.myshopify.com',
-                    }),
-                },
-            },
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+        expect(storedSettings.ecommerce).toEqual(expect.objectContaining({
+            provider: 'shopify',
+            shopUrl: 'https://store-name.myshopify.com',
         }));
+        expect(prisma.tenant.update).not.toHaveBeenCalled();
     });
 
     it('pins Shopify DNS and enforces redirects, proxy and body-size limits on sync', async () => {
@@ -161,7 +181,7 @@ describe('EcommerceService outbound URL security', () => {
             .mockResolvedValueOnce({ settings: { ecommerce } })
             .mockResolvedValueOnce({ schemaName: 'tenant_abc' });
 
-        await service.syncShopifyProducts('tenant-1');
+        await service.syncShopifyProducts(TENANT_ID);
 
         expect(http.axiosRef.get).toHaveBeenCalledWith(
             'https://store-name.myshopify.com/admin/api/2024-01/products.json?limit=250',

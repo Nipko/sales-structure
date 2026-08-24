@@ -23,29 +23,43 @@ function buildWorker(options: {
     entries?: any[];
     adapter?: IntegrationWriteAdapter;
     certified?: string;
+    staleTransitions?: boolean;
 } = {}) {
     process.env.INTEGRATION_WRITE_PROVIDERS = options.certified ?? '';
     const sql: Array<{ sql: string; params: any[] }> = [];
     const prisma: any = {
-        tenant: {
-            findMany: jest.fn().mockResolvedValue([{ id: tenantId, schemaName }]),
-        },
         ensureCanonicalTables: jest.fn().mockResolvedValue(undefined),
         executeInTenantSchema: jest.fn(async (_s: string, statement: string, params: any[] = []) => {
             sql.push({ sql: statement, params });
             if (/UPDATE integration_outbox\s+SET status = 'in_flight'/.test(statement)) {
                 return options.entries ?? [];
             }
+            if (/AND claim_token = \$\d+::uuid/.test(statement) && /RETURNING/.test(statement)) {
+                return options.staleTransitions ? [] : [{ id: entry().id, status: 'updated' }];
+            }
             return [];
         }),
+        transactionInTenantSchema: jest.fn(async (_s: string, callback: any) => callback(
+            async (statement: string, params: any[] = []) => {
+                sql.push({ sql: statement, params });
+                if (/INSERT INTO integration_outbox/.test(statement)) {
+                    return [{ id: entry().id, status: 'suppressed' }];
+                }
+                if (/INSERT INTO public\.integration_work_tenants/.test(statement)) {
+                    return [{ tenant_id: tenantId }];
+                }
+                return [];
+            },
+        )),
+        $queryRawUnsafe: jest.fn().mockResolvedValue([
+            { id: tenantId, schemaName, name: 'Tenant' },
+        ]),
     };
     const outbox = new IntegrationOutboxService(prisma);
     for (const level of ['log', 'warn', 'debug'] as const) {
         jest.spyOn((outbox as any).logger, level).mockImplementation(() => undefined);
     }
-    const worker = new IntegrationOutboxWorker(
-        prisma, outbox, { runExclusive: jest.fn() } as any,
-    );
+    const worker = new IntegrationOutboxWorker(outbox, { runExclusive: jest.fn() } as any);
     for (const level of ['log', 'warn', 'debug'] as const) {
         jest.spyOn((worker as any).logger, level).mockImplementation(() => undefined);
     }
@@ -61,6 +75,9 @@ const entry = (over: Record<string, any> = {}) => ({
     payload: {},
     status: 'in_flight',
     attempts: 0,
+    claim_token: '55555555-5555-4555-8555-555555555555',
+    claim_generation: 1,
+    lease_expires_at: new Date(Date.now() + 300_000).toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...over,
@@ -93,10 +110,26 @@ describe('el registro de adapters', () => {
     });
 });
 
-describe('sin adapter, la escritura muere con motivo en vez de acumularse', () => {
+describe('el barrido visita sólo tenants con trabajo registrado', () => {
     afterEach(() => { delete process.env.INTEGRATION_WRITE_PROVIDERS; });
 
-    it('una entrada de un proveedor certificado sin adapter no reintenta ocho veces', async () => {
+    it('consulta el registro público indexado y no la tabla completa de tenants', async () => {
+        const { worker, prisma } = buildWorker();
+
+        await worker.drainAll();
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        const statement = String(prisma.$queryRawUnsafe.mock.calls[0][0]);
+        expect(statement).toContain('public.integration_work_tenants');
+        expect(statement).toContain('outbox_seen_at');
+        expect(prisma.tenant).toBeUndefined();
+    });
+});
+
+describe('sin adapter, la activación incompleta conserva intención suprimida', () => {
+    afterEach(() => { delete process.env.INTEGRATION_WRITE_PROVIDERS; });
+
+    it('allowlist sin adapter no libera ni mata la entrada', async () => {
         const { worker, sql } = buildWorker({
             certified: 'hostaway',
             entries: [entry()],
@@ -104,10 +137,11 @@ describe('sin adapter, la escritura muere con motivo en vez de acumularse', () =
 
         const result = await worker.drainTenant(tenantId, schemaName);
 
-        expect(result.failed).toBe(1);
+        expect(result.failed).toBe(0);
+        expect(sql.find(c => /SET status = 'pending'/.test(c.sql))).toBeUndefined();
+        expect(sql.find(c => /SET status = 'in_flight'/.test(c.sql))).toBeUndefined();
         const kill = sql.find(c => /status = 'dead'/.test(c.sql));
-        expect(kill).toBeDefined();
-        expect(kill!.params).toContain('no_adapter_registered');
+        expect(kill).toBeUndefined();
     });
 
     it('una operación que el adapter no declara tampoco', async () => {
@@ -146,6 +180,30 @@ describe('con adapter, entrega de verdad', () => {
         expect(result.delivered).toBe(1);
         const delivered = sql.find(c => /status = 'delivered'/.test(c.sql));
         expect(delivered!.params).toContain('HA-9001');
+    });
+
+    it('un worker cuyo token fue reemplazado no confirma sobre la nueva generación', async () => {
+        const { worker, sql } = buildWorker({
+            certified: 'hostaway',
+            entries: [entry()],
+            staleTransitions: true,
+            adapter: {
+                provider: 'hostaway', operations: ['create_reservation'],
+                write: jest.fn().mockResolvedValue({ ok: true, externalId: 'late-result' }),
+            },
+        });
+
+        await expect(worker.drainTenant(tenantId, schemaName)).resolves.toMatchObject({
+            delivered: 0,
+            failed: 1,
+        });
+        const attemptedCas = sql.find(c => /status = 'delivered'/.test(c.sql));
+        expect(attemptedCas?.sql).toContain('claim_generation = $4');
+        expect(attemptedCas?.sql).toContain('lease_expires_at > NOW()');
+        expect(attemptedCas?.params).toEqual(expect.arrayContaining([
+            '55555555-5555-4555-8555-555555555555',
+            1,
+        ]));
     });
 
     it('un fallo recuperable reintenta con espera', async () => {
@@ -203,13 +261,13 @@ describe('lo suprimido se libera cuando el proveedor se certifica', () => {
 
     it('con el interruptor apagado no libera nada', async () => {
         const { outbox, sql } = buildWorker();
-        await outbox.releaseSuppressed(schemaName, 'hostaway');
+        await outbox.releaseSuppressed(schemaName, 'hostaway', false);
         expect(sql.find(c => /status = 'pending'/.test(c.sql))).toBeUndefined();
     });
 
     it('con el interruptor encendido, sí', async () => {
         const { outbox, sql } = buildWorker({ certified: 'hostaway' });
-        await outbox.releaseSuppressed(schemaName, 'hostaway');
+        await outbox.releaseSuppressed(schemaName, 'hostaway', true);
         const release = sql.find(c => /SET status = 'pending'/.test(c.sql));
         expect(release).toBeDefined();
         expect(release!.params).toEqual(['hostaway']);
@@ -220,7 +278,7 @@ describe('lo suprimido se libera cuando el proveedor se certifica', () => {
         // si fuera de hoy: una reserva que nadie pidió, para una fecha que ya
         // pasó, en el calendario de alguien que no la espera.
         const { outbox, sql } = buildWorker({ certified: 'hostaway' });
-        await outbox.releaseSuppressed(schemaName, 'hostaway');
+        await outbox.releaseSuppressed(schemaName, 'hostaway', true);
 
         const expireAt = sql.findIndex(c => /status = 'expired'/.test(c.sql));
         const releaseAt = sql.findIndex(c => /SET status = 'pending'/.test(c.sql));

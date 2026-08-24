@@ -13,6 +13,7 @@ import { OutboundMessage } from '@parallext/shared';
 import { nurtureMsg, LANG_NAME } from './nurturing-i18n';
 import { CronLockService } from '../redis/cron-lock.service';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 
 export const NURTURING_QUEUE = 'nurturing';
 
@@ -1001,22 +1002,29 @@ export class NurturingService {
     }
 
     async updateNurturingConfig(tenantId: string, config: Partial<NurturingConfig>): Promise<NurturingConfig> {
-        const current = await this.getNurturingConfig(tenantId);
-        const updated: NurturingConfig = {
-            enabled: config.enabled ?? current.enabled,
-            maxAttempts: Math.min(Math.max(config.maxAttempts || current.maxAttempts, 1), 5),
-            delays: config.delays || current.delays,
-            allowedChannels: config.allowedChannels || current.allowedChannels,
-            finalAction: config.finalAction || current.finalAction,
-            whatsappTemplateName: config.whatsappTemplateName ?? current.whatsappTemplateName,
-            maxPerDay: Math.min(Math.max(config.maxPerDay ?? current.maxPerDay, 1), 3),
-        };
-
-        await this.prisma.$executeRaw`
-            UPDATE tenants
-            SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{nurturing}', ${JSON.stringify(updated)}::jsonb)
-            WHERE id = ${tenantId}::uuid
-        `;
+        // The legacy/persona value is only a fallback for a tenant that has no
+        // branch yet. Once the row is locked, a concurrent first save wins and
+        // becomes the merge base for this patch.
+        const fallback = await this.getNurturingConfig(tenantId);
+        const updated = await mutateTenantSettingsBranchAtomic<NurturingConfig>(
+            this.prisma,
+            tenantId,
+            'nurturing',
+            (raw) => {
+                const current = raw && typeof raw === 'object' && !Array.isArray(raw)
+                    ? { ...fallback, ...(raw as Partial<NurturingConfig>) }
+                    : fallback;
+                return {
+                    enabled: config.enabled ?? current.enabled,
+                    maxAttempts: Math.min(Math.max(config.maxAttempts || current.maxAttempts, 1), 5),
+                    delays: config.delays || current.delays,
+                    allowedChannels: config.allowedChannels || current.allowedChannels,
+                    finalAction: config.finalAction || current.finalAction,
+                    whatsappTemplateName: config.whatsappTemplateName ?? current.whatsappTemplateName,
+                    maxPerDay: Math.min(Math.max(config.maxPerDay ?? current.maxPerDay, 1), 3),
+                };
+            },
+        );
 
         // Invalidate cache
         await this.redis.del(`nurturing:config:${tenantId}`);

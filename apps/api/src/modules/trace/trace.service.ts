@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { redactTraceValue } from './turn-trace-context';
 
 export interface LlmTurnEvent {
     tenantId: string;
@@ -145,11 +146,12 @@ export class TraceService {
                 ],
             );
         } catch (err: any) {
-            this.logger.warn(`Failed to record trace for ${event.conversationId}: ${err.message}`);
+            this.logger.warn(`Failed to record trace for ${event.conversationId}: ${err?.code || err?.name || 'error'}`);
         }
     }
 
     async getTrace(tenantId: string, conversationId: string, limit = 100) {
+        const boundedLimit = Math.min(200, Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 100));
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) return [];
         await this.ensureTables(schemaName);
@@ -162,7 +164,7 @@ export class TraceService {
              WHERE conversation_id = $1::uuid
              ORDER BY created_at ASC
              LIMIT $2`,
-            [conversationId, limit],
+            [conversationId, boundedLimit],
         );
 
         return (rows || []).map((r: any) => ({
@@ -199,14 +201,21 @@ export class TraceService {
                 schemaName,
                 `INSERT INTO turn_traces (conversation_id, message_id, total_duration_ms, step_count, steps)
                  VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb)`,
-                [evt.conversationId, evt.messageId || null, evt.totalDurationMs, evt.stepCount, JSON.stringify(evt.steps || [])],
+                [
+                    evt.conversationId,
+                    evt.messageId || null,
+                    evt.totalDurationMs,
+                    Math.min(100, Math.max(0, evt.stepCount || 0)),
+                    JSON.stringify(redactTraceValue((evt.steps || []).slice(0, 100))),
+                ],
             );
         } catch (err: any) {
-            this.logger.warn(`Failed to record turn trace for ${evt.conversationId}: ${err.message}`);
+            this.logger.warn(`Failed to record turn trace for ${evt.conversationId}: ${err?.code || err?.name || 'error'}`);
         }
     }
 
     async getTurnTraces(tenantId: string, conversationId: string, limit = 50) {
+        const boundedLimit = Math.min(100, Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 50));
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) return [];
         await this.ensureTables(schemaName);
@@ -214,7 +223,7 @@ export class TraceService {
             schemaName,
             `SELECT message_id, total_duration_ms, step_count, steps, created_at
              FROM turn_traces WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT $2`,
-            [conversationId, limit],
+            [conversationId, boundedLimit],
         );
         return (rows || []).map((r: any) => ({
             messageId: r.message_id,

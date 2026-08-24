@@ -29,6 +29,7 @@ describe('Agent Test runtime request contract', () => {
         const request = {
             body: {
                 message: 'Hola',
+                channelType: 'whatsapp',
                 conversationHistory: [{ role: 'user', content: 'Anterior' }],
                 options: { disableTools: true },
             },
@@ -38,6 +39,7 @@ describe('Agent Test runtime request contract', () => {
         expect(request.body).toBeInstanceOf(AgentTestRequestDto);
         expect(request.body).toMatchObject({
             message: 'Hola',
+            channelType: 'whatsapp',
             options: { disableTools: true },
         });
     });
@@ -46,7 +48,6 @@ describe('Agent Test runtime request contract', () => {
         ['top-level', { message: 'Hola', evalMode: true }],
         ['history item', { message: 'Hola', conversationHistory: [{ role: 'user', content: 'x', id: 'extra' }] }],
         ['options', { message: 'Hola', options: { disableTools: true, sandboxContactId: 'real-id' } }],
-        ['inert channel selector', { message: 'Hola', channelType: 'whatsapp' }],
     ])('rejects unknown %s fields instead of silently stripping them', async (_label, body) => {
         await expect(guard.canActivate(httpContext({ body }))).rejects.toMatchObject({ status: 400 });
     });
@@ -71,6 +72,9 @@ describe('Agent Test runtime request contract', () => {
             ),
         }],
         ['coerced option', { message: 'Hola', options: { disableTools: 'true' } }],
+        ['email is not a certified conversational channel', { message: 'Hola', channelType: 'email' }],
+        ['sms is notification-only', { message: 'Hola', channelType: 'sms' }],
+        ['unknown channel', { message: 'Hola', channelType: 'carrier_pigeon' }],
     ])('rejects abusive payload: %s', async (_label, body) => {
         await expect(guard.canActivate(httpContext({ body }))).rejects.toMatchObject({ status: 400 });
     });

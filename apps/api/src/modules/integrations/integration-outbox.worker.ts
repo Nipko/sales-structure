@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import type { IntegrationWriteAdapter, OutboxEntry } from '@parallext/shared';
-import { PrismaService } from '../prisma/prisma.service';
+import type { ClaimedOutboxEntry, IntegrationWriteAdapter } from '@parallext/shared';
 import { CronLockService } from '../redis/cron-lock.service';
 import { IntegrationOutboxService } from './integration-outbox.service';
 
@@ -27,11 +26,11 @@ import { IntegrationOutboxService } from './integration-outbox.service';
  *    escritura: el arrendamiento vence y otro la retoma).
  * 4. **Entrega**, y sólo si hay un adapter registrado para ese proveedor.
  *
- * Sin adapter registrado la entrada **no se pierde y no reintenta para
- * siempre**: muere con `no_adapter_registered`, que es información y no una
- * cola creciendo en silencio. Hoy no hay ninguno registrado —ninguna
- * integración externa está certificada— y eso es correcto: el riel funciona,
- * la escritura real espera autorización.
+ * Sin adapter registrado la entrada permanece `suppressed`: una allowlist mal
+ * configurada no puede liberar intención durable para matarla inmediatamente.
+ * Hoy no hay ninguno registrado —ninguna integración externa está
+ * certificada— y eso es correcto: el riel funciona, la escritura real espera
+ * autorización.
  */
 
 /** Cuántas entradas por tenant y proveedor en cada tick. */
@@ -51,7 +50,6 @@ export class IntegrationOutboxWorker {
     private readonly adapters = new Map<string, IntegrationWriteAdapter>();
 
     constructor(
-        private readonly prisma: PrismaService,
         private readonly outbox: IntegrationOutboxService,
         private readonly cronLock: CronLockService,
     ) {}
@@ -98,12 +96,9 @@ export class IntegrationOutboxWorker {
     async drainAll(): Promise<{ delivered: number; failed: number; expired: number }> {
         let tenants: Array<{ id: string; schemaName: string }> = [];
         try {
-            tenants = await this.prisma.tenant.findMany({
-                where: { isActive: true },
-                select: { id: true, schemaName: true },
-            });
+            tenants = await this.outbox.trackedTenants('outbox');
         } catch (error: any) {
-            this.logger.warn(`[Outbox] no se pudo listar tenants: ${error?.message}`);
+            this.logger.warn(`[Outbox] no se pudo listar tenants con trabajo: ${error?.message}`);
             return { delivered: 0, failed: 0, expired: 0 };
         }
 
@@ -139,15 +134,22 @@ export class IntegrationOutboxWorker {
 
         let delivered = 0;
         let failed = 0;
-        // Los proveedores a mirar son los que tienen adapter más los que están
-        // certificados: un proveedor recién certificado tiene entradas
-        // suprimidas que liberar aunque todavía no tenga adapter, y verlas
-        // detenidas con motivo es mejor que no verlas.
+        // Los proveedores a mirar son los que tienen adapter más los que alguien
+        // intentó certificar. Sin adapter no se libera nada: conservar la
+        // intención en `suppressed` y mostrar el mismatch en Ops es preferible
+        // a matarla por una activación incompleta.
         for (const provider of this.providersToVisit()) {
-            await this.outbox.releaseSuppressed(schemaName, provider).catch(() => 0);
+            const adapterReady = this.adapters.has(provider);
+            if (!adapterReady) {
+                this.logger.warn(
+                    `[Outbox] ${provider} está allowlisted sin adapter; se conserva suppressed`,
+                );
+                continue;
+            }
+            await this.outbox.releaseSuppressed(schemaName, provider, true).catch(() => 0);
             const entries = await this.outbox
                 .claim(schemaName, provider, BATCH_PER_PROVIDER)
-                .catch(() => [] as OutboxEntry[]);
+                .catch(() => [] as ClaimedOutboxEntry[]);
             for (const entry of entries) {
                 const outcome = await this.deliver(tenantId, schemaName, entry);
                 if (outcome === 'delivered') delivered += 1;
@@ -168,13 +170,13 @@ export class IntegrationOutboxWorker {
     private async deliver(
         tenantId: string,
         schemaName: string,
-        entry: OutboxEntry,
+        entry: ClaimedOutboxEntry,
     ): Promise<'delivered' | 'failed'> {
         const adapter = this.adapters.get(String(entry.provider).toLowerCase());
         if (!adapter) {
-            // No hay a quién llamar. Reintentar ocho veces sólo retrasa el
-            // momento en que alguien lo mira, así que muere con motivo legible.
-            await this.kill(schemaName, entry, 'no_adapter_registered');
+            // Defensive only: drainTenant never claims without an adapter.
+            // Leave the lease to expire rather than destroying durable intent.
+            this.logger.warn(`[Outbox] adapter ausente tras claim ${entry.id}; se conserva la intención`);
             return 'failed';
         }
         if (!adapter.operations.includes(entry.operation)) {
@@ -188,8 +190,10 @@ export class IntegrationOutboxWorker {
         try {
             const result = await adapter.write(entry, { tenantId, schemaName });
             if (result.ok) {
-                await this.outbox.markDelivered(schemaName, entry.id, result.externalId);
-                return 'delivered';
+                const committed = await this.outbox.markDelivered(schemaName, entry, result.externalId);
+                if (committed) return 'delivered';
+                this.logStaleClaim(entry);
+                return 'failed';
             }
             const reason = result.error || 'provider_rejected';
             if (result.retryable === false) {
@@ -197,11 +201,17 @@ export class IntegrationOutboxWorker {
                 // esperando: ocho reintentos son ocho llamadas inútiles.
                 await this.kill(schemaName, entry, reason);
             } else {
-                await this.outbox.markFailed(schemaName, entry.id, reason);
+                const state = await this.outbox.markFailed(schemaName, entry, reason);
+                if (state === 'stale_claim') this.logStaleClaim(entry);
             }
             return 'failed';
         } catch (error: any) {
-            await this.outbox.markFailed(schemaName, entry.id, String(error?.message || error));
+            const state = await this.outbox.markFailed(
+                schemaName,
+                entry,
+                String(error?.message || error),
+            );
+            if (state === 'stale_claim') this.logStaleClaim(entry);
             return 'failed';
         }
     }
@@ -214,18 +224,25 @@ export class IntegrationOutboxWorker {
      * dos caminos que llevan a `dead` son dos formas de que uno de ellos se
      * olvide de limpiar el arrendamiento.
      */
-    private async kill(schemaName: string, entry: OutboxEntry, reason: string): Promise<void> {
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE integration_outbox
-                SET status = 'dead', attempts = GREATEST(attempts, $2),
-                    last_error = $3, lease_expires_at = NULL,
-                    next_attempt_at = NULL, updated_at = NOW()
-              WHERE id = $1::uuid`,
-            [entry.id, 8, reason.slice(0, 1000)],
-        ).catch((error: any) => {
+    private async kill(
+        schemaName: string,
+        entry: ClaimedOutboxEntry,
+        reason: string,
+    ): Promise<void> {
+        const committed = await this.outbox.markDead(schemaName, entry, reason).catch((error: any) => {
             this.logger.warn(`[Outbox] no se pudo cerrar ${entry.id}: ${error?.message}`);
+            return false;
         });
+        if (!committed) {
+            this.logStaleClaim(entry);
+            return;
+        }
         this.logger.warn(`[Outbox] ${entry.provider}/${entry.operation} detenida: ${reason}`);
+    }
+
+    private logStaleClaim(entry: ClaimedOutboxEntry): void {
+        this.logger.warn(
+            `[Outbox] resultado tardío ignorado id=${entry.id} generation=${entry.claim.generation}`,
+        );
     }
 }

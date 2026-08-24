@@ -53,11 +53,6 @@ export default function ToursPage() {
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
 
-    useEffect(() => {
-        if (!activeTenantId) return;
-        loadPackages();
-    }, [activeTenantId]);
-
     async function loadPackages() {
         if (!activeTenantId) return;
         setLoading(true);
@@ -65,6 +60,11 @@ export default function ToursPage() {
         if (res.success && res.data) setPackages(res.data);
         setLoading(false);
     }
+
+    useEffect(() => {
+        if (!activeTenantId) return;
+        loadPackages();
+    }, [activeTenantId]);
 
     if (loading) {
         return (

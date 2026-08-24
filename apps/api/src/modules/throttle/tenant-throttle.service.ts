@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-branch.util';
 import { RedisService } from '../redis/redis.service';
 import { FEATURE_OVERRIDE_KEYS, OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
 
@@ -256,11 +257,6 @@ export class TenantThrottleService {
             }
         }
 
-        const existing = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
-        });
-        const settings = (existing?.settings as any) || {};
         const stamped: QuotaOverrides = {
             ...overrides,
             setBy: setBy || 'super_admin',
@@ -272,11 +268,7 @@ export class TenantThrottleService {
                 delete (stamped as Record<string, any>)[k];
             }
         }
-        settings.quotaOverrides = stamped;
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings },
-        });
+        await replaceTenantSettingsBranch(this.prisma, tenantId, 'quotaOverrides', stamped);
         await this.redis.del(`tenant_plan:${tenantId}`);
         await this.redis.del(`plan_features:${tenantId}`);
         return stamped;

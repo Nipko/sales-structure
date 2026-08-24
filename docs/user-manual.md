@@ -866,6 +866,15 @@ autorizadas. Solo evidencia nueva puede resolver la causa.
 - Recepción de ubicación, contactos
 - Webhooks de delivery (entregado, leído)
 
+### Perfil de negocio por número
+
+En **Canales → WhatsApp → Perfil**, si hay más de un número conectado aparece un
+selector. El número efectivo se muestra siempre bajo el nombre verificado; descripción,
+dirección, foto, calidad y límite de mensajería corresponden al número seleccionado.
+Conectar un número adicional no puede reemplazar silenciosamente una credencial
+permanente por otra temporal: la conexión se publica solo después de validar que la
+credencial cubre todas las WABA ya conectadas.
+
 ### Templates de WhatsApp
 
 Para enviar fuera de la ventana de 24h, necesitas plantillas aprobadas por Meta:
@@ -1915,7 +1924,7 @@ final también depende del rol, plan y capacidades publicadas para el tenant.
 
 ### 21.1.2 Propiedades (Alquiler vacacional)
 
-**Ruta:** Operación → Propiedades
+**Ruta:** Catálogo y recursos → Propiedades
 
 **Crear propiedad:**
 1. Propiedades → "Crear propiedad"
@@ -1957,6 +1966,15 @@ del repositorio no reemplaza el límite mostrado para tu cuenta.
 **Anti-doble-booking:**
 - Verificación en tiempo real al confirmar reserva
 - iCal tiene delay 3-6h — para máxima protección, acepta reservas con 24h+ de anticipación
+
+### 21.1.4 Registro directo de reservas
+
+**Ruta:** Trabajo diario → Reservas (`/admin/stays`)
+
+Esta pantalla es el registro operativo de estadías y no el Kanban del embudo. Permite
+buscar, paginar, crear y cancelar reservas dentro de los permisos vigentes. La columna
+de origen distingue las creadas por el agente de las creadas manualmente. **Propiedades**
+permanece separada como catálogo y configuración del alojamiento.
 
 ### 21.1.4 Reservas directas
 
@@ -2720,6 +2738,24 @@ Conecta tu **sistema real** por industria para que el agente trabaje con datos e
 
 Para cada una: ingresa las credenciales, pulsa **Probar** la conexión y **Sincronizar**. Una vez conectada, el agente usa automáticamente esos datos al responder.
 
+La pantalla distingue conexión viva de frescura del espejo. Una lectura en vivo no se
+apaga porque el último espejo sea antiguo; una lectura servida desde el espejo sí muestra
+su fecha y falla cerrado cuando supera el presupuesto del proveedor.
+
+## 32.1 Channel Manager para alojamiento
+
+**Dónde:** **Configuración → Canales e integraciones → Channel Manager**, solo para
+`turismo/hotel` y `turismo/alquiler_vacacional`.
+
+- La configuración, prueba, sincronización y mapeo de publicación ↔ propiedad son
+  operaciones distintas; se puede probar antes de guardar.
+- Las credenciales nunca se devuelven en claro al navegador.
+- Una propiedad sin mapeo usa el registro nativo de Parallly.
+- Una propiedad mapeada suma las reservas remotas a conflictos y bloquea el writer
+  local si el proveedor es el sistema de registro.
+- El write-back externo permanece deshabilitado hasta certificar el adapter y su
+  versión en sandbox. El estado conectado por sí solo no habilita escrituras.
+
 ---
 
 # 33. Conectores MCP
@@ -2729,7 +2765,10 @@ Para cada una: ingresa las credenciales, pulsa **Probar** la conexión y **Sincr
 **Dónde:** **Configuración → Desarrolladores → MCP**.
 
 - **Tu servidor MCP** — expón las herramientas de tu agente (catálogo, FAQs, base de conocimiento…) a clientes MCP externos mediante un endpoint, autenticado con tu API Key.
-- **Servidores MCP externos** — conecta servidores MCP de terceros (añadir/probar/activar): tu agente podrá usar sus herramientas automáticamente.
+- **Servidores MCP externos** — conectar o descubrir un servidor no autoriza sus
+  herramientas. Un administrador debe revisar cada tool y declarar efecto,
+  confirmación y aprobación humana. Solo entonces puede publicarse al agente; una
+  tool desconocida o no aprobada permanece bloqueada.
 
 ---
 

@@ -77,7 +77,7 @@ export default function LoginPage() {
             }
             setIsGoogleLoading(false);
         },
-        [googleLogin, router]
+        [email, googleLogin, rememberMe, router, t]
     );
 
     useEffect(() => {

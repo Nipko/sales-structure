@@ -460,7 +460,8 @@ export class WebhookProcessor extends WorkerHost {
                updated_at = NOW()`,
             [phone, fullName, phone],
           );
-          action === 'add' ? added++ : updated++;
+          if (action === 'add') added++;
+          else updated++;
         }
         // 'remove': we don't delete — the contact may have conversations.
         // A future enhancement could set an is_active flag.

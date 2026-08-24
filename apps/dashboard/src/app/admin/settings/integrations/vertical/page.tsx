@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -9,7 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import {
     Plug, Loader2, CheckCircle2, RefreshCw, Trash2, Plug2,
-    UtensilsCrossed, Dumbbell, Stethoscope, AlertTriangle,
+    UtensilsCrossed, Dumbbell, Stethoscope, AlertTriangle, Building2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveVerticalCapabilityManifest } from "@parallext/shared";
@@ -66,6 +67,7 @@ const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2
 
 export default function VerticalIntegrationsPage() {
     const t = useTranslations("verticalIntegrations");
+    const tChannelManager = useTranslations("channelManager");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const { verticalConfig } = useAuth();
@@ -169,6 +171,18 @@ export default function VerticalIntegrationsPage() {
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>{t("betaNotice")}</span>
             </div>
+
+            {verticalConfig?.industry === "turismo"
+                && ["hotel", "alquiler_vacacional"].includes(verticalConfig?.subType || "") && (
+                <Link href="/admin/settings/integrations/channel-manager"
+                    className="mb-5 flex items-center gap-3 rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4 text-sm hover:bg-indigo-500/15">
+                    <Building2 className="h-5 w-5 shrink-0 text-indigo-500" />
+                    <span className="flex-1">
+                        <strong className="block text-foreground">{tChannelManager("title")}</strong>
+                        <span className="text-muted-foreground">{tChannelManager("entryDescription")}</span>
+                    </span>
+                </Link>
+            )}
 
             <HelpPanel
                 title={tHelp("settingsIntegrationsVertical.title")}

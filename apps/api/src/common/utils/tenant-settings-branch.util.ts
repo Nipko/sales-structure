@@ -165,3 +165,107 @@ export async function deleteTenantSettingsLeaf(
         leaf,
     );
 }
+
+/**
+ * Read, transform and replace one settings branch while holding a row lock.
+ *
+ * `replaceTenantSettingsBranch` is sufficient when the caller already owns the
+ * complete value. Configuration editors usually receive a PATCH, however, and
+ * therefore have to merge it with the current branch. Doing that merge before
+ * the UPDATE recreates the lost-update window at branch level. This helper
+ * keeps the read and write in one transaction and locks the tenant row before
+ * invoking the pure transformer.
+ *
+ * The transformer is deliberately synchronous: no network or unrelated work
+ * may run while the tenant row is locked.
+ */
+export async function mutateTenantSettingsBranchAtomic<T>(
+    prisma: PrismaService,
+    tenantId: string,
+    branch: string,
+    transform: (current: unknown) => T,
+): Promise<T> {
+    assertBranch(branch);
+    return prisma.$transaction(async (tx: any) => {
+        const rows = await tx.$queryRawUnsafe(
+            `SELECT settings #> $2::text[] AS value
+               FROM public.tenants
+              WHERE id = $1::uuid
+              FOR UPDATE`,
+            tenantId,
+            `{${branch}}`,
+        ) as Array<{ value: unknown }>;
+        if (!rows.length) throw new NotFoundException('Tenant not found');
+
+        const next = transform(rows[0].value ?? null);
+        const affected = await tx.$executeRawUnsafe(
+            `UPDATE public.tenants
+                SET settings = jsonb_set(
+                    COALESCE(settings, '{}'::jsonb), $2::text[], $3::jsonb, true
+                ),
+                updated_at = NOW()
+              WHERE id = $1::uuid`,
+            tenantId,
+            `{${branch}}`,
+            JSON.stringify(next ?? null),
+        );
+        if (Number(affected) !== 1) throw new NotFoundException('Tenant not found');
+        return next;
+    });
+}
+
+/**
+ * Read, transform and replace one nested settings leaf while holding the tenant
+ * row lock. This is the provider-scoped counterpart of
+ * `mutateTenantSettingsBranchAtomic`: two concurrent saves for the same
+ * provider are serialized, while providers stored under other leaves remain
+ * untouched.
+ */
+export async function mutateTenantSettingsLeafAtomic<T>(
+    prisma: PrismaService,
+    tenantId: string,
+    branch: string,
+    leaf: string,
+    transform: (current: unknown) => T,
+): Promise<T> {
+    assertBranch(branch);
+    assertBranch(leaf);
+    return prisma.$transaction(async (tx: any) => {
+        const branchPath = `{${branch}}`;
+        const leafPath = `{${branch},${leaf}}`;
+        const rows = await tx.$queryRawUnsafe(
+            `SELECT settings #> $2::text[] AS value
+               FROM public.tenants
+              WHERE id = $1::uuid
+              FOR UPDATE`,
+            tenantId,
+            leafPath,
+        ) as Array<{ value: unknown }>;
+        if (!rows.length) throw new NotFoundException('Tenant not found');
+
+        const current = rows[0].value ?? null;
+        const next = transform(current);
+        if (next === current) return next;
+
+        const affected = await tx.$executeRawUnsafe(
+            `UPDATE public.tenants
+                SET settings = jsonb_set(
+                    jsonb_set(
+                        COALESCE(settings, '{}'::jsonb),
+                        $2::text[],
+                        COALESCE(settings #> $2::text[], '{}'::jsonb),
+                        true
+                    ),
+                    $3::text[], $4::jsonb, true
+                ),
+                updated_at = NOW()
+              WHERE id = $1::uuid`,
+            tenantId,
+            branchPath,
+            leafPath,
+            JSON.stringify(next ?? null),
+        );
+        if (Number(affected) !== 1) throw new NotFoundException('Tenant not found');
+        return next;
+    });
+}

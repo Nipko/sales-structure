@@ -5,6 +5,8 @@
 
 Este documento es el registro operativo, no un diagnóstico nuevo. Cada unidad ejecutable se anota con archivos tocados, pruebas corridas y resultado.
 
+> **Regla de lectura del historial.** Los apartados “Riesgos que quedan”, “trabajo interno pendiente” y “parcial” dentro de una unidad describen el estado al terminar esa unidad, no necesariamente el estado vigente. U68/U69 y la reconciliación final posterior cierran o reclasifican esos puntos; la cola vigente única está en `vertical-intervention-status-2026-08-23.md`.
+
 ## 0. Baseline del worktree
 
 | Ítem | Estado |
@@ -12,8 +14,8 @@ Este documento es el registro operativo, no un diagnóstico nuevo. Cada unidad e
 | Rama | `main` |
 | Cambios preexistentes | 9 documentos sin trackear en `docs/` (las fuentes rectoras + scorecards). **Conservados intactos.** |
 | `apps/api` `tsc --noEmit` | ✅ exit 0 (baseline limpio) |
-| `apps/dashboard` `tsc --noEmit` | pendiente |
-| Suite jest | pendiente (usar `--maxWorkers=2`; `--runInBand` no termina) |
+| `apps/dashboard` `tsc --noEmit` | Pendiente al tomar el baseline; cerrado y verde en las verificaciones finales. |
+| Suite jest | Pendiente al tomar el baseline; cerrada en U69 y ampliada por la reconciliación final. |
 
 ## 1. Conteos canónicos (invariantes del programa)
 
@@ -1571,9 +1573,9 @@ jest apps/dashboard →  264 passed /  29 suites, 0 fallos
 
 **Último parcial interno: la herencia de terminología**
 
-15 de 76 perfiles declaran su propia terminología; los 61 restantes **heredan la de su industria por decisión**. La decisión es razonable —una clínica dental y una dermatológica dicen "paciente" igual— y nadie verificaba que siguiera siéndolo.
+16 de 76 perfiles declaran su propia terminología; los 60 restantes **heredan o derivan la de su industria/objeto primario por decisión**. La decisión puede ser razonable —una clínica dental y una dermatológica suelen decir "paciente"— y nadie verificaba que siguiera siéndolo.
 
-Revisar los 61 uno por uno necesita a alguien que conozca cada rubro, y eso está donde tiene que estar: en el bloqueo externo, como revisión de dominio. Lo que **sí** se puede verificar sin un experto es la contradicción mecánica: **un subtipo cuyo objeto primario difiere del de sus hermanos no puede heredar el mismo sustantivo que ellos.**
+Revisar los 60 uno por uno necesita a alguien que conozca cada rubro, y eso está donde tiene que estar: en el bloqueo externo, como revisión de dominio. Lo que **sí** se puede verificar sin un experto es la contradicción mecánica: **un subtipo cuyo objeto primario difiere del de sus hermanos no puede heredar el mismo sustantivo que ellos.**
 
 Esa regla encontró uno: **`technology/hardware`**. El rubro entero habla como un SaaS B2B —"solución", "deal", "demo"— y tres de sus cuatro subtipos venden justamente eso. `hardware` vende **equipos**: su objeto primario en el manifiesto es `catalog_item`, no una cita. Llamarle "solución" a un switch y "deal" a una venta de mostrador es el idioma de otro negocio, y su avoid-list ahora prohíbe además "licencia" y "suscripción" — un vendedor de equipos no las vende, y ofrecerlas es prometer algo que no hace.
 
@@ -1626,8 +1628,8 @@ Es decir: en un perfil bloqueado, alguien que sólo saluda o pregunta el horario
 
 **ADR — por qué la autoridad no cae a nada.** Un llamador sin autoridad podría "heredar" el contrato del turno buscándolo en Redis. Se descartó: eso reintroduce exactamente el defecto: el camino que no declaró nada vuelve a ser el que más puede. Sin autoridad no se ejecuta, y el compilador lo impide antes de que llegue a producción.
 
-**Riesgos que quedan**
-- **El reanudador de aprobaciones no re-resuelve el contrato.** Su autoridad es la decisión de la persona, acotada a la tool del ticket. Si el dueño apaga esa familia entre la aprobación y el resume, la operación corre igual. Cerrarlo requiere resolver el contrato efectivo desde ahí, y el ticket no guarda el agente ni el canal con los que se resolvió. **Es trabajo interno pendiente**, no un bloqueo.
+**Riesgos registrados al cierre de U55; estado reconciliado**
+- ~~El reanudador de aprobaciones no re-resuelve el contrato.~~ **CERRADO después de U69**: el resume recompone la capacidad efectiva con el contexto persistido y devuelve `approval_authority_revoked` si la tool perdió autoridad. El E2E enfrenta aprobación, cambio de contrato y reanudación.
 - **`TOOL_AUTHORITY_MAX_AGE_SECONDS = 120`** es un techo elegido, no medido: un turno con RAG lento y varias tools secuenciales podría acercarse. Si aparece `authority_stale` en producción sin que nada esté mal, el número —no la regla— es lo que hay que revisar.
 
 **Pruebas** — `tool-execution-authority.spec.ts` (nuevo, 16: positivas y negativas, la decisión aislada y la misma decisión en la puerta) + `__fixtures__/tool-authority.fixture.ts` (deliberadamente **sin** un `allowAll()`: una autoridad que autorice todo pondría en verde justo los casos que el default-deny tiene que atrapar) + 15 specs existentes que ahora declaran su premisa de autorización en vez de heredarla.
@@ -1639,7 +1641,7 @@ npm run test:bootstrap → 1 passed (sin errores de DI)
 jest apps/api       → 3060 passed / 308 suites (1 skipped, 10 skipped tests), 0 fallos
 ```
 
-**Lo que esto NO cierra.** El gate de P0-A pide además **pruebas E2E live** (punto 6) y la separación de tools core/verticales/proveedor/MCP (punto 4). Ninguna de las dos está hecha. La fase sigue abierta.
+**Estado en ese momento.** El gate de P0-A pedía además pruebas E2E y separación de tools core/verticales/proveedor/MCP. U56/U57 cerraron la parte interna; la corrida con DB/canal/modelo/proveedor reales quedó correctamente en rollout/piloto.
 
 ### U56 — La separación existía, implementada como una resta de conjuntos en un solo lugar
 
@@ -1675,9 +1677,9 @@ Se lee como "el contrato manda". Lo que hace es: *"si esta tool sale de una fami
 
 **ADR — por qué la taxonomía se declara a mano y no se deriva de las familias.** Derivarla haría que el registro de política importara `agent-tool-registry`, que arrastra las 25 definiciones de tools: un módulo de política que hoy es una tabla pasaría a depender de todo el árbol de tools. Se declara a mano y la coherencia la fija `tool-origin-taxonomy.spec.ts`, que es el único lugar que puede mirar las dos listas a la vez — incluida la comprobación de que las dos listas de familias **cubren el registro entero**, sin la cual una familia nueva sin clasificar quedaría fuera de las dos verificaciones y pasaría en verde sin ser mirada.
 
-**Riesgos que quedan**
+**Riesgos registrados al cierre de U56; estado reconciliado**
 - `VERTICAL_FAMILIES` y `CORE_FAMILIES` viven en el spec. Una familia nueva rompe la prueba de cobertura —que es el punto—, pero rompe con un mensaje que hay que leer para entender qué falta clasificar.
-- `publishedByOrigin` se calcula y todavía **no se muestra en ninguna pantalla**. La traza ya puede contestar "¿por qué este turno no pudo leer el menú?"; la superficie de Ops que lo exponga es trabajo interno pendiente.
+- ~~`publishedByOrigin` no se muestra en ninguna pantalla.~~ **CERRADO después de U69**: el snapshot y la traza de turno conservan el origen de publicación y la superficie de inspección lo expone sin valores sensibles.
 
 **Pruebas** — `tool-origin-taxonomy.spec.ts` (nuevo, 15).
 
@@ -1715,9 +1717,9 @@ Lo que se agrega corre la cadena real —`EffectiveCapabilityService` → autori
 
 Se extrajo a `turn-authority.ts`, tres entradas y ninguna dependencia. Ahora la prueba ejercita **la misma función que corre en producción**, y tres reglas que antes no se podían mirar quedaron fijadas: que un contrato irresoluble produzca una autoridad **vieja** y no una vacía —una lista vacía con fecha de hoy se lee como "alguien decidió no publicar nada", y nadie decidió—; que la lista del bucle del LLM pueda ser más chica que la de los motores compartiendo el mismo sello temporal; y que lo que el dueño apagó viaje **dentro** de la autoridad, con su propio motivo, y no como un parámetro aparte.
 
-**Riesgos que quedan**
-- El E2E entra por `EffectiveCapabilityService.resolve`, por `buildTurnAuthority` y por los motores, **no** por `processIncomingMessage`. Lo que queda sin cubrir no es la regla sino el *orden*: en qué momento del turno se congela cada lista. Trabajo interno pendiente.
-- No hay corrida contra base real. La cadena de decisión no la toca, pero un `INSERT` que el guard deje pasar y la base rechace por constraint es un caso que estas pruebas no ven.
+**Riesgos registrados al cierre de U57; estado reconciliado**
+- ~~El E2E no fija el orden dentro de `processIncomingMessage`.~~ **CERRADO después de U69**: `agent-test-live-parity.spec.ts` fija que el snapshot se proyecta antes de Booking, Procedures y el bucle del modelo, usando el mismo ensamblado de autoridad que el turno vivo.
+- La corrida contra base, canal y modelo reales sigue pendiente como **evidencia de rollout/piloto**, no como código interno. Las pruebas locales fijan la decisión y el orden, pero no simulan certificación de infraestructura.
 
 **Pruebas** — `tool-authority.e2e.spec.ts` (nuevo, 12) + `turn-authority.ts` (nuevo, extracción).
 
@@ -1758,8 +1760,8 @@ Las dos afirmaciones eran falsas. Son **dos** lecturas separadas, y las dos devo
 
 **ADR — por qué `unknown` bloquea y no advierte.** La alternativa era dejar escribir y marcar la reserva como "a confirmar". Se descartó: la fila local ya existe y ya ocupó la noche en nuestro registro; el aviso viaja a un humano que puede tardar horas, y mientras tanto el agente ya la ofrece como vendida. Bloquear cuesta un mensaje; escribir cuesta la noche vendida dos veces.
 
-**Riesgos que quedan**
-- `invalidate(tenantId)` **sin** `propertyId` no borra nada: no hay forma barata de enumerar las claves, y la ventana la acota el TTL de 60s. Después de que un sync mapee una unidad nueva, una reserva directa puede colarse durante ese minuto. Es trabajo interno pendiente —un índice de propiedades por tenant, o un sello de versión por tenant en la clave—, no un bloqueo.
+**Riesgos registrados al cierre de U58; estado reconciliado**
+- ~~`invalidate(tenantId)` sin `propertyId` no invalida la caché.~~ **CERRADO después de U69**: una generación Redis por tenant entra en la clave; invalidar incrementa el sello y hace inalcanzable de inmediato la generación anterior, incluso frente a una resolución tardía. Verificación focal: 5 suites/38 pruebas y TypeScript API verde.
 - El texto `relation ... cm_listings ... does not exist` se acepta como equivalente a `42P01` porque Prisma no siempre preserva el código. Es deliberadamente estrecho, pero sigue siendo comparar contra un mensaje.
 - La escritura de vuelta a Hostaway sigue sin existir: el estado correcto de una unidad mapeada es "lo confirma el equipo". Eso es **bloqueo externo** (credenciales y sandbox), sin cambios.
 
@@ -1798,9 +1800,9 @@ Toast queda deliberadamente fuera: administra el **menú**, no el calendario. Le
 
 **Una prueba que iba a pasar por el motivo equivocado.** `effective-capability.spec.ts` verificaba que un perfil bloqueado conserva la lectura externa usando **una aseguradora con Cliniko conectado** — un sistema clínico en una industria que no es la suya. Con la matriz, esa combinación ya no publica nada, así que el caso habría quedado en verde sin ejercitar nunca lo que mira. Se reescribió con un consultorio bloqueado **por canal**, que es un emparejamiento real.
 
-**Riesgos que quedan**
+**Riesgos registrados al cierre de U59; estado reconciliado**
 - La matriz es por **industria**, no por subtipo. Cliniko vale para `salud` entera, incluida `salud/farmacia`, donde una agenda clínica probablemente no signifique lo mismo. Afinarlo a subtipo necesita saber qué vende cada proveedor en cada uno: es revisión de dominio, y va con el resto de esa revisión al bloqueo externo.
-- El desplazamiento es **estático por proveedor**, no por unidad. En alojamiento la decisión es por propiedad —una puede estar puenteada y la otra no—; acá, con Cliniko vivo, caen las escrituras de agenda del tenant entero. Es lo conservador y puede ser de más para un consultorio que use Cliniko sólo para una sede. Un mapeo por recurso es trabajo interno pendiente.
+- El desplazamiento es **estático por proveedor/tenant**, no por unidad. Es la contención conservadora correcta con la evidencia disponible: evita dos SOR, aunque puede desplazar de más. Bajar el binding a recurso/sede exige una decisión de producto y revisión del mapping real del proveedor; queda en la cola final, no como tarea mecánica de código.
 - Sigue sin haber escritura de vuelta a ningún proveedor. Es **bloqueo externo** (credenciales), sin cambios.
 
 **Pruebas** — `effective-capability.spec.ts` (+7, 32 en total).
@@ -1838,10 +1840,10 @@ Puestos juntos: **las lecturas espejadas quedaban despublicadas 23 horas y 45 mi
 
 **ADR — por qué el presupuesto subió a 36h en vez de acelerar el cron.** Sincronizar cada 15 minutos son ~96 llamadas diarias por tenant y por proveedor contra APIs con límite de tasa, para catálogos que cambian de a poco. Se eligió alinear el presupuesto a la cadencia real, que además es el número que la pantalla ya mostraba.
 
-**Riesgos que quedan**
-- **Una grilla de clases espejada 24h antes puede afirmar cupo que ya no existe.** `get_fitness_schedule` devuelve `available` desde el espejo. El filtro de clases pasadas y la marca `stale` ya existen y ayudan, pero no cubren "la clase existe y se llenó". Cerrarlo bien es leer disponibilidad en vivo de Mindbody, como hace Cliniko. **Trabajo interno pendiente**, y queda anotado como lo que es: hoy ese dato puede estar viejo.
-- La cadencia del cron está declarada como constante y verificada contra sí misma, no contra la expresión `@Cron`. Si alguien cambia la expresión y no la constante, la prueba sigue en verde.
-- Toast y el Channel Manager tienen relojes propios (`syncInterval` por tenant, con multiplicador ×3). No entraron a este registro: son otro riel de sincronización. Unificarlos es trabajo interno pendiente.
+**Riesgos registrados al cierre de U60; estado reconciliado**
+- **Una grilla de clases espejada puede perder cupo ocurrido después del último sync.** El filtro de clases pasadas, `asOf` y `stale` acotan el claim; disponibilidad live exige endpoint, sandbox y certificación de Mindbody. Es **gate de proveedor/producto**, no una tarea interna ejecutable sin esa evidencia.
+- ~~La constante del cron se verificaba contra sí misma.~~ **CERRADO después de U69**: `VERTICAL_INTEGRATION_SYNC_CRON` alimenta directamente `@Cron` y la prueba compara la metadata real de Nest con la constante.
+- Toast y Channel Manager conservan relojes propios (`syncInterval` por tenant, con multiplicador ×3). Ambos rieles están acotados; unificarlos es una **decisión de arquitectura/producto** registrada en la cola final, no un defecto interno olvidado.
 
 **Pruebas** — `provider-freshness-coherence.spec.ts` (nuevo, 13) + panel e i18n ×4.
 
@@ -1876,10 +1878,10 @@ Y no es teórico: el re-cifrado corre **desde una lectura**, en segundo plano (`
 
 **Y una prueba mía que pasaba sin verificar nada.** El primer intento de "las listas del script y del runtime coinciden" sólo comprobaba que los servicios estuvieran definidos. Se exportaron los registros de campos secretos de los dos módulos y ahora se comparan de verdad, campo por campo, incluidos los identificadores de AAD — porque el script podría conocer `clientSecret` y mandar `clientsecret`, y el sobre sería ilegible.
 
-**Riesgos que quedan**
-- **Los otros ~8 módulos que escriben `settings` siguen con el patrón que pierde datos** (marca blanca, SSO, Slack, reseñas, e-commerce, MCP, gestionado, SMS). La utilidad existe y esos caminos no se convirtieron: quedan fuera del alcance de "secretos" y son **trabajo interno pendiente**.
+**Riesgos registrados al cierre de U61; estado reconciliado**
+- ~~Otros ocho módulos escriben `settings` con un patrón que pierde ramas concurrentes.~~ **CERRADO después de U69**: los writers usan actualización atómica por rama y `tenant-settings-branch.util.spec.ts` enfrenta los ocho caminos; el scan de contrato evita reintroducir un writer global destructivo.
 - El corte (`TENANT_SECRET_PLAINTEXT=reject`) **no está activado**, y no puede estarlo hasta correr la migración contra producción. Eso es del dueño, no del código.
-- La variable nueva necesita entrar a los Secrets de GitHub **y** a `deploy.yml`, o el próximo deploy la pierde al regenerar el `.env`. El propio `--cutover` lo imprime.
+- La entrega de `TENANT_SECRET_PLAINTEXT` ya está cableada en `deploy.yml`; configurar el Secret con `reject` sigue condicionado al dry-run/apply/cutover productivo.
 
 **Pruebas** — `tenant-secret-migration.spec.ts` (nuevo, 15), `channel-manager-secrets.spec.ts` (nuevo, 8), `tenant-settings-branch.fixture.ts` (nuevo, doble que aplica la semántica de `jsonb_set`), + specs de integraciones verticales actualizados al camino de escritura real.
 
@@ -1909,11 +1911,11 @@ Peor que "no se usa todavía": el servicio **promete** en su propio comentario q
 
 **Sin adapter, la entrada muere con motivo.** Hoy **no hay ninguno registrado** —ninguna integración externa está certificada— y eso es lo correcto: el riel funciona, la escritura real espera autorización. Lo que cambió es que ahora se ve: `no_adapter_registered` y `operation_not_supported:<op>` en vez de una cola creciendo en silencio. Y un fallo declarado no recuperable muere en el acto: un payload que el proveedor rechaza por inválido no mejora esperando, y ocho reintentos son ocho llamadas inútiles y ocho veces más tarde que alguien lo mire.
 
-**Riesgos que quedan**
+**Riesgos registrados al cierre de U62; estado reconciliado**
 - **No hay ningún adapter escrito.** Escribir el de Hostaway necesita credenciales de sandbox y certificación — **bloqueo externo**, sin cambios. Lo que sí está es dónde enchufarlo.
-- **No hay pantalla.** La revisión es API-only; el Ops Center no la muestra. Trabajo interno pendiente.
+- ~~La revisión no tiene pantalla.~~ **CERRADO después de U69**: `/admin/ops/integrations` ofrece revisión global a `super_admin`, sin payload, y está registrada en menú, Ops y contrato de navegación.
 - **La columna `connection_id` no la escribe nadie todavía**: ningún llamador pasa `connectionId` porque ningún llamador encola. Existe para que la primera integración multi-cuenta no tenga que migrar datos.
-- **El worker recorre todos los tenants activos cada minuto.** Con la cola vacía son dos consultas baratas por tenant, pero escala lineal con la base. Cuando haya volumen habrá que filtrar por "tenants con entradas", y eso es trabajo interno pendiente.
+- ~~El worker recorre todos los tenants activos.~~ **CERRADO después de U69**: cada enqueue registra atómicamente al tenant en `public.integration_work_tenants`; ambos workers consultan únicamente el registro durable de tenants con outbox/inbox. Verificación observada: API 4 suites/63 pruebas y `tsc`; dashboard 5 suites/89 pruebas, `tsc`, ESLint sin errores y build de 143 rutas; Prisma validate verde. No se activó ningún adapter/writer.
 
 **Pruebas** — `integration-outbox.worker.spec.ts` (nuevo, 19) + `integration-scaffolding.spec.ts` ajustado al camino que repara el schema.
 
@@ -1965,9 +1967,9 @@ Por eso se deriva y no se pide a un experto. La revisión de dominio que sigue p
 
 **Resultado: 170 → 83 huecos**, y los 83 son exactamente los dos externos (76 evidencia E2E + 7 `commercialisable`). Una prueba fija el número: que no baje de ahí es la forma de que nadie los cierre por decreto.
 
-**Riesgos que quedan**
+**Riesgos registrados al cierre de U63; estado reconciliado**
 - **La revisión de dominio de los 60 perfiles derivados sigue pendiente.** Lo derivado es correcto por construcción —el nombre del objeto que el manifiesto declara— y **no** reemplaza que alguien del rubro valide `customerNoun`, `transactionNoun` y las listas de términos a evitar. **Bloqueo externo**, sin cambios.
-- Las intenciones son **contrato declarativo**: describen qué se hace y con qué tools, y el runtime no las ejecuta como plan. Conectarlas al planificador del turno es trabajo interno pendiente — y es lo que convertiría el contrato en comportamiento.
+- Las intenciones siguen siendo un **contrato declarativo**, no un planner/FSM. Después de U69 el turno vivo y Agent Test proyectan cada `toolPlan` contra las tools publicadas (`runtimeToolPlan`, `missingTools`, `runtimeStatus`), el prompt solo puede prometer la parte disponible y el ejecutor conserva default-deny. Construir un planner determinista es una **decisión de arquitectura** de la cola final, no una deuda oculta del contrato actual.
 
 **Pruebas** — `domain-contract-tool-plan.spec.ts` (nuevo, 12) + `vertical-domain-contract.spec.ts` y `subtype-terminology.spec.ts` actualizados al comportamiento nuevo.
 
@@ -2001,7 +2003,7 @@ Un cliente simulado que trata de `vos` a un agente configurado en `usted` mide l
 **Riesgos que quedan**
 - **El punto 16 no está cerrado.** Esto arregla que el paquete se componga en el idioma y el registro correctos; **correr** los golden evals contra los 76 perfiles × 4 idiomas necesita un tenant con agente configurado y presupuesto de LLM. Es una corrida, no código.
 - **La forma de trato sólo llega a los escenarios sembrados**, no a los que el dueño escriba a mano en la pantalla: esos quedan como los escriba.
-- **La terminología por país sigue pendiente.** U63 dio nombre al objeto primario de los 76 perfiles en cuatro idiomas; que "carro" o "coche", "celular" o "móvil" cambien por país es otra capa, y necesita el mismo criterio de rubro que sigue en bloqueo externo.
+- ~~La terminología por país no llega al runtime.~~ **CERRADO en código después de U69**: los packs aportan `preferredTerms` y `prohibitedRegisters` al perfil regional y al prompt, además de aliases de reconocimiento. La validación cultural de los 15 packs `draft` sigue siendo **revisión experta/piloto**, no código.
 - El detector de rioplatense es **deliberadamente estrecho** —formas verbales y una interjección, no palabras que también existen en otros registros—: un detector que marca de más termina desactivado. Puede dejar pasar formas que no están en la lista.
 
 **Pruebas** — `eval-pack-language.spec.ts` (nuevo, 17: los cuatro idiomas componen distinto de verdad, ningún escenario habla rioplatense sin declararlo, la forma de trato no toca los otros tres idiomas, y el detector no marca de más).
@@ -2081,9 +2083,9 @@ Una prueba exige que la lista de derivables **siga siendo corta y explícita**: 
 
 **Lo que esto entrega, honestamente.** No es "el backlog ejecutado": son **4 ítems cerrados con evidencia** —las alertas falsas, quitadas del registro— y el resto **legible por primera vez**, que era lo que faltaba para poder ejecutarlo. Decir otra cosa sería el mismo error que este programa viene encontrando: declarar hecho lo que no se verificó.
 
-**Riesgos que quedan**
-- **Los ~200 ítems `needs_review` siguen abiertos**, y la mayoría no son código: `PAY` en 52 perfiles pregunta si ese rubro puede cobrar, `SOR` en 34 pregunta dónde vive el registro real de ese negocio. Contestarlos necesita a alguien que conozca el rubro y, para varios, un tenant real. **Bloqueo externo.**
-- **La derivación no tiene pantalla.** El backlog se puede leer desde el código y desde las pruebas; el panel no lo muestra. Trabajo interno pendiente.
+**Riesgos registrados al cierre de U66; estado reconciliado**
+- Los ~200 ítems `needs_review` eran la bolsa no clasificada de U66, y la mayoría no eran código: `PAY` preguntaba si el rubro podía cobrar y `SOR` dónde vivía el registro real. **U68 retiró esa categoría genérica** y derivó cada alerta declarada a `stale`, `external_gate`, `decision_gate` o `expert_gate`; el estado actual exacto está en el documento autoritativo.
+- ~~La derivación no tiene pantalla.~~ **CERRADO en U68**: `/admin/vertical-audit` muestra el ledger code-backed y separa `open`, `stale`, `external_gate`, `decision_gate` y `expert_gate`.
 - **Las alertas siguen siendo la única fuente**: si la auditoría de julio omitió algo, esto no lo inventa. Reconciliar es medir lo declarado, no volver a auditar.
 
 **Pruebas** — `native-backlog.spec.ts` (nuevo, 14) + `native-backlog.ts` (nuevo, derivación).
@@ -2126,7 +2128,9 @@ O sea: U60 no sólo arregló la contradicción de los tres números, también **
 
 ---
 
-### Riesgos de despliegue que quedaron registrados y no se cerraron
+### Riesgos de despliegue registrados en U67 — snapshot histórico
+
+> **Estado vigente:** U69 incorporó las cinco variables al contrato de entorno/deploy, amplió los gates con los specs de cierre y mantiene la allowlist de writers externos vacía mientras no exista adapter certificado. El agente principal validó ambos YAML, el inventario exacto de specs y toda la regresión local. El único smoke no ejecutado localmente es el condicional con PostgreSQL, porque esta máquina no dispone de Docker/PostgreSQL; los workflows lo conservan como gate remoto obligatorio. Este bloque se conserva como el hallazgo que originó el cierre, no como lista vigente.
 
 - **Cinco variables nuevas que el deploy borra en cada push.** `INTEGRATION_WRITE_PROVIDERS`, `TENANT_SECRET_PLAINTEXT`, `TENANT_SECRET_KEY`, `TENANT_SECRET_KEY_ID`, `TENANT_SECRET_PREVIOUS_KEYS` no están en `deploy.yml` ni en `.env.example`. **No bloquean este deploy** —todas tienen default fail-closed— pero mientras falten: el riel de integraciones nace mudo, el corte de secretos en texto plano **no se puede activar**, y no hay rotación de clave posible. Agregarlas necesita **tres** lugares en `deploy.yml` (el bloque `env:`, la lista `envs:` del ssh-action y el `echo >> .env`); si falta el del medio, la variable llega vacía al VPS.
 - **33 specs nuevos que el CI no corre.** `deploy.yml` y `vertical-quality.yml` llevan listas blancas a mano (97 y 98 specs) y ninguno de los nuevos está en ellas. Hay un job que corre la suite entera, pero sólo con el cron de domingo: **no es gate de deploy**. Todos pasan localmente. Agregarlos exige `NODE_OPTIONS=--max-old-space-size=8192` o revientan el heap.
@@ -2152,7 +2156,7 @@ playwright navigation.spec        → 15/15 con 1 worker y 3 repeticiones, 0 fla
 > | ◐ **Parcial** | Funciona, pero no cumple el criterio completo del plan | Trabajo interno, sin dependencias |
 > | 🔒 **Fail-closed temporal** | Deliberadamente apagado en código, con motivo tipado y handoff | Se enciende cuando llegue lo externo |
 > | ⛔ **Bloqueo externo** | Necesita credencial, proveedor, experto, tenant piloto o decisión irreversible del dueño | Nada de nuestro lado |
-> | ⏳ **Pendiente interno** | Implementable hoy, sin depender de nadie | **Lo que sigue** |
+> | ⏳ **Pendiente interno** | Implementable hoy, sin depender de nadie | Reabre el programa; la cola vigente al cierre tiene cero ítems en esta categoría. |
 
 ### Verificación completa
 
@@ -2207,7 +2211,7 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 |---|---|
 | ~~**Contrato efectivo**~~ | ✅ **U33/U35**: entra rol, canal, jurisdicción y salud/scopes/frescura del proveedor, y se resuelve ANTES de los tres motores |
 | ~~**STOP**~~ | ✅ **U35**: los 7 perfiles contra las cinco puertas, `capability_status` en el turno y handoff determinista |
-| **Terminología por sub-tipo** | ◐ **U54**: 15 de 76 declaran la propia y la contradicción *mecánica* de la herencia quedó cerrada con una puerta que la vigila. Lo que queda —revisar los 61 heredados uno por uno— **necesita a alguien que conozca el rubro**, y está en el bloqueo externo como revisión de dominio |
+| **Terminología por sub-tipo** | ◐ **U54/U63**: 16 de 76 declaran la propia y la contradicción *mecánica* de la herencia quedó cerrada con una puerta que la vigila; el objeto primario de los otros 60 se deriva. Lo que queda —revisarlos uno por uno— **necesita a alguien que conozca el rubro**, y está en revisión experta. |
 | ~~**Set dorado**~~ | ✅ **U45**: mínimo 29 por perfil en los cuatro idiomas |
 | **Packs de país** | Los 15 de LatAm en `draft`. Ninguno se presenta como certificado, que es lo correcto, pero llegar a `pilot` exige un tenant real de ese país |
 | ~~**Telemetría de navegación**~~ | ✅ **U53**: tiempo-a-tarea, profundidad de clics, búsqueda y backtracking |
@@ -2223,7 +2227,9 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | Writers de los 7 perfiles `stop` | `writersBlocked` quita toda tool que no sea `read` con política revisada | La decisión de producto de cada perfil (ver bloqueo externo) |
 | Cobro en perfiles `stop` | El filtro corre sobre la lista completa, después de pagos e integraciones | Ídem |
 
-### ⛔ Bloqueo externo — nada de nuestro lado
+### ⛔ Resumen histórico de gates externos
+
+> Esta tabla conserva el resumen disponible al cierre de aquella tanda. No es exhaustiva ni vigente por sí sola; la cola única y ampliada —incluidos los siete perfiles `strategy: stop`, 17 `decision_gate`, decisiones de analytics/Email/planner/relojes/binding/Mindbody, migraciones y pilotos— está en `vertical-intervention-status-2026-08-23.md` §5.
 
 | Bloqueo | Qué se necesita | Quién |
 |---|---|---|
@@ -2236,11 +2242,11 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | Revisión de dominio de los contratos por perfil | Experto por rubro, que el plan exige antes de certificar | Dueño + experto |
 | Fase 6 — pilotos y certificación | 3-5 tenants por perfil, shadow mode, evidencia E2E, sign-off | Dueño |
 
-### ⏳ Pendiente interno
+### Historial de pendientes internos — cerrado por U68/U69
 
-#### Tanda vigente — reapertura del dueño (ago 2026)
+#### Snapshot de la reapertura del dueño (ago 2026)
 
-> **Corrección.** La tanda anterior se cerró diciendo que lo que quedaba dependía de terceros. No era exacto: quedaba —y queda— trabajo interno. El dueño lo reabrió en 19 puntos ordenados. Esta tabla es el estado honesto de esos 19, y se actualiza por paquete, no al final.
+> **Snapshot de reapertura.** La tanda anterior se cerró diciendo que lo que quedaba dependía de terceros. No era exacto: en ese momento quedaba trabajo interno y el dueño lo reabrió en 19 puntos ordenados. La tabla conserva el avance de esa reapertura; **no es el estado vigente**. U68 cerró el ledger vertical y U69 cerró el endurecimiento transversal. La única cola actual está en `vertical-intervention-status-2026-08-23.md`.
 
 | # | Paquete | Estado |
 |---|---|---|
@@ -2249,22 +2255,22 @@ Código en su lugar, pruebas que lo fijan, verificación corrida.
 | 3 | Autorización exacta en Booking y Procedures | ✅ **U55** |
 | 4 | Separar tools core/globales, verticales, proveedor y MCP | ✅ **U56** |
 | 5 | Handoff STOP sólo ante operación denegada | ✅ **U55** |
-| 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57** — la cadena real sin mocks entre las piezas que deciden, contra la misma función que corre en producción; falta el *orden* del turno (`processIncomingMessage`) y una corrida contra base real |
+| 6 | Pruebas E2E live (no sólo unitarias) | ◐ **U57 + cierre posterior** — la cadena y el orden local del turno quedaron fijados contra la función de producción; la corrida con DB/canal/modelo/proveedor reales pertenece al rollout/piloto. |
 | 7 | Hostaway: una unidad mapeada nunca degrada a escritura local | ✅ **U58** |
-| 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ◐ **U59** — matriz por **industria** (no por subtipo) y desplazamiento estático por proveedor (no por recurso); afinar ambos necesita revisión de dominio |
-| 9 | Unificar freshness, cron y estado mostrado en UI | ◐ **U60** — un solo número compartido, cadencia verificada y estado `not_applicable` en el panel; falta la disponibilidad en vivo de Mindbody y unificar el reloj del Channel Manager |
-| 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ◐ **U61** — las cinco piezas construidas y probadas; el corte a `reject` depende de correr la migración en producción, y los ~8 módulos restantes que escriben `settings` siguen con el patrón que pierde datos |
-| 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ◐ **U62** — worker, contrato de adapter, vencimiento, revisión, identidad por conexión y reparación de schema; **ningún adapter escrito** (necesita sandbox del proveedor) y la revisión no tiene pantalla |
+| 8 | Matriz provider↔subtipo; evitar lectura externa + writer local | ◐ **U59** — matriz conservadora y desplazamiento seguro implementados; granularidad por subtipo/recurso/sede necesita revisión de dominio, mapping del proveedor y decisión del dueño. |
+| 9 | Unificar freshness, cron y estado mostrado en UI | ◐ **U60 + cierre posterior** — registro común, metadata real del cron y estado `not_applicable` verificados. Mindbody live es gate de proveedor; unificar el reloj tenant del Channel Manager es decisión de arquitectura. |
+| 10 | Secretos: dry-run/apply/cutover, cero plaintext, máscara `***`, cambio de provider, updates atómicos | ◐ **U61 + cierre posterior** — código, ocho writers de `settings` y forwarding de deploy cerrados; solo faltan migración y cutover productivos. |
+| 11 | Scaffolding → adapters/workers reales (expiry, review, idempotencia por conexión, migración de tenants existentes) | ◐ **U62 + cierre posterior** — workers, registro durable, pantalla Ops sin payload y reparación cerrados; adapters/writers reales siguen fail-closed hasta sandbox/certificación. |
 | 12 | Intent/Slot/ToolPlan para los 19 grupos y los 76 perfiles | ✅ **U63** |
-| 13 | Eliminar los gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ◐ **U63** — 170 → 83 huecos, y los 83 son los dos externos; falta conectar el contrato al planificador del turno, a la UI y al móvil |
-| 14 | Terminología e idioma por perfil/país | ◐ **U63 + U64** — objeto primario en 4 idiomas para los 76 y registro por país en el set dorado; falta la capa de regionalismos léxicos y la revisión de rubro |
+| 13 | Eliminar los gaps; conectar contrato con prompt, runtime, UI, móvil y effective-profile | ◐ **U63 + cierre posterior** — el turno y Agent Test proyectan el plan contra capacidad efectiva y muestran disponible/parcial/no disponible. Un planner determinista y cualquier experiencia móvil adicional son decisiones de arquitectura/rollout. |
+| 14 | Terminología e idioma por perfil/país | ◐ **U63/U64 + cierre posterior** — objeto primario en 4 idiomas, aliases de reconocimiento, `preferredTerms` y registros prohibidos llegan al runtime; faltan validación cultural y revisión experta de rubro. |
 | 15 | Sacar guidance español global y voseo fuera de su país | ✅ **U64** |
 | 16 | Golden evals reales ES/EN/PT/FR con el resolver de producción | ◐ **U64** — el paquete ya se compone en los 4 idiomas y con el resolutor regional de producción; **correr**los contra los 76 perfiles necesita tenant y presupuesto de LLM |
 | 17 | CRM mínimo + writer→ActiveObject→deep-link | ✅ **U65** — la cadena quedó verificada writer por writer; el CRM mínimo ya estaba (U47) y su salida se lee en la ficha del Inbox |
 | 18 | Backlog nativo de los 31 `build` y 23 `hybrid` | ◐ **U66** — 4 ítems cerrados con evidencia y el resto **legible por primera vez**: el backlog era una foto de julio sin campo de vigencia. Los ~200 restantes son en su mayoría hechos del negocio del tenant, no código |
 | 19 | Aliases y migraciones taxonómicas | ◐ **U65** — canonización en todos los consumidores + migración con tres modos; **no se corrió** (producción) y dos decisiones de taxonomía siguen siendo del dueño |
 
-**Además, salido de U55 y no en la lista original:** el reanudador de aprobaciones humanas no re-resuelve el contrato efectivo (ver riesgos de U55). Trabajo interno.
+**Además, salido de U55 y no en la lista original:** el reanudador de aprobaciones humanas no re-resolvía el contrato efectivo. Quedó cerrado después de U69 con recomposición y `approval_authority_revoked`; ver la reconciliación de riesgos de U55.
 
 #### Tanda anterior — los 20, cerrados
 
@@ -2292,3 +2298,74 @@ Los veinte quedaron implementados, con pruebas que los fijan y suites completas 
 | ~~18~~ | ✅ cerrado entre **U47** (writers CRM) y **U48** (Active Objects) |
 | ~~19~~ | ✅ cerrado entre **U49** (alquiler y guardería), **U50** (superficie de `professional_case`) y **U52** (analítica declarada vs devuelta). La semántica y las plantillas de turismo ya estaban: terminología de los 4 subtipos, registros de estadías y salidas y plantillas de confirmación, hechas en U14/U15/U20 |
 | ~~20~~ | ✅ cerrado en **U51** |
+
+---
+
+### U68 — Cierre autoritativo: cero gates internos abiertos y almacenamiento hot/cold atribuible
+
+Se sustituyó el último resumen narrativo por un cierre derivado del runtime. `native-backlog.ts` separa evidencia interna de puertas posteriores y fija, para los 54 perfiles `build/hybrid`, 260 alertas en cinco estados: `open: 0`, `stale: 82`, `external_gate: 140`, `decision_gate: 17` y `expert_gate: 21`. Hay 222 gates internos verificados, cero internos abiertos y `profilesWithOpenCode=[]`. Los 17 gates de decisión son alertas auditables en 14 perfiles; no se mezclan con los siete perfiles realmente detenidos por `strategy: stop`: cuatro decisiones de taxonomía/producto (`fintech`, `marketplace`, `wedding_planner`, `construccion`) y tres de alcance/integración (`technology/consultoria_ti`, `seguros/aseguradora`, `seguros/salud`).
+
+Al verificar las iniciativas transversales apareció una mitad todavía abierta: la purga ya borraba `/media/{tenantId}` y `/media/archives/{tenantId}`, pero `getStorageReport()` seguía contando solo archivos directos del primer nivel y atribuía `archives` como si fuera un tenant. Se cerró con recorrido recursivo acotado, fusión hot+cold por UUID, conteo separado de roots no atribuibles, no seguimiento de symlinks y señal `complete:false` con warnings acotados ante límites o errores. Así el panel puede atribuir el archivo frío al tenant real sin convertir una lectura parcial en un total silenciosamente confiable.
+
+El estado, sus límites y la cola final de producto/experto/proveedor/rollout quedaron en [`vertical-intervention-status-2026-08-23.md`](./vertical-intervention-status-2026-08-23.md). No se declaran deploy, migraciones ni certificación de producción.
+
+**Verificación focal ejecutada**
+
+```text
+native-backlog.spec.ts                                                22 passed / 1 suite
+media-cleanup.storage-report.spec.ts + media purge + offboarding      24 passed / 3 suites
+apps/api tsc --noEmit                                                 exit 0
+```
+
+---
+
+### U69 — Cierre transversal posterior: autoridad durable, concurrencia, secretos y promoción
+
+Después de U68 se revisaron los bordes que podían invalidar un ledger vertical aparentemente verde sin aparecer como una alerta de subtipo. El resultado no agrega otra lista paralela: estos son cierres internos presentes en el worktree y la cola posterior sigue siendo únicamente la del documento autoritativo.
+
+| Frente | Defecto cerrado | Contrato vigente |
+|---|---|---|
+| Reserva nativa | Check e insert podían separarse bajo concurrencia. | Fechas estrictas, `checkout > checkin`, advisory lock por recurso y conflicto/inserción en la misma transacción. |
+| System of Record | La caída de health podía confundirse con permiso para volver a escribir localmente. | El binding durable conserva ownership aun degradado; no hay fallback a un segundo calendario. |
+| Workers de integración | Un worker con lease vencido podía intentar completar trabajo ya recuperado. | Claim token + generación + lease y CAS en cada transición de outbox/inbox. |
+| Activación de proveedores | Una allowlist podía liberar intención aunque no existiera adapter. | El trabajo permanece `suppressed`; el preflight exige `INTEGRATION_WRITE_PROVIDERS` vacío hasta certificar un adapter real. |
+| Secretos tenant | MCP, e-commerce y Slack no compartían el contrato de cifrado/cutover. | Cifrado tenant/AAD, máscara y `***`, rewrap, rechazo opcional de plaintext y migrador alineado para Channel Manager, integraciones verticales, MCP, e-commerce y Slack. |
+| Frontera de settings | El merge genérico podía mutar ramas con semántica propia. | Allowlist estrecha de preferencias genéricas; ramas reservadas o desconocidas fallan cerrado. |
+| BI API | `settings.biApiKey` almacenaba y autorizaba un secreto en claro. | Claves hasheadas/revocables con `read:analytics`; migrador transaccional CAS elimina el legado sin imprimirlo. |
+| Aislamiento tenant | Route y query podían expresar tenants distintos. | `TenantGuard` valida ambas fuentes, rechaza conflicto/arrays/cross-tenant y fija el tenant efectivo. |
+| CRM | La idempotencia secuencial no evitaba duplicados simultáneos. | Lead, oportunidad y tarea serializan y releen dentro de la transacción. |
+| Atribución | El payload final del onboarding podía reemplazar el origen durable. | La captura original prevalece; el backfill solo atribuye evidencia existente y excluye cuentas administrativas. |
+| Trazas | Había más lectura y contenido persistido de lo necesario. | Acceso por rol/asignación, límites de volumen y redacción de PII, credenciales, tokens y errores antes de persistir. |
+| Solicitudes de servicio | Una baja de catálogo podía dejar historia operacional huérfana. | FK, reparación heredada trazable y `ON DELETE RESTRICT` con conflicto tipado. |
+| Promoción | Los contratos nuevos podían quedar fuera de listas blancas manuales. | Calidad y deploy cubren 47/47 specs nuevas observadas; las listas API tienen 83 rutas únicas, existentes y reconocidas, y API/dashboard/WhatsApp bloquean errores de lint. |
+
+**Estado de evidencia consolidado después de U69 y su reconciliación final:** cierre interno verificado localmente. La tanda U69 pasó 22/22 suites focales (179 pruebas); la regresión completa final del API terminó sin `--forceExit` con **363 suites y 3.512 pruebas aprobadas**, más 1 suite/10 pruebas condicionales omitidas explícitamente por requerir PostgreSQL. También quedaron verdes dashboard (**31 suites/273 pruebas y build de 143 rutas**), WhatsApp (3/13), mobile (24/319), builds/typechecks de los seis paquetes/apps, Prisma, i18n, matriz estática 1.560/1.560, lint bloqueante y workflows. El detalle reproducible y sus límites está en la sección 6 del documento autoritativo.
+
+El dashboard conserva 285 advertencias de lint históricas no bloqueantes; hay **0 errores**. No se ejecutaron deploy, migraciones de producción, certificaciones de proveedor ni pilotos, y el smoke PostgreSQL permanece como evidencia del CI remoto antes de promover.
+
+### Reconciliación posterior a U69 — cierre de afirmaciones históricas
+
+Una última comparación de este log contra el runtime encontró frases históricas que todavía decían “trabajo interno pendiente” aunque su contrato ya había sido implementado, o que confundían una decisión/proveedor con código mecánico. No se reescribe la historia de cada unidad: las anotaciones anteriores y este resumen fijan el estado vigente.
+
+| Frente reconciliado | Estado vigente |
+|---|---|
+| Aprobaciones y orden del turno | Re-resolución con `approval_authority_revoked` y paridad del orden live/Agent Test: cerrados internamente. |
+| Origen de tools y auditoría | Snapshot/traza inspeccionable y `/admin/vertical-audit`: cerrados internamente. |
+| Caché SoR | Generación Redis por tenant con fencing de resolución tardía: cerrado; 5 suites/38 pruebas focales y API `tsc` verdes. |
+| Cron/freshness | La metadata real de `@Cron` usa la constante compartida: cerrado. Mindbody live y el reloj del Channel Manager quedan como proveedor/decisión. |
+| `settings` y secretos | Ocho writers atómicos y guard de regresión: cerrados; migración/cutover siguen en rollout. |
+| Outbox/inbox | Pantalla Ops sin payload y registro durable de tenants con trabajo: cerrados; API 4 suites/63, dashboard 5 suites/89, typechecks/lint/build de 143 rutas y Prisma validate verdes. Adapters externos siguen apagados. |
+| Tool plans y lenguaje país | Proyección runtime + default-deny, `preferredTerms` y registros prohibidos: cerrados como contrato actual. Planner determinista y validación cultural son decisión/revisión experta. |
+| Analytics | `web_widget` incluido en pivot, CSV y BI; `channel_account` y Email quedan como decisiones explícitas. |
+| Rutas operativas | La matriz deriva deep links del registro compartido; `professional_case` resuelve a `/admin/cases`. |
+| Gate de promoción | Ambos YAML válidos y cobertura **47/47** de specs nuevas. API: 83 rutas únicas/existentes/reconocidas 83/83 en ambos; dashboard: 11/11 calidad y 13/13 deploy; WhatsApp: 2/2. No hay duplicados ni rutas inexistentes. |
+
+**Lo que queda después de un sello técnico verde, sin mezclar categorías:**
+
+1. **Decisiones de producto/arquitectura:** los siete perfiles `strategy: stop`, los 17 `decision_gate`, política de verificación de email, eventual reapertura de SMS, granularidad `channel_account`, alcance de Email, planner determinista, reloj del Channel Manager y binding por recurso/sede.
+2. **Credenciales/certificación de proveedores:** Hostaway y las olas posteriores; sandbox, versión, mapping, reconciliación, idempotencia y rollback por proveedor. Mindbody necesita evidencia live antes de prometer cupo actual.
+3. **Revisión experta:** 21 `expert_gate`, 60 perfiles con terminología heredada y 15 packs de país aún `draft`.
+4. **Migraciones/preflight de producción:** DDL tenant, signup attribution, aliases cuando correspondan, secretos tenant y claves BI; dry-run, backup, `apply`, verificación y cutover. **Ninguna se declara ejecutada.**
+5. **Pilotos:** DB/Redis/canal/modelo/proveedor reales, 3–5 tenants por perfil priorizado, canary, evidencia E2E y sign-off. **No se declara deploy ni piloto.**
+
+La definición exacta, el orden y los comandos viven en [`vertical-intervention-status-2026-08-23.md`](./vertical-intervention-status-2026-08-23.md); U69 no crea una segunda fuente de verdad.

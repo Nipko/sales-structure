@@ -51,11 +51,6 @@ export default function ListingsPage() {
     const [showImport, setShowImport] = useState(false);
     const [filter, setFilter] = useState<"all" | "sale" | "rent">("all");
 
-    useEffect(() => {
-        if (!activeTenantId) return;
-        load();
-    }, [activeTenantId, filter]);
-
     async function load() {
         if (!activeTenantId) return;
         setLoading(true);
@@ -64,6 +59,11 @@ export default function ListingsPage() {
         if (res.success && Array.isArray(res.data)) setListings(res.data);
         setLoading(false);
     }
+
+    useEffect(() => {
+        if (!activeTenantId) return;
+        load();
+    }, [activeTenantId, filter]);
 
     if (loading) {
         return (

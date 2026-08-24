@@ -4,11 +4,11 @@ import {
     resolveVerticalSelection,
     VERTICAL_IDENTIFIER_CONTRACT_VERSION,
 } from './vertical-identifiers';
-import { listBlockedSubtypeProfiles, subtypeAvailability } from '@parallext/shared';
+import { SUBTYPE_ALIASES, listBlockedSubtypeProfiles, subtypeAvailability } from '@parallext/shared';
 
 describe('resolveVerticalSelection', () => {
     it('publishes a versioned identifier contract', () => {
-        expect(VERTICAL_IDENTIFIER_CONTRACT_VERSION).toBe(1);
+        expect(VERTICAL_IDENTIFIER_CONTRACT_VERSION).toBe(2);
     });
 
     it('accepts every canonical industry/subtype pair in the registry', () => {
@@ -19,9 +19,13 @@ describe('resolveVerticalSelection', () => {
             }
 
             for (const subType of definition.subTypes) {
+                const target = SUBTYPE_ALIASES[`${industry}/${subType.key}`];
+                const [expectedIndustry, expectedSubType] = target
+                    ? target.split('/')
+                    : [industry, subType.key];
                 expect(resolveVerticalSelection(industry, subType.key)).toEqual({
-                    industry,
-                    subType: subType.key,
+                    industry: expectedIndustry,
+                    subType: expectedSubType,
                 });
             }
         }
@@ -50,17 +54,23 @@ describe('resolveVerticalSelection', () => {
         });
     });
 
-    it.each([
-        ['moda_belleza', 'boutique'],
-        ['restaurantes', 'delivery'],
-    ])('preserva el subtipo legacy soportado %s/%s para poder reanudar un alta', (industry, subType) => {
-        expect(resolveVerticalSelection(industry, subType)).toEqual({ industry, subType });
-    });
+    it.each(Object.entries(SUBTYPE_ALIASES))(
+        'canoniza el alias de subtipo %s a %s en cada superficie',
+        (source, target) => {
+            const [industry, subType] = source.split('/');
+            const [canonicalIndustry, canonicalSubType] = target.split('/');
+            for (const surface of ['signup', 'admin_create', 'existing'] as const) {
+                expect(resolveVerticalSelection(industry, subType, surface)).toEqual({
+                    industry: canonicalIndustry,
+                    subType: canonicalSubType,
+                });
+            }
+        },
+    );
 
     it.each([
         ['', undefined],
         ['inventada', 'algo'],
-        ['pet_services', 'tienda'],
         ['otro', 'general'],
         ['salud', undefined],
     ])('rejects an invalid pair (%s/%s)', (industry, subType) => {

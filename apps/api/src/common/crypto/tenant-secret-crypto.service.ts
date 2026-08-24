@@ -14,7 +14,20 @@ const NAME_RE = /^[a-z0-9_]{1,40}$/;
  * De qué integración es el secreto. Es parte del AAD, así que una credencial
  * no se puede mover de scope sin que la autenticación falle.
  */
-export type TenantSecretScope = 'channel_manager' | 'vertical_integration';
+export type TenantSecretScope =
+    | 'channel_manager'
+    | 'vertical_integration'
+    | 'mcp'
+    | 'ecommerce'
+    | 'slack';
+
+const TENANT_SECRET_SCOPES: readonly TenantSecretScope[] = [
+    'channel_manager',
+    'vertical_integration',
+    'mcp',
+    'ecommerce',
+    'slack',
+];
 
 /**
  * Lo que el panel manda de vuelta en lugar del secreto.
@@ -60,8 +73,8 @@ export class TenantSecretCryptoError extends Error {
 /**
  * Sobre cifrado para credenciales de integración guardadas en `tenant.settings`.
  *
- * Las claves de Channel Manager (Hostaway, Guesty) y de las integraciones
- * verticales (Toast, Mindbody, Cliniko) vivían **en claro** en un JSONB, y el
+ * Las claves de Channel Manager (Hostaway, Guesty), integraciones verticales
+ * (Toast, Mindbody, Cliniko), MCP, ecommerce y Slack vivían **en claro** en un JSONB, y el
  * endpoint genérico del tenant las devolvía tal cual: cualquier lectura de
  * `GET /tenants/:id`, cualquier backup y cualquier volcado de la base las
  * entregaba enteras. La UI las enmascaraba con `***` en su propio endpoint, que
@@ -256,7 +269,7 @@ export class TenantSecretCryptoService {
         const provider = String(context?.provider || '').trim().toLowerCase();
         const field = String(context?.field || '').trim().toLowerCase();
         if (!UUID_RE.test(tenantId)
-            || !['channel_manager', 'vertical_integration'].includes(context?.scope)
+            || !TENANT_SECRET_SCOPES.includes(context?.scope)
             || !NAME_RE.test(provider)
             || !NAME_RE.test(field)) {
             throw new TenantSecretCryptoError('tenant_secret_context_invalid');

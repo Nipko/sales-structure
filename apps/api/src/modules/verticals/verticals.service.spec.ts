@@ -5,7 +5,7 @@ import {
     VERTICAL_PROVISIONING_VERSION,
 } from './verticals.service';
 import { resolveVerticalSelection } from './vertical-identifiers';
-import { VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
+import { SUBTYPE_ALIASES, VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
 import { resolveVerticalSubtypePersonaContract } from '../persona/vertical-subtype-persona-contract';
 
 describe('selectQuotaAwareVerticalDefaults', () => {
@@ -73,9 +73,15 @@ describe('selectQuotaAwareVerticalDefaults', () => {
         expect(configurations).toContainEqual(expect.objectContaining({ industry: 'otro', subType: null }));
 
         for (const configuration of configurations) {
+            const target = configuration.subType
+                ? SUBTYPE_ALIASES[`${configuration.industry}/${configuration.subType}`]
+                : undefined;
+            const [expectedIndustry, expectedSubType] = target
+                ? target.split('/')
+                : [configuration.industry, configuration.subType];
             expect(resolveVerticalSelection(configuration.industry, configuration.subType)).toEqual({
-                industry: configuration.industry,
-                subType: configuration.subType,
+                industry: expectedIndustry,
+                subType: expectedSubType,
             });
             for (const [plan, limits] of Object.entries(plans)) {
                 const selected = selectQuotaAwareVerticalDefaults(
@@ -225,6 +231,24 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
     });
 
+    it('canonicalizes subtype aliases even when bootstrap is called directly', async () => {
+        await service.bootstrapVertical(
+            tenantId, 'veterinaria', 'peluqueria_canina', 'es',
+        );
+
+        expect(settings.verticalConfig).toMatchObject({
+            industry: 'pet_services',
+            subType: 'peluqueria',
+        });
+        expect(patchDefaultAgent).toHaveBeenCalledWith(
+            schemaName,
+            expect.objectContaining({ industry: 'pet_services' }),
+            'peluqueria',
+            'es',
+            expect.any(Function),
+        );
+    });
+
     it('provisions tour operators with tour bookings and no generic agenda', async () => {
         const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
 
@@ -267,7 +291,10 @@ describe('VerticalsService resumable bootstrap', () => {
 
         await service.bootstrapVertical(tenantId, 'servicios_hogar', 'plomeria', 'es');
 
-        expect(seedServices).not.toHaveBeenCalled();
+        expect(seedServices).toHaveBeenCalledTimes(1);
+        expect((seedServices.mock.calls[0][1] as any).services).toEqual([
+            expect.objectContaining({ category: 'plomeria', durationMinutes: 90 }),
+        ]);
         expect(seedAvailability).not.toHaveBeenCalled();
         const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
         expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))
@@ -275,6 +302,21 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(settings.verticalConfig.bookingEnabled).toBe(false);
         expect(settings.verticalConfig.effectiveCapabilities).toContain('service_requests');
         expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
+    });
+
+    it('provisions retail/home delivery capacity without enabling agenda for other retail subtypes', async () => {
+        const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
+
+        await service.bootstrapVertical(tenantId, 'retail', 'hogar', 'es');
+
+        expect(seedServices).toHaveBeenCalledTimes(1);
+        expect((seedServices.mock.calls[0][1] as any).services).toEqual([
+            expect.objectContaining({ category: 'entrega', durationMinutes: 120 }),
+            expect.objectContaining({ category: 'instalacion', durationMinutes: 180 }),
+        ]);
+        expect(seedAvailability).toHaveBeenCalledTimes(1);
+        expect(settings.verticalConfig.bookingEnabled).toBe(true);
+        expect(settings.verticalConfig.effectiveCapabilities).toContain('appointment_booking');
     });
 
     it('seeds the pet-hotel catalog without reusing appointment slots', async () => {
@@ -408,8 +450,26 @@ describe('VerticalsService resumable bootstrap', () => {
 
         const config = await service.getVerticalConfig(tenantId);
 
-        expect(config).toEqual(legacyConfig);
-        expect(settings.verticalConfig).toEqual(legacyConfig);
+        // Capability publication stays on v1, while navigation receives the
+        // additive subtype projection. Persisting those labels/order is safe;
+        // the v1 capability array itself remains the publication fence until
+        // reconciliation succeeds.
+        expect(config).toEqual({
+            ...legacyConfig,
+            sidebar: {
+                ...legacyConfig.sidebar,
+                itemOrder: ['stays', 'properties'],
+                labelOverrides: {
+                    ...legacyConfig.sidebar.labelOverrides,
+                    properties: { es: 'Habitaciones', en: 'Rooms', pt: 'Quartos', fr: 'Chambres' },
+                },
+            },
+        });
+        expect(settings.verticalConfig).toEqual(config);
+        expect(settings.verticalConfig).toMatchObject({
+            manifestVersion: 1,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'appointment_booking'],
+        });
     });
 
     it('preserves the published v1 contract of a tenant onboarded before verticalProvisioning existed', async () => {
@@ -431,8 +491,22 @@ describe('VerticalsService resumable bootstrap', () => {
 
         const config = await service.getVerticalConfig(tenantId);
 
-        expect(config).toEqual(legacyConfig);
-        expect(settings.verticalConfig).toEqual(legacyConfig);
+        expect(config).toEqual({
+            ...legacyConfig,
+            sidebar: {
+                ...legacyConfig.sidebar,
+                itemOrder: ['stays', 'properties'],
+                labelOverrides: {
+                    ...legacyConfig.sidebar.labelOverrides,
+                    properties: { es: 'Habitaciones', en: 'Rooms', pt: 'Quartos', fr: 'Chambres' },
+                },
+            },
+        });
+        expect(settings.verticalConfig).toEqual(config);
+        expect(settings.verticalConfig).toMatchObject({
+            manifestVersion: 1,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'appointment_booking'],
+        });
     });
 
     it('still fails closed for a pre-provisioning tenant with no published capability array', async () => {
@@ -541,6 +615,40 @@ describe('VerticalsService resumable bootstrap', () => {
             expect.objectContaining({ manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION }),
             600,
         );
+    });
+
+    it('fences a persisted alias until the canonical profile is reprovisioned', async () => {
+        settings.verticalProvisioning = {
+            version: VERTICAL_PROVISIONING_VERSION,
+            status: 'complete',
+            industry: 'veterinaria',
+            subType: 'peluqueria_canina',
+            completedSteps: ['persona', 'vertical_tools', 'invariants'],
+        };
+        settings.verticalConfig = {
+            industry: 'veterinaria',
+            subType: 'peluqueria_canina',
+            terminology: VERTICAL_REGISTRY.veterinaria.terminology,
+            sidebar: VERTICAL_REGISTRY.veterinaria.sidebar,
+            dashboard: VERTICAL_REGISTRY.veterinaria.dashboard,
+            bookingEnabled: true,
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            effectiveCapabilities: ['appointment_booking'],
+        };
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config).toMatchObject({
+            industry: 'pet_services',
+            subType: 'peluqueria',
+            effectiveCapabilities: [],
+        });
+        expect(settings.verticalProvisioning).toMatchObject({
+            status: 'pending',
+            industry: 'pet_services',
+            subType: 'peluqueria',
+            completedSteps: [],
+        });
     });
 
     it('seeds seven real 24-hour slots for veterinaria/hospital_24h', async () => {
@@ -719,7 +827,17 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(settings.verticalConfig).toEqual(legacyConfig);
         expect(settings.verticalProvisioning.publishedManifestVersion).toBe(1);
         expect(settings.verticalConfigPending).toBeUndefined();
-        await expect(service.getVerticalConfig(tenantId)).resolves.toEqual(legacyConfig);
+        await expect(service.getVerticalConfig(tenantId)).resolves.toEqual({
+            ...legacyConfig,
+            sidebar: {
+                ...legacyConfig.sidebar,
+                itemOrder: ['orders', 'inventory'],
+                labelOverrides: {
+                    ...legacyConfig.sidebar.labelOverrides,
+                    inventory: { es: 'productos', en: 'products', pt: 'produtos', fr: 'produits' },
+                },
+            },
+        });
 
         await service.bootstrapVertical(tenantId, 'retail', 'marketplace', 'es');
 

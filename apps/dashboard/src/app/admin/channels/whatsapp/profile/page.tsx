@@ -51,6 +51,14 @@ interface Profile {
     vertical?: string;
 }
 
+interface WhatsAppNumber {
+    phone_number_id?: string;
+    display_phone_number?: string;
+    display_name?: string;
+    accountId?: string;
+    metadata?: { phoneNumberId?: string; displayPhoneNumber?: string };
+}
+
 export default function WhatsAppProfilePage() {
     const t = useTranslations("whatsappProfile");
     const tc = useTranslations("common");
@@ -65,21 +73,24 @@ export default function WhatsAppProfilePage() {
 
     const [profile, setProfile] = useState<Profile>({});
     const [phoneDetails, setPhoneDetails] = useState<PhoneDetails>({});
+    const [waNumbers, setWaNumbers] = useState<WhatsAppNumber[]>([]);
+    const [phoneNumberId, setPhoneNumberId] = useState("");
     const [form, setForm] = useState({ about: "", description: "", email: "", address: "", website1: "", website2: "", vertical: "UNDEFINED" });
     const [initialForm, setInitialForm] = useState(form);
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    async function loadProfile(showRefresh = false) {
+    async function loadProfile(showRefresh = false, targetPhoneNumberId = phoneNumberId) {
         if (showRefresh) setRefreshing(true); else setLoading(true);
         setFeedback(null);
         try {
-            const res = await api.getWhatsappBusinessProfile();
+            const res = await api.getWhatsappBusinessProfile(targetPhoneNumberId || undefined);
             if (res.success && res.data) {
                 const p: Profile = res.data.profile || {};
                 const pd: PhoneDetails = res.data.phoneDetails || {};
                 setProfile(p);
                 setPhoneDetails(pd);
+                setPhotoPreview(null);
                 const f = {
                     about: p.about || "",
                     description: p.description || "",
@@ -102,7 +113,31 @@ export default function WhatsAppProfilePage() {
         }
     }
 
-    useEffect(() => { loadProfile(); }, []);
+    useEffect(() => {
+        (async () => {
+            let selected = "";
+            try {
+                const status = await api.fetch("/channels/whatsapp/status");
+                const src = status?.data || status || {};
+                const numbers: WhatsAppNumber[] = Array.isArray(src.channels)
+                    ? src.channels
+                    : Array.isArray(src.accounts)
+                        ? src.accounts
+                        : src.channel
+                            ? [src.channel]
+                            : src.account
+                                ? [src.account]
+                                : [];
+                setWaNumbers(numbers);
+                const first = numbers[0];
+                selected = first?.phone_number_id || first?.metadata?.phoneNumberId || first?.accountId || "";
+                setPhoneNumberId(selected);
+            } catch { /* profile request will show the actionable error */ }
+            await loadProfile(false, selected);
+        })();
+        // The selected number is intentionally loaded once from server status.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const hasChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
 
@@ -117,6 +152,7 @@ export default function WhatsAppProfilePage() {
             const res = await api.updateWhatsappBusinessProfile({
                 about: form.about, description: form.description, email: form.email,
                 address: form.address, websites, vertical: form.vertical,
+                phoneNumberId: phoneNumberId || undefined,
             });
             if (res.success) {
                 setFeedback({ type: "success", text: t("formSaved") });
@@ -146,7 +182,7 @@ export default function WhatsAppProfilePage() {
         setUploading(true);
         setFeedback(null);
         try {
-            const res = await api.uploadWhatsappProfilePhoto(file);
+            const res = await api.uploadWhatsappProfilePhoto(file, phoneNumberId || undefined);
             if (res.success) {
                 setFeedback({ type: "success", text: t("photoSuccess") });
                 loadProfile(true);
@@ -167,7 +203,7 @@ export default function WhatsAppProfilePage() {
         if (!confirm(t("photoDeleteConfirm"))) return;
         setUploading(true);
         try {
-            const res = await api.deleteWhatsappProfilePhoto();
+            const res = await api.deleteWhatsappProfilePhoto(phoneNumberId || undefined);
             if (res.success) {
                 setFeedback({ type: "success", text: t("photoDeleted") });
                 setPhotoPreview(null);
@@ -259,6 +295,31 @@ export default function WhatsAppProfilePage() {
                 </button>
             </div>
 
+            {waNumbers.length > 1 && (
+                <div className="bg-card border border-border rounded-xl p-4">
+                    <label htmlFor="whatsapp-profile-number" className="text-sm font-medium block mb-2">
+                        {t("numberSelector")}
+                    </label>
+                    <select
+                        id="whatsapp-profile-number"
+                        value={phoneNumberId}
+                        onChange={async (event) => {
+                            const next = event.target.value;
+                            setPhoneNumberId(next);
+                            await loadProfile(false, next);
+                        }}
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
+                    >
+                        {waNumbers.map((number) => {
+                            const id = number.phone_number_id || number.metadata?.phoneNumberId || number.accountId || "";
+                            const label = number.display_phone_number || number.metadata?.displayPhoneNumber || number.display_name || id;
+                            return <option key={id} value={id}>{label}</option>;
+                        })}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-2">{t("numberSelectorHint")}</p>
+                </div>
+            )}
+
             <HelpPanel
                 title={tHelp("channelsWhatsappProfile.title")}
                 description={tHelp("channelsWhatsappProfile.description")}
@@ -314,6 +375,9 @@ export default function WhatsAppProfilePage() {
                     <div className="space-y-1">
                         <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("displayName")}</span>
                         <p className="text-sm font-medium">{phoneDetails.verified_name || phoneDetails.display_phone_number || "—"}</p>
+                        {phoneDetails.display_phone_number && phoneDetails.verified_name && (
+                            <p className="text-xs text-muted-foreground">{t("phoneNumber")}: {phoneDetails.display_phone_number}</p>
+                        )}
                     </div>
 
                     {/* Name Status */}

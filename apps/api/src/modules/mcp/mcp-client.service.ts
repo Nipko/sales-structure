@@ -11,6 +11,12 @@ import {
     readMcpApprovals,
 } from './mcp-tool-approval';
 import { MCP_EFFECTS_REQUIRING_CONFIRMATION, ToolEffectDeclaration } from './mcp-approval.types';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
+import {
+    isMaskedSecret,
+    TENANT_SECRET_MASK,
+    TenantSecretCryptoService,
+} from '../../common/crypto/tenant-secret-crypto.service';
 
 export interface McpServerConfig {
     id: string;          // short slug used in tool-name prefix
@@ -18,6 +24,8 @@ export interface McpServerConfig {
     url: string;         // Streamable-HTTP MCP endpoint
     authHeader?: string; // e.g. "Bearer xxx" → sent as Authorization
     enabled: boolean;
+    /** Runtime-only fail-closed marker; it is never persisted or serialized. */
+    _authUnavailable?: boolean;
 }
 
 interface DiscoveredTools {
@@ -42,6 +50,10 @@ export interface PublishableMcpTools {
 const DISCOVERY_TTL = 300;
 const RPC_TIMEOUT = 20000;
 const PROTOCOL_VERSION = '2025-03-26';
+export const MCP_SECRET_FIELDS = ['authHeader'] as const;
+export const MCP_SECRET_FIELD_IDS: Record<typeof MCP_SECRET_FIELDS[number], string> = {
+    authHeader: 'auth_header',
+};
 
 /**
  * MCP client (T3.20) — lets a tenant connect external MCP servers (open
@@ -58,13 +70,55 @@ export class McpClientService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly http: HttpService,
+        private readonly secrets: TenantSecretCryptoService,
     ) {}
 
     // ── Config (tenant.settings.mcpServers) ──────────────────
     async listServers(tenantId: string): Promise<McpServerConfig[]> {
+        const stored = await this.listStoredServers(tenantId);
+        const runtime: McpServerConfig[] = [];
+        const rewrap = new Map<string, { expected: string; envelope: string }>();
+
+        for (const entry of stored) {
+            const server: McpServerConfig = { ...entry };
+            if (entry.authHeader) {
+                const context = this.secretContext(tenantId, entry.id);
+                try {
+                    const result = this.secrets.readCompatible(entry.authHeader, context);
+                    server.authHeader = result.plaintext;
+                    if (result.needsRewrap) {
+                        try {
+                            rewrap.set(entry.id, {
+                                expected: entry.authHeader,
+                                envelope: this.secrets.encrypt(result.plaintext, context),
+                            });
+                        } catch (error: any) {
+                            this.logger.warn(`[MCP] no se pudo cifrar ${entry.id}.authHeader: ${error?.code}`);
+                        }
+                    }
+                } catch (error: any) {
+                    // A configured credential that cannot be authenticated must
+                    // never degrade into an unauthenticated outbound request.
+                    delete server.authHeader;
+                    server._authUnavailable = true;
+                    this.logger.warn(`[MCP] secreto ilegible ${entry.id}.authHeader: ${error?.code || error?.message}`);
+                }
+            }
+            runtime.push(server);
+        }
+
+        if (rewrap.size) {
+            await this.persistRewrappedHeaders(tenantId, rewrap).catch((error: any) => {
+                this.logger.warn(`[MCP] no se pudieron re-cifrar credenciales: ${error?.message}`);
+            });
+        }
+        return runtime;
+    }
+
+    private async listStoredServers(tenantId: string): Promise<McpServerConfig[]> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         const servers = (tenant?.settings as any)?.mcpServers;
-        return Array.isArray(servers) ? servers : [];
+        return Array.isArray(servers) ? servers.map((server) => ({ ...server })) : [];
     }
 
     async saveServer(tenantId: string, input: { id?: string; name: string; url: string; authHeader?: string; enabled?: boolean }): Promise<McpServerConfig> {
@@ -72,43 +126,71 @@ export class McpClientService {
         const validatedUrl = (await prepareSafeHttpsTarget(input.url, 'servidor MCP')).url.toString();
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) throw new NotFoundException('Tenant not found');
-        const settings = (tenant.settings as any) || {};
-        const servers: McpServerConfig[] = Array.isArray(settings.mcpServers) ? settings.mcpServers : [];
-
-        let server: McpServerConfig;
-        if (input.id) {
-            const existing = servers.find((s) => s.id === input.id);
-            if (!existing) throw new NotFoundException('Servidor MCP no encontrado');
-            server = { ...existing, name: input.name, url: validatedUrl, enabled: input.enabled ?? existing.enabled };
-            if (input.authHeader !== undefined && input.authHeader !== '***') server.authHeader = input.authHeader;
-            const idx = servers.findIndex((s) => s.id === input.id);
-            servers[idx] = server;
-        } else {
-            const id = this.slug(input.name, servers.map((s) => s.id));
-            server = { id, name: input.name, url: validatedUrl, authHeader: input.authHeader, enabled: input.enabled ?? true };
-            servers.push(server);
-        }
-        await this.persist(tenantId, settings, servers);
-        return server;
+        let server!: McpServerConfig;
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'mcpServers',
+            (value): McpServerConfig[] => {
+                const servers: McpServerConfig[] = Array.isArray(value)
+                    ? value.map(entry => ({ ...entry }))
+                    : [];
+                if (input.id) {
+                    const existing = servers.find((entry) => entry.id === input.id);
+                    if (!existing) throw new NotFoundException('Servidor MCP no encontrado');
+                    const suppliedHeader = input.authHeader !== undefined
+                        && !isMaskedSecret(input.authHeader);
+                    server = {
+                        ...existing,
+                        name: input.name,
+                        url: validatedUrl,
+                        enabled: input.enabled ?? existing.enabled,
+                    };
+                    server.authHeader = suppliedHeader
+                        ? this.encryptNewHeader(tenantId, server.id, input.authHeader)
+                        : this.preserveStoredHeader(tenantId, server.id, existing.authHeader);
+                    servers[servers.findIndex((entry) => entry.id === input.id)] = server;
+                } else {
+                    const id = this.slug(input.name, servers.map((entry) => entry.id));
+                    server = {
+                        id,
+                        name: input.name,
+                        url: validatedUrl,
+                        authHeader: isMaskedSecret(input.authHeader)
+                            ? undefined
+                            : this.encryptNewHeader(tenantId, id, input.authHeader),
+                        enabled: input.enabled ?? true,
+                    };
+                    servers.push(server);
+                }
+                return servers;
+            },
+        );
+        await this.invalidateTools(tenantId);
+        return { ...server, authHeader: server.authHeader ? TENANT_SECRET_MASK : undefined };
     }
 
     async deleteServer(tenantId: string, id: string): Promise<void> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) return;
-        const settings = (tenant.settings as any) || {};
-        const servers: McpServerConfig[] = (Array.isArray(settings.mcpServers) ? settings.mcpServers : []).filter((s: McpServerConfig) => s.id !== id);
-        await this.persist(tenantId, settings, servers);
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'mcpServers',
+            (value): McpServerConfig[] => (Array.isArray(value) ? value : [])
+                .filter((server: McpServerConfig) => server.id !== id),
+        );
+        await this.invalidateTools(tenantId);
     }
 
-    private async persist(tenantId: string, settings: any, servers: McpServerConfig[]): Promise<void> {
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: { ...settings, mcpServers: servers } as any } });
+    private async invalidateTools(tenantId: string): Promise<void> {
         await this.redis.del(`mcp:tools:${tenantId}`).catch(() => {});
     }
 
     /** Masked view for the dashboard. */
     async listServersMasked(tenantId: string): Promise<any[]> {
-        const servers = await this.listServers(tenantId);
-        return servers.map((s) => ({ ...s, authHeader: s.authHeader ? '***' : undefined }));
+        const servers = await this.listStoredServers(tenantId);
+        return servers.map((s) => ({ ...s, authHeader: s.authHeader ? TENANT_SECRET_MASK : undefined }));
     }
 
     // ── Discovery + invocation ───────────────────────────────
@@ -224,16 +306,20 @@ export class McpClientService {
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true },
+            select: { id: true },
         });
         if (!tenant) throw new NotFoundException('Tenant not found');
-        const settings = (tenant.settings as any) || {};
-        const current = readMcpApprovals(settings)
-            .filter(entry => !(entry.serverId === serverId && entry.toolName === toolName));
 
         if (input.revoke) {
-            await this.persistApprovals(tenantId, settings, current);
-            return current;
+            const revoked = await mutateTenantSettingsBranchAtomic(
+                this.prisma,
+                tenantId,
+                'mcpToolApprovals',
+                (value): McpToolApproval[] => readMcpApprovals({ mcpToolApprovals: value })
+                    .filter(entry => !(entry.serverId === serverId && entry.toolName === toolName)),
+            );
+            await this.invalidateTools(tenantId);
+            return revoked;
         }
 
         const servers = await this.listServers(tenantId);
@@ -261,17 +347,18 @@ export class McpClientService {
             approvedAt: new Date().toISOString(),
             notes: input.notes ? String(input.notes).slice(0, 1000) : undefined,
         };
-        const next = [...current, approval];
-        await this.persistApprovals(tenantId, settings, next);
+        const next = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'mcpToolApprovals',
+            (value): McpToolApproval[] => [
+                ...readMcpApprovals({ mcpToolApprovals: value })
+                    .filter(entry => !(entry.serverId === serverId && entry.toolName === toolName)),
+                approval,
+            ],
+        );
+        await this.invalidateTools(tenantId);
         return next;
-    }
-
-    private async persistApprovals(tenantId: string, settings: any, approvals: McpToolApproval[]): Promise<void> {
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings: { ...settings, mcpToolApprovals: approvals } as any },
-        });
-        await this.redis.del(`mcp:tools:${tenantId}`).catch(() => {});
     }
 
     async callRemoteTool(tenantId: string, registeredName: string, args: Record<string, any>): Promise<any> {
@@ -361,6 +448,9 @@ export class McpClientService {
     }
 
     private headers(server: McpServerConfig, sessionId?: string): Record<string, string> {
+        if (server._authUnavailable) {
+            throw new Error('La credencial MCP no se puede leer');
+        }
         const h: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
         if (server.authHeader) h['Authorization'] = server.authHeader;
         if (sessionId) h['Mcp-Session-Id'] = sessionId;
@@ -392,5 +482,53 @@ export class McpClientService {
         let n = 1;
         while (taken.includes(id)) id = `${base}${n++}`;
         return id;
+    }
+
+    private secretContext(tenantId: string, serverId: string) {
+        return {
+            tenantId,
+            scope: 'mcp' as const,
+            provider: String(serverId || '').toLowerCase(),
+            field: MCP_SECRET_FIELD_IDS.authHeader,
+        };
+    }
+
+    private encryptNewHeader(tenantId: string, serverId: string, value: unknown): string | undefined {
+        if (value === undefined || value === null || value === '') return undefined;
+        const header = String(value);
+        if (this.secrets.isEnvelope(header)) {
+            throw new BadRequestException('authHeader no puede contener un sobre de credencial');
+        }
+        return this.secrets.encrypt(header, this.secretContext(tenantId, serverId));
+    }
+
+    private preserveStoredHeader(
+        tenantId: string,
+        serverId: string,
+        value: unknown,
+    ): string | undefined {
+        if (value === undefined || value === null || value === '') return undefined;
+        const context = this.secretContext(tenantId, serverId);
+        const result = this.secrets.readCompatible(value, context);
+        return result.needsRewrap
+            ? this.secrets.encrypt(result.plaintext, context)
+            : String(value);
+    }
+
+    private async persistRewrappedHeaders(
+        tenantId: string,
+        rewrap: Map<string, { expected: string; envelope: string }>,
+    ): Promise<void> {
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'mcpServers',
+            (value): McpServerConfig[] => (Array.isArray(value) ? value : []).map((entry: McpServerConfig) => {
+                const replacement = rewrap.get(entry.id);
+                return replacement && entry.authHeader === replacement.expected
+                    ? { ...entry, authHeader: replacement.envelope }
+                    : entry;
+            }),
+        );
     }
 }

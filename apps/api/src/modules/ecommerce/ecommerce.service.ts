@@ -9,6 +9,12 @@ import {
     pinSafeHttpsUrl,
     safeAxiosOptions,
 } from '../../common/utils/safe-outbound-url.util';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
+import {
+    isMaskedSecret,
+    TENANT_SECRET_MASK,
+    TenantSecretCryptoService,
+} from '../../common/crypto/tenant-secret-crypto.service';
 
 export interface EcommerceConfig {
     provider: 'shopify' | 'woocommerce';
@@ -26,6 +32,21 @@ export interface EcommerceConfig {
     // dia que se conecte de verdad, el flag vuelve.
 }
 
+export const ECOMMERCE_SECRET_FIELDS = [
+    'apiKey',
+    'apiSecret',
+    'accessToken',
+    'webhookSecret',
+] as const;
+type EcommerceSecretField = typeof ECOMMERCE_SECRET_FIELDS[number];
+
+export const ECOMMERCE_SECRET_FIELD_IDS: Record<EcommerceSecretField, string> = {
+    apiKey: 'api_key',
+    apiSecret: 'api_secret',
+    accessToken: 'access_token',
+    webhookSecret: 'webhook_secret',
+};
+
 @Injectable()
 export class EcommerceService {
     private readonly logger = new Logger(EcommerceService.name);
@@ -34,6 +55,7 @@ export class EcommerceService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly http: HttpService,
+        private readonly secrets: TenantSecretCryptoService,
     ) {}
 
     private async prepareShopTarget(
@@ -57,7 +79,18 @@ export class EcommerceService {
             where: { id: tenantId },
             select: { settings: true },
         });
-        return (tenant?.settings as any)?.ecommerce || null;
+        const stored = (tenant?.settings as any)?.ecommerce;
+        return stored ? this.decryptConfig(tenantId, stored) : null;
+    }
+
+    /** Dashboard-safe view: existence of a credential, never its plaintext. */
+    async getRedactedConfig(tenantId: string): Promise<Record<string, any> | null> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const stored = (tenant?.settings as any)?.ecommerce;
+        return stored ? this.redactConfig(stored) : null;
     }
 
     async updateConfig(tenantId: string, config: Partial<EcommerceConfig>): Promise<EcommerceConfig> {
@@ -67,31 +100,80 @@ export class EcommerceService {
         });
         if (!tenant) throw new NotFoundException('Tenant not found');
 
-        const settings = (tenant.settings as any) || {};
-        const current = settings.ecommerce || {};
-
-        const merged: EcommerceConfig = {
+        const current = ((tenant.settings as any) || {}).ecommerce || {};
+        const candidate = {
             provider: config.provider ?? current.provider ?? 'shopify',
             shopUrl: config.shopUrl ?? current.shopUrl ?? '',
-            apiKey: config.apiKey ?? current.apiKey ?? '',
-            apiSecret: config.apiSecret ?? current.apiSecret ?? '',
-            accessToken: config.accessToken ?? current.accessToken,
-            webhookSecret: config.webhookSecret ?? current.webhookSecret ?? crypto.randomBytes(32).toString('hex'),
-            syncProducts: config.syncProducts ?? current.syncProducts ?? true,
         };
 
-        if (!['shopify', 'woocommerce'].includes(merged.provider)) {
+        if (!['shopify', 'woocommerce'].includes(candidate.provider)) {
             throw new BadRequestException('Proveedor de e-commerce no soportado');
         }
-        merged.shopUrl = (await this.prepareShopTarget(merged.provider, merged.shopUrl)).baseUrl;
+        const validatedShopUrl = (await this.prepareShopTarget(candidate.provider, candidate.shopUrl)).baseUrl;
 
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings: { ...settings, ecommerce: { ...merged } } as any },
-        });
+        const merged = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'ecommerce',
+            (value): EcommerceConfig => {
+                const live = (value && typeof value === 'object' ? value : {}) as Partial<EcommerceConfig>;
+                const provider = config.provider ?? live.provider ?? 'shopify';
+                if (!['shopify', 'woocommerce'].includes(provider)) {
+                    throw new BadRequestException('Proveedor de e-commerce no soportado');
+                }
+                const providerChanged = !!live.provider && live.provider !== provider;
+                const persisted: Record<string, any> = {
+                    provider,
+                    // Changing provider or URL owns this pair and uses the
+                    // preflighted target. Other PATCHes keep the live URL.
+                    shopUrl: config.shopUrl !== undefined || config.provider !== undefined
+                        ? validatedShopUrl
+                        : live.shopUrl ?? validatedShopUrl,
+                    syncProducts: config.syncProducts ?? live.syncProducts ?? true,
+                };
+
+                for (const field of ECOMMERCE_SECRET_FIELDS) {
+                    const incoming = config[field];
+                    let value: unknown;
+                    let source: 'incoming' | 'stored' | 'generated' = 'incoming';
+                    if (incoming !== undefined && !isMaskedSecret(incoming)) {
+                        value = incoming;
+                    } else if (!providerChanged) {
+                        value = live[field];
+                        source = 'stored';
+                    }
+                    if (field === 'webhookSecret' && (value === undefined || value === null || value === '')) {
+                        value = crypto.randomBytes(32).toString('hex');
+                        source = 'generated';
+                    }
+                    if (value === undefined || value === null || value === '') {
+                        persisted[field] = field === 'apiKey' || field === 'apiSecret' ? '' : undefined;
+                        continue;
+                    }
+                    const secret = String(value);
+                    const context = this.secretContext(tenantId, provider, field);
+                    if (source === 'stored') {
+                        // Preserving a masked value is still a read of stored
+                        // material. Route it through the compatibility gate so
+                        // TENANT_SECRET_PLAINTEXT=reject cannot be bypassed by
+                        // an unrelated PATCH.
+                        const result = this.secrets.readCompatible(secret, context);
+                        persisted[field] = result.needsRewrap
+                            ? this.secrets.encrypt(result.plaintext, context)
+                            : secret;
+                    } else {
+                        if (this.secrets.isEnvelope(secret)) {
+                            throw new BadRequestException(`${field} no puede contener un sobre de credencial`);
+                        }
+                        persisted[field] = this.secrets.encrypt(secret, context);
+                    }
+                }
+                return persisted as EcommerceConfig;
+            },
+        );
 
         await this.redis.del(`ecommerce:${tenantId}`);
-        return merged;
+        return this.redactConfig(merged) as EcommerceConfig;
     }
 
     async ensureTables(schemaName: string): Promise<void> {
@@ -157,6 +239,7 @@ export class EcommerceService {
     async syncShopifyProducts(tenantId: string): Promise<{ synced: number }> {
         const config = await this.getConfig(tenantId);
         if (!config || config.provider !== 'shopify') throw new BadRequestException('Shopify not configured');
+        if (!config.accessToken) throw new BadRequestException('Shopify credentials unavailable');
         const { baseUrl, target } = await this.prepareShopTarget('shopify', config.shopUrl);
 
         const tenant = await this.prisma.tenant.findUnique({
@@ -214,6 +297,9 @@ export class EcommerceService {
     async syncWooCommerceProducts(tenantId: string): Promise<{ synced: number }> {
         const config = await this.getConfig(tenantId);
         if (!config || config.provider !== 'woocommerce') throw new BadRequestException('WooCommerce not configured');
+        if (!config.apiKey || !config.apiSecret) {
+            throw new BadRequestException('WooCommerce credentials unavailable');
+        }
         const { baseUrl, target } = await this.prepareShopTarget('woocommerce', config.shopUrl);
 
         const tenant = await this.prisma.tenant.findUnique({
@@ -364,5 +450,91 @@ export class EcommerceService {
             ORDER BY price_cents ASC
             LIMIT 10
         `, params);
+    }
+
+    private secretContext(
+        tenantId: string,
+        provider: EcommerceConfig['provider'],
+        field: EcommerceSecretField,
+    ) {
+        return {
+            tenantId,
+            scope: 'ecommerce' as const,
+            provider,
+            field: ECOMMERCE_SECRET_FIELD_IDS[field],
+        };
+    }
+
+    private redactConfig(config: Record<string, any>): Record<string, any> {
+        return {
+            ...config,
+            ...Object.fromEntries(ECOMMERCE_SECRET_FIELDS.map((field) => [
+                field,
+                config[field] ? TENANT_SECRET_MASK : undefined,
+            ])),
+        };
+    }
+
+    private async decryptConfig(
+        tenantId: string,
+        stored: Record<string, any>,
+    ): Promise<EcommerceConfig> {
+        const provider = (stored.provider ?? 'shopify') as EcommerceConfig['provider'];
+        const config: Record<string, any> = { ...stored, provider };
+        const rewrap: Partial<Record<EcommerceSecretField, { expected: string; envelope: string }>> = {};
+        for (const field of ECOMMERCE_SECRET_FIELDS) {
+            const value = stored[field];
+            if (value === undefined || value === null || value === '') continue;
+            try {
+                const context = this.secretContext(tenantId, provider, field);
+                const result = this.secrets.readCompatible(value, context);
+                config[field] = result.plaintext;
+                if (result.needsRewrap) {
+                    try {
+                        rewrap[field] = {
+                            expected: value,
+                            envelope: this.secrets.encrypt(result.plaintext, context),
+                        };
+                    } catch (error: any) {
+                        this.logger.warn(`[ECOMMERCE] no se pudo cifrar ${provider}.${field}: ${error?.code}`);
+                    }
+                }
+            } catch (error: any) {
+                // Never turn an unreadable configured credential into a
+                // plaintext/envelope sent to the commerce provider.
+                config[field] = field === 'apiKey' || field === 'apiSecret' ? '' : undefined;
+                this.logger.warn(`[ECOMMERCE] secreto ilegible ${provider}.${field}: ${error?.code || error?.message}`);
+            }
+        }
+        if (Object.keys(rewrap).length) {
+            await this.persistRewrappedSecrets(tenantId, provider, rewrap).catch((error: any) => {
+                this.logger.warn(`[ECOMMERCE] no se pudieron re-cifrar credenciales: ${error?.message}`);
+            });
+        }
+        return config as EcommerceConfig;
+    }
+
+    private async persistRewrappedSecrets(
+        tenantId: string,
+        expectedProvider: EcommerceConfig['provider'],
+        rewrap: Partial<Record<EcommerceSecretField, { expected: string; envelope: string }>>,
+    ): Promise<void> {
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'ecommerce',
+            (value) => {
+                const current = value && typeof value === 'object' ? value as Record<string, any> : null;
+                if (!current || current.provider !== expectedProvider) return current;
+                const next = { ...current };
+                for (const field of ECOMMERCE_SECRET_FIELDS) {
+                    const replacement = rewrap[field];
+                    if (replacement && current[field] === replacement.expected) {
+                        next[field] = replacement.envelope;
+                    }
+                }
+                return next;
+            },
+        );
     }
 }

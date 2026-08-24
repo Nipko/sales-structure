@@ -168,11 +168,12 @@ export class PlatformMonitorService implements OnModuleInit {
                     await this.incidents.resolveByKey(`queue:${q.name}:warning`);
                 }
 
-                if (failed > cfg.queueFailed) {
+                const failedThreshold = cfg.queueFailedByQueue?.[q.name] ?? cfg.queueFailed;
+                if (failed > failedThreshold) {
                     await this.alert(
                         `queue:${q.name}:failed`,
                         `Cola ${q.name} — ${failed} jobs fallidos`,
-                        `La cola <b>${q.name}</b> tiene <b>${failed}</b> jobs en estado failed.<br>
+                        `La cola <b>${q.name}</b> tiene <b>${failed}</b> jobs en estado failed (umbral: ${failedThreshold}).<br>
                          Considera limpiarlos desde Bull Board o investigar la causa.`,
                         failed,
                     );
@@ -194,7 +195,8 @@ export class PlatformMonitorService implements OnModuleInit {
             const cfg = await this.alertConfig.get();
             const client = (this.redis as any).client;
             const waFailed: number = await client.zcard('wa:webhooks:failed');
-            if (waFailed > cfg.queueFailed) {
+            const failedThreshold = cfg.queueFailedByQueue?.['wa-webhooks'] ?? cfg.queueFailed;
+            if (waFailed > failedThreshold) {
                 await this.alert(
                     `queue:wa-webhooks:failed`,
                     `Ingesta WhatsApp — ${waFailed} webhooks fallidos`,

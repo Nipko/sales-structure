@@ -5,8 +5,12 @@ import {
     VERTICAL_CERTIFICATION_ANCHORS,
     VERTICAL_PRODUCT_POLICY_VERSION,
     VERTICAL_CAPABILITY_MANIFEST,
+    canonicalSubtypeId,
+    deepLinkRouteForActiveObject,
+    resolveVerticalCapabilityManifest,
 } from '@parallext/shared';
 import type {
+    ActiveObjectKind,
     LocalizedString,
     ResolvedVerticalCapabilityManifest,
     VerticalDefinition,
@@ -73,26 +77,38 @@ export interface VerticalContractMatrixSummary extends Omit<VerticalContractMatr
     failures: VerticalContractFailure[];
 }
 
-const PRIMARY_OBJECT_ROUTE: Readonly<Record<VerticalPrimaryObject, VerticalRoutePath>> = {
+function routeForActiveObject(
+    kind: Extract<VerticalPrimaryObject, ActiveObjectKind>,
+): VerticalRoutePath {
+    const route = deepLinkRouteForActiveObject(kind);
+    if (!route) throw new Error(`Primary object ${kind} has no canonical dashboard route.`);
+    return route as VerticalRoutePath;
+}
+
+/**
+ * The matrix must consume the same operational deep-link registry as Inbox and
+ * navigation. Keeping a second hand-written route map made 1,560/1,560 pass
+ * while `professional_case` and `property_booking` pointed at stale screens.
+ */
+export const PRIMARY_OBJECT_ROUTE: Readonly<Record<VerticalPrimaryObject, VerticalRoutePath>> = {
     lead: '/admin/pipeline',
-    appointment: '/admin/appointments',
-    catalog_item: '/admin/inventory',
-    treatment_plan: '/admin/treatment-plans',
-    real_estate_listing: '/admin/listings',
-    food_order: '/admin/food-orders',
-    vehicle: '/admin/vehicles',
-    tour_package: '/admin/tours',
-    property_booking: '/admin/properties',
-    course: '/admin/courses',
-    // The current professional case flow is surfaced through appointments.
-    professional_case: '/admin/appointments',
-    pet: '/admin/pets',
-    membership: '/admin/memberships',
-    insurance_policy: '/admin/insurance',
-    service_request: '/admin/service-requests',
-    vehicle_rental: '/admin/resource-rentals',
-    pet_boarding: '/admin/resource-rentals',
-    photo_session: '/admin/photo-sessions',
+    appointment: routeForActiveObject('appointment'),
+    catalog_item: routeForActiveObject('catalog_item'),
+    treatment_plan: routeForActiveObject('treatment_plan'),
+    real_estate_listing: routeForActiveObject('real_estate_listing'),
+    food_order: routeForActiveObject('food_order'),
+    vehicle: routeForActiveObject('vehicle'),
+    tour_package: routeForActiveObject('tour_package'),
+    property_booking: routeForActiveObject('property_booking'),
+    course: routeForActiveObject('course'),
+    professional_case: routeForActiveObject('professional_case'),
+    pet: routeForActiveObject('pet'),
+    membership: routeForActiveObject('membership'),
+    insurance_policy: routeForActiveObject('insurance_policy'),
+    service_request: routeForActiveObject('service_request'),
+    vehicle_rental: routeForActiveObject('vehicle_rental'),
+    pet_boarding: routeForActiveObject('pet_boarding'),
+    photo_session: routeForActiveObject('photo_session'),
 };
 
 function nonEmpty(value: unknown): boolean {
@@ -406,20 +422,34 @@ function validateScenario(
         plan: plan.slug,
     };
     const { failures, add } = validator(context);
+    let effectiveManifest = manifest;
 
     try {
         const canonical = resolveVerticalSelection(manifest.industry, manifest.subtype);
-        if (canonical.industry !== manifest.industry || canonical.subType !== manifest.subtype) {
+        const expected = canonicalSubtypeId(manifest.industry, manifest.subtype);
+        const expectedSubtype = expected?.subtype || null;
+        if (!expected
+            || canonical.industry !== expected.industry
+            || canonical.subType !== expectedSubtype) {
             add('canonical_mismatch', 'selection', 'Canonical vertical selection differs from the manifest configuration.');
+        } else {
+            // Compatibility scenarios retain the requested legacy id in their
+            // matrix context, but validate the exact manifest the runtime will
+            // select. Adding aliases as new canonical profiles would count the
+            // same product twice and let their contracts drift independently.
+            effectiveManifest = resolveVerticalCapabilityManifest(
+                canonical.industry,
+                canonical.subType,
+            );
         }
     } catch (error: any) {
         add('canonical_resolution_error', 'selection', error?.message || 'Canonical resolution failed.');
     }
-    if (manifest.manifestVersion !== VERTICAL_CAPABILITY_MANIFEST_VERSION) {
+    if (effectiveManifest.manifestVersion !== VERTICAL_CAPABILITY_MANIFEST_VERSION) {
         add(
             'manifest_version_mismatch',
             'manifest.manifestVersion',
-            `Expected v${VERTICAL_CAPABILITY_MANIFEST_VERSION}, received v${manifest.manifestVersion}.`,
+            `Expected v${VERTICAL_CAPABILITY_MANIFEST_VERSION}, received v${effectiveManifest.manifestVersion}.`,
         );
     }
 
@@ -427,9 +457,15 @@ function validateScenario(
     try {
         definition = withResolvedVerticalPipeline(
             getVerticalDefinition(manifest.industry),
-            manifest.subtype,
+            effectiveManifest.subtype,
         );
-        if (definition.industry !== manifest.industry) {
+        if (effectiveManifest.industry !== manifest.industry) {
+            definition = withResolvedVerticalPipeline(
+                getVerticalDefinition(effectiveManifest.industry),
+                effectiveManifest.subtype,
+            );
+        }
+        if (definition.industry !== effectiveManifest.industry) {
             add('definition_industry_mismatch', 'definition.industry', 'Registry industry does not match manifest industry.');
         }
     } catch (error: any) {
@@ -437,14 +473,14 @@ function validateScenario(
     }
 
     if (definition) {
-        validateTranslations(definition, manifest, locale, add);
-        validatePipeline(definition, manifest, add);
+        validateTranslations(definition, effectiveManifest, locale, add);
+        validatePipeline(definition, effectiveManifest, add);
         validateServices(definition, add);
-        validatePlanFloors(definition, manifest, plan, add);
+        validatePlanFloors(definition, effectiveManifest, plan, add);
     }
-    validateCapabilities(manifest, add);
-    validatePrimaryObjectAndRoutes(manifest, add);
-    validateProductPolicy(manifest.industry, add);
+    validateCapabilities(effectiveManifest, add);
+    validatePrimaryObjectAndRoutes(effectiveManifest, add);
+    validateProductPolicy(effectiveManifest.industry, add);
 
     return { id: scenarioId(context), context, passed: failures.length === 0, failures };
 }

@@ -1,6 +1,7 @@
 import { forwardRef, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { BusinessIdentity, SocialLinks } from '@parallext/shared';
@@ -210,24 +211,15 @@ export class BusinessInfoService {
 
     private async syncToTenantSettings(tenantId: string, input: UpsertBusinessIdentityInput): Promise<void> {
         try {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { settings: true },
-            });
-            const current = (tenant?.settings ?? {}) as Record<string, any>;
-            const merged = {
-                ...current,
+            const patch: Record<string, unknown> = {
                 companyName: input.companyName,
-                website: input.website ?? current.website,
-                industry: input.industry ?? current.industry,
-                phone: input.phone ?? current.phone,
-                supportEmail: input.email ?? current.supportEmail,
-                socialLinks: input.socialLinks ?? current.socialLinks,
             };
-            await this.prisma.tenant.update({
-                where: { id: tenantId },
-                data: { settings: merged as any },
-            });
+            if (input.website != null) patch.website = input.website;
+            if (input.industry != null) patch.industry = input.industry;
+            if (input.phone != null) patch.phone = input.phone;
+            if (input.email != null) patch.supportEmail = input.email;
+            if (input.socialLinks != null) patch.socialLinks = input.socialLinks;
+            await mergeTenantSettingsAtomic(this.prisma, tenantId, patch);
         } catch (e: any) {
             this.logger.warn(`syncToTenantSettings failed (non-fatal): ${e.message}`);
         }

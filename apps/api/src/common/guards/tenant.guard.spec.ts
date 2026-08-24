@@ -5,11 +5,15 @@ describe('TenantGuard', () => {
     const ownTenant = '11111111-1111-4111-8111-111111111111';
     const otherTenant = '22222222-2222-4222-8222-222222222222';
 
-    function context(user: Record<string, unknown> | undefined, tenantId?: string): ExecutionContext {
+    function context(
+        user: Record<string, unknown> | undefined,
+        tenantId?: string,
+        queryTenantId?: unknown,
+    ): ExecutionContext {
         const request: any = {
             user,
             params: tenantId ? { tenantId } : {},
-            query: {},
+            query: queryTenantId !== undefined ? { tenantId: queryTenantId } : {},
         };
         return {
             switchToHttp: () => ({ getRequest: () => request }),
@@ -38,6 +42,25 @@ describe('TenantGuard', () => {
 
     it('allows a super admin to access an explicitly identified valid tenant', () => {
         expect(new TenantGuard().canActivate(context({ role: 'super_admin', email: 'root@test' }, otherTenant))).toBe(true);
+    });
+
+    it.each(['tenant_admin', 'tenant_supervisor', 'tenant_agent'])(
+        'rejects a cross-tenant query selector for %s before the controller reads it',
+        (role) => {
+            expect(() => new TenantGuard().canActivate(
+                context({ role, tenantId: ownTenant }, undefined, otherTenant),
+            )).toThrow(ForbiddenException);
+        },
+    );
+
+    it('rejects array-valued and conflicting tenant selectors', () => {
+        const guard = new TenantGuard();
+        expect(() => guard.canActivate(
+            context({ role: 'super_admin', email: 'root@test' }, undefined, [otherTenant]),
+        )).toThrow(ForbiddenException);
+        expect(() => guard.canActivate(
+            context({ role: 'super_admin', email: 'root@test' }, ownTenant, otherTenant),
+        )).toThrow(ForbiddenException);
     });
 });
 

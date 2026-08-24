@@ -15,12 +15,18 @@ import { TenantsModule } from '../tenants/tenants.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { EmailModule } from '../email/email.module';
+import { VerticalAuditController } from './vertical-audit.controller';
 
 @Module({
     // TenantsModule aporta el resolutor regional: el perfil efectivo tiene que
     // decir en qué mercado opera el tenant, no solo qué vertical eligió.
     imports: [PrismaModule, RedisModule, EmailModule, forwardRef(() => TenantsModule)],
-    controllers: [VerticalsController, StaffSchedulingController, VehicleInventoryController],
+    controllers: [
+        VerticalsController,
+        VerticalAuditController,
+        StaffSchedulingController,
+        VehicleInventoryController,
+    ],
     providers: [
         VerticalsService,
         VerticalReadinessService,

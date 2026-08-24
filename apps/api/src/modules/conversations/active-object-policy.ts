@@ -57,6 +57,13 @@ export const ACTIVE_OBJECT_EXPOSURE_POLICY: Readonly<Record<ActiveObjectKind, Ac
     insurance_quote: TOOL_ONLY_A2,
     service_request: TOOL_ONLY_A2,
     photo_session: BOUNDED_A1,
+    // The lead/opportunity are the current contact's low-risk CRM projection.
+    // Internal tasks and consent evidence stay tool-only: staff instructions
+    // and legal evidence must not be pre-injected into every model turn.
+    crm_lead: BOUNDED_A1,
+    crm_opportunity: BOUNDED_A1,
+    crm_task: TOOL_ONLY_A2,
+    consent_record: TOOL_ONLY_A2,
     // Es el alquiler DEL PROPIO cliente: fechas y estado, nada de un tercero.
     // Mismo nivel que una reserva, que es exactamente lo que es.
     vehicle_rental: BOUNDED_A1,

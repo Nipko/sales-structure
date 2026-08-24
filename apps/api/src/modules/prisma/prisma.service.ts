@@ -20,6 +20,10 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     // They exist only to be answered by a human, so once the tenant is gone
     // they are noise, not evidence — deleted, not retained.
     'regional_identity_reviews',
+    // Provider-neutral routing metadata only. Regular offboarding keeps it for
+    // audit/retry readiness while `trackedTenants` filters inactive tenants;
+    // irreversible purge removes it explicitly before deleting the tenant.
+    'integration_work_tenants',
     'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
     'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
     'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',

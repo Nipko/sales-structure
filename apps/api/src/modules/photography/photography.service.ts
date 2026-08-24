@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+    Injectable,
+    Logger,
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -14,6 +20,14 @@ import {
     serializeLocalTimestampRows,
 } from '../../common/utils/local-timestamp.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import {
+    PHOTO_QUOTE_HOLD_MS,
+    InvalidPhotoDateError,
+    PhotoDateUnavailableError,
+    lockAndAssertPhotoDateCapacity,
+    readPhotoDateCapacity,
+    type PhotoDateCapacity,
+} from './photography-date-capacity';
 
 const PHOTO_LOCAL_TIMESTAMPS = ['scheduled_at', 'delivered_at'] as const;
 
@@ -119,6 +133,22 @@ export class PhotographyService {
         return serializeLocalTimestampFields(rows[0], PHOTO_LOCAL_TIMESTAMPS);
     }
 
+    /** Same occupancy read that the transactional writer re-checks. */
+    async checkDateAvailability(schemaName: string, date: unknown): Promise<PhotoDateCapacity> {
+        try {
+            return await this.prisma.transactionInTenantSchema(schemaName, (query) =>
+                readPhotoDateCapacity(query, date));
+        } catch (error) {
+            if (error instanceof InvalidPhotoDateError) {
+                throw new BadRequestException({
+                    error: 'invalid_photo_date',
+                    message: 'La fecha de la sesión no es válida.',
+                });
+            }
+            throw error;
+        }
+    }
+
     async create(schemaName: string, data: any): Promise<any> {
         if (!data.sessionType) throw new BadRequestException('sessionType is required');
         const durationMinutes = optionalPositiveIntegerUnit(data.durationMinutes, 'durationMinutes');
@@ -128,14 +158,19 @@ export class PhotographyService {
         if (status === 'scheduled' && !data.scheduledAt) {
             throw new BadRequestException('scheduledAt is required when status is scheduled');
         }
+        const holdExpiresAt = status === 'requested' && data.scheduledAt
+            ? new Date(Date.now() + PHOTO_QUOTE_HOLD_MS)
+            : null;
         const sql = `INSERT INTO photo_sessions (
                 contact_id, opportunity_id, conversation_id, session_type, package_name,
                 package_description, client_name, client_phone, scheduled_at,
                 duration_minutes, location, deliverables, deliverable_count,
-                delivery_due_at, price, currency, deposit_paid, notes, status
+                delivery_due_at, price, currency, deposit_paid, notes, status,
+                hold_expires_at
              ) VALUES (
                 $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::timestamp,
-                $10, $11, $12::jsonb, $13, $14::date, $15, $16, $17, $18, $19
+                $10, $11, $12::jsonb, $13, $14::date, $15, $16, $17, $18, $19,
+                $20::timestamptz
              ) RETURNING *,
                 to_char(scheduled_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_at_text,
                 to_char(delivered_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS delivered_at_text`;
@@ -156,28 +191,46 @@ export class PhotographyService {
                 data.depositPaid ?? 0,
                 data.notes || null,
                 status,
+                holdExpiresAt,
             ];
-        const rows = contactId || data.opportunityId
-            ? await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        let rows: any[];
+        try {
+            rows = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 const canonicalContactId = await requireTenantContact(query, contactId);
                 const opportunityId = await resolveNativeEvidenceOpportunity(query, {
                     contactId: canonicalContactId,
                     conversationId: data.conversationId,
                     trustedOpportunityId: data.opportunityId,
                 });
+                if (data.scheduledAt && ['requested', 'scheduled', 'in_progress'].includes(status)) {
+                    await lockAndAssertPhotoDateCapacity(query, {
+                        schemaName,
+                        date: data.scheduledAt,
+                    });
+                }
                 return query<any[]>(sql, [
                     canonicalContactId,
                     opportunityId,
                     data.conversationId || null,
                     ...baseParams,
                 ]);
-            })
-            : await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, [
-                null,
-                null,
-                data.conversationId || null,
-                ...baseParams,
-            ]);
+            });
+        } catch (error) {
+            if (error instanceof InvalidPhotoDateError) {
+                throw new BadRequestException({
+                    error: 'invalid_photo_date',
+                    message: 'La fecha de la sesión no es válida.',
+                });
+            }
+            if (error instanceof PhotoDateUnavailableError) {
+                throw new ConflictException({
+                    error: error.code,
+                    date: error.date,
+                    message: 'Esa fecha ya no está disponible para una sesión.',
+                });
+            }
+            throw error;
+        }
         const session = rows[0];
         if (!session) throw new Error('Photo session was not created');
         if (status === 'requested') {
@@ -195,6 +248,7 @@ export class PhotographyService {
                     customerName: data.clientName || null,
                     customerPhone: data.clientPhone || null,
                     specialRequests: data.notes || null,
+                    holdExpiresAt,
                 });
             } catch (error: any) {
                 this.logger.error(`photo_session.requested listener failed after commit: ${error.message}`);
@@ -248,10 +302,14 @@ export class PhotographyService {
         }
         if (!fields.length) return this.getById(schemaName, id);
         fields.push(`updated_at = NOW()`);
-        values.push(id);
         const session = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            const existing = await query<Array<{ status: string; scheduled_at: string | Date | null }>>(
-                `SELECT status, scheduled_at
+            const existing = await query<Array<{
+                status: string;
+                scheduled_at: string | Date | null;
+                scheduled_date: string | null;
+            }>>(
+                `SELECT status, scheduled_at,
+                        to_char(scheduled_at, 'YYYY-MM-DD') AS scheduled_date
                    FROM photo_sessions
                   WHERE id = $1::uuid
                   FOR UPDATE`,
@@ -262,13 +320,34 @@ export class PhotographyService {
             const finalStatus = data.status !== undefined ? data.status : existing[0].status;
             const finalScheduledAt = data.scheduledAt !== undefined
                 ? data.scheduledAt
-                : existing[0].scheduled_at;
+                : existing[0].scheduled_date || existing[0].scheduled_at;
             if (finalStatus === 'scheduled' && !finalScheduledAt) {
                 throw new BadRequestException('scheduledAt is required when status is scheduled');
             }
 
+            if (finalScheduledAt && ['requested', 'scheduled', 'in_progress'].includes(finalStatus)) {
+                await lockAndAssertPhotoDateCapacity(query, {
+                    schemaName,
+                    date: finalScheduledAt,
+                    excludeSessionId: id,
+                });
+            }
+
+            // The hold clock follows the state transition in the same UPDATE.
+            // Re-submitting requested refreshes it; confirmed/inactive states
+            // clear it so an old quote can never keep occupying the date.
+            if (data.status !== undefined || data.scheduledAt !== undefined) {
+                fields.push(`hold_expires_at = $${i++}::timestamptz`);
+                values.push(finalStatus === 'requested' && finalScheduledAt
+                    ? new Date(Date.now() + PHOTO_QUOTE_HOLD_MS)
+                    : null);
+            }
+
+            const idParameter = i;
+            values.push(id);
+
             const rows = await query<any[]>(
-                `UPDATE photo_sessions SET ${fields.join(', ')} WHERE id = $${i}::uuid
+                `UPDATE photo_sessions SET ${fields.join(', ')} WHERE id = $${idParameter}::uuid
                  RETURNING *,
                     to_char(scheduled_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_at_text,
                     to_char(delivered_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS delivered_at_text`,
@@ -276,6 +355,21 @@ export class PhotographyService {
             );
             if (!rows.length) throw new NotFoundException('Session not found');
             return rows[0];
+        }).catch((error) => {
+            if (error instanceof InvalidPhotoDateError) {
+                throw new BadRequestException({
+                    error: 'invalid_photo_date',
+                    message: 'La fecha de la sesión no es válida.',
+                });
+            }
+            if (error instanceof PhotoDateUnavailableError) {
+                throw new ConflictException({
+                    error: error.code,
+                    date: error.date,
+                    message: 'Esa fecha ya no está disponible para una sesión.',
+                });
+            }
+            throw error;
         });
         return serializeLocalTimestampFields(session, PHOTO_LOCAL_TIMESTAMPS);
     }

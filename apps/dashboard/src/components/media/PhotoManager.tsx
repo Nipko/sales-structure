@@ -123,7 +123,7 @@ export function PhotoManager({
             return;
         }
 
-        setErrors(errs);
+        setErrors([...errs]);
         setUploading(true);
         setProgress({ current: 0, total: valid.length });
 

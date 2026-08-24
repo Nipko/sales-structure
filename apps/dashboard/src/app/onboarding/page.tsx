@@ -12,6 +12,10 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { saveBillingCheckoutIntent } from "@/lib/billing-checkout-session";
 import {
+    clearSignupAttribution,
+    readSignupAttribution,
+} from "@/lib/signup-attribution";
+import {
     SIGNUP_AVAILABILITY,
     getVerticalLabel,
     isCanonicalVerticalCatalog,
@@ -740,6 +744,7 @@ export default function OnboardingPage() {
         }
         setError("");
         setIsSubmitting(true);
+        const signupAttribution = readSignupAttribution();
 
         const data = {
             company: {
@@ -773,6 +778,8 @@ export default function OnboardingPage() {
             billingCountry,
             billingCycle,
             couponCode: couponCode.trim() || undefined,
+            signupSource: signupAttribution?.source,
+            signupAttribution,
         };
 
         try {
@@ -821,6 +828,7 @@ export default function OnboardingPage() {
             try {
                 if (draftKey) localStorage.removeItem(draftKey);
                 sessionStorage.removeItem(PRICING_INTENT_KEY);
+                clearSignupAttribution();
             } catch { /* noop */ }
 
             // Paid onboarding is intentionally two-phase: the tenant and its

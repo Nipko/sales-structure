@@ -22,6 +22,7 @@ interface AlertConfig {
     sentryErrors: { warn: number; crit: number };
     slaBreaches: { warn: number; crit: number };
     queueDepth: Record<string, { warn: number; crit: number }>;
+    queueFailedByQueue: Record<string, number>;
     queueFailed: number;
     paymentFailures: number;
     llmBudgetPct: number;
@@ -146,7 +147,6 @@ export default function AlertConfigPage() {
                         <Pair label={t("pgbouncer")} base="pgbouncer" warnKey="warnSec" critKey="critSec" unit="s" />
                         <Pair label={t("sentryErrors")} base="sentryErrors" unit="/h" />
                         <Pair label={t("slaBreaches")} base="slaBreaches" unit="" />
-                        <Single label={t("queueFailed")} field="queueFailed" unit={t("unitJobs")} />
                         <Single label={t("paymentFailures")} field="paymentFailures" unit={t("unit24h")} />
                         <Single label={t("llmBudgetPct")} field="llmBudgetPct" unit="%" />
                         <Single label={t("storageQuotaPct")} field="storageQuotaPct" unit="%" />
@@ -168,6 +168,22 @@ export default function AlertConfigPage() {
                                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                     {t("crit")}
                                     <input type="number" value={cfg.queueDepth[name].crit} onChange={e => setNum(["queueDepth", name, "crit"], e.target.value)}
+                                        className="w-20 bg-card border border-border rounded-lg px-2 py-1 text-sm text-foreground" />
+                                </label>
+                            </div>
+                        ))}
+                    </section>
+
+                    <section className="bg-card border border-border rounded-xl p-4">
+                        <h3 className="text-sm font-semibold mb-1">{t("queueFailedTitle")}</h3>
+                        <p className="text-xs text-muted-foreground mb-2">{t("queueFailedHint")}</p>
+                        {Object.keys(cfg.queueFailedByQueue).map(name => (
+                            <div key={name} className="grid grid-cols-[1fr_auto] items-center gap-3 py-2 border-b border-border last:border-0">
+                                <span className="text-sm font-mono truncate">{name}</span>
+                                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    {t("alertAbove")}
+                                    <input type="number" min="0" value={cfg.queueFailedByQueue[name]}
+                                        onChange={e => setNum(["queueFailedByQueue", name], e.target.value)}
                                         className="w-20 bg-card border border-border rounded-lg px-2 py-1 text-sm text-foreground" />
                                 </label>
                             </div>

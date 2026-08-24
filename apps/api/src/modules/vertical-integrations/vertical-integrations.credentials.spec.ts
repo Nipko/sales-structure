@@ -4,7 +4,10 @@ import {
     RESERVED_TENANT_SETTING_KEYS,
     redactReservedTenantSettings,
 } from '../../common/utils/tenant-settings.util';
-import { fakeSettingsWriter } from '../../common/utils/tenant-settings-branch.fixture';
+import {
+    fakeSettingsTransaction,
+    fakeSettingsWriter,
+} from '../../common/utils/tenant-settings-branch.fixture';
 
 /**
  * Las credenciales de proveedor estaban EN CLARO en `tenant.settings`.
@@ -38,6 +41,7 @@ function buildService(storedSettings: Record<string, any> = {}) {
     // esa semántica en vez de asignar el objeto entero: si asignara, la prueba
     // estaría verificando el patrón que se acaba de sacar.
     prisma.$executeRawUnsafe = fakeSettingsWriter(() => settings, (next) => { settings = next; });
+    prisma.$transaction = fakeSettingsTransaction(() => settings, (next) => { settings = next; });
     const service = new VerticalIntegrationsService(
         prisma as any,
         { del: jest.fn(), keys: jest.fn().mockResolvedValue([]) } as any,

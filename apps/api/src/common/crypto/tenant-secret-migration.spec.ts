@@ -7,6 +7,12 @@ import {
     CHANNEL_MANAGER_SECRET_FIELDS,
     CHANNEL_MANAGER_SECRET_FIELD_IDS,
 } from '../../modules/channel-manager/channel-manager.service';
+import {
+    ECOMMERCE_SECRET_FIELDS,
+    ECOMMERCE_SECRET_FIELD_IDS,
+} from '../../modules/ecommerce/ecommerce.service';
+import { MCP_SECRET_FIELDS, MCP_SECRET_FIELD_IDS } from '../../modules/mcp/mcp-client.service';
+import { SLACK_SECRET_FIELDS, SLACK_SECRET_FIELD_IDS } from '../../modules/slack/slack.service';
 
 /*
  * `require` y no `import`: el script es un `.js` CommonJS que tiene que
@@ -81,20 +87,48 @@ describe('el sobre del script es el mismo que el del servicio', () => {
             tenantId, scope: 'vertical_integration', provider: 'mindbody', field: 'api_key',
         })).toThrow();
     });
+
+    it.each([
+        { scope: 'ecommerce' as const, provider: 'shopify', field: 'access_token' },
+        { scope: 'mcp' as const, provider: 'erp', field: 'auth_header' },
+        { scope: 'slack' as const, provider: 'slack', field: 'webhook_url' },
+    ])('migra sobres legibles para $scope/$field', (context) => {
+        const service = new TenantSecretCryptoService();
+        const envelope = migration.encrypt('secreto-legacy', { tenantId, ...context });
+        expect(service.decrypt(envelope, { tenantId, ...context })).toBe('secreto-legacy');
+    });
 });
 
 describe('qué cuenta como pendiente', () => {
-    it('encuentra lo que está en claro en las dos ramas', () => {
+    it('encuentra lo que está en claro en todas las ramas dedicadas', () => {
         const pending = migration.findPending({
             settings: {
                 channelManager: { provider: 'hostaway', apiKey: 'clave-plana', syncInterval: 60 },
                 verticalIntegrations: {
                     cliniko: { provider: 'cliniko', apiKey: 'otra-clave-plana' },
                 },
+                ecommerce: {
+                    provider: 'shopify', apiKey: 'shop-key', apiSecret: 'shop-secret',
+                    accessToken: 'shop-token', webhookSecret: 'shop-webhook',
+                },
+                slack: { webhookUrl: 'https://hooks.slack.com/services/plaintext' },
+                mcpServers: [{ id: 'erp', authHeader: 'Bearer mcp-plaintext' }],
             },
         });
         expect(pending.map((p: any) => `${p.branch}.${p.field}`).sort())
-            .toEqual(['channelManager.apiKey', 'verticalIntegrations.apiKey']);
+            .toEqual([
+                'channelManager.apiKey',
+                'ecommerce.accessToken',
+                'ecommerce.apiKey',
+                'ecommerce.apiSecret',
+                'ecommerce.webhookSecret',
+                'mcpServers.authHeader',
+                'slack.webhookUrl',
+                'verticalIntegrations.apiKey',
+            ]);
+        expect(pending.find((p: any) => p.branch === 'mcpServers')).toMatchObject({
+            index: 0, provider: 'erp', scope: 'mcp', fieldId: 'auth_header',
+        });
     });
 
     it('no cuenta lo que ya está cifrado', () => {
@@ -160,6 +194,12 @@ describe('la lista del script no puede separarse de la del runtime', () => {
 
         expect(Object.keys(migration.SECRET_MAP.channelManager.fields).sort())
             .toEqual([...CHANNEL_MANAGER_SECRET_FIELDS].sort());
+        expect(Object.keys(migration.SECRET_MAP.ecommerce.fields).sort())
+            .toEqual([...ECOMMERCE_SECRET_FIELDS].sort());
+        expect(Object.keys(migration.SECRET_MAP.mcpServers.fields).sort())
+            .toEqual([...MCP_SECRET_FIELDS].sort());
+        expect(Object.keys(migration.SECRET_MAP.slack.fields).sort())
+            .toEqual([...SLACK_SECRET_FIELDS].sort());
     });
 
     it('y los identificadores de AAD también, campo por campo', () => {
@@ -176,6 +216,15 @@ describe('la lista del script no puede separarse de la del runtime', () => {
         for (const [field, id] of Object.entries(migration.SECRET_MAP.channelManager.fields)) {
             expect({ field, id }).toEqual({ field, id: CHANNEL_MANAGER_SECRET_FIELD_IDS[field] });
         }
+        for (const [field, id] of Object.entries(migration.SECRET_MAP.ecommerce.fields)) {
+            expect({ field, id }).toEqual({ field, id: ECOMMERCE_SECRET_FIELD_IDS[field as keyof typeof ECOMMERCE_SECRET_FIELD_IDS] });
+        }
+        for (const [field, id] of Object.entries(migration.SECRET_MAP.mcpServers.fields)) {
+            expect({ field, id }).toEqual({ field, id: MCP_SECRET_FIELD_IDS[field as keyof typeof MCP_SECRET_FIELD_IDS] });
+        }
+        for (const [field, id] of Object.entries(migration.SECRET_MAP.slack.fields)) {
+            expect({ field, id }).toEqual({ field, id: SLACK_SECRET_FIELD_IDS[field as keyof typeof SLACK_SECRET_FIELD_IDS] });
+        }
     });
 
     it('los identificadores de campo son snake_case, como el AAD', () => {
@@ -185,6 +234,9 @@ describe('la lista del script no puede separarse de la del runtime', () => {
             ...Object.values(migration.SECRET_MAP.channelManager.fields),
             ...Object.values(migration.SECRET_MAP.verticalIntegrations.byProvider)
                 .flatMap((f: any) => Object.values(f)),
+            ...Object.values(migration.SECRET_MAP.ecommerce.fields),
+            ...Object.values(migration.SECRET_MAP.mcpServers.fields),
+            ...Object.values(migration.SECRET_MAP.slack.fields),
         ];
         for (const id of ids) expect(id).toMatch(/^[a-z0-9_]+$/);
     });

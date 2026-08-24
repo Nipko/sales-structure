@@ -167,10 +167,6 @@ export default function PropertyDetailPage() {
     { id: "checkin", label: t("checkIn"), icon: DoorOpen },
   ];
 
-  useEffect(() => {
-    loadProperty();
-  }, [activeTenantId, propertyId]);
-
   async function loadProperty() {
     if (!activeTenantId) return;
     setLoading(true);
@@ -178,6 +174,10 @@ export default function PropertyDetailPage() {
     if (res.success && res.data) setProperty(res.data);
     setLoading(false);
   }
+
+  useEffect(() => {
+    loadProperty();
+  }, [activeTenantId, propertyId]);
 
   if (loading || !property) {
     return <div className="p-4 md:p-6 max-w-7xl mx-auto"><SkeletonPage /></div>;
@@ -1053,13 +1053,6 @@ function BookingsTab({
   // Si hay OTAs conectadas por iCal, cancelar aca NO alcanza: ver el aviso.
   const [hasFeeds, setHasFeeds] = useState(false);
 
-  useEffect(() => {
-    loadBookings();
-    api.listPropertyFeeds(tenantId, propertyId).then((res) => {
-      setHasFeeds(Boolean(res.success && Array.isArray(res.data) && res.data.length > 0));
-    });
-  }, [tenantId, propertyId]);
-
   async function handleCancel() {
     if (!cancelTarget) return;
     setCancelError(null);
@@ -1082,6 +1075,13 @@ function BookingsTab({
     if (res.success && res.data) setBookings(res.data);
     setLoading(false);
   }
+
+  useEffect(() => {
+    loadBookings();
+    api.listPropertyFeeds(tenantId, propertyId).then((res) => {
+      setHasFeeds(Boolean(res.success && Array.isArray(res.data) && res.data.length > 0));
+    });
+  }, [tenantId, propertyId]);
 
   // check_in/check_out son DATE: dia de calendario, no instante. Formatearlos
   // en la zona del navegador los corria un dia hacia atras (ver formatDateOnly).

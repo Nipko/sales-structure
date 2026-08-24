@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
@@ -21,6 +22,9 @@ import { PhotographyService } from '../photography/photography.service';
 import { OrdersService } from '../orders/orders.service';
 import { VehicleInventoryService } from '../verticals/vehicle-inventory.service';
 import { ResourceRentalsService } from '../resource-rentals/resource-rentals.service';
+import { LeadsRepository } from '../crm/repositories/leads.repository';
+import { OpportunitiesRepository } from '../crm/repositories/opportunities.repository';
+import { TasksService } from '../crm/services/tasks/tasks.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
@@ -47,7 +51,13 @@ import {
     agentTestBlockedToolResult,
     canEvalExecuteWriter,
     isAgentTestSafeToolName,
+    isEvalIdentityChallengeToolName,
+    isEvalSandboxMutatingToolName,
 } from './agent-test-tool-policy';
+import {
+    evalIdentityChallengeResult,
+    executeEvalSandboxMutation,
+} from './eval-writer-sandbox';
 import { isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
 import {
     ToolExecutionControlService,
@@ -69,6 +79,16 @@ import {
     describePaymentPolicy,
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
+import { attachWriterActiveObject } from './writer-active-object';
+
+interface PreparedContactConsent {
+    policyId: string;
+    policyType: 'privacy' | 'terms';
+    policyTitle: string;
+    policyVersion: number;
+    legalTextHash: string;
+    scope: string;
+}
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -78,6 +98,7 @@ import {
 export class AIToolExecutorService {
     private readonly logger = new Logger(AIToolExecutorService.name);
     private readonly temporalContracts = new TemporalCapacityContractService();
+    private readonly consentSchemaReady = new Set<string>();
 
     constructor(
         private prisma: PrismaService,
@@ -111,6 +132,9 @@ export class AIToolExecutorService {
         private readonly ordersService?: OrdersService,
         private readonly vehicleInventory?: VehicleInventoryService,
         private readonly resourceRentals?: ResourceRentalsService,
+        private readonly leadsRepository?: LeadsRepository,
+        private readonly opportunitiesRepository?: OpportunitiesRepository,
+        private readonly tasksService?: TasksService,
     ) { }
 
     /**
@@ -238,6 +262,7 @@ export class AIToolExecutorService {
 
         let controlDecision: ToolExecutionControlDecision | undefined;
         let preparedPaymentLink: PreparedPaymentLink | undefined;
+        let preparedContactConsent: PreparedContactConsent | undefined;
         try {
             // Static tools must have a reviewed policy entry before they can
             // reach a handler. Dynamic MCP names use their separate opaque
@@ -306,6 +331,14 @@ export class AIToolExecutorService {
                 return agentTestBlockedToolResult(toolName);
             }
 
+            // An eval identity has no independent channel and must never send a
+            // real OTP. Still execute the negative A3/A4 contract at the common
+            // boundary: the domain writer is unreachable and the result proves
+            // that step-up, not a prompt convention, stopped it.
+            if (evalWriterAllowed && isEvalIdentityChallengeToolName(toolName)) {
+                return evalIdentityChallengeResult(toolName);
+            }
+
             // DEC-08/09: one authority boundary for every runtime tool. It runs
             // before MCP routing and before the static handler switch; handlers
             // keep their domain-level transaction/CAS protections.
@@ -336,6 +369,14 @@ export class AIToolExecutorService {
                     paymentStatus: preparedPaymentLink.paymentStatus,
                 };
             }
+            if (toolName === 'record_contact_consent') {
+                const prepared = await this.prepareContactConsent(tenantId, args);
+                if (!prepared.ok) return prepared.result;
+                preparedContactConsent = prepared.consent;
+                // Bind the signed confirmation to the active server-side
+                // policy snapshot. A model-supplied version/hash is discarded.
+                args = { ...preparedContactConsent };
+            }
             // Precondiciones ANTES de desafiar al cliente.
             //
             // El desafio de confirmacion congela los args tal como los mando el
@@ -345,7 +386,12 @@ export class AIToolExecutorService {
             // la reserva?", decia que si, y RECIEN AHI el sistema descubria que
             // el alojamiento no existe. Confirmo dos veces algo que nunca pudo
             // ocurrir. Es el mismo patron que ya usa create_payment_link arriba.
-            const precondition = await this.assertWritePreconditions(schemaName, toolName, args);
+            // Audited eval mutations use deterministic fixtures and never call
+            // a provider-backed domain precondition. Production keeps its full
+            // precondition path unchanged.
+            const precondition = isEvalSandboxMutatingToolName(toolName) && evalWriterAllowed
+                ? null
+                : await this.assertWritePreconditions(schemaName, toolName, args);
             if (precondition) return precondition;
 
             controlDecision = await this.toolExecutionControl.preflight({
@@ -373,10 +419,41 @@ export class AIToolExecutorService {
                         controlDecision.result,
                     );
                 }
+                if (preparedContactConsent
+                    && controlDecision.result?.error === 'confirmation_required') {
+                    return {
+                        ...controlDecision.result,
+                        confirmationPrompt:
+                            `Comparte la política "${preparedContactConsent.policyTitle}" `
+                            + `(versión ${preparedContactConsent.policyVersion}) y pregunta de forma explícita: `
+                            + `“¿Confirmas que la leíste y aceptas su aplicación para `
+                            + `${preparedContactConsent.scope}?”`,
+                        policy: {
+                            id: preparedContactConsent.policyId,
+                            type: preparedContactConsent.policyType,
+                            version: preparedContactConsent.policyVersion,
+                        },
+                    };
+                }
                 return controlDecision.result;
             }
 
             const executeHandler = async (): Promise<any> => {
+
+            // Same authority, confirmation and idempotency preflight as live;
+            // different final mutation target. This adapter has no reference to
+            // domain services, queues, providers or EventEmitter, so evalMode
+            // cannot leak a notification or external write.
+            if (evalWriterAllowed && isEvalSandboxMutatingToolName(toolName)) {
+                return executeEvalSandboxMutation(
+                    this.prisma,
+                    schemaName,
+                    contactId,
+                    conversationId,
+                    toolName,
+                    args,
+                );
+            }
 
             // External MCP tools (T3.20) — namespaced mcp__{server}__{tool}.
             if (toolName.startsWith('mcp__')) {
@@ -473,6 +550,40 @@ export class AIToolExecutorService {
 
                 case 'record_contact_interest':
                     return this.recordContactInterest(schemaName, contactId, args.interest);
+
+                case 'ensure_crm_lead':
+                    return this.ensureCrmLead(tenantId, schemaName, contactId, args.reason);
+
+                case 'create_crm_opportunity':
+                    return this.createCrmOpportunity(
+                        tenantId, schemaName, contactId, conversationId, args,
+                    );
+
+                case 'move_crm_opportunity_stage':
+                    return this.moveCrmOpportunityStage(
+                        tenantId, schemaName, contactId, args,
+                    );
+
+                case 'create_follow_up_task':
+                    return this.createFollowUpTask(
+                        tenantId, schemaName, contactId, args,
+                    );
+
+                case 'record_contact_consent':
+                    if (!preparedContactConsent || !controlDecision?.allowed || !controlDecision.ledgerId) {
+                        return {
+                            error: 'consent_control_unavailable',
+                            message: 'No pude vincular el consentimiento a una confirmación verificable.',
+                        };
+                    }
+                    return this.recordContactConsent(
+                        schemaName,
+                        contactId,
+                        conversationId,
+                        opts?.channelType,
+                        controlDecision.ledgerId,
+                        preparedContactConsent,
+                    );
 
                 // ── E-commerce dual-skillset tools (T2.17) ──────────
                 case 'recommend_products':
@@ -712,6 +823,12 @@ export class AIToolExecutorService {
                     return this.cancelQuoteTool(schemaName, contactId, args.quoteId);
 
                 // ── Tier 3 tools — home services ──────────────────
+                case 'list_home_services':
+                    return this.listHomeServicesTool(schemaName);
+
+                case 'check_home_service_availability':
+                    return this.checkHomeServiceAvailabilityTool(schemaName, args);
+
                 case 'create_service_request':
                     return this.createServiceRequestTool(schemaName, contactId, conversationId, args);
 
@@ -783,11 +900,14 @@ export class AIToolExecutorService {
             }
             };
 
-            const result = await executeHandler();
+            const result = attachWriterActiveObject(toolName, await executeHandler(), args);
             if (this.toolExecutionControl && controlDecision) {
                 // A handler result is not acknowledged until the central ledger
                 // commits it. A commit failure therefore fails closed.
-                await this.toolExecutionControl.complete(schemaName, controlDecision, result || {});
+                const ledgerResult = result && typeof result === 'object' && !Array.isArray(result)
+                    ? result as Record<string, unknown>
+                    : { value: result ?? null };
+                await this.toolExecutionControl.complete(schemaName, controlDecision, ledgerResult);
             }
             return result;
         } catch (error: any) {
@@ -1621,6 +1741,361 @@ export class AIToolExecutorService {
         }
     }
 
+    private async ensureCrmLead(
+        tenantId: string,
+        schema: string,
+        contactId: string,
+        reason: unknown,
+    ): Promise<any> {
+        if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
+            return { error: 'no_contact', message: 'No tengo identificado al cliente de esta conversación.' };
+        }
+        const factualReason = typeof reason === 'string' ? reason.trim() : '';
+        if (factualReason.length < 3 || factualReason.length > 500) {
+            return { error: 'invalid_lead_reason', message: 'Hace falta un motivo comercial breve y concreto.' };
+        }
+        const existing = await this.leadIdForContact(schema, contactId);
+        if (existing) return { success: true, leadId: existing, created: false };
+        if (!this.leadsRepository) {
+            return {
+                error: 'crm_wiring_unavailable',
+                message: 'No pude preparar el registro comercial en este momento.',
+            };
+        }
+        try {
+            const contacts: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT name, phone, phone_normalized, email
+                   FROM "${schema}".contacts WHERE id = $1::uuid LIMIT 1`,
+                contactId,
+            );
+            const contact = contacts[0];
+            if (!contact) return { error: 'contact_not_found', message: 'No encontré la ficha del cliente.' };
+            const phone = String(contact.phone_normalized || contact.phone || '').trim();
+            if (!phone) {
+                return {
+                    error: 'lead_phone_required',
+                    message: 'La ficha no tiene un teléfono verificable para crear el lead.',
+                    shouldHandoff: true,
+                };
+            }
+            const nameParts = String(contact.name || '').trim().split(/\s+/).filter(Boolean);
+            const outcome = await this.leadsRepository.ensureActiveLeadForContact(tenantId, contactId, {
+                contact_id: contactId,
+                phone,
+                email: contact.email || null,
+                first_name: nameParts[0] || null,
+                last_name: nameParts.slice(1).join(' ') || null,
+                metadata: {
+                    source: 'conversational_agent',
+                    creation_reason: factualReason,
+                },
+            });
+            const lead = outcome.lead;
+            if (!lead?.id) throw new Error('lead_insert_returned_no_id');
+            return { success: true, leadId: lead.id, created: outcome.created };
+        } catch (error: any) {
+            this.logger.warn(`[Tool] ensure_crm_lead failed: ${error.message}`);
+            return { error: 'lead_create_failed', message: 'No pude crear el lead en este momento.' };
+        }
+    }
+
+    private async createCrmOpportunity(
+        tenantId: string,
+        schema: string,
+        contactId: string,
+        conversationId: string | undefined,
+        args: Record<string, any>,
+    ): Promise<any> {
+        const title = typeof args.title === 'string' ? args.title.trim() : '';
+        const summary = typeof args.summary === 'string' ? args.summary.trim() : '';
+        if (title.length < 3 || title.length > 180 || summary.length > 1500) {
+            return { error: 'invalid_opportunity', message: 'La oportunidad necesita un título breve y factual.' };
+        }
+        if (!AIToolExecutorService.UUID_PATTERN.test(conversationId || '')) {
+            return { error: 'conversation_context_required', message: 'No hay una conversación válida para deduplicar la oportunidad.' };
+        }
+        const value = args.estimatedValue === undefined ? undefined : Number(args.estimatedValue);
+        if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 999_999_999_999)) {
+            return { error: 'invalid_estimated_value', message: 'El valor estimado no es válido.' };
+        }
+        const currencyCode = value === undefined
+            ? undefined
+            : String(args.currency || '').trim().toUpperCase();
+        if (value !== undefined && !/^[A-Z]{3}$/.test(currencyCode || '')) {
+            return { error: 'currency_required', message: 'El valor estimado necesita una moneda ISO válida.' };
+        }
+        const leadId = await this.leadIdForContact(schema, contactId);
+        if (!leadId) {
+            return {
+                error: 'no_lead',
+                message: 'Primero hay que crear el lead del cliente con ensure_crm_lead.',
+            };
+        }
+        if (!this.opportunitiesRepository) {
+            return { error: 'crm_wiring_unavailable', message: 'No pude preparar la oportunidad en este momento.' };
+        }
+        try {
+            const outcome = await this.opportunitiesRepository.createOpportunityIdempotently(tenantId, {
+                lead_id: leadId,
+                conversation_id: conversationId,
+                title,
+                notes: summary || undefined,
+                estimated_value: value,
+                currency: currencyCode,
+                metadata: {
+                    source: 'conversational_agent',
+                    title,
+                    ...(summary ? { notes: summary } : {}),
+                },
+            } as any);
+            const created = outcome.opportunity;
+            if (!created?.id) throw new Error('opportunity_insert_returned_no_id');
+            return {
+                success: true,
+                opportunityId: created.id,
+                stage: created.stage,
+                created: outcome.created,
+            };
+        } catch (error: any) {
+            this.logger.warn(`[Tool] create_crm_opportunity failed: ${error.message}`);
+            return { error: 'opportunity_create_failed', message: 'No pude crear la oportunidad en este momento.' };
+        }
+    }
+
+    private async moveCrmOpportunityStage(
+        tenantId: string,
+        schema: string,
+        contactId: string,
+        args: Record<string, any>,
+    ): Promise<any> {
+        const opportunityId = String(args.opportunityId || '').trim();
+        const targetStage = String(args.targetStage || '').trim();
+        const reason = String(args.reason || '').trim();
+        if (!AIToolExecutorService.UUID_PATTERN.test(opportunityId)
+            || !/^[a-z0-9_:-]{1,50}$/i.test(targetStage)
+            || reason.length < 3 || reason.length > 500) {
+            return { error: 'invalid_stage_transition', message: 'La transición solicitada no es válida.' };
+        }
+        if (!this.opportunitiesRepository) {
+            return { error: 'crm_wiring_unavailable', message: 'No pude revisar la oportunidad en este momento.' };
+        }
+        try {
+            const owned: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT o.id
+                   FROM "${schema}".opportunities o
+                   JOIN "${schema}".leads l ON l.id = o.lead_id
+                  WHERE o.id = $1::uuid AND l.contact_id = $2::uuid
+                  LIMIT 1`,
+                opportunityId,
+                contactId,
+            );
+            if (!owned[0]) {
+                return { error: 'opportunity_not_owned', message: 'La oportunidad no pertenece a este cliente.' };
+            }
+            await this.opportunitiesRepository.moveOpportunity(tenantId, opportunityId, targetStage);
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT stage FROM "${schema}".opportunities WHERE id = $1::uuid LIMIT 1`,
+                opportunityId,
+            );
+            return {
+                success: true,
+                opportunityId,
+                stage: rows[0]?.stage || targetStage,
+                reasonRecorded: reason,
+            };
+        } catch (error: any) {
+            this.logger.warn(`[Tool] move_crm_opportunity_stage failed: ${error.message}`);
+            return { error: 'stage_transition_failed', message: 'No pude mover la oportunidad.' };
+        }
+    }
+
+    private async createFollowUpTask(
+        tenantId: string,
+        schema: string,
+        contactId: string,
+        args: Record<string, any>,
+    ): Promise<any> {
+        const title = typeof args.title === 'string' ? args.title.trim() : '';
+        const description = typeof args.description === 'string' ? args.description.trim() : '';
+        const type = String(args.type || 'follow_up').trim();
+        if (title.length < 3 || title.length > 300 || description.length > 1500
+            || !['follow_up', 'call', 'meeting', 'email', 'handoff'].includes(type)) {
+            return { error: 'invalid_follow_up', message: 'La tarea de seguimiento no es válida.' };
+        }
+        let dueAt: string | undefined;
+        if (args.dueAt !== undefined && args.dueAt !== null && String(args.dueAt).trim()) {
+            const rawDue = String(args.dueAt).trim();
+            if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(rawDue)) {
+                return { error: 'due_timezone_required', message: 'La fecha de seguimiento necesita zona horaria.' };
+            }
+            const due = new Date(rawDue);
+            const max = Date.now() + 366 * 24 * 60 * 60 * 1000;
+            if (Number.isNaN(due.getTime()) || due.getTime() <= Date.now() || due.getTime() > max) {
+                return { error: 'invalid_due_at', message: 'La fecha de seguimiento no es válida.' };
+            }
+            dueAt = due.toISOString();
+        }
+        const leadId = await this.leadIdForContact(schema, contactId);
+        if (!leadId) {
+            return { error: 'no_lead', message: 'Primero hay que crear el lead del cliente.' };
+        }
+        if (!this.tasksService) {
+            return { error: 'crm_wiring_unavailable', message: 'No pude preparar la tarea en este momento.' };
+        }
+        let opportunityId: string | undefined;
+        if (args.opportunityId) {
+            opportunityId = String(args.opportunityId).trim();
+            if (!AIToolExecutorService.UUID_PATTERN.test(opportunityId)) {
+                return { error: 'invalid_opportunity', message: 'La oportunidad indicada no es válida.' };
+            }
+            const owned: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT o.id FROM "${schema}".opportunities o
+                   JOIN "${schema}".leads l ON l.id = o.lead_id
+                  WHERE o.id = $1::uuid AND l.contact_id = $2::uuid LIMIT 1`,
+                opportunityId,
+                contactId,
+            );
+            if (!owned[0]) return { error: 'opportunity_not_owned', message: 'La oportunidad no pertenece a este cliente.' };
+        }
+        try {
+            const outcome = await this.tasksService.createTaskIdempotently(tenantId, {
+                leadId,
+                opportunityId,
+                title,
+                description: description || undefined,
+                type,
+                dueAt,
+                createdBy: 'conversational_agent',
+            });
+            const task = outcome.task;
+            if (!task?.id) throw new Error('task_insert_returned_no_id');
+            return {
+                success: true,
+                taskId: task.id,
+                created: outcome.created,
+                dueAt: task.due_at || dueAt || null,
+            };
+        } catch (error: any) {
+            this.logger.warn(`[Tool] create_follow_up_task failed: ${error.message}`);
+            return { error: 'follow_up_create_failed', message: 'No pude crear la tarea de seguimiento.' };
+        }
+    }
+
+    private async prepareContactConsent(
+        tenantId: string,
+        args: Record<string, any>,
+    ): Promise<{ ok: true; consent: PreparedContactConsent } | { ok: false; result: Record<string, unknown> }> {
+        const policyType = String(args.policyType || '').trim().toLowerCase();
+        const scope = String(args.scope || '').trim().toLowerCase();
+        if (!['privacy', 'terms'].includes(policyType)
+            || !/^[a-z0-9][a-z0-9_.:-]{2,79}$/.test(scope)) {
+            return {
+                ok: false,
+                result: { error: 'invalid_consent_scope', message: 'El tipo o alcance del consentimiento no es válido.' },
+            };
+        }
+        try {
+            const policy = await this.policiesService.getActive(tenantId, policyType as PolicyType);
+            if (!policy) {
+                return {
+                    ok: false,
+                    result: {
+                        error: 'policy_not_configured',
+                        message: 'El negocio no tiene una política activa que pueda aceptarse.',
+                        shouldHandoff: true,
+                    },
+                };
+            }
+            return {
+                ok: true,
+                consent: {
+                    policyId: String(policy.id),
+                    policyType: policyType as 'privacy' | 'terms',
+                    policyTitle: String(policy.title),
+                    policyVersion: Number(policy.version),
+                    legalTextHash: createHash('sha256').update(String(policy.content)).digest('hex'),
+                    scope,
+                },
+            };
+        } catch (error: any) {
+            this.logger.warn(`[Tool] consent policy resolution failed: ${error.message}`);
+            return {
+                ok: false,
+                result: { error: 'policy_unavailable', message: 'No pude verificar la política activa.' },
+            };
+        }
+    }
+
+    private async ensureConsentEvidenceColumns(schema: string): Promise<void> {
+        if (this.consentSchemaReady.has(schema)) return;
+        const statements = [
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS policy_id UUID`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS policy_type VARCHAR(50)`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS policy_version INTEGER`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS consent_scope VARCHAR(80)`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS conversation_id UUID`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS execution_ledger_id UUID`,
+            `ALTER TABLE "${schema}".consent_records ADD COLUMN IF NOT EXISTS capture_mode VARCHAR(50)`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_execution_ledger_${schema}" ON "${schema}".consent_records (execution_ledger_id) WHERE execution_ledger_id IS NOT NULL`,
+        ];
+        for (const statement of statements) await this.prisma.$executeRawUnsafe(statement);
+        this.consentSchemaReady.add(schema);
+    }
+
+    private async recordContactConsent(
+        schema: string,
+        contactId: string,
+        conversationId: string | undefined,
+        channelType: string | undefined,
+        executionLedgerId: string,
+        consent: PreparedContactConsent,
+    ): Promise<any> {
+        const leadId = await this.leadIdForContact(schema, contactId);
+        if (!leadId) return { error: 'no_lead', message: 'No existe un lead al cual vincular el consentimiento.' };
+        try {
+            await this.ensureConsentEvidenceColumns(schema);
+            const existing: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".consent_records WHERE execution_ledger_id = $1::uuid LIMIT 1`,
+                executionLedgerId,
+            );
+            if (existing[0]?.id) return { success: true, consentId: existing[0].id, recorded: false };
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `INSERT INTO "${schema}".consent_records
+                    (lead_id, channel, legal_version, legal_text_hash, policy_id, policy_type,
+                     policy_version, consent_scope, conversation_id, execution_ledger_id, capture_mode)
+                 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7, $8, $9::uuid, $10::uuid,
+                         'signed_conversation_confirmation')
+                 RETURNING id`,
+                leadId,
+                String(channelType || 'conversation').slice(0, 50),
+                `${consent.policyType}:v${consent.policyVersion}`,
+                consent.legalTextHash,
+                consent.policyId,
+                consent.policyType,
+                consent.policyVersion,
+                consent.scope,
+                conversationId || null,
+                executionLedgerId,
+            );
+            if (!rows[0]?.id) throw new Error('consent_insert_returned_no_id');
+            return {
+                success: true,
+                consentId: rows[0].id,
+                recorded: true,
+                policy: {
+                    id: consent.policyId,
+                    type: consent.policyType,
+                    version: consent.policyVersion,
+                    hash: consent.legalTextHash,
+                },
+                scope: consent.scope,
+            };
+        } catch (error: any) {
+            this.logger.warn(`[Tool] record_contact_consent failed: ${error.message}`);
+            return { error: 'consent_record_failed', message: 'No pude registrar el consentimiento.' };
+        }
+    }
+
     private async getCustomerContext(schema: string, contactId: string): Promise<any> {
         if (!contactId) {
             return readUnauthorized({ message: 'No tengo identificado al cliente de esta conversación.' });
@@ -1665,7 +2140,10 @@ export class AIToolExecutorService {
         let opportunitiesCount: number | null = 0;
         try {
             const oRows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT COUNT(*)::int AS cnt FROM "${schema}".opportunities WHERE contact_id = $1::uuid`,
+                `SELECT COUNT(*)::int AS cnt
+                   FROM "${schema}".opportunities o
+                   JOIN "${schema}".leads l ON l.id = o.lead_id
+                  WHERE l.contact_id = $1::uuid`,
                 contactId,
             );
             opportunitiesCount = Number(oRows[0]?.cnt || 0);
@@ -3080,7 +3558,7 @@ export class AIToolExecutorService {
                     provider: detail.provider ?? null,
                     asOf: detail.asOf ?? null,
                     stale: detail.stale === true,
-                    message: 'Este alojamiento se administra desde el sistema del negocio. Decile al huésped que el equipo confirma la reserva y pasá la conversación — no la des por confirmada.',
+                    message: 'Este alojamiento se administra desde el sistema del negocio. Dígale al huésped que el equipo confirma la reserva y pase la conversación; no la dé por confirmada.',
                 };
             }
             if (detail.error === 'duplicate_property_booking') {
@@ -4062,7 +4540,7 @@ export class AIToolExecutorService {
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay forma de verificar la identidad de este cliente por otro canal. NO reveles información ni ejecutes gestiones sensibles de seguros: ofrecé pasarlo con un asesor humano.',
+                message: 'No hay forma de verificar la identidad de este cliente por otro canal. NO revele información ni ejecute gestiones sensibles de seguros: ofrezca pasarlo con un asesor humano.',
                 shouldHandoff: true,
             };
         }
@@ -4103,7 +4581,7 @@ export class AIToolExecutorService {
         const messages: Record<string, string> = {
             expired: 'El código venció o no se pidió ninguno. Ofrecé enviar uno nuevo con request_identity_code.',
             wrong: 'El código no coincide. Pídaselo de nuevo; le quedan intentos.',
-            too_many: 'Demasiados intentos fallidos. NO sigas intentando: pasá la conversación a un asesor humano.',
+            too_many: 'Demasiados intentos fallidos. NO siga intentando: pase la conversación a un asesor humano.',
         };
         return {
             verified: false,
@@ -4173,6 +4651,29 @@ export class AIToolExecutorService {
 
     // ── Tier 3 — home services ─────────────────────────────────
 
+    private async listHomeServicesTool(schemaName: string): Promise<any> {
+        try {
+            return { services: await this.homeServicesService.listCapacityServices(schemaName) };
+        } catch (e: any) {
+            return { error: 'read_failed', status: 'error' as const, retryable: true, message: e.message };
+        }
+    }
+
+    private async checkHomeServiceAvailabilityTool(schemaName: string, args: any): Promise<any> {
+        try {
+            return await this.homeServicesService.checkAvailability(schemaName, {
+                serviceId: args.serviceId,
+                startAt: args.startAt,
+            });
+        } catch (e: any) {
+            return {
+                error: e?.response?.error || e?.code || 'home_service_availability_failed',
+                available: false,
+                message: e.message,
+            };
+        }
+    }
+
     private async createServiceRequestTool(
         schemaName: string,
         contactId: string,
@@ -4193,12 +4694,17 @@ export class AIToolExecutorService {
                 issueDescription: args.issueDescription,
                 preferredDate: args.preferredDate,
                 preferredTimeWindow: args.preferredTimeWindow,
+                serviceId: args.serviceId,
+                scheduledAt: args.scheduledAt,
+                status: args.serviceId && args.scheduledAt ? 'scheduled' : 'pending',
             });
             return {
                 requestId: request.id,
                 status: request.status,
                 urgency: request.urgency,
-                message: request.urgency === 'emergencia'
+                message: request.status === 'scheduled'
+                    ? `Service visit confirmed for ${request.scheduled_at}.`
+                    : request.urgency === 'emergencia'
                     ? 'Request registered as EMERGENCY. A technician will be assigned immediately.'
                     : 'Service request registered. We will contact you to confirm date and time.',
                 shouldHandoff: request.urgency === 'emergencia',
@@ -4747,47 +5253,25 @@ export class AIToolExecutorService {
         try {
             const date = args.date || args.checkIn;
             if (!date) return { error: 'date is required' };
-
-            const blocked = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT 1 FROM blocked_dates WHERE blocked_date = $1::date AND user_id IS NULL LIMIT 1`,
-                [date],
-            ).catch(() => [] as any[]);
-            if (blocked.length) {
-                return { date, available: false, message: 'That date is blocked by the studio. Offer another one.' };
-            }
-
-            const [appts, sessions] = await Promise.all([
-                this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT COUNT(*)::int AS cnt FROM appointments
-                     WHERE start_at::date = $1::date AND status IN ('confirmed', 'pending')`,
-                    [date],
-                ).catch(() => [{ cnt: 0 }]),
-                this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT COUNT(*)::int AS cnt FROM photo_sessions
-                     WHERE scheduled_at::date = $1::date AND status IN ('scheduled', 'in_progress')`,
-                    [date],
-                ).catch(() => [{ cnt: 0 }]),
-            ]);
-
-            const taken = Number(appts[0]?.cnt || 0) + Number(sessions[0]?.cnt || 0);
-            // Una sesión de fotos ocupa al fotógrafo el día entero: una sola
-            // basta para bloquear la fecha. El umbral de 5 que había era una
-            // constante sin relación con el negocio.
-            const available = taken === 0;
+            const capacity = await this.photographyService.checkDateAvailability(schemaName, date);
 
             return {
-                date,
-                taken,
-                available,
-                message: available
+                ...capacity,
+                message: capacity.available
                     ? 'Date is free.'
-                    : `The studio already has ${taken} booking(s) that day. Do NOT confirm it — offer nearby dates.`,
+                    : capacity.blocked
+                        ? 'That date is blocked by the studio. Offer another one.'
+                        : `The studio already has ${capacity.taken} booking(s) that day. Do NOT confirm it — offer nearby dates.`,
             };
         } catch (e: any) {
-            return { error: e.message };
+            const status = e?.status ?? e?.getStatus?.();
+            if (status === 400) {
+                return { error: 'invalid_photo_date', message: 'The requested date is invalid.' };
+            }
+            this.logger.warn(`[Tool] check_date_availability failed: ${e?.message}`);
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'No pude consultar la disponibilidad del estudio en este momento.',
+            });
         }
     }
 
@@ -5457,6 +5941,7 @@ export class AIToolExecutorService {
                 const updated = await query<any[]>(
                     `UPDATE photo_sessions
                         SET status = 'cancelled',
+                            hold_expires_at = NULL,
                             notes = COALESCE(notes, '') || $1,
                             updated_at = NOW()
                       WHERE id = $2::uuid
@@ -5523,9 +6008,27 @@ export class AIToolExecutorService {
                 sessionType: args.sessionType || 'other',
                 date: args.date,
                 package: args.packageName,
-                message: 'Session registered — the team will send a personalized proposal within the next few hours.',
+                heldUntil: session.hold_expires_at || session.holdExpiresAt || null,
+                message: 'Session request registered and the date is held temporarily while the team prepares the proposal.',
             };
         } catch (e: any) {
+            const status = e?.status ?? e?.getStatus?.();
+            const response = e?.response ?? e?.getResponse?.();
+            if (status === 409 && response?.error === 'photo_date_unavailable') {
+                return {
+                    error: 'photo_date_unavailable',
+                    received: false,
+                    date: response.date || args.date,
+                    message: 'That date was just taken. Do not promise it; offer a nearby date.',
+                };
+            }
+            if (status === 400 && response?.error === 'invalid_photo_date') {
+                return {
+                    error: 'invalid_photo_date',
+                    received: false,
+                    message: 'The photography date is invalid.',
+                };
+            }
             this.logger.warn(`Photo session insert failed: ${e.message}`);
             return {
                 error: 'photo_session_not_created',

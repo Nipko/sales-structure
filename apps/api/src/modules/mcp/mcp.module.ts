@@ -8,6 +8,7 @@ import { McpClientService } from './mcp-client.service';
 import { McpServerService } from './mcp-server.service';
 import { McpController } from './mcp.controller';
 import { McpRpcController } from './mcp-rpc.controller';
+import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
 
 /**
  * MCP native (T3.20). Two directions over the open Model Context Protocol:
@@ -24,7 +25,7 @@ import { McpRpcController } from './mcp-rpc.controller';
         PublicApiModule,
         forwardRef(() => ConversationsModule),
     ],
-    providers: [McpClientService, McpServerService],
+    providers: [McpClientService, McpServerService, TenantSecretCryptoService],
     controllers: [McpController, McpRpcController],
     exports: [McpClientService],
 })

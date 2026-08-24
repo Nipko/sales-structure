@@ -17,6 +17,9 @@ export interface AlertConfig {
     sentryErrors: { warn: number; crit: number };
     slaBreaches: { warn: number; crit: number };
     queueDepth: Record<string, { warn: number; crit: number }>;
+    /** Alert when a queue's failed count is greater than its own threshold. */
+    queueFailedByQueue: Record<string, number>;
+    /** Legacy fallback for queues introduced by a newer deploy. */
     queueFailed: number;
     paymentFailures: number;
     llmBudgetPct: number;
@@ -52,6 +55,18 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
         // DIAN: una factura fiscal atascada es una obligación legal sin cumplir.
         'fiscal-invoice': { warn: 20, crit: 100 },
     },
+    // A single threshold of 100 concealed customer messages that never reached
+    // the conversation runtime. Inbound queues therefore alert on the first
+    // failed item, while bulk/background queues retain noise-resistant limits.
+    queueFailedByQueue: {
+        'inbound-messages': 0,
+        'wa-webhooks': 0,
+        'outbound-messages': 20,
+        'broadcast-messages': 100,
+        'automation-jobs': 20,
+        'nurturing': 20,
+        'fiscal-invoice': 0,
+    },
     queueFailed: 100,
     paymentFailures: 5,
     llmBudgetPct: 90,
@@ -84,6 +99,10 @@ export class AlertConfigService {
             const pk = (p.queueDepth && typeof p.queueDepth === 'object' && p.queueDepth[k]) || {};
             qd[k] = { ...base.queueDepth[k], ...pk };
         }
+        const qf: Record<string, number> = {};
+        for (const k of Object.keys(base.queueFailedByQueue)) {
+            qf[k] = num(p.queueFailedByQueue?.[k], base.queueFailedByQueue[k]);
+        }
         return {
             disk: { ...base.disk, ...(p.disk || {}) },
             ram: { ...base.ram, ...(p.ram || {}) },
@@ -93,6 +112,7 @@ export class AlertConfigService {
             sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
             slaBreaches: { ...base.slaBreaches, ...(p.slaBreaches || {}) },
             queueDepth: qd,
+            queueFailedByQueue: qf,
             queueFailed: num(p.queueFailed, base.queueFailed),
             paymentFailures: num(p.paymentFailures, base.paymentFailures),
             llmBudgetPct: num(p.llmBudgetPct, base.llmBudgetPct),

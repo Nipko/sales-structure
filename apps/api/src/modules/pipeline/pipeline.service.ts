@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { CronLockService } from '../redis/cron-lock.service';
@@ -2346,10 +2347,15 @@ export class PipelineService {
     }
 
     async setAutoProgressEnabled(tenantId: string, enabled: boolean): Promise<{ enabled: boolean }> {
-        const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const settings: any = { ...((t?.settings as any) || {}) };
-        settings.pipeline = { ...(settings.pipeline || {}), autoProgress: enabled };
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings } });
+        await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'pipeline',
+            value => ({
+                ...((value && typeof value === 'object' ? value : {}) as Record<string, unknown>),
+                autoProgress: enabled,
+            }),
+        );
         try { await this.redis.set(`pipeline:autoprogress:${tenantId}`, enabled ? '1' : '0', 300); } catch { /* ignore */ }
         return { enabled };
     }

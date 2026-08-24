@@ -682,6 +682,10 @@ const RETAIL = createGenericVertical('retail', {
         { name: { es: 'Devolución', en: 'Return', pt: 'Devolução', fr: 'Retour' }, slug: 'devolucion', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost' },
     ] },
     sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Customers', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Ventas', en: 'Sales', pt: 'Vendas', fr: 'Ventes' }, catalog: { es: 'Productos', en: 'Products', pt: 'Produtos', fr: 'Produits' } }, hiddenItems: [] },
+    // Only `retail/hogar` enables this through its subtype bootstrap. Furniture
+    // and home-goods stores commit scarce delivery/assembly windows; fashion,
+    // electronics and marketplaces remain catalogue/order businesses.
+    bookingEnabled: true,
 });
 
 const TECHNOLOGY = createGenericVertical('technology', {

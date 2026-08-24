@@ -1,4 +1,5 @@
 import type { VerticalCapability, VerticalReadinessKey, VerticalToolGroup } from './vertical-capability-manifest';
+import type { VerticalDomainContractV2 } from './vertical-domain-contract';
 
 /**
  * The one server-side answer to "what may this agent do, this turn".
@@ -76,11 +77,14 @@ export interface ExcludedCapability {
     /** Tool family, or a single tool name when the exclusion is tool-level. */
     subject: string;
     reason: CapabilityExclusionReason;
-    /** Customer-safe explanation for the dashboard. */
-    detail: string;
+    /** Customer-safe explanation, structured in every supported UI locale. */
+    detail: LocalizedCapabilityText;
     /** Where the tenant fixes it, when they can. */
     repairRoute?: string;
 }
+
+export type CapabilityLocale = 'es' | 'en' | 'pt' | 'fr';
+export type LocalizedCapabilityText = Readonly<Record<CapabilityLocale, string>>;
 
 export interface EffectiveCapabilityContract {
     version: typeof EFFECTIVE_CAPABILITY_CONTRACT_VERSION;
@@ -90,6 +94,8 @@ export interface EffectiveCapabilityContract {
     /** Plan slug the decision was made against. */
     planSnapshot: string;
     countryPackId: string;
+    /** Domain promise/intent contract used by the runtime decision. */
+    domainContract: VerticalDomainContractV2;
     /** Tool names the model may be shown. */
     publishedTools: string[];
     /**
@@ -103,7 +109,7 @@ export interface EffectiveCapabilityContract {
      * si la tool nunca se publicó, si la familia estaba apagada o si Toast no
      * contestaba.
      */
-    publishedByOrigin?: Readonly<Record<'core' | 'vertical' | 'provider', readonly string[]>>;
+    publishedByOrigin?: Readonly<Record<'core' | 'vertical' | 'provider' | 'mcp', readonly string[]>>;
     /** Families that survived every gate. */
     publishedGroups: VerticalToolGroup[];
     /** Everything that did not, with why. */
@@ -183,19 +189,81 @@ export const TOOL_GROUP_READINESS: Readonly<Partial<Record<VerticalToolGroup, Ve
     vehicleRentals: 'vehicle_inventory',
 });
 
-/** Human-readable reason text, so every surface says the same thing. */
-export const CAPABILITY_EXCLUSION_TEXT: Readonly<Record<CapabilityExclusionReason, string>> = Object.freeze({
-    not_in_subtype: 'Esta familia no corresponde al tipo de negocio configurado.',
-    agent_disabled: 'Este agente la tiene desactivada.',
-    plan_missing_feature: 'El plan actual no incluye esta capacidad.',
-    readiness_unmet: 'Faltan datos para que el agente pueda responder con esto.',
-    provider_unavailable: 'La integración que necesita no está conectada o no responde.',
-    not_approved: 'No tiene una política revisada, así que no puede ejecutarse.',
-    external_system_of_record: 'Otro sistema es dueño de este registro; el equipo confirma.',
-    profile_blocked: 'Este tipo de negocio todavía no puede cerrar operaciones por chat; el equipo las confirma.',
-    role_not_operational: 'Quien pide esto no tiene un rol que opere la conversación.',
-    channel_not_certified: 'Este canal no cierra operaciones; por acá el agente informa y deriva.',
+function exclusionText(es: string, en: string, pt: string, fr: string): LocalizedCapabilityText {
+    return Object.freeze({ es, en, pt, fr });
+}
+
+/** Human-readable reason text, so every surface says the same thing in its locale. */
+export const CAPABILITY_EXCLUSION_TEXT: Readonly<Record<CapabilityExclusionReason, LocalizedCapabilityText>> = Object.freeze({
+    not_in_subtype: exclusionText(
+        'Esta familia no corresponde al tipo de negocio configurado.',
+        'This family does not apply to the configured business type.',
+        'Esta família não corresponde ao tipo de negócio configurado.',
+        'Cette famille ne correspond pas au type d’activité configuré.',
+    ),
+    agent_disabled: exclusionText(
+        'Este agente tiene esta capacidad desactivada.',
+        'This capability is disabled for this agent.',
+        'Esta capacidade está desativada para este agente.',
+        'Cette capacité est désactivée pour cet agent.',
+    ),
+    plan_missing_feature: exclusionText(
+        'El plan actual no incluye esta capacidad.',
+        'The current plan does not include this capability.',
+        'O plano atual não inclui esta capacidade.',
+        'L’offre actuelle n’inclut pas cette capacité.',
+    ),
+    readiness_unmet: exclusionText(
+        'Faltan datos operativos para que el agente use esta capacidad.',
+        'Operational data is missing for the agent to use this capability.',
+        'Faltam dados operacionais para o agente usar esta capacidade.',
+        'Des données opérationnelles manquent pour que l’agent utilise cette capacité.',
+    ),
+    provider_unavailable: exclusionText(
+        'La integración necesaria no está conectada, disponible o actualizada.',
+        'The required integration is not connected, available, or up to date.',
+        'A integração necessária não está conectada, disponível ou atualizada.',
+        'L’intégration requise n’est pas connectée, disponible ou à jour.',
+    ),
+    not_approved: exclusionText(
+        'No existe una política revisada para ejecutar esta capacidad.',
+        'There is no reviewed policy for executing this capability.',
+        'Não existe uma política revisada para executar esta capacidade.',
+        'Aucune politique révisée ne permet d’exécuter cette capacité.',
+    ),
+    external_system_of_record: exclusionText(
+        'Otro sistema administra este registro; el equipo debe confirmar la operación.',
+        'Another system owns this record; the team must confirm the operation.',
+        'Outro sistema administra este registro; a equipe deve confirmar a operação.',
+        'Un autre système gère ce dossier ; l’équipe doit confirmer l’opération.',
+    ),
+    profile_blocked: exclusionText(
+        'Este tipo de negocio todavía no puede cerrar operaciones por chat; el equipo las confirma.',
+        'This business type cannot yet close operations in chat; the team confirms them.',
+        'Este tipo de negócio ainda não pode concluir operações no chat; a equipe as confirma.',
+        'Ce type d’activité ne peut pas encore conclure d’opérations par chat ; l’équipe les confirme.',
+    ),
+    role_not_operational: exclusionText(
+        'El rol que solicita esta capacidad no opera conversaciones.',
+        'The role requesting this capability does not operate conversations.',
+        'A função que solicita esta capacidade não opera conversas.',
+        'Le rôle qui demande cette capacité ne gère pas les conversations.',
+    ),
+    channel_not_certified: exclusionText(
+        'Este canal no está certificado para cerrar operaciones; el agente informa y deriva.',
+        'This channel is not certified to close operations; the agent informs and hands off.',
+        'Este canal não é certificado para concluir operações; o agente informa e transfere.',
+        'Ce canal n’est pas certifié pour conclure des opérations ; l’agent informe et transfère.',
+    ),
 });
+
+export function localizeCapabilityText(
+    detail: LocalizedCapabilityText,
+    locale: string | null | undefined,
+): string {
+    const language = String(locale || 'es').slice(0, 2).toLowerCase() as CapabilityLocale;
+    return detail[language] || detail.en;
+}
 
 /** Canales donde la conversación de ida y vuelta está certificada. */
 export const CONVERSATIONAL_CHANNELS: readonly string[] = Object.freeze([
@@ -221,16 +289,17 @@ export function capabilityForToolGroup(
  *
  * No es decorativo: cada origen tiene su propia forma de estar mal, y saber
  * cuál fue es lo que permite auditar una ejecución después. Un
- * `human_approval` que ejecuta algo que el contrato del turno no publicaba es
- * legítimo — una persona lo decidió—; el mismo caso con `turn_contract` es un
- * defecto.
+ * `human_approval` prueba que una persona decidió el ticket, pero no vuelve a
+ * habilitar una capacidad retirada después: al reanudar se recompone el
+ * contrato vigente. El origen sigue siendo útil para auditoría de ejecutores
+ * internos que sólo representan la decisión humana.
  */
 export type ToolAuthoritySource =
     /** El contrato efectivo resuelto para este turno de conversación. */
     | 'turn_contract'
     /** Agent Test: el mismo contrato, más la lista segura del banco de pruebas. */
     | 'agent_test'
-    /** Una persona aprobó esta ejecución en la consola. */
+    /** Una persona aprobó esta ejecución en la consola (sin ampliar el contrato vigente). */
     | 'human_approval'
     /** El servidor MCP expuesto: lista curada de sólo lectura, con API key. */
     | 'mcp_server'

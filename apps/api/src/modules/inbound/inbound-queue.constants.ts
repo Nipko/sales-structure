@@ -14,4 +14,8 @@ export const INBOUND_QUEUE = 'inbound-messages';
 export interface InboundJobData {
     msg: NormalizedMessage;
     enqueuedAt: number;
+    /** Number of operator-equivalent retries after BullMQ exhausted attempts. */
+    redriveCount?: number;
+    /** Audit timestamp for the last automatic failed-set rescue. */
+    lastRedrivenAt?: number;
 }

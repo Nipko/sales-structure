@@ -1,12 +1,15 @@
 import {
     PROVIDER_FRESHNESS,
+    VERTICAL_INTEGRATION_SYNC_CRON,
     VERTICAL_INTEGRATION_SYNC_INTERVAL_SECONDS,
     isMirrorBackedProviderTool,
     providerFreshnessContradictions,
     providerFreshnessFor,
 } from '@parallext/shared';
+import { SCHEDULE_CRON_OPTIONS } from '@nestjs/schedule/dist/schedule.constants';
 import { materializeIntegrationHealth, type StoredIntegrationHealth } from './integration-health';
 import { PROVIDER_INTEGRATION_POLICIES } from '../conversations/effective-capability.service';
+import { VerticalIntegrationsService } from './vertical-integrations.service';
 
 /**
  * ═══ TRES NÚMEROS QUE DECIDÍAN LO MISMO Y NO SE HABLABAN ═══
@@ -44,9 +47,13 @@ describe('el presupuesto de frescura no puede contradecir a su propio cron', () 
     });
 
     it('la cadencia declarada es la del cron que efectivamente corre', () => {
-        // `@Cron('0 5 * * *')` en `vertical-integrations.service.ts`. Si esa
-        // expresión cambia y esta constante no, el presupuesto de arriba deja
-        // de tener sentido y la falla es silenciosa.
+        const cronMetadata = Reflect.getMetadata(
+            SCHEDULE_CRON_OPTIONS,
+            VerticalIntegrationsService.prototype.resyncAllCron,
+        );
+
+        expect(cronMetadata?.cronTime).toBe(VERTICAL_INTEGRATION_SYNC_CRON);
+        expect(VERTICAL_INTEGRATION_SYNC_CRON).toBe('0 5 * * *');
         expect(VERTICAL_INTEGRATION_SYNC_INTERVAL_SECONDS).toBe(24 * 60 * 60);
         for (const policy of Object.values(PROVIDER_FRESHNESS)) {
             expect(policy.mirrorSyncIntervalSeconds)
@@ -154,6 +161,14 @@ describe('la pantalla puede explicar por qué el agente no la usa', () => {
         );
         expect(health.status).toBe('healthy');
         expect(health.industryEligible).toBe(true);
+    });
+
+    it('Cliniko sano no se presenta como aplicable a una farmacia', () => {
+        const health = materializeIntegrationHealth(
+            'cliniko', true, healthy('cliniko'), new Date(), 'salud', 'farmacia',
+        );
+        expect(health.status).toBe('not_applicable');
+        expect(health.industryEligible).toBe(false);
     });
 
     it('sin industria conocida no se declara inelegible', () => {

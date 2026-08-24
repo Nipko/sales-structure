@@ -26,6 +26,10 @@ const LEAD_WRITABLE_COLUMNS = [
   'stage', 'score', 'is_vip', 'metadata',
 ] as const;
 
+// Creation may establish the canonical Contact relationship. Updates cannot
+// silently re-parent an existing lead; identity repair has a dedicated flow.
+const LEAD_CREATE_COLUMNS = ['contact_id', ...LEAD_WRITABLE_COLUMNS] as const;
+
 const PROTECTED_LEAD_COLUMNS = ['assigned_to', 'archived_at'] as const;
 
 function rejectProtectedLeadColumns(record: Record<string, any>): void {
@@ -277,6 +281,60 @@ export class LeadsRepository {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) return null;
 
+    const prepared = await this.prepareLeadInsert(tenantId, schema, data);
+    const results = await this.prisma.executeInTenantSchema<Lead[]>(
+      schema,
+      prepared.sql,
+      prepared.values,
+    );
+    const resultsArray = results as any[];
+    return resultsArray && resultsArray.length > 0 ? resultsArray[0] : null;
+  }
+
+  /**
+   * Creates the conversational CRM lead once per active contact.
+   *
+   * The old tool did `SELECT` in the executor and then called `createLead`, so
+   * two channel jobs for the same person could both observe "no lead" and
+   * insert. A transaction-scoped advisory lock is preferable to a global
+   * unique constraint here: the CRM deliberately permits multiple historical
+   * leads for a contact, while this writer only promises one *active* lead.
+   */
+  async ensureActiveLeadForContact(
+    tenantId: string,
+    contactId: string,
+    data: Partial<Lead>,
+  ): Promise<{ lead: Lead | null; created: boolean }> {
+    const schema = await this.getTenantSchema(tenantId);
+    if (!schema) return { lead: null, created: false };
+
+    const prepared = await this.prepareLeadInsert(tenantId, schema, {
+      ...data,
+      contact_id: contactId,
+    });
+    return this.prisma.transactionInTenantSchema(schema, async (query) => {
+      await query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`,
+        [`crm:active-lead:${tenantId}:${contactId}`],
+      );
+      const existing = await query<Lead[]>(
+        `SELECT * FROM leads
+          WHERE contact_id = $1::uuid AND archived_at IS NULL
+          ORDER BY created_at DESC LIMIT 1`,
+        [contactId],
+      );
+      if (existing?.[0]) return { lead: existing[0], created: false };
+
+      const inserted = await query<Lead[]>(prepared.sql, prepared.values);
+      return { lead: inserted?.[0] || null, created: !!inserted?.[0] };
+    });
+  }
+
+  private async prepareLeadInsert(
+    tenantId: string,
+    schema: string,
+    data: Partial<Lead>,
+  ): Promise<{ sql: string; values: any[] }> {
     const record = { ...(data as Record<string, any>) };
     rejectProtectedLeadColumns(record);
     foldNonColumnsIntoMetadata(record);
@@ -296,20 +354,16 @@ export class LeadsRepository {
       const phoneRegion = await this.regionalProfile.phoneRegionFor(tenantId);
       record.phone_normalized = normalizePhoneE164(record.phone, phoneRegion) || record.phone;
     }
-    const fields = Object.keys(record).filter(k => record[k] !== undefined && (LEAD_WRITABLE_COLUMNS as readonly string[]).includes(k));
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && (LEAD_CREATE_COLUMNS as readonly string[]).includes(k));
     const values = fields.map(k => record[k]);
     const placeholders = fields.map((k, i) => {
       const isUuid = ['assigned_to', 'customer_profile_id', 'contact_id', 'campaign_id', 'course_id'].includes(k);
       return `$${i + 1}${isUuid ? '::uuid' : ''}`;
     }).join(', ');
-
-    const results = await this.prisma.executeInTenantSchema<Lead[]>(
-      schema,
-      `INSERT INTO leads (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
-      values
-    );
-    const resultsArray = results as any[];
-    return resultsArray && resultsArray.length > 0 ? resultsArray[0] : null;
+    return {
+      sql: `INSERT INTO leads (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+      values,
+    };
   }
 
   async updateLead(tenantId: string, id: string, data: Partial<Lead>): Promise<Lead | null> {

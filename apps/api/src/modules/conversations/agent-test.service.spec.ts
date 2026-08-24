@@ -247,24 +247,35 @@ describe('AgentTestService read-only tool policy', () => {
 
         expect(toolExecutor.execute).toHaveBeenCalledTimes(2);
         expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+        const advertisedSafeTools = llmRouter.execute.mock.calls[0][0].tools
+            .map((tool: any) => tool.name);
+        expect(advertisedSafeTools).toEqual(expect.arrayContaining([
+            'get_case_status', 'recommend_products',
+        ]));
+        expect(advertisedSafeTools.every((name: string) => AGENT_TEST_SAFE_TOOL_NAMES.includes(name as any)))
+            .toBe(true);
         for (const call of toolExecutor.execute.mock.calls) {
             expect(call[2]).toBe(AGENT_TEST_SANDBOX_CONTACT_ID);
             expect(call[2]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
             expect(AGENT_TEST_SAFE_TOOL_NAMES).toContain(call[3]);
             expect(call[6]).toEqual({
-                // La autoridad del banco de pruebas alcanza EXACTAMENTE la tool
-                // que el filtro de la lista segura acaba de aprobar: aprobar una
-                // lectura no habilita a la de al lado.
+                // One immutable turn authority: exactly the tools advertised
+                // by this safe sandbox, never a per-call permission minted
+                // after seeing what the model tried to invoke.
                 authority: {
                     source: 'agent_test',
-                    allowedTools: [call[3]],
+                    allowedTools: advertisedSafeTools,
+                    commitmentBlocked: null,
+                    deniedTools: [],
                     resolvedAt: expect.stringMatching(
                         /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
                     ),
+                    subtypeProfileId: undefined,
                 },
                 evalMode: false,
                 readOnly: true,
                 executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+                channelType: 'web_widget',
             });
         }
     });

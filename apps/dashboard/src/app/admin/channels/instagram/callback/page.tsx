@@ -9,6 +9,27 @@ export default function InstagramCallback() {
     const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
     const [errorMessage, setErrorMessage] = useState("");
 
+    function finish(result: "success" | "error", message?: string) {
+        setStatus(result);
+        if (message) setErrorMessage(message);
+
+        // Notify the opener via BroadcastChannel (works even when window.opener is lost)
+        try {
+            const channel = new BroadcastChannel("ig_oauth");
+            channel.postMessage(
+                message
+                    ? { type: result === "success" ? "ig_oauth_success" : "ig_oauth_error", message }
+                    : { type: "ig_oauth_success" }
+            );
+            channel.close();
+        } catch (e) {
+            // BroadcastChannel not supported — opener will reload on focus
+        }
+
+        // Close the popup
+        setTimeout(() => window.close(), 800);
+    }
+
     useEffect(() => {
         let cancelled = false;
         const params = new URLSearchParams(window.location.search);
@@ -56,27 +77,6 @@ export default function InstagramCallback() {
 
         return () => { cancelled = true; };
     }, []);
-
-    function finish(result: "success" | "error", message?: string) {
-        setStatus(result);
-        if (message) setErrorMessage(message);
-
-        // Notify the opener via BroadcastChannel (works even when window.opener is lost)
-        try {
-            const channel = new BroadcastChannel("ig_oauth");
-            channel.postMessage(
-                message
-                    ? { type: result === "success" ? "ig_oauth_success" : "ig_oauth_error", message }
-                    : { type: "ig_oauth_success" }
-            );
-            channel.close();
-        } catch (e) {
-            // BroadcastChannel not supported — opener will reload on focus
-        }
-
-        // Close the popup
-        setTimeout(() => window.close(), 800);
-    }
 
     if (status === "success") {
         return (

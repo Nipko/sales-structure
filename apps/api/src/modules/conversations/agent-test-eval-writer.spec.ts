@@ -2,6 +2,8 @@ import {
     canEvalExecuteWriter,
     EVAL_SANDBOX_CONTACT_ID,
     EVAL_WRITABLE_TOOL_NAMES,
+    EVAL_WRITER_SANDBOX_FAMILIES,
+    EVAL_SANDBOX_MUTATING_TOOL_NAMES,
     isAgentTestSafeToolName,
     isEvalWritableToolName,
     AGENT_TEST_SANDBOX_CONTACT_ID,
@@ -22,8 +24,29 @@ import { TOOL_POLICY_REGISTRY } from './tool-policy-registry';
  */
 
 describe('eval writable tools', () => {
-    it('is a short, deliberate list — not "every writer"', () => {
-        expect(EVAL_WRITABLE_TOOL_NAMES).toEqual(['create_appointment']);
+    it('contains exactly the ten isolated mutation families plus the step-up negative gate', () => {
+        expect(EVAL_SANDBOX_MUTATING_TOOL_NAMES).toEqual([
+            'create_appointment',
+            'create_property_booking',
+            'create_tour_booking',
+            'place_order',
+            'book_class',
+            'enroll_student',
+            'create_service_request',
+            'request_photo_quote',
+            'create_vehicle_rental',
+            'create_pet_boarding',
+            'place_catalog_order',
+        ]);
+        expect(EVAL_WRITABLE_TOOL_NAMES).toEqual([
+            ...EVAL_SANDBOX_MUTATING_TOOL_NAMES,
+            'file_claim',
+        ]);
+        for (const [name, family] of Object.entries(EVAL_WRITER_SANDBOX_FAMILIES)) {
+            expect(family.status).not.toBe('pending');
+            if (name === 'insurance_claims') expect(family.status).toBe('identity_challenge');
+            else expect(family.status).toBe('audited');
+        }
     });
 
     it('only contains real writers, never a read dressed up as one', () => {
@@ -49,10 +72,10 @@ describe('eval writable tools', () => {
         expect(canEvalExecuteWriter('create_appointment', undefined)).toBe(false);
     });
 
-    it('refuses writers that were never audited for evalMode', () => {
+    it('refuses writer families that have no isolated eval contract', () => {
         // These suppress nothing: they would send real emails, real payment
         // links and real notifications from a test run.
-        for (const name of ['create_property_booking', 'place_order', 'create_payment_link', 'refund_payment']) {
+        for (const name of ['create_payment_link', 'refund_payment', 'apply_discount', 'register_pet']) {
             expect(isEvalWritableToolName(name)).toBe(false);
             expect(canEvalExecuteWriter(name, EVAL_SANDBOX_CONTACT_ID)).toBe(false);
         }

@@ -161,6 +161,25 @@ describe('PrismaService tenant schema lifecycle', () => {
             expect(h.tenantDelete).not.toHaveBeenCalled();
         });
 
+        it('purges the integration work registry explicitly before tenant deletion', async () => {
+            const h = makePublicPurgeService(['integration_work_tenants', 'users']);
+
+            const deleted = await h.service.purgeTenantPublicDataAtomic(
+                tenantIdA,
+                { name: 'Acme', schemaName: 'tenant_acme' },
+            );
+
+            expect(deleted.integration_work_tenants).toBe(1);
+            expect(h.executeRaw).toHaveBeenCalledWith(
+                'DELETE FROM public."integration_work_tenants" WHERE tenant_id::text = $1::uuid::text',
+                tenantIdA,
+            );
+            const registryDeleteOrder = h.executeRaw.mock.invocationCallOrder.find((_, index) => (
+                String(h.executeRaw.mock.calls[index][0]).includes('integration_work_tenants')
+            ));
+            expect(registryDeleteOrder).toBeLessThan(h.tenantDelete.mock.invocationCallOrder[0]);
+        });
+
         it('takes the tenant row lock before the retention scan and fiscal stamp', async () => {
             const h = makePublicPurgeService(['fiscal_invoices', 'users']);
 

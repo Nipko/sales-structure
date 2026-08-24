@@ -7,8 +7,16 @@ import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CurrentUser, CurrentTenant } from '../../common/decorators/tenant.decorator';
-import { ChannelManagerService, ChannelManagerConfig } from './channel-manager.service';
+import { ChannelManagerService } from './channel-manager.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import {
+    ChannelManagerAvailabilityQueryDto,
+    ChannelManagerReservationQueryDto,
+    CreateChannelManagerListingDto,
+    CreateChannelManagerReservationDto,
+    MapChannelManagerListingDto,
+    UpdateChannelManagerConfigDto,
+} from './channel-manager.dto';
 
 @ApiTags('channel-manager')
 @Controller('channel-manager')
@@ -32,7 +40,7 @@ export class ChannelManagerController {
     @Put('config')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Update channel manager config' })
-    async updateConfig(@CurrentUser() user: any, @Body() body: Partial<ChannelManagerConfig>) {
+    async updateConfig(@CurrentUser() user: any, @Body() body: UpdateChannelManagerConfigDto) {
         const config = await this.cm.updateConfig(user.tenantId, body);
         return {
             success: true,
@@ -50,7 +58,11 @@ export class ChannelManagerController {
     @Post('listings')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Create a new listing' })
-    async createListing(@CurrentUser() user: any, @CurrentTenant() tenantId: string, @Body() body: any) {
+    async createListing(
+        @CurrentUser() user: any,
+        @CurrentTenant() tenantId: string,
+        @Body() body: CreateChannelManagerListingDto,
+    ) {
         const existing = await this.cm.listListings(tenantId);
         await this.throttle.enforcePlanLimit(user.tenantId, 'maxProperties', existing?.length ?? 0, 'propiedades');
         const listing = await this.cm.createListing(tenantId, body);
@@ -61,19 +73,19 @@ export class ChannelManagerController {
     @ApiOperation({ summary: 'List reservations' })
     async listReservations(
         @CurrentTenant() tenantId: string,
-        @Query('listingId') listingId?: string,
-        @Query('status') status?: string,
-        @Query('fromDate') fromDate?: string,
-        @Query('toDate') toDate?: string,
+        @Query() query: ChannelManagerReservationQueryDto,
     ) {
-        const reservations = await this.cm.listReservations(tenantId, { listingId, status, fromDate, toDate });
+        const reservations = await this.cm.listReservations(tenantId, query);
         return { success: true, data: reservations };
     }
 
     @Post('reservations')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a reservation' })
-    async createReservation(@CurrentTenant() tenantId: string, @Body() body: any) {
+    async createReservation(
+        @CurrentTenant() tenantId: string,
+        @Body() body: CreateChannelManagerReservationDto,
+    ) {
         const reservation = await this.cm.createReservation(tenantId, body);
         return { success: true, data: reservation };
     }
@@ -82,11 +94,9 @@ export class ChannelManagerController {
     @ApiOperation({ summary: 'Get availability calendar for a listing' })
     async getAvailability(
         @CurrentTenant() tenantId: string,
-        @Query('listingId') listingId: string,
-        @Query('from') from: string,
-        @Query('to') to: string,
+        @Query() query: ChannelManagerAvailabilityQueryDto,
     ) {
-        const availability = await this.cm.getAvailability(tenantId, listingId, from, to);
+        const availability = await this.cm.getAvailability(tenantId, query.listingId, query.from, query.to);
         return { success: true, data: availability };
     }
 
@@ -101,7 +111,7 @@ export class ChannelManagerController {
     @Put('mappings')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Bridge (or unbridge) a property to a channel-manager listing' })
-    async mapListing(@CurrentTenant() tenantId: string, @Body() body: any) {
+    async mapListing(@CurrentTenant() tenantId: string, @Body() body: MapChannelManagerListingDto) {
         const propertyId = body?.propertyId === null || body?.propertyId === undefined
             ? null
             : String(body.propertyId);
@@ -115,5 +125,12 @@ export class ChannelManagerController {
     async syncHostaway(@CurrentUser() user: any) {
         const result = await this.cm.syncHostaway(user.tenantId);
         return { success: true, data: result };
+    }
+
+    @Post('test/hostaway')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Test Hostaway credentials without mutating the mirror' })
+    async testHostaway(@CurrentUser() user: any) {
+        return { success: true, data: await this.cm.testHostawayConnection(user.tenantId) };
     }
 }

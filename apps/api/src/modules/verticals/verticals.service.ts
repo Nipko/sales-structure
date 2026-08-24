@@ -21,6 +21,8 @@ import {
     VerticalDefinition,
     VerticalServiceDefinition,
     VerticalStageDefinition,
+    buildDomainContractDraft,
+    subtypeTerminologyFor,
 } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
@@ -34,8 +36,76 @@ import {
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 import { withResolvedVerticalPipeline } from './vertical-pipeline-contract';
 import { reconcileVerticalSubtypePersonaRules } from '../persona/vertical-subtype-persona-contract';
+import { resolveVerticalSelection } from './vertical-identifiers';
 
 export const VERTICAL_PROVISIONING_VERSION = 2;
+
+const PRIMARY_OBJECT_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
+    appointment: 'appointments',
+    catalog_item: 'inventory',
+    course: 'courses',
+    food_order: 'foodOrders',
+    insurance_policy: 'insurance',
+    membership: 'memberships',
+    pet: 'pets',
+    pet_boarding: 'resourceRentals',
+    photo_session: 'photoSessions',
+    professional_case: 'cases',
+    property_booking: 'properties',
+    real_estate_listing: 'listings',
+    service_request: 'serviceRequests',
+    tour_package: 'tours',
+    vehicle: 'vehicles',
+    vehicle_rental: 'vehicles',
+});
+
+// The primary object usually names the catalogue (rooms, fleet, products),
+// while daily work lives in a different register (bookings, rentals, orders).
+// Keep those two surfaces distinct and put the register first. Relabelling the
+// catalogue as the register recreates the exact tourism defect this producer
+// exists to prevent.
+const DAILY_WORK_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
+    appointment: 'appointments',
+    catalog_item: 'orders',
+    food_order: 'foodOrders',
+    pet_boarding: 'resourceRentals',
+    photo_session: 'photoSessions',
+    professional_case: 'cases',
+    property_booking: 'stays',
+    service_request: 'serviceRequests',
+    tour_package: 'tourBookings',
+    vehicle_rental: 'resourceRentals',
+});
+
+const ROUTE_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
+    '/admin/appointments': 'appointments',
+    '/admin/stays': 'stays',
+    '/admin/tour-bookings': 'tourBookings',
+    '/admin/resource-rentals': 'resourceRentals',
+    '/admin/food-orders': 'foodOrders',
+    '/admin/orders': 'orders',
+    '/admin/service-requests': 'serviceRequests',
+    '/admin/classes': 'classes',
+    '/admin/photo-sessions': 'photoSessions',
+    '/admin/pets': 'pets',
+    '/admin/cases': 'cases',
+    '/admin/memberships': 'memberships',
+    '/admin/insurance': 'insurance',
+    '/admin/properties': 'properties',
+    '/admin/tours': 'tours',
+    '/admin/listings': 'listings',
+    '/admin/vehicles': 'vehicles',
+    '/admin/menu': 'menu',
+    '/admin/courses': 'courses',
+    '/admin/treatment-plans': 'treatmentPlans',
+    '/admin/service-catalog': 'serviceCatalog',
+    '/admin/inventory': 'inventory',
+});
+
+// Declared terminology and the implemented screen represent different objects.
+// Relabelling the existing screen would hide the product gap instead of fixing
+// it (a vehicle inventory does not become work orders because the menu says so).
+const SUBTYPE_NAVIGATION_REVIEW = new Set(['automotriz/taller']);
 
 type VerticalProvisioningStatus = 'pending' | 'complete' | 'failed';
 type VerticalProvisioningStep =
@@ -235,6 +305,31 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
         repuestos: { skipAgenda: true, extraTools: ['catalog'] },
         alquiler: { skipAgenda: true },
     },
+    retail: {
+        moda: { skipAgenda: true },
+        electronica: { skipAgenda: true },
+        marketplace: { skipAgenda: true },
+        hogar: {
+            services: [
+                {
+                    name: { es: 'Entrega programada', en: 'Scheduled delivery', pt: 'Entrega agendada', fr: 'Livraison programmée' },
+                    description: { es: 'Ventana de entrega de muebles o artículos para el hogar', en: 'Delivery window for furniture or home goods', pt: 'Janela de entrega de móveis ou artigos para casa', fr: 'Créneau de livraison de meubles ou articles pour la maison' },
+                    durationMinutes: 120,
+                    price: 0,
+                    currency: 'COP',
+                    category: 'entrega',
+                },
+                {
+                    name: { es: 'Instalación o montaje', en: 'Installation or assembly', pt: 'Instalação ou montagem', fr: 'Installation ou montage' },
+                    description: { es: 'Visita para instalar o montar el producto comprado', en: 'Visit to install or assemble the purchased product', pt: 'Visita para instalar ou montar o produto comprado', fr: 'Visite pour installer ou monter le produit acheté' },
+                    durationMinutes: 180,
+                    price: 0,
+                    currency: 'COP',
+                    category: 'instalacion',
+                },
+            ],
+        },
+    },
     turismo: {
         // Tours and travel packages use tour_bookings, not fixed appointment
         // slots. Hotels/rentals use property_bookings by date range.
@@ -248,13 +343,34 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
     servicios_hogar: {
         // Field jobs are dispatched through service_requests (urgency,
         // address, technician and lifecycle), never through generic citas.
-        plomeria: { skipAgenda: true },
-        electricidad: { skipAgenda: true },
-        fumigacion: { skipAgenda: true },
-        limpieza: { skipAgenda: true },
-        jardineria: { skipAgenda: true },
-        cerrajeria: { skipAgenda: true },
-        pintura: { skipAgenda: true },
+        plomeria: {
+            skipAgenda: true, seedServicesWithoutAgenda: true,
+            services: [{ name: { es: 'Visita de plomería', en: 'Plumbing visit', pt: 'Visita de encanamento', fr: 'Visite de plomberie' }, description: { es: 'Diagnóstico y atención en sitio', en: 'On-site assessment and service', pt: 'Avaliação e atendimento no local', fr: 'Diagnostic et intervention sur place' }, durationMinutes: 90, price: 0, currency: 'COP', category: 'plomeria' }],
+        },
+        electricidad: {
+            skipAgenda: true, seedServicesWithoutAgenda: true,
+            services: [{ name: { es: 'Visita eléctrica', en: 'Electrical visit', pt: 'Visita elétrica', fr: 'Visite électrique' }, description: { es: 'Diagnóstico y atención en sitio', en: 'On-site assessment and service', pt: 'Avaliação e atendimento no local', fr: 'Diagnostic et intervention sur place' }, durationMinutes: 90, price: 0, currency: 'COP', category: 'electricidad' }],
+        },
+        fumigacion: {
+            skipAgenda: true, seedServicesWithoutAgenda: true,
+            services: [{ name: { es: 'Visita de fumigación', en: 'Pest-control visit', pt: 'Visita de dedetização', fr: 'Visite de désinsectisation' }, description: { es: 'Evaluación y tratamiento en sitio', en: 'On-site assessment and treatment', pt: 'Avaliação e tratamento no local', fr: 'Évaluation et traitement sur place' }, durationMinutes: 120, price: 0, currency: 'COP', category: 'fumigacion' }],
+        },
+        limpieza: {
+            skipAgenda: true, seedServicesWithoutAgenda: true,
+            services: [{ name: { es: 'Servicio de limpieza', en: 'Cleaning service', pt: 'Serviço de limpeza', fr: 'Service de nettoyage' }, description: { es: 'Bloque operativo de limpieza en sitio', en: 'On-site cleaning service window', pt: 'Janela operacional de limpeza no local', fr: 'Créneau de nettoyage sur place' }, durationMinutes: 180, price: 0, currency: 'COP', category: 'limpieza' }],
+        },
+        jardineria: {
+            skipAgenda: true, seedServicesWithoutAgenda: true,
+            services: [{ name: { es: 'Servicio de jardinería', en: 'Gardening service', pt: 'Serviço de jardinagem', fr: 'Service de jardinage' }, description: { es: 'Visita de mantenimiento o diagnóstico', en: 'Maintenance or assessment visit', pt: 'Visita de manutenção ou avaliação', fr: 'Visite d’entretien ou de diagnostic' }, durationMinutes: 180, price: 0, currency: 'COP', category: 'jardineria' }],
+        },
+        cerrajeria: {
+            skipAgenda: true, seedServicesWithoutAgenda: true,
+            services: [{ name: { es: 'Visita de cerrajería', en: 'Locksmith visit', pt: 'Visita de chaveiro', fr: 'Visite de serrurerie' }, description: { es: 'Atención de cerradura en sitio', en: 'On-site lock service', pt: 'Atendimento de fechadura no local', fr: 'Intervention de serrurerie sur place' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'cerrajeria' }],
+        },
+        pintura: {
+            skipAgenda: true, seedServicesWithoutAgenda: true,
+            services: [{ name: { es: 'Visita de medición', en: 'Measurement visit', pt: 'Visita de medição', fr: 'Visite de métrage' }, description: { es: 'Medición y evaluación previa a la cotización', en: 'Measurement and assessment before quoting', pt: 'Medição e avaliação antes da cotação', fr: 'Mesure et évaluation avant devis' }, durationMinutes: 90, price: 0, currency: 'COP', category: 'pintura' }],
+        },
     },
     pet_services: {
         guarderia: {
@@ -525,7 +641,12 @@ export class VerticalsService {
                 deepMarketingAllowed: policy.deepMarketingAllowed,
                 nextCertificationGate: policy.nextCertificationGate,
             },
+            domainContract: buildDomainContractDraft(profile.industry, profile.subtype),
             capability: profile.capability,
+            navigation: {
+                sidebar: config.sidebar,
+                routes: profile.capability.routes,
+            },
             audit: {
                 benchmark: profile.benchmark,
                 primaryGap: profile.primaryGap,
@@ -558,6 +679,12 @@ export class VerticalsService {
         lang: string,
         options?: { assertLifecycleOwned?: () => Promise<void> },
     ): Promise<void> {
+        // Bootstrap is also an API boundary: retries, repair jobs and tests call
+        // it directly. Persisting an alias here would recreate the exact
+        // split-brain that the signup/admin resolvers now prevent.
+        const canonicalSelection = resolveVerticalSelection(industry, subType, 'existing');
+        industry = canonicalSelection.industry;
+        subType = canonicalSelection.subType;
         const definition = withResolvedVerticalPipeline(
             getVerticalDefinition(industry),
             subType,
@@ -732,8 +859,9 @@ export class VerticalsService {
                     dashboard: definition.dashboard,
                     bookingEnabled: effectiveBooking,
                 };
+                const subtypeAwareConfig = this.withSubtypeNavigation(provisionalConfig);
                 const promotedConfig: TenantVerticalConfig = {
-                    ...provisionalConfig,
+                    ...subtypeAwareConfig,
                     manifestVersion: capabilityManifest.manifestVersion,
                     effectiveCapabilities: this.getEffectiveCapabilities(
                         capabilityManifest,
@@ -794,7 +922,7 @@ export class VerticalsService {
                 await this.runProvisioningStep(provisioningState, 'invariants', assertLockOwned, async () => {
                     provisioningState.invariants = await this.assertProvisioningInvariants(
                         tenantId, schemaName, definition, subType, l, provisioningState.quotaPolicy!,
-                        selectedStages, selectedServices, effectiveBooking, provisionalConfig, query,
+                        selectedStages, selectedServices, effectiveBooking, subtypeAwareConfig, query,
                     );
                 });
 
@@ -1358,7 +1486,7 @@ export class VerticalsService {
         };
     }
 
-    async getVerticalConfig(tenantId: string): Promise<TenantVerticalConfig | null> {
+    async getVerticalConfig(tenantId: string, repairAttempt = 0): Promise<TenantVerticalConfig | null> {
         const cacheKey = `vertical:${tenantId}`;
         // The provisioning state in PostgreSQL is the publication fence. A
         // Redis hit can never bypass this durable read because a cached v2
@@ -1370,27 +1498,92 @@ export class VerticalsService {
         if (!tenant) return null;
 
         const settings = (tenant.settings as any) || {};
-        const mayPublishCurrentManifest = this.hasCompletedCurrentProvisioning(
-            settings.verticalProvisioning,
-        );
+        let provisioningState = settings.verticalProvisioning;
+        let mayPublishCurrentManifest = this.hasCompletedCurrentProvisioning(provisioningState);
         const cached = await this.redis.getJson<TenantVerticalConfig>(cacheKey);
         const storedConfig = settings.verticalConfig as TenantVerticalConfig | undefined;
         let config = storedConfig || cached || undefined;
+
+        // Heal legacy subtype aliases at the publication boundary. Identity,
+        // navigation, terminology and capability manifest are updated as one
+        // coherent snapshot; the PostgreSQL merge below updates both
+        // `tenants.industry` and `settings.verticalConfig` in one statement.
+        if (config) {
+            try {
+                const canonical = resolveVerticalSelection(
+                    config.industry || tenant.industry,
+                    config.subType ?? settings?.subType ?? null,
+                    'existing',
+                );
+                if (canonical.industry !== config.industry || canonical.subType !== (config.subType ?? null)) {
+                    const definition = getVerticalDefinition(canonical.industry);
+                    config = {
+                        ...config,
+                        industry: canonical.industry,
+                        subType: canonical.subType,
+                        terminology: definition.terminology,
+                        sidebar: definition.sidebar,
+                        dashboard: definition.dashboard,
+                    };
+                    // Identity changed, therefore the old completed bootstrap
+                    // is evidence for the old business only. Fence the target
+                    // contract until the provisioning reconciler patches the
+                    // persona, seeds, agenda and tools for the canonical pair.
+                    provisioningState = {
+                        ...(provisioningState && typeof provisioningState === 'object'
+                            ? provisioningState
+                            : {}),
+                        status: 'pending',
+                        industry: canonical.industry,
+                        subType: canonical.subType,
+                        completedSteps: [],
+                        updatedAt: new Date().toISOString(),
+                    };
+                    mayPublishCurrentManifest = false;
+                }
+            } catch (error: any) {
+                // Unknown historic ids stay fenced by the existing manifest
+                // publication rules; inventing a fallback would widen access.
+                this.logger.warn(`Could not canonicalize vertical config for ${tenantId}: ${error?.message}`);
+            }
+        }
+
+        if (config) config = this.withSubtypeNavigation(config);
 
         // Fallback for tenants created before settings.verticalConfig was
         // persisted: rebuild the config on the fly from tenant.industry and
         // the static vertical definition. We also write it back to settings so
         // future calls don't have to rebuild.
         if (!config && tenant.industry) {
-            const definition = getVerticalDefinition(tenant.industry);
-            const resolved = this.resolveCapabilityManifest(
+            const canonical = resolveVerticalSelection(
                 tenant.industry,
                 settings?.subType ?? null,
+                'existing',
+            );
+            const fallbackIdentityChanged = canonical.industry !== tenant.industry
+                || canonical.subType !== (settings?.subType ?? null);
+            if (fallbackIdentityChanged) {
+                provisioningState = {
+                    ...(provisioningState && typeof provisioningState === 'object'
+                        ? provisioningState
+                        : {}),
+                    status: 'pending',
+                    industry: canonical.industry,
+                    subType: canonical.subType,
+                    completedSteps: [],
+                    updatedAt: new Date().toISOString(),
+                };
+                mayPublishCurrentManifest = false;
+            }
+            const definition = getVerticalDefinition(canonical.industry);
+            const resolved = this.resolveCapabilityManifest(
+                canonical.industry,
+                canonical.subType,
             );
             const effectiveBooking = resolved.capabilities.includes('appointment_booking');
             const fallbackConfig: TenantVerticalConfig = {
-                industry: tenant.industry,
-                subType: settings?.subType ?? null,
+                industry: canonical.industry,
+                subType: canonical.subType,
                 terminology: definition.terminology,
                 sidebar: definition.sidebar,
                 dashboard: definition.dashboard,
@@ -1400,12 +1593,23 @@ export class VerticalsService {
                 ? this.withCurrentCapabilityManifest(fallbackConfig)
                 : this.withoutUnverifiedCapabilityManifest(
                     fallbackConfig,
-                    settings.verticalProvisioning,
+                    provisioningState,
                 );
             try {
-                await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+                const persisted = await this.persistVerticalConfigRepairCas(tenantId, settings, tenant.industry, {
                     verticalConfig: config,
-                });
+                    ...(fallbackIdentityChanged
+                        ? { verticalProvisioning: provisioningState, subType: config.subType }
+                        : {}),
+                }, config.industry);
+                if (!persisted) {
+                    if (repairAttempt >= 2) {
+                        this.logger.warn(`Vertical config CAS kept changing for ${tenantId}; failing closed`);
+                        return null;
+                    }
+                    await this.redis.del(cacheKey).catch(() => undefined);
+                    return this.getVerticalConfig(tenantId, repairAttempt + 1);
+                }
                 this.logger.log(`Backfilled verticalConfig for tenant ${tenantId} (industry=${tenant.industry})`);
             } catch (err: any) {
                 this.logger.warn(`Failed to persist backfilled verticalConfig for ${tenantId}: ${err?.message}`);
@@ -1415,16 +1619,27 @@ export class VerticalsService {
                 ? this.withCurrentCapabilityManifest(config)
                 : this.withoutUnverifiedCapabilityManifest(
                     config,
-                    settings.verticalProvisioning,
+                    provisioningState,
                 );
             const mustPersist = !storedConfig
                 || JSON.stringify(storedConfig) !== JSON.stringify(resolved);
             config = resolved;
             if (mustPersist) {
                 try {
-                    await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+                    const persisted = await this.persistVerticalConfigRepairCas(tenantId, settings, tenant.industry, {
                         verticalConfig: config,
-                    });
+                        ...(provisioningState !== settings.verticalProvisioning
+                            ? { verticalProvisioning: provisioningState, subType: config.subType }
+                            : {}),
+                    }, config.industry);
+                    if (!persisted) {
+                        if (repairAttempt >= 2) {
+                            this.logger.warn(`Vertical config CAS kept changing for ${tenantId}; failing closed`);
+                            return null;
+                        }
+                        await this.redis.del(cacheKey).catch(() => undefined);
+                        return this.getVerticalConfig(tenantId, repairAttempt + 1);
+                    }
                     this.logger.log(`Reconciled verticalConfig publication state for tenant ${tenantId}`);
                 } catch (err: any) {
                     this.logger.warn(`Failed to persist verticalConfig publication state for ${tenantId}: ${err?.message}`);
@@ -1437,6 +1652,40 @@ export class VerticalsService {
         }
 
         return config || null;
+    }
+
+    /**
+     * Lazy repair may only replace the vertical snapshot it actually read.
+     * Provisioning can promote a newer contract between the initial read and
+     * this write; a compare-and-swap conflict is retried from the live row and
+     * never overwrites that promotion with an older manifest.
+     */
+    private async persistVerticalConfigRepairCas(
+        tenantId: string,
+        observedSettings: Record<string, any>,
+        observedIndustry: string | null | undefined,
+        patch: Record<string, unknown>,
+        industry: string,
+    ): Promise<boolean> {
+        const affected = await this.prisma.$executeRawUnsafe(
+            `UPDATE public.tenants
+                SET settings = COALESCE(settings, '{}'::jsonb) || $2::jsonb,
+                    industry = $3::text,
+                    updated_at = NOW()
+              WHERE id = $1::uuid
+                AND COALESCE(settings -> 'verticalConfig', 'null'::jsonb) = $4::jsonb
+                AND COALESCE(settings -> 'verticalProvisioning', 'null'::jsonb) = $5::jsonb
+                AND COALESCE(settings -> 'subType', 'null'::jsonb) = $6::jsonb
+                AND industry IS NOT DISTINCT FROM $7::text`,
+            tenantId,
+            JSON.stringify(patch),
+            industry,
+            JSON.stringify(observedSettings.verticalConfig ?? null),
+            JSON.stringify(observedSettings.verticalProvisioning ?? null),
+            JSON.stringify(observedSettings.subType ?? null),
+            observedIndustry,
+        );
+        return Number(affected) === 1;
     }
 
     private hasCompletedCurrentProvisioning(state: unknown): boolean {
@@ -1500,16 +1749,59 @@ export class VerticalsService {
         );
     }
 
+    /**
+     * Produce subtype-aware sidebar semantics from the same manifest and
+     * terminology that govern runtime tools. No hand-maintained menu taxonomy:
+     * routes become order keys and the primary object's declared plural labels
+     * its own surface in all four supported languages.
+     */
+    private withSubtypeNavigation(config: TenantVerticalConfig): TenantVerticalConfig {
+        let manifest: ResolvedVerticalCapabilityManifest;
+        try {
+            manifest = this.resolveCapabilityManifest(config.industry, config.subType);
+        } catch {
+            return config;
+        }
+        const declaredRouteOrder = manifest.routes
+            .map(route => ROUTE_NAV_ITEM[route])
+            .filter((key): key is string => !!key);
+        const dailyWorkItem = DAILY_WORK_NAV_ITEM[manifest.primaryObject];
+        const routeOrder = dailyWorkItem && declaredRouteOrder.includes(dailyWorkItem)
+            ? [dailyWorkItem, ...declaredRouteOrder.filter(item => item !== dailyWorkItem)]
+            : declaredRouteOrder;
+        const itemOrder = [...new Set([
+            ...routeOrder,
+            ...(config.sidebar?.itemOrder || []),
+        ])];
+        const labelOverrides = { ...(config.sidebar?.labelOverrides || {}) };
+        const terms = subtypeTerminologyFor(config.industry, config.subType);
+        const primaryItem = PRIMARY_OBJECT_NAV_ITEM[manifest.primaryObject];
+        const profileId = `${config.industry}/${config.subType || '__none__'}`;
+        if (!SUBTYPE_NAVIGATION_REVIEW.has(profileId)
+            && primaryItem && routeOrder.includes(primaryItem)) {
+            const label = terms?.primaryObjectPlural || terms?.primaryObject;
+            if (label) labelOverrides[primaryItem] = { ...label };
+        }
+        return {
+            ...config,
+            sidebar: {
+                ...config.sidebar,
+                labelOverrides,
+                itemOrder,
+            },
+        };
+    }
+
     private withCurrentCapabilityManifest(config: TenantVerticalConfig): TenantVerticalConfig {
         const manifest = this.resolveCapabilityManifest(config.industry, config.subType);
         const bookingEnabled = manifest.capabilities.includes('appointment_booking')
             && config.bookingEnabled === true;
-        return {
+        return this.withSubtypeNavigation({
             ...config,
             bookingEnabled,
             manifestVersion: manifest.manifestVersion,
             effectiveCapabilities: this.getEffectiveCapabilities(manifest, bookingEnabled),
-        };
+        });
     }
 
     private async withTenantQuery<T>(

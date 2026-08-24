@@ -18,6 +18,14 @@ export function fakeSettingsWriter(read: () => Record<string, any>,
         if (!/UPDATE public\.tenants/.test(sql)) return 0;
         const settings = { ...(read() || {}) };
 
+        // mutateTenantSettingsAtomic: replace the complete document selected
+        // under FOR UPDATE. This is safe in production because it is the live
+        // row, not a snapshot read before the transaction.
+        if (/SET settings = \$2::jsonb/.test(sql)) {
+            write(JSON.parse(params[1]));
+            return 1;
+        }
+
         // deleteTenantSettingsLeaf: `... - $3::text`
         if (/- \$3::text/.test(sql)) {
             const branch = String(params[1]).replace(/[{}]/g, '');
@@ -53,4 +61,23 @@ export function fakeSettingsWriter(read: () => Record<string, any>,
         write(settings);
         return 1;
     };
+}
+
+/** Minimal interactive-transaction double for the atomic settings mutators. */
+export function fakeSettingsTransaction(
+    read: () => Record<string, any>,
+    write: (next: Record<string, any>) => void,
+) {
+    const execute = fakeSettingsWriter(read, write);
+    return async <T>(callback: (tx: any) => Promise<T>): Promise<T> => callback({
+        $queryRawUnsafe: async (sql: string, _tenantId: string, path?: string) => {
+            if (/AS settings/.test(sql)) return [{ settings: { ...(read() || {}) } }];
+            if (!/SELECT settings #>/.test(sql)) return [];
+            const segments = String(path).replace(/[{}]/g, '').split(',').filter(Boolean);
+            let value: any = read();
+            for (const segment of segments) value = value?.[segment];
+            return [{ value: value ?? null }];
+        },
+        $executeRawUnsafe: execute,
+    });
 }

@@ -16,9 +16,10 @@ import { CsatTriggerService } from './csat-trigger.service';
 import { AiResolutionService } from './ai-resolution.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
+import { PublicApiKeyModule } from '../public-api/public-api-key.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule],
+    imports: [PrismaModule, RedisModule, PublicApiKeyModule],
     providers: [
         AnalyticsService, DashboardAnalyticsService, MetricsAggregationService,
         AlertsService, ScheduledReportsService, SavedReportsService,

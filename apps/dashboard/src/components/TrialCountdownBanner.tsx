@@ -24,11 +24,10 @@ export default function TrialCountdownBanner({ restriction }: Props) {
         { at: string; amountCents: number; currency: string } | null
     >(null);
     const [dismissed, setDismissed] = useState(false);
-
-    if (isSuperAdmin && !impersonating) return null;
+    const hiddenForSuperAdmin = isSuperAdmin && !impersonating;
 
     useEffect(() => {
-        if (!activeTenantId) return;
+        if (hiddenForSuperAdmin || !activeTenantId) return;
         let cancelled = false;
         (async () => {
             try {
@@ -52,16 +51,16 @@ export default function TrialCountdownBanner({ restriction }: Props) {
             }
         })();
         return () => { cancelled = true; };
-    }, [activeTenantId]);
+    }, [activeTenantId, hiddenForSuperAdmin]);
 
     const dismissalKey = activeTenantId
         ? `trial-banner-dismissed:${activeTenantId}:${new Date().toISOString().slice(0, 10)}`
         : null;
 
     useEffect(() => {
-        if (!dismissalKey || typeof window === "undefined") return;
+        if (hiddenForSuperAdmin || !dismissalKey || typeof window === "undefined") return;
         setDismissed(window.localStorage.getItem(dismissalKey) === "1");
-    }, [dismissalKey]);
+    }, [dismissalKey, hiddenForSuperAdmin]);
 
     const handleDismiss = () => {
         if (dismissalKey && typeof window !== "undefined") {
@@ -69,6 +68,8 @@ export default function TrialCountdownBanner({ restriction }: Props) {
         }
         setDismissed(true);
     };
+
+    if (hiddenForSuperAdmin) return null;
 
     // Soft lock banner — NOT dismissable
     if (restriction?.level === "soft_lock") {

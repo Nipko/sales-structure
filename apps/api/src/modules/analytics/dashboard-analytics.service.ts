@@ -14,6 +14,11 @@ export interface KPI {
     changePercent: number;
 }
 
+/** Certified conversational surfaces represented in tenant conversation data. */
+export const ANALYTICS_CONVERSATIONAL_CHANNELS = [
+    'whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget',
+] as const;
+
 @Injectable()
 export class DashboardAnalyticsService {
     private readonly logger = new Logger(DashboardAnalyticsService.name);
@@ -193,11 +198,15 @@ export class DashboardAnalyticsService {
             start, end,
         );
 
-        // Pivot: { date, whatsapp, instagram, messenger, telegram }
+        // Pivot every certified conversational surface. Unknown/internal
+        // adapters are not silently relabelled as WhatsApp.
         const byDate: Record<string, any> = {};
         for (const row of rows) {
             if (!byDate[row.date]) {
-                byDate[row.date] = { date: row.date, whatsapp: 0, instagram: 0, messenger: 0, telegram: 0 };
+                byDate[row.date] = {
+                    date: row.date,
+                    ...Object.fromEntries(ANALYTICS_CONVERSATIONAL_CHANNELS.map(channel => [channel, 0])),
+                };
             }
             const ch = row.channel || 'whatsapp';
             if (ch in byDate[row.date]) {
@@ -380,9 +389,9 @@ export class DashboardAnalyticsService {
 
         lines.push('');
         lines.push('=== Conversations by Channel ===');
-        lines.push('Date,WhatsApp,Instagram,Messenger,Telegram');
+        lines.push('Date,WhatsApp,Instagram,Messenger,Telegram,Web Chat');
         for (const row of volume.series) {
-            lines.push(`${row.date},${row.whatsapp},${row.instagram},${row.messenger},${row.telegram}`);
+            lines.push(`${row.date},${row.whatsapp},${row.instagram},${row.messenger},${row.telegram},${row.web_widget}`);
         }
 
         lines.push('');
@@ -913,12 +922,13 @@ export class DashboardAnalyticsService {
         }
 
         // Channel aggregation
-        const channels: Record<string, number> = { whatsapp: 0, instagram: 0, messenger: 0, telegram: 0 };
+        const channels: Record<string, number> = Object.fromEntries(
+            ANALYTICS_CONVERSATIONAL_CHANNELS.map(channel => [channel, 0]),
+        );
         for (const row of volume.series) {
-            channels.whatsapp += row.whatsapp || 0;
-            channels.instagram += row.instagram || 0;
-            channels.messenger += row.messenger || 0;
-            channels.telegram += row.telegram || 0;
+            for (const channel of ANALYTICS_CONVERSATIONAL_CHANNELS) {
+                channels[channel] += row[channel] || 0;
+            }
         }
 
         return {

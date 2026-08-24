@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationOutboxService } from './integration-outbox.service';
 import { IntegrationOutboxWorker } from './integration-outbox.worker';
@@ -52,8 +53,31 @@ export class IntegrationsController {
         };
     }
 
-    @Get('outbox/:tenantId')
+    @Get('outbox')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Revisión global del outbox de integraciones (super_admin)' })
+    async outboxOverview() {
+        const tenants = await this.outbox.trackedTenants('outbox');
+        const review = [];
+
+        // Deliberately bounded by the work registry and sequential: opening an
+        // Ops page must not fan out an unbounded number of tenant transactions.
+        for (const tenant of tenants) {
+            const state = await this.outbox.review(tenant.schemaName);
+            review.push({
+                tenantId: tenant.id,
+                tenantName: tenant.name,
+                byStatus: state.byStatus,
+                attention: state.attention,
+            });
+        }
+
+        return { tenants: review };
+    }
+
+    @Get('outbox/:tenantId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @Roles('super_admin')
     @ApiOperation({ summary: 'Escrituras pendientes y detenidas de un tenant (super_admin)' })
     async outboxReview(@Param('tenantId') tenantId: string) {

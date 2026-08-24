@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException, NotFoundException, BadRequestEx
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
 
 export interface SamlConfig {
@@ -55,35 +56,34 @@ export class SamlService {
         });
         if (!tenant) throw new NotFoundException('Tenant not found');
 
-        const currentSettings = (tenant.settings as Record<string, any>) || {};
-        const currentSaml = currentSettings.saml || {};
-
-        const merged: SamlConfig = {
-            enabled: config.enabled ?? currentSaml.enabled ?? false,
-            idpEntityId: config.idpEntityId ?? currentSaml.idpEntityId ?? '',
-            idpSsoUrl: config.idpSsoUrl ?? currentSaml.idpSsoUrl ?? '',
-            idpSloUrl: config.idpSloUrl ?? currentSaml.idpSloUrl,
-            idpCertificate: config.idpCertificate ?? currentSaml.idpCertificate ?? '',
-            spEntityId: config.spEntityId ?? currentSaml.spEntityId ?? `https://api.parallly-chat.cloud/api/v1/auth/saml/metadata/${tenantId}`,
-            emailDomains: config.emailDomains ?? currentSaml.emailDomains ?? [],
-            forceSso: config.forceSso ?? currentSaml.forceSso ?? false,
-            defaultRole: config.defaultRole ?? currentSaml.defaultRole ?? 'tenant_agent',
-            attributeMapping: config.attributeMapping ?? currentSaml.attributeMapping ?? {},
-        };
-
-        if (merged.enabled) {
-            if (!merged.idpEntityId) throw new BadRequestException('IdP Entity ID is required');
-            if (!merged.idpSsoUrl) throw new BadRequestException('IdP SSO URL is required');
-            if (!merged.idpCertificate) throw new BadRequestException('IdP Certificate is required');
-            if (!merged.emailDomains.length) throw new BadRequestException('At least one email domain is required');
-        }
-
-        merged.emailDomains = merged.emailDomains.map(d => d.toLowerCase().trim());
-
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings: { ...currentSettings, saml: { ...merged } } as any },
-        });
+        const merged = await mutateTenantSettingsBranchAtomic(
+            this.prisma,
+            tenantId,
+            'saml',
+            (value): SamlConfig => {
+                const currentSaml = (value && typeof value === 'object' ? value : {}) as Partial<SamlConfig>;
+                const next: SamlConfig = {
+                    enabled: config.enabled ?? currentSaml.enabled ?? false,
+                    idpEntityId: config.idpEntityId ?? currentSaml.idpEntityId ?? '',
+                    idpSsoUrl: config.idpSsoUrl ?? currentSaml.idpSsoUrl ?? '',
+                    idpSloUrl: config.idpSloUrl ?? currentSaml.idpSloUrl,
+                    idpCertificate: config.idpCertificate ?? currentSaml.idpCertificate ?? '',
+                    spEntityId: config.spEntityId ?? currentSaml.spEntityId ?? `https://api.parallly-chat.cloud/api/v1/auth/saml/metadata/${tenantId}`,
+                    emailDomains: (config.emailDomains ?? currentSaml.emailDomains ?? [])
+                        .map(domain => domain.toLowerCase().trim()),
+                    forceSso: config.forceSso ?? currentSaml.forceSso ?? false,
+                    defaultRole: config.defaultRole ?? currentSaml.defaultRole ?? 'tenant_agent',
+                    attributeMapping: config.attributeMapping ?? currentSaml.attributeMapping ?? {},
+                };
+                if (next.enabled) {
+                    if (!next.idpEntityId) throw new BadRequestException('IdP Entity ID is required');
+                    if (!next.idpSsoUrl) throw new BadRequestException('IdP SSO URL is required');
+                    if (!next.idpCertificate) throw new BadRequestException('IdP Certificate is required');
+                    if (!next.emailDomains.length) throw new BadRequestException('At least one email domain is required');
+                }
+                return next;
+            },
+        );
 
         await this.redis.del('saml:domain_map');
         this.logger.log(`SAML config updated for tenant ${tenantId}: enabled=${merged.enabled}`);

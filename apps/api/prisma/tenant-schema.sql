@@ -719,12 +719,27 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."consent_records" (
     "channel"         VARCHAR(50) NOT NULL DEFAULT 'web_form',
     "legal_version"   VARCHAR(50) NOT NULL,              -- e.g. "v1.0", "2026-01-01"
     "legal_text_hash" VARCHAR(64),                       -- SHA-256 of the consent text shown
+    "policy_id"       UUID,
+    "policy_type"     VARCHAR(50),
+    "policy_version"  INTEGER,
+    "consent_scope"   VARCHAR(80),
+    "conversation_id" UUID,
+    "execution_ledger_id" UUID,
+    "capture_mode"    VARCHAR(50),
     "ip_address"      VARCHAR(45),
     "user_agent"      TEXT,
     "origin_url"      TEXT,
     "created_at"      TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_consent_records_lead_id" ON "{{SCHEMA_NAME}}"."consent_records" ("lead_id");
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "policy_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "policy_type" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "policy_version" INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "consent_scope" VARCHAR(80);
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "conversation_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "execution_ledger_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."consent_records" ADD COLUMN IF NOT EXISTS "capture_mode" VARCHAR(50);
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_execution_ledger" ON "{{SCHEMA_NAME}}"."consent_records" ("execution_ledger_id") WHERE "execution_ledger_id" IS NOT NULL;
 
 -- ---- Opt-Out Records ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."opt_out_records" (
@@ -2807,6 +2822,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_requests" (
     "contact_id" UUID,
     "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "conversation_id" UUID,
+    "service_id" UUID CONSTRAINT "service_requests_service_id_fk"
+        REFERENCES "{{SCHEMA_NAME}}"."services"("id") ON DELETE RESTRICT,
     "service_type" VARCHAR(100) NOT NULL,                   -- plomeria | electricidad | fumigacion | limpieza | jardineria | other
     "urgency" VARCHAR(20) DEFAULT 'normal',                 -- emergencia | alta | normal | flexible
     "customer_name" VARCHAR(255),
@@ -2830,9 +2847,47 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_requests" (
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
+-- Legacy tenant schemas predate the catalogue-backed capacity contract. Keep
+-- every historical request, but detach references to catalogue rows that were
+-- already hard-deleted before this FK existed. `service_type` remains the
+-- capacity fallback, while metadata preserves the original UUID for audit.
+ALTER TABLE "{{SCHEMA_NAME}}"."service_requests" ADD COLUMN IF NOT EXISTS "service_id" UUID;
+UPDATE "{{SCHEMA_NAME}}"."service_requests" AS sr
+   SET "metadata" = COALESCE(sr."metadata", '{}'::jsonb)
+                    || jsonb_build_object('legacyDeletedServiceId', sr."service_id"::text),
+       "service_id" = NULL,
+       "updated_at" = NOW()
+ WHERE sr."service_id" IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1
+         FROM "{{SCHEMA_NAME}}"."services" AS s
+        WHERE s."id" = sr."service_id"
+   );
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint c
+          JOIN pg_class r ON r.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = r.relnamespace
+         WHERE n.nspname = '{{SCHEMA_NAME}}'
+           AND r.relname = 'service_requests'
+           AND c.conname = 'service_requests_service_id_fk'
+    ) THEN
+        ALTER TABLE "{{SCHEMA_NAME}}"."service_requests"
+            ADD CONSTRAINT "service_requests_service_id_fk"
+            FOREIGN KEY ("service_id")
+            REFERENCES "{{SCHEMA_NAME}}"."services"("id")
+            ON DELETE RESTRICT
+            NOT VALID;
+    END IF;
+END $$;
+ALTER TABLE "{{SCHEMA_NAME}}"."service_requests"
+    VALIDATE CONSTRAINT "service_requests_service_id_fk";
 CREATE INDEX IF NOT EXISTS "idx_service_requests_status" ON "{{SCHEMA_NAME}}"."service_requests" ("status", "scheduled_at");
 CREATE INDEX IF NOT EXISTS "idx_service_requests_contact" ON "{{SCHEMA_NAME}}"."service_requests" ("contact_id", "created_at" DESC) WHERE "contact_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_service_requests_urgency" ON "{{SCHEMA_NAME}}"."service_requests" ("urgency", "scheduled_at") WHERE "status" IN ('pending', 'scheduled', 'dispatched');
+CREATE INDEX IF NOT EXISTS "idx_service_requests_capacity" ON "{{SCHEMA_NAME}}"."service_requests" ("service_id", "scheduled_at") WHERE "status" IN ('scheduled', 'dispatched', 'in_progress');
 
 -- ─── Photography vertical ───────────────────────────────────────────
 -- Photo sessions: differentiates fotografia tenants from generic appointments
@@ -2861,6 +2916,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions" (
     "currency" VARCHAR(10) DEFAULT 'COP',
     "deposit_paid" DECIMAL(10,2) DEFAULT 0,
     "status" VARCHAR(30) DEFAULT 'scheduled',               -- requested | scheduled | in_progress | delivered | cancelled
+    "hold_expires_at" TIMESTAMPTZ,                           -- requested quote owns date only while this clock is alive
     "notes" TEXT,
     "metadata" JSONB DEFAULT '{}',
     "created_at" TIMESTAMP DEFAULT NOW(),
@@ -2869,6 +2925,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions" (
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_status" ON "{{SCHEMA_NAME}}"."photo_sessions" ("status", "scheduled_at" DESC);
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_contact" ON "{{SCHEMA_NAME}}"."photo_sessions" ("contact_id", "scheduled_at" DESC) WHERE "contact_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_delivery" ON "{{SCHEMA_NAME}}"."photo_sessions" ("delivery_due_at") WHERE "status" IN ('scheduled', 'in_progress');
+CREATE INDEX IF NOT EXISTS "idx_photo_sessions_capacity" ON "{{SCHEMA_NAME}}"."photo_sessions" ("scheduled_at", "status", "hold_expires_at");
 
 -- ============================================================
 -- Lazy/runtime tables folded into the canonical template (2026-06-23).
@@ -3090,9 +3147,15 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."cm_listings" (
     "photos" TEXT[] DEFAULT '{}',
     "property_id" UUID,
     "last_synced_at" TIMESTAMPTZ DEFAULT now(),
+    "sync_generation" UUID,
+    "is_deleted" BOOLEAN NOT NULL DEFAULT false,
+    "deleted_at" TIMESTAMPTZ,
     "created_at" TIMESTAMPTZ DEFAULT now(),
     UNIQUE(external_id, provider)
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."cm_listings" ADD COLUMN IF NOT EXISTS "sync_generation" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."cm_listings" ADD COLUMN IF NOT EXISTS "is_deleted" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."cm_listings" ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS "idx_cm_listings_provider" ON "{{SCHEMA_NAME}}"."cm_listings" ("provider");
 CREATE INDEX IF NOT EXISTS "idx_cm_listings_status" ON "{{SCHEMA_NAME}}"."cm_listings" ("status");
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."cm_reservations" (
@@ -3113,9 +3176,15 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."cm_reservations" (
     "notes" TEXT,
     "contact_id" UUID,
     "synced_at" TIMESTAMPTZ DEFAULT now(),
+    "sync_generation" UUID,
+    "is_deleted" BOOLEAN NOT NULL DEFAULT false,
+    "deleted_at" TIMESTAMPTZ,
     "created_at" TIMESTAMPTZ DEFAULT now(),
     UNIQUE(external_id, provider)
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."cm_reservations" ADD COLUMN IF NOT EXISTS "sync_generation" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."cm_reservations" ADD COLUMN IF NOT EXISTS "is_deleted" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."cm_reservations" ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS "idx_cm_reservations_listing_id" ON "{{SCHEMA_NAME}}"."cm_reservations" ("listing_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_reservations_status" ON "{{SCHEMA_NAME}}"."cm_reservations" ("status");
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."cm_availability" (
@@ -3414,11 +3483,21 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_scenarios" (
     title TEXT NOT NULL,
     vertical TEXT,
     language TEXT NOT NULL DEFAULT 'es',
+    locale TEXT,
+    profile_id TEXT,
+    contract_version INTEGER,
+    seed_origin TEXT,
     messages JSONB NOT NULL DEFAULT '[]'::jsonb,
     criteria TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS expected_actions JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS locale TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS profile_id TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS contract_version INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS seed_origin TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS managed_seed_key TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS seed_state TEXT NOT NULL DEFAULT 'active';
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_runs" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id UUID,
@@ -3461,8 +3540,14 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vi_items" (
     currency VARCHAR(10),
     data JSONB DEFAULT '{}'::jsonb,
     synced_at TIMESTAMPTZ DEFAULT NOW(),
+    sync_generation UUID,
+    is_deleted BOOLEAN NOT NULL DEFAULT false,
+    deleted_at TIMESTAMPTZ,
     UNIQUE(provider, item_type, external_id)
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."vi_items" ADD COLUMN IF NOT EXISTS sync_generation UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."vi_items" ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."vi_items" ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_vi_items_lookup ON "{{SCHEMA_NAME}}"."vi_items"(provider, item_type);
 
 -- ---- Outbound webhooks ----
@@ -3891,6 +3976,7 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "opportuni
 ALTER TABLE "{{SCHEMA_NAME}}"."tour_bookings" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."service_requests" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."service_requests" ADD COLUMN IF NOT EXISTS "service_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."food_orders" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
@@ -3967,6 +4053,12 @@ ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings"
     ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
 
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments"
+    ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
+
+-- Photography quote requests are real, short-lived date holds. Existing
+-- requested rows keep NULL and therefore do not consume capacity after this
+-- migration; only requests created by the atomic writer receive a clock.
+ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions"
     ADD COLUMN IF NOT EXISTS "hold_expires_at" TIMESTAMPTZ;
 
 -- Tours: el cupo funciona AL REVÉS que las fechas.
@@ -4177,6 +4269,10 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_outbox" (
     "attempts"         INTEGER NOT NULL DEFAULT 0,
     "next_attempt_at"  TIMESTAMPTZ,
     "lease_expires_at" TIMESTAMPTZ,
+    -- Fencing: each reclaim rotates the token and advances the generation.
+    -- A late worker must present both values before it can change state.
+    "claim_token"      UUID,
+    "claim_generation" BIGINT NOT NULL DEFAULT 0,
     "last_error"       TEXT,
     "external_id"      VARCHAR(255),
     "created_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -4195,6 +4291,10 @@ CREATE INDEX IF NOT EXISTS "idx_integration_outbox_claimable"
 -- durante el deploy.
 ALTER TABLE "{{SCHEMA_NAME}}"."integration_outbox"
     ADD COLUMN IF NOT EXISTS "connection_id" VARCHAR(120);
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_outbox"
+    ADD COLUMN IF NOT EXISTS "claim_token" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_outbox"
+    ADD COLUMN IF NOT EXISTS "claim_generation" BIGINT NOT NULL DEFAULT 0;
 
 -- Lo que necesita ojos humanos: muerto, suprimido o vencido.
 CREATE INDEX IF NOT EXISTS "idx_integration_outbox_review"
@@ -4209,10 +4309,20 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_webhook_inbox" (
     "event_type"        VARCHAR(80) NOT NULL,
     "payload"           JSONB NOT NULL DEFAULT '{}',
     "status"            VARCHAR(20) NOT NULL DEFAULT 'received',
+    "attempts"          INTEGER NOT NULL DEFAULT 0,
+    "next_attempt_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "lease_expires_at"  TIMESTAMPTZ,
+    "claim_token"       UUID,
+    "claim_generation"  BIGINT NOT NULL DEFAULT 0,
     "received_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     "processed_at"      TIMESTAMPTZ,
     "last_error"        TEXT
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_webhook_inbox" ADD COLUMN IF NOT EXISTS "attempts" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_webhook_inbox" ADD COLUMN IF NOT EXISTS "next_attempt_at" TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_webhook_inbox" ADD COLUMN IF NOT EXISTS "lease_expires_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_webhook_inbox" ADD COLUMN IF NOT EXISTS "claim_token" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."integration_webhook_inbox" ADD COLUMN IF NOT EXISTS "claim_generation" BIGINT NOT NULL DEFAULT 0;
 -- Un proveedor reenvia cuando no recibe un 200 a tiempo, y una reserva
 -- procesada dos veces es una reserva doble.
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_integration_webhook_event"

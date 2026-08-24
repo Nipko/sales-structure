@@ -52,11 +52,6 @@ export default function FeatureRequestsPage() {
         setTimeout(() => setToast(null), 2500);
     }
 
-    useEffect(() => {
-        if (view === "board") load();
-        else loadChangelog();
-    }, [statusTab, categoryFilter, sort, view]);
-
     async function load() {
         setLoading(true);
         const params: any = { sort };
@@ -74,6 +69,11 @@ export default function FeatureRequestsPage() {
         setChangelog(r.data || []);
         setLoading(false);
     }
+
+    useEffect(() => {
+        if (view === "board") load();
+        else loadChangelog();
+    }, [statusTab, categoryFilter, sort, view]);
 
     const changelogByMonth = useMemo(() => {
         const map = new Map<string, any[]>();

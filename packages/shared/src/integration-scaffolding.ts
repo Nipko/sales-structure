@@ -55,6 +55,20 @@ export type OutboxStatus =
      */
     | 'expired';
 
+/**
+ * Fencing token for one lease generation.
+ *
+ * A timestamp alone only tells a second worker when it may reclaim work; it
+ * does not stop the first worker from completing late. Every claim rotates the
+ * token and increments the generation, and every terminal/retry transition is
+ * compare-and-set against both values.
+ */
+export interface IntegrationLeaseClaim {
+    token: string;
+    generation: number;
+    expiresAt: string;
+}
+
 export interface OutboxEntry {
     id: string;
     provider: string;
@@ -90,7 +104,11 @@ export interface OutboxEntry {
     lastError?: string;
     createdAt: string;
     updatedAt: string;
+    /** Present only on an entry returned by `claim`. */
+    claim?: IntegrationLeaseClaim;
 }
+
+export type ClaimedOutboxEntry = OutboxEntry & { claim: IntegrationLeaseClaim };
 
 /** Cuántas veces y con cuánta espera. */
 export const OUTBOX_MAX_ATTEMPTS = 8 as const;
@@ -130,7 +148,7 @@ export function outboxBackoffSeconds(attempt: number): number {
 
 // ── Webhook inbox: el evento que llegó ───────────────────────────────────
 
-export type WebhookInboxStatus = 'received' | 'processed' | 'duplicate' | 'failed';
+export type WebhookInboxStatus = 'received' | 'processing' | 'processed' | 'duplicate' | 'failed';
 
 export interface WebhookInboxEntry {
     id: string;
@@ -143,7 +161,12 @@ export interface WebhookInboxEntry {
     receivedAt: string;
     processedAt?: string;
     lastError?: string;
+    attempts?: number;
+    /** Present only on an entry returned by `claimWebhooks`. */
+    claim?: IntegrationLeaseClaim;
 }
+
+export type ClaimedWebhookInboxEntry = WebhookInboxEntry & { claim: IntegrationLeaseClaim };
 
 /**
  * Si este evento ya se vio.
@@ -233,6 +256,27 @@ export interface IntegrationWriteAdapter {
         tenantId: string;
         schemaName: string;
     }): Promise<IntegrationWriteResult>;
+}
+
+export interface IntegrationWebhookResult {
+    ok: boolean;
+    error?: string;
+    /** False means the same payload will never become valid by waiting. */
+    retryable?: boolean;
+}
+
+/**
+ * Provider-neutral processor for an event that has already crossed the
+ * provider-specific signature/authentication boundary.
+ */
+export interface IntegrationWebhookHandler {
+    provider: string;
+    /** Empty means every event type for this provider. */
+    eventTypes?: readonly string[];
+    handle(entry: WebhookInboxEntry, context: {
+        tenantId: string;
+        schemaName: string;
+    }): Promise<IntegrationWebhookResult>;
 }
 
 // ── Reconciliación ───────────────────────────────────────────────────────

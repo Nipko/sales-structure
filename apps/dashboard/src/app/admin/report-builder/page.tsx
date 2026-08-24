@@ -197,7 +197,7 @@ export default function ReportBuilderPage() {
                 series.forEach((pt: any) => {
                     const row: Record<string, any> = {
                         label: pt.date?.substring(5) || pt.date,
-                        conversations: (pt.whatsapp || 0) + (pt.instagram || 0) + (pt.messenger || 0) + (pt.telegram || 0),
+                        conversations: (pt.whatsapp || 0) + (pt.instagram || 0) + (pt.messenger || 0) + (pt.telegram || 0) + (pt.web_widget || 0),
                         messages: pt.totalMessages || 0,
                     };
                     results.push(row);

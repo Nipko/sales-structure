@@ -8,6 +8,8 @@ on:
       - 'apps/dashboard/**'
       - 'apps/mobile/**'
       - 'apps/landing/**'
+      - 'apps/whatsapp/**'
+      - 'infra/docker/**'
       - 'packages/shared/**'
       - 'docs/vertical-**'
       - '.github/workflows/vertical-quality.yml'
@@ -18,6 +20,8 @@ on:
       - 'apps/dashboard/**'
       - 'apps/mobile/**'
       - 'apps/landing/**'
+      - 'apps/whatsapp/**'
+      - 'infra/docker/**'
       - 'packages/shared/**'
       - '.github/workflows/vertical-quality.yml'
   schedule:
@@ -70,6 +74,11 @@ jobs:
           npx tsc -p apps/api/tsconfig.json --noEmit --pretty false
           npx tsc -p apps/dashboard/tsconfig.json --noEmit --pretty false
           npx tsc -p apps/mobile/tsconfig.json --noEmit --pretty false
+      - name: Application lint contracts
+        run: |
+          (cd apps/api && npx eslint "src/**/*.ts" --quiet)
+          (cd apps/dashboard && npx eslint . --quiet)
+          (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
       - name: Vertical focal suites
         run: >-
           npx jest --config apps/api/jest.config.js --runInBand
@@ -169,8 +178,101 @@ jobs:
       - name: Convert API focal evidence to JUnit
         if: always()
         run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/vertical-focal-jest.json artifacts/vertical-focal-jest.xml
+      - name: Intervention closure contracts
+        run: >-
+          npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/common/conversation/intent-normalizer.spec.ts
+          apps/api/src/common/crypto/tenant-secret-crypto.service.spec.ts
+          apps/api/src/common/crypto/tenant-secret-migration.spec.ts
+          apps/api/src/common/guards/tenant.guard.spec.ts
+          apps/api/src/common/utils/signup-attribution-migration.spec.ts
+          apps/api/src/common/utils/signup-attribution.util.spec.ts
+          apps/api/src/common/utils/tenant-settings-branch.util.spec.ts
+          apps/api/src/common/utils/tenant-settings-leaf-atomic.spec.ts
+          apps/api/src/common/utils/tenant-settings.util.spec.ts
+          apps/api/src/main.shutdown-contract.spec.ts
+          apps/api/src/modules/analytics/bi-api-key-migration.spec.ts
+          apps/api/src/modules/analytics/bi-api.guard.spec.ts
+          apps/api/src/modules/analytics/dashboard-analytics.channels.spec.ts
+          apps/api/src/modules/appointments/services.service.integrity.spec.ts
+          apps/api/src/modules/auth/auth-onboarding-provisioning.spec.ts
+          apps/api/src/modules/automation/nurturing-settings-cas.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-mapping.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-reservations.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-secrets.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager-sync.spec.ts
+          apps/api/src/modules/channel-manager/channel-manager.dto.spec.ts
+          apps/api/src/modules/channel-manager/lodging-cache-invalidation.spec.ts
+          apps/api/src/modules/conversations/active-objects-coverage.spec.ts
+          apps/api/src/modules/conversations/agent-test-eval-writer.spec.ts
+          apps/api/src/modules/conversations/agent-test-live-parity.spec.ts
+          apps/api/src/modules/conversations/agent-test-request.spec.ts
+          apps/api/src/modules/conversations/agent-test.service.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.vertical-safety.spec.ts
+          apps/api/src/modules/conversations/capability-exclusion-localization.spec.ts
+          apps/api/src/modules/conversations/capability-stop-profiles.spec.ts
+          apps/api/src/modules/conversations/crm-writer-concurrency.spec.ts
+          apps/api/src/modules/conversations/crm-writers.spec.ts
+          apps/api/src/modules/conversations/effective-capability.spec.ts
+          apps/api/src/modules/conversations/eval-writer-sandbox.spec.ts
+          apps/api/src/modules/conversations/media-delivery-dedupe.spec.ts
+          apps/api/src/modules/conversations/prompt-assembler.contract.spec.ts
+          apps/api/src/modules/conversations/prompt-assembler.service.spec.ts
+          apps/api/src/modules/conversations/rag-rewrite-skip.spec.ts
+          apps/api/src/modules/conversations/system-of-record-capability.spec.ts
+          apps/api/src/modules/conversations/tool-authority.e2e.spec.ts
+          apps/api/src/modules/conversations/tool-origin-taxonomy.spec.ts
+          apps/api/src/modules/conversations/tool-timeout-policy.spec.ts
+          apps/api/src/modules/conversations/turn-capability-composer.spec.ts
+          apps/api/src/modules/conversations/vertical-turn-context.service.spec.ts
+          apps/api/src/modules/conversations/writer-active-object-chain.spec.ts
+          apps/api/src/modules/ecommerce/ecommerce-secrets.spec.ts
+          apps/api/src/modules/ecommerce/ecommerce.service.spec.ts
+          apps/api/src/modules/health/alert-config.service.spec.ts
+          apps/api/src/modules/health/platform-monitor.queue-failures.spec.ts
+          apps/api/src/modules/media/media-cleanup.storage-report.spec.ts
+          apps/api/src/modules/home-services/home-service-capacity.contract.spec.ts
+          apps/api/src/modules/inbound/inbound-failed-redrive.service.spec.ts
+          apps/api/src/modules/integrations/integration-webhook.worker.spec.ts
+          apps/api/src/modules/integrations/integration-outbox.worker.spec.ts
+          apps/api/src/modules/integrations/integration-scaffolding.spec.ts
+          apps/api/src/modules/integrations/integrations.controller.spec.ts
+          apps/api/src/modules/integrations/system-of-record-boundary.spec.ts
+          apps/api/src/modules/mcp/mcp-client.service.spec.ts
+          apps/api/src/modules/mcp/mcp-secrets.spec.ts
+          apps/api/src/modules/photography/photography-date-capacity.contract.spec.ts
+          apps/api/src/modules/simulation/eval-infrastructure.spec.ts
+          apps/api/src/modules/slack/slack-secrets.spec.ts
+          apps/api/src/modules/tenants/onboarding-funnel-acquisition.spec.ts
+          apps/api/src/modules/tenants/regional-profile.service.spec.ts
+          apps/api/src/modules/tenants/tenants.controller.spec.ts
+          apps/api/src/modules/tenants/tenants.service.spec.ts
+          apps/api/src/modules/trace/trace.controller.spec.ts
+          apps/api/src/modules/trace/turn-trace-context.spec.ts
+          apps/api/src/modules/vacation-rental/lodging-source-of-truth.spec.ts
+          apps/api/src/modules/vertical-integrations/integration-health.spec.ts
+          apps/api/src/modules/vertical-integrations/provider-freshness-coherence.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.credentials.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.health.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.pagination.spec.ts
+          apps/api/src/modules/vertical-integrations/vertical-integrations.service.spec.ts
+          apps/api/src/modules/verticals/eval-pack-language.spec.ts
+          apps/api/src/modules/verticals/native-backlog.spec.ts
+          apps/api/src/modules/verticals/subtype-navigation-config.spec.ts
+          apps/api/src/modules/verticals/vertical-audit.controller.spec.ts
+          apps/api/src/modules/verticals/vertical-identifiers.spec.ts
+          apps/api/src/modules/verticals/vertical-readiness.contract.spec.ts
+          apps/api/src/modules/whatsapp/services/whatsapp-business-profile-multinumber.spec.ts
+          apps/api/src/modules/whatsapp/services/whatsapp-token-coverage.spec.ts
+          --json --outputFile artifacts/intervention-closure-jest.json
+      - name: Convert intervention evidence to JUnit
+        if: always()
+        run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/intervention-closure-jest.json artifacts/intervention-closure-jest.xml
       - name: WhatsApp Agent Quality bridge regression
-        run: npm test --prefix apps/whatsapp -- --runInBand src/modules/onboarding/onboarding.service.spec.ts
+        run: >-
+          npm test --prefix apps/whatsapp -- --runInBand
+          src/modules/onboarding/onboarding.service.spec.ts
+          src/modules/onboarding/onboarding-token-coverage.spec.ts
       - name: Dashboard resolver
         run: >-
           npx jest --config apps/dashboard/jest.config.cjs --runInBand
@@ -182,6 +284,8 @@ jobs:
           apps/dashboard/src/lib/initial-setup.spec.ts
           apps/dashboard/src/lib/navigation-contract.spec.ts
           apps/dashboard/src/lib/roles.spec.ts
+          apps/dashboard/src/lib/integration-outbox-review.contract.spec.ts
+          apps/dashboard/src/lib/signup-attribution.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts
           --json --outputFile artifacts/dashboard-vertical-jest.json
       - name: Mobile vertical regression

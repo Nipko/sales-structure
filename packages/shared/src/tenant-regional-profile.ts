@@ -64,6 +64,10 @@ export interface TenantRegionalProfileV1 {
     countryPackVersion: string;
     /** Country packs start `draft`; only evidence promotes them. */
     countryPackStatus: CountryPackStatus;
+    /** Reviewed generation vocabulary for the operating country. */
+    preferredTerms?: Readonly<Record<string, string>>;
+    /** Registers the agent must not generate for this country. */
+    prohibitedRegisters?: readonly string[];
 
     /** Fields whose signals disagree and are queued for a human. */
     conflicts: RegionalConflict[];

@@ -12,7 +12,7 @@
         "lint": "eslint \"{src,test}/**/*.ts\" --fix",
         "test": "jest",
         "test:watch": "jest --watch",
-        "test:bootstrap": "jest --testPathPattern=bootstrap --forceExit",
+        "test:bootstrap": "jest --testPathPattern=bootstrap",
         "test:migrate:tenants": "node scripts/test-tenant-migration.js",
         "test:e2e": "jest --config ./test/jest-e2e.json",
         "db:migrate": "prisma migrate dev",
@@ -20,7 +20,8 @@
         "db:seed:gecko": "psql $DATABASE_URL -f prisma/seed-gecko.sql",
         "db:studio": "prisma studio",
         "migrate:tenants": "node scripts/migrate-tenants.js",
-        "reconcile:vertical-provisioning": "node scripts/reconcile-vertical-provisioning.js"
+        "reconcile:vertical-provisioning": "node scripts/reconcile-vertical-provisioning.js",
+        "migrate:bi-api-keys": "node scripts/migrate-bi-api-keys.js"
     },
     "dependencies": {
         "@anthropic-ai/sdk": "^0.78.0",

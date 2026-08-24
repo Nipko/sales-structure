@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-branch.util';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -238,23 +239,15 @@ export class RecallService {
     }
 
     async setConfig(tenantId: string, config: any): Promise<any> {
-        const existing = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { settings: true },
-        });
-        const settings = (existing?.settings as any) || {};
-        settings.recallConfig = {
+        const recallConfig = {
             enabled: !!config.enabled,
             daysThreshold: Math.max(1, parseInt(config.daysThreshold || 180, 10)),
             cooldownDays: Math.max(1, parseInt(config.cooldownDays || 90, 10)),
             channelType: config.channelType || 'whatsapp',
             message: config.message || '',
         };
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { settings },
-        });
-        return settings.recallConfig;
+        await replaceTenantSettingsBranch(this.prisma, tenantId, 'recallConfig', recallConfig);
+        return recallConfig;
     }
 
     /** Manual trigger for "Send recall now" button in the dashboard. */

@@ -14,7 +14,11 @@ import {
     ValidatorConstraint,
     type ValidatorConstraintInterface,
 } from 'class-validator';
-import type { TestAgentRequest } from '@parallext/shared';
+import type { ConversationalChannelType, TestAgentRequest } from '@parallext/shared';
+
+export const AGENT_TEST_OPERATIONAL_CHANNELS: readonly ConversationalChannelType[] = Object.freeze([
+    'whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget',
+]);
 
 export const AGENT_TEST_MESSAGE_MAX_CHARS = 4_000;
 export const AGENT_TEST_HISTORY_MAX_ITEMS = 20;
@@ -61,6 +65,10 @@ export class AgentTestRequestDto implements TestAgentRequest {
     @Matches(/\S/u, { message: 'message no puede estar vacío' })
     @MaxLength(AGENT_TEST_MESSAGE_MAX_CHARS)
     message!: string;
+
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsIn(AGENT_TEST_OPERATIONAL_CHANNELS)
+    channelType?: ConversationalChannelType;
 
     @ValidateIf((_object, value) => value !== undefined)
     @IsArray()

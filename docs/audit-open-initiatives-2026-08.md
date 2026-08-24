@@ -1,6 +1,45 @@
 # Auditoría de iniciativas abiertas — ago 2026: lo que queda
 
-Auditoría de las 8 iniciativas abiertas fuera del plan de verticales (48 agentes), con **cada hallazgo sometido a un refutador escéptico antes de aceptarse**: 37 confirmados, 3 refutados. De esos 37, **24 quedaron cerrados** en la tanda de commits de agosto; acá están los 12 que no.
+## Estado vigente de cierre — 24 de agosto de 2026
+
+Esta tabla **reemplaza como estado vigente**, pero no borra, el snapshot histórico que sigue más abajo. `Resuelto` significa que la parte interna fue implementada y quedó verificada por contrato y regresión local; no significa desplegada ni migrada en producción. `Decisión` significa que el riesgo está contenido y no corresponde reactivar el producto o cambiar la política sin respuesta del dueño. Las dependencias de proveedor se nombran como externas, nunca como código faltante.
+
+| # | Iniciativa histórica | Estado vigente | Resolución o siguiente gate |
+|---:|---|---|---|
+| 1 | Reintento, re-drive y alertas de `inbound-messages` | **RESUELTO** | `attempts: 3` con backoff, re-drive automático máximo 2, agotamiento auditable y umbrales de profundidad/fallidos propios. |
+| 2 | Dedupe de media en turnos reanudados | **RESUELTO** | Media, historial y enlaces persistidos usan `outboundDedupeId` estable; los Flows ya tenían su estado de abandono determinista. |
+| 3 | Drenaje de API menor que el p99 del turno | **RESUELTO** | Techo interno de 150 s y `stop_grace_period` de API de 160 s; contrato estático impide volver a invertir esos límites. |
+| 4 | Embudo self-serve sin origen/UTM | **RESUELTO** | Atribución saneada landing→signup→onboarding, campos durables de usuario y embudo que cuenta altas self-serve aunque abandonen antes de crear tenant. |
+| 5 | Verificación de correo sin bloqueo ni rescate | **DECISIÓN** | Ya existen redirect/rescate, banner persistente y gate para invitaciones y acciones de billing. El dueño debe decidir si conserva verificación progresiva o bloquea la provisión completa; no se cambia esa política por inferencia técnica. |
+| 6 | Cobro sin fila fiscal cuando la capa está sin configurar | **RESUELTO** | El cobro deja una factura durable `blocked_config`; el sweep de reconciliación puede promoverla cuando exista configuración y mantiene alerta/visibilidad. No se declara DIAN activado. |
+| 7 | Compra de créditos SMS fuera del riel fiscal | **DECISIÓN** | El producto SMS reseller permanece retirado y con kill switch apagado, por lo que no hay exposición activa. Reabrirlo exige integrar factura/nota crédito antes de aceptar dinero. |
+| 8 | Perfil WhatsApp cableado al primer número | **RESUELTO** | API y UI reciben `phoneNumberId`, muestran selector/número real y consultan el messaging tier del número seleccionado. |
+| 9 | Token WhatsApp único sobrescrito sin cobertura | **RESUELTO** | Alta manual y Embedded Signup validan cobertura sobre WABAs existentes/nueva, cuota antes de mutar y prohíben degradar credencial permanente a temporal. |
+| 10 | SMS sin callback de estado final/refund post-aceptación | **DECISIÓN** | No se construye un callback para un producto retirado. Si se reactiva: persistir SID, callback firmado, estado final, métrica y refund selectivo por código/costo. Sandbox y política económica son gates externos posteriores. |
+| 11 | Tiers SMS por debajo del costo | **DECISIÓN** | No hay venta activa con el switch apagado. Reabrir exige costo vigente por segmento/país, piso server-side, margen y aprobación del dueño; el dato de carrier es externo. |
+| 12 | Archivo frío no atribuible ni purgable | **RESUELTO** | Reporte recursivo fusiona `/media/{tenantId}` con `/media/archives/{tenantId}`, separa roots no atribuibles y señala lecturas incompletas; purge/offboarding eliminan ambos árboles y verifican ausencia. |
+| 13 | Reserva nativa vulnerable a carrera | **RESUELTO** | Fechas estrictas y reserva serializada por recurso dentro de una sola transacción; conflicto e inserción no quedan separados. Proveedores externos continúan fail-closed. |
+| 14 | Health de proveedor reabría el writer local | **RESUELTO** | El ownership depende del binding durable, no de disponibilidad momentánea; una caída no crea un segundo sistema de registro. |
+| 15 | Worker vencido podía mutar una operación reclamada | **RESUELTO** | Claim token, generación, lease y compare-and-set cercan las transiciones de outbox/inbox. |
+| 16 | Secretos MCP/e-commerce/Slack fuera del cifrado tenant | **RESUELTO** | Cifrado AAD, máscara, preservación de `***`, rewrap y migrador compartido con Channel Manager/integraciones verticales. El cutover productivo no se ejecutó. |
+| 17 | Endpoint genérico podía escribir ramas con dueño | **RESUELTO** | Allowlist estrecha de preferencias genéricas y rechazo de ramas reservadas/desconocidas; cada configuración sensible conserva su endpoint y semántica atómica. |
+| 18 | BI API autorizaba contra secreto plaintext en JSONB | **RESUELTO** | Guard sobre claves hasheadas, revocables y scope `read:analytics`; migrador CAS para legado. La migración productiva no se ejecutó. |
+| 19 | `TenantGuard` no reconciliaba route y query | **RESUELTO** | UUID, arrays, conflicto route↔query y acceso cross-tenant se rechazan; el tenant efectivo queda explícito en request. |
+| 20 | Writers CRM idempotentes solo en secuencia | **RESUELTO** | Lead, oportunidad y tarea usan bloqueo transaccional y relectura; las ejecuciones concurrentes convergen en un objeto. |
+| 21 | Onboarding podía reatribuir el signup desde el cliente | **RESUELTO** | La atribución durable prevalece y el backfill excluye cuentas/orígenes no demostrables. La migración productiva no se ejecutó. |
+| 22 | Trazas con acceso y payload demasiado amplios | **RESUELTO** | Roles, pertenencia/asignación, límites y redacción previa a persistencia cubren PII, tokens, credenciales y errores. |
+| 23 | Solicitudes podían quedar huérfanas de servicio | **RESUELTO** | FK `service_requests.service_id`, reparación heredada trazable y `ON DELETE RESTRICT`; DDL productivo aún pendiente. |
+| 24 | Specs de cierre fuera del gate de promoción | **RESUELTO** | Calidad/deploy cubren 47/47 specs nuevas observadas. Ambos YAML son válidos; las listas API tienen 83 rutas existentes, únicas y reconocidas 83/83 por Jest; dashboard reconoce 11/11 en calidad y 13/13 en deploy; WhatsApp 2/2. El lint es bloqueante en API/dashboard/WhatsApp. |
+
+Los resultados locales y los límites de certificación se mantienen únicamente en la sección 6 de [`vertical-intervention-status-2026-08-23.md`](./vertical-intervention-status-2026-08-23.md).
+
+La cola final consolidada —separada en decisiones de producto, credenciales/certificación de proveedores, revisión experta, migraciones/preflight de producción y pilotos— está en [`vertical-intervention-status-2026-08-23.md`](./vertical-intervention-status-2026-08-23.md). No se declara deploy, migración ni certificación de producción en esta actualización.
+
+## Snapshot histórico preservado
+
+> Todo lo que sigue desde este punto está escrito en tiempo histórico. Conserva la evidencia y el razonamiento del hallazgo original; no reemplaza la tabla vigente anterior ni debe leerse como una cola actual.
+
+Auditoría de las 8 iniciativas que estaban abiertas fuera del plan de verticales (48 agentes), con **cada hallazgo sometido a un refutador escéptico antes de aceptarse**: 37 confirmados, 3 refutados. De esos 37, **24 ya estaban cerrados** en ese corte de agosto; acá se preservan los 12 que todavía no lo estaban entonces.
 
 Vale leer los matices del refutador: en varios casos acotan el alcance real (por ejemplo, un hallazgo que parecía afectar a todos los planes resultó ser sólo enterprise) o corrigen el síntoma que el auditor había exagerado.
 
@@ -19,7 +58,7 @@ Vale leer los matices del refutador: en varios casos acotan el alcance real (por
 | SMS monetizado por paquetes (reseller) | Los tiers por defecto siguen por debajo del costo que el propio doc calculó | S | **sí** |
 | Ops Center + monitoreo de almacenamiento por tenant (apps/api/src/modules/health/, /admin/ops, /admin/storage) | El archivo histórico de conversaciones ocupa disco que el panel de almacenamiento no ve ni atribuye | S | no |
 
-> **Nota sobre `inbound-messages`:** el `attempts: 1` ya se subió a 3 con backoff exponencial, y el umbral de alerta ya está declarado en `ALERT_CONFIG_DEFAULTS.queueDepth` (200/1000). Lo que sigue abierto de ese hallazgo es únicamente el **re-drive de la cola de fallidos**: no hay cron ni listener que reencole lo que agotó sus 3 intentos, así que un mensaje que falla tres veces sigue quedando en `failed` sin que nadie lo rescate.
+> **Nota histórica sobre `inbound-messages`:** al tomar este snapshot, `attempts: 1` ya se había subido a 3 con backoff exponencial y el umbral de alerta ya estaba declarado en `ALERT_CONFIG_DEFAULTS.queueDepth` (200/1000); todavía faltaba el re-drive de la cola de fallidos. Ese faltante quedó cerrado posteriormente y su estado vigente es **RESUELTO** en la fila 1 de la tabla superior.
 
 ## Detalle
 
@@ -178,4 +217,3 @@ DATO EXTRA QUE AGRAVA (el auditor no lo vio): el `MessageSid` de Twilio no se pe
 (c) El descarte está doblemente blindado, no depende sólo de `if (files > 0)`. Aunque se arreglara el recorrido para contar recursivamente, `archives` entraría al reporte con `tenantId='archives'` y `getPerTenantStorage` lo tiraría igual en `mediaByTenant.get(t.id)` (:128), porque ningún tenant tiene ese id. El arreglo tiene que mapear `archives/{tenantId}` al tenant real, no sólo recursar. Exactamente el mismo defecto ya está vivo hoy con `/data/media/system` (`system-updates.service.ts:24`): tiene archivos sueltos, entra en `totalMediaBytes` y se cae de la tabla por-tenant → `totalMediaBytes ≠ Σ mediaBytes`, discrepancia que ya existe aunque nadie archive nada.
 
 Adicional relacionado que conviene levantar en el mismo arreglo: `purgeTenant` borra `/data/media/{tenantId}` vía `mediaService.deleteAllTenantFiles` (offboarding.service.ts:932, media.service.ts:396) pero **nunca** `/data/media/archives/{tenantId}`. Los `.gz` de un tenant purgado quedan en disco para siempre — fuga de espacio no atribuible y, además, contenido de conversaciones que sobrevive a una baja.
-

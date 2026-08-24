@@ -102,6 +102,8 @@ describe('Contrato L1 del agente', () => {
         }
         // Y tiene que derivar, no reintentar ni disfrazarlo de falla temporal.
         expect(contract).toContain('needs someone from the team');
+        expect(contract).toContain('never claim that a transfer or handoff was started');
+        expect(contract).toContain('unless &lt;turn&gt;&lt;directive&gt; explicitly confirms it');
         expect(contract).toContain('never present it as a temporary glitch');
         // El motivo interno no se le cuenta al cliente.
         expect(contract).toContain('never state or hint at the internal reason');

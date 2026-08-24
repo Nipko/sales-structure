@@ -87,10 +87,6 @@ export default function TourDetailPage() {
         { id: "bookings", label: t("bookings"), icon: List },
     ];
 
-    useEffect(() => {
-        loadPackage();
-    }, [activeTenantId, packageId]);
-
     async function loadPackage() {
         if (!activeTenantId) return;
         setLoading(true);
@@ -98,6 +94,10 @@ export default function TourDetailPage() {
         if (res.success && res.data) setPkg(res.data);
         setLoading(false);
     }
+
+    useEffect(() => {
+        loadPackage();
+    }, [activeTenantId, packageId]);
 
     if (loading || !pkg) {
         return <div className="p-4 md:p-6 max-w-7xl mx-auto"><SkeletonPage /></div>;
@@ -430,10 +430,6 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
         notes: "",
     });
 
-    useEffect(() => {
-        loadInventory();
-    }, [tenantId, packageId]);
-
     async function loadInventory() {
         setLoading(true);
         const today = new Date().toISOString().split("T")[0];
@@ -441,6 +437,10 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
         if (res.success && res.data) setRows(res.data);
         setLoading(false);
     }
+
+    useEffect(() => {
+        loadInventory();
+    }, [tenantId, packageId]);
 
     async function handleAdd() {
         if (!form.departureDate || form.totalSeats < 1) return;
@@ -621,16 +621,16 @@ function BookingsTab({ tenantId, packageId, t, tc }: {
     const [bookings, setBookings] = useState<TourBooking[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        loadBookings();
-    }, [tenantId, packageId]);
-
     async function loadBookings() {
         setLoading(true);
         const res = await api.listTourBookings(tenantId, packageId);
         if (res.success && res.data) setBookings(res.data);
         setLoading(false);
     }
+
+    useEffect(() => {
+        loadBookings();
+    }, [tenantId, packageId]);
 
     async function handleCancel(id: string) {
         if (!confirm(t("cancelBookingConfirm"))) return;

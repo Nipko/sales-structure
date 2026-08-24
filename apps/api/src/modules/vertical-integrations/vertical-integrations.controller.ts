@@ -5,6 +5,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { VerticalIntegrationsService, VerticalProvider } from './vertical-integrations.service';
+import { UpdateVerticalIntegrationConfigDto } from './vertical-integrations.dto';
 
 /**
  * Real vertical integrations (T3.19): Toast / Mindbody / Cliniko.
@@ -40,7 +41,7 @@ export class VerticalIntegrationsController {
     async updateConfig(
         @Param('tenantId') tenantId: string,
         @Param('provider') provider: VerticalProvider,
-        @Body() body: any,
+        @Body() body: UpdateVerticalIntegrationConfigDto,
     ) {
         const cfg = await this.vi.updateConfig(tenantId, provider, body);
         const health = await this.vi.getProviderHealth(tenantId, provider);

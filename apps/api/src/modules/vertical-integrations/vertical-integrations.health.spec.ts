@@ -1,6 +1,7 @@
 import { VerticalIntegrationsService } from './vertical-integrations.service';
 import { reduceIntegrationHealth } from './integration-health';
 import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+import { fakeSettingsTransaction, fakeSettingsWriter } from '../../common/utils/tenant-settings-branch.fixture';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -28,14 +29,18 @@ describe('VerticalIntegrationsService health and tool gate', () => {
             tenant: {
                 findUnique: jest.fn(async () => ({ settings })),
             },
-            $executeRawUnsafe: jest.fn(async (_sql: string, _tenantId: string, provider: string, json: string) => {
-                settings.verticalIntegrationHealth[provider] = JSON.parse(json);
-                return 1;
-            }),
             getTenantSchemaName: jest.fn(async () => 'tenant_acme'),
             assertTenantSchemaName: jest.fn(),
             executeInTenantSchema: jest.fn(async () => []),
         };
+        prisma.$executeRawUnsafe = jest.fn(fakeSettingsWriter(
+            () => settings,
+            (next) => { settings = next; },
+        ));
+        prisma.$transaction = jest.fn(fakeSettingsTransaction(
+            () => settings,
+            (next) => { settings = next; },
+        ));
         redis = { del: jest.fn().mockResolvedValue(1) };
         http = {
             axiosRef: {
@@ -72,6 +77,29 @@ describe('VerticalIntegrationsService health and tool gate', () => {
                 },
             },
         });
+    });
+
+    it('reports durable ownership independently from failed health', async () => {
+        await expect(service.getConfiguredProviderBindings(TENANT_ID)).resolves.toEqual({
+            toast: true,
+            mindbody: false,
+            cliniko: false,
+        });
+        const health = await service.getProviderHealth(TENANT_ID, 'toast');
+        expect(health).toMatchObject({ configured: true, connected: false, status: 'unavailable' });
+    });
+
+    it('rejects Cliniko for farmacia before storing or calling the provider', async () => {
+        settings.verticalConfig = { industry: 'salud', subType: 'farmacia' };
+        await expect(service.updateConfig(TENANT_ID, 'cliniko', {
+            provider: 'cliniko',
+            apiKey: 'secret',
+            baseUrl: 'https://api.au1.cliniko.com/v1',
+        })).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'provider_not_applicable' }),
+        });
+        expect(http.axiosRef.get).not.toHaveBeenCalled();
+        expect(http.axiosRef.post).not.toHaveBeenCalled();
     });
 
     it('registers a provider only while its durable health is fresh and healthy', async () => {
@@ -156,9 +184,56 @@ describe('VerticalIntegrationsService health and tool gate', () => {
             error: new Error('https://provider.example?secret=do-not-store'),
         });
 
-        expect(prisma.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+        // Both retries lock and compare the live row; the second transform is
+        // an explicit no-op and does not churn updated_at or invalidate cache.
+        expect(prisma.$transaction).toHaveBeenCalledTimes(2);
         expect(settings.verticalIntegrationHealth.toast.consecutiveFailures).toBe(1);
         expect(JSON.stringify(settings.verticalIntegrationHealth.toast)).not.toContain('do-not-store');
         expect(redis.del).toHaveBeenCalledWith(`vi:connected:${TENANT_ID}`);
+    });
+
+    it('ignores health returned by credentials that were replaced while the request ran', async () => {
+        settings.verticalIntegrations.toast.configRevision = 7;
+        settings.verticalIntegrationHealth.toast = reduceIntegrationHealth(undefined, 'toast', {
+            outcome: 'success',
+            syncSucceeded: true,
+            configRevision: 7,
+        });
+        const before = JSON.stringify(settings.verticalIntegrationHealth.toast);
+        prisma.$executeRawUnsafe.mockClear();
+        redis.del.mockClear();
+
+        const health = await service.updateHealth(TENANT_ID, 'toast', {
+            outcome: 'failure',
+            configRevision: 6,
+            error: Object.assign(new Error('old credential rejected'), { status: 401 }),
+        });
+
+        expect(JSON.stringify(settings.verticalIntegrationHealth.toast)).toBe(before);
+        expect(health.configRevision).toBe(7);
+        expect(health.credentialValidated).toBe(true);
+        expect(redis.del).not.toHaveBeenCalled();
+    });
+
+    it('separates live Cliniko availability from its stale services mirror', async () => {
+        settings.verticalConfig = { industry: 'salud', subType: 'dental' };
+        settings.verticalIntegrations = {
+            cliniko: {
+                provider: 'cliniko', apiKey: 'legacy',
+                baseUrl: 'https://api.au1.cliniko.com/v1', configRevision: 1,
+            },
+        };
+        const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+        settings.verticalIntegrationHealth.cliniko = reduceIntegrationHealth(undefined, 'cliniko', {
+            outcome: 'success', syncSucceeded: true,
+            checkedAt: old.toISOString(), configRevision: 1,
+        }, old);
+
+        await expect(service.getToolGate(
+            TENANT_ID, 'cliniko', 'check_clinic_availability',
+        )).resolves.toMatchObject({ allowed: true });
+        await expect(service.getToolGate(
+            TENANT_ID, 'cliniko', 'list_clinic_services',
+        )).resolves.toMatchObject({ allowed: false });
     });
 });

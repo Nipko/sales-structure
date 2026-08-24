@@ -16,7 +16,7 @@
  * que alguien agrega un campo a uno solo.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Service } from "@/components/appointments/shared";
 import { readPaymentPolicy } from "@/components/payments/payment-policy-fields";
@@ -86,9 +86,11 @@ export function useServiceCatalog(
     // entraran a las dependencias, cada handler cambiaría de identidad todo el
     // tiempo y cualquier efecto que dependa de uno se dispararía en bucle.
     const notifyRef = useRef(notify);
-    notifyRef.current = notify;
     const messagesRef = useRef(messages);
-    messagesRef.current = messages;
+    useEffect(() => {
+        notifyRef.current = notify;
+        messagesRef.current = messages;
+    }, [messages, notify]);
 
     const loadServices = useCallback(async () => {
         if (!activeTenantId) return;

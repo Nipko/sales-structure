@@ -4,7 +4,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
-import { IsEmail, IsString, IsOptional, MinLength } from 'class-validator';
+import { IsEmail, IsString, IsOptional, MinLength, IsObject } from 'class-validator';
 import { AuthService } from './auth.service';
 import { MicrosoftAuthService } from './microsoft-auth.service';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
@@ -16,6 +16,7 @@ import { auditActor } from '../../common/utils/audit-actor.util';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 
 class LoginDto {
     @IsEmail()
@@ -94,6 +95,10 @@ class SignupDto {
 
     @IsString()
     lastName: string;
+
+    @IsOptional()
+    @IsObject()
+    attribution?: Record<string, unknown>;
 }
 
 @ApiTags('auth')
@@ -139,6 +144,7 @@ export class AuthController {
             password: dto.password,
             firstName: dto.firstName,
             lastName: dto.lastName,
+            attribution: dto.attribution,
         });
         return { success: true, data: result };
     }
@@ -218,12 +224,12 @@ export class AuthController {
     @Post('google')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login or register with Google OAuth' })
-    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean; force?: boolean; deviceTrustToken?: string; deviceFingerprint?: string; clientType?: string }) {
+    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean; force?: boolean; deviceTrustToken?: string; deviceFingerprint?: string; clientType?: string; attribution?: Record<string, unknown> }) {
         if (!body.idToken) {
             throw new BadRequestException('idToken is required');
         }
         const clientType = body.clientType === 'mobile' ? 'mobile' as const : undefined;
-        const result = await this.authService.googleLogin(body.idToken, body.rememberMe, body.force, body.deviceTrustToken, body.deviceFingerprint, clientType);
+        const result = await this.authService.googleLogin(body.idToken, body.rememberMe, body.force, body.deviceTrustToken, body.deviceFingerprint, clientType, body.attribution);
         return { success: true, data: result };
     }
 
@@ -289,14 +295,8 @@ export class AuthController {
     async updateTenantTimezone(@Request() req: any, @Body() body: { timezone: string }) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('No tenant');
-        const tenant = await this.authService['prisma'].tenant.findUnique({
-            where: { id: tenantId }, select: { settings: true },
-        });
-        await this.authService['prisma'].tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: { ...(tenant?.settings as any || {}), timezone: body.timezone },
-            },
+        await mergeTenantSettingsAtomic(this.authService['prisma'], tenantId, {
+            timezone: body.timezone,
         });
         return { success: true };
     }

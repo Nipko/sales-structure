@@ -77,6 +77,32 @@ export type ProviderRoutingPatch = {
     wompiMethods?: Partial<WompiMethodFlags>;
 };
 
+export type IntegrationRailStatus = {
+    certified: string[];
+    registered: string[];
+    certifiedWithoutAdapter: string[];
+    adapterWithoutCertification: string[];
+};
+
+export type IntegrationOutboxAttention = {
+    id: string;
+    provider: string;
+    operation: string;
+    status: string;
+    attempts: number;
+    lastError?: string;
+    createdAt: string;
+};
+
+export type IntegrationOutboxOverview = {
+    tenants: Array<{
+        tenantId: string;
+        tenantName: string;
+        byStatus: Record<string, number>;
+        attention: IntegrationOutboxAttention[];
+    }>;
+};
+
 export type PaymentProviderStatusEntry = {
     enabled: boolean;
     registered: boolean;
@@ -899,23 +925,29 @@ export const api = {
     
     // --- Channels ---
     getWhatsappConfig: () => apiGet("/channels/whatsapp/config"),
-    getWhatsappBusinessProfile: () => apiGet("/channels/whatsapp/business-profile"),
+    getWhatsappBusinessProfile: (phoneNumberId?: string) => apiGet(
+        `/channels/whatsapp/business-profile${phoneNumberId ? `?phoneNumberId=${encodeURIComponent(phoneNumberId)}` : ""}`,
+    ),
     updateWhatsappBusinessProfile: (data: {
         about?: string; address?: string; description?: string;
-        email?: string; websites?: string[]; vertical?: string;
+        email?: string; websites?: string[]; vertical?: string; phoneNumberId?: string;
     }) => apiPost("/channels/whatsapp/business-profile", data),
-    uploadWhatsappProfilePhoto: async (file: File) => {
+    uploadWhatsappProfilePhoto: async (file: File, phoneNumberId?: string) => {
         const formData = new FormData();
         formData.append("file", file);
         const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-        const res = await fetch(`${BASE_URL}/channels/whatsapp/business-profile/photo`, {
+        const query = phoneNumberId ? `?phoneNumberId=${encodeURIComponent(phoneNumberId)}` : "";
+        const res = await fetch(`${BASE_URL}/channels/whatsapp/business-profile/photo${query}`, {
             method: "POST",
             headers: token ? { Authorization: `Bearer ${token}` } : {},
             body: formData,
         });
         return res.json();
     },
-    deleteWhatsappProfilePhoto: () => apiPost("/channels/whatsapp/business-profile/photo/delete", {}),
+    deleteWhatsappProfilePhoto: (phoneNumberId?: string) => apiPost(
+        "/channels/whatsapp/business-profile/photo/delete",
+        { phoneNumberId },
+    ),
     messengerOAuthConnect: (userAccessToken: string) =>
         apiPost("/channels/messenger/oauth-connect", { userAccessToken }),
     instagramOAuthConnect: (code: string) =>
@@ -954,6 +986,12 @@ export const api = {
     getPlatformBilling: () => apiGet("/tenants/platform-billing"),
     getPlatformUsage: () => apiGet("/tenants/platform-usage"),
     getPlatformHealth: () => apiGet("/tenants/health"),
+    getIntegrationRail: () => apiGet<IntegrationRailStatus>("/integrations/rail"),
+    getIntegrationOutboxOverview: () => apiGet<IntegrationOutboxOverview>("/integrations/outbox"),
+    getIntegrationOutbox: (tenantId: string) =>
+        apiGet<{ byStatus: Record<string, number>; attention: IntegrationOutboxAttention[] }>(
+            `/integrations/outbox/${encodeURIComponent(tenantId)}`,
+        ),
     getStorageOverview: () => apiGet("/health/storage/overview"),
     getStorageTenants: () => apiGet("/health/storage/tenants"),
     getStorageHistory: (days?: number, tenantId?: string) =>
@@ -1332,6 +1370,17 @@ export const api = {
         apiDelete(`/vertical-integrations/${tenantId}/${provider}`),
     listVerticalIntegrationItems: (tenantId: string, provider?: string) =>
         apiGet(`/vertical-integrations/${tenantId}/items${provider ? `?provider=${provider}` : ""}`),
+
+    // Lodging channel manager (Hostaway). These endpoints resolve the tenant
+    // from the authenticated context; secrets are always returned masked.
+    getChannelManagerConfig: () => apiGet(`/channel-manager/config`),
+    updateChannelManagerConfig: (body: any) => apiPut(`/channel-manager/config`, body),
+    listChannelManagerListings: () => apiGet(`/channel-manager/listings`),
+    listChannelManagerMappings: () => apiGet(`/channel-manager/mappings`),
+    mapChannelManagerListing: (listingId: string, propertyId: string | null) =>
+        apiPut(`/channel-manager/mappings`, { listingId, propertyId }),
+    syncHostaway: () => apiPost(`/channel-manager/sync/hostaway`, {}),
+    testHostaway: () => apiPost(`/channel-manager/test/hostaway`, {}),
 
     // MCP native (T3.20) — external MCP server connectors
     listMcpServers: (tenantId: string) => apiGet(`/mcp/${tenantId}/servers`),
@@ -1908,7 +1957,11 @@ export const api = {
         apiDelete(`/policies/${tenantId}/${id}`),
 
     // ─── Test Agent (dry-run with debug info) ───
-    testAgent: (tenantId: string, agentId: string, data: { message: string; conversationHistory?: Array<{ role: string; content: string }> }) =>
+    testAgent: (tenantId: string, agentId: string, data: {
+        message: string;
+        channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
+        conversationHistory?: Array<{ role: string; content: string }>;
+    }) =>
         apiPost<any>(`/agent-test/${tenantId}/${agentId}`, data),
 
     // ─── Offers / Promotions ───

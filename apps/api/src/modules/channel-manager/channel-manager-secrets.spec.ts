@@ -1,6 +1,9 @@
 import { ChannelManagerService } from './channel-manager.service';
 import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
-import { fakeSettingsWriter } from '../../common/utils/tenant-settings-branch.fixture';
+import {
+    fakeSettingsTransaction,
+    fakeSettingsWriter,
+} from '../../common/utils/tenant-settings-branch.fixture';
 
 /**
  * ═══ GUARDAR LA CONFIGURACIÓN DESTRUÍA LA CREDENCIAL DE DOS FORMAS ═══
@@ -32,16 +35,18 @@ function buildService(stored: Record<string, any> = {}) {
         },
     };
     prisma.$executeRawUnsafe = fakeSettingsWriter(() => settings, (n) => { settings = n; });
+    prisma.$transaction = fakeSettingsTransaction(() => settings, (n) => { settings = n; });
+    const redis = { get: jest.fn(), set: jest.fn(), del: jest.fn(), incr: jest.fn().mockResolvedValue(1) };
     const service = new ChannelManagerService(
         prisma as any,
-        { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any,
+        redis as any,
         { axiosRef: { get: jest.fn(), post: jest.fn() } } as any,
         new TenantSecretCryptoService(),
     );
     for (const level of ['log', 'warn', 'error', 'debug'] as const) {
         jest.spyOn((service as any).logger, level).mockImplementation(() => undefined);
     }
-    return { service, prisma, readSettings: () => settings };
+    return { service, prisma, redis, readSettings: () => settings };
 }
 
 describe('la máscara del panel significa "dejá lo que había"', () => {
@@ -72,6 +77,18 @@ describe('la máscara del panel significa "dejá lo que había"', () => {
         await service.updateConfig(tenantId, { provider: 'hostaway', apiKey: 'vieja', syncInterval: 60 });
         await service.updateConfig(tenantId, { apiKey: 'nueva' } as any);
         expect((await service.getConfig(tenantId))!.apiKey).toBe('nueva');
+    });
+});
+
+describe('la configuración corta decisiones SoR cacheadas', () => {
+    it('avanza la generación del tenant al guardar', async () => {
+        const { service, redis } = buildService();
+
+        await service.updateConfig(tenantId, {
+            provider: 'hostaway', apiKey: 'clave-real', syncInterval: 60,
+        });
+
+        expect(redis.incr).toHaveBeenCalledWith(`lodging:sor:version:${tenantId}`);
     });
 });
 

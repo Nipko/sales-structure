@@ -1,3 +1,5 @@
+import { canonicalSubtypeId } from './subtype-experience-profile';
+
 /**
  * ═══ TRES NÚMEROS QUE DECIDÍAN LO MISMO Y NO SE HABLABAN ═══
  *
@@ -57,6 +59,14 @@ export interface ProviderFreshnessPolicy {
      */
     liveTools: readonly string[];
 }
+
+/**
+ * Cadencia ejecutable del re-sync de integraciones verticales.
+ *
+ * La expresión y el presupuesto viven juntos para que el cron real no pueda
+ * separarse silenciosamente de la política de frescura que publica las tools.
+ */
+export const VERTICAL_INTEGRATION_SYNC_CRON = '0 5 * * *';
 
 /** El re-sync de integraciones verticales corre una vez por día, a las 5. */
 export const VERTICAL_INTEGRATION_SYNC_INTERVAL_SECONDS = 24 * 60 * 60;
@@ -139,6 +149,34 @@ export const PROVIDER_INDUSTRIES: Readonly<Record<VerticalProviderName, readonly
     });
 
 /**
+ * Exact subtype profiles for which each connector models the same business.
+ * Industry-only matching made `salud/farmacia` inherit Cliniko, even though a
+ * pharmacy has inventory/dispensing workflows rather than a clinic schedule.
+ */
+export const PROVIDER_PROFILE_IDS: Readonly<Record<VerticalProviderName, readonly string[]>> =
+    Object.freeze({
+        toast: Object.freeze([
+            'restaurantes/casual_dining',
+            'restaurantes/comida_rapida',
+            'restaurantes/cafeteria',
+            'restaurantes/dark_kitchen',
+        ]),
+        mindbody: Object.freeze([
+            'gimnasios/gimnasio_general',
+            'gimnasios/crossfit',
+            'gimnasios/yoga_pilates',
+            'gimnasios/cycling',
+            'gimnasios/martial_arts',
+        ]),
+        cliniko: Object.freeze([
+            'salud/dental',
+            'salud/medica_general',
+            'salud/dermatologia',
+            'salud/psicologia',
+        ]),
+    });
+
+/**
  * Si este proveedor tiene sentido para la industria de este negocio.
  *
  * Sin industria conocida devuelve `true`: no saber el rubro no es motivo para
@@ -153,4 +191,22 @@ export function providerFitsIndustry(
     if (!industries) return false;
     if (!industry) return true;
     return industries.includes(industry);
+}
+
+/** Match against the canonical profile whenever the subtype is known. */
+export function providerFitsProfile(
+    provider: string,
+    industry: string | null | undefined,
+    subtype: string | null | undefined,
+): boolean {
+    if (!providerFitsIndustry(provider, industry)) return false;
+    // Old tenants without a subtype still get an industry-level diagnostic;
+    // the effective runtime always has a resolved profile and uses the exact
+    // list below.
+    if (!industry || !subtype) return true;
+    const canonical = canonicalSubtypeId(industry, subtype);
+    if (!canonical) return false;
+    const profileId = `${canonical.industry}/${canonical.subtype}`;
+    const profiles = (PROVIDER_PROFILE_IDS as Record<string, readonly string[]>)[provider];
+    return !!profiles?.includes(profileId);
 }

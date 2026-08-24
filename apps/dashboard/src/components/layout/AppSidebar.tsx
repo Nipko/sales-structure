@@ -100,6 +100,7 @@ import {
   Users,
   UtensilsCrossed,
   Wallet,
+  Waypoints,
   Workflow,
   Wrench,
   X,
@@ -377,6 +378,7 @@ const platformSections: NavSectionDef[] = [
     defaultExpanded: true,
     items: [
       { labelKey: "ops", href: "/admin/ops", icon: Gauge, accent: "text-indigo-500 dark:text-indigo-400" },
+      { labelKey: "integrationOutbox", href: "/admin/ops/integrations", icon: Waypoints, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "managed", href: "/admin/managed", icon: ShieldCheck, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "platformHealth", href: "/admin/health", icon: Activity, accent: "text-rose-500 dark:text-rose-400" },
       { labelKey: "storage", href: "/admin/storage", icon: HardDrive, accent: "text-cyan-500 dark:text-cyan-400" },
@@ -411,6 +413,7 @@ const platformSections: NavSectionDef[] = [
     items: [
       { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
       { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
+      { labelKey: "verticalAudit", href: "/admin/vertical-audit", icon: ClipboardList },
     ],
   },
   {

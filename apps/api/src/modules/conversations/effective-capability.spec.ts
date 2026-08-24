@@ -24,11 +24,13 @@ function build(options: {
     unmet?: string[];
     readinessDegraded?: boolean;
     noReadiness?: boolean;
+    planSlug?: string;
 } = {}) {
     const throttle = {
         getPlanFeatures: options.planFeatures instanceof Error
             ? jest.fn().mockRejectedValue(options.planFeatures)
             : jest.fn().mockResolvedValue(options.planFeatures ?? { plan: 'pro' }),
+        getTenantPlan: jest.fn().mockResolvedValue(options.planSlug ?? 'pro'),
     };
     const readiness = options.noReadiness ? undefined : {
         evaluate: jest.fn().mockResolvedValue({
@@ -136,8 +138,12 @@ describe('plan y readiness recortan lo que el subtipo concede', () => {
         expect(contract.unmetReadiness).toContain('menu_items');
         const exclusion = contract.excluded.find(e => e.subject === 'restaurants');
         expect(exclusion).toMatchObject({ reason: 'readiness_unmet' });
-        // El motivo tiene que decirle al dueño qué hacer, no solo que falló.
-        expect(exclusion!.detail).toMatch(/menu_items|Cargá/);
+        expect(exclusion!.detail).toMatchObject({
+            es: expect.stringContaining('datos operativos'),
+            en: expect.stringContaining('Operational data'),
+            pt: expect.stringContaining('dados operacionais'),
+            fr: expect.stringContaining('données opérationnelles'),
+        });
         expect(exclusion!.repairRoute).toEqual(expect.any(String));
     });
 
@@ -203,6 +209,23 @@ describe('el contrato es trazable', () => {
         expect(Date.parse(contract.resolvedAt)).not.toBeNaN();
     });
 
+    it('registra el slug del plan runtime aunque el payload de features no lo repita', async () => {
+        const { service } = build({
+            planFeatures: { customerPayments: true },
+            planSlug: 'enterprise',
+        });
+
+        const contract = await service.resolve({
+            tenantId,
+            schemaName,
+            industry: 'turismo',
+            subType: 'tours',
+            toolsConfig: { tours: { enabled: true } },
+        });
+
+        expect(contract.planSnapshot).toBe('enterprise');
+    });
+
     it('toda exclusión trae un motivo legible', async () => {
         const { service } = build({ unmet: ['tour_packages'] });
 
@@ -214,7 +237,10 @@ describe('el contrato es trazable', () => {
         expect(contract.excluded.length).toBeGreaterThan(0);
         for (const exclusion of contract.excluded) {
             expect(exclusion.reason).toEqual(expect.any(String));
-            expect(exclusion.detail.length).toBeGreaterThan(10);
+            expect(Object.keys(exclusion.detail).sort()).toEqual(['en', 'es', 'fr', 'pt']);
+            for (const detail of Object.values(exclusion.detail)) {
+                expect(detail.length).toBeGreaterThan(10);
+            }
         }
     });
 
@@ -280,7 +306,10 @@ describe('conectada no es sana, y sana no es fresca', () => {
 
         expect(contract.publishedTools).not.toContain('get_restaurant_menu');
         expect(contract.excluded).toContainEqual(expect.objectContaining({
-            subject: 'toast', reason: 'provider_unavailable',
+            // A dead connection excludes the provider; a live connection with
+            // a stale mirror excludes the exact mirror-backed tool.
+            subject: expect.stringMatching(/^(toast|get_restaurant_menu)$/),
+            reason: 'provider_unavailable',
         }));
     });
 
@@ -373,7 +402,7 @@ describe('un perfil bloqueado no cierra nada', () => {
         expect(contract.publishedTools).toContain('get_insurance_plans');
         expect(contract.publishedTools.every((tool: string) => tool !== 'file_claim')).toBe(true);
         const blocked = contract.excluded.find(e => e.reason === 'profile_blocked');
-        expect(blocked?.detail).toMatch(/no puede cerrar operaciones por chat/i);
+        expect(blocked?.detail.es).toMatch(/no puede cerrar operaciones por chat/i);
     });
 
     /**
@@ -398,17 +427,17 @@ describe('un perfil bloqueado no cierra nada', () => {
         expect(open.writersBlocked).toBe(false);
     });
 
-    /** Un perfil que NO está bloqueado sigue publicando sus writers. */
-    it('no toca a un perfil que no está bloqueado', async () => {
+    /** Un perfil nativo que NO está bloqueado sigue publicando sus writers. */
+    it('no toca a un perfil nativo que no está bloqueado', async () => {
         const { service } = build();
 
         const contract = await service.resolve({
-            tenantId, schemaName, industry: 'seguros', subType: 'broker',
-            toolsConfig: { insurance: { enabled: true } },
+            tenantId, schemaName, industry: 'restaurantes', subType: 'comida_rapida',
+            toolsConfig: { restaurants: { enabled: true } },
         });
 
         expect(contract.excluded.some(e => e.reason === 'profile_blocked')).toBe(false);
-        expect(contract.publishedTools).toContain('file_claim');
+        expect(contract.publishedTools).toContain('place_order');
     });
 });
 
@@ -470,13 +499,14 @@ describe('leer del proveedor y escribir local es vender la misma noche dos veces
         expect(contract.excluded.some(e => e.subject.includes('book_class'))).toBe(true);
     });
 
-    it('sin el proveedor conectado, el reservador local es el correcto', async () => {
+    it('sin binding del proveedor, el reservador local es el correcto', async () => {
         const { service } = build();
 
         const contract = await service.resolve({
             tenantId, schemaName, industry: 'gimnasios', subType: 'gimnasio_general',
             toolsConfig: { gyms: { enabled: true } },
             role: 'tenant_agent', channelType: 'whatsapp',
+            providers: { mindbody: { configured: false, connected: false } },
         });
 
         // El gimnasio que nunca integró nada sigue reservando. La familia es
@@ -484,21 +514,48 @@ describe('leer del proveedor y escribir local es vender la misma noche dos veces
         expect(contract.publishedTools).toContain('book_class');
     });
 
-    it('un proveedor caído no desplaza nada: su lectura tampoco se publicó', async () => {
+    it('un binding autoritativo caído conserva ownership y no reactiva el writer local', async () => {
         const { service } = build();
 
         const contract = await service.resolve({
             tenantId, schemaName, industry: 'gimnasios', subType: 'gimnasio_general',
             toolsConfig: { gyms: { enabled: true } },
             role: 'tenant_agent', channelType: 'whatsapp',
-            providers: { mindbody: { connected: true, healthy: false, asOf: fresh() } },
+            providers: {
+                mindbody: {
+                    configured: true,
+                    connected: true,
+                    healthy: false,
+                    asOf: fresh(),
+                },
+            },
         });
 
-        // Desplazar con el proveedor caído dejaría al gimnasio sin ninguna de
-        // las dos formas de reservar — la externa que no responde y la local
-        // que le quitamos.
+        // La caída bloquea la lectura externa, no cambia quién manda. Volver a
+        // publicar el writer local vendería en un ledger que Mindbody no ve.
         expect(contract.publishedTools).not.toContain('get_fitness_schedule');
-        expect(contract.publishedTools).toContain('book_class');
+        expect(contract.publishedTools).not.toContain('book_class');
+        expect(contract.excluded).toEqual(expect.arrayContaining([
+            expect.objectContaining({ reason: 'provider_unavailable' }),
+            expect.objectContaining({ reason: 'external_system_of_record' }),
+        ]));
+    });
+
+    it('health indefinido no crea split-brain si el binding durable sí existe', async () => {
+        const { service } = build();
+
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'gimnasios', subType: 'gimnasio_general',
+            toolsConfig: { gyms: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+            providers: {
+                mindbody: { configured: true, connected: false, healthy: undefined },
+            },
+        });
+
+        expect(contract.publishedTools).not.toContain('get_fitness_schedule');
+        expect(contract.publishedTools).not.toContain('book_class');
+        expect(contract.publishedTools).not.toContain('cancel_class_booking');
     });
 
     it('Cliniko vivo desplaza a las tres escrituras de agenda', async () => {
@@ -519,7 +576,7 @@ describe('leer del proveedor y escribir local es vender la misma noche dos veces
         expect(contract.publishedTools).toContain('check_availability');
     });
 
-    it('Toast no desplaza nada: administra el menú, no el turno', async () => {
+    it('Toast desplaza pedidos locales que nunca llegarían al POS', async () => {
         const { service } = build();
 
         const contract = await service.resolve({
@@ -530,7 +587,22 @@ describe('leer del proveedor y escribir local es vender la misma noche dos veces
         });
 
         expect(contract.publishedTools).toContain('get_restaurant_menu');
-        // Leer el menú de allá y tomar el pedido acá no vende dos veces nada.
-        expect(contract.publishedTools).toContain('place_order');
+        expect(contract.publishedTools).not.toContain('place_order');
+        expect(contract.publishedTools).not.toContain('cancel_order');
+    });
+
+    it('Cliniko no aplica a farmacia aunque comparta la industria salud', async () => {
+        const { service } = build();
+        const contract = await service.resolve({
+            tenantId, schemaName, industry: 'salud', subType: 'farmacia',
+            toolsConfig: { catalog: { enabled: true } },
+            role: 'tenant_agent', channelType: 'whatsapp',
+            providers: { cliniko: { connected: true, healthy: true, asOf: fresh() } },
+        });
+        expect(contract.publishedTools).not.toContain('list_clinic_services');
+        expect(contract.publishedTools).not.toContain('check_clinic_availability');
+        expect(contract.excluded).toContainEqual(expect.objectContaining({
+            subject: 'cliniko', reason: 'provider_unavailable',
+        }));
     });
 });

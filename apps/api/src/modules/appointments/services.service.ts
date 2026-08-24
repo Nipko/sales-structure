@@ -200,9 +200,29 @@ export class ServicesService {
     }
 
     async delete(schemaName: string, serviceId: string, tenantId?: string): Promise<void> {
-        await this.prisma.executeInTenantSchema(schemaName,
-            `DELETE FROM services WHERE id = $1::uuid`, [serviceId],
-        );
+        try {
+            // service_requests.service_id owns an ON DELETE RESTRICT FK. The
+            // database is the concurrency boundary: if scheduling and deletion
+            // race, PostgreSQL serializes the FK locks and permits only a state
+            // without orphaned operational history.
+            await this.prisma.executeInTenantSchema(schemaName,
+                `DELETE FROM services WHERE id = $1::uuid`, [serviceId],
+            );
+        } catch (error: any) {
+            const fingerprint = [
+                error?.code,
+                error?.meta?.code,
+                error?.cause?.code,
+                error?.message,
+            ].filter(Boolean).join(' ');
+            if (fingerprint.includes('23503')) {
+                throw new ConflictException({
+                    error: 'service_has_operational_history',
+                    message: 'No se puede eliminar un servicio con reservas o solicitudes asociadas. Desactívalo para conservar su historial.',
+                });
+            }
+            throw error;
+        }
         // Invalidate booking services cache
         if (tenantId) {
             await this.redis.del(`booking:services:${tenantId}`).catch(() => {});

@@ -4,6 +4,7 @@ import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { InterpretedIntent } from './intent-interpreter.service';
 import type { ToolExecutionAuthority } from '@parallext/shared';
+import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -313,6 +314,27 @@ export class BookingEngineService {
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
+
+        // Defense in depth: the orchestrator checks this before entering the
+        // engine, and the engine checks again before reading cached services or
+        // collecting customer data. A stale appointments toggle must not start a
+        // flow whose `create_appointment` is absent from the effective contract.
+        const bookingAuthority = bookingEngineAuthorityDecision(authority);
+        if (!bookingAuthority.allowed) {
+            const activeFlow = !!state.step && !['idle', 'booked'].includes(state.step);
+            const bookingRequested = activeFlow
+                || deniedOperationalIntent(rawText) === 'booking'
+                || ['ask_availability', 'select_service', 'select_time', 'confirm'].includes(intent.intent);
+            if (bookingRequested) {
+                return this.escalateToHuman(
+                    state,
+                    L,
+                    'schedulingUnavailable',
+                    `booking_not_authorised:${bookingAuthority.reason || 'unknown'}`,
+                );
+            }
+            return { handled: false, state };
+        }
         // D3 fix: stale PG booking state (age <=1h) can resucitar ask_name with date vencida.
         // Validar state.date antes de cualquier intent; si ya pasó, resetear a ask_date.
         if (state.date && state.date < todayDate) {

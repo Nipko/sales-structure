@@ -3,7 +3,11 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { decideToolAuthority, isToolAuthorityDenial, type ToolExecutionAuthority } from '@parallext/shared';
-import { buildTurnAuthority, engineAuthorityFor } from './turn-authority';
+import {
+    buildTurnAuthority,
+    deniedOperationalIntent,
+    engineAuthorityFor,
+} from './turn-authority';
 
 /**
  * ═══ LA CADENA COMPLETA, SIN MOCKS ENTRE LAS PIEZAS QUE DECIDEN ═══
@@ -277,6 +281,76 @@ describe('el motor de reservas escribe por fuera del bucle, y no se saltea la pu
 
         expect(result.state.step).not.toBe('booked');
         expect(wroteAnAppointment(queryRawUnsafe.mock.calls)).toBe(false);
+    });
+
+    it('no empieza a pedir datos si falta una herramienta requerida y deriva sin filtrar códigos', async () => {
+        const { executor } = buildExecutor();
+        const execute = jest.spyOn(executor, 'execute');
+        const engine = buildEngine(executor);
+        const authority: ToolExecutionAuthority = {
+            source: 'turn_contract',
+            allowedTools: ['search_faqs'],
+            resolvedAt: new Date().toISOString(),
+        };
+
+        const result = await engine.process(
+            schemaName, tenantId, contactId,
+            { intent: 'unknown', isConfirmation: false } as any,
+            'quiero reservar una cita', { step: 'idle' } as BookingState,
+            {}, '2026-08-21', 'es', { authority, conversationId },
+        );
+
+        expect(result).toMatchObject({
+            handled: true,
+            handoff: true,
+            state: { step: 'idle' },
+        });
+        expect(result.text).toMatch(/agenda|equipo/i);
+        expect(result.text).not.toMatch(/tool|authori|capability|create_appointment/i);
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('no deriva un saludo si el agente no tiene capacidad de reservas', async () => {
+        const { executor } = buildExecutor();
+        const execute = jest.spyOn(executor, 'execute');
+        const engine = buildEngine(executor);
+
+        const result = await engine.process(
+            schemaName, tenantId, contactId,
+            { intent: 'unknown', isConfirmation: false } as any,
+            'hola', { step: 'idle' } as BookingState,
+            {}, '2026-08-21', 'es', {
+                authority: {
+                    source: 'turn_contract',
+                    allowedTools: ['search_faqs'],
+                    resolvedAt: new Date().toISOString(),
+                },
+                conversationId,
+            },
+        );
+
+        expect(result).toMatchObject({ handled: false, state: { step: 'idle' } });
+        expect(result.handoff).not.toBe(true);
+        expect(execute).not.toHaveBeenCalled();
+    });
+});
+
+describe('intención operativa bloqueada versus conversación informativa', () => {
+    it.each([
+        ['hola', null],
+        ['gracias por la información', null],
+        ['¿cuál es la política de cancelación?', null],
+        ['¿qué reservas manejan?', null],
+        ['¿cómo puedo pagar con tarjeta?', null],
+        ['¿cómo cancelo una reserva?', null],
+        ['quiero pedir información sobre sus horarios', null],
+        ['hola, quiero reservar una cita', 'booking'],
+        ['quiero reservar una cita', 'booking'],
+        ['voy a comprar este producto', 'purchase'],
+        ['necesito pagar y generar un enlace de pago', 'payment'],
+        ['quiero cancelar mi reserva', 'change'],
+    ])('%s → %s', (message, expected) => {
+        expect(deniedOperationalIntent(message)).toBe(expected);
     });
 });
 

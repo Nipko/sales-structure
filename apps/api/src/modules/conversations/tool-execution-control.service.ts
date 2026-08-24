@@ -1894,7 +1894,7 @@ export class ToolExecutionControlService {
             result: {
                 error: 'confirmation_required',
                 confirmationId: ledgerId,
-                message: 'NADA se ha ejecutado todavía. No le digas al cliente que está hecho, '
+                message: 'NADA se ha ejecutado todavía. No le diga al cliente que está hecho, '
                     + 'confirmado, reservado ni pagado. Pídele una confirmación explícita y espera su respuesta.',
             },
         };

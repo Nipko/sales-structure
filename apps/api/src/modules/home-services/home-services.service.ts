@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+    Injectable,
+    Logger,
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -14,6 +20,12 @@ import {
     serializeLocalTimestampRows,
 } from '../../common/utils/local-timestamp.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import {
+    HomeServiceCatalogUnavailableError,
+    HomeServiceSlotUnavailableError,
+    inspectHomeServiceCapacity,
+    lockAndAssertHomeServiceCapacity,
+} from './home-service-capacity';
 
 const HOME_SERVICE_LOCAL_TIMESTAMPS = ['scheduled_at', 'completed_at'] as const;
 
@@ -35,6 +47,46 @@ export class HomeServicesService {
         private readonly prisma: PrismaService,
         private readonly eventEmitter: EventEmitter2,
     ) {}
+
+    async listCapacityServices(schemaName: string): Promise<Array<{
+        id: string;
+        name: string;
+        category: string;
+        durationMinutes: number;
+        maxConcurrent: number;
+    }>> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, name, COALESCE(category, 'otro') AS category,
+                    duration_minutes::int,
+                    COALESCE(max_concurrent, 1)::int AS max_concurrent
+               FROM services
+              WHERE is_active = true
+                AND duration_minutes > 0
+              ORDER BY sort_order, name`,
+            [],
+        );
+        return rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            category: row.category,
+            durationMinutes: Number(row.duration_minutes),
+            maxConcurrent: Math.max(1, Number(row.max_concurrent) || 1),
+        }));
+    }
+
+    async checkAvailability(schemaName: string, input: {
+        serviceId: string;
+        startAt: string;
+        assignedTechnicianId?: string | null;
+    }) {
+        return inspectHomeServiceCapacity(
+            <T>(sql: string, params: unknown[] = []) => (
+                this.prisma.executeInTenantSchema<T>(schemaName, sql, params)
+            ),
+            { schemaName, ...input },
+        );
+    }
 
     async listRequests(schemaName: string, opts: { status?: string; urgency?: string; limit?: number } = {}): Promise<any[]> {
         const where: string[] = [];
@@ -78,33 +130,42 @@ export class HomeServicesService {
 
     async createRequest(schemaName: string, data: any): Promise<any> {
         if (!data.serviceType) throw new BadRequestException('serviceType is required');
-        const status = data.status || 'pending';
         const scheduledAt = data.scheduledAt === undefined || data.scheduledAt === null
             ? null
             : this.validateScheduledAt(data.scheduledAt);
+        const status = data.status || (scheduledAt ? 'scheduled' : 'pending');
         if (status === 'scheduled' && !scheduledAt) {
             throw new BadRequestException('scheduledAt is required when status is scheduled');
         }
-        const estimatedDurationMinutes = optionalPositiveIntegerUnit(
+        if (status === 'scheduled' && !data.serviceId) {
+            throw new BadRequestException('serviceId is required when status is scheduled');
+        }
+        let estimatedDurationMinutes = optionalPositiveIntegerUnit(
             data.estimatedDurationMinutes,
             'estimatedDurationMinutes',
         );
         const currency = normalizeCurrencyCode(data.currency);
         const contactId = assertOptionalContactId(data.contactId);
         const sql = `INSERT INTO service_requests (
-                contact_id, opportunity_id, conversation_id, service_type, urgency,
+                contact_id, opportunity_id, conversation_id, service_id, service_type, urgency,
                 customer_name, customer_phone, address, address_notes, city,
                 issue_description, preferred_date, preferred_time_window,
                 estimated_duration_minutes, estimated_cost, currency,
                 scheduled_at, status
              ) VALUES (
-                 $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11,
-                 $12::date, $13, $14, $15, $16, $17::timestamp, $18
+                 $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12,
+                 $13::date, $14, $15, $16, $17, $18::timestamp, $19
              ) RETURNING *,
                  to_char(scheduled_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_at_text,
                  to_char(completed_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS completed_at_text`;
-        const baseParams = [
-                data.serviceType, data.urgency || 'normal',
+        let effectiveServiceType = data.serviceType;
+        const buildParams = (canonicalContactId: string | null, opportunityId: string | null) => [
+                canonicalContactId,
+                opportunityId,
+                data.conversationId || null,
+                data.serviceId || null,
+                effectiveServiceType,
+                data.urgency || 'normal',
                 data.customerName || null, data.customerPhone || null,
                 data.address || null, data.addressNotes || null, data.city || null,
                 data.issueDescription || null,
@@ -112,27 +173,37 @@ export class HomeServicesService {
                 estimatedDurationMinutes, data.estimatedCost ?? null, currency,
                 scheduledAt, status,
             ];
-        const rows = contactId || data.opportunityId
-            ? await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+
+        let rows: any[];
+        try {
+            rows = contactId || data.opportunityId || status === 'scheduled'
+                ? await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 const canonicalContactId = await requireTenantContact(query, contactId);
                 const opportunityId = await resolveNativeEvidenceOpportunity(query, {
                     contactId: canonicalContactId,
                     conversationId: data.conversationId,
                     trustedOpportunityId: data.opportunityId,
                 });
-                return query<any[]>(sql, [
-                    canonicalContactId,
-                    opportunityId,
-                    data.conversationId || null,
-                    ...baseParams,
-                ]);
+                if (status === 'scheduled') {
+                    const capacity = await lockAndAssertHomeServiceCapacity(query, {
+                        schemaName,
+                        serviceId: data.serviceId,
+                        startAt: scheduledAt!,
+                        assignedTechnicianId: data.assignedTechnicianId || null,
+                    });
+                    estimatedDurationMinutes = capacity.service.durationMinutes;
+                    effectiveServiceType = capacity.service.category;
+                }
+                return query<any[]>(sql, buildParams(canonicalContactId, opportunityId));
             })
-            : await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, [
-                null,
-                null,
-                data.conversationId || null,
-                ...baseParams,
-            ]);
+                : await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    sql,
+                    buildParams(null, null),
+                );
+        } catch (error) {
+            this.rethrowCapacityError(error);
+        }
         const request = rows[0];
         if (!request) throw new Error('Service request was not created');
         try {
@@ -167,10 +238,9 @@ export class HomeServicesService {
         if (data.scheduledAt !== undefined && data.scheduledAt !== null) {
             data = { ...data, scheduledAt: this.validateScheduledAt(data.scheduledAt) };
         }
-        const fields: string[] = [];
-        const values: any[] = [];
-        let i = 1;
         const map: Record<string, string> = {
+            serviceId: 'service_id',
+            serviceType: 'service_type',
             urgency: 'urgency', address: 'address', addressNotes: 'address_notes',
             city: 'city', issueDescription: 'issue_description',
             preferredDate: 'preferred_date', preferredTimeWindow: 'preferred_time_window',
@@ -182,18 +252,22 @@ export class HomeServicesService {
             scheduledAt: 'scheduled_at', completedAt: 'completed_at',
             status: 'status',
         };
-        for (const [k, col] of Object.entries(map)) {
-            if (k in data) { fields.push(`${col} = $${i++}`); values.push(data[k]); }
-        }
-        if (!fields.length) return this.getRequestById(schemaName, id);
-        fields.push(`updated_at = NOW()`);
-        values.push(id);
-        const request = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            // Lock the row while deriving the final state. The invariant must be
-            // checked against the persisted scheduled_at when an update only
-            // advances the status, without a new scheduledAt value.
-            const existing = await query<Array<{ status: string; scheduled_at: string | Date | null }>>(
-                `SELECT status, scheduled_at
+        if (!Object.keys(map).some(key => key in data)) return this.getRequestById(schemaName, id);
+
+        let request: any;
+        try {
+            request = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const existing = await query<Array<{
+                status: string;
+                scheduled_at: string | Date | null;
+                scheduled_at_text: string | null;
+                service_id: string | null;
+                service_type: string;
+                assigned_technician_id: string | null;
+            }>>(
+                `SELECT status, scheduled_at,
+                        to_char(scheduled_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_at_text,
+                        service_id, service_type, assigned_technician_id
                    FROM service_requests
                   WHERE id = $1::uuid
                   FOR UPDATE`,
@@ -204,10 +278,47 @@ export class HomeServicesService {
             const finalStatus = data.status !== undefined ? data.status : existing[0].status;
             const finalScheduledAt = data.scheduledAt !== undefined
                 ? data.scheduledAt
-                : existing[0].scheduled_at;
+                : existing[0].scheduled_at_text || existing[0].scheduled_at;
+            const finalServiceId = data.serviceId !== undefined
+                ? data.serviceId
+                : existing[0].service_id;
             if (finalStatus === 'scheduled' && !finalScheduledAt) {
                 throw new BadRequestException('scheduledAt is required when status is scheduled');
             }
+            if (finalStatus === 'scheduled' && !finalServiceId) {
+                throw new BadRequestException('serviceId is required when status is scheduled');
+            }
+
+            let effectiveData = { ...data };
+            if (finalStatus === 'scheduled') {
+                const capacity = await lockAndAssertHomeServiceCapacity(query, {
+                    schemaName,
+                    serviceId: finalServiceId,
+                    startAt: String(finalScheduledAt),
+                    assignedTechnicianId: data.assignedTechnicianId !== undefined
+                        ? data.assignedTechnicianId
+                        : existing[0].assigned_technician_id,
+                    excludeRequestId: id,
+                });
+                effectiveData = {
+                    ...effectiveData,
+                    serviceId: capacity.service.id,
+                    serviceType: capacity.service.category,
+                    estimatedDurationMinutes: capacity.service.durationMinutes,
+                };
+            }
+
+            const fields: string[] = [];
+            const values: any[] = [];
+            let i = 1;
+            for (const [key, column] of Object.entries(map)) {
+                if (key in effectiveData) {
+                    fields.push(`${column} = $${i++}`);
+                    values.push(effectiveData[key]);
+                }
+            }
+            fields.push('updated_at = NOW()');
+            values.push(id);
 
             const rows = await query<any[]>(
                 `UPDATE service_requests SET ${fields.join(', ')} WHERE id = $${i}::uuid
@@ -218,7 +329,20 @@ export class HomeServicesService {
             );
             return rows[0];
         });
+        } catch (error) {
+            this.rethrowCapacityError(error);
+        }
         return serializeLocalTimestampFields(request, HOME_SERVICE_LOCAL_TIMESTAMPS);
+    }
+
+    private rethrowCapacityError(error: unknown): never {
+        if (error instanceof HomeServiceSlotUnavailableError) {
+            throw new ConflictException({ error: error.code, message: error.message });
+        }
+        if (error instanceof HomeServiceCatalogUnavailableError) {
+            throw new BadRequestException({ error: error.code, message: error.message });
+        }
+        throw error;
     }
 
     /**

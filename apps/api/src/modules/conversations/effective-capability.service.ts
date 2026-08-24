@@ -6,8 +6,11 @@ import {
     OPERATIONAL_ROLES,
     TOOL_GROUP_PLAN_FEATURE,
     TOOL_GROUP_READINESS,
-    PROVIDER_INDUSTRIES,
+    VERTICAL_TOOL_GROUPS,
+    PROVIDER_PROFILE_IDS,
     providerFreshnessFor,
+    profileSystemOfRecordPolicy,
+    buildDomainContractDraft,
     resolveSubtypeExperienceProfile,
     type EffectiveCapabilityContract,
     type ExcludedCapability,
@@ -19,6 +22,7 @@ import { VerticalReadinessService } from '../verticals/vertical-readiness.servic
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { enabledToolFamilies, staticToolsForAgentConfig } from './agent-tool-registry';
 import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
+import { SystemOfRecordBoundaryService } from '../integrations/system-of-record-boundary.service';
 
 /**
  * Lo que se sabe de un proveedor externo en el momento del turno.
@@ -28,12 +32,27 @@ import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
  * `asOf` ausente NO se trata como fresco: se trata como desconocido.
  */
 export interface ProviderHealthInput {
+    /**
+     * Durable ownership evidence: a provider configuration/binding exists.
+     * This does not become false when credentials, scopes, health retrieval or
+     * the provider itself fail. Ownership and availability are separate axes.
+     */
+    configured?: boolean;
     connected: boolean;
+    /**
+     * Health of the live connection (credential, scopes and circuit). Mirror
+     * age is deliberately excluded: a stale local copy cannot make a request
+     * that goes straight to the provider stale before it starts.
+     */
     healthy?: boolean;
     /** Permisos que el proveedor concedió de verdad, no los que se pidieron. */
     scopes?: readonly string[];
-    /** Cuándo se supo esto. ISO-8601. */
+    /**
+     * Last successful mirror refresh. Kept as `asOf` for compatibility with
+     * older callers; new callers should use `mirrorAsOf` explicitly.
+     */
     asOf?: string;
+    mirrorAsOf?: string;
 }
 
 /**
@@ -75,7 +94,7 @@ export interface ProviderIntegrationPolicy {
      * no se publica ni una tool suya, aunque la conexión esté sana: un dato
      * fresco de un sistema que no es de este negocio sigue sin ser suyo.
      */
-    industries: readonly string[];
+    profileIds: readonly string[];
     /** Lo que aporta. Es por TOOL, nunca por familia: las familias son nativas. */
     tools: readonly string[];
     /**
@@ -88,22 +107,21 @@ export interface ProviderIntegrationPolicy {
 
 const PROVIDER_POLICIES: Readonly<Record<string, ProviderIntegrationPolicy>> = Object.freeze({
     toast: Object.freeze({
-        industries: PROVIDER_INDUSTRIES.toast,
+        profileIds: PROVIDER_PROFILE_IDS.toast,
         tools: Object.freeze(['get_restaurant_menu']),
-        // Toast administra el menú, no el turno: leer de allá y tomar el pedido
-        // acá no vende dos veces nada. Un pedido que el POS no ve es un
-        // problema de operación, y ése se resuelve con escritura de vuelta.
-        localWritersDisplaced: Object.freeze([]),
+        // Toast es el POS. Publicar su menú y crear/cancelar el pedido sólo en
+        // la tabla local produce órdenes que cocina/caja nunca reciben.
+        localWritersDisplaced: Object.freeze(['place_order', 'cancel_order']),
     }),
     mindbody: Object.freeze({
-        industries: PROVIDER_INDUSTRIES.mindbody,
+        profileIds: PROVIDER_PROFILE_IDS.mindbody,
         tools: Object.freeze(['get_fitness_schedule']),
         // Mindbody ES la agenda del gimnasio. Consultar los cupos allá y
         // anotarlos acá produce una clase con dos personas en el mismo lugar.
         localWritersDisplaced: Object.freeze(['book_class', 'cancel_class_booking']),
     }),
     cliniko: Object.freeze({
-        industries: PROVIDER_INDUSTRIES.cliniko,
+        profileIds: PROVIDER_PROFILE_IDS.cliniko,
         tools: Object.freeze(['list_clinic_services', 'check_clinic_availability']),
         // Lo mismo con la agenda clínica, donde el turno vendido dos veces se
         // convierte en dos pacientes en la sala de espera.
@@ -163,6 +181,7 @@ export class EffectiveCapabilityService {
         private readonly throttle: TenantThrottleService,
         @Optional() private readonly readiness?: VerticalReadinessService,
         @Optional() private readonly regionalProfile?: RegionalProfileService,
+        @Optional() private readonly systemOfRecord?: SystemOfRecordBoundaryService,
     ) {}
 
     async resolve(input: {
@@ -202,7 +221,17 @@ export class EffectiveCapabilityService {
         let degraded = false;
 
         const manifestGroups = new Set<VerticalToolGroup>(profile.capability.toolGroups);
-        const agentGroups = enabledToolFamilies(input.toolsConfig) as VerticalToolGroup[];
+        const subtypeScopedFamilies = new Set<string>(VERTICAL_TOOL_GROUPS);
+        const enabledFamilies = enabledToolFamilies(input.toolsConfig);
+        const agentGroups = enabledFamilies.filter(
+            (group): group is VerticalToolGroup => subtypeScopedFamilies.has(group),
+        );
+        // Horizontal/core families are controlled by the agent toggle and their
+        // own plan/readiness gates, not by a business-subtype manifest. Treating
+        // them as `VerticalToolGroup` removed CRM, policies, knowledge and order
+        // status from every profile because those keys cannot appear in the
+        // subtype ceiling by construction.
+        const globalFamilies = enabledFamilies.filter(group => !subtypeScopedFamilies.has(group));
 
         // (1) The subtype is a ceiling. A family the agent switched on that the
         // manifest does not grant is dropped, not honoured: a saved toggle is
@@ -237,7 +266,21 @@ export class EffectiveCapabilityService {
         let planSlug = 'unknown';
         try {
             planFeatures = await this.throttle.getPlanFeatures(input.tenantId);
-            planSlug = String(planFeatures?.plan ?? planFeatures?.slug ?? 'unknown');
+            // `getPlanFeatures()` deliberately returns the flattened feature
+            // payload, not the tenant's plan slug. Reading `features.plan`
+            // therefore recorded `unknown` in every real contract even though
+            // the plan gate itself had been evaluated. Resolve the audit
+            // snapshot from the authoritative plan lookup when available.
+            const getTenantPlan = (this.throttle as any).getTenantPlan;
+            const runtimePlan = typeof getTenantPlan === 'function'
+                ? await getTenantPlan.call(this.throttle, input.tenantId)
+                : null;
+            planSlug = String(
+                (typeof runtimePlan === 'string' ? runtimePlan : runtimePlan?.slug)
+                || planFeatures?.plan
+                || planFeatures?.slug
+                || 'unknown',
+            );
         } catch (error: any) {
             // A plan lookup that fails must not silently grant paid capability.
             degraded = true;
@@ -281,13 +324,24 @@ export class EffectiveCapabilityService {
             excluded.push({
                 subject: group,
                 reason: 'readiness_unmet',
-                detail: check?.repair ?? CAPABILITY_EXCLUSION_TEXT.readiness_unmet,
+                // `check.repair` is legacy Spanish prose. The route remains
+                // specific; the customer-facing detail comes from the typed
+                // four-locale reason catalogue.
+                detail: CAPABILITY_EXCLUSION_TEXT.readiness_unmet,
                 repairRoute: check?.repairRoute,
             });
         }
 
         const published: VerticalToolGroup[] = [...readyGroups];
-        const publishedConfig = Object.fromEntries(published.map(g => [g, { enabled: true }]));
+        const savedTools = input.toolsConfig && typeof input.toolsConfig === 'object'
+            ? input.toolsConfig as Record<string, Record<string, unknown>>
+            : {};
+        const publishedConfig = Object.fromEntries(
+            [...published, ...globalFamilies].map(group => [
+                group,
+                { ...(savedTools[group] || {}), enabled: true },
+            ]),
+        );
         let publishedTools = staticToolsForAgentConfig(publishedConfig)
             .map((tool: ToolDefinition) => String(tool.name));
 
@@ -303,7 +357,7 @@ export class EffectiveCapabilityService {
         // `publishedTools`, se recortan si el perfil esta bloqueado y su
         // exclusion lleva motivo como cualquier otra.
         const now = Date.now();
-        /** Escritores locales que un proveedor vivo desplaza en este turno. */
+        /** Escritores locales que un binding autoritativo desplaza en este turno. */
         const displacedWriters = new Set<string>();
         for (const [providerName, policy] of Object.entries(PROVIDER_POLICIES)) {
             const providerTools = policy.tools;
@@ -313,7 +367,7 @@ export class EffectiveCapabilityService {
             // saltaban su techo: un taller mecánico que conectara Mindbody
             // publicaba `get_fitness_schedule`. Un dato fresco de un sistema
             // que no es de este negocio sigue sin ser suyo.
-            if (!policy.industries.includes(profile.capability.industry)) {
+            if (!policy.profileIds.includes(profile.id)) {
                 if (input.providers?.[providerName]) {
                     excluded.push({
                         subject: providerName,
@@ -325,6 +379,18 @@ export class EffectiveCapabilityService {
                 continue;
             }
             const health = input.providers?.[providerName];
+
+            // Ownership is durable; health is ephemeral. Once the tenant has
+            // bound this domain to a provider, an outage must remove provider
+            // reads but can never hand the writer back to the local ledger.
+            // `connected` is retained as a compatibility inference for older
+            // callers; current callers always send `configured` explicitly.
+            const authoritativeBinding = health?.configured === true
+                || (health?.configured === undefined && health?.connected === true);
+            if (authoritativeBinding) {
+                for (const writer of policy.localWritersDisplaced) displacedWriters.add(writer);
+            }
+
             if (!health) {
                 // Sin canal de medicion no hay puerta que fallara: el llamador
                 // no midio nada. Con canal y sin este proveedor, no esta
@@ -341,17 +407,8 @@ export class EffectiveCapabilityService {
                 continue;
             }
 
-            // El presupuesto de frescura sale del registro compartido, que es
-            // el mismo que mira la salud que ve el dueño en el panel. Antes
-            // había un número acá y otro allá: la tool se despublicaba a los 15
-            // minutos y la pantalla seguía en verde durante 36 horas.
-            const budget = providerFreshnessFor(providerName)?.mirrorMaxAgeSeconds ?? 900;
-            // Sin `asOf` no se sabe de cuando es. Desconocido no es fresco.
-            const stale = health.asOf
-                ? (now - Date.parse(health.asOf)) / 1000 > budget
-                : true;
-
-            if (!health.connected || health.healthy === false || stale) {
+            const connectionUsable = health.connected && health.healthy !== false;
+            if (!connectionUsable) {
                 excluded.push({
                     subject: providerName,
                     reason: 'provider_unavailable',
@@ -361,16 +418,32 @@ export class EffectiveCapabilityService {
                 continue;
             }
 
-            publishedTools = [...publishedTools, ...providerTools];
-            // ═══ LECTURA EXTERNA + ESCRITOR LOCAL = LA MISMA NOCHE VENDIDA DOS VECES ═══
-            //
-            // Es la forma exacta del defecto de alojamiento, en otros dos
-            // rubros: se consulta la agenda del proveedor y se agenda en la
-            // tabla local, donde el sistema real del negocio no lo ve. Con el
-            // proveedor vivo, sus escritores desplazados salen del contrato y
-            // la operación va a una persona hasta que exista escritura de
-            // vuelta certificada.
-            for (const writer of policy.localWritersDisplaced) displacedWriters.add(writer);
+            const freshness = providerFreshnessFor(providerName);
+            const mirrorAsOf = health.mirrorAsOf || health.asOf;
+            const budget = freshness?.mirrorMaxAgeSeconds ?? 900;
+            // Freshness is evaluated per tool. Cliniko availability is live;
+            // blocking it because appointment_types in vi_items are old was a
+            // provider-wide split-brain between the health panel and runtime.
+            const availableProviderTools = providerTools.filter((tool) => {
+                if (freshness?.liveTools.includes(tool)) return true;
+                if (!freshness?.mirrorBackedTools.includes(tool)) return false;
+                if (!mirrorAsOf) return false;
+                const parsed = Date.parse(mirrorAsOf);
+                return Number.isFinite(parsed) && (now - parsed) / 1000 <= budget;
+            });
+            const unavailableProviderTools = providerTools.filter(
+                tool => !availableProviderTools.includes(tool),
+            );
+            if (unavailableProviderTools.length) {
+                excluded.push({
+                    subject: unavailableProviderTools.join(', '),
+                    reason: 'provider_unavailable',
+                    detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
+                    repairRoute: '/admin/settings/integrations/vertical',
+                });
+            }
+
+            publishedTools = [...publishedTools, ...availableProviderTools];
         }
 
         if (displacedWriters.size) {
@@ -379,16 +452,64 @@ export class EffectiveCapabilityService {
                 publishedTools = publishedTools.filter(tool => !displacedWriters.has(tool));
                 excluded.push({
                     subject: displaced.join(', '),
-                    reason: 'provider_unavailable',
-                    detail: 'La agenda de este negocio la administra un sistema externo. '
-                        + 'Reservar acá crearía un turno que ese sistema nunca ve, '
-                        + 'así que la operación la confirma el equipo.',
+                    reason: 'external_system_of_record',
+                    detail: CAPABILITY_EXCLUSION_TEXT.external_system_of_record,
                     repairRoute: '/admin/settings/integrations/vertical',
                 });
             }
         }
 
-        // (5) Un perfil `stop` no cierra nada.
+        // (5) System-of-record boundary for subtype-owned domain objects.
+        //
+        // A provider-required profile can never fall back to a local commit:
+        // that creates two ledgers. Reads also require a binding the runtime
+        // can prove healthy/fresh. Unknown vendors and generic settings stay
+        // fail-closed until a certified adapter supplies that evidence.
+        const sorPolicy = profileSystemOfRecordPolicy(profile.id);
+        if (sorPolicy?.boundary === 'provider_required') {
+            let readsAvailable = false;
+            if (this.systemOfRecord) {
+                try {
+                    const boundary = await this.systemOfRecord.resolve({
+                        tenantId: input.tenantId,
+                        schemaName: input.schemaName,
+                        profileId: profile.id,
+                    });
+                    readsAvailable = boundary.readsAvailable;
+                } catch (error: any) {
+                    degraded = true;
+                    this.logger.warn(
+                        `[Capability] SoR lookup failed tenant=${input.tenantId} `
+                        + `profile=${profile.id}: ${error?.message}`,
+                    );
+                }
+            }
+
+            const displaced = publishedTools.filter(tool => sorPolicy.displacedWriters.includes(tool));
+            if (displaced.length) {
+                publishedTools = publishedTools.filter(tool => !sorPolicy.displacedWriters.includes(tool));
+                excluded.push({
+                    subject: displaced.join(', '),
+                    reason: 'external_system_of_record',
+                    detail: CAPABILITY_EXCLUSION_TEXT.external_system_of_record,
+                    repairRoute: '/admin/settings/integrations/vertical',
+                });
+            }
+            if (!readsAvailable) {
+                const blockedReads = publishedTools.filter(tool => sorPolicy.readTools.includes(tool));
+                if (blockedReads.length) {
+                    publishedTools = publishedTools.filter(tool => !sorPolicy.readTools.includes(tool));
+                    excluded.push({
+                        subject: blockedReads.join(', '),
+                        reason: 'provider_unavailable',
+                        detail: CAPABILITY_EXCLUSION_TEXT.provider_unavailable,
+                        repairRoute: '/admin/settings/integrations/vertical',
+                    });
+                }
+            }
+        }
+
+        // (6) Un perfil `stop` no cierra nada.
         //
         // `stop` era documentación: el registro lo declaraba, la auditoría lo
         // contaba y el runtime publicaba los writers igual que en un perfil
@@ -399,7 +520,7 @@ export class EffectiveCapabilityService {
         // preguntas con honestidad. Lo que no puede es comprometerlo con algo
         // que su modelo de producto todavía no sostiene — para eso está el
         // handoff, que sigue publicado.
-        // (6) Rol y canal.
+        // (7) Rol y canal.
         //
         // Los dos entran al contrato porque los dos cambian qué es honesto
         // prometer, y hasta acá ninguno se miraba: el contrato decidía sin
@@ -445,6 +566,7 @@ export class EffectiveCapabilityService {
             subtypeProfileId: profile.id,
             planSnapshot: planSlug,
             countryPackId: regional?.countryPackId ?? profile.capability.industry,
+            domainContract: buildDomainContractDraft(profile.industry, profile.subtype),
             publishedTools,
             // La misma lista, repartida por procedencia. Se calcula acá —donde
             // ya está decidida— y no en el sitio de publicación: recalcularla
@@ -454,6 +576,7 @@ export class EffectiveCapabilityService {
                 core: publishedTools.filter(t => toolOrigin(t) === 'core'),
                 vertical: publishedTools.filter(t => toolOrigin(t) === 'vertical'),
                 provider: publishedTools.filter(t => toolOrigin(t) === 'provider'),
+                mcp: [],
             }),
             publishedGroups: published,
             excluded,

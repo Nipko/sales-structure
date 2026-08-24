@@ -33,13 +33,15 @@ describe('canonical AI tool policy registry', () => {
 
     // 95 static tools + the 9 resource-rental tools that gave `automotriz/alquiler`,
     // `pet_services/guarderia` and `pet_services/hotel` a conversational writer
-    // over the engine that already existed + las 3 escrituras de CRM: el agente
+    // over the engine that already existed + las 8 escrituras de CRM: el agente
     // aprendía cosas en la conversación —una preferencia, una objeción, lo
     // acordado— y no tenía dónde anotarlas, así que el humano que tomaba la
     // conversación después empezaba de cero. El literal es deliberado: una tool
     // que aparece sin política, sin rama del ejecutor o sin definición es
     // exactamente la deriva que esta prueba existe para atrapar.
-    const STATIC_TOOL_COUNT = 107;
+    // + two home-service catalogue/capacity reads. These are separate from
+    // generic appointments because the committed record is service_requests.
+    const STATIC_TOOL_COUNT = 114;
 
     it('covers exactly the definitions, executor branches and policies with no drift', () => {
         const expected = [...new Set(definitionNames)].sort();

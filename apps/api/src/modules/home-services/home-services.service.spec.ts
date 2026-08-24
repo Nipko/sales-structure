@@ -5,33 +5,56 @@ describe('HomeServicesService scheduled request invariant', () => {
     const schemaName = 'tenant_home_services';
     const requestId = '11111111-1111-4111-8111-111111111111';
     const contactId = '22222222-2222-4222-8222-222222222222';
+    const serviceId = '33333333-3333-4333-8333-333333333333';
     const scheduledAt = '2030-08-10T09:00:00';
 
     describe('createRequest', () => {
         it('creates a scheduled request only when a valid scheduledAt is persisted with it', async () => {
-            const prisma = {
-                executeInTenantSchema: jest.fn().mockResolvedValue([{
+            const query = jest.fn(async (sql: string, _params: any[] = []) => {
+                if (sql.includes('pg_advisory_xact_lock')) return [{ lock_acquired: '1' }];
+                if (sql.includes('FROM services')) return [{
+                    id: serviceId,
+                    name: 'Visita de plomería',
+                    category: 'plomeria',
+                    duration_minutes: 90,
+                    max_concurrent: 1,
+                }];
+                if (sql.includes('COUNT(*)')) return [{ occupied: 0 }];
+                if (sql.includes('INSERT INTO service_requests')) return [{
                     id: requestId,
+                    service_id: serviceId,
+                    service_type: 'plomeria',
+                    estimated_duration_minutes: 90,
                     status: 'scheduled',
                     scheduled_at: scheduledAt,
-                }]),
+                }];
+                throw new Error(`Unexpected SQL: ${sql}`);
+            });
+            const prisma = {
+                executeInTenantSchema: jest.fn(),
+                transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
             };
             const eventEmitter = { emit: jest.fn() };
             const service = new HomeServicesService(prisma as any, eventEmitter as any);
 
             await expect(service.createRequest(schemaName, {
                 serviceType: 'plomeria',
+                serviceId,
                 status: 'scheduled',
                 scheduledAt,
             })).resolves.toMatchObject({ status: 'scheduled', scheduled_at: scheduledAt });
 
-            expect(prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
-            const [, sql, params] = prisma.executeInTenantSchema.mock.calls[0];
+            expect(prisma.transactionInTenantSchema).toHaveBeenCalledTimes(1);
+            const insertCall = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO service_requests'))!;
+            const [sql, params] = insertCall as unknown as [string, any[]];
+            expect(sql).toContain('service_id');
             expect(sql).toContain('scheduled_at, status');
-            expect(sql).toContain('$17::timestamp, $18');
+            expect(sql).toContain('$18::timestamp, $19');
             expect(sql).toContain('scheduled_at_text');
-            expect(params[16]).toBe(scheduledAt);
-            expect(params[17]).toBe('scheduled');
+            expect(params[3]).toBe(serviceId);
+            expect(params[14]).toBe(90);
+            expect(params[17]).toBe(scheduledAt);
+            expect(params[18]).toBe('scheduled');
             expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
             expect(eventEmitter.emit).toHaveBeenCalledWith(
                 'service_request.created',
@@ -127,7 +150,21 @@ describe('HomeServicesService scheduled request invariant', () => {
     describe('updateRequest', () => {
         function buildHarness(existing: { status: string; scheduled_at: string | null }) {
             const query = jest.fn(async (sql: string, params: any[] = []) => {
-                if (sql.includes('SELECT status, scheduled_at')) return [{ ...existing }];
+                if (sql.includes('SELECT status, scheduled_at')) return [{
+                    ...existing,
+                    service_id: serviceId,
+                    service_type: 'plomeria',
+                    assigned_technician_id: null,
+                }];
+                if (sql.includes('pg_advisory_xact_lock')) return [{ lock_acquired: '1' }];
+                if (sql.includes('FROM services')) return [{
+                    id: serviceId,
+                    name: 'Visita de plomería',
+                    category: 'plomeria',
+                    duration_minutes: 90,
+                    max_concurrent: 1,
+                }];
+                if (sql.includes('COUNT(*)')) return [{ occupied: 0 }];
                 if (sql.includes('UPDATE service_requests')) {
                     return [{
                         id: requestId,
@@ -158,14 +195,23 @@ describe('HomeServicesService scheduled request invariant', () => {
 
             expect(harness.prisma.transactionInTenantSchema).toHaveBeenCalledTimes(1);
             expect(harness.prisma.transactionInTenantSchema.mock.calls[0][0]).toBe(schemaName);
-            expect(harness.query).toHaveBeenCalledTimes(2);
+            expect(harness.query).toHaveBeenCalledTimes(5);
             const [selectSql, selectParams] = harness.query.mock.calls[0];
             expect(selectSql).toContain('FOR UPDATE');
             expect(selectParams).toEqual([requestId]);
-            const [updateSql, updateParams] = harness.query.mock.calls[1];
-            expect(updateSql).toContain('scheduled_at = $1');
-            expect(updateSql).toContain('status = $2');
-            expect(updateParams).toEqual([scheduledAt, 'scheduled', requestId]);
+            const [updateSql, updateParams] = harness.query.mock.calls[4];
+            expect(updateSql).toContain('service_id = $1');
+            expect(updateSql).toContain('estimated_duration_minutes = $3');
+            expect(updateSql).toContain('scheduled_at = $4');
+            expect(updateSql).toContain('status = $5');
+            expect(updateParams).toEqual([
+                serviceId,
+                'plomeria',
+                90,
+                scheduledAt,
+                'scheduled',
+                requestId,
+            ]);
         });
 
         it('rejects scheduled status when neither the row nor the update has a date', async () => {
@@ -190,11 +236,17 @@ describe('HomeServicesService scheduled request invariant', () => {
                 status: 'scheduled',
             })).resolves.toMatchObject({ status: 'scheduled', scheduled_at: scheduledAt });
 
-            expect(harness.query).toHaveBeenCalledTimes(2);
-            const [updateSql, updateParams] = harness.query.mock.calls[1];
+            expect(harness.query).toHaveBeenCalledTimes(5);
+            const [updateSql, updateParams] = harness.query.mock.calls[4];
             expect(updateSql).not.toContain('scheduled_at =');
-            expect(updateSql).toContain('status = $1');
-            expect(updateParams).toEqual(['scheduled', requestId]);
+            expect(updateSql).toContain('status = $4');
+            expect(updateParams).toEqual([
+                serviceId,
+                'plomeria',
+                90,
+                'scheduled',
+                requestId,
+            ]);
         });
 
         it('does not allow clearing the date while the final status remains scheduled', async () => {

@@ -4,23 +4,39 @@ import { BiApiGuard } from './bi-api.guard';
 describe('BiApiGuard subscription-enforcement handoff', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
 
-    function harness(options: { key?: string; tenant?: { id: string } | null; feature?: boolean } = {}) {
+    function harness(options: {
+        key?: string;
+        keyData?: { tenantId: string; scopes: string[]; keyId: string; rateLimitRpm: number } | null;
+        tenant?: { id: string; isActive: boolean } | null;
+        feature?: boolean;
+    } = {}) {
         const request: any = { headers: { 'x-api-key': options.key ?? 'bi-secret' } };
         const prisma = {
-            tenant: { findFirst: jest.fn().mockResolvedValue(options.tenant === undefined ? { id: tenantId } : options.tenant) },
+            tenant: { findUnique: jest.fn().mockResolvedValue(
+                options.tenant === undefined ? { id: tenantId, isActive: true } : options.tenant,
+            ) },
         };
         const throttle = {
             isFeatureEnabled: jest.fn().mockResolvedValue(options.feature ?? true),
+        };
+        const apiKeys = {
+            validateKey: jest.fn().mockResolvedValue(options.keyData === undefined ? {
+                tenantId,
+                scopes: ['read:analytics'],
+                keyId: 'key-1',
+                rateLimitRpm: 60,
+            } : options.keyData),
         };
         const context: any = {
             switchToHttp: () => ({ getRequest: () => request }),
         };
         return {
-            guard: new BiApiGuard(prisma as any, throttle as any),
+            guard: new BiApiGuard(prisma as any, throttle as any, apiKeys as any),
             request,
             context,
             prisma,
             throttle,
+            apiKeys,
         };
     }
 
@@ -32,7 +48,21 @@ describe('BiApiGuard subscription-enforcement handoff', () => {
     });
 
     it('rejects an unknown key without publishing tenant context', async () => {
-        const h = harness({ tenant: null });
+        const h = harness({ keyData: null });
+        await expect(h.guard.canActivate(h.context)).rejects.toBeInstanceOf(UnauthorizedException);
+        expect(h.request.tenantId).toBeUndefined();
+    });
+
+    it('rejects a valid public key without the analytics scope', async () => {
+        const h = harness({
+            keyData: { tenantId, scopes: ['read:contacts'], keyId: 'key-1', rateLimitRpm: 60 },
+        });
+        await expect(h.guard.canActivate(h.context)).rejects.toBeInstanceOf(UnauthorizedException);
+        expect(h.prisma.tenant.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('rejects a hashed key belonging to an inactive tenant', async () => {
+        const h = harness({ tenant: { id: tenantId, isActive: false } });
         await expect(h.guard.canActivate(h.context)).rejects.toBeInstanceOf(UnauthorizedException);
         expect(h.request.tenantId).toBeUndefined();
     });

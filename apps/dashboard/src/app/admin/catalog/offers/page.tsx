@@ -50,6 +50,7 @@ export default function OffersPage() {
     const [editing, setEditing] = useState<Offer | null>(null);
     const [form, setForm] = useState<Form>(EMPTY);
     const [error, setError] = useState("");
+    const [now] = useState(Date.now);
 
     const load = () => {
         if (!activeTenantId) return;
@@ -125,7 +126,6 @@ export default function OffersPage() {
 
     const isLive = (o: Offer) => {
         if (!o.active) return false;
-        const now = Date.now();
         if (o.validFrom && new Date(o.validFrom).getTime() > now) return false;
         if (o.validTo && new Date(o.validTo).getTime() < now) return false;
         return true;

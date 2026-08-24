@@ -273,3 +273,5 @@ Las decisiones del dueño están cerradas. El siguiente bloque no es otra prefer
 ### Regla para el plan de implementación
 
 El plan siguiente deberá convertir cada resolución P01–P34 en cambios trazables de taxonomía, contratos compartidos, prompts, variables, templates, términos, tools, SoR, navegación, permisos, i18n, migraciones, telemetría y pruebas. Ningún perfil pasará de `stop`, `legacy`, `draft` o `pilot` por la sola existencia de esta acta: la disponibilidad se cambia únicamente cuando su gate técnico y externo esté demostrado.
+
+La conversión quedó documentada en el [plan definitivo de implementación vertical](./vertical-approved-implementation-plan-2026-08-24.md), que es la autoridad vigente para fases, paquetes, dependencias, gates, migraciones, pilotos y Definition of Done.

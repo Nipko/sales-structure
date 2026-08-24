@@ -1,5 +1,7 @@
 # Plan maestro de implementación de verticales 1:1 — agosto de 2026
 
+> **Plan de ejecución vigente:** después del cierre técnico y de las 34 decisiones de producto, la secuencia, paquetes, gates y migraciones aplicables están en el [plan definitivo del 24 de agosto de 2026](./vertical-approved-implementation-plan-2026-08-24.md). Este documento conserva la auditoría y diseño maestro de los 76 perfiles históricos.
+
 **Estado:** propuesta detallada para aprobación; no autoriza ni implementa código  
 **Entradas:** [auditoría competitiva](./vertical-subtype-market-audit-2026-08.md), [auditoría de prompts/navegación](./vertical-subtype-prompt-navigation-audit-2026-08.md), [auditoría integral de tools](./agent-tool-subtype-cohesion-audit-2026-08.md) y [packs lingüísticos por país](./country-language-behavior-packs-latam-2026-08.md)  
 **Cobertura:** 18 verticales, 75 subtipos y `otro`

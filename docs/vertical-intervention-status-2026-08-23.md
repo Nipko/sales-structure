@@ -13,6 +13,7 @@ Fuentes autoritativas:
 - Ledger derivado: `apps/api/src/modules/verticals/native-backlog.ts`.
 - API y panel de auditoría: `apps/api/src/modules/verticals/vertical-audit.controller.ts` y `apps/dashboard/src/app/admin/vertical-audit/page.tsx`.
 - Plan que originó la intervención: [plan maestro](./vertical-full-implementation-plan-2026-08.md).
+- Plan de ejecución posterior a las decisiones: [plan definitivo](./vertical-approved-implementation-plan-2026-08-24.md).
 - Historial de ejecución: [log de implementación](./vertical-implementation-execution-log.md).
 
 ## 2. Contabilidad exacta del ledger

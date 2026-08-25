@@ -11305,6 +11305,12 @@
     "subtitle": "Estado verificável por subtipo. Separa trabalho interno, decisões de produto e dependências externas para que nada fique oculto como pendente.",
     "refresh": "Atualizar",
     "loadError": "Não foi possível carregar a auditoria de verticais.",
+    "sharedContractTitle": "Contrato compartilhado de certificação v{version}",
+    "sharedContractHint": "API, runtime, Agent Test, mobile e marketing consomem o mesmo estado; a certificação nunca é inferida do seletor ou de uma integração saudável.",
+    "contractTotal": "{count} perfis resolvíveis",
+    "contractReadWrite": "{count} com operação atual",
+    "contractHandoff": "{count} somente leitura e encaminhamento",
+    "contractCertified": "{count} certificados",
     "responsibility": {
       "internal": "Trabalho interno",
       "internalHint": "Resolvido com código, testes ou interface.",

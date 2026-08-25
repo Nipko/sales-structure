@@ -26,6 +26,7 @@ import {
     listCanonicalSubtypeExperienceProfileIds,
     listSubtypeExperienceProfileIds,
     listVerticalCapabilityConfigurations,
+    listVerticalCertificationSnapshots,
     resolveSubtypeExperienceProfile,
     VERTICAL_MANIFEST_INDUSTRIES,
 } from '@parallext/shared';
@@ -125,6 +126,20 @@ export class VerticalsController {
             data: {
                 version: VERTICAL_PRODUCT_POLICY_VERSION,
                 entries: VERTICAL_PRODUCT_POLICY,
+            },
+        };
+    }
+
+    @Get('certification-catalog')
+    @ApiOperation({ summary: 'Get the shared profile/country/provider certification snapshots' })
+    getCertificationCatalog(@Query('country') country?: string) {
+        return {
+            success: true,
+            data: {
+                entries: listVerticalCertificationSnapshots({
+                    operatingCountry: country || null,
+                    includeLegacy: true,
+                }),
             },
         };
     }

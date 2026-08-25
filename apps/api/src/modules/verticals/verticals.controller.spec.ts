@@ -38,6 +38,7 @@ describe('VerticalsController tenant isolation', () => {
     it('keeps the global definitions endpoint independent of tenant context', () => {
         expect(methodGuards('getDefinitions')).not.toContain(TenantGuard);
         expect(methodGuards('getCapabilityManifest')).not.toContain(TenantGuard);
+        expect(methodGuards('getCertificationCatalog')).not.toContain(TenantGuard);
         expect(methodGuards('resolveCapabilityManifest')).not.toContain(TenantGuard);
         expect(methodGuards('getTaxonomyMigrationInventory')).not.toContain(TenantGuard);
     });
@@ -108,6 +109,17 @@ describe('VerticalsController tenant isolation', () => {
                 expect(typeof subType.availability).toBe('string');
             }
         }
+    });
+
+    it('publishes the same 81 resolvable certification snapshots with country context', () => {
+        const controller = new VerticalsController({} as any, {} as any, {} as any);
+
+        const result = controller.getCertificationCatalog('co');
+
+        expect(result.data.entries).toHaveLength(81);
+        expect(result.data.entries.every(entry => entry.market.operatingCountry === 'CO'))
+            .toBe(true);
+        expect(new Set(result.data.entries.map(entry => entry.version))).toEqual(new Set([1]));
     });
 
     it('mantiene aliases sólo como legacy y publica su destino canónico', async () => {

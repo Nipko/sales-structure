@@ -24,5 +24,10 @@ describe('VerticalAuditController', () => {
             decision: expect.any(Number),
             expert: expect.any(Number),
         }));
+        expect(result.data.certification.entries).toHaveLength(81);
+        expect(result.data.certification.version).toBe(1);
+        expect(result.data.toolControls.version).toBe(1);
+        expect(result.data.toolControls.entries.length).toBeGreaterThan(0);
+        expect(result.data.toolControls.entries.flatMap(entry => entry.gaps)).toEqual([]);
     });
 });

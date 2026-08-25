@@ -2,6 +2,10 @@ import {
     VERTICAL_MANIFEST_INDUSTRIES,
     type VerticalManifestIndustry,
 } from './vertical-capability-manifest';
+import {
+    listVerticalCertificationSnapshots,
+    type VerticalCertificationReasonCode,
+} from './vertical-certification-contract';
 
 export const VERTICAL_PRODUCT_POLICY_VERSION = 1 as const;
 
@@ -52,6 +56,7 @@ export interface VerticalProductPolicyEntry {
     industry: VerticalManifestIndustry;
     mode: VerticalProductMode;
     certificationState: VerticalCertificationState;
+    certificationReasons: readonly VerticalCertificationReasonCode[];
     deepMarketingAllowed: boolean;
     rationale: string;
     nextCertificationGate: string;
@@ -63,6 +68,12 @@ const HORIZONTAL_PRESETS = new Set<VerticalManifestIndustry>([
     'servicios_profesionales',
 ]);
 const ANCHORS = new Set<VerticalManifestIndustry>(VERTICAL_CERTIFICATION_ANCHORS);
+const CERTIFICATION_BY_INDUSTRY = new Map(
+    VERTICAL_MANIFEST_INDUSTRIES.map(industry => [
+        industry,
+        listVerticalCertificationSnapshots().filter(snapshot => snapshot.profileId.startsWith(`${industry}/`)),
+    ]),
+);
 
 export const VERTICAL_PRODUCT_POLICY = Object.freeze(Object.fromEntries(
     VERTICAL_MANIFEST_INDUSTRIES.map((industry): [VerticalManifestIndustry, VerticalProductPolicyEntry] => {
@@ -82,11 +93,18 @@ export const VERTICAL_PRODUCT_POLICY = Object.freeze(Object.fromEntries(
                     ? 'Stable generic CRM/catalog fallback; the declarative builder is a separate future product.'
                     : 'Code-backed vertical product that remains in implemented, not certified, state.';
 
+        const snapshots = CERTIFICATION_BY_INDUSTRY.get(industry) || [];
+        const certified = snapshots.length > 0
+            && snapshots.every(snapshot => snapshot.overall.certified);
+        const certificationReasons = [...new Set(snapshots.flatMap(snapshot => (
+            snapshot.reasons.map(reason => reason.code)
+        )))];
         return [industry, Object.freeze({
             industry,
             mode,
-            certificationState: 'implemented_not_certified',
-            deepMarketingAllowed: false,
+            certificationState: certified ? 'certified' : 'implemented_not_certified',
+            certificationReasons: Object.freeze(certificationReasons),
+            deepMarketingAllowed: certified,
             rationale,
             nextCertificationGate: mode === 'certification_anchor'
                 ? 'Complete PostgreSQL/Redis/BullMQ/provider E2E evidence package.'

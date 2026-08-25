@@ -3,6 +3,7 @@ import {
     CAPABILITY_EXCLUSION_TEXT,
     CONVERSATIONAL_CHANNELS,
     OPERATIONAL_ROLES,
+    PROVIDER_API_VERSIONS,
     type EffectiveCapabilityContract,
     type TenantConfig,
     type ToolDefinition,
@@ -135,6 +136,7 @@ export class TurnCapabilityComposerService {
                         && !['unavailable', 'unhealthy', 'not_applicable'].includes(value?.status)
                         && value?.scopeStatus !== 'missing'
                         && value?.circuitState !== 'open',
+                    apiVersion: (PROVIDER_API_VERSIONS as Record<string, string>)[name],
                     scopes: value?.grantedScopes,
                     mirrorAsOf: value?.lastSuccessfulSyncAt || undefined,
                 },
@@ -149,7 +151,12 @@ export class TurnCapabilityComposerService {
                     .getConfiguredProviderBindings(input.tenantId);
                 providers = Object.fromEntries(Object.entries(bindings).map(([name, configured]) => [
                     name,
-                    { configured, connected: false, healthy: undefined },
+                    {
+                        configured,
+                        connected: false,
+                        healthy: undefined,
+                        apiVersion: (PROVIDER_API_VERSIONS as Record<string, string>)[name],
+                    },
                 ]));
             } catch (bindingError: any) {
                 this.logger.debug(

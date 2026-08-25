@@ -7,6 +7,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationOutboxService } from './integration-outbox.service';
 import { IntegrationOutboxWorker } from './integration-outbox.worker';
+import { resolveRuntimeConfigCompatibility } from '@parallext/shared';
 
 /**
  * La superficie de revisión del andamiaje de integraciones.
@@ -50,6 +51,7 @@ export class IntegrationsController {
             registered,
             certifiedWithoutAdapter: certified.filter(p => !registered.includes(p)),
             adapterWithoutCertification: registered.filter(p => !certified.includes(p)),
+            configCompatibility: resolveRuntimeConfigCompatibility(process.env),
         };
     }
 

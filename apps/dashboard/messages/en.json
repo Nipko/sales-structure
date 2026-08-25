@@ -11305,6 +11305,12 @@
     "subtitle": "Verifiable status by subtype. It separates internal work, product decisions and external dependencies so nothing is hidden as merely pending.",
     "refresh": "Refresh",
     "loadError": "The vertical audit could not be loaded.",
+    "sharedContractTitle": "Shared certification contract v{version}",
+    "sharedContractHint": "API, runtime, Agent Test, mobile and marketing consume the same state; certification is never inferred from a selector or a healthy integration.",
+    "contractTotal": "{count} resolvable profiles",
+    "contractReadWrite": "{count} with current operations",
+    "contractHandoff": "{count} read-only and handoff",
+    "contractCertified": "{count} certified",
     "responsibility": {
       "internal": "Internal work",
       "internalHint": "Resolved with code, tests or product UI.",

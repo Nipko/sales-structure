@@ -1,7 +1,9 @@
 import {
   resolvePublicVerticalProductPolicy,
+  type VerticalCertificationState,
   type VerticalProductMode,
 } from "../../../../packages/shared/src/vertical-product-policy";
+import type { VerticalCertificationReasonCode } from "../../../../packages/shared/src/vertical-certification-contract";
 
 export type VerticalTier = 1 | 2 | 3;
 export type { VerticalProductMode };
@@ -22,6 +24,8 @@ export interface VerticalDef {
   channel: "whatsapp" | "instagram" | "messenger" | "telegram";
   demoMode: "illustrative";
   productMode: VerticalProductMode;
+  certificationState: VerticalCertificationState;
+  certificationReasons: readonly VerticalCertificationReasonCode[];
   deepMarketingAllowed: boolean;
   demoMessages: { from: "customer" | "ai"; text: string }[];
 }
@@ -302,10 +306,12 @@ export const VERTICALS: VerticalDef[] = ([
       { from: "ai", text: "Perfecto. Te paso las opciones disponibles. ¿Prefieres que te agende una llamada?" },
     ],
   },
-] satisfies Omit<VerticalDef, "demoMode" | "productMode" | "deepMarketingAllowed">[]).map((vertical) => ({
+] satisfies Omit<VerticalDef, "demoMode" | "productMode" | "certificationState" | "certificationReasons" | "deepMarketingAllowed">[]).map((vertical) => ({
   ...vertical,
   demoMode: "illustrative" as const,
   productMode: resolvePublicVerticalProductPolicy(vertical.slug).mode,
+  certificationState: resolvePublicVerticalProductPolicy(vertical.slug).certificationState,
+  certificationReasons: resolvePublicVerticalProductPolicy(vertical.slug).certificationReasons,
   deepMarketingAllowed: resolvePublicVerticalProductPolicy(vertical.slug).deepMarketingAllowed,
 }));
 

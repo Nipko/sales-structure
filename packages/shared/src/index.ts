@@ -25,8 +25,11 @@ export * from './country-language-pack';
 export * from './subtype-experience-profile';
 export * from './subtype-taxonomy-migration';
 export * from './vertical-domain-contract';
+export * from './vertical-certification-contract';
+export * from './vertical-operation-contract';
 export * from './resource-rental-details';
 export * from './integration-scaffolding';
+export * from './runtime-config-compatibility';
 export * from './system-of-record-policy';
 
 // ---- Effective agent capability: subtype x agent x plan x readiness ----

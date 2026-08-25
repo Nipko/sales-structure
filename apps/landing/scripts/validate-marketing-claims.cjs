@@ -111,6 +111,14 @@ for (const vertical of verticals || []) {
     vertical.deepMarketingAllowed === expectedPolicy.deepMarketingAllowed,
     `${vertical.slug}: deep marketing state must come from the canonical product policy`,
   );
+  assert(
+    vertical.certificationState === expectedPolicy.certificationState,
+    `${vertical.slug}: certification state must come from the canonical product policy`,
+  );
+  assert(
+    JSON.stringify(vertical.certificationReasons) === JSON.stringify(expectedPolicy.certificationReasons),
+    `${vertical.slug}: certification reasons must come from the canonical product policy`,
+  );
 }
 
 const chatDemoSource = fs.readFileSync(
@@ -131,8 +139,12 @@ const industryPageSource = fs.readFileSync(
 );
 assert(
   solutionsPageSource.includes("data-product-mode={v.productMode}")
+    && solutionsPageSource.includes("data-certification-state={v.certificationState}")
+    && solutionsPageSource.includes("data-certification-reasons={v.certificationReasons.join")
     && solutionsPageSource.includes("solutions.productMode.${v.productMode}")
     && industryPageSource.includes("data-product-mode={vertical.productMode}")
+    && industryPageSource.includes("data-certification-state={vertical.certificationState}")
+    && industryPageSource.includes("data-certification-reasons={vertical.certificationReasons.join")
     && industryPageSource.includes("solutions.productMode.${vertical.productMode}"),
   "Solution list and detail pages must disclose the adopted product/certification mode",
 );

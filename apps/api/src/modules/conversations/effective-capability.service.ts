@@ -11,6 +11,7 @@ import {
     providerFreshnessFor,
     profileSystemOfRecordPolicy,
     buildDomainContractDraft,
+    resolveVerticalCertificationSnapshot,
     resolveSubtypeExperienceProfile,
     type EffectiveCapabilityContract,
     type ExcludedCapability,
@@ -23,6 +24,7 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { enabledToolFamilies, staticToolsForAgentConfig } from './agent-tool-registry';
 import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { SystemOfRecordBoundaryService } from '../integrations/system-of-record-boundary.service';
+import { buildVerticalOperationContract } from '../verticals/vertical-operation-contract';
 
 /**
  * Lo que se sabe de un proveedor externo en el momento del turno.
@@ -53,6 +55,12 @@ export interface ProviderHealthInput {
      */
     asOf?: string;
     mirrorAsOf?: string;
+    /** Exact external API/contract version; never inferred from a green health check. */
+    apiVersion?: string;
+    /** Canonical provider class when the vendor id is more specific. */
+    kind?: string;
+    /** Evidence-backed provider capabilities, not requested OAuth scopes. */
+    certifiedCapabilities?: readonly string[];
 }
 
 /**
@@ -572,14 +580,33 @@ export class EffectiveCapabilityService {
             ? await this.regionalProfile.resolve(input.tenantId).catch(() => null)
             : null;
 
+        const operatingCountry = input.operatingCountry
+            ?? regional?.operatingCountry?.value
+            ?? undefined;
+        const certification = resolveVerticalCertificationSnapshot({
+            industry: profile.industry,
+            subtype: profile.subtype,
+            operatingCountry,
+            providers: Object.entries(input.providers || {}).map(([name, health]) => ({
+                name,
+                kind: health.kind,
+                apiVersion: health.apiVersion,
+                configured: health.configured ?? health.connected,
+                healthy: health.healthy,
+                certifiedCapabilities: health.certifiedCapabilities,
+            })),
+        });
+
         return {
             version: EFFECTIVE_CAPABILITY_CONTRACT_VERSION,
             tenantId: input.tenantId,
             agentId: input.agentId,
             subtypeProfileId: profile.id,
             planSnapshot: planSlug,
-            countryPackId: regional?.countryPackId ?? profile.capability.industry,
+            countryPackId: certification.market.countryPackId,
             domainContract: buildDomainContractDraft(profile.industry, profile.subtype),
+            certification,
+            operations: buildVerticalOperationContract(profile.industry, profile.subtype),
             publishedTools,
             // La misma lista, repartida por procedencia. Se calcula acá —donde
             // ya está decidida— y no en el sitio de publicación: recalcularla
@@ -602,7 +629,7 @@ export class EffectiveCapabilityService {
             decisionInputs: {
                 role: input.role,
                 channelType: input.channelType,
-                operatingCountry: input.operatingCountry ?? regional?.operatingCountry?.value ?? undefined,
+                operatingCountry,
                 jurisdiction: input.jurisdiction ?? regional?.operatingCountry?.value ?? undefined,
                 providersMeasured: input.providers ? Object.keys(input.providers) : undefined,
             },

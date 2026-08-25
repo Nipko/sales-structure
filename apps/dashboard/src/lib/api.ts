@@ -1362,6 +1362,10 @@ export const api = {
     getVerticalIntegrations: (tenantId: string) => apiGet(`/vertical-integrations/${tenantId}/config`),
     updateVerticalIntegration: (tenantId: string, provider: string, body: any) =>
         apiPut(`/vertical-integrations/${tenantId}/${provider}/config`, body),
+    getEffectiveVerticalProfile: (tenantId: string) =>
+        apiGet(`/verticals/${tenantId}/effective-profile`),
+    getVerticalCertificationCatalog: (country?: string) =>
+        apiGet(`/verticals/certification-catalog${country ? `?country=${encodeURIComponent(country)}` : ""}`),
     testVerticalIntegration: (tenantId: string, provider: string) =>
         apiPost(`/vertical-integrations/${tenantId}/${provider}/test`, {}),
     syncVerticalIntegration: (tenantId: string, provider: string) =>

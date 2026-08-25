@@ -69,7 +69,12 @@ export default function IndustryPageClient() {
                 {t(`verticals.${slug}.subtitle`)}
               </span>
 
-              <p className="mb-4 text-xs font-medium text-text-muted" data-product-mode={vertical.productMode}>
+              <p
+                className="mb-4 text-xs font-medium text-text-muted"
+                data-product-mode={vertical.productMode}
+                data-certification-state={vertical.certificationState}
+                data-certification-reasons={vertical.certificationReasons.join(",")}
+              >
                 {t(`solutions.productMode.${vertical.productMode}`)}
               </p>
 

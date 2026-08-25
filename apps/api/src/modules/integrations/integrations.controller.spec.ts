@@ -15,6 +15,30 @@ describe('IntegrationsController tenant boundary', () => {
         expect(guards('rail')).not.toContain(TenantGuard);
     });
 
+    it('reports config compatibility without returning secret material', async () => {
+        const previous = process.env.ENCRYPTION_KEY;
+        const key = 'cd'.repeat(32);
+        process.env.ENCRYPTION_KEY = key;
+        try {
+            const controller = new IntegrationsController(
+                {} as any,
+                {} as any,
+                { registeredProviders: jest.fn().mockReturnValue([]) } as any,
+            );
+
+            const result = await controller.rail();
+
+            expect(result.configCompatibility.deploymentCompatible).toBe(true);
+            expect(result.configCompatibility.entries.find(entry => (
+                entry.name === 'TENANT_SECRET_KEY'
+            ))).toMatchObject({ source: 'legacy', present: true, valid: true });
+            expect(JSON.stringify(result)).not.toContain(key);
+        } finally {
+            if (previous === undefined) delete process.env.ENCRYPTION_KEY;
+            else process.env.ENCRYPTION_KEY = previous;
+        }
+    });
+
     it('keeps the global outbox review platform-wide and payload-free', async () => {
         expect(guards('outboxOverview')).not.toContain(TenantGuard);
 

@@ -55,6 +55,15 @@ interface BacklogPayload {
   state?: Partial<Record<BacklogState, number>>;
   responsibility?: Partial<Record<Responsibility, number>>;
   entries: BacklogEntry[];
+  certification?: {
+    version: number;
+    entries: Array<{
+      profileId: string;
+      product: { executionMode: "read_write" | "read_only_handoff" };
+      overall: { certified: boolean };
+      reasons: readonly unknown[];
+    }>;
+  };
 }
 
 const RESPONSIBILITIES: readonly Responsibility[] = ["internal", "mixed", "decision", "external"];
@@ -128,6 +137,15 @@ export default function VerticalAuditPage() {
   const decisions = useMemo(() => flattened.filter(item => (
     item.gates?.some(gate => gate.kind === "decision" || gate.kind === "external" || gate.kind === "expert")
   )), [flattened]);
+  const certificationSummary = useMemo(() => {
+    const entries = payload?.certification?.entries || [];
+    return {
+      total: entries.length,
+      readWrite: entries.filter(entry => entry.product.executionMode === "read_write").length,
+      handoffOnly: entries.filter(entry => entry.product.executionMode === "read_only_handoff").length,
+      certified: entries.filter(entry => entry.overall.certified).length,
+    };
+  }, [payload]);
 
   return (
     <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-4 md:p-6">
@@ -153,6 +171,25 @@ export default function VerticalAuditPage() {
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
           {error}
         </div>
+      )}
+
+      {payload?.certification && (
+        <section className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-indigo-950 dark:text-indigo-100">
+                {t("sharedContractTitle", { version: payload.certification.version })}
+              </div>
+              <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">{t("sharedContractHint")}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-semibold text-indigo-900 dark:text-indigo-100">
+              <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-900">{t("contractTotal", { count: certificationSummary.total })}</span>
+              <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-900">{t("contractReadWrite", { count: certificationSummary.readWrite })}</span>
+              <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-900">{t("contractHandoff", { count: certificationSummary.handoffOnly })}</span>
+              <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-900">{t("contractCertified", { count: certificationSummary.certified })}</span>
+            </div>
+          </div>
+        </section>
       )}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -1,3 +1,5 @@
+import { PROVIDER_PROFILE_IDS } from './provider-integration-policy';
+
 /**
  * Executable system-of-record boundary per subtype profile.
  *
@@ -30,7 +32,7 @@ export interface ProfileSystemOfRecordPolicy {
         requiresSuccessfulSync: boolean;
     }>;
     conflict: SorConflictMode;
-    /** Product class, not a vendor name. Empty means provider selection is pending. */
+    /** Canonical provider kind; native certified connectors may use their stable provider id. */
     providerKinds: readonly string[];
 }
 
@@ -202,8 +204,79 @@ export const PROFILE_SYSTEM_OF_RECORD_POLICIES: Readonly<Record<string, ProfileS
         ),
     });
 
+/**
+ * Contract-only declarations for profiles that are not executable yet. They
+ * must inform certification and authoring without expanding the runtime
+ * registry that currently owns the 19 measured policies.
+ */
+const FUTURE_SYSTEM_OF_RECORD_DECLARATIONS: Readonly<Record<string, ProfileSystemOfRecordPolicy>> =
+    Object.freeze({
+        'finanzas/pagos_recaudos': providerRequired(
+            'finanzas/pagos_recaudos', ['payment_service_provider'], [], [],
+        ),
+        'retail/marketplace': providerRequired(
+            'retail/marketplace', ['marketplace_psp'], [], [],
+        ),
+        'seguros/aseguradora': providerRequired(
+            'seguros/aseguradora', ['policy_administration_system'], [], [],
+        ),
+        'seguros/salud': providerRequired(
+            'seguros/salud', ['payer_core'], [], [],
+        ),
+        'event_planning/weddings': conditionalProvider(
+            'event_planning/weddings', ['event_management_system'], [], [],
+        ),
+        'inmobiliaria/promotora': conditionalProvider(
+            'inmobiliaria/promotora', ['real_estate_inventory_system'], [], [],
+        ),
+        'construccion/contratista_general': conditionalProvider(
+            'construccion/contratista_general', ['construction_project_management'], [], [],
+        ),
+        'technology/soporte_ti_msp': conditionalProvider(
+            'technology/soporte_ti_msp', ['itsm_psa'], [], [],
+        ),
+    });
+
+const NATIVE_CONNECTOR_DECLARATIONS: Readonly<Record<string, ProfileSystemOfRecordPolicy>> =
+    Object.freeze(Object.fromEntries([
+        ...PROVIDER_PROFILE_IDS.toast.map(profileId => [
+            profileId,
+            conditionalProvider(
+                profileId, ['toast'], ['get_restaurant_menu'], ['place_order', 'cancel_order'],
+            ),
+        ] as const),
+        ...PROVIDER_PROFILE_IDS.mindbody.map(profileId => [
+            profileId,
+            conditionalProvider(
+                profileId, ['mindbody'], ['get_fitness_schedule'],
+                ['book_class', 'cancel_class_booking'],
+            ),
+        ] as const),
+        ...PROVIDER_PROFILE_IDS.cliniko.map(profileId => [
+            profileId,
+            conditionalProvider(
+                profileId, ['cliniko'],
+                ['list_clinic_services', 'check_clinic_availability'],
+                ['create_appointment', 'reschedule_appointment', 'cancel_appointment'],
+            ),
+        ] as const),
+    ]));
+
 export function profileSystemOfRecordPolicy(
     profileId: string,
 ): ProfileSystemOfRecordPolicy | undefined {
     return PROFILE_SYSTEM_OF_RECORD_POLICIES[profileId];
+}
+
+/**
+ * Authoring/certification view: executable policy first, then approved future
+ * boundary, then the conditional boundary already enforced by a native
+ * connector binding. It never activates a runtime policy by itself.
+ */
+export function profileSystemOfRecordDeclaration(
+    profileId: string,
+): ProfileSystemOfRecordPolicy | undefined {
+    return PROFILE_SYSTEM_OF_RECORD_POLICIES[profileId]
+        || FUTURE_SYSTEM_OF_RECORD_DECLARATIONS[profileId]
+        || NATIVE_CONNECTOR_DECLARATIONS[profileId];
 }

@@ -11305,6 +11305,12 @@
     "subtitle": "État vérifiable par sous-type. Il sépare le travail interne, les décisions produit et les dépendances externes afin que rien ne reste caché comme simple attente.",
     "refresh": "Actualiser",
     "loadError": "Impossible de charger l’audit des verticales.",
+    "sharedContractTitle": "Contrat de certification partagé v{version}",
+    "sharedContractHint": "L’API, le runtime, Agent Test, le mobile et le marketing utilisent le même état ; la certification n’est jamais déduite d’un sélecteur ou d’une intégration saine.",
+    "contractTotal": "{count} profils résolubles",
+    "contractReadWrite": "{count} avec opérations actuelles",
+    "contractHandoff": "{count} en lecture seule et transfert",
+    "contractCertified": "{count} certifiés",
     "responsibility": {
       "internal": "Travail interne",
       "internalHint": "Résolu par le code, les tests ou l’interface.",

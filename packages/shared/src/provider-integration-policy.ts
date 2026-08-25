@@ -34,6 +34,18 @@ import { canonicalSubtypeId } from './subtype-experience-profile';
 
 export type VerticalProviderName = 'toast' | 'mindbody' | 'cliniko';
 
+/**
+ * Exact API family exercised by each native connector. This is runtime
+ * identity, not certification evidence: a healthy connector on a known
+ * version still remains uncertified until its capability evidence is stored.
+ */
+export const PROVIDER_API_VERSIONS: Readonly<Record<VerticalProviderName, string>> =
+    Object.freeze({
+        toast: 'menus-v2',
+        mindbody: 'public-v6',
+        cliniko: 'v1',
+    });
+
 export interface ProviderFreshnessPolicy {
     /**
      * Cada cuánto se refresca el espejo, en segundos.

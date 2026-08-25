@@ -55,6 +55,8 @@ export type OutboxStatus =
      */
     | 'expired';
 
+import { integrationWriteCapabilityAllowed } from './runtime-config-compatibility';
+
 /**
  * Fencing token for one lease generation.
  *
@@ -244,6 +246,8 @@ export interface IntegrationWriteResult {
  */
 export interface IntegrationWriteAdapter {
     provider: string;
+    /** Exact provider contract/API version. Optional only for legacy adapters. */
+    apiVersion?: string;
     /**
      * Las operaciones que sabe ejecutar.
      *
@@ -380,13 +384,20 @@ export const EXTERNAL_WRITES_DISABLED: ExternalWriteGate = Object.freeze({
 export function externalWriteGateFor(
     provider: string,
     allowlist: string | undefined,
+    options: {
+        explicitCapabilities?: string;
+        apiVersion?: string | null;
+        operation?: string | null;
+    } = {},
 ): ExternalWriteGate {
-    const normalized = String(provider || '').trim().toLowerCase();
-    const allowed = String(allowlist || '')
-        .split(',')
-        .map(entry => entry.trim().toLowerCase())
-        .filter(Boolean);
-    if (!normalized || !allowed.includes(normalized)) return EXTERNAL_WRITES_DISABLED;
+    const enabled = integrationWriteCapabilityAllowed({
+        provider,
+        apiVersion: options.apiVersion,
+        operation: options.operation,
+        explicit: options.explicitCapabilities,
+        legacy: allowlist,
+    });
+    if (!enabled) return EXTERNAL_WRITES_DISABLED;
     return { enabled: true };
 }
 

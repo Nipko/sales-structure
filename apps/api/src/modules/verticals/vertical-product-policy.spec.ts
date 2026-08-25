@@ -15,6 +15,10 @@ describe('Vertical product policy v1', () => {
             expect(VERTICAL_PRODUCT_POLICY[industry].certificationState)
                 .toBe('implemented_not_certified');
             expect(VERTICAL_PRODUCT_POLICY[industry].deepMarketingAllowed).toBe(false);
+            expect(VERTICAL_PRODUCT_POLICY[industry].certificationReasons)
+                .toContain('e2e_evidence_missing');
+            expect(VERTICAL_PRODUCT_POLICY[industry].certificationReasons)
+                .toContain('country_not_declared');
         }
     });
 

@@ -22,7 +22,10 @@ import {
     VerticalServiceDefinition,
     VerticalStageDefinition,
     buildDomainContractDraft,
+    PROVIDER_API_VERSIONS,
+    resolveVerticalCertificationSnapshot,
     subtypeTerminologyFor,
+    type ProviderCertificationContext,
 } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
@@ -37,6 +40,8 @@ import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util'
 import { withResolvedVerticalPipeline } from './vertical-pipeline-contract';
 import { reconcileVerticalSubtypePersonaRules } from '../persona/vertical-subtype-persona-contract';
 import { resolveVerticalSelection } from './vertical-identifiers';
+import { buildVerticalOperationContract } from './vertical-operation-contract';
+import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 
 export const VERTICAL_PROVISIONING_VERSION = 2;
 
@@ -564,6 +569,10 @@ export class VerticalsService {
         // Optional so the many specs that build this service by hand keep
         // working; the effective profile simply omits the regional block.
         @Optional() private readonly regionalProfile?: RegionalProfileService,
+        // Optional for hand-built specs and installations that keep the
+        // connector module disabled. Missing measurement never grants a
+        // provider capability or certification.
+        @Optional() private readonly verticalIntegrations?: VerticalIntegrationsService,
     ) {}
 
     /** Read-only operational contract consumed by API and dashboard clients. */
@@ -618,6 +627,13 @@ export class VerticalsService {
         const regional = this.regionalProfile
             ? await this.regionalProfile.resolve(tenantId).catch(() => null)
             : null;
+        const providers = await this.providerCertificationContexts(tenantId);
+        const certification = resolveVerticalCertificationSnapshot({
+            industry: profile.industry,
+            subtype: profile.subtype,
+            operatingCountry: regional?.operatingCountry?.value,
+            providers,
+        });
 
         return {
             profileVersion: profile.version,
@@ -637,11 +653,15 @@ export class VerticalsService {
                 commercialisable: profile.commercialisable,
                 blockedReason: profile.blockedReason,
                 exclusions: profile.exclusions,
-                certificationState: policy.certificationState,
-                deepMarketingAllowed: policy.deepMarketingAllowed,
+                certificationState: certification.overall.certified
+                    ? 'certified'
+                    : policy.certificationState,
+                deepMarketingAllowed: certification.overall.deepMarketingAllowed,
                 nextCertificationGate: policy.nextCertificationGate,
             },
             domainContract: buildDomainContractDraft(profile.industry, profile.subtype),
+            certification,
+            operations: buildVerticalOperationContract(profile.industry, profile.subtype),
             capability: profile.capability,
             navigation: {
                 sidebar: config.sidebar,
@@ -1790,6 +1810,43 @@ export class VerticalsService {
                 itemOrder,
             },
         };
+    }
+
+    private async providerCertificationContexts(
+        tenantId: string,
+    ): Promise<ProviderCertificationContext[]> {
+        if (!this.verticalIntegrations) return [];
+        try {
+            const health = await this.verticalIntegrations.getAllHealth(tenantId);
+            return Object.entries(health).map(([name, value]: [string, any]) => ({
+                name,
+                apiVersion: (PROVIDER_API_VERSIONS as Record<string, string>)[name],
+                configured: value?.configured === undefined
+                    ? !!value?.connected
+                    : !!value.configured,
+                healthy: !!value?.connected
+                    && !['unavailable', 'unhealthy', 'not_applicable'].includes(value?.status)
+                    && value?.scopeStatus !== 'missing'
+                    && value?.circuitState !== 'open',
+                certifiedCapabilities: value?.certifiedCapabilities,
+            }));
+        } catch (error: any) {
+            this.logger.debug(
+                `Provider certification context unavailable for ${tenantId}: ${error?.message}`,
+            );
+            try {
+                const bindings = await this.verticalIntegrations
+                    .getConfiguredProviderBindings(tenantId);
+                return Object.entries(bindings).map(([name, configured]) => ({
+                    name,
+                    apiVersion: (PROVIDER_API_VERSIONS as Record<string, string>)[name],
+                    configured,
+                    healthy: false,
+                }));
+            } catch {
+                return [];
+            }
+        }
     }
 
     private withCurrentCapabilityManifest(config: TenantVerticalConfig): TenantVerticalConfig {

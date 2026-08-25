@@ -2369,3 +2369,15 @@ Una última comparación de este log contra el runtime encontró frases históri
 5. **Pilotos:** DB/Redis/canal/modelo/proveedor reales, 3–5 tenants por perfil priorizado, canary, evidencia E2E y sign-off. **No se declara deploy ni piloto.**
 
 La definición exacta, el orden y los comandos viven en [`vertical-intervention-status-2026-08-23.md`](./vertical-intervention-status-2026-08-23.md); U69 no crea una segunda fuente de verdad.
+
+---
+
+### U70 — Gate 2: certificación, operaciones y configuración en un solo contrato
+
+La Fase 2 del plan posterior a decisiones quedó implementada con tres contratos versionados: certificación por perfil/país/proveedor, operación por objeto/acción/permisos/readiness/SoR y compatibilidad de configuración. El contrato efectivo que usa el turno contiene los dos primeros; Agent Test devuelve ese mismo objeto; API, dashboard y móvil lo consumen sin persistir una copia; la landing deriva estado, razones y claims desde la política compartida.
+
+La revisión encontró una divergencia que no aparecía en la auditoría anterior: Toast, Mindbody y Cliniko ya desplazaban writers locales cuando existía binding, pero esa condición no llegaba al contrato de autoría/certificación. Se agregó una declaración condicional separada del registro ejecutable. Así se informa el límite sin ampliar `PROFILE_SYSTEM_OF_RECORD_POLICIES`, sin publicar lecturas externas sin conexión y sin encender destinos futuros.
+
+CFG-01 conserva las variables productivas: `TENANT_SECRET_KEY` cae a `ENCRYPTION_KEY`; los defaults criptográficos siguen lazy/fail-closed; plaintext continúa en `accept` hasta inventario cero; `INTEGRATION_WRITE_PROVIDERS` sigue siendo el interruptor runtime. El futuro `INTEGRATION_WRITE_CAPABILITIES` se valida como `provider@apiVersion:operation`, pero su cutover queda bloqueado hasta que INT-01 persista versión/operación en el binding y libere el outbox granularmente. Ningún secreto aparece en el snapshot de Ops.
+
+Evidencia local: seis typechecks limpios; API 368 suites/3.564 pruebas, dashboard 31/275, mobile 24/321 y WhatsApp 3/13; claims de las 18 verticales en cuatro idiomas verdes. Los tres contratos nuevos están enumerados tanto en el gate focal de Vertical Quality como en el gate de Deploy. CFG-01 también rechaza allowlists personalizadas inseguras sin reflejar el valor en Ops. El detalle, límites y gates de promoción están en [`vertical-phase-2-gate-2026-08-24.md`](./vertical-phase-2-gate-2026-08-24.md). No se declara certificación, migración de tenants, activación de writer externo ni piloto.

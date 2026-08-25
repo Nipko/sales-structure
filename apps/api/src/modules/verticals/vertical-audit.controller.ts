@@ -7,6 +7,11 @@ import {
     deriveNativeBacklogAll,
     summariseNativeBacklogDetailed,
 } from './native-backlog';
+import {
+    VERTICAL_CERTIFICATION_CONTRACT_VERSION,
+    listVerticalCertificationSnapshots,
+} from '@parallext/shared';
+import { buildToolControlCatalog } from './vertical-operation-contract';
 
 /**
  * Code-backed vertical intervention ledger for the platform owner.
@@ -37,6 +42,11 @@ export class VerticalAuditController {
                 laterGates: summary.laterGates,
                 profilesWithOpenCode: summary.profilesWithOpenCode,
                 entries: deriveNativeBacklogAll(),
+                certification: {
+                    version: VERTICAL_CERTIFICATION_CONTRACT_VERSION,
+                    entries: listVerticalCertificationSnapshots({ includeLegacy: true }),
+                },
+                toolControls: buildToolControlCatalog(),
             },
         };
     }

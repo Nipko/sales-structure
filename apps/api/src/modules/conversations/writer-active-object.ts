@@ -9,7 +9,7 @@ export interface WriterActiveObjectResult {
     id: string;
     href: string;
 }
-interface WriterObjectDefinition {
+export interface WriterObjectDefinition {
     kind: ActiveObjectKind | null;
     resultKeys?: readonly string[];
     argumentKeys?: readonly string[];

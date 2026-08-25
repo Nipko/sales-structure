@@ -1,5 +1,7 @@
 import type { VerticalCapability, VerticalReadinessKey, VerticalToolGroup } from './vertical-capability-manifest';
 import type { VerticalDomainContractV2 } from './vertical-domain-contract';
+import type { VerticalCertificationSnapshotV1 } from './vertical-certification-contract';
+import type { VerticalOperationContractV1 } from './vertical-operation-contract';
 
 /**
  * The one server-side answer to "what may this agent do, this turn".
@@ -96,6 +98,10 @@ export interface EffectiveCapabilityContract {
     countryPackId: string;
     /** Domain promise/intent contract used by the runtime decision. */
     domainContract: VerticalDomainContractV2;
+    /** Same product/market/provider certification snapshot exposed to every surface. */
+    certification: VerticalCertificationSnapshotV1;
+    /** Versioned object/action/permission/readiness/SoR projection. */
+    operations: VerticalOperationContractV1;
     /** Tool names the model may be shown. */
     publishedTools: string[];
     /**

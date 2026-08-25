@@ -9,7 +9,7 @@ import type {
     RetrievedKnowledgeItem,
     ToolExecutionAuthority,
 } from '@parallext/shared';
-import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
+import { CONVERSATIONAL_CHANNELS, PROVIDER_API_VERSIONS } from '@parallext/shared';
 import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -626,6 +626,7 @@ export class AgentTestService {
                         && !['unavailable', 'unhealthy', 'not_applicable'].includes(value?.status)
                         && value?.scopeStatus !== 'missing'
                         && value?.circuitState !== 'open',
+                    apiVersion: (PROVIDER_API_VERSIONS as Record<string, string>)[name],
                     scopes: value?.grantedScopes,
                     mirrorAsOf: value?.lastSuccessfulSyncAt || undefined,
                 },
@@ -637,7 +638,12 @@ export class AgentTestService {
                     .getConfiguredProviderBindings(tenantId);
                 return Object.fromEntries(Object.entries(bindings).map(([name, configured]) => [
                     name,
-                    { configured, connected: false, healthy: undefined },
+                    {
+                        configured,
+                        connected: false,
+                        healthy: undefined,
+                        apiVersion: (PROVIDER_API_VERSIONS as Record<string, string>)[name],
+                    },
                 ]));
             } catch (bindingError: any) {
                 this.logger.debug(`[Test] provider ownership unavailable: ${bindingError.message}`);

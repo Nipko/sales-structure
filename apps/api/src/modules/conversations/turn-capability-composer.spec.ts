@@ -298,6 +298,14 @@ describe('TurnCapabilityComposerService', () => {
         expect(result.contract?.publishedTools).not.toContain('get_fitness_schedule');
         expect(result.contract?.publishedTools).not.toContain('book_class');
         expect(result.contract?.publishedTools).not.toContain('cancel_class_booking');
+        expect(result.contract?.certification.provider).toMatchObject({
+            selected: 'mindbody',
+            apiVersion: 'public-v6',
+            configured: true,
+            certified: false,
+        });
+        expect(result.contract?.certification.reasons.map(reason => reason.code))
+            .toContain('provider_not_certified');
     });
 
     it.each([

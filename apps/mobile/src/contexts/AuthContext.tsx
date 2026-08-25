@@ -61,8 +61,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const loadVertical = useCallback(async (tenantId?: string) => {
         if (!tenantId) return;
         try {
-            const res: any = await api.getVerticalConfig(tenantId);
-            if (res?.success && res.data) setVerticalConfig(res.data);
+            const [configResult, profileResult] = await Promise.all([
+                api.getVerticalConfig(tenantId).catch(() => null),
+                api.getEffectiveVerticalProfile(tenantId).catch(() => null),
+            ]);
+            const res: any = configResult;
+            if (res?.success && res.data) {
+                // The operational config stays backward compatible. Contract
+                // snapshots are merged only in memory, so a mobile read cannot
+                // persist or publish a newer tenant manifest by accident.
+                setVerticalConfig({
+                    ...res.data,
+                    certification: (profileResult as any)?.data?.certification,
+                    operations: (profileResult as any)?.data?.operations,
+                });
+            }
         } catch { /* noop */ }
     }, []);
 

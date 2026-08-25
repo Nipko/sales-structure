@@ -118,7 +118,12 @@ export default function SolutionsPage() {
                           {t(`verticals.${v.slug}.name`)}
                         </h3>
                         <p className="text-xs text-text-muted">{t(`verticals.${v.slug}.subtitle`)}</p>
-                        <p className="mt-1 text-[10px] font-medium text-text-muted" data-product-mode={v.productMode}>
+                        <p
+                          className="mt-1 text-[10px] font-medium text-text-muted"
+                          data-product-mode={v.productMode}
+                          data-certification-state={v.certificationState}
+                          data-certification-reasons={v.certificationReasons.join(",")}
+                        >
                           {t(`solutions.productMode.${v.productMode}`)}
                         </p>
                       </div>

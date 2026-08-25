@@ -1290,3 +1290,48 @@ describe('VerticalsService quality attribution cache invalidation', () => {
         expect(redis.del).toHaveBeenCalledWith(`persona-resolution:${tenantId}:channel:whatsapp:acct:phone-1`);
     });
 });
+
+describe('VerticalsService shared certification projection', () => {
+    it('includes the tenant provider binding/version without treating health as certification', async () => {
+        const service = new VerticalsService(
+            {} as any,
+            {} as any,
+            {} as any,
+            undefined,
+            { resolve: jest.fn().mockResolvedValue({
+                operatingCountry: { value: 'CO' },
+                countryPackId: 'co',
+            }) } as any,
+            {
+                getAllHealth: jest.fn().mockResolvedValue({
+                    mindbody: {
+                        configured: true,
+                        connected: true,
+                        status: 'healthy',
+                        scopeStatus: 'satisfied',
+                        circuitState: 'closed',
+                    },
+                }),
+            } as any,
+        );
+        jest.spyOn(service, 'getVerticalConfig').mockResolvedValue({
+            industry: 'gimnasios',
+            subType: 'gimnasio_general',
+            sidebar: [],
+        } as any);
+
+        const result: any = await service.getEffectiveProfile(
+            '11111111-1111-4111-8111-111111111111',
+        );
+
+        expect(result.certification.provider).toMatchObject({
+            selected: 'mindbody',
+            apiVersion: 'public-v6',
+            configured: true,
+            healthy: true,
+            certified: false,
+        });
+        expect(result.certification.reasons.map((reason: any) => reason.code))
+            .toContain('provider_not_certified');
+    });
+});

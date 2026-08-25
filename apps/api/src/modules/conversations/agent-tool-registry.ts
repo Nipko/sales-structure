@@ -40,12 +40,12 @@ import { PAYMENT_CREATE_TOOLS, PAYMENT_STATUS_TOOLS, REFUND_PAYMENT_TOOL } from 
  * correct order.
  */
 
-interface ToolFamily {
+export interface ToolFamily {
     key: keyof ToolsConfig;
     tools: readonly ToolDefinition[];
 }
 
-const TOOL_FAMILIES: readonly ToolFamily[] = [
+export const TOOL_FAMILIES: readonly ToolFamily[] = [
     { key: 'appointments', tools: APPOINTMENT_TOOLS },
     { key: 'catalog', tools: CATALOG_TOOLS },
     { key: 'offers', tools: [OFFER_TOOL] },
@@ -96,7 +96,7 @@ function familyEnabled(cfgTools: any, key: keyof ToolsConfig): boolean {
  * no puede perder capacidades por un cambio de contrato. Sólo un `false`
  * explícito recorta.
  */
-const SUBPERMISSION_TOOLS: readonly {
+export const TOOL_SUBPERMISSION_RULES: readonly {
     family: keyof ToolsConfig;
     flag: string;
     tools: readonly string[];
@@ -116,7 +116,7 @@ const SUBPERMISSION_TOOLS: readonly {
 /** Los nombres que un `false` explícito del dueño retira de este agente. */
 export function subpermissionDeniedToolNames(cfgTools: unknown): Set<string> {
     const denied = new Set<string>();
-    for (const rule of SUBPERMISSION_TOOLS) {
+    for (const rule of TOOL_SUBPERMISSION_RULES) {
         const family = (cfgTools as any)?.[rule.family];
         if (!family) continue;
         if (family[rule.flag] === false) {
@@ -124,6 +124,21 @@ export function subpermissionDeniedToolNames(cfgTools: unknown): Set<string> {
         }
     }
     return denied;
+}
+
+/** Shared diagnostics/contract lookup; it grants nothing by itself. */
+export function toolFamilyForTool(toolName: string): string | undefined {
+    return TOOL_FAMILIES.find(family => (
+        family.tools.some(tool => String(tool.name) === toolName)
+    ))?.key;
+}
+
+/** Explicit owner subpermission controlling a tool, when one exists. */
+export function toolSubpermissionForTool(
+    toolName: string,
+): { family: string; flag: string } | undefined {
+    const rule = TOOL_SUBPERMISSION_RULES.find(entry => entry.tools.includes(toolName));
+    return rule ? { family: String(rule.family), flag: rule.flag } : undefined;
 }
 
 /** Static tool definitions this agent's config authorises, in registration order. */

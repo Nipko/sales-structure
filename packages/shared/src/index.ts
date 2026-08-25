@@ -27,6 +27,7 @@ export * from './subtype-taxonomy-migration';
 export * from './vertical-domain-contract';
 export * from './vertical-certification-contract';
 export * from './vertical-operation-contract';
+export * from './vertical-authoring-package';
 export * from './resource-rental-details';
 export * from './integration-scaffolding';
 export * from './runtime-config-compatibility';
@@ -884,6 +885,10 @@ export interface TurnRegionalContext {
     countryPackVersion: string;
     /** `draft` packs must not be presented as certified market coverage. */
     countryPackStatus: string;
+    /** Commercial market lifecycle; separate from language-pack evidence. */
+    marketState?: 'recognized' | 'preview' | 'pilot' | 'certified';
+    marketClaimMode?: 'none' | 'preview_only' | 'private_pilot' | 'approved';
+    marketCapabilityMode?: 'generic_non_regulated' | 'limited_fail_closed' | 'controlled' | 'certified';
     /** Country-reviewed vocabulary the agent may generate. Internal keys are stable. */
     preferredTerms?: Readonly<Record<string, string>>;
     /** Registers the agent must never imitate for this operating country. */

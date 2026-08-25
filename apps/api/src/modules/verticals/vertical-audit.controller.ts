@@ -12,6 +12,10 @@ import {
     listVerticalCertificationSnapshots,
 } from '@parallext/shared';
 import { buildToolControlCatalog } from './vertical-operation-contract';
+import {
+    listVerticalAuthoringPackages,
+    summariseVerticalAuthoringPackages,
+} from './vertical-authoring-package';
 
 /**
  * Code-backed vertical intervention ledger for the platform owner.
@@ -31,6 +35,7 @@ export class VerticalAuditController {
     @ApiOperation({ summary: 'Get the code-backed native-depth intervention ledger' })
     getNativeBacklog() {
         const summary = summariseNativeBacklogDetailed();
+        const authoringPackages = listVerticalAuthoringPackages({ includeLegacy: true });
         return {
             success: true,
             data: {
@@ -47,6 +52,12 @@ export class VerticalAuditController {
                     entries: listVerticalCertificationSnapshots({ includeLegacy: true }),
                 },
                 toolControls: buildToolControlCatalog(),
+                authoring: {
+                    version: authoringPackages[0]?.version || 1,
+                    summary: summariseVerticalAuthoringPackages(authoringPackages),
+                    markets: authoringPackages[0]?.localization.countryOverlays || [],
+                    entries: authoringPackages,
+                },
             },
         };
     }

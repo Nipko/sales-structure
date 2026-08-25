@@ -84,5 +84,11 @@ describe('subtype-aware navigation config', () => {
         });
         expect(profile.navigation.sidebar.itemOrder.slice(0, 2)).toEqual(['stays', 'properties']);
         expect(profile.navigation.sidebar.labelOverrides.properties.es).toBe('Habitaciones');
+        expect(profile.authoring).toMatchObject({
+            version: 1,
+            requestedProfileId: 'turismo/hotel',
+            profileId: 'turismo/hotel',
+            governance: { stage: 'mechanically_complete' },
+        });
     });
 });

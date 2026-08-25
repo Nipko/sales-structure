@@ -13,6 +13,7 @@ import {
     TenantRegionalProfileV1,
     countryPackIdFor,
     countryPackStatusFor,
+    countryMarketPolicyFor,
     packForCountry,
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -356,6 +357,7 @@ export class RegionalProfileService {
             countryPackId: String(tenant?.countryPackId || countryPackIdFor(country) || FALLBACK_COUNTRY_PACK_ID),
             countryPackVersion: String(tenant?.countryPackVersion || '1'),
             countryPackStatus: countryPackStatusFor(country),
+            marketPolicy: countryMarketPolicyFor(country),
             preferredTerms: languagePack?.preferredTerms
                 ? Object.freeze({ ...languagePack.preferredTerms })
                 : undefined,

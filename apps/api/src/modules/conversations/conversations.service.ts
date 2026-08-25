@@ -1989,6 +1989,11 @@ export class ConversationsService {
                 countryPackId: regional.countryPackId,
                 countryPackVersion: regional.countryPackVersion,
                 countryPackStatus: regional.countryPackStatus,
+                // Compatibility with regional snapshots cached before P34.
+                // Missing state produces no market claim; it never certifies.
+                marketState: regional.marketPolicy?.state,
+                marketClaimMode: regional.marketPolicy?.claimMode,
+                marketCapabilityMode: regional.marketPolicy?.capabilityMode,
                 preferredTerms: userLanguage.slice(0, 2).toLowerCase()
                     === regional.locale.value.slice(0, 2).toLowerCase()
                     ? regional.preferredTerms : undefined,

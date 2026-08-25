@@ -29,5 +29,13 @@ describe('VerticalAuditController', () => {
         expect(result.data.toolControls.version).toBe(1);
         expect(result.data.toolControls.entries.length).toBeGreaterThan(0);
         expect(result.data.toolControls.entries.flatMap(entry => entry.gaps)).toEqual([]);
+        expect(result.data.authoring.version).toBe(1);
+        expect(result.data.authoring.entries).toHaveLength(81);
+        expect(result.data.authoring.markets).toHaveLength(17);
+        expect(result.data.authoring.summary).toEqual(expect.objectContaining({
+            total: 81,
+            mechanicallyComplete: 81,
+            legacy: 5,
+        }));
     });
 });

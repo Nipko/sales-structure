@@ -11,7 +11,9 @@ import {
 import {
     countryPackIdFor,
     countryPackStatusFor,
+    countryMarketPolicyFor,
     type CountryPackStatus,
+    type CountryMarketPolicyV1,
 } from './tenant-regional-profile';
 import { profileSystemOfRecordDeclaration, type SorBoundaryKind } from './system-of-record-policy';
 
@@ -49,6 +51,7 @@ export type VerticalCertificationReasonCode =
     | 'country_pack_draft'
     | 'country_pack_fallback_only'
     | 'country_pack_pilot'
+    | 'market_not_certified'
     | 'provider_required'
     | 'provider_version_missing'
     | 'provider_not_certified'
@@ -91,6 +94,7 @@ export interface VerticalCertificationSnapshotV1 {
         operatingCountry: string | null;
         countryPackId: string;
         countryPackStatus: CountryPackStatus;
+        marketPolicy: CountryMarketPolicyV1;
         certified: boolean;
     };
     provider: {
@@ -173,6 +177,10 @@ export function resolveVerticalCertificationSnapshot(
     const country = String(input.operatingCountry || '').trim().toUpperCase() || null;
     const countryPackStatus = input.countryPack?.status || countryPackStatusFor(country);
     const countryPackCertified = countryPackStatus === 'certified';
+    const marketPolicy = countryMarketPolicyFor(country);
+    // Language evidence and commercial approval are independent gates. A
+    // reviewed pack alone must never create a market-availability claim.
+    const marketCertified = countryPackCertified && marketPolicy.state === 'certified';
     const reasons: VerticalCertificationReason[] = [];
 
     if (profile.availability === 'waitlist') {
@@ -198,6 +206,8 @@ export function resolveVerticalCertificationSnapshot(
         reasons.push({ code: 'country_pack_draft', dimension: 'market', blocking: true });
     } else if (countryPackStatus === 'pilot') {
         reasons.push({ code: 'country_pack_pilot', dimension: 'market', blocking: true });
+    } else if (countryPackCertified && marketPolicy.state !== 'certified') {
+        reasons.push({ code: 'market_not_certified', dimension: 'market', blocking: true });
     }
 
     if (requirement === 'required' && !provider?.configured) {
@@ -223,7 +233,7 @@ export function resolveVerticalCertificationSnapshot(
         && input.promotion?.stage === 'certified'
         && input.promotion.domainEvidenceComplete
         && !!country
-        && countryPackCertified
+        && marketCertified
         && providerCertified;
 
     return Object.freeze({
@@ -247,7 +257,8 @@ export function resolveVerticalCertificationSnapshot(
             operatingCountry: country,
             countryPackId: input.countryPack?.id || countryPackIdFor(country),
             countryPackStatus,
-            certified: countryPackCertified,
+            marketPolicy,
+            certified: marketCertified,
         }),
         provider: Object.freeze({
             boundary,

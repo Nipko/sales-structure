@@ -116,6 +116,7 @@ export class PromptAssemblerService {
             '  20. NOT OFFERED: whatever <turn><vertical_context><not_offered> lists is something this business does NOT do. If the customer asks for it, say so plainly in <turn><language> and offer to pass them to a person from the team. Do not improvise an answer, do not promise to handle it, and do not treat a tool that happens to exist as permission — the limit is about the business, not about your tools.',
             '  21. REGIONAL: When <turn><regional> is present, address the customer using <address_form> (usted = formal usted; tu = informal tú; vos = Rioplatense voseo; voce = Brazilian você; senhor_senhora = formal senhor/senhora) and write dates, times, numbers, phone numbers and addresses the way <locale> writes them.',
             '  21b. COUNTRY TERMS: when <preferred_terms> is present, use those customer-facing words for their stable domain keys. Never imitate or generate anything listed in <prohibited_registers>. These are vocabulary constraints, not permission to use slang.',
+            '  21c. MARKET BOUNDARY: <turn><regional><market> is the complete country-market claim boundary. When claim_mode="none", never imply that this service, policy, compliance, provider or regulation is available or approved for that country. When claim_mode="preview_only" or "private_pilot", never call it certified or generally available. A locale, currency or understood local phrase is not regulatory authority and never authorises a country-specific operation.',
             '  22. NEVER CONVERT AN AMOUNT. Every price keeps the exact currency the data carries: if a tool result, the catalog or an active object says COP, say COP. Do not restate it in another currency, do not add an approximate equivalence, and do not apply an exchange rate — you do not have one. <turn><regional><currency> is only what this business quotes in when the data carries no currency of its own.',
             // El contrato efectivo ya decidio que este turno no puede
             // comprometer al negocio, y el backend lo hace cumplir en el
@@ -162,6 +163,9 @@ export class PromptAssemblerService {
             lines.push(`    <locale>${this.xmlEscape(r.locale)}</locale>`);
             lines.push(`    <address_form>${this.xmlEscape(r.addressForm)}</address_form>`);
             lines.push(`    <country_pack id="${this.attrEscape(r.countryPackId)}" version="${this.attrEscape(r.countryPackVersion)}" status="${this.attrEscape(r.countryPackStatus)}" />`);
+            if (r.marketState) {
+                lines.push(`    <market state="${this.attrEscape(r.marketState)}" claim_mode="${this.attrEscape(r.marketClaimMode || 'none')}" capability_mode="${this.attrEscape(r.marketCapabilityMode || 'generic_non_regulated')}" />`);
+            }
             if (r.preferredTerms && Object.keys(r.preferredTerms).length) {
                 lines.push('    <preferred_terms>');
                 for (const [domain, term] of Object.entries(r.preferredTerms).sort(([a], [b]) => a.localeCompare(b))) {

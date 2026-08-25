@@ -64,6 +64,8 @@ export interface TenantRegionalProfileV1 {
     countryPackVersion: string;
     /** Country packs start `draft`; only evidence promotes them. */
     countryPackStatus: CountryPackStatus;
+    /** Commercial availability is a different axis from language evidence. */
+    marketPolicy: CountryMarketPolicyV1;
     /** Reviewed generation vocabulary for the operating country. */
     preferredTerms?: Readonly<Record<string, string>>;
     /** Registers the agent must not generate for this country. */
@@ -75,6 +77,22 @@ export interface TenantRegionalProfileV1 {
 }
 
 export type CountryPackStatus = 'draft' | 'fallback_only' | 'pilot' | 'certified';
+
+/**
+ * Commercial market lifecycle. This is deliberately separate from
+ * `CountryPackStatus`: a language pack can recognise a country while the
+ * market is not yet available for self-service or approved claims.
+ */
+export type CountryMarketState = 'recognized' | 'preview' | 'pilot' | 'certified';
+
+export interface CountryMarketPolicyV1 {
+    version: 1;
+    country: string;
+    state: CountryMarketState;
+    onboarding: 'waitlist_or_assisted' | 'assisted_with_disclosure' | 'approved_tenants' | 'self_service';
+    capabilityMode: 'generic_non_regulated' | 'limited_fail_closed' | 'controlled' | 'certified';
+    claimMode: 'none' | 'preview_only' | 'private_pilot' | 'approved';
+}
 
 export interface RegionalConflict {
     field: 'operating_country' | 'timezone' | 'currency' | 'locale' | 'phone_region';
@@ -170,6 +188,55 @@ export const COUNTRY_PACK_STATUS: Readonly<Record<string, CountryPackStatus>> = 
     VE: 'draft', CR: 'draft', PA: 'draft', DO: 'draft', GT: 'draft',
     US: 'fallback_only', CA: 'fallback_only',
 };
+
+/**
+ * Product-market availability approved by P34.
+ *
+ * The fifteen existing LatAm/Brazil packs are previews: they can understand
+ * reviewed deterministic aliases and formats, but their `draft` evidence
+ * status still prevents certification. US/CA remain recognition-only until a
+ * locale and state/province policy is explicitly selected. Unknown countries
+ * resolve to `recognized`; accepting an ISO code never creates a market claim.
+ */
+export const COUNTRY_MARKET_STATE: Readonly<Record<string, CountryMarketState>> = {
+    CO: 'preview', MX: 'preview', AR: 'preview', CL: 'preview', PE: 'preview',
+    BR: 'preview', UY: 'preview', PY: 'preview', BO: 'preview', EC: 'preview',
+    VE: 'preview', CR: 'preview', PA: 'preview', DO: 'preview', GT: 'preview',
+    US: 'recognized', CA: 'recognized',
+};
+
+export function countryMarketStateFor(country?: string | null): CountryMarketState {
+    const code = String(country || '').trim().toUpperCase();
+    return COUNTRY_MARKET_STATE[code] || 'recognized';
+}
+
+export function countryMarketPolicyFor(country?: string | null): CountryMarketPolicyV1 {
+    const code = String(country || '').trim().toUpperCase() || 'ZZ';
+    const state = countryMarketStateFor(code);
+    const byState: Readonly<Record<CountryMarketState, Omit<CountryMarketPolicyV1, 'version' | 'country' | 'state'>>> = {
+        recognized: {
+            onboarding: 'waitlist_or_assisted',
+            capabilityMode: 'generic_non_regulated',
+            claimMode: 'none',
+        },
+        preview: {
+            onboarding: 'assisted_with_disclosure',
+            capabilityMode: 'limited_fail_closed',
+            claimMode: 'preview_only',
+        },
+        pilot: {
+            onboarding: 'approved_tenants',
+            capabilityMode: 'controlled',
+            claimMode: 'private_pilot',
+        },
+        certified: {
+            onboarding: 'self_service',
+            capabilityMode: 'certified',
+            claimMode: 'approved',
+        },
+    };
+    return Object.freeze({ version: 1, country: code, state, ...byState[state] });
+}
 
 export const FALLBACK_COUNTRY_PACK_ID = 'es-419';
 

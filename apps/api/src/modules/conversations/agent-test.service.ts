@@ -163,6 +163,11 @@ export class AgentTestService {
                 countryPackId: regional.countryPackId,
                 countryPackVersion: regional.countryPackVersion,
                 countryPackStatus: regional.countryPackStatus,
+                // Old cached regional profiles do not carry P34 yet. Absence
+                // omits the market block; it never upgrades to certification.
+                marketState: regional.marketPolicy?.state,
+                marketClaimMode: regional.marketPolicy?.claimMode,
+                marketCapabilityMode: regional.marketPolicy?.capabilityMode,
                 preferredTerms: detectedLanguage.slice(0, 2).toLowerCase()
                     === regional.locale.value.slice(0, 2).toLowerCase()
                     ? regional.preferredTerms : undefined,

@@ -35,6 +35,12 @@ interface RegionalProfile {
     addressForm: RegionalValue;
     countryPackId: string;
     countryPackStatus: string;
+    marketPolicy?: {
+        state: "recognized" | "preview" | "pilot" | "certified";
+        onboarding: string;
+        capabilityMode: string;
+        claimMode: string;
+    };
     conflicts: Array<{ field: string; candidates: Array<{ value: string; from: string }>; suggested?: string }>;
 }
 
@@ -191,6 +197,23 @@ export function RegionalIdentityCard({ tenantId }: { tenantId: string | null | u
                             </div>
                         ))}
                     </div>
+
+                    {profile?.marketPolicy && (
+                        <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3 text-[12px] text-sky-900 dark:text-sky-100">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-semibold">{t("marketTitle")}</span>
+                                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+                                    {t(`market_${profile.marketPolicy.state}`)}
+                                </span>
+                            </div>
+                            <p className="mt-1 text-sky-700 dark:text-sky-300">
+                                {t(`marketHint_${profile.marketPolicy.state}`)}
+                            </p>
+                            <p className="mt-1 font-mono text-[10px] text-sky-600/80 dark:text-sky-400/80">
+                                {profile.countryPackId} · {profile.countryPackStatus}
+                            </p>
+                        </div>
+                    )}
 
                     {/* Un conflicto NO se resuelve solo. Elegir por el dueño le
                         cambiaría la moneda, la terminología y sus fuentes

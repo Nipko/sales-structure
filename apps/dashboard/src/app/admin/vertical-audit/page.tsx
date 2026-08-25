@@ -64,6 +64,43 @@ interface BacklogPayload {
       reasons: readonly unknown[];
     }>;
   };
+  authoring?: {
+    version: number;
+    summary: {
+      total: number;
+      mechanicallyComplete: number;
+      legacy: number;
+      terminologyExpertReview: number;
+      promptTemplateExpertReview: number;
+      regulatedExpertReview: number;
+      profilesWithImplementationBlockers: number;
+      profilesWithNavigationGaps: number;
+      profilesWithToolGaps: number;
+    };
+    markets: Array<{
+      country: string;
+      packId: string;
+      packStatus: string;
+      market: { state: "recognized" | "preview" | "pilot" | "certified"; claimMode: string };
+      recognizedAliases: ReadonlyArray<{ value: string; intent: string; confidence: string }>;
+      ambiguousConsentPhrases: readonly string[];
+      preferredTerms: Readonly<Record<string, string>>;
+      prohibitedRegisters: readonly string[];
+    }>;
+    entries: Array<{
+      requestedProfileId: string;
+      profileId: string;
+      compatibility: { legacy: boolean; resolvesTo: string };
+      navigation: { gaps: readonly string[] };
+      tools: { missingTools: ReadonlyArray<{ tool: string; reasons: readonly string[] }> };
+      governance: {
+        stage: "mechanically_complete";
+        expertReviewsRequired: readonly string[];
+        implementationBlockers: readonly string[];
+        promotionBlockers: readonly string[];
+      };
+    }>;
+  };
 }
 
 const RESPONSIBILITIES: readonly Responsibility[] = ["internal", "mixed", "decision", "external"];
@@ -146,6 +183,7 @@ export default function VerticalAuditPage() {
       certified: entries.filter(entry => entry.overall.certified).length,
     };
   }, [payload]);
+  const authoringEntries = payload?.authoring?.entries || [];
 
   return (
     <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-4 md:p-6">
@@ -189,6 +227,110 @@ export default function VerticalAuditPage() {
               <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-900">{t("contractCertified", { count: certificationSummary.certified })}</span>
             </div>
           </div>
+        </section>
+      )}
+
+      {payload?.authoring && (
+        <section className="overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-sm dark:border-emerald-900 dark:bg-slate-900">
+          <div className="border-b border-emerald-100 bg-emerald-50/70 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="font-semibold text-emerald-950 dark:text-emerald-100">
+                  {t("authoringTitle", { version: payload.authoring.version })}
+                </h2>
+                <p className="mt-1 max-w-4xl text-xs text-emerald-700 dark:text-emerald-300">{t("authoringHint")}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs font-semibold text-emerald-950 dark:text-emerald-100">
+                <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-950">{t("authoringTotal", { count: payload.authoring.summary.total })}</span>
+                <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-950">{t("authoringMechanical", { count: payload.authoring.summary.mechanicallyComplete })}</span>
+                <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-950">{t("authoringLegacy", { count: payload.authoring.summary.legacy })}</span>
+                <span className="rounded-full bg-white px-3 py-1 dark:bg-slate-950">{t("authoringTerminology", { count: payload.authoring.summary.terminologyExpertReview })}</span>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-px bg-slate-100 sm:grid-cols-2 xl:grid-cols-5 dark:bg-slate-800">
+            {([
+              ["authoringCodeBlockers", payload.authoring.summary.profilesWithImplementationBlockers],
+              ["authoringPrompts", payload.authoring.summary.promptTemplateExpertReview],
+              ["authoringRegulated", payload.authoring.summary.regulatedExpertReview],
+              ["authoringNavigation", payload.authoring.summary.profilesWithNavigationGaps],
+              ["authoringTools", payload.authoring.summary.profilesWithToolGaps],
+            ] as const).map(([label, count]) => (
+              <div key={label} className="bg-white p-3 dark:bg-slate-900">
+                <div className="text-xl font-bold text-slate-950 dark:text-white">{count}</div>
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t(label)}</div>
+              </div>
+            ))}
+          </div>
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between border-t border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 dark:border-slate-800 dark:text-slate-100">
+              {t("marketMatrix")}
+              <span className="text-xs font-normal text-slate-500">{t("marketMatrixCount", { count: payload.authoring.markets.length })}</span>
+            </summary>
+            <div className="max-h-[420px] overflow-auto border-t border-slate-100 dark:border-slate-800">
+              <table className="w-full min-w-[820px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-50 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">{t("marketCountry")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("marketPack")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("marketState")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("marketAliases")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("marketAmbiguous")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {payload.authoring.markets.map(market => (
+                    <tr key={market.country} className="align-top">
+                      <td className="px-4 py-2.5 font-mono font-semibold text-indigo-600 dark:text-indigo-300">{market.country}</td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{market.packId} · {market.packStatus}</td>
+                      <td className="px-4 py-2.5"><span className="rounded bg-sky-50 px-2 py-1 font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">{t(`marketStage.${market.market.state}`)}</span></td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{market.recognizedAliases.length}</td>
+                      <td className="max-w-md px-4 py-2.5 text-slate-600 dark:text-slate-300">{market.ambiguousConsentPhrases.join(" · ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between border-t border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 dark:border-slate-800 dark:text-slate-100">
+              {t("authoringMatrix")}
+              <span className="text-xs font-normal text-slate-500">{t("authoringMatrixCount", { count: authoringEntries.length })}</span>
+            </summary>
+            <div className="max-h-[560px] overflow-auto border-t border-slate-100 dark:border-slate-800">
+              <table className="w-full min-w-[900px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-50 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">{t("authoringProfile")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("authoringStage")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("authoringExpert")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("authoringInternal")}</th>
+                    <th className="px-4 py-2 font-semibold">{t("authoringPromotion")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {authoringEntries.map(entry => (
+                    <tr key={entry.requestedProfileId} className="align-top">
+                      <td className="px-4 py-2.5">
+                        <div className="font-mono font-semibold text-indigo-600 dark:text-indigo-300">{entry.requestedProfileId}</div>
+                        {entry.compatibility.legacy && (
+                          <div className="mt-1 text-[10px] text-slate-500">{t("authoringResolvesTo", { profile: entry.compatibility.resolvesTo })}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5"><span className="rounded bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{t("authoringMechanicallyComplete")}</span></td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{entry.governance.expertReviewsRequired.length || "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{entry.governance.implementationBlockers.length || "—"}</td>
+                      <td className="max-w-md px-4 py-2.5 text-slate-600 dark:text-slate-300">
+                        {entry.governance.promotionBlockers.length
+                          ? entry.governance.promotionBlockers.join(" · ")
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </section>
       )}
 

@@ -58,6 +58,8 @@ describe('PromptAssemblerService', () => {
             regional: {
                 operatingCountry: 'CO', currency: 'COP', locale: 'es-CO', addressForm: 'usted',
                 countryPackId: 'es-CO', countryPackVersion: '1', countryPackStatus: 'draft',
+                marketState: 'preview', marketClaimMode: 'preview_only',
+                marketCapabilityMode: 'limited_fail_closed',
                 preferredTerms: { appointment: 'cita & turno' },
                 prohibitedRegisters: ['parce', '<bro>'],
             },
@@ -77,6 +79,8 @@ describe('PromptAssemblerService', () => {
         } as any);
         expect(prompt).toContain('<term domain="appointment">cita &amp; turno</term>');
         expect(prompt).toContain('<prohibited_registers>parce | &lt;bro&gt;</prohibited_registers>');
+        expect(prompt).toContain('<market state="preview" claim_mode="preview_only" capability_mode="limited_fail_closed" />');
+        expect(prompt).toContain('A locale, currency or understood local phrase is not regulatory authority');
         expect(prompt).toContain('<domain_contract version="2" profile="retail/tienda_ropa" status="draft">');
         expect(prompt).toContain('<intent key="buy" commits="true" tools="get_product,place_order" runtime="partial" runtime_tools="get_product" missing_tools="place_order" />');
         expect(prompt).toContain('<review_required>domain.review</review_required>');

@@ -1,9 +1,11 @@
 # Especificación de comportamiento lingüístico por país — agosto de 2026
 
 **Producto:** Parallly / Parallext Engine  
-**Estado:** investigación y contrato de diseño; no implementa código ni certifica mercados  
+**Estado:** investigación aplicada a contrato ejecutable; no certifica mercados
 **Cobertura inicial:** 15 países de Latinoamérica/Brasil, más tratamiento separado para Estados Unidos y Canadá  
 **Uso obligatorio:** entrada del [plan maestro de verticales 1:1](./vertical-full-implementation-plan-2026-08.md), del contrato de prompts y de la auditoría de herramientas
+
+> **Actualización code-backed — 24 ago 2026.** El resolutor regional, los 17 packs, el normalizador determinista, la política de consentimiento por efecto y la separación `CountryPackStatus`/`CountryMarketState` ya están implementados. Los quince packs LatAm/Brasil permanecen `draft + preview`; US/CA, `fallback_only + recognized`. El agente recibe identidad, pack y límite de claim en el turno; el dashboard muestra el estado. Ninguno está `pilot` o `certified`. El cierre mecánico y sus gates están en [`vertical-phase-3-gate-2026-08-24.md`](./vertical-phase-3-gate-2026-08-24.md).
 
 ## 1. Dictamen ejecutivo
 

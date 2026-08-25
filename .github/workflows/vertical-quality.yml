@@ -108,6 +108,7 @@ jobs:
           apps/api/src/modules/persona/vertical-subtype-persona-contract.spec.ts
           apps/api/src/modules/verticals/vertical-capability-manifest.spec.ts
           apps/api/src/modules/verticals/vertical-certification-contract.spec.ts
+          apps/api/src/modules/verticals/vertical-authoring-package.spec.ts
           apps/api/src/modules/verticals/vertical-operation-contract.spec.ts
           apps/api/src/modules/verticals/runtime-config-compatibility.spec.ts
           apps/api/src/modules/verticals/vertical-pipeline-contract.spec.ts
@@ -247,6 +248,7 @@ jobs:
           apps/api/src/modules/simulation/eval-infrastructure.spec.ts
           apps/api/src/modules/slack/slack-secrets.spec.ts
           apps/api/src/modules/tenants/onboarding-funnel-acquisition.spec.ts
+          apps/api/src/modules/tenants/country-market-policy.spec.ts
           apps/api/src/modules/tenants/regional-profile.service.spec.ts
           apps/api/src/modules/tenants/tenants.controller.spec.ts
           apps/api/src/modules/tenants/tenants.service.spec.ts

@@ -24,7 +24,12 @@ describe('CTR-01 shared certification snapshot', () => {
                 availability: 'waitlist',
                 executionMode: 'read_only_handoff',
             },
-            market: { operatingCountry: 'CO', countryPackStatus: 'draft', certified: false },
+            market: {
+                operatingCountry: 'CO',
+                countryPackStatus: 'draft',
+                marketPolicy: { state: 'preview' },
+                certified: false,
+            },
             provider: { requirement: 'required', configured: false, certified: false },
             overall: { certified: false, deepMarketingAllowed: false },
         });
@@ -74,6 +79,28 @@ describe('CTR-01 shared certification snapshot', () => {
             certified: true,
         });
         expect(snapshot.reasons.map(reason => reason.code)).not.toContain('provider_not_certified');
+    });
+
+    it('does not promote a market when only its language pack was certified', () => {
+        const snapshot = resolveVerticalCertificationSnapshot({
+            industry: 'technology',
+            subtype: 'saas',
+            operatingCountry: 'CO',
+            countryPack: { id: 'es-CO', status: 'certified' },
+            promotion: {
+                stage: 'certified',
+                domainEvidenceComplete: true,
+                deepMarketingApproved: true,
+            },
+        });
+
+        expect(snapshot.market).toMatchObject({
+            countryPackStatus: 'certified',
+            marketPolicy: { state: 'preview' },
+            certified: false,
+        });
+        expect(snapshot.overall).toMatchObject({ certified: false, deepMarketingAllowed: false });
+        expect(snapshot.reasons.map(reason => reason.code)).toContain('market_not_certified');
     });
 
     it('preserves the requested legacy identity while resolving its canonical product', () => {

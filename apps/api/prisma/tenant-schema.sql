@@ -3074,6 +3074,113 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."test_drives" (
     "created_at" TIMESTAMPTZ DEFAULT now()
 );
 
+-- ---- Automotive workshop — customer vehicles & repair orders ---------
+-- Workshop vehicles belong to a customer and must not be mixed with the
+-- dealership/rental inventory above. A repair order is also not an
+-- appointment, estimate or CRM opportunity: it keeps its own lifecycle and
+-- links those records only when they actually exist.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_vehicles" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "contact_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE RESTRICT,
+    "make" TEXT NOT NULL,
+    "model" TEXT NOT NULL,
+    "year" INT,
+    "vin" TEXT,
+    "license_plate" TEXT,
+    "color" TEXT,
+    "mileage_km" INT,
+    "metadata" JSONB NOT NULL DEFAULT '{}',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT "customer_vehicles_year_check" CHECK ("year" IS NULL OR "year" BETWEEN 1886 AND 2200),
+    CONSTRAINT "customer_vehicles_mileage_check" CHECK ("mileage_km" IS NULL OR "mileage_km" >= 0),
+    CONSTRAINT "customer_vehicles_identity_check" CHECK (
+        NULLIF(BTRIM(COALESCE("vin", '')), '') IS NOT NULL
+        OR NULLIF(BTRIM(COALESCE("license_plate", '')), '') IS NOT NULL
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_customer_vehicles_contact_vin"
+    ON "{{SCHEMA_NAME}}"."customer_vehicles" ("contact_id", LOWER("vin"))
+    WHERE "vin" IS NOT NULL AND BTRIM("vin") <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_customer_vehicles_contact_plate"
+    ON "{{SCHEMA_NAME}}"."customer_vehicles" ("contact_id", LOWER("license_plate"))
+    WHERE "license_plate" IS NOT NULL AND BTRIM("license_plate") <> '';
+CREATE INDEX IF NOT EXISTS "idx_customer_vehicles_contact"
+    ON "{{SCHEMA_NAME}}"."customer_vehicles" ("contact_id", "updated_at" DESC);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."repair_orders" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "contact_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE RESTRICT,
+    "vehicle_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."customer_vehicles"("id") ON DELETE RESTRICT,
+    "appointment_id" UUID REFERENCES "{{SCHEMA_NAME}}"."appointments"("id") ON DELETE SET NULL,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
+    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
+    "customer_concern" TEXT NOT NULL,
+    "reported_symptoms" JSONB NOT NULL DEFAULT '[]',
+    "inspection" JSONB NOT NULL DEFAULT '{}',
+    "diagnosis_summary" TEXT,
+    "estimate_line_items" JSONB NOT NULL DEFAULT '[]',
+    "estimate_amount_cents" BIGINT,
+    "final_line_items" JSONB NOT NULL DEFAULT '[]',
+    "final_amount_cents" BIGINT,
+    -- Set when the first estimate is published from the tenant's regional
+    -- operating currency. A country-specific default here would corrupt a
+    -- workshop's first monetary record outside Colombia.
+    "currency" VARCHAR(3),
+    "approval_status" VARCHAR(30) NOT NULL DEFAULT 'not_requested',
+    "status" VARCHAR(30) NOT NULL DEFAULT 'intake',
+    "assigned_technician_id" UUID REFERENCES "{{SCHEMA_NAME}}"."staff_members"("id") ON DELETE RESTRICT,
+    "promised_at" TIMESTAMPTZ,
+    "source_system" VARCHAR(80) NOT NULL DEFAULT 'parallly',
+    "external_id" VARCHAR(255),
+    "idempotency_key" VARCHAR(255),
+    "metadata" JSONB NOT NULL DEFAULT '{}',
+    "created_by" UUID,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT "repair_orders_status_check" CHECK ("status" IN (
+        'intake', 'estimating', 'awaiting_approval', 'approved',
+        'in_progress', 'ready', 'delivered', 'rejected', 'cancelled'
+    )),
+    CONSTRAINT "repair_orders_approval_status_check" CHECK ("approval_status" IN (
+        'not_requested', 'pending', 'approved', 'rejected'
+    )),
+    CONSTRAINT "repair_orders_amounts_check" CHECK (
+        ("estimate_amount_cents" IS NULL OR "estimate_amount_cents" >= 0)
+        AND ("final_amount_cents" IS NULL OR "final_amount_cents" >= 0)
+    ),
+    CONSTRAINT "repair_orders_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
+    CONSTRAINT "repair_orders_concern_check" CHECK (BTRIM("customer_concern") <> ''),
+    CONSTRAINT "repair_orders_version_check" CHECK ("version" >= 1)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_repair_orders_idempotency"
+    ON "{{SCHEMA_NAME}}"."repair_orders" ("idempotency_key")
+    WHERE "idempotency_key" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_repair_orders_external_source"
+    ON "{{SCHEMA_NAME}}"."repair_orders" ("source_system", "external_id")
+    WHERE "external_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_repair_orders_status_updated"
+    ON "{{SCHEMA_NAME}}"."repair_orders" ("status", "updated_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_repair_orders_contact_updated"
+    ON "{{SCHEMA_NAME}}"."repair_orders" ("contact_id", "updated_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_repair_orders_vehicle"
+    ON "{{SCHEMA_NAME}}"."repair_orders" ("vehicle_id", "created_at" DESC);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."repair_order_events" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "repair_order_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."repair_orders"("id") ON DELETE CASCADE,
+    "event_type" VARCHAR(80) NOT NULL,
+    "from_status" VARCHAR(30),
+    "to_status" VARCHAR(30),
+    "actor_id" UUID,
+    "actor_type" VARCHAR(30) NOT NULL DEFAULT 'tenant_user',
+    "payload" JSONB NOT NULL DEFAULT '{}',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_repair_order_events_order_created"
+    ON "{{SCHEMA_NAME}}"."repair_order_events" ("repair_order_id", "created_at" DESC);
+
 -- ---- Resource rentals -------------------------------------------------
 -- One half-open date-range contract for vertical resources that are not
 -- appointments: vehicle hire and pet hotel/day-care capacity.

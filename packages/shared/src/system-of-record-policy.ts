@@ -175,8 +175,8 @@ export const PROFILE_SYSTEM_OF_RECORD_POLICIES: Readonly<Record<string, ProfileS
         ),
         'automotriz/taller': native(
             'automotriz/taller',
-            [...APPOINTMENT_READS, 'search_vehicles', 'get_vehicle_details', 'send_vehicle_image'],
-            [...APPOINTMENT_WRITERS, 'schedule_test_drive'],
+            [...APPOINTMENT_READS, 'list_my_repair_orders', 'get_repair_order'],
+            [...APPOINTMENT_WRITERS, 'create_repair_order', 'approve_repair', 'cancel_repair_order'],
         ),
         'education/online': native(
             'education/online',

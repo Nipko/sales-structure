@@ -109,6 +109,7 @@ export const PRIMARY_OBJECT_ROUTE: Readonly<Record<VerticalPrimaryObject, Vertic
     vehicle_rental: routeForActiveObject('vehicle_rental'),
     pet_boarding: routeForActiveObject('pet_boarding'),
     photo_session: routeForActiveObject('photo_session'),
+    repair_order: routeForActiveObject('repair_order'),
 };
 
 function nonEmpty(value: unknown): boolean {

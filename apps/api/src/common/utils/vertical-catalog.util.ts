@@ -45,13 +45,18 @@ export const VERTICAL_CATALOG: Record<string, VerticalCatalog> = {
     otro: { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
 };
 
-const SUBTYPE_CATALOG: Record<string, VerticalCatalog> = {
+const SUBTYPE_CATALOG: Record<string, VerticalCatalog | null> = {
     'turismo/hotel': { table: 'properties', missingKey: 'properties', activeFilter: 'is_active = true', route: '/admin/properties' },
     'turismo/alquiler_vacacional': { table: 'properties', missingKey: 'properties', activeFilter: 'is_active = true', route: '/admin/properties' },
     'salud/farmacia': { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
     // Read-only compatibility for tenants provisioned before boutique moved out
     // of the selectable beauty subtypes.
     'moda_belleza/boutique': { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
+    // A workshop creates its operational register during intake. Requiring a
+    // dealership vehicle catalogue first would block the exact first order
+    // that activates the module.
+    'automotriz/taller': null,
+    'automotriz/repuestos': { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
 };
 
 /** La tabla de catálogo efectiva de una industria/subtipo, o null si no aplica. */
@@ -63,8 +68,10 @@ export function getVerticalCatalog(
     const canonicalIndustry = industry.toLowerCase();
     const canonicalSubtype = subType?.toLowerCase() || null;
     if (canonicalSubtype) {
-        const subtypeCatalog = SUBTYPE_CATALOG[`${canonicalIndustry}/${canonicalSubtype}`];
-        if (subtypeCatalog) return subtypeCatalog;
+        const subtypeKey = `${canonicalIndustry}/${canonicalSubtype}`;
+        if (Object.prototype.hasOwnProperty.call(SUBTYPE_CATALOG, subtypeKey)) {
+            return SUBTYPE_CATALOG[subtypeKey];
+        }
     }
     return VERTICAL_CATALOG[canonicalIndustry] || null;
 }

@@ -122,7 +122,7 @@ export const FIRST_DETERMINISTIC_WORKFLOW_QUEUE: readonly DeterministicWorkflowD
         expiresAfterSeconds: 1_800, approval: 'none', idempotencyKey: 'tenant+resource+date_range+contact', sideEffects: Object.freeze(['resource_rental']), recovery: Object.freeze(['release_lock', 'resume_quote', 'handoff']), blockedBy: 'none',
     }),
     ...Object.freeze([
-        ['repair.approval', 'Repair approval', 'automotriz/taller', 'approve_repair', 'repair_quote', 'product_decision'],
+        ['repair.approval', 'Repair approval', 'automotriz/taller', 'approve_repair', 'repair_quote', 'none'],
         ['events.sensitive_rsvp', 'Sensitive RSVP', 'event_planning/*', 'confirm_sensitive_rsvp', 'guest_identity', 'product_decision'],
         ['locksmith.dispatch', 'Locksmith dispatch', 'servicios_hogar/cerrajeria', 'dispatch_locksmith', 'access_authorization', 'product_decision'],
         ['pharmacy.rx_intake', 'Rx intake', 'salud/farmacia', 'submit_rx_intake', 'prescription_reference', 'regulated_policy'],

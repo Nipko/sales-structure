@@ -16,6 +16,7 @@ describe('native evidence writer ownership contract', () => {
         ['restaurants/restaurants.service.ts', 'food_orders'],
         ['photography/photography.service.ts', 'photo_sessions'],
         ['resource-rentals/resource-rentals.service.ts', 'resource_rentals'],
+        ['repair-orders/repair-orders.service.ts', 'repair_orders'],
         ['orders/orders.service.ts', 'orders'],
     ])('%s resolves and persists exact ownership for %s', (file, table) => {
         const contents = source(`modules/${file}`);

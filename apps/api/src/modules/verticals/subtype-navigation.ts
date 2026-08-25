@@ -11,7 +11,7 @@ const PRIMARY_OBJECT_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze(
     pet: 'pets', pet_boarding: 'resourceRentals', photo_session: 'photoSessions',
     professional_case: 'cases', property_booking: 'properties', real_estate_listing: 'listings',
     service_request: 'serviceRequests', tour_package: 'tours', vehicle: 'vehicles',
-    vehicle_rental: 'vehicles',
+    vehicle_rental: 'vehicles', repair_order: 'repairOrders',
 });
 
 const DAILY_WORK_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
@@ -19,11 +19,13 @@ const DAILY_WORK_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
     pet_boarding: 'resourceRentals', photo_session: 'photoSessions', professional_case: 'cases',
     property_booking: 'stays', service_request: 'serviceRequests', tour_package: 'tourBookings',
     vehicle_rental: 'resourceRentals',
+    repair_order: 'repairOrders',
 });
 
 export const VERTICAL_ROUTE_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
     '/admin/appointments': 'appointments', '/admin/stays': 'stays',
     '/admin/tour-bookings': 'tourBookings', '/admin/resource-rentals': 'resourceRentals',
+    '/admin/repair-orders': 'repairOrders',
     '/admin/food-orders': 'foodOrders', '/admin/orders': 'orders',
     '/admin/service-requests': 'serviceRequests', '/admin/classes': 'classes',
     '/admin/photo-sessions': 'photoSessions', '/admin/pets': 'pets', '/admin/cases': 'cases',
@@ -33,10 +35,6 @@ export const VERTICAL_ROUTE_NAV_ITEM: Readonly<Record<string, string>> = Object.
     '/admin/treatment-plans': 'treatmentPlans', '/admin/service-catalog': 'serviceCatalog',
     '/admin/inventory': 'inventory',
 });
-
-// A work-order screen does not exist yet; renaming vehicle inventory would
-// conceal the gap instead of fixing it.
-const SUBTYPE_NAVIGATION_REVIEW = new Set(['automotriz/taller']);
 
 /**
  * Pure subtype menu projection shared by tenant config, the authoring ledger
@@ -61,13 +59,15 @@ export function withSubtypeNavigation(
     const routeOrder = dailyWorkItem && declaredRouteOrder.includes(dailyWorkItem)
         ? [dailyWorkItem, ...declaredRouteOrder.filter(item => item !== dailyWorkItem)]
         : declaredRouteOrder;
-    const itemOrder = [...new Set([...routeOrder, ...(config.sidebar?.itemOrder || [])])];
+    const verticalNavigationItems = new Set(Object.values(VERTICAL_ROUTE_NAV_ITEM));
+    const compatibleExistingOrder = (config.sidebar?.itemOrder || []).filter(item => (
+        !verticalNavigationItems.has(item) || declaredRouteOrder.includes(item)
+    ));
+    const itemOrder = [...new Set([...routeOrder, ...compatibleExistingOrder])];
     const labelOverrides = { ...(config.sidebar?.labelOverrides || {}) };
     const terms = subtypeTerminologyFor(config.industry, config.subType);
     const primaryItem = PRIMARY_OBJECT_NAV_ITEM[manifest.primaryObject];
-    const profileId = `${config.industry}/${config.subType || '__none__'}`;
-    if (!SUBTYPE_NAVIGATION_REVIEW.has(profileId)
-        && primaryItem && routeOrder.includes(primaryItem)) {
+    if (primaryItem && routeOrder.includes(primaryItem)) {
         const label = terms?.primaryObjectPlural || terms?.primaryObject;
         if (label) labelOverrides[primaryItem] = { ...label };
     }

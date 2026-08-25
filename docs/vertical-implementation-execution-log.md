@@ -2393,3 +2393,13 @@ La medición derivada queda en 76/76 paquetes mecánicamente completos, 60 glosa
 P34 separa evidencia lingüística de disponibilidad comercial: quince packs `draft + preview`, US/CA `fallback_only + recognized`, ninguno piloto/certificado. El límite viaja al prompt y a la UI regional. No hay variables nuevas, DDL, secretos, migración, provider write ni claim habilitado. Detalle y gates: [`vertical-phase-3-gate-2026-08-24.md`](./vertical-phase-3-gate-2026-08-24.md).
 
 La revisión final corrigió dos falsas equivalencias antes de promover: la autoría ahora reutiliza `NAVIGATION_SURFACE_KIND` y no reclasifica Inbox/contactos/embudo como catálogo ni Cursos como trabajo diario; además, un pack lingüístico certificado no puede certificar un mercado cuyo estado comercial siga `recognized/preview/pilot`. Evidencia local: seis typechecks, lint de shared/API/dashboard, cinco builds, Prisma, claims/i18n, matriz 1.660/1.660; API 370 suites/3.577 pruebas, dashboard 31/275, mobile 24/321 y WhatsApp 3/13. Los dos contratos nuevos quedaron enumerados en Deploy y Vertical Quality; CI/Browser E2E/deploy se registran después del push.
+
+---
+
+### U73 — Fase 5, primer bloque: Taller nativo P09–P10
+
+`automotriz/taller` dejó de heredar el catálogo y la operación de concesionario. Se incorporó `repair_order` como Active Object canónico, con vehículo propiedad del cliente, lifecycle, estimado/aprobación, técnico activo, total final, historial inmutable, herramientas del agente, contexto activo, métricas y pantalla diaria `/admin/repair-orders`. La cita, la oportunidad CRM, el estimado y la RO conservan identidades distintas.
+
+La seguridad falla cerrada: el agente registra el síntoma declarado pero no el diagnóstico; aprobación/rechazo requiere la ruta y evidencia correctas; replay no vuelve a tocar kilometraje; los montos deben coincidir con sus líneas; no existe default `COP`; el estado usa optimistic version; y el endpoint genérico no puede fabricar una aprobación. Taller ya no publica búsqueda de inventario ni test drive.
+
+No se agregó ninguna variable ni writer externo. El DDL tenant es aditivo, pero no se declara aplicado en producción. La importación de citas legacy se conserva para MIG-01/Fase 7 mediante preview y revisión, sin renombrar datos. DMS, parts catalog, bahías, revisión experta, canary y piloto siguen como gates posteriores. Evidencia reproducible y cifras: [`vertical-phase5-workshop-evidence-2026-08-25.md`](./vertical-phase5-workshop-evidence-2026-08-25.md).

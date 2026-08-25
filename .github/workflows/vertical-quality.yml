@@ -101,6 +101,8 @@ jobs:
           apps/api/src/modules/education/education.service.spec.ts
           apps/api/src/modules/insurance/insurance.service.spec.ts
           apps/api/src/modules/resource-rentals/resource-rentals.service.spec.ts
+          apps/api/src/modules/repair-orders/repair-orders.service.spec.ts
+          apps/api/src/modules/conversations/repair-order-tools.spec.ts
           apps/api/src/modules/orders/orders.contacts-pagination.spec.ts
           apps/api/src/modules/pets/pets.pagination.spec.ts
           apps/api/src/modules/verticals/vehicle-inventory.pagination.spec.ts

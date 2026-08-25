@@ -1156,11 +1156,14 @@ export class VerticalsService {
             await this.seedInmobiliariaExtras(tenantId, schemaName, lang, executor);
             await this.enableSimpleTool(schemaName, 'realEstate', executor);
         }
-        if (industry === 'automotriz' && subType !== 'repuestos') {
+        if (industry === 'automotriz' && !['repuestos', 'taller'].includes(subType || '')) {
             await this.enableSimpleTool(schemaName, 'vehicles', executor);
         }
-        if (industry === 'automotriz' && subType === 'repuestos') {
+        if (industry === 'automotriz' && ['repuestos', 'taller'].includes(subType || '')) {
             await this.disableSimpleTool(schemaName, 'vehicles', executor);
+        }
+        if (industry === 'automotriz' && subType === 'taller') {
+            await this.enableSimpleTool(schemaName, 'repairOrders', executor);
         }
 
         const toolsByIndustry: Record<string, string[]> = {
@@ -1196,7 +1199,8 @@ export class VerticalsService {
         if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) required.add('properties');
         if (industry === 'salud' && subType === 'dental') required.add('treatments');
         if (industry === 'inmobiliaria') required.add('realEstate');
-        if (industry === 'automotriz' && subType !== 'repuestos') required.add('vehicles');
+        if (industry === 'automotriz' && !['repuestos', 'taller'].includes(subType || '')) required.add('vehicles');
+        if (industry === 'automotriz' && subType === 'taller') required.add('repairOrders');
         const toolsByIndustry: Record<string, string[]> = {
             veterinaria: ['pets'], restaurantes: ['restaurants'], gimnasios: ['gyms'],
             education: ['education'], seguros: ['insurance'], servicios_hogar: ['homeServices'],

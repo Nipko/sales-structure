@@ -68,6 +68,7 @@ export const ACTIVE_OBJECT_EXPOSURE_POLICY: Readonly<Record<ActiveObjectKind, Ac
     // Mismo nivel que una reserva, que es exactamente lo que es.
     vehicle_rental: BOUNDED_A1,
     pet_boarding: BOUNDED_A1,
+    repair_order: BOUNDED_A1,
 });
 
 const SENSITIVE_APPOINTMENT_INDUSTRIES = new Set([

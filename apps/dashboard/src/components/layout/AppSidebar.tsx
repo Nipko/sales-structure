@@ -255,6 +255,7 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "stays", href: "/admin/stays", icon: BedDouble, verticalItem: "stays", capability: "canHandleConversations", accent: "text-sky-500 dark:text-sky-400" },
       { labelKey: "tourBookings", href: "/admin/tour-bookings", icon: Compass, verticalItem: "tourBookings", capability: "canHandleConversations", accent: "text-teal-500 dark:text-teal-400" },
       { labelKey: "resourceRentals", href: "/admin/resource-rentals", icon: KeyRound, verticalItem: "resourceRentals", capability: "canHandleConversations" },
+      { labelKey: "repairOrders", href: "/admin/repair-orders", icon: Wrench, verticalItem: "repairOrders", capability: "canHandleConversations" },
       { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticalItem: "foodOrders", capability: "canHandleConversations" },
       { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticalItem: "orders", capability: "canHandleConversations" },
       { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticalItem: "serviceRequests", capability: "canHandleConversations" },

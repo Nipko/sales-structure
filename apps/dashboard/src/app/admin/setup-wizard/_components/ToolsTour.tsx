@@ -35,6 +35,7 @@ const A_BY_ITEM: Readonly<Partial<Record<VerticalDashboardItem, Tool>>> = {
     listings: { key: "listings", icon: Home, href: "/admin/listings" },
     vehicles: { key: "vehicles", icon: Car, href: "/admin/vehicles" },
     resourceRentals: { key: "resourceRentals", icon: KeyRound, href: "/admin/resource-rentals" },
+    repairOrders: { key: "repairOrders", icon: Wrench, href: "/admin/repair-orders" },
     menu: { key: "menu", icon: UtensilsCrossed, href: "/admin/menu" },
     foodOrders: { key: "orders", icon: ShoppingBag, href: "/admin/food-orders" },
     memberships: { key: "memberships", icon: CreditCard, href: "/admin/memberships" },

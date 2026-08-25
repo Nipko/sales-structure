@@ -546,6 +546,9 @@ const EVAL_WRITER_EFFECTS: Readonly<Record<string, {
     request_photo_quote: { family: 'photo_sessions', table: 'photo_sessions' },
     create_vehicle_rental: { family: 'resource_rentals', table: 'resource_rentals' },
     create_pet_boarding: { family: 'resource_rentals', table: 'resource_rentals' },
+    create_repair_order: { family: 'repair_orders', table: 'repair_orders' },
+    approve_repair: { family: 'repair_orders', table: 'repair_orders' },
+    cancel_repair_order: { family: 'repair_orders', table: 'repair_orders' },
     place_catalog_order: { family: 'catalog_orders', table: 'orders' },
     // A claim has no contact_id column and identity step-up must never be
     // bypassed by the sandbox. Its executable eval contract is the negative

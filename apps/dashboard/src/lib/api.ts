@@ -365,6 +365,91 @@ export interface CreateResourceRentalInput {
     metadata?: Record<string, unknown>;
 }
 
+export type RepairOrderStatus =
+    | "intake"
+    | "estimating"
+    | "awaiting_approval"
+    | "approved"
+    | "in_progress"
+    | "ready"
+    | "delivered"
+    | "rejected"
+    | "cancelled";
+
+export interface RepairLineItem {
+    description: string;
+    quantity: number;
+    unitAmountCents: number;
+}
+
+export interface RepairOrderEvent {
+    id: string;
+    event_type: string;
+    from_status?: RepairOrderStatus | null;
+    to_status?: RepairOrderStatus | null;
+    actor_type: "tenant_user" | "agent" | "system";
+    payload?: Record<string, unknown> | null;
+    created_at: string;
+}
+
+export interface RepairOrder {
+    id: string;
+    contact_id: string;
+    vehicle_id: string;
+    appointment_id?: string | null;
+    opportunity_id?: string | null;
+    conversation_id?: string | null;
+    customer_concern: string;
+    reported_symptoms: string[];
+    inspection?: Record<string, unknown> | null;
+    diagnosis_summary?: string | null;
+    estimate_line_items: RepairLineItem[];
+    estimate_amount_cents?: number | null;
+    final_line_items: RepairLineItem[];
+    final_amount_cents?: number | null;
+    currency: string;
+    approval_status: "not_requested" | "pending" | "approved" | "rejected";
+    status: RepairOrderStatus;
+    assigned_technician_id?: string | null;
+    assigned_technician_name?: string | null;
+    promised_at?: string | null;
+    version: number;
+    created_at: string;
+    updated_at: string;
+    make: string;
+    model: string;
+    year?: number | null;
+    vin?: string | null;
+    license_plate?: string | null;
+    color?: string | null;
+    vehicle_mileage_km?: number | null;
+    contact_name?: string | null;
+    contact_phone?: string | null;
+    events?: RepairOrderEvent[];
+}
+
+export interface RepairOrderSummary {
+    open: number;
+    awaitingApproval: number;
+    readyForDelivery: number;
+    deliveredLast30Days: number;
+}
+
+export interface CreateRepairOrderInput {
+    contactId: string;
+    vehicle: {
+        make: string;
+        model: string;
+        year?: number;
+        vin?: string;
+        licensePlate?: string;
+        color?: string;
+        mileageKm?: number;
+    };
+    customerConcern: string;
+    reportedSymptoms?: string[];
+}
+
 // ============================================
 // Core fetch with auth + refresh mutex
 // ============================================
@@ -2383,6 +2468,53 @@ export const api = {
         rentalId: string,
         details: Record<string, unknown>,
     ) => apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/details`, details),
+
+    // ─── Automotive workshop repair orders ───
+    listRepairOrders: (tenantId: string, params?: {
+        status?: RepairOrderStatus;
+        search?: string;
+        limit?: number;
+        offset?: number;
+    }) => {
+        const qs = new URLSearchParams();
+        Object.entries(params || {}).forEach(([key, value]) => {
+            if (value !== undefined && value !== "") qs.set(key, String(value));
+        });
+        const query = qs.toString();
+        return apiGet<{ items: RepairOrder[]; total: number }>(
+            `/repair-orders/${tenantId}${query ? `?${query}` : ""}`,
+        );
+    },
+    getRepairOrderSummary: (tenantId: string) =>
+        apiGet<RepairOrderSummary>(`/repair-orders/${tenantId}/summary`),
+    getRepairOrder: (tenantId: string, repairOrderId: string) =>
+        apiGet<RepairOrder>(`/repair-orders/${tenantId}/${repairOrderId}`),
+    createRepairOrder: (tenantId: string, data: CreateRepairOrderInput) =>
+        apiPost<RepairOrder>(`/repair-orders/${tenantId}`, data),
+    updateRepairEstimate: (tenantId: string, repairOrderId: string, data: {
+        expectedVersion: number;
+        lineItems?: RepairLineItem[];
+        amountCents?: number;
+        currency?: string;
+        notes?: string;
+    }) => apiPut<RepairOrder>(`/repair-orders/${tenantId}/${repairOrderId}/estimate`, data),
+    updateRepairDetails: (tenantId: string, repairOrderId: string, data: {
+        expectedVersion: number;
+        diagnosisSummary?: string;
+        finalAmountCents?: number;
+        mileageKm?: number;
+        promisedAt?: string;
+        assignedTechnicianId?: string;
+    }) => apiPut<RepairOrder>(`/repair-orders/${tenantId}/${repairOrderId}/details`, data),
+    recordRepairEstimateDecision: (tenantId: string, repairOrderId: string, data: {
+        accepted: boolean;
+        evidence: string;
+    }) => apiPut<RepairOrder>(`/repair-orders/${tenantId}/${repairOrderId}/estimate-decision`, data),
+    transitionRepairOrder: (tenantId: string, repairOrderId: string, data: {
+        status: RepairOrderStatus;
+        expectedVersion: number;
+        reason?: string;
+    }) => apiPut<RepairOrder>(`/repair-orders/${tenantId}/${repairOrderId}/status`, data),
 
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),

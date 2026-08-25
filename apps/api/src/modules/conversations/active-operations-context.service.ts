@@ -33,6 +33,7 @@ export type ActiveOperationsLoaderName =
     | 'enrollments'
     | 'photo_sessions'
     | 'resource_rentals'
+    | 'repair_orders'
     | 'crm_opportunities';
 
 export interface ActiveOperationsContextInput {
@@ -67,6 +68,7 @@ const STATUS_MAP: Readonly<Record<ActiveObjectStatusClass, ReadonlySet<string>>>
     pending: new Set([
         'pending', 'received', 'requested', 'new', 'draft', 'created',
         'waitlist', 'enrolled', 'scheduled',
+        'estimating', 'awaiting_approval',
     ]),
     active: new Set([
         'active', 'confirmed', 'processing', 'preparing', 'ready', 'reserved',
@@ -179,6 +181,7 @@ export function resolveActiveOperationsLoaders(
         || enabled(['petBoarding'], 'pet_boarding', 'petBoarding')) {
         loaders.push('resource_rentals');
     }
+    if (enabled(['repairOrders'], 'repair_orders', 'repairOrders')) loaders.push('repair_orders');
     if (enabled(['crm'], 'crm_pipeline')) loaders.push('crm_opportunities');
     return loaders;
 }
@@ -355,6 +358,8 @@ export class ActiveOperationsContextService {
                 return this.loadPhotoSessions(schemaName, contactId, Math.min(3, maxItems), detailsTool);
             case 'resource_rentals':
                 return this.loadResourceRentals(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+            case 'repair_orders':
+                return this.loadRepairOrders(schemaName, contactId, Math.min(4, maxItems), detailsTool);
             case 'crm_opportunities':
                 return this.loadCrmOpportunities(schemaName, contactId, Math.min(3, maxItems), detailsTool);
         }
@@ -388,6 +393,8 @@ export class ActiveOperationsContextService {
             case 'resource_rentals':
                 if (tools.vehicleRentals?.enabled === true) return 'list_my_vehicle_rentals';
                 return tools.petBoarding?.enabled === true ? 'list_my_pet_boardings' : undefined;
+            case 'repair_orders':
+                return tools.repairOrders?.enabled === true ? 'list_my_repair_orders' : undefined;
             case 'crm_opportunities':
                 return tools.crm?.enabled === true ? 'get_customer_context' : undefined;
         }
@@ -599,6 +606,39 @@ export class ActiveOperationsContextService {
             startsAt: asIso(row.starts_at_iso),
             endsAt: asIso(row.ends_at_iso),
             updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            detailsTool,
+        }));
+    }
+
+    /** Repair orders remain distinct from appointments and CRM opportunities. */
+    private async loadRepairOrders(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT ro.id, ro.status, ro.estimate_amount_cents, ro.final_amount_cents,
+                    ro.currency, ro.customer_concern,
+                    to_char(ro.promised_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS promised_at_iso,
+                    to_char(ro.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+               FROM repair_orders ro
+              WHERE ro.contact_id = $1::uuid
+              ORDER BY ro.updated_at DESC
+              LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'repair_order',
+            id: String(row.id),
+            source: 'repair_orders',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('repair_orders', row.status),
+            endsAt: asIso(row.promised_at_iso),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            amount: nullableNumber(row.final_amount_cents ?? row.estimate_amount_cents),
+            currency: currency(row.currency),
             detailsTool,
         }));
     }

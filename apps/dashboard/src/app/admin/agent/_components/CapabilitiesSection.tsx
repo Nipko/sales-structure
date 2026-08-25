@@ -41,6 +41,7 @@ const VERTICAL_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
   { key: "professionalServices", industries: ["servicios_profesionales"],    icon: Briefcase },
   { key: "vehicles",     industries: ["automotriz"],                         icon: Car },
   { key: "vehicleRentals", industries: ["automotriz"],                       icon: Car },
+  { key: "repairOrders", industries: ["automotriz"],                        icon: Wrench },
   { key: "petBoarding",  industries: ["pet_services", "servicios_mascotas"], icon: Home },
 ];
 
@@ -396,6 +397,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             // que la auditoría marcó en 7.9.
             vehicleRentals: "",
             petBoarding: "",
+            repairOrders: "",
             orders: "order_confirmation"
           };
           const templateSlug = slugMap[key];

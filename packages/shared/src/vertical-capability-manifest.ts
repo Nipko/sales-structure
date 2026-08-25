@@ -43,6 +43,7 @@ export type VerticalCapability =
     | 'restaurant_ordering'
     | 'vehicle_inventory'
     | 'vehicle_rentals'
+    | 'repair_orders'
     | 'tour_booking'
     | 'nightly_booking'
     | 'course_enrollment'
@@ -75,7 +76,8 @@ export type VerticalToolGroup =
     | 'petServices'
     | 'vehicleRentals'
     | 'petBoarding'
-    | 'photography';
+    | 'photography'
+    | 'repairOrders';
 
 /**
  * Runtime counterpart of `VerticalToolGroup`.
@@ -105,6 +107,7 @@ export const VERTICAL_TOOL_GROUPS: readonly VerticalToolGroup[] = Object.freeze(
     'vehicleRentals',
     'petBoarding',
     'photography',
+    'repairOrders',
 ]);
 
 export type VerticalPrimaryObject =
@@ -125,7 +128,8 @@ export type VerticalPrimaryObject =
     | 'service_request'
     | 'vehicle_rental'
     | 'pet_boarding'
-    | 'photo_session';
+    | 'photo_session'
+    | 'repair_order';
 
 export type VerticalRoutePath =
     | '/admin/inbox'
@@ -163,7 +167,8 @@ export type VerticalRoutePath =
     // agendan franjas. Sin esta ruta el bootstrap les sembraba servicios que el
     // dueño nunca podía ver: Agenda no está en su menú.
     | '/admin/service-catalog'
-    | '/admin/photo-sessions';
+    | '/admin/photo-sessions'
+    | '/admin/repair-orders';
 
 export type VerticalReadinessKey =
     | 'business_identity'
@@ -200,7 +205,9 @@ export type VerticalDomainEvent =
     | 'food_order.created'
     | 'food_order.cancelled'
     | 'service_request.created'
-    | 'photo_session.requested';
+    | 'photo_session.requested'
+    | 'repair_order.created'
+    | 'repair_order.status_changed';
 
 export type VerticalAssuranceLevel = 'A0' | 'A1' | 'A2' | 'A3' | 'A4';
 
@@ -645,6 +652,20 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             ),
         }),
         subtypeOverrides: {
+            taller: {
+                // A workshop operates customer-owned vehicles and repair
+                // orders. The dealership inventory is a different source of
+                // truth and previously made Taller look like a car catalogue.
+                removeCapabilities: ['vehicle_inventory'],
+                removeToolGroups: ['vehicles'],
+                addCapabilities: ['repair_orders'],
+                addToolGroups: ['repairOrders'],
+                primaryObject: 'repair_order',
+                removeRoutes: ['/admin/vehicles'],
+                addRoutes: ['/admin/repair-orders'],
+                removeReadiness: ['vehicle_inventory'],
+                addEvents: ['repair_order.created', 'repair_order.status_changed'],
+            },
             repuestos: {
                 removeCapabilities: ['appointment_booking', 'vehicle_inventory'],
                 removeToolGroups: ['appointments', 'vehicles'],

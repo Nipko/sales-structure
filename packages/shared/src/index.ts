@@ -411,6 +411,11 @@ export interface ToolsConfig {
         enabled: boolean;
         emailConfirmations?: boolean;
     };
+    /** Canonical workshop intake, status and customer estimate approval. */
+    repairOrders?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
     /** Daycare / boarding writer over `resource_rentals` (`pet_services`). */
     petBoarding?: {
         enabled: boolean;
@@ -776,6 +781,7 @@ export const ACTIVE_OBJECT_KINDS = [
     // dónde mirar.
     'vehicle_rental',
     'pet_boarding',
+    'repair_order',
 ] as const;
 export type ActiveObjectKind = typeof ACTIVE_OBJECT_KINDS[number];
 
@@ -807,6 +813,7 @@ export const ACTIVE_OBJECT_SOURCES = [
     'tasks',
     'consent_records',
     'resource_rentals',
+    'repair_orders',
     'external_integration',
     'legacy_active_bookings',
     'legacy_recent_orders',

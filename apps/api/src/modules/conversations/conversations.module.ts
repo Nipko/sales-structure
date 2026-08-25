@@ -43,6 +43,7 @@ import { HomeServicesModule } from '../home-services/home-services.module';
 import { PhotographyModule } from '../photography/photography.module';
 import { OrdersModule } from '../orders/orders.module';
 import { ResourceRentalsModule } from '../resource-rentals/resource-rentals.module';
+import { RepairOrdersModule } from '../repair-orders/repair-orders.module';
 import { VerticalsModule } from '../verticals/verticals.module';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
 import { EcommerceModule } from '../ecommerce/ecommerce.module';
@@ -98,6 +99,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         PhotographyModule,
         OrdersModule,
         ResourceRentalsModule,
+        RepairOrdersModule,
         VerticalsModule,
         EcommerceModule,
         VerticalIntegrationsModule,

@@ -64,12 +64,15 @@ describe('subtype-aware navigation config', () => {
         expect(resolved.sidebar.labelOverrides.resourceRentals.es).not.toBe('Flota');
     });
 
-    it('does not relabel vehicle inventory as work orders while taller lacks that screen', () => {
+    it('publishes the workshop register and never disguises dealership inventory as work orders', () => {
         const base = config('automotriz', 'taller');
         const resolved = (service() as any).withSubtypeNavigation(base);
-        expect(resolved.sidebar.labelOverrides.vehicles)
-            .toEqual(base.sidebar.labelOverrides.vehicles);
-        expect(resolved.sidebar.itemOrder).toEqual(expect.arrayContaining(['vehicles']));
+        expect(resolved.sidebar.itemOrder[0]).toBe('repairOrders');
+        expect(resolved.sidebar.itemOrder).not.toContain('vehicles');
+        expect(resolved.sidebar.labelOverrides.repairOrders).toEqual({
+            es: 'Órdenes de trabajo', en: 'Work orders',
+            pt: 'Ordens de serviço', fr: 'Ordres de travail',
+        });
     });
 
     it('exposes the same domain contract and subtype navigation in the effective profile', async () => {

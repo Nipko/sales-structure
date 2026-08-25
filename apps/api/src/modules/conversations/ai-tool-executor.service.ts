@@ -80,6 +80,7 @@ import {
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
 import { attachWriterActiveObject } from './writer-active-object';
+import { RepairOrdersService } from '../repair-orders/repair-orders.service';
 
 interface PreparedContactConsent {
     policyId: string;
@@ -135,6 +136,7 @@ export class AIToolExecutorService {
         private readonly leadsRepository?: LeadsRepository,
         private readonly opportunitiesRepository?: OpportunitiesRepository,
         private readonly tasksService?: TasksService,
+        private readonly repairOrders?: RepairOrdersService,
     ) { }
 
     /**
@@ -437,6 +439,12 @@ export class AIToolExecutorService {
                 }
                 return controlDecision.result;
             }
+
+            // Capture the allowed branch before entering the handler closure;
+            // `controlDecision` is mutable for failure reporting, so TypeScript
+            // correctly refuses to preserve the discriminated-union narrowing
+            // inside that later closure.
+            const executionIdempotencyKey = controlDecision.idempotencyKey;
 
             const executeHandler = async (): Promise<any> => {
 
@@ -871,6 +879,28 @@ export class AIToolExecutorService {
                 case 'cancel_vehicle_rental':
                     return this.cancelResourceRental(schemaName, contactId, args.rentalId, 'vehicle_rental', args.reason);
 
+                // ── Automotive workshop repair orders ───────────────
+                case 'create_repair_order':
+                    return this.createRepairOrder(
+                        schemaName,
+                        contactId,
+                        conversationId,
+                        args,
+                        executionIdempotencyKey,
+                    );
+
+                case 'list_my_repair_orders':
+                    return this.listMyRepairOrders(schemaName, contactId);
+
+                case 'get_repair_order':
+                    return this.getRepairOrder(schemaName, contactId, args.repairOrderId);
+
+                case 'approve_repair':
+                    return this.decideRepairEstimate(schemaName, contactId, args.repairOrderId, args.accepted);
+
+                case 'cancel_repair_order':
+                    return this.cancelRepairOrder(schemaName, contactId, args.repairOrderId, args.reason);
+
                 case 'create_pet_boarding':
                     return this.createPetBoarding(schemaName, contactId, args);
 
@@ -922,6 +952,177 @@ export class AIToolExecutorService {
             this.logger.error(`[Tool] ${toolName} failed: ${error.message}`);
             return { error: 'tool_failed', message: 'No se pudo completar esta acción en este momento.' };
         }
+    }
+
+    // ── Automotive workshop repair orders ─────────────────────
+
+    private repairOrderWiringUnavailable(): Record<string, unknown> {
+        return {
+            error: 'repair_order_service_unavailable',
+            message: 'La operación de taller no está disponible en este momento.',
+            shouldHandoff: true,
+        };
+    }
+
+    private async createRepairOrder(
+        schemaName: string,
+        contactId: string,
+        conversationId: string | undefined,
+        args: Record<string, any>,
+        trustedIdempotencyKey?: string,
+    ): Promise<any> {
+        if (!this.repairOrders) return this.repairOrderWiringUnavailable();
+        if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
+            return { error: 'contact_required', message: 'No pude identificar al cliente para abrir la orden.' };
+        }
+        const stableIdentity = [args.vin, args.licensePlate, args.make, args.model]
+            .map(value => String(value || '').trim().toLowerCase())
+            .join('|');
+        const idempotencyKey = trustedIdempotencyKey
+            || `repair:${contactId}:${conversationId || 'no-conversation'}:${createHash('sha256')
+                .update(`${stableIdentity}|${String(args.customerConcern || '').trim().toLowerCase()}`)
+                .digest('hex')}`;
+        const order = await this.repairOrders.create(schemaName, {
+            contactId,
+            vehicle: {
+                make: args.make,
+                model: args.model,
+                year: args.year,
+                vin: args.vin,
+                licensePlate: args.licensePlate,
+                mileageKm: args.mileageKm,
+            },
+            customerConcern: args.customerConcern,
+            reportedSymptoms: args.reportedSymptoms,
+            appointmentId: args.appointmentId,
+            conversationId,
+            idempotencyKey,
+        }, { type: 'agent' });
+        return {
+            success: true,
+            repairOrderId: order.id,
+            status: order.status,
+            customerConcern: order.customer_concern,
+            vehicle: order.vehicle,
+            idempotentReplay: order.idempotentReplay === true,
+            message: 'Orden de reparación registrada para revisión del taller. El problema reportado no es un diagnóstico.',
+        };
+    }
+
+    private async listMyRepairOrders(schemaName: string, contactId: string): Promise<any> {
+        if (!this.repairOrders) return this.repairOrderWiringUnavailable();
+        const result = await this.repairOrders.list(schemaName, { contactId, limit: 20 });
+        return {
+            success: true,
+            repairOrders: result.items.map(order => ({
+                id: order.id,
+                status: order.status,
+                approvalStatus: order.approval_status,
+                customerConcern: order.customer_concern,
+                estimateAmountCents: order.estimate_amount_cents === null
+                    ? null
+                    : Number(order.estimate_amount_cents),
+                finalAmountCents: order.final_amount_cents === null
+                    ? null
+                    : Number(order.final_amount_cents),
+                currency: order.currency,
+                vehicle: {
+                    make: order.make,
+                    model: order.model,
+                    year: order.year,
+                    vin: order.vin,
+                    licensePlate: order.license_plate,
+                },
+                updatedAt: order.updated_at,
+            })),
+        };
+    }
+
+    private async getRepairOrder(
+        schemaName: string,
+        contactId: string,
+        repairOrderId: string,
+    ): Promise<any> {
+        if (!this.repairOrders) return this.repairOrderWiringUnavailable();
+        try {
+            const order = await this.repairOrders.get(schemaName, repairOrderId, contactId);
+            return {
+                success: true,
+                repairOrder: {
+                    id: order.id,
+                    status: order.status,
+                    approvalStatus: order.approval_status,
+                    customerConcern: order.customer_concern,
+                    // Technician-authored diagnosis is clearly separated from
+                    // what the customer reported.
+                    diagnosisSummary: order.diagnosis_summary,
+                    estimateLineItems: order.estimate_line_items,
+                    estimateAmountCents: order.estimate_amount_cents === null
+                        ? null
+                        : Number(order.estimate_amount_cents),
+                    finalAmountCents: order.final_amount_cents === null
+                        ? null
+                        : Number(order.final_amount_cents),
+                    currency: order.currency,
+                    promisedAt: order.promised_at,
+                    vehicle: {
+                        make: order.make,
+                        model: order.model,
+                        year: order.year,
+                        vin: order.vin,
+                        licensePlate: order.license_plate,
+                    },
+                    updatedAt: order.updated_at,
+                },
+            };
+        } catch (error: any) {
+            if (error?.status === 404 || error?.statusCode === 404) {
+                return { error: 'repair_order_not_found', message: 'No encontré esa orden de reparación para este cliente.' };
+            }
+            throw error;
+        }
+    }
+
+    private async decideRepairEstimate(
+        schemaName: string,
+        contactId: string,
+        repairOrderId: string,
+        accepted: unknown,
+    ): Promise<any> {
+        if (!this.repairOrders) return this.repairOrderWiringUnavailable();
+        if (typeof accepted !== 'boolean') {
+            return { error: 'estimate_decision_required', message: 'Falta indicar si el estimado fue aprobado o rechazado.' };
+        }
+        const order = await this.repairOrders.decideEstimate(
+            schemaName, repairOrderId, contactId, accepted, 'agent',
+        );
+        return {
+            success: true,
+            repairOrderId: order.id,
+            status: order.status,
+            approvalStatus: order.approval_status,
+            estimateAmountCents: order.estimate_amount_cents === null
+                ? null
+                : Number(order.estimate_amount_cents),
+            currency: order.currency,
+            idempotentReplay: order.idempotentReplay === true,
+        };
+    }
+
+    private async cancelRepairOrder(
+        schemaName: string,
+        contactId: string,
+        repairOrderId: string,
+        reason?: string,
+    ): Promise<any> {
+        if (!this.repairOrders) return this.repairOrderWiringUnavailable();
+        const order = await this.repairOrders.cancelOwned(schemaName, repairOrderId, contactId, reason);
+        return {
+            success: true,
+            repairOrderId: order.id,
+            status: order.status,
+            idempotentReplay: order.idempotentReplay === true,
+        };
     }
 
     // ── Catalog + Inventory tools ─────────────────────────────

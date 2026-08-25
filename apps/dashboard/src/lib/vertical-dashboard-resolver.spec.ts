@@ -23,6 +23,7 @@ const OPERATIONAL_ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, Vertic
   "/admin/listings": "listings",
   "/admin/vehicles": "vehicles",
   "/admin/resource-rentals": "resourceRentals",
+  "/admin/repair-orders": "repairOrders",
   "/admin/menu": "menu",
   "/admin/food-orders": "foodOrders",
   "/admin/memberships": "memberships",
@@ -106,6 +107,13 @@ describe("resolveVerticalDashboard", () => {
 
     expect(resolveCanonical("automotriz", "concesionario").visibleItems).not.toContain("resourceRentals");
     expect(resolveCanonical("pet_services", "peluqueria").visibleItems).not.toContain("resourceRentals");
+  });
+
+  it("gives a workshop its repair register instead of dealership inventory", () => {
+    const workshop = resolveCanonical("automotriz", "taller");
+    expect(workshop.visibleItems).toEqual(["appointments", "repairOrders"]);
+    expect(workshop.primaryTourItem).toBe("repairOrders");
+    expect(workshop.visibleItems).not.toContain("vehicles");
   });
 
   it("keeps legacy boutique inventory-only and supports manifest/industry fallbacks", () => {

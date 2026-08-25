@@ -33,6 +33,7 @@ const VERTICAL_FAMILIES: readonly (VerticalToolGroup | string)[] = [
     'restaurants', 'gyms', 'education', 'insurance', 'homeServices',
     'petServices', 'vehicleRentals', 'petBoarding', 'photography',
     'professionalServices',
+    'repairOrders',
 ];
 
 /** Las que tiene cualquier tenant, venda lo que venda. */

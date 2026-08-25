@@ -136,6 +136,7 @@ const PRIMARY_OBJECT_READINESS: Readonly<Partial<Record<VerticalPrimaryObject, r
     vehicle_rental: ['vehicle_inventory'],
     pet_boarding: ['boarding_capacity'],
     photo_session: ['photo_sessions'],
+    repair_order: [],
 };
 
 const PRIMARY_OBJECT_ROUTE: Readonly<Record<VerticalPrimaryObject, string>> = Object.freeze({
@@ -148,6 +149,7 @@ const PRIMARY_OBJECT_ROUTE: Readonly<Record<VerticalPrimaryObject, string>> = Ob
     membership: '/admin/memberships', insurance_policy: '/admin/insurance',
     service_request: '/admin/service-requests', vehicle_rental: '/admin/resource-rentals',
     pet_boarding: '/admin/resource-rentals', photo_session: '/admin/photo-sessions',
+    repair_order: '/admin/repair-orders',
 });
 
 /**

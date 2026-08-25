@@ -49,6 +49,7 @@ const DEEP_LINKS: Readonly<Record<ActiveObjectKind, string | null>> = Object.fre
     // el `null` de más abajo existe para evitar.
     vehicle_rental: '/admin/resource-rentals',
     pet_boarding: '/admin/resource-rentals',
+    repair_order: '/admin/repair-orders',
 
     // ── Catálogo: el sujeto del objeto, no el objeto ──────────────────
     catalog_item: '/admin/inventory',

@@ -291,6 +291,10 @@ const PRIMARY_OBJECT_TERMS: Readonly<Record<string, {
         singular: { es: 'alquiler', en: 'rental', pt: 'aluguel', fr: 'location' },
         plural: { es: 'alquileres', en: 'rentals', pt: 'aluguéis', fr: 'locations' },
     },
+    repair_order: {
+        singular: { es: 'orden de trabajo', en: 'work order', pt: 'ordem de serviço', fr: 'ordre de travail' },
+        plural: { es: 'órdenes de trabajo', en: 'work orders', pt: 'ordens de serviço', fr: 'ordres de travail' },
+    },
     pet_boarding: {
         singular: { es: 'estadía', en: 'boarding stay', pt: 'hospedagem', fr: 'pension' },
         plural: { es: 'estadías', en: 'boarding stays', pt: 'hospedagens', fr: 'pensions' },

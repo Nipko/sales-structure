@@ -41,7 +41,9 @@ describe('canonical AI tool policy registry', () => {
     // exactamente la deriva que esta prueba existe para atrapar.
     // + two home-service catalogue/capacity reads. These are separate from
     // generic appointments because the committed record is service_requests.
-    const STATIC_TOOL_COUNT = 114;
+    // + five workshop tools over the canonical repair_order object: intake,
+    // owned list/detail, exact estimate decision and owner-scoped cancellation.
+    const STATIC_TOOL_COUNT = 119;
 
     it('covers exactly the definitions, executor branches and policies with no drift', () => {
         const expected = [...new Set(definitionNames)].sort();
@@ -59,6 +61,8 @@ describe('canonical AI tool policy registry', () => {
             'list_my_vehicle_rentals', 'get_vehicle_rental', 'cancel_vehicle_rental',
             'create_pet_boarding', 'list_my_pet_boardings',
             'get_pet_boarding', 'cancel_pet_boarding',
+            'create_repair_order', 'list_my_repair_orders', 'get_repair_order',
+            'approve_repair', 'cancel_repair_order',
         ]));
     });
 

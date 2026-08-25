@@ -68,6 +68,7 @@ export interface PersonaConfig {
     vehicles?: { enabled: boolean };
     vehicleRentals?: { enabled: boolean; emailConfirmations?: boolean };
     petBoarding?: { enabled: boolean; emailConfirmations?: boolean };
+    repairOrders?: { enabled: boolean; emailConfirmations?: boolean };
   };
   skillset?: "sales" | "support" | "both";
   upsell?: { enabled: boolean; intensity?: "subtle" | "moderate" | "aggressive"; maxDiscountPercent?: number };

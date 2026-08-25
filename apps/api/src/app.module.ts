@@ -90,6 +90,7 @@ import { InsuranceModule } from './modules/insurance/insurance.module';
 import { HomeServicesModule } from './modules/home-services/home-services.module';
 import { PhotographyModule } from './modules/photography/photography.module';
 import { ResourceRentalsModule } from './modules/resource-rentals/resource-rentals.module';
+import { RepairOrdersModule } from './modules/repair-orders/repair-orders.module';
 import { VerticalAnalyticsModule } from './modules/vertical-analytics/vertical-analytics.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
@@ -276,6 +277,7 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         HomeServicesModule,
         PhotographyModule,
         ResourceRentalsModule,
+        RepairOrdersModule,
         VerticalAnalyticsModule,
         InvitationsModule,
         WebhooksModule,

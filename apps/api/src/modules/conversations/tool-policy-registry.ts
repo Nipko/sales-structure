@@ -470,6 +470,24 @@ const TOOL_POLICY_ENTRIES = [
         idempotency: 'state_guarded',
         downstreamEffects: ['domain_event'],
     })),
+    // Workshop: customer-reported intake is never a diagnosis. Estimate and
+    // final financial fields are authored only from the human API; the agent
+    // can read its customer's order and record the explicit decision.
+    entry('create_repair_order', contactWrite({
+        downstreamEffects: ['domain_event'],
+    })),
+    entry('list_my_repair_orders', sensitiveRead({ agentTestAllowed: true })),
+    entry('get_repair_order', sensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
+    entry('approve_repair', contactWrite({
+        ownership: 'resource_owner',
+        idempotency: 'state_guarded',
+        downstreamEffects: ['domain_event'],
+    })),
+    entry('cancel_repair_order', contactWrite({
+        ownership: 'resource_owner',
+        idempotency: 'state_guarded',
+        downstreamEffects: ['domain_event'],
+    })),
     entry('create_pet_boarding', contactWrite({
         idempotency: 'state_guarded',
         downstreamEffects: ['domain_event'],
@@ -570,6 +588,9 @@ const VERTICAL_ORIGIN_TOOLS: ReadonlySet<string> = new Set([
     // vehicleRentals
     'check_vehicle_rental_availability', 'create_vehicle_rental',
     'list_my_vehicle_rentals', 'get_vehicle_rental', 'cancel_vehicle_rental',
+    // repairOrders
+    'create_repair_order', 'list_my_repair_orders', 'get_repair_order',
+    'approve_repair', 'cancel_repair_order',
     // petBoarding
     'create_pet_boarding', 'list_my_pet_boardings', 'get_pet_boarding',
     'cancel_pet_boarding',

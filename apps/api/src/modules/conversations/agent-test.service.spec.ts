@@ -36,6 +36,7 @@ const ALL_TOOL_FLAGS = {
     petBoarding: { enabled: true },
     photography: { enabled: true },
     professionalServices: { enabled: true },
+    repairOrders: { enabled: true },
 };
 
 function buildSubject() {

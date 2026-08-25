@@ -23,6 +23,7 @@ import {
 } from './tools/tier3-tools';
 import { PET_BOARDING_TOOLS, VEHICLE_RENTAL_TOOLS } from './tools/resource-rental-tools';
 import { PAYMENT_CREATE_TOOLS, PAYMENT_STATUS_TOOLS, REFUND_PAYMENT_TOOL } from './tools/payment-tools';
+import { REPAIR_ORDER_TOOLS } from './tools/repair-order-tools';
 
 /**
  * The one place that maps an agent's saved tool config to tool families.
@@ -71,6 +72,7 @@ export const TOOL_FAMILIES: readonly ToolFamily[] = [
     { key: 'petBoarding', tools: PET_BOARDING_TOOLS },
     { key: 'photography', tools: PHOTOGRAPHY_TOOLS },
     { key: 'professionalServices', tools: PROFESSIONAL_SERVICES_TOOLS },
+    { key: 'repairOrders', tools: REPAIR_ORDER_TOOLS },
 ];
 
 function familyEnabled(cfgTools: any, key: keyof ToolsConfig): boolean {

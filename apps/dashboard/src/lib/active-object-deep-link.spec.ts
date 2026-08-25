@@ -40,6 +40,7 @@ describe("active object deep links", () => {
         expect(deepLinkForActiveObject("tour_booking")).toBe("/admin/tour-bookings");
         expect(deepLinkForActiveObject("service_request")).toBe("/admin/service-requests");
         expect(deepLinkForActiveObject("photo_session")).toBe("/admin/photo-sessions");
+        expect(deepLinkForActiveObject("repair_order")).toBe("/admin/repair-orders");
     });
 
     /**

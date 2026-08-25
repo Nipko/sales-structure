@@ -531,6 +531,86 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
         commits: true,
     })]),
 
+    // ── Taller: intake, seguimiento y aprobación de la RO ───────────────
+    repairOrders: Object.freeze([
+        Object.freeze<IntentContract>({
+            key: 'open_repair_order',
+            description: 'El cliente reporta un problema y quiere abrir una orden de reparación.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'vehicle_identity', type: 'text', required: true,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                    confirm: true,
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'customer_concern', type: 'text', required: true,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                    confirm: true,
+                }),
+                ...CONTACT_SLOTS,
+            ]),
+            toolPlan: Object.freeze(['create_repair_order']),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['collecting', 'confirming', 'intake', 'handed_off']),
+            commits: true,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'track_repair_order',
+            description: 'El cliente consulta el estado de una orden de reparación propia.',
+            slots: Object.freeze([Object.freeze<SlotSchema>({
+                key: 'repair_order_id', type: 'reference', required: false,
+                sensitivity: 'personal', source: 'tool', persistence: 'record',
+            })]),
+            toolPlan: Object.freeze(['list_my_repair_orders', 'get_repair_order']),
+            confirmation: 'none',
+            fallback: 'handoff',
+            states: Object.freeze(['listed', 'answered', 'not_found', 'handed_off']),
+            commits: false,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'approve_repair_estimate',
+            description: 'El cliente aprueba o rechaza el estimado publicado por el taller.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'repair_order_id', type: 'reference', required: true,
+                    sensitivity: 'personal', source: 'tool', persistence: 'record',
+                    confirm: true,
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'estimate_decision', type: 'boolean', required: true,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                    confirm: true,
+                }),
+            ]),
+            toolPlan: Object.freeze(['get_repair_order', 'approve_repair']),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['reading_estimate', 'confirming', 'approved', 'rejected', 'handed_off']),
+            commits: true,
+        }),
+        Object.freeze<IntentContract>({
+            key: 'cancel_repair_order',
+            description: 'El cliente quiere cancelar una orden propia antes de que el trabajo esté en ejecución.',
+            slots: Object.freeze([
+                Object.freeze<SlotSchema>({
+                    key: 'repair_order_id', type: 'reference', required: true,
+                    sensitivity: 'personal', source: 'tool', persistence: 'record',
+                    confirm: true,
+                }),
+                Object.freeze<SlotSchema>({
+                    key: 'cancellation_reason', type: 'text', required: false,
+                    sensitivity: 'personal', source: 'customer', persistence: 'record',
+                }),
+            ]),
+            toolPlan: Object.freeze(['get_repair_order', 'cancel_repair_order']),
+            confirmation: 'explicit',
+            fallback: 'handoff',
+            states: Object.freeze(['reading_order', 'confirming', 'cancelled', 'not_allowed', 'handed_off']),
+            commits: true,
+        }),
+    ]),
+
     // ── Educación: cursos e inscripciones ────────────────────────────────
     education: Object.freeze([Object.freeze<IntentContract>({
         key: 'enrol_student',

@@ -34,14 +34,26 @@ async function fulfillSuccess(route: Route, data: unknown = {}) {
  */
 async function bootstrapTenantAdmin(
   page: Page,
-  options: { tourPending?: boolean; emailVerified?: boolean } = {},
+  options: {
+    tourPending?: boolean;
+    emailVerified?: boolean;
+    vertical?: {
+      industry: string;
+      subType?: string;
+      effectiveCapabilities: string[];
+    };
+  } = {},
 ): Promise<NetworkState> {
+  const vertical = options.vertical || {
+    industry: "technology",
+    effectiveCapabilities: ["crm_pipeline", "faq_search", "appointment_booking"],
+  };
   await page.context().addCookies([
     { name: "locale", value: "es", domain: "127.0.0.1", path: "/" },
   ]);
 
   await page.addInitScript(
-    ({ user, tenantId, tourPending }) => {
+    ({ user, tenantId, tourPending, verticalConfig }) => {
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem("accessToken", "e2e-access-token");
@@ -52,9 +64,10 @@ async function bootstrapTenantAdmin(
         JSON.stringify({
           tenantId,
           config: {
-            industry: "technology",
+            industry: verticalConfig.industry,
+            subType: verticalConfig.subType,
             manifestVersion: 2,
-            effectiveCapabilities: ["crm_pipeline", "faq_search", "appointment_booking"],
+            effectiveCapabilities: verticalConfig.effectiveCapabilities,
             sidebar: {},
           },
         }),
@@ -111,6 +124,7 @@ async function bootstrapTenantAdmin(
       user: { ...tenantAdmin, emailVerified: options.emailVerified ?? true },
       tenantId: TENANT_ID,
       tourPending: options.tourPending === true,
+      verticalConfig: vertical,
     },
   );
 
@@ -171,10 +185,36 @@ async function bootstrapTenantAdmin(
 
     if (method === "GET" && path === `/verticals/${TENANT_ID}`) {
       await fulfillSuccess(route, {
-        industry: "technology",
+        industry: vertical.industry,
+        subType: vertical.subType,
         manifestVersion: 2,
-        effectiveCapabilities: ["crm_pipeline", "faq_search", "appointment_booking"],
+        effectiveCapabilities: vertical.effectiveCapabilities,
         sidebar: {},
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/repair-orders/${TENANT_ID}`) {
+      await fulfillSuccess(route, { items: [], total: 0 });
+      return;
+    }
+
+    if (method === "GET" && path === `/repair-orders/${TENANT_ID}/summary`) {
+      await fulfillSuccess(route, {
+        open: 0,
+        awaitingApproval: 0,
+        readyForDelivery: 0,
+        deliveredLast30Days: 0,
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/tenants/${TENANT_ID}/regional/profile`) {
+      await fulfillSuccess(route, {
+        operatingCurrency: {
+          value: "COP",
+          source: "tenant_declared",
+        },
       });
       return;
     }
@@ -666,6 +706,24 @@ test("the setup tour waits for the persistent sidebar and anchors to the AI agen
   await page.keyboard.press("Escape");
   await expect(tourCard).toBeHidden();
   await expect(page.locator("#main-content")).toBeFocused();
+  await expectHermeticNetwork(page, network);
+});
+
+test("a workshop reaches its repair-order register directly and does not see dealership inventory", async ({ page }) => {
+  const network = await bootstrapTenantAdmin(page, {
+    vertical: {
+      industry: "automotriz",
+      subType: "taller",
+      effectiveCapabilities: ["crm_pipeline", "faq_search", "appointment_booking", "repair_orders"],
+    },
+  });
+
+  await page.goto("/admin/repair-orders");
+  await expect(page.getByRole("heading", { name: "Órdenes de taller", exact: true })).toBeVisible();
+  await expect(page.getByText("Todavía no hay órdenes de taller", { exact: true })).toBeVisible();
+  const navigation = mainNavigation(page);
+  await expectSingleCurrentPage(navigation, /^\/admin\/repair-orders$/);
+  await expect(navigation.getByRole("link", { name: "Vehículos", exact: true })).toHaveCount(0);
   await expectHermeticNetwork(page, network);
 });
 

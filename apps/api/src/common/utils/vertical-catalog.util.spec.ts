@@ -44,6 +44,11 @@ describe('getVerticalCatalog', () => {
             table: 'vehicles',
             route: '/admin/vehicles',
         });
+        expect(getVerticalCatalog('automotriz', 'taller')).toBeNull();
+        expect(getVerticalCatalog('automotriz', 'repuestos')).toMatchObject({
+            table: 'products',
+            route: '/admin/inventory',
+        });
         expect(getVerticalCatalog('otro', null)).toMatchObject({
             table: 'products',
             route: '/admin/inventory',

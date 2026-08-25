@@ -37,6 +37,7 @@ export const NAVIGATION_SURFACE_KIND: Readonly<Record<string, NavigationSurfaceK
     orders: 'register',
     serviceRequests: 'register',
     resourceRentals: 'register',
+    repairOrders: 'register',
     classes: 'register',
     pets: 'register',
     // El registro de un estudio de fotos: sesiones pedidas, agendadas y

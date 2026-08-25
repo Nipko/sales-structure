@@ -65,6 +65,7 @@ describe("navigation surface kind", () => {
             orders: "/admin/orders",
             serviceRequests: "/admin/service-requests",
             resourceRentals: "/admin/resource-rentals",
+            repairOrders: "/admin/repair-orders",
             classes: "/admin/classes",
             pets: "/admin/pets",
             photoSessions: "/admin/photo-sessions",

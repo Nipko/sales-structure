@@ -22,6 +22,12 @@ const DAILY_WORK_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
     repair_order: 'repairOrders',
 });
 
+const DAILY_WORK_LABEL: Readonly<Record<string, Readonly<Record<'es' | 'en' | 'pt' | 'fr', string>>>> = Object.freeze({
+    vehicle_rental: Object.freeze({
+        es: 'Reservas', en: 'Reservations', pt: 'Reservas', fr: 'Réservations',
+    }),
+});
+
 export const VERTICAL_ROUTE_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
     '/admin/appointments': 'appointments', '/admin/stays': 'stays',
     '/admin/tour-bookings': 'tourBookings', '/admin/resource-rentals': 'resourceRentals',
@@ -70,6 +76,9 @@ export function withSubtypeNavigation(
     if (primaryItem && routeOrder.includes(primaryItem)) {
         const label = terms?.primaryObjectPlural || terms?.primaryObject;
         if (label) labelOverrides[primaryItem] = { ...label };
+    }
+    if (dailyWorkItem && routeOrder.includes(dailyWorkItem) && DAILY_WORK_LABEL[manifest.primaryObject]) {
+        labelOverrides[dailyWorkItem] = { ...DAILY_WORK_LABEL[manifest.primaryObject] };
     }
     return {
         ...config,

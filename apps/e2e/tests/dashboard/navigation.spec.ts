@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
+const RENTAL_ID = "33333333-3333-4333-8333-333333333333";
 
 type NetworkState = {
   productionApiRequests: string[];
@@ -41,6 +42,10 @@ async function bootstrapTenantAdmin(
       industry: string;
       subType?: string;
       effectiveCapabilities: string[];
+      sidebar?: {
+        itemOrder?: string[];
+        labelOverrides?: Record<string, Record<string, string>>;
+      };
     };
   } = {},
 ): Promise<NetworkState> {
@@ -68,7 +73,7 @@ async function bootstrapTenantAdmin(
             subType: verticalConfig.subType,
             manifestVersion: 2,
             effectiveCapabilities: verticalConfig.effectiveCapabilities,
-            sidebar: {},
+            sidebar: verticalConfig.sidebar || {},
           },
         }),
       );
@@ -189,7 +194,7 @@ async function bootstrapTenantAdmin(
         subType: vertical.subType,
         manifestVersion: 2,
         effectiveCapabilities: vertical.effectiveCapabilities,
-        sidebar: {},
+        sidebar: vertical.sidebar || {},
       });
       return;
     }
@@ -206,6 +211,45 @@ async function bootstrapTenantAdmin(
         readyForDelivery: 0,
         deliveredLast30Days: 0,
       });
+      return;
+    }
+
+    const rentalFixture = {
+      id: RENTAL_ID,
+      rental_type: "vehicle_rental",
+      resource_id: "44444444-4444-4444-8444-444444444444",
+      contact_id: "55555555-5555-4555-8555-555555555555",
+      resource_name: "Renault Duster 2025",
+      contact_name: "Ana Ruiz",
+      start_date: "2026-09-01",
+      end_date: "2026-09-05",
+      status: "pending_review",
+      version: 1,
+      created_at: "2026-08-25T12:00:00.000Z",
+      updated_at: "2026-08-25T12:00:00.000Z",
+      metadata: {
+        details: {
+          driver: { name: "Ana Ruiz", declaredAge: 31, licenseCountry: "CO" },
+          eligibility: {
+            identity: { status: "pending" },
+            driverLicense: { status: "pending" },
+            insurance: { status: "pending" },
+            payment: { status: "pending" },
+          },
+        },
+      },
+      events: [{ id: "66666666-6666-4666-8666-666666666666", event_type: "rental_requested", actor_type: "agent", created_at: "2026-08-25T12:00:00.000Z" }],
+      inspections: [],
+      damages: [],
+    };
+
+    if (method === "GET" && path === `/resource-rentals/${TENANT_ID}`) {
+      await fulfillSuccess(route, [rentalFixture]);
+      return;
+    }
+
+    if (method === "GET" && path === `/resource-rentals/${TENANT_ID}/${RENTAL_ID}`) {
+      await fulfillSuccess(route, rentalFixture);
       return;
     }
 
@@ -724,6 +768,38 @@ test("a workshop reaches its repair-order register directly and does not see dea
   const navigation = mainNavigation(page);
   await expectSingleCurrentPage(navigation, /^\/admin\/repair-orders$/);
   await expect(navigation.getByRole("link", { name: "Vehículos", exact: true })).toHaveCount(0);
+  await expectHermeticNetwork(page, network);
+});
+
+test("vehicle rental opens on requests and never presents pending eligibility as a reservation", async ({ page }) => {
+  const network = await bootstrapTenantAdmin(page, {
+    vertical: {
+      industry: "automotriz",
+      subType: "alquiler",
+      effectiveCapabilities: ["crm_pipeline", "faq_search", "vehicle_inventory", "vehicle_rentals"],
+      sidebar: {
+        itemOrder: ["resourceRentals", "vehicles"],
+        labelOverrides: {
+          resourceRentals: { es: "Reservas", en: "Reservations", pt: "Reservas", fr: "Réservations" },
+          vehicles: { es: "Flota", en: "Fleet", pt: "Frota", fr: "Flotte" },
+        },
+      },
+    },
+  });
+
+  await page.goto("/admin/resource-rentals");
+  await expect(page.getByRole("heading", { name: "Reservas de vehículos", exact: true })).toBeVisible();
+  await expect(page.locator("tbody").getByText("Pendiente de revisión", { exact: true })).toBeVisible();
+  const navigation = mainNavigation(page);
+  await expectSingleCurrentPage(navigation, /^\/admin\/resource-rentals$/);
+  await expect(navigation.getByRole("link", { name: "Reservas", exact: true })).toBeVisible();
+  await navigation.getByRole("button", { name: "Catálogo y recursos", exact: true }).click();
+  await expect(navigation.getByRole("link", { name: "Flota", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Datos", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Datos del alquiler", exact: true })).toBeVisible();
+  await expect(page.getByText("Revisión de elegibilidad", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aprobar y reservar", exact: true })).toBeVisible();
   await expectHermeticNetwork(page, network);
 });
 

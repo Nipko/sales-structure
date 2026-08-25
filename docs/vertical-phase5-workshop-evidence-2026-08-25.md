@@ -112,4 +112,4 @@ Este bloque no autoriza afirmar que Taller está certificado. Permanecen:
 6. reconciliación y certificación por versión antes de habilitar cualquier DMS externo;
 7. promoción de availability o claims comerciales únicamente después del sign-off.
 
-La siguiente cola de Fase 5 continúa con P08 y P11–P24 según prioridad/riesgo; el siguiente bloque recomendado es P11 Alquiler porque ya existe el objeto base `resource_rental` y faltan elegibilidad, depósito, contrato, entrega/devolución y daños.
+Al emitir este corte, el siguiente bloque recomendado era P11 Alquiler. Ese bloque quedó implementado después en U74 y su evidencia vive en [`vertical-phase5-rental-evidence-2026-08-25.md`](./vertical-phase5-rental-evidence-2026-08-25.md). La cola vigente de Fase 5 continúa con P08 y P12–P24.

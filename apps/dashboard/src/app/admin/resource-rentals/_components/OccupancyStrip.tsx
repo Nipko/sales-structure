@@ -31,6 +31,7 @@ const STATUS_STYLE: Record<string, string> = {
     checked_out: "bg-neutral-300 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200",
     cancelled: "bg-red-300/60 text-red-900 line-through",
 };
+const OCCUPYING_STATUSES = new Set(["reserved", "picked_up", "checked_in"]);
 
 function toUtcDay(value: string): number {
     // Las fechas llegan como `YYYY-MM-DD`. Parsearlas con `new Date(str)` las
@@ -66,7 +67,7 @@ export function OccupancyStrip({ rentals, days = 14, from, onSelect }: Occupancy
     /** Una fila por recurso, con sus ocupaciones. */
     const rows = useMemo(() => {
         const byResource = new Map<string, { label: string; items: ResourceRental[] }>();
-        for (const rental of rentals) {
+        for (const rental of rentals.filter((item) => OCCUPYING_STATUSES.has(item.status))) {
             const label = rental.resource_name
                 || [rental.vehicle_make, rental.vehicle_model].filter(Boolean).join(" ")
                 || rental.pet_name

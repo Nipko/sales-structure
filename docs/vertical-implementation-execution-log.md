@@ -2403,3 +2403,13 @@ La revisión final corrigió dos falsas equivalencias antes de promover: la auto
 La seguridad falla cerrada: el agente registra el síntoma declarado pero no el diagnóstico; aprobación/rechazo requiere la ruta y evidencia correctas; replay no vuelve a tocar kilometraje; los montos deben coincidir con sus líneas; no existe default `COP`; el estado usa optimistic version; y el endpoint genérico no puede fabricar una aprobación. Taller ya no publica búsqueda de inventario ni test drive.
 
 No se agregó ninguna variable ni writer externo. El DDL tenant es aditivo, pero no se declara aplicado en producción. La importación de citas legacy se conserva para MIG-01/Fase 7 mediante preview y revisión, sin renombrar datos. DMS, parts catalog, bahías, revisión experta, canary y piloto siguen como gates posteriores. Evidencia reproducible y cifras: [`vertical-phase5-workshop-evidence-2026-08-25.md`](./vertical-phase5-workshop-evidence-2026-08-25.md).
+
+---
+
+### U74 — Fase 5, segundo bloque: Alquiler nativo P11
+
+`automotriz/alquiler` dejó de ofrecer inventario y una reserva manual desconectada. La tool A2 presenta una solicitud honesta en `pending_review`; identidad, licencia, seguro y pago sólo cambian mediante revisión humana atribuible. La aprobación serializa el vehículo y relee el rango antes de crear el compromiso `reserved`.
+
+El expediente web reúne conductor, sedes, extras, depósito, contrato, elegibilidad, inspecciones, daños e historial. La entrega y devolución sólo avanzan junto con una inspección inmutable, kilometraje coherente, evidencia de handoff y al menos una foto subida al banco tenant desde la propia pantalla. Create no acepta que un llamador cuele verificación, cobro, firma o kilometraje; OTP crudo se rechaza. El menú prioriza **Reservas** y separa **Flota** como catálogo.
+
+No se agregó ninguna variable ni writer externo y los fallbacks de producción permanecen iguales. El DDL tenant es aditivo, pero no se declara aplicado. PSP/e-signature/fleet externo, revisión legal y de dominio por país, migración legacy, móvil profundo, canary y piloto continúan como gates posteriores. Evidencia y límites: [`vertical-phase5-rental-evidence-2026-08-25.md`](./vertical-phase5-rental-evidence-2026-08-25.md).

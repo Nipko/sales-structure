@@ -298,12 +298,50 @@ export type TenantPaymentConfigInput =
 
 export type ResourceRentalType = "vehicle_rental" | "pet_boarding";
 export type ResourceRentalStatus =
+    | "pending_review"
     | "reserved"
     | "picked_up"
     | "returned"
     | "checked_in"
     | "checked_out"
+    | "rejected"
     | "cancelled";
+
+export type RentalEligibilityStatus = "pending" | "verified" | "rejected" | "not_required";
+export type RentalEligibilityDimension = "identity" | "driverLicense" | "insurance" | "payment";
+
+export interface ResourceRentalEvent {
+    id: string;
+    event_type: string;
+    from_status?: ResourceRentalStatus | null;
+    to_status?: ResourceRentalStatus | null;
+    actor_type: "tenant_user" | "agent" | "customer" | "system";
+    payload?: Record<string, unknown>;
+    created_at: string;
+}
+
+export interface ResourceRentalInspection {
+    id: string;
+    inspection_type: "pickup" | "return";
+    odometer: number;
+    fuel_percent?: number | null;
+    condition_notes: string;
+    media_ids: string[];
+    handoff_method: "otp" | "signature" | "manual";
+    handoff_evidence_ref: string;
+    created_at: string;
+}
+
+export interface ResourceRentalDamage {
+    id: string;
+    inspection_id?: string | null;
+    description: string;
+    status: "reported" | "acknowledged" | "charged" | "resolved" | "dismissed";
+    amount_cents?: number | null;
+    currency?: string | null;
+    media_ids: string[];
+    created_at: string;
+}
 
 export interface ResourceRental {
     id: string;
@@ -316,6 +354,7 @@ export interface ResourceRental {
     start_date: string;
     end_date: string;
     status: ResourceRentalStatus;
+    version: number;
     notes?: string | null;
     created_at: string;
     updated_at: string;
@@ -338,9 +377,13 @@ export interface ResourceRental {
      */
     metadata?: {
         details?: {
-            driver?: { name: string; licenseNumber?: string; licenseExpiresAt?: string };
-            deposit?: { amountCents: number; currency: string; status: string; withheldReason?: string };
-            contract?: { documentUrl?: string; signed: boolean; signedAt?: string };
+            driver?: { name: string; licenseNumber?: string; licenseExpiresAt?: string; declaredAge?: number; phone?: string; licenseCountry?: string; licenseClass?: string };
+            deposit?: { amountCents: number; currency: string; status: string; withheldReason?: string; evidenceRef?: string };
+            contract?: { documentUrl?: string; signed: boolean; signedAt?: string; signatureMethod?: "otp" | "signature" | "manual"; evidenceRef?: string };
+            eligibility?: Record<RentalEligibilityDimension, { status: RentalEligibilityStatus; evidenceRef?: string; reason?: string; checkedAt?: string; checkedBy?: string }>;
+            pickup?: { scheduledAt?: string; location?: string };
+            dropoff?: { scheduledAt?: string; location?: string };
+            extras?: string[];
             odometerOut?: number;
             odometerIn?: number;
             unitLabel?: string;
@@ -350,6 +393,9 @@ export interface ResourceRental {
             belongings?: string[];
         };
     } | null;
+    events?: ResourceRentalEvent[];
+    inspections?: ResourceRentalInspection[];
+    damages?: ResourceRentalDamage[];
 }
 
 export interface CreateResourceRentalInput {
@@ -2456,6 +2502,8 @@ export const api = {
     },
     createResourceRental: (tenantId: string, data: CreateResourceRentalInput) =>
         apiPost<ResourceRental>(`/resource-rentals/${tenantId}`, data),
+    getResourceRental: (tenantId: string, rentalId: string) =>
+        apiGet<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}`),
     transitionResourceRental: (
         tenantId: string,
         rentalId: string,
@@ -2468,6 +2516,36 @@ export const api = {
         rentalId: string,
         details: Record<string, unknown>,
     ) => apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/details`, details),
+    reviewResourceRentalEligibility: (tenantId: string, rentalId: string, data: {
+        dimension: RentalEligibilityDimension;
+        status: RentalEligibilityStatus;
+        evidenceRef?: string;
+        reason?: string;
+        expectedVersion: number;
+    }) => apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/eligibility`, data),
+    approveResourceRental: (tenantId: string, rentalId: string, expectedVersion: number) =>
+        apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/approve`, { expectedVersion }),
+    rejectResourceRental: (tenantId: string, rentalId: string, data: { expectedVersion: number; reason: string }) =>
+        apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/reject`, data),
+    recordResourceRentalInspection: (tenantId: string, rentalId: string, data: {
+        inspectionType: "pickup" | "return";
+        odometer: number;
+        fuelPercent?: number;
+        conditionNotes: string;
+        mediaIds?: string[];
+        handoffMethod: "otp" | "signature" | "manual";
+        handoffEvidenceRef: string;
+        expectedVersion: number;
+    }) => apiPost<{ rental: ResourceRental; inspection: ResourceRentalInspection }>(
+        `/resource-rentals/${tenantId}/${rentalId}/inspections`, data,
+    ),
+    reportResourceRentalDamage: (tenantId: string, rentalId: string, data: {
+        inspectionId?: string;
+        description: string;
+        amountCents?: number;
+        currency?: string;
+        mediaIds?: string[];
+    }) => apiPost<ResourceRentalDamage>(`/resource-rentals/${tenantId}/${rentalId}/damages`, data),
 
     // ─── Automotive workshop repair orders ───
     listRepairOrders: (tenantId: string, params?: {

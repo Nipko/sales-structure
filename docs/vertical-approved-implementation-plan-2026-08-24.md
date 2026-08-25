@@ -2,7 +2,7 @@
 
 Fecha: 24 de agosto de 2026
 
-Estado: ejecución autorizada. **Fases 1–4 implementadas en código el 24 de agosto de 2026. Fase 5 está en progreso: el núcleo nativo de Taller P09–P10 quedó implementado el 25 de agosto, sin declarar migración legacy, DMS, piloto ni certificación. El inventario read-only de Fase 1 sigue siendo obligatorio antes de migrar tenants; la revisión experta de Fase 3 y los gates externos de Fase 4 permanecen fail-closed. Cada promoción conserva CI, migraciones y Browser E2E como puertas independientes.**
+Estado: ejecución autorizada. **Fases 1–4 implementadas en código el 24 de agosto de 2026. Fase 5 está en progreso: los núcleos nativos de Taller P09–P10 y Alquiler P11 quedaron implementados el 25 de agosto, sin declarar migración legacy, DMS/PSP/e-signature externo, piloto ni certificación. El inventario read-only de Fase 1 sigue siendo obligatorio antes de migrar tenants; la revisión experta de Fase 3 y los gates externos de Fase 4 permanecen fail-closed. Cada promoción conserva CI, migraciones y Browser E2E como puertas independientes.**
 
 ## 1. Autoridad, objetivo y alcance
 
@@ -122,7 +122,7 @@ Ninguna migración modifica simultáneamente taxonomía, datos operativos y acti
 | 2. Contratos compartidos | Tipos, schemas, resolvers, entitlements, availability y compatibilidad de configuración. | **Código cerrado y promovido; compatibilidad legacy conservada** | Web/API/mobile/test/marketing consumen el mismo snapshot; cero fork paralelo. |
 | 3. Autoría 1:1 y país | Prompts, variables, templates, términos, menús, tools, SoR y evals por perfil/locale. | **Código cerrado; revisión experta/país permanece fail-closed** | 76/76 paquetes canónicos completos y compatibilidad legacy validada; regulados no promocionados sin firma; cuatro idiomas base verdes. |
 | 4. Plataforma transversal | P25–P32: identidad, analytics, canales, planner, freshness, binding y Mindbody. | **Código cerrado; promoción sujeta a CI/Browser E2E y evidencia externa declarada** | Ocho decisiones demostradas sin divergencia backend/UI/BI; proveedor/piloto no se infiere de pruebas locales. |
-| 5. Profundidad de producto | Nuevos objetos y workflows nativos/híbridos, más P08–P24. | **En progreso: P09–P10 Taller implementados mecánicamente; P08 y P11–P24 continúan en cola** | Cada writer produce objeto visible, reversible e idempotente; task principal a ≤2 interacciones. |
+| 5. Profundidad de producto | Nuevos objetos y workflows nativos/híbridos, más P08–P24. | **En progreso: P09–P10 Taller y P11 Alquiler implementados mecánicamente; P08 y P12–P24 continúan en cola** | Cada writer produce objeto visible, reversible e idempotente; task principal a ≤2 interacciones. |
 | 6. Proveedores y regulación | PSP, ITSM, PAS/core, LMS/GDS/DMS/PMS y revisiones expertas. | Dependencia externa | Adapter/version/SoR certificados; 21 expert gates firmados; writers allowlisted individualmente. |
 | 7. Migración y canary | Taxonomía/datos en shadow, tenants piloto, rollback y observabilidad. | Pendiente | Dry-run/apply verificable; cero migración silenciosa; métricas y conciliación dentro de umbrales. |
 | 8. Certificación y escala | Claims, availability y expansión por perfil/país. | Pendiente | Piloto 3–5 tenants, nueve artefactos, sign-off y promotion record por perfil/país/proveedor. |
@@ -275,7 +275,7 @@ No existe salto válido de Fase 3 a Fase 8. Un perfil puede avanzar independient
 
 P08–P24 no cambian automáticamente `availability`. Cada perfil se vuelve candidato a promoción únicamente después de pasar autoría, expert/provider gates aplicables y piloto.
 
-**Corte de ejecución del 25-08-2026:** P09–P10 tienen núcleo nativo, tools, UI, Active Object, navegación, métricas e historial implementados. La migración legacy pertenece a MIG-01/Fase 7 y no se ejecutó; DMS, revisión experta, CI remoto, canary y certificación permanecen separados. Evidencia: [`vertical-phase5-workshop-evidence-2026-08-25.md`](./vertical-phase5-workshop-evidence-2026-08-25.md). P08 y P11–P24 no se marcan completos por este corte.
+**Corte de ejecución del 25-08-2026:** P09–P10 tienen núcleo nativo, tools, UI, Active Object, navegación, métricas e historial implementados. P11 tiene solicitud nativa, elegibilidad humana, reserva serializada, depósito/contrato con evidencia, entrega/devolución con inspección fotográfica, daños e historial; el agente nunca autoaprueba la reserva. La migración legacy pertenece a MIG-01/Fase 7 y no se ejecutó; DMS, PSP/e-signature externo, revisión experta, CI remoto, canary y certificación permanecen separados. Evidencia: [`vertical-phase5-workshop-evidence-2026-08-25.md`](./vertical-phase5-workshop-evidence-2026-08-25.md) y [`vertical-phase5-rental-evidence-2026-08-25.md`](./vertical-phase5-rental-evidence-2026-08-25.md). P08 y P12–P24 no se marcan completos por este corte.
 
 ## 8. Implementación de decisiones transversales y regionales
 

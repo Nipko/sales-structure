@@ -3196,6 +3196,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."resource_rentals" (
     "start_date" DATE NOT NULL,
     "end_date" DATE NOT NULL,
     "status" VARCHAR(30) NOT NULL DEFAULT 'reserved',
+    "version" INTEGER NOT NULL DEFAULT 1,
     "notes" TEXT,
     "metadata" JSONB NOT NULL DEFAULT '{}',
     "created_by" UUID,
@@ -3212,7 +3213,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."resource_rentals" (
     CONSTRAINT "resource_rentals_status_check"
         CHECK (
             ("rental_type" = 'vehicle_rental'
-                AND "status" IN ('reserved', 'picked_up', 'returned', 'cancelled'))
+                AND "status" IN ('pending_review', 'reserved', 'picked_up', 'returned', 'rejected', 'cancelled'))
             OR
             ("rental_type" = 'pet_boarding'
                 AND "status" IN ('reserved', 'checked_in', 'checked_out', 'cancelled'))
@@ -3229,6 +3230,58 @@ CREATE INDEX IF NOT EXISTS "idx_resource_rentals_service_dates"
       AND "status" IN ('reserved', 'checked_in');
 CREATE INDEX IF NOT EXISTS "idx_resource_rentals_status_start"
     ON "{{SCHEMA_NAME}}"."resource_rentals" ("status", "start_date");
+
+-- Every human decision and operational mutation remains explainable after the
+-- mutable rental row changes. Payloads contain references, never OTP secrets or
+-- raw signatures.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."resource_rental_events" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "rental_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."resource_rentals"("id") ON DELETE CASCADE,
+    "event_type" VARCHAR(80) NOT NULL,
+    "from_status" VARCHAR(30),
+    "to_status" VARCHAR(30),
+    "actor_id" UUID,
+    "actor_type" VARCHAR(30) NOT NULL DEFAULT 'tenant_user',
+    "payload" JSONB NOT NULL DEFAULT '{}',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_resource_rental_events_rental_created"
+    ON "{{SCHEMA_NAME}}"."resource_rental_events" ("rental_id", "created_at" DESC);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."resource_rental_inspections" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "rental_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."resource_rentals"("id") ON DELETE CASCADE,
+    "inspection_type" VARCHAR(20) NOT NULL CHECK ("inspection_type" IN ('pickup', 'return')),
+    "odometer" INTEGER CHECK ("odometer" IS NULL OR "odometer" >= 0),
+    "fuel_percent" INTEGER CHECK ("fuel_percent" IS NULL OR ("fuel_percent" >= 0 AND "fuel_percent" <= 100)),
+    "condition_notes" TEXT NOT NULL,
+    "media_ids" JSONB NOT NULL DEFAULT '[]',
+    "handoff_method" VARCHAR(20) NOT NULL CHECK ("handoff_method" IN ('otp', 'signature', 'manual')),
+    "handoff_evidence_ref" TEXT NOT NULL,
+    "created_by" UUID,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT "resource_rental_inspection_once" UNIQUE ("rental_id", "inspection_type")
+);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."resource_rental_damages" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "rental_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."resource_rentals"("id") ON DELETE CASCADE,
+    "inspection_id" UUID REFERENCES "{{SCHEMA_NAME}}"."resource_rental_inspections"("id") ON DELETE SET NULL,
+    "description" TEXT NOT NULL,
+    "status" VARCHAR(30) NOT NULL DEFAULT 'reported'
+        CHECK ("status" IN ('reported', 'acknowledged', 'charged', 'resolved', 'dismissed')),
+    "amount_cents" INTEGER CHECK ("amount_cents" IS NULL OR "amount_cents" >= 0),
+    "currency" VARCHAR(3),
+    "media_ids" JSONB NOT NULL DEFAULT '[]',
+    "created_by" UUID,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT "resource_rental_damage_money_check"
+        CHECK (("amount_cents" IS NULL AND "currency" IS NULL)
+            OR ("amount_cents" IS NOT NULL AND "currency" ~ '^[A-Z]{3}$'))
+);
+CREATE INDEX IF NOT EXISTS "idx_resource_rental_damages_rental_created"
+    ON "{{SCHEMA_NAME}}"."resource_rental_damages" ("rental_id", "created_at" DESC);
 
 -- ---- E-commerce ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."ecommerce_products" (
@@ -4124,6 +4177,21 @@ ALTER TABLE "{{SCHEMA_NAME}}"."service_requests" ADD COLUMN IF NOT EXISTS "servi
 ALTER TABLE "{{SCHEMA_NAME}}"."food_orders" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
 ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1;
+-- Existing schemas still carry the first four-state vehicle constraint: CREATE
+-- TABLE IF NOT EXISTS does not update it. Replace only this named constraint so
+-- pending human review can deploy without rebuilding tenant schemas.
+ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals"
+    DROP CONSTRAINT IF EXISTS "resource_rentals_status_check";
+ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals"
+    ADD CONSTRAINT "resource_rentals_status_check"
+    CHECK (
+        ("rental_type" = 'vehicle_rental'
+            AND "status" IN ('pending_review', 'reserved', 'picked_up', 'returned', 'rejected', 'cancelled'))
+        OR
+        ("rental_type" = 'pet_boarding'
+            AND "status" IN ('reserved', 'checked_in', 'checked_out', 'cancelled'))
+    );
 
 -- A property stay is a payable purchase like a tour or a restaurant order, but
 -- property_bookings never carried the column the tenant-owned payment resolver

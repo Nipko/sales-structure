@@ -56,7 +56,7 @@ describe('subtype-aware navigation config', () => {
         const resolved = (service() as any).withSubtypeNavigation(base);
         expect(resolved.sidebar.itemOrder.slice(0, 2)).toEqual(['resourceRentals', 'vehicles']);
         expect(resolved.sidebar.labelOverrides.resourceRentals).toEqual({
-            es: 'Alquileres', en: 'Rentals', pt: 'Aluguéis', fr: 'Locations',
+            es: 'Reservas', en: 'Reservations', pt: 'Reservas', fr: 'Réservations',
         });
         expect(resolved.sidebar.labelOverrides.vehicles).toEqual({
             es: 'Flota', en: 'Fleet', pt: 'Frota', fr: 'Flotte',

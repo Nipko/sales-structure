@@ -31,7 +31,7 @@ export const VEHICLE_RENTAL_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'create_vehicle_rental',
-        description: 'Reserve a vehicle for the customer. This is the ONLY way a rental actually exists — never tell the customer their vehicle is reserved unless this succeeded. Call it after confirming vehicle, dates and driver name. The server re-checks availability while holding a lock, so a conflict here means the vehicle really was taken.',
+        description: 'Submit a vehicle-rental request for human eligibility review. Success means REQUEST RECEIVED, never reserved or approved. Call it after confirming vehicle, dates and driver intake. Identity, licence, insurance and payment always remain pending until staff reviews evidence; the agent must say that clearly.',
         parameters: {
             type: 'object',
             properties: {
@@ -40,6 +40,13 @@ export const VEHICLE_RENTAL_TOOLS: ToolDefinition[] = [
                 endDate: { type: 'string', description: 'Drop-off date YYYY-MM-DD' },
                 driverName: { type: 'string', description: 'Name of the person who will drive' },
                 driverPhone: { type: 'string', description: 'Contact phone for the rental (optional)' },
+                declaredAge: { type: 'integer', description: 'Age declared by the driver; it is intake only and never proves eligibility (optional)' },
+                licenseCountry: { type: 'string', description: 'Two-letter country code that issued the licence, when declared (optional)' },
+                pickupLocation: { type: 'string', description: 'Requested pick-up branch or address (optional)' },
+                pickupAt: { type: 'string', description: 'Requested pick-up ISO date-time, including timezone when known (optional)' },
+                returnLocation: { type: 'string', description: 'Requested return branch or address (optional)' },
+                returnAt: { type: 'string', description: 'Requested return ISO date-time, including timezone when known (optional)' },
+                extras: { type: 'array', items: { type: 'string' }, description: 'Requested child seat, extra driver or other extras (optional)' },
                 notes: { type: 'string', description: 'Pick-up branch, extras, or anything the team must know (optional)' },
             },
             required: ['vehicleId', 'startDate', 'endDate', 'driverName'],

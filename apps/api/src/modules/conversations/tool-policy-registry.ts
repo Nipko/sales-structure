@@ -459,7 +459,10 @@ const TOOL_POLICY_ENTRIES = [
     // writers usan `state_guarded` porque el propio servicio revalida
     // disponibilidad bajo lock dentro de la transacción que escribe.
     entry('check_vehicle_rental_availability', publicRead({ agentTestAllowed: true })),
-    entry('create_vehicle_rental', contactWrite({
+    // A request contains driver identity intake. Step-up verifies the contact
+    // controlling the conversation; it does NOT approve the driver's licence,
+    // insurance or payment, which remain pending for staff review.
+    entry('create_vehicle_rental', stepUpSensitiveWrite({
         idempotency: 'state_guarded',
         downstreamEffects: ['domain_event'],
     })),

@@ -54,7 +54,7 @@ function createExecutor(resourceRentals: any, queryRawUnsafe = jest.fn().mockRes
 const RESERVED_VEHICLE_ROW = {
     id: RENTAL_ID,
     rental_type: 'vehicle_rental',
-    status: 'reserved',
+    status: 'pending_review',
     start_date: '2026-09-01',
     end_date: '2026-09-05',
     resource_id: VEHICLE_ID,
@@ -104,6 +104,13 @@ describe('el contrato publica las tools de alquiler', () => {
         for (const name of ['create_vehicle_rental', 'create_pet_boarding', 'cancel_vehicle_rental', 'cancel_pet_boarding']) {
             expect(TOOL_POLICY_REGISTRY[name].agentTestAllowed).toBe(false);
         }
+    });
+
+    it('la solicitud de vehículo exige step-up y nunca equivale a aprobación', () => {
+        expect(TOOL_POLICY_REGISTRY.create_vehicle_rental).toMatchObject({
+            assurance: 'A2',
+            assuranceEnforcement: 'step_up',
+        });
     });
 
     it('los subtipos que prometen el objeto ahora reciben el grupo de tools', () => {
@@ -192,7 +199,7 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
         expect(result.available).toBeUndefined();
     });
 
-    it('la reserva persiste y devuelve objeto activo y ruta humana', async () => {
+    it('la solicitud persiste como pendiente y devuelve objeto activo y ruta humana', async () => {
         const rentals = { create: jest.fn().mockResolvedValue(RESERVED_VEHICLE_ROW) };
         const { executor } = createExecutor(rentals);
 
@@ -210,7 +217,11 @@ describe('alquiler de vehículo: consultar, reservar, ver y cancelar', () => {
             type: 'vehicle_rental', resourceId: VEHICLE_ID, contactId, customerName: 'Nir Levin',
         }));
         expect(result.success).toBe(true);
-        expect(result.rental).toMatchObject({ id: RENTAL_ID, status: 'reserved', startDate: '2026-09-01' });
+        expect(result.requestSubmitted).toBe(true);
+        expect(result.pendingReview).toBe(true);
+        expect(result.reservationConfirmed).toBe(false);
+        expect(result.rental).toMatchObject({ id: RENTAL_ID, status: 'pending_review', startDate: '2026-09-01' });
+        expect(result.message).toContain('aún no está aprobada');
         expect(result.humanRoute).toContain('/admin/resource-rentals');
     });
 

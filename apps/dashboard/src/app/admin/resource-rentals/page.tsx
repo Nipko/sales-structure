@@ -32,33 +32,39 @@ import { OccupancyStrip } from "./_components/OccupancyStrip";
 import { RentalDetailsDialog } from "./_components/RentalDetailsDialog";
 
 const ALL_STATUSES: readonly ResourceRentalStatus[] = [
+  "pending_review",
   "reserved",
   "picked_up",
   "returned",
   "checked_in",
   "checked_out",
+  "rejected",
   "cancelled",
 ];
 
 const TERMINAL_STATUSES = new Set<ResourceRentalStatus>([
   "returned",
   "checked_out",
+  "rejected",
   "cancelled",
 ]);
 
 const STATUS_STYLES: Record<ResourceRentalStatus, string> = {
+  pending_review: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
   reserved: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
   picked_up: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   returned: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   checked_in: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
   checked_out: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  rejected: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
   cancelled: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
 };
 
 const NEXT_STATUSES: Record<ResourceRentalType, Partial<Record<ResourceRentalStatus, readonly ResourceRentalStatus[]>>> = {
   vehicle_rental: {
-    reserved: ["picked_up", "cancelled"],
-    picked_up: ["returned", "cancelled"],
+    pending_review: ["cancelled"],
+    reserved: ["cancelled"],
+    picked_up: ["cancelled"],
   },
   pet_boarding: {
     reserved: ["checked_in", "cancelled"],
@@ -127,6 +133,11 @@ export default function ResourceRentalsPage() {
     if (capabilities.has("pet_boarding")) types.push("pet_boarding");
     return types;
   }, [capabilities]);
+  const pageCopy = supportedTypes.length === 1
+    ? supportedTypes[0] === "vehicle_rental"
+      ? { title: "vehicleTitle", subtitle: "vehicleSubtitle" }
+      : { title: "boardingTitle", subtitle: "boardingSubtitle" }
+    : { title: "title", subtitle: "subtitle" };
 
   const showVehicleConfig = capabilities.has("vehicle_rentals")
     || rentals.some((rental) => rental.rental_type === "vehicle_rental");
@@ -203,9 +214,9 @@ export default function ResourceRentalsPage() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
             <KeyRound className="h-6 w-6 text-violet-600" />
-            {t("title")}
+            {t(pageCopy.title)}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t(pageCopy.subtitle)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -384,6 +395,7 @@ export default function ResourceRentalsPage() {
         <RentalDetailsDialog
           tenantId={activeTenantId}
           rental={detailsFor}
+          canReview={isSupervisor}
           onClose={() => setDetailsFor(null)}
           onSaved={() => { void load(); }}
         />
@@ -437,9 +449,9 @@ export default function ResourceRentalsPage() {
           tenantId={activeTenantId}
           supportedTypes={supportedTypes}
           onClose={() => setShowCreate(false)}
-          onCreated={() => {
+          onCreated={(createdType) => {
             setShowCreate(false);
-            setToast(t("created"));
+            setToast(t(createdType === "vehicle_rental" ? "requestCreated" : "created"));
             window.setTimeout(() => setToast(null), 2500);
             void load();
           }}
@@ -495,7 +507,7 @@ function CreateRentalDialog({
   tenantId: string;
   supportedTypes: readonly ResourceRentalType[];
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (type: ResourceRentalType) => void;
 }) {
   const t = useTranslations("resourceRentals");
   const tc = useTranslations("common");
@@ -510,6 +522,12 @@ function CreateRentalDialog({
   const [startDate, setStartDate] = useState(dateInputValue(0));
   const [endDate, setEndDate] = useState(dateInputValue(1));
   const [notes, setNotes] = useState("");
+  const [driverName, setDriverName] = useState("");
+  const [driverPhone, setDriverPhone] = useState("");
+  const [declaredAge, setDeclaredAge] = useState("");
+  const [licenseCountry, setLicenseCountry] = useState("");
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [returnLocation, setReturnLocation] = useState("");
   const [resourceSearch, setResourceSearch] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [resourcesHasMore, setResourcesHasMore] = useState(false);
@@ -635,6 +653,8 @@ function CreateRentalDialog({
     setContactId("");
     setResourceSearch("");
     setContactSearch("");
+    setDriverName("");
+    setDriverPhone("");
     setError(null);
   }
 
@@ -650,6 +670,10 @@ function CreateRentalDialog({
     }
     if (type === "vehicle_rental" && !contactId) {
       setError(t("create.contactRequired"));
+      return;
+    }
+    if (type === "vehicle_rental" && !driverName.trim()) {
+      setError(t("create.driverRequired"));
       return;
     }
     if (optionsError) return;
@@ -669,10 +693,22 @@ function CreateRentalDialog({
       startDate,
       endDate,
       notes: notes.trim() || undefined,
+      metadata: type === "vehicle_rental" ? {
+        details: {
+          driver: {
+            name: driverName.trim(),
+            ...(driverPhone.trim() ? { phone: driverPhone.trim() } : {}),
+            ...(declaredAge ? { declaredAge: Number(declaredAge) } : {}),
+            ...(licenseCountry.trim() ? { licenseCountry: licenseCountry.trim().toUpperCase() } : {}),
+          },
+          ...(pickupLocation.trim() ? { pickup: { location: pickupLocation.trim() } } : {}),
+          ...(returnLocation.trim() ? { dropoff: { location: returnLocation.trim() } } : {}),
+        },
+      } : undefined,
     };
     const response = await api.createResourceRental(tenantId, payload);
     setSaving(false);
-    if (response.success) onCreated();
+    if (response.success) onCreated(type);
     else setError(response.error || t("creationError"));
   }
 
@@ -774,7 +810,13 @@ function CreateRentalDialog({
                     aria-label={tc("searchContacts")}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2"
                   />
-                  <select required value={contactId} onChange={(event) => setContactId(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2">
+                  <select required value={contactId} onChange={(event) => {
+                    const nextId = event.target.value;
+                    const contact = contacts.find((item) => item.id === nextId);
+                    setContactId(nextId);
+                    if (contact && !driverName) setDriverName(contact.contactName || "");
+                    if (contact && !driverPhone) setDriverPhone(contact.contactPhone || "");
+                  }} className="w-full rounded-lg border border-border bg-background px-3 py-2">
                     <option value="">{t("create.selectContact")}</option>
                     {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.label}</option>)}
                   </select>
@@ -787,6 +829,34 @@ function CreateRentalDialog({
                     <p className="text-xs text-amber-700 dark:text-amber-300">{t("create.noContacts")}</p>
                   )}
                 </label>
+              )}
+              {type === "vehicle_rental" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1.5 text-sm sm:col-span-2">
+                    <span className="font-medium">{t("create.driverName")}</span>
+                    <input required value={driverName} onChange={(event) => setDriverName(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" />
+                  </label>
+                  <label className="block space-y-1.5 text-sm">
+                    <span className="font-medium">{t("create.driverPhone")}</span>
+                    <input value={driverPhone} onChange={(event) => setDriverPhone(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" />
+                  </label>
+                  <label className="block space-y-1.5 text-sm">
+                    <span className="font-medium">{t("create.declaredAge")}</span>
+                    <input type="number" min={16} max={120} value={declaredAge} onChange={(event) => setDeclaredAge(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" />
+                  </label>
+                  <label className="block space-y-1.5 text-sm">
+                    <span className="font-medium">{t("create.licenseCountry")}</span>
+                    <input maxLength={2} value={licenseCountry} onChange={(event) => setLicenseCountry(event.target.value.toUpperCase())} className="w-full rounded-lg border border-border bg-background px-3 py-2" />
+                  </label>
+                  <label className="block space-y-1.5 text-sm">
+                    <span className="font-medium">{t("create.pickupLocation")}</span>
+                    <input value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" />
+                  </label>
+                  <label className="block space-y-1.5 text-sm sm:col-span-2">
+                    <span className="font-medium">{t("create.returnLocation")}</span>
+                    <input value={returnLocation} onChange={(event) => setReturnLocation(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" />
+                  </label>
+                </div>
               )}
             </>
           )}

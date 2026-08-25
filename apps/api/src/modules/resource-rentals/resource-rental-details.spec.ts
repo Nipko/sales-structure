@@ -64,6 +64,18 @@ describe('alquiler de vehículo', () => {
         expect(errors.join(' ')).toMatch(/evidence/);
     });
 
+    it('una referencia OTP nunca puede ser el código crudo', () => {
+        const { errors } = validateVehicleRentalDetails({
+            contract: {
+                signed: true,
+                signedAt: '2026-08-10T10:00:00Z',
+                signatureMethod: 'otp',
+                evidenceRef: '123456',
+            },
+        });
+        expect(errors.join(' ')).toMatch(/raw OTP/);
+    });
+
     it('el documento del contrato tiene que ser https', () => {
         const { errors } = validateVehicleRentalDetails({
             contract: { signed: false, documentUrl: 'http://docs.example.com/c/1' },

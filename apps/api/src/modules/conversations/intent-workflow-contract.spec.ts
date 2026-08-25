@@ -14,8 +14,8 @@ const intent = (overrides: Partial<IntentContract> = {}): IntentContract => ({
 
 describe('P29 hybrid workflow contract', () => {
     it('declares the complete first deterministic queue with auditable lifecycle controls', () => {
-        expect(FIRST_DETERMINISTIC_WORKFLOW_QUEUE).toHaveLength(10);
-        expect(new Set(FIRST_DETERMINISTIC_WORKFLOW_QUEUE.map((workflow) => workflow.id)).size).toBe(10);
+        expect(FIRST_DETERMINISTIC_WORKFLOW_QUEUE).toHaveLength(11);
+        expect(new Set(FIRST_DETERMINISTIC_WORKFLOW_QUEUE.map((workflow) => workflow.id)).size).toBe(11);
         for (const workflow of FIRST_DETERMINISTIC_WORKFLOW_QUEUE) {
             expect(workflow.states).toContain(workflow.initialState);
             expect(workflow.terminalStates.length).toBeGreaterThan(0);

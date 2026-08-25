@@ -821,6 +821,21 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
                 key: 'return_at', type: 'datetime', required: true,
                 sensitivity: 'public', source: 'customer', persistence: 'record',
             }),
+            Object.freeze<SlotSchema>({
+                key: 'driver_name', type: 'text', required: true,
+                sensitivity: 'personal', source: 'customer', persistence: 'record',
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'declared_age', type: 'number', required: false,
+                sensitivity: 'personal', source: 'customer', persistence: 'record',
+                validator: { min: 16, max: 120 },
+            }),
+            Object.freeze<SlotSchema>({
+                key: 'license_country', type: 'text', required: false,
+                sensitivity: 'sensitive', source: 'customer', persistence: 'record',
+                confirm: true,
+                validator: { pattern: '^[A-Z]{2}$' },
+            }),
             ...CONTACT_SLOTS,
         ]),
         toolPlan: Object.freeze([
@@ -828,7 +843,7 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
         ]),
         confirmation: 'explicit',
         fallback: 'handoff',
-        states: Object.freeze(['collecting', 'confirming', 'reserved', 'handed_off']),
+        states: Object.freeze(['collecting', 'confirming', 'pending_review', 'reserved', 'rejected', 'handed_off']),
         commits: true,
     })]),
 

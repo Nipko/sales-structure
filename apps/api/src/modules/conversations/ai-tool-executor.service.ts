@@ -5241,9 +5241,38 @@ export class AIToolExecutorService {
                 startDate: args?.startDate,
                 endDate: args?.endDate,
                 notes: args?.notes ? String(args.notes).slice(0, 1000) : undefined,
+                metadata: {
+                    details: {
+                        driver: {
+                            name: driverName.slice(0, 200),
+                            ...(args?.driverPhone ? { phone: String(args.driverPhone).slice(0, 50) } : {}),
+                            ...(args?.declaredAge !== undefined ? { declaredAge: Number(args.declaredAge) } : {}),
+                            ...(args?.licenseCountry ? { licenseCountry: String(args.licenseCountry).slice(0, 2) } : {}),
+                        },
+                        ...(args?.pickupLocation || args?.pickupAt ? {
+                            pickup: {
+                                ...(args?.pickupLocation ? { location: String(args.pickupLocation).slice(0, 300) } : {}),
+                                ...(args?.pickupAt ? { scheduledAt: String(args.pickupAt).slice(0, 40) } : {}),
+                            },
+                        } : {}),
+                        ...(args?.returnLocation || args?.returnAt ? {
+                            dropoff: {
+                                ...(args?.returnLocation ? { location: String(args.returnLocation).slice(0, 300) } : {}),
+                                ...(args?.returnAt ? { scheduledAt: String(args.returnAt).slice(0, 40) } : {}),
+                            },
+                        } : {}),
+                        ...(Array.isArray(args?.extras) ? {
+                            extras: args.extras.slice(0, 30).map((item: unknown) => String(item).slice(0, 100)),
+                        } : {}),
+                    },
+                },
             });
             return {
                 success: true,
+                requestSubmitted: true,
+                pendingReview: true,
+                reservationConfirmed: false,
+                message: 'Solicitud recibida. La reserva aún no está aprobada: identidad, licencia, seguro y pago requieren revisión humana.',
                 rental: this.projectRental(rental),
                 humanRoute: `/admin/resource-rentals?type=vehicle_rental&rentalId=${rental?.id}`,
             };

@@ -46,6 +46,11 @@ export interface RentalDriver {
     licenseNumber?: string;
     /** Vencimiento de la licencia, `YYYY-MM-DD`. */
     licenseExpiresAt?: string;
+    /** Edad declarada durante el intake. Nunca equivale a elegibilidad. */
+    declaredAge?: number;
+    phone?: string;
+    licenseCountry?: string;
+    licenseClass?: string;
 }
 
 export interface RentalDeposit {
@@ -54,6 +59,8 @@ export interface RentalDeposit {
     status: RentalDepositStatus;
     /** Por qué se retuvo. Obligatorio cuando el estado es `withheld`. */
     withheldReason?: string;
+    /** Recibo, transacción o comprobante. No contiene credenciales. */
+    evidenceRef?: string;
 }
 
 export interface RentalContract {
@@ -62,6 +69,32 @@ export interface RentalContract {
     /** Si el cliente ya lo firmó, a mano o donde sea. */
     signed: boolean;
     signedAt?: string;
+    signatureMethod?: 'otp' | 'signature' | 'manual';
+    /** ID/URL de evidencia, nunca el OTP ni la firma cruda. */
+    evidenceRef?: string;
+}
+
+export type RentalEligibilityStatus = 'pending' | 'verified' | 'rejected' | 'not_required';
+
+export interface RentalEligibilityCheck {
+    status: RentalEligibilityStatus;
+    /** Documento o verificación revisada; no guarda el secreto ni su contenido. */
+    evidenceRef?: string;
+    reason?: string;
+    checkedAt?: string;
+    checkedBy?: string;
+}
+
+export interface RentalEligibility {
+    identity: RentalEligibilityCheck;
+    driverLicense: RentalEligibilityCheck;
+    insurance: RentalEligibilityCheck;
+    payment: RentalEligibilityCheck;
+}
+
+export interface RentalHandoffPoint {
+    scheduledAt?: string;
+    location?: string;
 }
 
 export interface VehicleRentalDetails {
@@ -69,6 +102,10 @@ export interface VehicleRentalDetails {
     driver?: RentalDriver;
     deposit?: RentalDeposit;
     contract?: RentalContract;
+    eligibility?: RentalEligibility;
+    pickup?: RentalHandoffPoint;
+    dropoff?: RentalHandoffPoint;
+    extras?: readonly string[];
     /** Kilometraje al entregar y al recibir: la base de cualquier reclamo. */
     odometerOut?: number;
     odometerIn?: number;
@@ -112,6 +149,8 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 const CURRENCY = /^[A-Z]{3}$/;
 const DEPOSIT_STATUSES: readonly string[] = ['pending', 'held', 'returned', 'withheld'];
+const ELIGIBILITY_STATUSES: readonly string[] = ['pending', 'verified', 'rejected', 'not_required'];
+const SIGNATURE_METHODS: readonly string[] = ['otp', 'signature', 'manual'];
 const COMPATIBILITIES: readonly string[] = ['social', 'group_only', 'solo'];
 
 function text(value: unknown, max: number): string | undefined {
@@ -151,6 +190,24 @@ export function validateVehicleRentalDetails(input: unknown): {
             } else if (expires) {
                 driver.licenseExpiresAt = expires;
             }
+            if (raw.driver?.declaredAge !== undefined) {
+                const age = Number(raw.driver.declaredAge);
+                if (!Number.isInteger(age) || age < 16 || age > 120) {
+                    errors.push('driver.declaredAge must be an integer between 16 and 120');
+                } else {
+                    driver.declaredAge = age;
+                }
+            }
+            const phone = text(raw.driver?.phone, 50);
+            if (phone) driver.phone = phone;
+            const country = text(raw.driver?.licenseCountry, 2)?.toUpperCase();
+            if (country && !/^[A-Z]{2}$/.test(country)) {
+                errors.push('driver.licenseCountry must be a two-letter country code');
+            } else if (country) {
+                driver.licenseCountry = country;
+            }
+            const licenseClass = text(raw.driver?.licenseClass, 20);
+            if (licenseClass) driver.licenseClass = licenseClass;
             details.driver = driver;
         }
     }
@@ -177,6 +234,10 @@ export function validateVehicleRentalDetails(input: unknown): {
             } else if (reason) {
                 deposit.withheldReason = reason;
             }
+            const evidenceRef = text(raw.deposit?.evidenceRef, 2000);
+            if (evidenceRef) {
+                deposit.evidenceRef = evidenceRef;
+            }
             details.deposit = deposit;
         }
     }
@@ -198,7 +259,86 @@ export function validateVehicleRentalDetails(input: unknown): {
         if (contract.signed && !contract.signedAt && !contract.documentUrl) {
             errors.push('contract.signed requires signedAt or documentUrl as evidence');
         }
+        const signatureMethod = text(raw.contract?.signatureMethod, 20);
+        if (signatureMethod && !SIGNATURE_METHODS.includes(signatureMethod)) {
+            errors.push(`contract.signatureMethod must be one of ${SIGNATURE_METHODS.join(', ')}`);
+        } else if (signatureMethod) {
+            contract.signatureMethod = signatureMethod as RentalContract['signatureMethod'];
+        }
+        const evidenceRef = text(raw.contract?.evidenceRef, 2000);
+        if (evidenceRef) contract.evidenceRef = evidenceRef;
+        // Filas anteriores al contrato V2 usaban documentUrl como la única
+        // evidencia. Se preservan y se normalizan sin inventar una firma nueva.
+        if (contract.signed && !contract.signatureMethod && contract.documentUrl) {
+            contract.signatureMethod = 'manual';
+        }
+        if (contract.signed && !contract.evidenceRef && contract.documentUrl) {
+            contract.evidenceRef = contract.documentUrl;
+        }
+        if (contract.signed && (!contract.signatureMethod || !contract.evidenceRef)) {
+            errors.push('a signed contract requires signatureMethod and evidenceRef');
+        }
+        if (contract.signed && contract.signatureMethod === 'otp'
+            && contract.evidenceRef && /^\d{4,8}$/.test(contract.evidenceRef)) {
+            errors.push('contract.evidenceRef must be a verification reference, never the raw OTP');
+        }
         details.contract = contract;
+    }
+
+    if (raw.eligibility !== undefined) {
+        const eligibility = {} as RentalEligibility;
+        for (const key of ['identity', 'driverLicense', 'insurance', 'payment'] as const) {
+            const check = raw.eligibility?.[key];
+            const status = text(check?.status, 20);
+            if (!status || !ELIGIBILITY_STATUSES.includes(status)) {
+                errors.push(`eligibility.${key}.status must be one of ${ELIGIBILITY_STATUSES.join(', ')}`);
+                continue;
+            }
+            const normalized: RentalEligibilityCheck = { status: status as RentalEligibilityStatus };
+            const evidenceRef = text(check?.evidenceRef, 2000);
+            const reason = text(check?.reason, 500);
+            const checkedAt = text(check?.checkedAt, 40);
+            const checkedBy = text(check?.checkedBy, 80);
+            if (status === 'verified' && !evidenceRef) {
+                errors.push(`eligibility.${key}.evidenceRef is required when verified`);
+            }
+            if ((status === 'rejected' || status === 'not_required') && !reason) {
+                errors.push(`eligibility.${key}.reason is required when ${status}`);
+            }
+            if (evidenceRef) normalized.evidenceRef = evidenceRef;
+            if (reason) normalized.reason = reason;
+            if (checkedAt) {
+                if (!ISO_INSTANT.test(checkedAt)) errors.push(`eligibility.${key}.checkedAt must be an ISO timestamp`);
+                else normalized.checkedAt = checkedAt;
+            }
+            if (checkedBy) normalized.checkedBy = checkedBy;
+            eligibility[key] = normalized;
+        }
+        details.eligibility = eligibility;
+    }
+
+    for (const [key, label] of [['pickup', 'pickup'], ['dropoff', 'dropoff']] as const) {
+        if (raw[key] === undefined) continue;
+        const point: RentalHandoffPoint = {};
+        const scheduledAt = text(raw[key]?.scheduledAt, 40);
+        if (scheduledAt && !ISO_INSTANT.test(scheduledAt)) {
+            errors.push(`${label}.scheduledAt must be an ISO timestamp`);
+        } else if (scheduledAt) point.scheduledAt = scheduledAt;
+        const location = text(raw[key]?.location, 300);
+        if (location) point.location = location;
+        details[key] = point;
+    }
+
+    if (raw.extras !== undefined) {
+        if (!Array.isArray(raw.extras)) {
+            errors.push('extras must be an array');
+        } else {
+            const extras = raw.extras
+                .map((item: unknown) => text(item, 100))
+                .filter((item): item is string => !!item)
+                .slice(0, 30);
+            if (extras.length) details.extras = Object.freeze(extras);
+        }
     }
 
     for (const key of ['odometerOut', 'odometerIn'] as const) {

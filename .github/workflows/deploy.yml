@@ -112,7 +112,7 @@ jobs:
       # configurations x 4 locales x 5 plans. This validates the
       # manifest/resolver contract only;
       # database bootstrap and end-to-end certification remain separate gates.
-      - name: Vertical contract matrix (1,560 scenarios)
+      - name: Vertical contract matrix (1,660 scenarios)
         run: node apps/api/scripts/run-vertical-contract-matrix.cjs
 
       # These are the fail-closed contracts adopted by DEC-01..19. The

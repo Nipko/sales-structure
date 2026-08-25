@@ -31,6 +31,8 @@ describe('resolveVerticalWorkspace', () => {
         { input: { industry: 'servicios_hogar', bookingEnabled: true }, expected: 'service_requests' },
         { input: { industry: 'pet_services', subType: 'peluqueria', bookingEnabled: true }, expected: 'appointments' },
         { input: { industry: 'fotografia', bookingEnabled: true }, expected: 'photo_sessions' },
+        { input: { industry: 'event_planning', subType: 'weddings', bookingEnabled: true }, expected: 'none' },
+        { input: { industry: 'construccion', subType: 'contratista_general', bookingEnabled: true }, expected: 'none' },
         { input: { industry: 'otro', bookingEnabled: false }, expected: 'orders' },
     ];
 
@@ -41,21 +43,25 @@ describe('resolveVerticalWorkspace', () => {
     }> = [
         { industry: 'salud', subtypes: ['dental', 'medica_general', 'dermatologia', 'psicologia', 'farmacia'], expected: (subtype) => subtype === 'farmacia' ? 'orders' : 'appointments' },
         { industry: 'moda_belleza', subtypes: ['salon_belleza', 'barberia', 'spa', 'estetica'], expected: 'appointments' },
-        { industry: 'inmobiliaria', subtypes: ['venta', 'arriendo', 'comercial', 'construccion'], expected: 'appointments' },
+        { industry: 'inmobiliaria', subtypes: ['venta', 'arriendo', 'comercial', 'promotora'], expected: (subtype) => subtype === 'promotora' ? 'none' : 'appointments' },
         { industry: 'restaurantes', subtypes: ['casual_dining', 'comida_rapida', 'cafeteria', 'dark_kitchen'], expected: 'restaurant' },
         { industry: 'automotriz', subtypes: ['concesionario', 'taller', 'repuestos', 'alquiler'], expected: (subtype) => ({ concesionario: 'appointments', taller: 'appointments', repuestos: 'orders', alquiler: 'vehicle_rentals' } as const)[subtype as 'concesionario' | 'taller' | 'repuestos' | 'alquiler'] },
         { industry: 'turismo', subtypes: ['agencia_viajes', 'hotel', 'tours', 'alquiler_vacacional'], expected: (subtype) => subtype === 'hotel' || subtype === 'alquiler_vacacional' ? 'stays' : 'tours' },
         { industry: 'education', subtypes: ['idiomas', 'universitaria', 'online', 'capacitacion'], expected: 'education' },
-        { industry: 'finanzas', subtypes: ['asesoria', 'fintech', 'creditos'], expected: 'appointments' },
+        { industry: 'finanzas', subtypes: ['asesoria', 'pagos_recaudos', 'creditos'], expected: (subtype) => subtype === 'pagos_recaudos' ? 'none' : 'appointments' },
         { industry: 'servicios_profesionales', subtypes: ['abogados', 'contadores', 'arquitectos', 'consultores'], expected: 'appointments' },
-        { industry: 'retail', subtypes: ['moda', 'electronica', 'hogar', 'marketplace'], expected: 'orders' },
-        { industry: 'technology', subtypes: ['saas', 'consultoria_ti', 'desarrollo', 'hardware'], expected: (subtype) => subtype === 'hardware' ? 'orders' : 'appointments' },
-        { industry: 'veterinaria', subtypes: ['clinica_general', 'hospital_24h', 'exoticos', 'peluqueria_canina'], expected: 'appointments' },
+        // Marketplace is waitlisted until seller-scoped catalog/order objects exist;
+        // exposing the generic order workspace would imply unsafe single-vendor semantics.
+        { industry: 'retail', subtypes: ['moda', 'electronica', 'hogar', 'marketplace'], expected: (subtype) => subtype === 'marketplace' ? 'none' : 'orders' },
+        { industry: 'technology', subtypes: ['saas', 'soporte_ti_msp', 'desarrollo', 'hardware'], expected: (subtype) => subtype === 'hardware' ? 'orders' : subtype === 'soporte_ti_msp' ? 'none' : 'appointments' },
+        { industry: 'veterinaria', subtypes: ['clinica_general', 'hospital_24h', 'exoticos'], expected: 'appointments' },
         { industry: 'gimnasios', subtypes: ['gimnasio_general', 'crossfit', 'yoga_pilates', 'cycling', 'martial_arts'], expected: 'classes' },
         { industry: 'seguros', subtypes: ['broker', 'aseguradora', 'vida', 'auto', 'salud'], expected: 'insurance' },
         { industry: 'servicios_hogar', subtypes: ['plomeria', 'electricidad', 'fumigacion', 'limpieza', 'jardineria', 'cerrajeria', 'pintura'], expected: 'service_requests' },
         { industry: 'pet_services', subtypes: ['peluqueria', 'guarderia', 'hotel', 'paseos', 'adiestramiento'], expected: (subtype) => ['guarderia', 'hotel'].includes(subtype) ? 'pet_boarding' : 'appointments' },
-        { industry: 'fotografia', subtypes: ['estudio', 'bodas', 'eventos', 'producto', 'wedding_planner'], expected: 'photo_sessions' },
+        { industry: 'fotografia', subtypes: ['estudio', 'bodas', 'eventos', 'producto'], expected: 'photo_sessions' },
+        { industry: 'event_planning', subtypes: ['weddings'], expected: 'none' },
+        { industry: 'construccion', subtypes: ['contratista_general'], expected: 'none' },
     ];
 
     const canonicalConfigurations = canonicalSubtypeMatrix.flatMap((entry) =>

@@ -66,7 +66,7 @@ jobs:
       - run: mkdir -p artifacts
       - name: Claims and competitive evidence
         run: npm run check:claims --prefix apps/landing
-      - name: Static 1,560-scenario matrix (canonical + legacy)
+      - name: Static 1,660-scenario matrix (canonical + legacy)
         run: node apps/api/scripts/run-vertical-contract-matrix.cjs > artifacts/vertical-contract-matrix.json
       - name: TypeScript contracts
         run: |

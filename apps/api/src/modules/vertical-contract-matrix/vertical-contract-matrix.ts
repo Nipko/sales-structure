@@ -87,7 +87,7 @@ function routeForActiveObject(
 
 /**
  * The matrix must consume the same operational deep-link registry as Inbox and
- * navigation. Keeping a second hand-written route map made 1,560/1,560 pass
+ * navigation. Keeping a second hand-written route map made 1,660/1,660 pass
  * while `professional_case` and `property_booking` pointed at stale screens.
  */
 export const PRIMARY_OBJECT_ROUTE: Readonly<Record<VerticalPrimaryObject, VerticalRoutePath>> = {

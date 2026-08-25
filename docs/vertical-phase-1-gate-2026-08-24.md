@@ -46,6 +46,8 @@ El quinto ID heredado, `veterinaria/peluqueria_canina`, conserva resolución com
 | TypeScript: shared, API, dashboard y landing | 4/4 limpios |
 | API Jest | 365 suites pasaron, 1 omitida; 3.547 tests pasaron, 10 omitidos |
 | Dashboard Jest | 31 suites y 275 tests pasaron |
+| Mobile Jest | 24 suites y 321 tests pasaron |
+| Matriz vertical estática | 1.660/1.660 escenarios pasaron |
 | Contratos de claims públicos | 3/3 pasaron para 18 verticales públicas y cuatro idiomas |
 | Browser E2E | 24/24 escenarios reportaron éxito; el runner local Windows conservó procesos de desarrollo abiertos al terminar y fue detenido después de completarlos |
 | `git diff --check` | limpio |

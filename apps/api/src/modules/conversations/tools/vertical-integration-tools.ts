@@ -15,7 +15,7 @@ export const GET_RESTAURANT_MENU_TOOL: ToolDefinition = {
 
 export const GET_FITNESS_SCHEDULE_TOOL: ToolDefinition = {
     name: 'get_fitness_schedule',
-    description: 'Get the upcoming class schedule (class, instructor, time, availability) from the connected fitness system (Mindbody). Use when the customer asks about classes or schedules.',
+    description: 'Get a mirrored upcoming class schedule (class, instructor, time and location) from Mindbody for discovery only. It does NOT provide live capacity or prove a spot is available. If the customer asks to check capacity, hold, book or cancel, report live_capacity_unavailable and offer a team handoff or waitlist.',
     parameters: { type: 'object', properties: {}, required: [] },
 };
 

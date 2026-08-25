@@ -39,6 +39,7 @@ interface User {
     picture?: string;
     hasPassword?: boolean;
     emailVerified?: boolean;
+    emailVerificationState?: "unverified" | "pending_change" | "verified" | "restricted";
     onboardingCompleted?: boolean;
 }
 
@@ -380,8 +381,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const getRedirectPath = useCallback((userData: User): string => {
         if (userData.role === "super_admin" || userData.tenantId) return "/admin";
-        if (!userData.emailVerified) return "/verify-email";
+        // Email verification is progressive: a new owner may complete the
+        // non-operational onboarding and enter a tenant with a persistent
+        // warning. Sensitive actions remain server-gated per capability.
         if (!userData.onboardingCompleted) return "/onboarding";
+        if (!userData.emailVerified) return "/verify-email";
         return "/admin";
     }, []);
 

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
-    Mic, Eye, ArrowUpRight, BookOpen, FileText, MessageSquare,
+    Mic, Eye, ArrowUpRight, BookOpen, FileText,
     Plus, Trash2, Smartphone, Landmark,
 } from "lucide-react";
 import PaymentForm, { usesStoredPaymentSources } from "@/components/billing/PaymentForm";
@@ -186,9 +186,6 @@ export default function BillingPage() {
         monthlyCostCentsUsd: number;
         monthKey: string;
     } | null>(null);
-    const [smsPackages, setSmsPackages] = useState<Array<{ id: string; name: string; credits: number; priceCents: number; currency: string; highlight?: boolean }>>([]);
-    const [smsBalance, setSmsBalance] = useState<{ balance: number; purchased: number; consumed: number; consumedThisMonth: number } | null>(null);
-    const [smsBuying, setSmsBuying] = useState<string | null>(null);
     const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
     // Fiscal profile (DIAN) — undefined = not loaded, null = none on file.
@@ -236,21 +233,17 @@ export default function BillingPage() {
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
             setIsInternalAccount((subRes as any)?.isInternal === true);
-            const [plansRes, usageRes, kbRes, fiscalRes, smsBalRes, smsPkgRes, configRes, sourcesRes] = await Promise.all([
+            const [plansRes, usageRes, kbRes, fiscalRes, configRes, sourcesRes] = await Promise.all([
                 api.getBillingPlans(country || undefined),
                 api.getBillingUsage(activeTenantId),
                 api.fetch(`/knowledge/usage/${activeTenantId}`).catch(() => null),
                 api.getFiscalData(activeTenantId).catch(() => null),
-                api.getSmsBalance(activeTenantId).catch(() => null),
-                api.getSmsPackages().catch(() => null),
                 api.getBillingPublicConfig(country || undefined).catch(() => null),
                 api.listPaymentSources(activeTenantId).catch(() => null),
             ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
             if (configRes?.success && configRes.data) setPublicConfig(configRes.data);
             if (sourcesRes?.success) setPaymentSources(sourcesRes.data ?? []);
-            if (smsBalRes?.success) setSmsBalance((smsBalRes.data as any) ?? null);
-            if (smsPkgRes?.success) setSmsPackages((smsPkgRes.data as any[]) ?? []);
             if (fiscalRes?.success) {
                 setFiscalData(((fiscalRes.data as any)?.fiscalData ?? null));
                 setBillingCountry(((fiscalRes.data as any)?.billingCountry ?? country ?? null));
@@ -276,36 +269,6 @@ export default function BillingPage() {
     }, [activeTenantId, t]);
 
     useEffect(() => { load(); }, [load]);
-
-    // Preserve the callback for historical SMS orders. New SMS checkout is
-    // disabled; Mercado Pago is only available for tenant-to-customer links.
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("sms") === "return") {
-            setToast(t("smsReturnProcessing"));
-            const timer = setTimeout(() => { if (activeTenantId) api.getSmsBalance(activeTenantId).then((r) => { if (r?.success) setSmsBalance(r.data as any); }); }, 4000);
-            window.history.replaceState({}, "", window.location.pathname);
-            return () => clearTimeout(timer);
-        }
-    }, [activeTenantId, t]);
-
-    const handleBuySms = useCallback(async (packageId: string) => {
-        if (!activeTenantId) return;
-        setSmsBuying(packageId);
-        try {
-            const res = await api.buySmsPackage(activeTenantId, packageId);
-            if (res?.success && (res.data as any)?.initPoint) {
-                window.location.href = (res.data as any).initPoint;
-            } else {
-                setToast(res?.error || t("smsBuyError"));
-                setSmsBuying(null);
-            }
-        } catch (e: any) {
-            setToast(e?.message || t("smsBuyError"));
-            setSmsBuying(null);
-        }
-    }, [activeTenantId, t]);
 
     const currentPlan = useMemo(
         () => plans.find((p) => p.id === subscription?.planId),
@@ -1302,74 +1265,6 @@ export default function BillingPage() {
                             </a>
                         </div>
                     )}
-                </section>
-            )}
-
-            {/* SMS notification credits */}
-            {smsPackages.length > 0 && (
-                <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
-                    <div className="flex items-center justify-between mb-4">
-                        <div>
-                            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
-                                <MessageSquare size={15} className="text-indigo-500" /> {t("smsTitle")}
-                            </h2>
-                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("smsHint")}</p>
-                        </div>
-                        {smsBalance && (
-                            <div className="text-right">
-                                <div className="text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">{smsBalance.balance.toLocaleString()}</div>
-                                <div className="text-[10px] uppercase tracking-wider text-neutral-400">{t("smsCreditsLabel")}</div>
-                            </div>
-                        )}
-                    </div>
-
-                    {smsBalance && smsBalance.balance === 0 && (
-                        <div className="mb-4 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 flex items-start gap-2">
-                            <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-                            <p className="text-xs font-semibold text-red-700 dark:text-red-300 flex-1">{t("smsEmptyBalance")}</p>
-                        </div>
-                    )}
-                    {smsBalance && smsBalance.balance > 0 && smsBalance.balance < 50 && (
-                        <div className="mb-4 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex items-start gap-2">
-                            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                            <p className="text-xs text-amber-700 dark:text-amber-300 flex-1">{t("smsLowBalance")}</p>
-                        </div>
-                    )}
-
-                    {smsBalance && (
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
-                            {t("smsConsumedThisMonth", { count: smsBalance.consumedThisMonth.toLocaleString() })}
-                        </p>
-                    )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {smsPackages.map((pkg) => (
-                            <div
-                                key={pkg.id}
-                                className={cn(
-                                    "rounded-lg border p-4 flex flex-col",
-                                    pkg.highlight ? "border-indigo-400 dark:border-indigo-600 ring-1 ring-indigo-400/30" : "border-neutral-200 dark:border-neutral-800",
-                                )}
-                            >
-                                {pkg.highlight && (
-                                    <span className="self-start text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-2">{t("smsPopular")}</span>
-                                )}
-                                <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{pkg.name}</div>
-                                <div className="text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100 mt-1">{pkg.credits.toLocaleString()}</div>
-                                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">{t("smsMessages")}</div>
-                                <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mt-2">
-                                    {new Intl.NumberFormat(locale, { style: "currency", currency: pkg.currency, maximumFractionDigits: 0 }).format(pkg.priceCents / 100)}
-                                </div>
-                                <button
-                                    onClick={() => handleBuySms(pkg.id)}
-                                    disabled={smsBuying !== null}
-                                    className="mt-3 w-full text-xs font-semibold px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white flex items-center justify-center gap-1.5"
-                                >
-                                    {smsBuying === pkg.id ? <Loader2 size={13} className="animate-spin" /> : t("smsBuy")}
-                                </button>
-                            </div>
-                        ))}
-                    </div>
                 </section>
             )}
 

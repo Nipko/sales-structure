@@ -1285,6 +1285,9 @@ export const api = {
     getDashboardVolume: (tenantId: string, start: string, end: string) =>
         apiGet(`/dashboard-analytics/conversations-volume/${tenantId}?start=${start}&end=${end}`),
 
+    getDashboardChannelAccounts: (tenantId: string, start: string, end: string, channelType?: string) =>
+        apiGet(`/dashboard-analytics/channel-accounts/${tenantId}?start=${start}&end=${end}${channelType ? `&channelType=${encodeURIComponent(channelType)}` : ""}`),
+
     getDashboardResponseTimes: (tenantId: string, start: string, end: string) =>
         apiGet(`/dashboard-analytics/response-times/${tenantId}?start=${start}&end=${end}`),
 
@@ -1374,6 +1377,12 @@ export const api = {
         apiDelete(`/vertical-integrations/${tenantId}/${provider}`),
     listVerticalIntegrationItems: (tenantId: string, provider?: string) =>
         apiGet(`/vertical-integrations/${tenantId}/items${provider ? `?provider=${provider}` : ""}`),
+    listProviderResourceBindings: (tenantId: string, provider?: string) =>
+        apiGet(`/vertical-integrations/${tenantId}/bindings/resources${provider ? `?provider=${encodeURIComponent(provider)}` : ""}`),
+    upsertProviderResourceBinding: (tenantId: string, body: any) =>
+        apiPut(`/vertical-integrations/${tenantId}/bindings/resources`, body),
+    deleteProviderResourceBinding: (tenantId: string, bindingId: string) =>
+        apiDelete(`/vertical-integrations/${tenantId}/bindings/resources/${bindingId}`),
 
     // Lodging channel manager (Hostaway). These endpoints resolve the tenant
     // from the authenticated context; secrets are always returned masked.

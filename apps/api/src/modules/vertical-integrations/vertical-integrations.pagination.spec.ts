@@ -24,6 +24,7 @@ function build() {
         { runExclusive: jest.fn() } as any,
         { get: jest.fn().mockReturnValue('') } as any,
         { encrypt: jest.fn(), decrypt: jest.fn() } as any,
+        {} as any,
     );
     jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);

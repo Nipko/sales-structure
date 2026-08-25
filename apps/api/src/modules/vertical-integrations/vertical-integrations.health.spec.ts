@@ -5,6 +5,15 @@ import { fakeSettingsTransaction, fakeSettingsWriter } from '../../common/utils/
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
+const readableBinding = {
+    resolve: jest.fn(async (_tenantId: string, input: any) => ({
+        version: 1, ...input, mode: 'tenant_wide_conservative', bindingId: null,
+        externalId: null, generation: 0, owner: 'external', allowExternalRead: true,
+        allowExternalWrite: false, allowLocalWrite: false,
+        reason: 'resource_binding_required', cache: 'not_cached',
+    })),
+};
+
 describe('VerticalIntegrationsService health and tool gate', () => {
     let settings: any;
     let prisma: any;
@@ -55,6 +64,7 @@ describe('VerticalIntegrationsService health and tool gate', () => {
             { runExclusive: jest.fn() } as any,
             { get: jest.fn().mockReturnValue('') } as any,
             new TenantSecretCryptoService(),
+            readableBinding as any,
         );
         jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     });
@@ -155,6 +165,27 @@ describe('VerticalIntegrationsService health and tool gate', () => {
             items: [{ name: 'Arepa', price: 12 }],
         });
         expect(listItems).toHaveBeenCalledWith('tenant_schema', 'toast', 'menu_item', 80);
+    });
+
+    it('fails the provider read closed when the tenant-scope binding is conflicted', async () => {
+        const now = new Date();
+        settings.verticalIntegrationHealth.toast = reduceIntegrationHealth(undefined, 'toast', {
+            outcome: 'success', syncSucceeded: true, checkedAt: now.toISOString(),
+        }, now);
+        readableBinding.resolve.mockResolvedValueOnce({
+            version: 1, provider: 'toast', connectionId: 'location',
+            resourceType: 'location', resourceId: 'all', mode: 'conflict',
+            bindingId: null, externalId: null, generation: 9, owner: 'blocked',
+            allowExternalRead: false, allowExternalWrite: false, allowLocalWrite: false,
+            reason: 'binding_conflict', cache: 'not_cached',
+        });
+        const listItems = jest.spyOn(service as any, 'listItemsInSchema').mockResolvedValue([]);
+
+        await expect(service.getMenuForAI(TENANT_ID, 'tenant_schema')).resolves.toMatchObject({
+            error: 'integration_unavailable',
+            integrationProjection: { binding: { mode: 'conflict', generation: 9 } },
+        });
+        expect(listItems).not.toHaveBeenCalled();
     });
 
     // The public read takes a tenantId: the controller has no schema name to give,

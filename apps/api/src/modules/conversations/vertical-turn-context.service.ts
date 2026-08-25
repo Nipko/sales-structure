@@ -3,6 +3,7 @@ import {
     buildDomainContractDraft,
     localizedTerm,
     resolveSubtypeExperienceProfile,
+    resolveIntentWorkflow,
     subtypeTerminologyFor,
     type LocalizedTerm,
     type VerticalContext,
@@ -34,7 +35,19 @@ export function projectVerticalIntentAvailability(
                     : runtimeToolPlan.length > 0
                         ? 'partial' as const
                         : 'unavailable' as const;
-                return { ...intent, runtimeToolPlan, runtimeStatus, missingTools };
+                const inheritedBlock = intent.workflowReadiness && intent.workflowReadiness !== 'ready'
+                    ? intent.workflowReadiness
+                    : null;
+                const workflowReadiness = inheritedBlock || (missingTools.length ? 'blocked_missing_tools' as const : 'ready' as const);
+                return {
+                    ...intent,
+                    runtimeToolPlan,
+                    runtimeStatus,
+                    missingTools,
+                    workflowReadiness,
+                    workflowBlockedReason: workflowReadiness === 'ready' ? null : workflowReadiness,
+                    defaultDeny: workflowReadiness !== 'ready' || intent.workflowClass !== 'informational',
+                };
             }),
         },
     };
@@ -118,6 +131,21 @@ export class VerticalTurnContextService {
             scope: domain.prompt.scope,
             claims: language === 'es' ? [...domain.prompt.claims] : [],
             intents: domain.intents.map(intent => ({
+                ...(() => {
+                    const workflow = resolveIntentWorkflow({ profileId: domain.profileId, intent });
+                    return {
+                        workflowClass: workflow.class,
+                        workflowId: workflow.workflowId,
+                        workflowStates: workflow.states,
+                        workflowInitialState: workflow.initialState,
+                        workflowTerminalStates: workflow.terminalStates,
+                        workflowReadiness: workflow.readiness,
+                        workflowBlockedReason: workflow.blockedReason,
+                        requiredSlots: workflow.requiredSlots,
+                        nextStateAuthority: workflow.nextStateAuthority,
+                        defaultDeny: workflow.defaultDeny,
+                    };
+                })(),
                 key: intent.key,
                 commits: intent.commits,
                 toolPlan: [...intent.toolPlan],

@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveVerticalCapabilityManifest } from "@parallext/shared";
 import { IntegrationHealthPanel } from "./_components/IntegrationHealthPanel";
+import { ResourceBindingPanel } from "./_components/ResourceBindingPanel";
 
 type Provider = "toast" | "mindbody" | "cliniko";
 
@@ -161,7 +162,7 @@ export default function VerticalIntegrationsPage() {
             <PageHeader icon={Plug} title={t("title")} subtitle={t("subtitle")} />
 
             {/* Decir la verdad sobre el estado de esto.
-                Las cuatro integraciones verticales son de SOLO LECTURA, se
+                Las integraciones verticales son de SOLO LECTURA, se
                 congelaron en agosto de 2026 (no se les construye escritura) y
                 nunca se probaron contra una cuenta real porque no hay
                 credenciales. Presentarlas al mismo nivel que WhatsApp o Google
@@ -249,6 +250,13 @@ export default function VerticalIntegrationsPage() {
                                 </div>
 
                                 {configured && <IntegrationHealthPanel health={configs[key]?.health} />}
+                                {configured && activeTenantId && (
+                                    <ResourceBindingPanel
+                                        tenantId={activeTenantId}
+                                        provider={key}
+                                        connectionId={configs[key]?.health?.connectionId || "default"}
+                                    />
+                                )}
 
                                 <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border">
                                     <button onClick={() => save(key)} disabled={busy === `save:${key}`}

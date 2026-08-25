@@ -288,6 +288,7 @@ export class InvitationsService {
                     skillTags: invitation.skillTags,
                     isActive: true,
                     emailVerified: true,
+                    emailVerificationState: 'verified',
                     authProvider: 'email',
                     onboardingCompleted: true,
                 },
@@ -311,6 +312,7 @@ export class InvitationsService {
                     skillTags: invitation.skillTags,
                     isActive: true,
                     emailVerified: true,  // verified via invitation link possession
+                    emailVerificationState: 'verified',
                     authProvider: 'email',
                     onboardingCompleted: true,
                 },

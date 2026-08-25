@@ -11,6 +11,7 @@ import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('persona')
 @Controller('persona')
@@ -107,6 +108,7 @@ export class PersonaController {
 
     @Post(':tenantId/setup-wizard')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Apply a persona template from the setup wizard; marks the wizard completed unless markCompleted=false' })
     async applyTemplate(
         @Param('tenantId') tenantId: string,
@@ -205,12 +207,14 @@ export class PersonaController {
         // Sync to agent_personas (multi-agent system) — the setup wizard must
         // update the actual agent record, not just the legacy persona_config.
         const scheduleMode = body.customizations?.is247 === false ? 'business_hours' : '24_7';
+        const selectedChannels = body.selectedChannels || ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'];
         const agents = await this.personaService.listAgents(tenantId);
         const defaultAgent = agents.find((a: any) => a.is_default);
         if (defaultAgent) {
             await this.personaService.updateAgent(tenantId, defaultAgent.id, {
                 name: config.persona.name,
                 configJson: config,
+                channels: selectedChannels,
                 scheduleMode,
             });
         } else {
@@ -218,7 +222,7 @@ export class PersonaController {
                 name: config.persona.name,
                 templateId: body.templateId,
                 configJson: config,
-                channels: body.selectedChannels || ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+                channels: selectedChannels,
                 scheduleMode,
                 isDefault: true,
                 createdBy,
@@ -246,7 +250,7 @@ export class PersonaController {
             ...(markCompleted ? {
                 setupWizardCompleted: true,
                 setupWizardTemplate: body.templateId,
-                setupWizardChannels: body.selectedChannels || [],
+                setupWizardChannels: selectedChannels,
                 setupWizardCompletedAt: new Date().toISOString(),
             } : {}),
         });
@@ -423,6 +427,7 @@ export class PersonaController {
 
     @Put(':tenantId')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Save persona config (JSON → converts to YAML internally)' })
     async save(
         @Param('tenantId') tenantId: string,
@@ -479,6 +484,7 @@ export class PersonaController {
 
     @Post(':tenantId/agents')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Create a new agent persona' })
     async createAgent(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
         const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
@@ -503,6 +509,7 @@ export class PersonaController {
 
     @Put(':tenantId/agents/:agentId')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Update an existing agent persona' })
     async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
         const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
@@ -526,6 +533,7 @@ export class PersonaController {
 
     @Post(':tenantId/agents/:agentId/duplicate')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Duplicate an agent persona' })
     async duplicateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Req() req: any) {
         // Duplication is another creation path and must not clone an entitled

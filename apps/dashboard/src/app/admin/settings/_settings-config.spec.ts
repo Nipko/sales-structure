@@ -51,7 +51,9 @@ describe("Settings information architecture", () => {
 
         expect(new Set(keys).size).toBe(keys.length);
         expect(new Set(hrefs).size).toBe(hrefs.length);
-        expect(keys).toHaveLength(32);
+        // P26 removes the tenant-facing SMS notifications destination. The
+        // previous count asserted the retired-product dead end.
+        expect(keys).toHaveLength(31);
         expect(keys).toContain("billing");
         expect(hrefs).toContain("/admin/settings/billing");
     });
@@ -66,7 +68,6 @@ describe("Settings information architecture", () => {
             "crmIntegrations",
             "webChat",
             "slack",
-            "smsNotifications",
             "verticalIntegrations",
             "reviews",
             "payments",

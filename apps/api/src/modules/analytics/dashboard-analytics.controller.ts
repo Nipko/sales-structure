@@ -7,6 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
 import { AiResolutionService } from './ai-resolution.service';
 import { Response } from 'express';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('dashboard-analytics')
 @Controller('dashboard-analytics')
@@ -38,6 +39,18 @@ export class DashboardAnalyticsController {
         @Query('end') end: string,
     ) {
         const result = await this.dashboardAnalytics.getConversationsVolume(tenantId, start, end);
+        return { success: true, data: result };
+    }
+
+    @Get('channel-accounts/:tenantId')
+    @ApiOperation({ summary: 'Metrics attributed to each operational channel account' })
+    async getChannelAccounts(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+        @Query('channelType') channelType?: string,
+    ) {
+        const result = await this.dashboardAnalytics.getChannelAccountBreakdown(tenantId, start, end, channelType);
         return { success: true, data: result };
     }
 
@@ -75,6 +88,7 @@ export class DashboardAnalyticsController {
     }
 
     @Get('export/:tenantId')
+    @RequiresVerifiedEmail('export_tenant_data')
     @ApiOperation({ summary: 'Export analytics report as CSV' })
     async exportReport(
         @Param('tenantId') tenantId: string,

@@ -46,11 +46,11 @@ export const MARKETING_CLAIMS = Object.freeze({
     ],
   },
   channelCount: {
-    claimId: 'product.channels.adapters.count', capabilityId: 'channel_adapter_registry', status: 'verified', value: 6,
+    claimId: 'product.channels.adapters.count', capabilityId: 'certified_self_service_channels', status: 'verified', value: 5,
     localeKey: 'socialProof.stat2Label', locales: ['es', 'en', 'pt', 'fr'],
     localePaths: ['cta.guarantees', 'product.channelsFeaturesTitle'],
-    scope: { plans: 'plan_dependent_catalog', regions: 'global' }, verifiedAt: '2026-08-08', expiresAt: '2026-11-08', owner: 'product-engineering',
-    evidence: [{ id: 'channel-module', repositoryPath: 'apps/api/src/modules/channels/channels.module.ts', description: 'Runtime adapter registration.' }],
+    scope: { plans: 'plan_dependent_catalog', regions: 'global' }, verifiedAt: '2026-08-24', expiresAt: '2026-11-24', owner: 'product-engineering',
+    evidence: [{ id: 'channel-policy', repositoryPath: 'packages/shared/src/channel-policy.ts', description: 'Canonical certified self-service channel policy.' }],
   },
   interfaceLanguageCount: {
     claimId: 'product.interface_languages.count', capabilityId: 'interface_i18n', status: 'verified', value: 4,

@@ -2,6 +2,9 @@
 // Parallext Engine - Shared Types
 // ===================================
 
+import type { EmailVerificationState } from './email-verification-policy';
+import type { ChannelType, ConversationalChannelType } from './channel-policy';
+
 // ---- Timezones (worldwide curated IANA list) ----
 export * from './timezones';
 
@@ -60,9 +63,11 @@ export * from './subtype-eval-pack';
 export * from './subtype-eval-derivation';
 
 // ---- Channel Types ----
-export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
-/** Certified two-way conversational surfaces available to live Agent Test. */
-export type ConversationalChannelType = Exclude<ChannelType, 'sms' | 'email'>;
+export * from './channel-policy';
+
+export * from './email-verification-policy';
+export * from './intent-workflow-contract';
+export * from './provider-resource-binding';
 
 export type MessageContentType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker' | 'reaction';
 
@@ -496,6 +501,8 @@ export interface AuthUser {
     role: UserRole;
     tenantId?: string;
     isActive: boolean;
+    emailVerified?: boolean;
+    emailVerificationState?: EmailVerificationState;
 }
 
 export interface JwtPayload {
@@ -1045,6 +1052,16 @@ export interface VerticalContext {
         intents: ReadonlyArray<{
             key: string;
             commits: boolean;
+            workflowClass?: import('./intent-workflow-contract').IntentWorkflowClass;
+            workflowId?: string;
+            workflowStates?: readonly string[];
+            workflowInitialState?: string;
+            workflowTerminalStates?: readonly string[];
+            workflowReadiness?: import('./intent-workflow-contract').WorkflowReadiness;
+            workflowBlockedReason?: string | null;
+            requiredSlots?: readonly string[];
+            nextStateAuthority?: 'none' | 'tool_executor' | 'backend_workflow';
+            defaultDeny?: boolean;
             /** Domain-authored sequence; stable across tenants and plans. */
             toolPlan: readonly string[];
             /** Subset actually published by the effective contract for this turn. */

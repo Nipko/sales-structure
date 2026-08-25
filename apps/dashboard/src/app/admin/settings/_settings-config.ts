@@ -131,7 +131,6 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "crmIntegrations", href: "/admin/settings/integrations/crm", icon: Plug, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
             { key: "webChat", href: "/admin/settings/integrations/web-chat", icon: MessageCircle, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "slack", href: "/admin/settings/integrations/slack", icon: Slack, iconColor: "text-fuchsia-500", iconBg: "bg-fuchsia-500/10" },
-            { key: "smsNotifications", href: "/admin/settings/integrations/sms-notifications", icon: MessageSquare, iconColor: "text-green-500", iconBg: "bg-green-500/10" },
             { key: "verticalIntegrations", href: "/admin/settings/integrations/vertical", icon: Plug, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
             { key: "reviews", href: "/admin/settings/integrations/reviews", icon: Star, iconColor: "text-yellow-500", iconBg: "bg-yellow-500/10" },
             { key: "payments", href: "/admin/settings/integrations/payments", icon: CreditCard, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10", visible: (r) => r.canManageBilling },

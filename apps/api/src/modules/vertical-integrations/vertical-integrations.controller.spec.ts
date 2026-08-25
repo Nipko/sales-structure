@@ -8,7 +8,7 @@ describe('VerticalIntegrationsController health contract', () => {
             cliniko: { provider: 'cliniko', status: 'unhealthy', connected: false },
         };
         const vi = { getAllHealth: jest.fn().mockResolvedValue(health) };
-        const controller = new VerticalIntegrationsController(vi as any);
+        const controller = new VerticalIntegrationsController(vi as any, {} as any);
 
         await expect(controller.getAllHealth('tenant-1')).resolves.toEqual({
             success: true,
@@ -30,7 +30,7 @@ describe('VerticalIntegrationsController health contract', () => {
                 credentialValidated: false,
             }),
         };
-        const controller = new VerticalIntegrationsController(vi as any);
+        const controller = new VerticalIntegrationsController(vi as any, {} as any);
 
         const response = await controller.updateConfig('tenant-1', 'toast', {
             clientSecret: 'super-secret',
@@ -55,7 +55,7 @@ describe('VerticalIntegrationsController health contract', () => {
     // Postgres 3F000 in production.
     it('hands the synced-items read a tenantId, not a schema name', async () => {
         const vi = { listItems: jest.fn().mockResolvedValue([]) };
-        const controller = new VerticalIntegrationsController(vi as any);
+        const controller = new VerticalIntegrationsController(vi as any, {} as any);
 
         await controller.items('11111111-1111-4111-8111-111111111111', 'toast', 'menu_item');
 

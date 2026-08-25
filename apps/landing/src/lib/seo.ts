@@ -74,7 +74,7 @@ export function organizationJsonLd() {
     name: "Parallly",
     url: SITE_URL,
     logo: `${SITE_URL}/parallly-logo.svg`,
-    description: "Plataforma de IA conversacional para automatizar ventas, atención y agendamiento por WhatsApp, Instagram, Messenger, Telegram, SMS y Email.",
+    description: "Plataforma de IA conversacional para automatizar ventas, atención y agendamiento por WhatsApp, Instagram, Messenger, Telegram y Web Chat.",
     foundingDate: "2025",
     areaServed: {
       "@type": "Place",
@@ -98,7 +98,7 @@ export function softwareAppJsonLd() {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web, Android",
     url: SITE_URL,
-    description: "IA conversacional para vender, atender y agendar en WhatsApp, Instagram, Messenger, Telegram, SMS y Email.",
+    description: "IA conversacional para vender, atender y agendar en WhatsApp, Instagram, Messenger, Telegram y Web Chat.",
   };
 }
 

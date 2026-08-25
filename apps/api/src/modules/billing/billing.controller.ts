@@ -12,7 +12,7 @@ import { BillingService } from './billing.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaThrottleService } from '../media-processing/media-throttle.service';
-import { EmailVerifiedGuard } from '../../common/guards/email-verified.guard';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 import { BillingPlanCatalogService } from './billing-plan-catalog.service';
 import { BILLING_CURRENCY_BY_COUNTRY } from './billing-country-config';
 import { PaymentSourceService } from './recurring/payment-source.service';
@@ -216,6 +216,7 @@ export class BillingController {
     @Post(':tenantId/subscription')
     @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
+    @RequiresVerifiedEmail('manage_billing')
     async startTrial(@Param('tenantId') tenantId: string, @Body() body: StartTrialDto) {
         const subscription = await this.billingService.createTrialSubscription({
             tenantId,
@@ -232,6 +233,7 @@ export class BillingController {
     @Post(':tenantId/subscription/activate')
     @Roles('tenant_admin', 'super_admin')
     @UseGuards(AuthGuard('jwt'))
+    @RequiresVerifiedEmail('manage_billing')
     async activatePending(@Param('tenantId') tenantId: string) {
         const subscription = await this.paymentSources.activatePendingSubscription(tenantId);
         return { success: true, data: subscription };
@@ -244,7 +246,8 @@ export class BillingController {
      */
     @Post(':tenantId/subscription/upgrade')
     @Roles('tenant_admin')
-    @UseGuards(AuthGuard('jwt'), EmailVerifiedGuard)
+    @UseGuards(AuthGuard('jwt'))
+    @RequiresVerifiedEmail('manage_billing')
     async upgrade(@Param('tenantId') tenantId: string, @Body() body: ChangePlanDto) {
         const updated = await this.billingService.upgradeSubscription(tenantId, body.planSlug, body.cardTokenId, body.billingCycle);
         return { success: true, data: updated };
@@ -271,7 +274,8 @@ export class BillingController {
      */
     @Post(':tenantId/subscription/payment-method')
     @Roles('tenant_admin')
-    @UseGuards(AuthGuard('jwt'), EmailVerifiedGuard)
+    @UseGuards(AuthGuard('jwt'))
+    @RequiresVerifiedEmail('manage_billing')
     async updatePaymentMethod(@Param('tenantId') tenantId: string, @Body() body: UpdatePaymentMethodDto) {
         const sub = await this.billingService.getActiveSubscription(tenantId);
         if (!sub || !sub.providerCustomerId) {
@@ -302,6 +306,7 @@ export class BillingController {
     @Post(':tenantId/subscription/resume')
     @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
+    @RequiresVerifiedEmail('manage_billing')
     async resume(@Param('tenantId') tenantId: string) {
         await this.billingService.resumeSubscription(tenantId);
         return { success: true };

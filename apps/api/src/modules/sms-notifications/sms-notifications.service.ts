@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, GoneException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 
@@ -55,6 +55,13 @@ export class SmsNotificationsService {
                 const current = (value && typeof value === 'object'
                     ? value
                     : DEFAULT_CONFIG) as SmsNotificationsConfig;
+                if (updates.enabled === true && current.enabled !== true) {
+                    throw new GoneException({
+                        error: 'sms_product_retired',
+                        operation: 'enable_notifications',
+                        message: 'No se admiten activaciones nuevas de notificaciones SMS.',
+                    });
+                }
                 return {
                     enabled: updates.enabled ?? current.enabled ?? false,
                     events: { handoff: updates.events?.handoff ?? current.events?.handoff ?? true },

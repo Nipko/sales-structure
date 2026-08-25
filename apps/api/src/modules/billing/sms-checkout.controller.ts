@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, GoneException, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { SmsCheckoutService } from './sms-checkout.service';
@@ -22,13 +22,13 @@ export class SmsCheckoutController {
     @Post(':tenantId/checkout')
     @Roles('super_admin', 'tenant_admin')
     async createCheckout(@Param('tenantId') tenantId: string, @Body() body: { packageId: string }) {
-        if (!body?.packageId) return { success: false, error: 'packageId es obligatorio' };
-        try {
-            const data = await this.checkout.createCheckout(tenantId, body.packageId);
-            return { success: true, data };
-        } catch (e: any) {
-            return { success: false, error: e?.response?.message || e?.message || 'No se pudo iniciar la compra' };
-        }
+        void tenantId;
+        void body;
+        throw new GoneException({
+            error: 'sms_product_retired',
+            operation: 'purchase',
+            message: 'SMS no admite compras nuevas. El historial y los saldos heredados permanecen disponibles.',
+        });
     }
 
     /** Purchase history for the tenant. */

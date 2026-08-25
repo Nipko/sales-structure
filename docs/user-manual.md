@@ -65,7 +65,7 @@
 
 # 1. Introducción
 
-Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de **WhatsApp, Instagram, Messenger, Telegram y un Web Chat Widget** — con agentes de inteligencia artificial que operan sobre tu catálogo, tu agenda y tu base de clientes reales. Email conserva un adaptador e ingreso técnico interno, pero no tiene configuración autoservicio certificada. El **SMS no es un canal conversacional**; cuando la cuenta tiene esa capacidad habilitada, se usa para **notificaciones salientes** por créditos (ver sección 20.14).
+Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de **WhatsApp, Instagram, Messenger, Telegram y un Web Chat Widget** — con agentes de inteligencia artificial que operan sobre tu catálogo, tu agenda y tu base de clientes reales. Email conserva un adaptador e ingreso técnico interno, pero no tiene configuración autoservicio certificada. **SMS está retirado para altas, compras, configuración y campañas nuevas**; solo se conservan saldos, historial, callbacks y cierres necesarios para obligaciones heredadas.
 
 ### ¿Para quién es Parallly?
 
@@ -158,7 +158,21 @@ tu plan desde **Configuración → Facturación**.
 
 > Después de 60 minutos de inactividad aparece un modal con cuenta regresiva de 2 minutos. Si no respondes, la sesión cierra.
 
-## 2.4 Recuperar contraseña
+## 2.4 Verificación progresiva del correo
+
+Una cuenta creada con email puede completar onboarding, consultar configuración y usar
+Agent Test/sandbox antes de verificar. El aviso superior permite reenviar el código o
+corregir un correo mal escrito. El reenvío, el cambio y los intentos de código tienen
+límites antiabuso.
+
+Hasta verificar, el servidor —no solo el menú— bloquea activación o desconexión de
+canales/agentes/integraciones, outbound y campañas, invitaciones, secretos, cobros,
+exportaciones y administración sensible. El error devuelve el estado
+`unverified|pending_change|restricted`, la capacidad afectada y la ruta de reparación.
+Google solo verifica la cuenta si el token firmado trae `email_verified=true`; OAuth e
+invitaciones aceptadas registran estado `verified`.
+
+## 2.5 Recuperar contraseña
 
 1. Login → "¿Olvidaste tu contraseña?"
 2. Ingresa tu email
@@ -372,7 +386,7 @@ El hub filtra sus áreas por rol. Un administrador del tenant puede ver hasta oc
 | **Empresa** | Datos del negocio, localización, fiscal y horarios |
 | **CRM y operación** | Pipeline, scoring, atributos, reserva pública y nurturing |
 | **Conversaciones** | Pre-chat, plantillas, macros, multimedia y recall |
-| **Canales e integraciones** | CRM, web chat, Slack, SMS, verticales, reseñas, pagos y e-commerce |
+| **Canales e integraciones** | CRM, web chat, Slack, verticales, reseñas, pagos y e-commerce |
 | **Desarrolladores** | Webhooks, MCP y API keys |
 | **Gobierno y alertas** | Políticas, alertas y reportes |
 | **Plan y facturación** | Suscripción, periodo y pagos |
@@ -913,12 +927,16 @@ Cron diario @6AM revisa y renueva tokens que expiran en menos de 30 días. Recib
 3. Parallly configura el webhook automáticamente
 4. Listo
 
-## 9.5 SMS — notificación saliente (no es un canal conversacional)
+## 9.5 SMS — producto retirado
 
-El **SMS conversacional no está disponible**. Cuando la plataforma y el plan de la
-cuenta habilitan notificaciones SMS, Facturación muestra los paquetes, equivalencia,
-saldo y checkout aplicables (ver 20.14). Solo entonces Campañas puede ofrecer SMS
-como envío saliente medido.
+El **SMS conversacional y el reseller de notificaciones están retirados para altas
+nuevas**. Las conexiones, pruebas y compras responden `sms_product_retired`; las rutas
+de canal y configuración redirigen a superficies vigentes; Facturación no publica
+paquetes o precios; Campañas no ofrece SMS.
+
+Saldos, ledger, órdenes históricas, callbacks tardíos, desconexión y administración
+interna pueden permanecer para obligaciones heredadas. Eso no habilita una conexión,
+una compra, una notificación nueva ni una campaña.
 
 Si esa sección o el canal no aparecen, la capacidad no está disponible para la cuenta;
 no se debe inferir un proveedor, precio o equivalencia fija desde este manual.
@@ -929,7 +947,9 @@ no se debe inferir un proveedor, precio o equivalencia fija desde este manual.
 
 Email existe en el backend como **adaptador técnico y entrada inbound interna** para integraciones administradas. Esto no equivale a un canal conversacional certificado para autoservicio.
 
-La pantalla **Canales → Email** existe, pero actualmente intenta usar rutas de configuración por tenant que el API no implementa. Por eso no debe usarse para ingresar credenciales ni asumirse que el botón de guardar deja el canal operativo.
+La ruta heredada **Canales → Email** redirige al inventario de canales certificados;
+no muestra formulario ni permite ingresar credenciales. El servidor también rechaza
+Email en la conexión genérica, en asignaciones nuevas de agentes y en campañas.
 
 Si tu organización necesita correo integrado, solicita una evaluación técnica a soporte. Hasta que el flujo de lectura, guardado, envío, recepción y respuesta se implemente y certifique de extremo a extremo, no se debe prometer que los correos aparecerán en Inbox ni que un agente IA podrá responderlos.
 
@@ -1190,14 +1210,17 @@ Las plantillas también se filtran por **industria** — si tu tenant es de salu
 
 ## 12.1 Estado de disponibilidad
 
-La pantalla permite preparar borradores, escoger una audiencia, revisar estados y
-consultar métricas ya registradas. El lanzamiento desde el editor **no está
-certificado de punta a punta para producción**:
+La pantalla permite preparar borradores WhatsApp, escoger una audiencia, revisar
+estados y consultar métricas ya registradas. El servidor rechaza campañas nuevas o
+lanzamientos heredados que incluyan Email, SMS u otro canal no certificado. El
+lanzamiento WhatsApp desde el editor **no está certificado de punta a punta para
+producción**:
 
 - WhatsApp todavía no vincula de forma segura el texto escrito con el identificador
   y los componentes exactos de una plantilla aprobada por Meta.
 - Una campaña programada no dispone de una acción operativa de cancelación.
-- Email de campañas no habilita un canal conversacional de Email de autoservicio.
+- Email y SMS no aparecen como opciones de campañas nuevas; los registros heredados
+  se conservan para auditoría, pero no se pueden lanzar.
 
 Hasta que la pantalla muestre un selector verificado de plantilla/emisor y una
 acción de cancelación, no uses **Enviar ahora** ni programes campañas reales. Para
@@ -1353,7 +1376,10 @@ Widget dedicado en la vista de Analytics que muestra qué porcentaje de conversa
 
 - **Porcentaje de resolución IA**: conversaciones resueltas sin handoff / total de conversaciones × 100
 - **Gráfico de tendencia**: evolución de la tasa a lo largo del tiempo (últimos 7, 30 o 90 días)
-- **Desglose por canal**: tasa de resolución separada por las superficies que tengan conversaciones reales. Email solo aparece cuando existe una integración administrada con datos; no certifica configuración autoservicio
+- **Desglose por canal**: tasa de resolución separada por las superficies que tengan conversaciones reales. Email solo aparece cuando existe una integración administrada con datos; no certifica configuración autoservicio.
+- **Cuentas operativas**: atribución por número, página, bot o conexión. Conserva la
+  etiqueta histórica, muestra conexiones desconectadas y separa eventos sin cuenta
+  atribuible para no mezclar el rendimiento de dos cuentas del mismo canal.
 
 ### Cómo se calcula
 
@@ -1833,15 +1859,12 @@ el catálogo.
 Al cambiar de ciclo, revisa el resumen: allí se informa si la operación es inmediata,
 programada, requiere un nuevo método de pago o no está disponible.
 
-## 20.14 Créditos SMS, cuando estén habilitados
+## 20.14 Saldos e historial SMS heredados
 
-SMS es una notificación saliente, no un canal conversacional (ver 9.5). La sección de
-créditos solo aparece cuando la plataforma devuelve paquetes disponibles para la cuenta.
-
-Si está visible, permite consultar saldo y consumo, elegir un paquete y continuar por
-el checkout habilitado. El precio, moneda, acreditación y equivalencia de segmentos se
-muestran antes de confirmar. Si la sección no aparece o la compra falla por capacidad
-deshabilitada, no intentes enviar SMS desde Campañas y consulta al administrador.
+SMS está retirado (ver 9.5). El panel tenant no publica paquetes, precios ni checkout.
+Las APIs de saldo, ledger y órdenes pueden seguir disponibles para conciliación de
+compras anteriores; no autorizan consumo nuevo. El super_admin conserva la vista y el
+ajuste manual necesarios para soporte/obligaciones legacy, sin reabrir el producto.
 
 ## 20.15 Datos y documentos fiscales, cuando correspondan
 
@@ -2733,14 +2756,22 @@ Conecta tu **sistema real** por industria para que el agente trabaje con datos e
 | Integración | Industria | Qué sincroniza |
 |-------------|-----------|----------------|
 | **Toast** | Restaurantes | Menú, ítems y precios (toma de pedidos por chat) |
-| **Mindbody** | Gimnasios | Clases y horarios |
+| **Mindbody** | Gimnasios | Descubrimiento de clases y horarios espejados; no confirma cupo en vivo ni reserva |
 | **Cliniko** | Salud | Tipos de cita y disponibilidad (sin acceder al historial clínico) |
 
-Para cada una: ingresa las credenciales, pulsa **Probar** la conexión y **Sincronizar**. Una vez conectada, el agente usa automáticamente esos datos al responder.
+Para cada una: ingresa las credenciales, pulsa **Probar** la conexión y
+**Sincronizar**. Una vez conectada, el agente usa esos datos dentro del modo declarado
+por proveedor. En Mindbody, el resultado incluye fecha de observación y deriva a
+handoff o lista de espera si el cliente pide disponibilidad viva.
 
 La pantalla distingue conexión viva de frescura del espejo. Una lectura en vivo no se
 apaga porque el último espejo sea antiguo; una lectura servida desde el espejo sí muestra
 su fecha y falla cerrado cuando supera el presupuesto del proveedor.
+
+Cada integración expone además la conexión, recurso y versión de API observados. El
+panel de **mapeos de recursos** relaciona un objeto local con uno externo de forma
+versionada. Duplicados quedan en conflicto, una desconexión crea tombstones y un
+mapeo nunca habilita escrituras externas por sí solo.
 
 ## 32.1 Channel Manager para alojamiento
 
@@ -2929,7 +2960,11 @@ La pantalla muestra si la API pública está habilitada y cuántas claves permit
 plan vigente. Recomendamos una clave separada por integración.
 
 **¿Parallly soporta email como canal?**
-Email tiene un adaptador inbound interno para integraciones administradas, pero todavía no es un canal conversacional configurable y certificado en autoservicio. La pantalla **Canales → Email** no completa hoy ese contrato. Si necesitás la integración, solicita una evaluación técnica a soporte; ver sección 9.6.
+Email tiene un adaptador inbound interno para integraciones administradas, pero no es
+un canal conversacional configurable en autoservicio. Su ruta heredada redirige al
+inventario certificado y el servidor rechaza conexiones, asignaciones y campañas
+nuevas de Email. Si necesitás la integración, solicita una evaluación técnica a
+soporte; ver sección 9.6.
 
 **¿Puedo hacer pruebas A/B en campañas?**
 Los controles A/B existen, pero el envío comparte el flujo de campañas que todavía

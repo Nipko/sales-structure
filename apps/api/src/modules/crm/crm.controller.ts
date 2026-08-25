@@ -19,6 +19,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 interface ReplacePipelineStageInput {
     id?: string;
@@ -521,6 +522,7 @@ export class CrmController {
     }
 
     @Get('export/:tenantId')
+    @RequiresVerifiedEmail('export_tenant_data')
     @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
     @Header('Pragma', 'no-cache')
     async exportCSV(

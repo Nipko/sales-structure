@@ -17,6 +17,13 @@ import { AlertTriangle, CheckCircle2, Clock, KeyRound, ShieldAlert } from "lucid
  */
 
 export interface IntegrationHealth {
+    projectionVersion?: number;
+    connectionId?: string;
+    resourceType?: string;
+    resourceId?: string;
+    sourceVersion?: string;
+    observedAt?: string;
+    degradedReason?: string | null;
     status: "healthy" | "stale" | "degraded" | "unhealthy" | "unavailable" | "not_applicable";
     connected: boolean;
     credentialValidated: boolean;
@@ -83,6 +90,14 @@ export function IntegrationHealthPanel({ health }: { health?: IntegrationHealth 
                     {t("lastSync", { age: ageLabel(health.freshness.ageSeconds, t) })}
                 </span>
             </div>
+
+            {(health.resourceType || health.sourceVersion) && (
+                <p className="text-[11px] text-muted-foreground">
+                    {health.resourceType && t("projectionTarget", { type: health.resourceType, id: health.resourceId || "all" })}
+                    {health.resourceType && health.sourceVersion ? " · " : ""}
+                    {health.sourceVersion && t("sourceVersion", { version: health.sourceVersion })}
+                </p>
+            )}
 
             {/* Un token con la mitad de los permisos está conectado igual, y la
                 lectura vuelve vacía sin decir por qué. */}

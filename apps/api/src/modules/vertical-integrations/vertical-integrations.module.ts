@@ -5,6 +5,7 @@ import { RedisModule } from '../redis/redis.module';
 import { VerticalIntegrationsService } from './vertical-integrations.service';
 import { VerticalIntegrationsController } from './vertical-integrations.controller';
 import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-crypto.service';
+import { ProviderResourceBindingService } from './provider-resource-binding.service';
 
 /**
  * Real vertical integrations (T3.19): Toast / Mindbody / Cliniko adapters.
@@ -13,8 +14,8 @@ import { TenantSecretCryptoService } from '../../common/crypto/tenant-secret-cry
  */
 @Module({
     imports: [HttpModule, PrismaModule, RedisModule],
-    providers: [VerticalIntegrationsService, TenantSecretCryptoService],
+    providers: [VerticalIntegrationsService, ProviderResourceBindingService, TenantSecretCryptoService],
     controllers: [VerticalIntegrationsController],
-    exports: [VerticalIntegrationsService],
+    exports: [VerticalIntegrationsService, ProviderResourceBindingService],
 })
 export class VerticalIntegrationsModule {}

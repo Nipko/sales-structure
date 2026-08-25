@@ -92,6 +92,9 @@ describe('VerticalTurnContextService', () => {
             runtimeToolPlan: ['search_products', 'check_stock'],
             runtimeStatus: 'partial',
             missingTools: ['place_catalog_order'],
+            defaultDeny: true,
+            workflowReadiness: 'blocked_missing_tools',
+            workflowBlockedReason: 'blocked_missing_tools',
         });
     });
 });

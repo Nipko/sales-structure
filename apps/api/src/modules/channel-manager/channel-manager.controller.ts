@@ -17,6 +17,7 @@ import {
     MapChannelManagerListingDto,
     UpdateChannelManagerConfigDto,
 } from './channel-manager.dto';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('channel-manager')
 @Controller('channel-manager')
@@ -39,6 +40,7 @@ export class ChannelManagerController {
 
     @Put('config')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_integration')
     @ApiOperation({ summary: 'Update channel manager config' })
     async updateConfig(@CurrentUser() user: any, @Body() body: UpdateChannelManagerConfigDto) {
         const config = await this.cm.updateConfig(user.tenantId, body);
@@ -57,6 +59,7 @@ export class ChannelManagerController {
 
     @Post('listings')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiOperation({ summary: 'Create a new listing' })
     async createListing(
         @CurrentUser() user: any,
@@ -81,6 +84,7 @@ export class ChannelManagerController {
 
     @Post('reservations')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiOperation({ summary: 'Create a reservation' })
     async createReservation(
         @CurrentTenant() tenantId: string,
@@ -110,6 +114,7 @@ export class ChannelManagerController {
 
     @Put('mappings')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_integration')
     @ApiOperation({ summary: 'Bridge (or unbridge) a property to a channel-manager listing' })
     async mapListing(@CurrentTenant() tenantId: string, @Body() body: MapChannelManagerListingDto) {
         const propertyId = body?.propertyId === null || body?.propertyId === undefined
@@ -121,6 +126,7 @@ export class ChannelManagerController {
 
     @Post('sync/hostaway')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_integration')
     @ApiOperation({ summary: 'Sync listings and reservations from Hostaway' })
     async syncHostaway(@CurrentUser() user: any) {
         const result = await this.cm.syncHostaway(user.tenantId);

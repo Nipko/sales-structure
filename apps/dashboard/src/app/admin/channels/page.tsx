@@ -14,8 +14,6 @@ import {
     Instagram,
     MessageCircle,
     Send,
-    Phone,
-    Mail,
     CheckCircle,
     AlertCircle,
     ArrowRight,
@@ -54,16 +52,6 @@ const channels = [
         href: "/admin/channels/telegram",
         description: "telegramDesc",
     },
-    {
-        key: "email",
-        name: "Email",
-        color: "#6c5ce7",
-        Icon: Mail,
-        href: "/admin/channels/email",
-        description: "emailDesc",
-    },
-    // SMS hidden until integration is ready
-    // { key: "sms", name: "SMS (Twilio)", color: "#0D9B47", Icon: Phone, href: "/admin/channels/sms", description: "smsDesc" },
 ];
 
 export default function ChannelsOverviewPage() {
@@ -147,7 +135,7 @@ export default function ChannelsOverviewPage() {
             <div className="grid grid-cols-3 gap-6">
                 {channels.map((ch) => {
                     const isConnected = connectedChannels.includes(ch.key);
-                    const MULTI = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
+                    const MULTI = ["whatsapp", "instagram", "messenger", "telegram", "web_widget"];
                     const showCount = MULTI.includes(ch.key);
                     const count = accountCounts[ch.key] || 0;
                     const limit = getChannelAccountLimit(ch.key); // null = unlimited

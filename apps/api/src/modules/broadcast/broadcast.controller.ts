@@ -7,6 +7,7 @@ import {
     UseGuards,
     Logger,
     ForbiddenException,
+    Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -18,6 +19,7 @@ import { BroadcastService, CreateCampaignDto } from './broadcast.service';
 import { AbTestService } from './ab-test.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('broadcast')
 @Controller('broadcast')
@@ -35,10 +37,12 @@ export class BroadcastController {
 
     @Post('campaigns')
     @Roles('tenant_admin', 'tenant_supervisor')
+    @RequiresVerifiedEmail('send_outbound')
     @ApiOperation({ summary: 'Create a new broadcast campaign' })
     async createCampaign(
         @CurrentTenant() tenantId: string,
         @Body() body: CreateCampaignDto,
+        @Req() req: any,
     ) {
         // Plan gate — count campaigns created in the current calendar month
         // so the starter cap (3) resets monthly instead of being lifetime.
@@ -66,18 +70,28 @@ export class BroadcastController {
             }
         }
 
-        const result = await this.broadcastService.createCampaign(tenantId, body);
+        const result = await this.broadcastService.createCampaign(
+            tenantId,
+            body,
+            req.user?.sub || req.user?.id,
+        );
         return { success: true, data: result };
     }
 
     @Post('campaigns/:id/launch')
     @Roles('tenant_admin', 'tenant_supervisor')
+    @RequiresVerifiedEmail('send_outbound')
     @ApiOperation({ summary: 'Launch a campaign — queues all recipients for sending' })
     async launchCampaign(
         @CurrentTenant() tenantId: string,
         @Param('id') campaignId: string,
+        @Req() req: any,
     ) {
-        const result = await this.broadcastService.launchCampaign(tenantId, campaignId);
+        const result = await this.broadcastService.launchCampaign(
+            tenantId,
+            campaignId,
+            req.user?.sub || req.user?.id,
+        );
         return { success: true, message: 'Campaign launched', data: result };
     }
 
@@ -114,6 +128,7 @@ export class BroadcastController {
 
     @Post('campaigns/:id/winner')
     @Roles('tenant_admin', 'tenant_supervisor')
+    @RequiresVerifiedEmail('send_outbound')
     @ApiOperation({ summary: 'Manually select A/B test winner' })
     async selectAbWinner(
         @CurrentTenant() tenantId: string,

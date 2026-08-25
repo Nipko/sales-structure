@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -75,6 +75,7 @@ export interface CampaignStats {
 @Injectable()
 export class BroadcastService {
     private readonly logger = new Logger(BroadcastService.name);
+    private readonly selfServiceBroadcastChannels = new Set(['whatsapp']);
 
     constructor(
         private readonly prisma: PrismaService,
@@ -89,11 +90,13 @@ export class BroadcastService {
     // ================================================================
     // CREATE CAMPAIGN
     // ================================================================
-    async createCampaign(tenantId: string, data: CreateCampaignDto) {
+    async createCampaign(tenantId: string, data: CreateCampaignDto, authorizedByUserId?: string) {
+        const channels = data.channels?.length ? data.channels : [data.channel || 'whatsapp'];
+        this.assertSelfServiceBroadcastChannels(channels);
+
         const schema = await this.getTenantSchema(tenantId);
         await this.ensureBroadcastTables(schema);
 
-        const channels = data.channels?.length ? data.channels : [data.channel || 'whatsapp'];
         const channelContent = data.channelContent || {};
 
         // Backward compat: if only WA template provided via legacy fields, populate channelContent
@@ -115,6 +118,11 @@ export class BroadcastService {
             templateComponents: channelContent.whatsapp?.templateComponents || data.templateComponents || [],
             recipientPhones: data.recipientPhones || null,
             channelAccountId: data.channelAccountId || null,
+            emailAuthorization: authorizedByUserId ? {
+                capability: 'send_outbound',
+                actorUserId: authorizedByUserId,
+                grantedAt: new Date().toISOString(),
+            } : null,
         };
 
         const status = data.scheduledAt ? 'scheduled' : 'draft';
@@ -187,7 +195,7 @@ export class BroadcastService {
     // ================================================================
     // LAUNCH CAMPAIGN — queues all recipients as BullMQ jobs
     // ================================================================
-    async launchCampaign(tenantId: string, campaignId: string) {
+    async launchCampaign(tenantId: string, campaignId: string, authorizedByUserId?: string) {
         const schema = await this.getTenantSchema(tenantId);
         await this.ensureBroadcastTables(schema);
 
@@ -203,6 +211,19 @@ export class BroadcastService {
         }
 
         const campaign = campaigns[0];
+
+        const campaignMetadata = typeof campaign.metadata === 'string'
+            ? JSON.parse(campaign.metadata)
+            : (campaign.metadata || {});
+        const campaignChannels = campaignMetadata.channels
+            || String(campaign.channel || 'whatsapp').split(',');
+        this.assertSelfServiceBroadcastChannels(
+            Array.isArray(campaignChannels) ? campaignChannels : String(campaignChannels).split(','),
+        );
+        await this.assertLaunchEmailAuthorization(
+            tenantId,
+            authorizedByUserId || campaignMetadata.emailAuthorization?.actorUserId,
+        );
 
         if (campaign.status !== 'draft' && campaign.status !== 'paused' && campaign.status !== 'scheduled') {
             throw new BadRequestException(
@@ -221,9 +242,7 @@ export class BroadcastService {
             throw new BadRequestException('No pending recipients found for this campaign');
         }
 
-        const metadata = typeof campaign.metadata === 'string'
-            ? JSON.parse(campaign.metadata)
-            : (campaign.metadata || {});
+        const metadata = campaignMetadata;
 
         const channelContent: ChannelContent = metadata.channelContent || {};
         const waContent = channelContent.whatsapp || {
@@ -588,6 +607,23 @@ export class BroadcastService {
                             await this.launchCampaign(tenant.id, campaign.id);
                             this.logger.log(`Auto-launched scheduled campaign ${campaign.id} for tenant ${tenant.id}`);
                         } catch (err: any) {
+                            if (err?.response?.workerSafe === true && err?.response?.error === 'email_not_verified') {
+                                await this.prisma.executeInTenantSchema(
+                                    schema,
+                                    `UPDATE campaigns
+                                     SET status = 'paused',
+                                         metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb,
+                                         updated_at = NOW()
+                                     WHERE id = $2::uuid AND status = 'scheduled'`,
+                                    [JSON.stringify({
+                                        launchBlock: {
+                                            code: 'email_not_verified',
+                                            capability: 'send_outbound',
+                                            blockedAt: new Date().toISOString(),
+                                        },
+                                    }), campaign.id],
+                                );
+                            }
                             this.logger.warn(`Failed to auto-launch campaign ${campaign.id}: ${err.message}`);
                         }
                     }
@@ -750,6 +786,57 @@ export class BroadcastService {
         }
 
         return { whereClause: conditions.join(' AND '), params };
+    }
+
+    private assertSelfServiceBroadcastChannels(channels: string[]): void {
+        const requested = Array.from(new Set(
+            channels.map((channel) => String(channel).trim().toLowerCase()).filter(Boolean),
+        ));
+        const unsupported = requested.filter(
+            (channel) => !this.selfServiceBroadcastChannels.has(channel),
+        );
+        if (requested.length === 0 || unsupported.length > 0) {
+            throw new BadRequestException({
+                error: 'broadcast_channel_not_self_service',
+                unsupportedChannels: unsupported,
+                supportedChannels: Array.from(this.selfServiceBroadcastChannels),
+                message: 'Solo WhatsApp está certificado para campañas autogestionables. Email es un adaptador interno y SMS está retirado.',
+            });
+        }
+    }
+
+    /**
+     * Worker-safe P25 gate. HTTP guards protect interactive calls, but the
+     * scheduler invokes the service directly. The persisted actor is checked
+     * again at launch time so a legacy campaign without authorization, a
+     * deactivated owner or an unverified address never reaches BullMQ.
+     */
+    private async assertLaunchEmailAuthorization(
+        tenantId: string,
+        actorUserId?: string,
+    ): Promise<void> {
+        const actor = actorUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(actorUserId)
+            ? await this.prisma.user.findFirst({
+                where: {
+                    id: actorUserId,
+                    tenantId,
+                    isActive: true,
+                    emailVerified: true,
+                },
+                select: { id: true },
+            })
+            : null;
+        if (!actor) {
+            throw new ForbiddenException({
+                error: 'email_not_verified',
+                state: 'unverified',
+                capability: 'send_outbound',
+                risk: 'customer_impact',
+                repair: '/verify-email',
+                workerSafe: true,
+                message: 'La campaña no tiene una autorización vigente de correo verificado.',
+            });
+        }
     }
 
     private async ensureBroadcastTables(schema: string): Promise<void> {

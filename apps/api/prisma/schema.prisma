@@ -153,6 +153,7 @@ model User {
   microsoftId         String?   @map("microsoft_id")
   picture             String?
   emailVerified       Boolean   @default(false) @map("email_verified")
+  emailVerificationState String  @default("unverified") @map("email_verification_state")
   emailVerifyCode     String?   @map("email_verify_code")
   emailVerifyExpires  DateTime? @map("email_verify_expires")
   twoFactorEnabled    Boolean   @default(false) @map("two_factor_enabled")

@@ -11,6 +11,7 @@ import {
     listSubtypeExperienceProfileIds,
     navigationSurfaceKind,
     resolveSubtypeExperienceProfile,
+    resolveIntentWorkflow,
     subtypeProfileId,
     subtypeTerminologyFor,
     type AuthoredField,
@@ -212,6 +213,14 @@ export function buildVerticalAuthoringPackage(
     const guided = domain.intents
         .filter(intent => !intent.commits && intent.fallback !== 'answer')
         .map(intent => intent.key);
+    const authoringPublishedTools = operations.actions
+        .filter(action => action.gaps.length === 0)
+        .map(action => action.tool);
+    const workflows = domain.intents.map(intent => resolveIntentWorkflow({
+        profileId: profile.id,
+        intent,
+        publishedTools: authoringPublishedTools,
+    }));
 
     const packs = Object.fromEntries(LANGUAGES.map(language => [
         language,
@@ -265,6 +274,9 @@ export function buildVerticalAuthoringPackage(
             .filter(gap => !domain.unresolved.includes(gap))
             .map(gap => `operation.${gap}`),
         ...navGaps.map(gap => `navigation.${gap}`),
+        ...workflows
+            .filter(workflow => workflow.readiness !== 'ready')
+            .map(workflow => `workflow.${workflow.intentKey}.${workflow.readiness}`),
         jobs.length ? '' : 'identity.jobs_to_be_done',
     ]);
     const promotionBlockers = unique([
@@ -282,6 +294,7 @@ export function buildVerticalAuthoringPackage(
         'commercial.scope': source('profile_explicit', `subtype-profile.${profile.id}.scope`),
         'commercial.exclusions': source('profile_explicit', `subtype-profile.${profile.id}.exclusions`),
         'intents': source('domain_derived', `domain-contract.v${domain.contractVersion}.${profile.id}.intents`),
+        'workflows': source('domain_derived', `intent-workflow-contract.v1.${profile.id}`),
         'slots': source('domain_derived', `domain-contract.v${domain.contractVersion}.${profile.id}.slots`),
         'authority': source('operation_derived', `operation-contract.v${operations.version}.${profile.id}.systemOfRecord`),
         'tools': source('operation_derived', `operation-contract.v${operations.version}.${profile.id}.actions`),
@@ -340,6 +353,7 @@ export function buildVerticalAuthoringPackage(
             guided: Object.freeze(guided),
             transactional: Object.freeze(transactional),
             regulated: Object.freeze(regulatedIntents),
+            workflows: Object.freeze(workflows),
         }),
         slots: Object.freeze({
             all: Object.freeze(allSlots),

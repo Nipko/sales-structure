@@ -5,7 +5,7 @@
  */
 export const PRODUCT_CAPABILITY_COUNTS = {
   verticals: 18,
-  channels: 6,
+  channels: 5,
   interfaceLanguages: 4,
   knowledgeTiers: 5,
   promptLayers: 3,

@@ -2,7 +2,7 @@
 
 Fecha: 24 de agosto de 2026
 
-Estado: ejecución autorizada. **Fases 1 y 2 implementadas en código el 24 de agosto de 2026. El inventario read-only de Fase 1 debe ejecutarse en producción antes de cualquier `apply` o migración; la promoción de Fase 2 conserva CI y Browser E2E como gate.**
+Estado: ejecución autorizada. **Fases 1–4 implementadas en código el 24 de agosto de 2026. El inventario read-only de Fase 1 sigue siendo obligatorio antes de migrar tenants; la revisión experta de Fase 3 y los gates externos de Fase 4 permanecen fail-closed. Cada promoción conserva CI, migraciones y Browser E2E como puertas independientes.**
 
 ## 1. Autoridad, objetivo y alcance
 
@@ -119,9 +119,9 @@ Ninguna migración modifica simultáneamente taxonomía, datos operativos y acti
 |---:|---|---|---|
 | 0. Decisión y baseline | 34 resoluciones, alcance, exclusiones y estado real fijados. | **Cerrada** | P01–P34 aprobadas; backlog externo separado; plan versionado. |
 | 1. Taxonomía y preflight | Registro v2, IDs, aliases, clasificador y reporte de tenants afectados. | **Código cerrado; ejecución del inventario productivo pendiente** | 20 verticales/76 configuraciones canónicas y 81 IDs resolubles validados; 100% de tenants legacy clasificados o marcados para revisión; dry-run sin escrituras. |
-| 2. Contratos compartidos | Tipos, schemas, resolvers, entitlements, availability y compatibilidad de configuración. | **Código cerrado; promoción sujeta a CI/Browser E2E** | Web/API/mobile/test/marketing consumen el mismo snapshot; cero fork paralelo. |
+| 2. Contratos compartidos | Tipos, schemas, resolvers, entitlements, availability y compatibilidad de configuración. | **Código cerrado y promovido; compatibilidad legacy conservada** | Web/API/mobile/test/marketing consumen el mismo snapshot; cero fork paralelo. |
 | 3. Autoría 1:1 y país | Prompts, variables, templates, términos, menús, tools, SoR y evals por perfil/locale. | **Código cerrado; revisión experta/país permanece fail-closed** | 76/76 paquetes canónicos completos y compatibilidad legacy validada; regulados no promocionados sin firma; cuatro idiomas base verdes. |
-| 4. Plataforma transversal | P25–P32: identidad, analytics, canales, planner, freshness, binding y Mindbody. | Pendiente | Ocho decisiones demostradas E2E sin divergencia backend/UI/BI. |
+| 4. Plataforma transversal | P25–P32: identidad, analytics, canales, planner, freshness, binding y Mindbody. | **Código cerrado; promoción sujeta a CI/Browser E2E y evidencia externa declarada** | Ocho decisiones demostradas sin divergencia backend/UI/BI; proveedor/piloto no se infiere de pruebas locales. |
 | 5. Profundidad de producto | Nuevos objetos y workflows nativos/híbridos, más P08–P24. | Pendiente | Cada writer produce objeto visible, reversible e idempotente; task principal a ≤2 interacciones. |
 | 6. Proveedores y regulación | PSP, ITSM, PAS/core, LMS/GDS/DMS/PMS y revisiones expertas. | Dependencia externa | Adapter/version/SoR certificados; 21 expert gates firmados; writers allowlisted individualmente. |
 | 7. Migración y canary | Taxonomía/datos en shadow, tenants piloto, rollback y observabilidad. | Pendiente | Dry-run/apply verificable; cero migración silenciosa; métricas y conciliación dentro de umbrales. |

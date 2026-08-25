@@ -128,7 +128,7 @@
     }
   },
   "emailVerification": {
-    "message": "Your email {email} is not verified yet.",
+    "message": "Your email {email} is not verified yet. You can explore and test; verify it to publish, send, connect integrations, collect payments, or export.",
     "resend": "Resend code",
     "enterCode": "I have the code",
     "sent": "Code sent",
@@ -5241,6 +5241,17 @@
     "readRate": "Read Rate",
     "total": "Total",
     "channel": "Channel",
+    "account": "Operational account",
+    "operationalAccounts": "Performance by operational account",
+    "operationalAccountsDescription": "Separates every number, page, bot, or widget even when they share a channel.",
+    "unattributedEvents": "{count} unattributed events",
+    "unattributedAccount": "Unattributed account",
+    "historicalUnknown": "Historical data without sufficient evidence",
+    "noOperationalAccountData": "No activity was attributed to operational accounts in this period.",
+    "disconnected": "Disconnected",
+    "appointments": "Appointments",
+    "leads": "Leads",
+    "orders": "Orders",
     "anomaliesTab": "Anomalies",
     "cohortsTab": "Cohorts",
     "anomaliesDetected": "Anomalies Detected",
@@ -7690,7 +7701,7 @@
       ]
     },
     "settingsIntegrationsVertical": {
-      "betaNotice": "These integrations are read-only and in beta: they sync the catalog (menu, classes, services) once a day, but they do not write anything back to the source system and have not yet been verified against a live account. If you connect one and something does not work as expected, let us know.",
+      "betaNotice": "These integrations are read-only and in beta: they show source, version, and freshness, but do not write to the source system or confirm live availability when the provider does not expose it. If something does not work as expected, let us know.",
       "title": "What are vertical integrations?",
       "description": "Connect Parallly with industry-specific software (Toast for restaurants, Mindbody for gyms/wellness, Cliniko for clinics) so the agent can check availability, book appointments, and sync data in real time.",
       "tips": [
@@ -10801,7 +10812,7 @@
     "provider_toast": "Toast (restaurant POS)",
     "provider_toast_desc": "Sync menu, items and prices to take orders over chat.",
     "provider_mindbody": "Mindbody (gyms)",
-    "provider_mindbody_desc": "Sync classes and schedules for chat bookings.",
+    "provider_mindbody_desc": "Sync classes and schedules for discovery. Live capacity and booking are not confirmed.",
     "provider_cliniko": "Cliniko (health)",
     "provider_cliniko_desc": "Appointment types and availability. No clinical record access (avoids HIPAA).",
     "testFirst": "Test the connection before syncing",
@@ -10824,9 +10835,26 @@
       "scopesMissing": "Missing permissions: {scopes}. Reads come back empty without saying why.",
       "scopesUnknown": "We do not know yet which permissions the provider granted. Test the connection.",
       "scopesSatisfied": "Granted permissions: {scopes}",
+      "projectionTarget": "Resource: {type} · {id}",
+      "sourceVersion": "API {version}",
       "lastError": "Last provider error: {code}",
       "circuit_open": "Paused after repeated failures. It retries on its own; test the connection to bring it back sooner.",
       "circuit_half_open": "Retrying after repeated failures."
+    },
+    "bindings": {
+      "title": "Resource mapping",
+      "description": "Map each local location, calendar, or resource to its external identifier. A mapping never enables writes by itself.",
+      "resourceType": "Resource type",
+      "localResourceId": "Local ID",
+      "externalId": "External ID",
+      "scopeType": "Scope type (optional)",
+      "scopeId": "Scope ID (optional)",
+      "map": "Map",
+      "conflict": "Conflict: duplicate external ID",
+      "remove": "Remove mapping",
+      "loadFailed": "Mappings could not be loaded.",
+      "saveFailed": "The mapping could not be saved.",
+      "deleteFailed": "The mapping could not be removed."
     }
   },
   "mcp": {

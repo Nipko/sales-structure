@@ -92,7 +92,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
 
   // Channels
   { id: "channels", pattern: "/admin/channels", titleKey: "nav.items.channels", scope: "tenant" },
-  { id: "channelEmail", pattern: "/admin/channels/email", titleKey: "navigation.routes.channelEmail", scope: "tenant", parentId: "channels" },
+  { id: "channelEmail", pattern: "/admin/channels/email", titleKey: "navigation.routes.channelEmail", scope: "tenant", parentId: "channels", discoverable: false },
   { id: "channelInstagram", pattern: "/admin/channels/instagram", titleKey: "navigation.routes.channelInstagram", scope: "tenant", parentId: "channels" },
   { id: "channelInstagramCallback", pattern: "/admin/channels/instagram/callback", titleKey: "navigation.routes.channelInstagramCallback", scope: "tenant", parentId: "channelInstagram", discoverable: false },
   { id: "channelMessenger", pattern: "/admin/channels/messenger", titleKey: "navigation.routes.channelMessenger", scope: "tenant", parentId: "channels" },
@@ -171,7 +171,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "settingsPayments", pattern: "/admin/settings/integrations/payments", titleKey: "settings.items.payments.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsReviews", pattern: "/admin/settings/integrations/reviews", titleKey: "settings.items.reviews.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsSlack", pattern: "/admin/settings/integrations/slack", titleKey: "settings.items.slack.label", scope: "tenant", parentId: "settingsIntegrations" },
-  { id: "settingsSmsNotifications", pattern: "/admin/settings/integrations/sms-notifications", titleKey: "settings.items.smsNotifications.label", scope: "tenant", parentId: "settingsIntegrations" },
+  { id: "settingsSmsNotifications", pattern: "/admin/settings/integrations/sms-notifications", titleKey: "settings.items.smsNotifications.label", scope: "tenant", parentId: "settingsIntegrations", discoverable: false },
   // Contextual destination for turismo/hotel and alquiler_vacacional. It is
   // linked from Vertical Integrations only when the subtype can use it; a
   // global command-palette entry would advertise a plan/subtype-gated screen

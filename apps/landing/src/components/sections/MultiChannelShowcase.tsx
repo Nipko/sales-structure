@@ -94,38 +94,6 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
       },
     ],
   },
-  {
-    channel: "email",
-    key: "email",
-    emoji: "✉️",
-    agentName: "Clara",
-    business: "Academia Nova",
-    messages: [
-      { from: "customer", text: "Quisiera información del curso de inglés" },
-      { from: "ai", text: "Con gusto. ¿Qué nivel tienes actualmente?" },
-      { from: "customer", text: "Básico" },
-      { from: "ai", text: "Gracias. Te compartiré las opciones cargadas por la academia." },
-    ],
-  },
-  {
-    channel: "sms",
-    key: "support",
-    emoji: "📱",
-    agentName: "Sofía",
-    business: "Clínica Central",
-    messages: [
-      { from: "ai", text: "Recordatorio: tu cita es mañana a las 9am. ¿Confirmas?" },
-      {
-        from: "customer",
-        text: "Sí, confirmo",
-      },
-      { from: "ai", text: "Cita confirmada ✅" },
-      {
-        from: "customer",
-        text: "Gracias",
-      },
-    ],
-  },
 ];
 
 /* ------------------------------------------------------------------ */

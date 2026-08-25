@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException, ForbiddenException, GoneException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +16,8 @@ import { RedisService } from '../redis/redis.service';
 import { personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { CERTIFIED_SELF_SERVICE_CHANNELS } from '@parallext/shared';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -35,6 +37,16 @@ export class ChannelManagementController {
         private redis: RedisService,
         private events: EventEmitter2,
     ) {}
+
+    private rejectRetiredSms(operation: 'connect' | 'test'): void {
+        throw new GoneException({
+            error: 'sms_product_retired',
+            operation,
+            message: operation === 'connect'
+                ? 'SMS no admite conexiones nuevas. Solo se conserva trazabilidad para cuentas heredadas.'
+                : 'SMS no admite nuevos envíos ni pruebas desde el producto.',
+        });
+    }
 
     /**
      * Activación (TTFV): marca el instante del PRIMER canal conectado del tenant.
@@ -234,6 +246,7 @@ export class ChannelManagementController {
 
     @Post('telegram/connect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_channel')
     @ApiOperation({ summary: 'Connect a Telegram bot — validates token, sets webhook, stores credentials' })
     async connectTelegram(
         @Body() body: { botToken: string; displayName?: string },
@@ -363,6 +376,7 @@ export class ChannelManagementController {
 
     @Post('telegram/test')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('send_outbound')
     @ApiOperation({ summary: 'Send a test message through the connected Telegram bot' })
     async testTelegram(
         @Body() body: { chatId: string },
@@ -388,6 +402,7 @@ export class ChannelManagementController {
 
     @Delete('telegram/disconnect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiOperation({ summary: 'Disconnect Telegram bot — removes webhook from Telegram and deactivates channel' })
     async disconnectTelegram(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -463,6 +478,7 @@ export class ChannelManagementController {
 
     @Post('messenger/oauth-connect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_channel')
     @ApiOperation({ summary: 'Receive user access token from FB.login(), list pages, subscribe webhooks, store encrypted credentials' })
     async messengerOAuthConnect(
         @Body() body: { userAccessToken: string },
@@ -749,6 +765,7 @@ export class ChannelManagementController {
 
     @Delete('messenger/disconnect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiOperation({ summary: 'Disconnect Messenger — unsubscribes the app from each FB Page and deactivates channel' })
     async disconnectMessenger(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -837,6 +854,7 @@ export class ChannelManagementController {
 
     @Post('instagram/oauth-connect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_channel')
     @ApiOperation({ summary: 'Exchange Instagram OAuth code for long-lived token, fetch profile, store encrypted credentials' })
     async instagramOAuthConnect(
         @Body() body: { code: string },
@@ -1046,6 +1064,7 @@ export class ChannelManagementController {
 
     @Delete('instagram/disconnect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiOperation({ summary: 'Disconnect Instagram — revokes app permissions on the IG account and deactivates channel' })
     async disconnectInstagram(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -1103,6 +1122,7 @@ export class ChannelManagementController {
         @Body() body: { accountSid: string; authToken: string; phoneNumber: string; displayName?: string },
         @Req() req: any,
     ) {
+        this.rejectRetiredSms('connect');
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
@@ -1216,6 +1236,7 @@ export class ChannelManagementController {
 
     @Delete('sms/disconnect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiOperation({ summary: 'Disconnect Twilio SMS — clears the webhook URL on the Twilio phone number and deactivates channel' })
     async disconnectSms(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -1298,6 +1319,7 @@ export class ChannelManagementController {
         @Body() body: { to: string },
         @Req() req: any,
     ) {
+        this.rejectRetiredSms('test');
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
@@ -1318,6 +1340,7 @@ export class ChannelManagementController {
 
     @Post(':channelType/connect')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('activate_channel')
     @ApiOperation({ summary: 'Connect a channel (Instagram, Messenger, etc.)' })
     async connect(
         @Param('channelType') channelType: string,
@@ -1326,6 +1349,13 @@ export class ChannelManagementController {
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
+        if (!(CERTIFIED_SELF_SERVICE_CHANNELS as readonly string[]).includes(channelType)) {
+            throw new GoneException({
+                error: channelType === 'sms' ? 'sms_product_retired' : 'channel_not_self_service',
+                channel: channelType,
+                message: 'Este tipo no es un canal conversacional self-service certificado.',
+            });
+        }
         await this.assertChannelAllowed(tenantId, channelType);
 
         const { accountId, displayName, accessToken, metadata } = body;
@@ -1397,6 +1427,7 @@ export class ChannelManagementController {
 
     @Delete(':channelType/account/:accountId')
     @Roles('tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiOperation({ summary: 'Disconnect ONE specific connected account of a channel type (multi-account)' })
     async disconnectAccount(
         @Param('channelType') channelType: string,

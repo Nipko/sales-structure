@@ -448,6 +448,7 @@ export class AuthService {
                 tenantId: user.tenantId,
                 hasPassword: true,
                 emailVerified: false,
+                emailVerificationState: 'unverified',
                 onboardingCompleted: false,
             },
         };
@@ -723,6 +724,7 @@ export class AuthService {
                 isActive: true,
                 onboardingCompleted: true,
                 emailVerified: true,
+                emailVerificationState: true,
                 tenant: {
                     select: { id: true, schemaName: true, isActive: true, onboardingCompletedAt: true },
                 },
@@ -763,6 +765,7 @@ export class AuthService {
             // Necesario para EmailVerifiedGuard: sin esto en req.user no hay
             // forma de gatear las acciones donde el correo importa de verdad.
             emailVerified: user.emailVerified,
+            emailVerificationState: user.emailVerificationState,
             schemaName: readyContext?.schemaName,
             // Carry the delegation through. Re-selecting the user from the DB
             // dropped these, so anything written while impersonating was
@@ -822,6 +825,7 @@ export class AuthService {
                     googleId: googleUser.googleId,
                     picture: googleUser.picture,
                     emailVerified: true,
+                    emailVerificationState: 'verified',
                     role: 'tenant_admin',
                     isSelfServeSignup: true,
                     signupSource: signupAttribution?.source || 'direct',
@@ -842,6 +846,7 @@ export class AuthService {
                     // con contraseña y vincula Google después, que quedaba sin
                     // verificar para siempre.
                     emailVerified: true,
+                    emailVerificationState: 'verified',
                     emailVerifyCode: null,
                     emailVerifyExpires: null,
                 },
@@ -949,6 +954,7 @@ export class AuthService {
                     microsoftId: microsoftUser.microsoftId,
                     picture: microsoftUser.picture,
                     emailVerified: true,
+                    emailVerificationState: 'verified',
                     role: 'tenant_admin',
                 },
                 include: { tenant: true },
@@ -961,6 +967,7 @@ export class AuthService {
                     picture: microsoftUser.picture || user.picture,
                     // Igual que con Google: Microsoft ya probó la casilla.
                     emailVerified: true,
+                    emailVerificationState: 'verified',
                     emailVerifyCode: null,
                     emailVerifyExpires: null,
                 },
@@ -1105,7 +1112,12 @@ export class AuthService {
 
             await this.prisma.user.update({
                 where: { id: userId },
-                data: { email, emailVerifyCode: null, emailVerifyExpires: null },
+                data: {
+                    email,
+                    emailVerificationState: 'pending_change',
+                    emailVerifyCode: null,
+                    emailVerifyExpires: null,
+                },
             });
             this.logger.log(`[Verification] Pending email changed for user ${userId}`);
         }
@@ -1129,7 +1141,12 @@ export class AuthService {
 
         await this.prisma.user.update({
             where: { id: userId },
-            data: { emailVerified: true, emailVerifyCode: null, emailVerifyExpires: null },
+            data: {
+                emailVerified: true,
+                emailVerificationState: 'verified',
+                emailVerifyCode: null,
+                emailVerifyExpires: null,
+            },
         });
 
         return { message: 'Email verified successfully' };

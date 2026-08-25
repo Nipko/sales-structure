@@ -541,11 +541,49 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."analytics_events" (
     "event_type" VARCHAR(100) NOT NULL,
     "conversation_id" UUID,
     "contact_id" UUID,
+    "channel_type" VARCHAR(50),
+    "channel_account_id" VARCHAR(255),
+    "channel_account_label" VARCHAR(255),
+    "attribution_source" VARCHAR(32) NOT NULL DEFAULT 'unattributed',
     "data" JSONB DEFAULT '{}',
     "created_at" TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."analytics_events" ADD COLUMN IF NOT EXISTS "channel_type" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."analytics_events" ADD COLUMN IF NOT EXISTS "channel_account_id" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."analytics_events" ADD COLUMN IF NOT EXISTS "channel_account_label" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."analytics_events" ADD COLUMN IF NOT EXISTS "attribution_source" VARCHAR(32) NOT NULL DEFAULT 'unattributed';
 CREATE INDEX IF NOT EXISTS "idx_analytics_events_event_type_created_at" ON "{{SCHEMA_NAME}}"."analytics_events" ("event_type", "created_at");
 CREATE INDEX IF NOT EXISTS "idx_analytics_events_conversation_id" ON "{{SCHEMA_NAME}}"."analytics_events" ("conversation_id");
+CREATE INDEX IF NOT EXISTS "idx_analytics_events_channel_account_created_at" ON "{{SCHEMA_NAME}}"."analytics_events" ("channel_type", "channel_account_id", "created_at" DESC);
+
+-- ---- Granular provider/resource ownership bindings (P31) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_resource_bindings" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" UUID NOT NULL,
+    "provider" VARCHAR(64) NOT NULL,
+    "connection_id" VARCHAR(255) NOT NULL,
+    "resource_type" VARCHAR(64) NOT NULL,
+    "resource_id" VARCHAR(255) NOT NULL,
+    "external_id" VARCHAR(255) NOT NULL,
+    "scope_type" VARCHAR(64),
+    "scope_id" VARCHAR(255),
+    "state" VARCHAR(24) NOT NULL DEFAULT 'active' CHECK ("state" IN ('active', 'conflict', 'tombstoned')),
+    "generation" INTEGER NOT NULL DEFAULT 1 CHECK ("generation" > 0),
+    "conflict_reason" VARCHAR(255),
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "tombstoned_at" TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_integration_resource_binding_local_active"
+    ON "{{SCHEMA_NAME}}"."integration_resource_bindings"
+    ("provider", "connection_id", "resource_type", "resource_id")
+    WHERE "state" <> 'tombstoned';
+CREATE INDEX IF NOT EXISTS "idx_integration_resource_binding_external"
+    ON "{{SCHEMA_NAME}}"."integration_resource_bindings"
+    ("provider", "connection_id", "resource_type", "external_id")
+    WHERE "state" <> 'tombstoned';
+CREATE INDEX IF NOT EXISTS "idx_integration_resource_binding_state"
+    ON "{{SCHEMA_NAME}}"."integration_resource_bindings" ("state", "updated_at" DESC);
 
 -- ============================================
 -- PARALLLY — Commercial Domain (Phase 2)

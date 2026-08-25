@@ -36,7 +36,7 @@
     "menuAgent": "AI Agent",
     "menuAgentDesc": "Customization, templates and multi-agent",
     "menuChannels": "Channels",
-    "menuChannelsDesc": "WhatsApp, IG, Messenger, Telegram, SMS and Email",
+    "menuChannelsDesc": "WhatsApp, IG, Messenger, Telegram and Web Chat",
     "menuBooking": "Booking",
     "menuBookingDesc": "Scheduling, Google Calendar, reminders",
     "menuCrm": "CRM",
@@ -91,7 +91,7 @@
   },
   "channels": {
     "title": "Works across all your channels",
-    "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram, SMS and Email. Each channel uses the agent you assign, with a consistent experience or channel-specific personality and rules.",
+    "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram and Web Chat. Each certified channel uses the agent you assign, with a consistent experience or channel-specific rules.",
     "note": "Every customer has a single profile no matter which channel they message you on. Automatic cross-channel identity.",
     "demoDisclaimer": "Illustrative examples: schedules, prices and availability come from each business's configuration and connected systems.",
     "respondingLabel": "AI replying",
@@ -99,9 +99,7 @@
       "whatsapp": "online",
       "instagram": "Active now",
       "messenger": "Active",
-      "telegram": "online",
-      "sms": "Connected",
-      "email": "Active connection"
+      "telegram": "online"
     },
     "scenarios": {
       "dental": {
@@ -132,13 +130,6 @@
         "m3": "50 St #15-20",
         "m4": "The team will confirm availability, pricing and arrival time."
       },
-      "email": {
-        "business": "Nova Academy",
-        "m1": "I'd like information about the English course",
-        "m2": "Of course. What is your current level?",
-        "m3": "Beginner",
-        "m4": "Thank you. I'll share the options configured by the academy."
-      },
       "support": {
         "business": "Central Clinic",
         "m1": "Reminder: your appointment is tomorrow at 9am. Do you confirm?",
@@ -160,7 +151,7 @@
     "tool1Title": "Smart kanban pipeline",
     "tool1Desc": "Configure stages, scoring and progression rules; sensitive actions may require confirmation or approval.",
     "tool2Title": "Unified & Omnichannel Inbox",
-    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram, SMS and Email — all unified in one console with handoff notifications and SLA alerts.",
+    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram and Web Chat — unified in one console with handoff notifications and SLA alerts.",
     "tool3Title": "Multi-Calendar Scheduling",
     "tool3Desc": "With a healthy integration, it checks Google or Microsoft availability, creates events and can generate Meet or Teams links.",
     "tool4Title": "Real-time analytics",
@@ -168,7 +159,7 @@
     "tool5Title": "Replies from your configured sources",
     "tool5Desc": "Upload your catalog, prices, FAQs, and policies. The assistant uses those sources and, when no verified price is available, says so and offers to confirm it.",
     "tool6Title": "An assistant with your tone and your rules",
-    "tool6Desc": "Decide how your assistant speaks on each channel: formal on email, friendly on Instagram. You set the rules — what it can promise, what it can't — and it follows them in every conversation."
+    "tool6Desc": "Decide how your assistant speaks on each certified channel. You set the rules — what it can promise, what it can't — and it follows them in every conversation."
   },
   "hero": {
     "badge": "Conversations, AI and operations in one place",
@@ -199,7 +190,7 @@
     "subtitle": "Parallly connects customer care with the work that follows: reply, record, schedule, automate and escalate.",
     "stepLabel": "Step {number}",
     "channelTitle": "The customer uses their preferred channel",
-    "channelDesc": "WhatsApp, Instagram, Messenger, Telegram, SMS and email arrive in one unified inbox.",
+    "channelDesc": "WhatsApp, Instagram, Messenger, Telegram and Web Chat arrive in one unified inbox.",
     "channelOutput": "One identity and conversation history per customer",
     "aiTitle": "AI replies using your sources",
     "aiDesc": "It uses business information, catalog, FAQs, policies and the configured knowledge base.",
@@ -732,7 +723,7 @@
     "faqQ2": "What happens when my trial ends?",
     "faqA2": "When the trial ends, review the available activation options and plans in your dashboard.",
     "faqQ3": "Are there hidden fees?",
-    "faqA3": "AI limits do not trigger automatic overage charges: once reached, that automation pauses and upgrade options are shown. Third-party services or optional packages, such as SMS when enabled, are disclosed separately.",
+    "faqA3": "AI limits do not trigger automatic overage charges: once reached, that automation pauses and upgrade options are shown. Third-party services or optional packages are disclosed separately.",
     "faqQ4": "Do you accept local currency payments?",
     "faqA4": "Select your country to see the available currency. If there is no current local rate, the catalog shows the amount in USD before checkout.",
     "faqQ5": "Is there an annual payment discount?",
@@ -769,7 +760,7 @@
     "sectionTitle": "Configure the product in 3 steps",
     "subtitle": "No code, no techies. If you can use WhatsApp, you can use Parallly.",
     "step1": "Connect your channels",
-    "step1Desc": "WhatsApp, Instagram, Messenger, Telegram, SMS or Email. Each channel uses its corresponding connection flow.",
+    "step1Desc": "WhatsApp, Instagram, Messenger, Telegram or Web Chat. Each channel uses its corresponding connection flow.",
     "step1Tag": "Guided connection",
     "step2": "Pick your industry",
     "step2Desc": "18 vertical configurations with visible product modes; specialized capabilities require validation.",
@@ -785,7 +776,7 @@
     "f1Title": "AI agent that sounds like you",
     "f1Desc": "Configure tone, style, rules and schedule. The assistant replies on the channels and periods you enable.",
     "f2Title": "Unified inbox",
-    "f2Desc": "WhatsApp, Instagram, Messenger, Telegram, SMS and Email — all channels in one place.",
+    "f2Desc": "WhatsApp, Instagram, Messenger, Telegram and Web Chat — all certified channels in one place.",
     "f3Title": "CRM connected to conversations",
     "f3Desc": "Inbound conversations can create or update leads under configured rules, with pipeline, scoring, tags and segments.",
     "f4Title": "Built-in scheduling",
@@ -797,7 +788,7 @@
     "f7Title": "Answers from configured sources",
     "f7Desc": "Upload your catalog, FAQs, policies and documents. Your agent searches with AI and answers with real info.",
     "f8Title": "Multi-agent, multi-channel",
-    "f8Desc": "A formal agent on email, a casual one on Instagram. Your team gets handoffs by skills.",
+    "f8Desc": "Configure a different tone per certified channel. Your team gets skill-based handoffs.",
     "f9Title": "Cross-channel identity",
     "f9Desc": "Same customer on WhatsApp and Instagram = single profile. Auto-merge and suggestions.",
     "f10Title": "Email templates",
@@ -870,7 +861,7 @@
     "starterDesc": "For entrepreneurs who want more channels.",
     "starterCta": "Start with Starter",
     "starterFeatures": [
-      "4 channels (WA + IG + Messenger + Email)",
+      "4 connections according to plan",
       "5,000 AI messages/month",
       "1 AI agent",
       "Unified profile CRM",
@@ -881,7 +872,7 @@
     "proDesc": "For teams ready to grow.",
     "proCta": "Start with Pro",
     "proFeatures": [
-      "6 channels (all, includes SMS and Email)",
+      "Certified channels according to plan",
       "25,000 AI messages/month",
       "3 AI agents",
       "Advanced CRM + automations",
@@ -894,7 +885,7 @@
     "enterpriseCta": "Start with Enterprise",
     "enterprisePrice": "Custom",
     "enterpriseFeatures": [
-      "All channels (WhatsApp + IG + FB + TG + SMS + Email)",
+      "All certified channels (WhatsApp + IG + FB + TG + Web Chat)",
       "100,000 AI messages/month",
       "10 AI assistants + advanced knowledge base",
       "Automatic alerts when something looks off",
@@ -975,7 +966,7 @@
     "subtitle": "Review each plan's current trial, requirements, and limits. Guided setup in Spanish and English.",
     "button": "Start free trial",
     "secondaryButton": "Talk to our AI",
-    "guarantees": "✓ 18 vertical configurations · ✓ catalog of up to 6 adapters by plan · ✓ 4 languages"
+    "guarantees": "✓ 18 vertical configurations · ✓ catalog of up to 5 certified channels by plan · ✓ 4 languages"
   },
   "footer": {
     "brandDesc": "The conversational AI platform for Latin American SMBs. Made with ♥ from Bogotá.",
@@ -1044,13 +1035,13 @@
     "agentUseCase3": "Real estate",
     "agentUseCase3Desc": "Carlos filters properties by budget, books visits and qualifies the buyer before they talk to an agent.",
     "channelsTitle": "Channels",
-    "channelsDesc": "WhatsApp, Instagram, Messenger, Telegram, SMS and Email in a single inbox.",
+    "channelsDesc": "WhatsApp, Instagram, Messenger, Telegram and Web Chat in a single inbox.",
     "channelsBadge": "Omnichannel communication",
     "channelsHeroPrefix": "All your channels,",
     "channelsHeroHighlight": "one single inbox",
     "channelsSubtitle": "Your channels in one place. Each channel uses the agent you assign, with a consistent experience or channel-specific behavior.",
     "channelsCta": "Connect channels free",
-    "channelsFeaturesTitle": "Catalog of 6 messaging adapters",
+    "channelsFeaturesTitle": "Catalog of 5 certified channels",
     "channelsFeaturesSubtitle": "Each channel uses its adapter and connection flow; availability depends on the plan.",
     "channelsDemoTitle": "Unified inbox in action",
     "channelsDemoSubtitle": "All messages from all channels land in a single place.",
@@ -1063,8 +1054,8 @@
     "channelsFeature3Desc": "Automatic support from your Facebook page. Leads land in the CRM without you lifting a finger.",
     "channelsFeature4": "Telegram",
     "channelsFeature4Desc": "Telegram bot with all your AI agent's capabilities. Ideal for communities and tech support.",
-    "channelsFeature5": "Unified inbox",
-    "channelsFeature5Desc": "All messages land on a single screen. Cross-channel identity: the same customer on WA and IG = one profile.",
+    "channelsFeature5": "Web Chat Widget",
+    "channelsFeature5Desc": "Website chat with a public snippet, sessions, and real-time messaging inside the unified inbox.",
     "channelsUseCase1": "Beauty salon",
     "channelsUseCase1Desc": "Clients book via Instagram DM, get confirmation on WhatsApp, and staff sees everything on one screen.",
     "channelsUseCase2": "Insurance agency",

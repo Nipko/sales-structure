@@ -128,7 +128,7 @@
     }
   },
   "emailVerification": {
-    "message": "Seu e-mail {email} ainda não foi verificado.",
+    "message": "Seu e-mail {email} ainda não foi verificado. Você pode explorar e testar; verifique-o para publicar, enviar, conectar integrações, cobrar ou exportar.",
     "resend": "Reenviar código",
     "enterCode": "Já tenho o código",
     "sent": "Código enviado",
@@ -5241,6 +5241,17 @@
     "readRate": "Taxa Leitura",
     "total": "Total",
     "channel": "Canal",
+    "account": "Conta operacional",
+    "operationalAccounts": "Desempenho por conta operacional",
+    "operationalAccountsDescription": "Separa cada número, página, bot ou widget mesmo quando pertencem ao mesmo canal.",
+    "unattributedEvents": "{count} eventos sem atribuição",
+    "unattributedAccount": "Conta não atribuída",
+    "historicalUnknown": "Histórico sem evidência suficiente",
+    "noOperationalAccountData": "Não há atividade atribuída a contas operacionais neste período.",
+    "disconnected": "Desconectada",
+    "appointments": "Agendamentos",
+    "leads": "Leads",
+    "orders": "Pedidos",
     "anomaliesTab": "Anomalias",
     "cohortsTab": "Coortes",
     "anomaliesDetected": "Anomalias Detectadas",
@@ -7690,7 +7701,7 @@
       ]
     },
     "settingsIntegrationsVertical": {
-      "betaNotice": "Estas integrações são somente leitura e estão em beta: sincronizam o catálogo (cardápio, aulas, serviços) uma vez por dia, mas não escrevem nada no sistema de origem e ainda não foram verificadas com uma conta real. Se conectar uma e algo não funcionar como esperado, avise-nos.",
+      "betaNotice": "Estas integrações são somente leitura e estão em beta: mostram origem, versão e atualização, mas não escrevem no sistema de origem nem confirmam disponibilidade ao vivo quando o provedor não a oferece. Avise-nos se algo não funcionar como esperado.",
       "title": "O que são integrações verticais?",
       "description": "Conecte o Parallly a softwares especializados do seu setor (Toast para restaurantes, Mindbody para academias/wellness, Cliniko para clínicas) para que o agente consulte disponibilidade, agende compromissos e sincronize dados em tempo real.",
       "tips": [
@@ -10801,7 +10812,7 @@
     "provider_toast": "Toast (PDV de restaurante)",
     "provider_toast_desc": "Sincronize o cardápio, itens e preços para receber pedidos pelo chat.",
     "provider_mindbody": "Mindbody (academias)",
-    "provider_mindbody_desc": "Sincronize aulas e horários para reservas pelo chat.",
+    "provider_mindbody_desc": "Sincroniza aulas e horários para descoberta. Vagas e reservas ao vivo não são confirmadas.",
     "provider_cliniko": "Cliniko (saúde)",
     "provider_cliniko_desc": "Tipos de consulta e disponibilidade. Sem acesso ao prontuário (evita HIPAA).",
     "testFirst": "Teste a conexão antes de sincronizar",
@@ -10824,9 +10835,26 @@
       "scopesMissing": "Faltam permissões: {scopes}. A leitura volta vazia sem dizer por quê.",
       "scopesUnknown": "Ainda não sabemos quais permissões o provedor concedeu. Teste a conexão.",
       "scopesSatisfied": "Permissões concedidas: {scopes}",
+      "projectionTarget": "Recurso: {type} · {id}",
+      "sourceVersion": "API {version}",
       "lastError": "Último erro do provedor: {code}",
       "circuit_open": "Pausada após várias falhas seguidas. Ela tenta de novo sozinha; teste a conexão para reativá-la antes.",
       "circuit_half_open": "Tentando novamente após várias falhas."
+    },
+    "bindings": {
+      "title": "Mapeamento por recurso",
+      "description": "Vincule cada unidade, calendário ou recurso local ao identificador externo. O mapeamento nunca habilita gravações sozinho.",
+      "resourceType": "Tipo de recurso",
+      "localResourceId": "ID local",
+      "externalId": "ID externo",
+      "scopeType": "Tipo de escopo (opcional)",
+      "scopeId": "ID do escopo (opcional)",
+      "map": "Mapear",
+      "conflict": "Conflito: ID externo duplicado",
+      "remove": "Remover mapeamento",
+      "loadFailed": "Não foi possível carregar os mapeamentos.",
+      "saveFailed": "Não foi possível salvar o mapeamento.",
+      "deleteFailed": "Não foi possível remover o mapeamento."
     }
   },
   "mcp": {

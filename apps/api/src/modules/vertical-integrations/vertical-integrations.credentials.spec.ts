@@ -49,6 +49,7 @@ function buildService(storedSettings: Record<string, any> = {}) {
         { runExclusive: jest.fn() } as any,
         { get: jest.fn().mockReturnValue('') } as any,
         new TenantSecretCryptoService(),
+        {} as any,
     );
     jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);

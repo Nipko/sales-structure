@@ -60,6 +60,14 @@ describe('VerticalIntegrationsService endpoint security', () => {
             { runExclusive: jest.fn() } as any,
             appConfig,
             new TenantSecretCryptoService(),
+            {
+                resolve: jest.fn(async (_tenantId: string, input: any) => ({
+                    version: 1, ...input, mode: 'tenant_wide_conservative', bindingId: null,
+                    externalId: null, generation: 0, owner: 'external', allowExternalRead: true,
+                    allowExternalWrite: false, allowLocalWrite: false,
+                    reason: 'resource_binding_required', cache: 'not_cached',
+                })),
+            } as any,
         );
     });
 
@@ -343,7 +351,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
         await expect(service.checkClinikoAvailability(
             TENANT_ID,
             '789/../../users?admin=true',
-        )).resolves.toEqual({
+        )).resolves.toMatchObject({
             availableTimes: [],
             error: 'Identificador de disponibilidad inválido',
             integrationStatus: 'healthy',

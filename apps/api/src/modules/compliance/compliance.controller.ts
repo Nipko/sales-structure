@@ -8,6 +8,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('compliance')
 @Controller('compliance')
@@ -174,6 +175,7 @@ export class ComplianceController {
     }
 
     @Post('admin/export-contact-data/:tenantId/:contactId')
+    @RequiresVerifiedEmail('export_tenant_data')
     @Roles('super_admin')
     @ApiOperation({ summary: 'GDPR/LGPD Article 15 — full data export for one contact' })
     async exportContactData(

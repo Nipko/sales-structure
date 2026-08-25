@@ -1,5 +1,6 @@
 import type { CountryMarketPolicyV1, CountryPackStatus } from './tenant-regional-profile';
 import type { IntentContract, SlotSchema } from './vertical-domain-contract';
+import type { ResolvedIntentWorkflowV1 } from './intent-workflow-contract';
 
 /** Versioned, auditable composition of every profile-authoring dimension. */
 export const VERTICAL_AUTHORING_PACKAGE_VERSION = 1 as const;
@@ -89,6 +90,7 @@ export interface VerticalAuthoringPackageV1 {
         guided: readonly string[];
         transactional: readonly string[];
         regulated: readonly string[];
+        workflows: readonly ResolvedIntentWorkflowV1[];
     };
     slots: {
         all: readonly SlotSchema[];

@@ -67,6 +67,7 @@ export default function AnalyticsV2Page() {
     // Data
     const [kpis, setKPIs] = useState<any[]>([]);
     const [volume, setVolume] = useState<any[]>([]);
+    const [channelAccounts, setChannelAccounts] = useState<any>(null);
     const [responseTimes, setResponseTimes] = useState<any[]>([]);
     const [aiMetrics, setAIMetrics] = useState<any>(null);
     const [heatmap, setHeatmap] = useState<any[]>([]);
@@ -80,9 +81,10 @@ export default function AnalyticsV2Page() {
         if (!tenantId) return;
         setLoading(true);
         try {
-            const [kpiRes, volRes, rtRes, aiRes, hmRes, autoRes, bcRes] = await Promise.all([
+            const [kpiRes, volRes, accountRes, rtRes, aiRes, hmRes, autoRes, bcRes] = await Promise.all([
                 api.getDashboardKPIs(tenantId, start, end),
                 api.getDashboardVolume(tenantId, start, end),
+                api.getDashboardChannelAccounts(tenantId, start, end),
                 api.getDashboardResponseTimes(tenantId, start, end),
                 api.getDashboardAIMetrics(tenantId, start, end),
                 api.getDashboardHeatmap(tenantId, start, end),
@@ -92,6 +94,7 @@ export default function AnalyticsV2Page() {
 
             if (kpiRes.success) setKPIs(kpiRes.data.kpis || []);
             if (volRes.success) setVolume(volRes.data.series || []);
+            if (accountRes.success) setChannelAccounts(accountRes.data);
             if (rtRes.success) setResponseTimes(rtRes.data.series || []);
             if (aiRes.success) setAIMetrics(aiRes.data);
             if (hmRes.success) setHeatmap(hmRes.data.data || []);
@@ -212,7 +215,7 @@ export default function AnalyticsV2Page() {
                     {activeTab === "agentsTab" && <AgentsRedirectTab />}
                     {activeTab === "automationTab" && <AutomationTab data={automation} />}
                     {activeTab === "broadcastTab" && <BroadcastTab data={broadcast} />}
-                    {activeTab === "channelsTab" && <ChannelsTab volume={volume} />}
+                    {activeTab === "channelsTab" && <ChannelsTab volume={volume} accountData={channelAccounts} />}
                     {activeTab === "csatTab" && <CSATTab kpis={kpis} />}
                     {activeTab === "anomaliesTab" && <AnomaliesTab data={anomalies} />}
                     {activeTab === "cohortsTab" && <CohortsTab data={cohorts} />}
@@ -369,7 +372,7 @@ function AIBotTab({ data }: { data: any }) {
 
 // ── Tab: Channels ──
 
-function ChannelsTab({ volume }: { volume: any[] }) {
+function ChannelsTab({ volume, accountData }: { volume: any[]; accountData: any }) {
     const t = useTranslations("analyticsV2");
 
     // Aggregate per channel
@@ -406,6 +409,62 @@ function ChannelsTab({ volume }: { volume: any[] }) {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] overflow-x-auto">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h3 className="text-sm font-semibold text-foreground">{t("operationalAccounts")}</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{t("operationalAccountsDescription")}</p>
+                    </div>
+                    {(accountData?.unattributed || 0) > 0 && (
+                        <span className="px-2 py-1 rounded-md bg-amber-500/10 text-amber-600 text-xs whitespace-nowrap">
+                            {t("unattributedEvents", { count: accountData.unattributed })}
+                        </span>
+                    )}
+                </div>
+                {accountData?.accounts?.length ? (
+                    <table className="w-full min-w-[1050px] text-sm">
+                        <thead>
+                            <tr className="border-b border-neutral-200 dark:border-white/10 text-xs text-muted-foreground">
+                                <th className="text-left py-2 pr-4 font-medium">{t("account")}</th>
+                                <th className="text-left py-2 px-3 font-medium">{t("channel")}</th>
+                                <th className="text-right py-2 px-3 font-medium">{t("conversations")}</th>
+                                <th className="text-right py-2 px-3 font-medium">{t("messages")}</th>
+                                <th className="text-right py-2 px-3 font-medium">{t("handoffs")}</th>
+                                <th className="text-right py-2 px-3 font-medium">{t("llmCost")}</th>
+                                <th className="text-right py-2 px-3 font-medium">{t("appointments")}</th>
+                                <th className="text-right py-2 px-3 font-medium">{t("leads")}</th>
+                                <th className="text-right py-2 pl-3 font-medium">{t("orders")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {accountData.accounts.map((account: any) => (
+                                <tr key={`${account.channelType}:${account.channelAccountId}`} className="border-b border-neutral-100 dark:border-white/[0.05] last:border-0">
+                                    <td className="py-3 pr-4">
+                                        <div className="font-medium text-foreground">
+                                            {account.attributionStatus === "unattributed" ? t("unattributedAccount") : account.displayName}
+                                        </div>
+                                        <div className="text-[11px] text-muted-foreground font-mono">{account.channelAccountId || "—"}</div>
+                                        {account.attributionStatus === "unattributed"
+                                            ? <span className="text-[10px] text-amber-600">{t("historicalUnknown")}</span>
+                                            : !account.isActive && <span className="text-[10px] text-amber-600">{t("disconnected")}</span>}
+                                    </td>
+                                    <td className="py-3 px-3 text-muted-foreground">{t(account.channelType as any)}</td>
+                                    <td className="py-3 px-3 text-right tabular-nums">{account.conversations}</td>
+                                    <td className="py-3 px-3 text-right tabular-nums">{account.messages}</td>
+                                    <td className="py-3 px-3 text-right tabular-nums">{account.handoffs}</td>
+                                    <td className="py-3 px-3 text-right tabular-nums">${Number(account.llmCost || 0).toFixed(4)}</td>
+                                    <td className="py-3 px-3 text-right tabular-nums">{account.appointments}</td>
+                                    <td className="py-3 px-3 text-right tabular-nums">{account.leads}</td>
+                                    <td className="py-3 pl-3 text-right tabular-nums">{account.orders}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <p className="text-sm text-muted-foreground py-6 text-center">{t("noOperationalAccountData")}</p>
+                )}
             </div>
 
             {/* Channel volume over time */}

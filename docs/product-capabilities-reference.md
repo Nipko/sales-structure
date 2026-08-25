@@ -41,8 +41,8 @@ indicados abajo.
 |------------|--------------------|
 | WhatsApp, Instagram, Messenger y Telegram | Canales conversacionales con flujos de conexión administrados desde la plataforma, sujetos a rol, plan y configuración vigente |
 | Web Chat Widget | Superficie conversacional operativa con configuración, snippet público, sesiones y mensajería por Socket.IO |
-| Email | Adaptador e ingreso técnico interno para integraciones administradas; la pantalla `/admin/channels/email` no tiene hoy handlers de lectura/escritura por tenant y **no es una configuración autoservicio certificada** |
-| SMS | Producto separado de notificaciones salientes por créditos; no es un canal conversacional |
+| Email | Adaptador e ingreso técnico interno para integraciones administradas; `/admin/channels/email` redirige al inventario certificado y **no es una configuración autoservicio** |
+| SMS | Producto retirado para altas, configuración, compras y campañas nuevas; solo conserva saldo/historial/callbacks/cierre y administración necesarios para obligaciones legacy |
 
 ## Cobros del tenant a sus clientes
 
@@ -79,10 +79,12 @@ configuración de extremo a extremo.
 | Preferencias personales, seguridad, notificaciones y apariencia | Sí | Sí | Sí |
 
 La fila de campañas describe acceso a la superficie de borradores, audiencia y
-métricas. El lanzamiento WhatsApp/Email y la programación desde el editor no están
-certificados de punta a punta en la versión actual; una campaña programada tampoco
-tiene acción operativa de cancelación. No debe presentarse como envío de producción
-hasta cerrar esos contratos.
+métricas. Las campañas nuevas aceptan únicamente WhatsApp; Email y SMS fallan
+cerrado en el servidor aunque exista una fila heredada. El lanzamiento WhatsApp y
+la programación desde el editor no están certificados de punta a punta en la
+versión actual; una campaña programada tampoco tiene acción operativa de
+cancelación. No debe presentarse como envío de producción hasta cerrar esos
+contratos.
 
 `super_admin` usa la consola de plataforma. Para operar dentro de un tenant debe
 entrar mediante impersonación; el acceso no se hereda de forma implícita.

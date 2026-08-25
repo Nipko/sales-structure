@@ -11,6 +11,7 @@ import { TenantPaymentsWebhookService } from './tenant-payments-webhook.service'
 import { TenantWompiWebhookService } from './tenant-wompi-webhook.service';
 import type { TenantPaymentProvider } from './tenant-payment-reference';
 import { TenantSalesReportService } from './tenant-sales-report.service';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('tenant-payments')
 @Controller('tenant-payments')
@@ -101,6 +102,7 @@ export class TenantPaymentsController {
 
     @Put(':tenantId/config')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @RequiresVerifiedEmail('manage_secrets')
     @Roles('tenant_admin')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Save MercadoPago credentials (verified against MP before storing)' })
@@ -130,6 +132,7 @@ export class TenantPaymentsController {
 
     @Put(':tenantId/config/:provider')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @RequiresVerifiedEmail('manage_secrets')
     @Roles('tenant_admin')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Save one tenant-owned payment provider config' })
@@ -150,6 +153,7 @@ export class TenantPaymentsController {
 
     @Put(':tenantId/active-provider')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @RequiresVerifiedEmail('manage_billing')
     @Roles('tenant_admin')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Activate a verified tenant-owned payment provider' })
@@ -184,6 +188,7 @@ export class TenantPaymentsController {
      */
     @Post(':tenantId/intents/:intentId/resolve')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @RequiresVerifiedEmail('manage_billing')
     @Roles('tenant_admin')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Re-check one parked payment against the provider and close it' })

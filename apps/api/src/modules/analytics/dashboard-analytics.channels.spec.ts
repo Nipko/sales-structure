@@ -54,6 +54,9 @@ describe('Dashboard analytics channel coverage', () => {
             aiResolved: 0, handoffs: 0, avgCostPerConversation: 0,
             totalCost: 0, modelUsage: [], handoffReasons: [],
         } as any);
+        jest.spyOn(service, 'getChannelAccountBreakdown').mockResolvedValue({
+            totals: {}, accounts: [], unattributed: 0,
+        });
 
         const csv = await service.exportCSV('tenant', '2026-08-24', '2026-08-24');
         expect(csv).toContain('Date,WhatsApp,Instagram,Messenger,Telegram,Web Chat');

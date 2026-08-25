@@ -217,6 +217,192 @@ export class DashboardAnalyticsService {
         return { series: Object.values(byDate) };
     }
 
+    /** Metrics attributed to the durable channel account, not only its type. */
+    async getChannelAccountBreakdown(
+        tenantId: string, start: string, end: string, channelType?: string,
+    ): Promise<{ totals: Record<string, number>; accounts: any[]; unattributed: number }> {
+        const schema = await this.getSchemaName(tenantId);
+        const channelFilter = channelType || null;
+        const metricQueries = [
+            this.prisma.$queryRawUnsafe(
+                `SELECT channel_type, channel_account_id, COUNT(*)::int AS conversations,
+                        0::int AS messages, 0::int AS handoffs, 0::numeric AS llm_cost,
+                        0::int AS appointments, 0::int AS leads, 0::int AS orders,
+                        MIN(created_at) AS first_at, MAX(created_at) AS last_at
+                 FROM "${schema}".conversations
+                 WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+                   AND ($3::text IS NULL OR channel_type = $3)
+                 GROUP BY channel_type, channel_account_id`,
+                start, end, channelFilter,
+            ),
+            this.prisma.$queryRawUnsafe(
+                `SELECT c.channel_type, c.channel_account_id, 0::int AS conversations,
+                        COUNT(m.id)::int AS messages, 0::int AS handoffs,
+                        COALESCE(SUM(m.llm_cost), 0)::numeric AS llm_cost,
+                        0::int AS appointments, 0::int AS leads, 0::int AS orders,
+                        MIN(m.created_at) AS first_at, MAX(m.created_at) AS last_at
+                 FROM "${schema}".messages m
+                 JOIN "${schema}".conversations c ON c.id = m.conversation_id
+                 WHERE m.created_at >= $1::date AND m.created_at < ($2::date + interval '1 day')
+                   AND ($3::text IS NULL OR c.channel_type = $3)
+                 GROUP BY c.channel_type, c.channel_account_id`,
+                start, end, channelFilter,
+            ),
+            this.prisma.$queryRawUnsafe(
+                `SELECT c.channel_type, c.channel_account_id, 0::int AS conversations,
+                        0::int AS messages, COUNT(a.id)::int AS handoffs, 0::numeric AS llm_cost,
+                        0::int AS appointments, 0::int AS leads, 0::int AS orders,
+                        MIN(a.assigned_at) AS first_at, MAX(a.assigned_at) AS last_at
+                 FROM "${schema}".conversation_assignments a
+                 JOIN "${schema}".conversations c ON c.id = a.conversation_id
+                 WHERE a.assigned_at >= $1::date AND a.assigned_at < ($2::date + interval '1 day')
+                   AND ($3::text IS NULL OR c.channel_type = $3)
+                 GROUP BY c.channel_type, c.channel_account_id`,
+                start, end, channelFilter,
+            ),
+            this.prisma.$queryRawUnsafe(
+                `SELECT attributed.channel_type, attributed.channel_account_id,
+                        0::int AS conversations, 0::int AS messages, 0::int AS handoffs,
+                        0::numeric AS llm_cost, COUNT(a.id)::int AS appointments,
+                        0::int AS leads, 0::int AS orders,
+                        MIN(a.created_at) AS first_at, MAX(a.created_at) AS last_at
+                 FROM "${schema}".appointments a
+                 JOIN LATERAL (
+                    SELECT c.channel_type, c.channel_account_id
+                    FROM "${schema}".conversations c
+                    WHERE c.id = a.conversation_id
+                       OR (a.conversation_id IS NULL AND a.contact_id IS NOT NULL AND c.contact_id = a.contact_id AND c.created_at <= a.created_at)
+                    ORDER BY CASE WHEN c.id = a.conversation_id THEN 0 ELSE 1 END, c.created_at DESC
+                    LIMIT 1
+                 ) attributed ON TRUE
+                 WHERE a.created_at >= $1::date AND a.created_at < ($2::date + interval '1 day')
+                   AND ($3::text IS NULL OR attributed.channel_type = $3)
+                 GROUP BY attributed.channel_type, attributed.channel_account_id`,
+                start, end, channelFilter,
+            ),
+            this.prisma.$queryRawUnsafe(
+                `SELECT attributed.channel_type, attributed.channel_account_id,
+                        0::int AS conversations, 0::int AS messages, 0::int AS handoffs,
+                        0::numeric AS llm_cost, 0::int AS appointments,
+                        COUNT(l.id)::int AS leads, 0::int AS orders,
+                        MIN(l.created_at) AS first_at, MAX(l.created_at) AS last_at
+                 FROM "${schema}".leads l
+                 JOIN LATERAL (
+                    SELECT c.channel_type, c.channel_account_id
+                    FROM "${schema}".conversations c
+                    WHERE l.contact_id IS NOT NULL AND c.contact_id = l.contact_id AND c.created_at <= l.created_at
+                    ORDER BY c.created_at DESC LIMIT 1
+                 ) attributed ON TRUE
+                 WHERE l.created_at >= $1::date AND l.created_at < ($2::date + interval '1 day')
+                   AND ($3::text IS NULL OR attributed.channel_type = $3)
+                 GROUP BY attributed.channel_type, attributed.channel_account_id`,
+                start, end, channelFilter,
+            ),
+            this.prisma.$queryRawUnsafe(
+                `SELECT attributed.channel_type, attributed.channel_account_id,
+                        0::int AS conversations, 0::int AS messages, 0::int AS handoffs,
+                        0::numeric AS llm_cost, 0::int AS appointments, 0::int AS leads,
+                        COUNT(o.id)::int AS orders,
+                        MIN(o.created_at) AS first_at, MAX(o.created_at) AS last_at
+                 FROM "${schema}".orders o
+                 JOIN LATERAL (
+                    SELECT c.channel_type, c.channel_account_id
+                    FROM "${schema}".conversations c
+                    WHERE c.id = o.conversation_id
+                       OR (o.conversation_id IS NULL AND o.contact_id IS NOT NULL AND c.contact_id = o.contact_id AND c.created_at <= o.created_at)
+                    ORDER BY CASE WHEN c.id = o.conversation_id THEN 0 ELSE 1 END, c.created_at DESC
+                    LIMIT 1
+                 ) attributed ON TRUE
+                 WHERE o.created_at >= $1::date AND o.created_at < ($2::date + interval '1 day')
+                   AND ($3::text IS NULL OR attributed.channel_type = $3)
+                 GROUP BY attributed.channel_type, attributed.channel_account_id`,
+                start, end, channelFilter,
+            ),
+        ];
+
+        const [metricGroups, currentAccounts, labelRows, unattributedRows] = await Promise.all([
+            Promise.all(metricQueries),
+            this.prisma.channelAccount.findMany({
+                where: { tenantId, ...(channelType ? { channelType } : {}) },
+                select: { channelType: true, accountId: true, displayName: true, isActive: true },
+            }),
+            this.prisma.$queryRawUnsafe(
+                `SELECT channel_type, channel_account_id, channel_account_label,
+                        MIN(created_at) AS first_seen_at, MAX(created_at) AS last_seen_at
+                 FROM "${schema}".analytics_events
+                 WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+                   AND channel_account_id IS NOT NULL AND channel_account_label IS NOT NULL
+                   AND ($3::text IS NULL OR channel_type = $3)
+                 GROUP BY channel_type, channel_account_id, channel_account_label`,
+                start, end, channelFilter,
+            ),
+            this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS count
+                 FROM "${schema}".analytics_events
+                 WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+                   AND channel_account_id IS NULL
+                   AND ($3::text IS NULL OR channel_type = $3)`,
+                start, end, channelFilter,
+            ),
+        ]);
+
+        const accountMetadata = new Map(
+            currentAccounts.map((account) => [`${account.channelType}:${account.accountId}`, account]),
+        );
+        const historicalLabels = new Map<string, any[]>();
+        for (const row of labelRows as any[]) {
+            const key = `${row.channel_type}:${row.channel_account_id}`;
+            const labels = historicalLabels.get(key) || [];
+            labels.push({ label: row.channel_account_label, firstSeenAt: row.first_seen_at, lastSeenAt: row.last_seen_at });
+            historicalLabels.set(key, labels);
+        }
+        for (const labels of historicalLabels.values()) {
+            labels.sort((a, b) => new Date(a.lastSeenAt).getTime() - new Date(b.lastSeenAt).getTime());
+        }
+
+        const merged = new Map<string, any>();
+        for (const rows of metricGroups as any[][]) {
+            for (const row of rows) {
+                const key = `${row.channel_type}:${row.channel_account_id}`;
+                const prior = merged.get(key) || {
+                    channelType: row.channel_type, channelAccountId: row.channel_account_id,
+                    conversations: 0, messages: 0, handoffs: 0, llmCost: 0,
+                    appointments: 0, leads: 0, orders: 0, firstAt: null, lastAt: null,
+                };
+                for (const metric of ['conversations', 'messages', 'handoffs', 'appointments', 'leads', 'orders']) {
+                    prior[metric] += Number(row[metric] || 0);
+                }
+                prior.llmCost += Number(row.llm_cost || 0);
+                if (row.first_at && (!prior.firstAt || new Date(row.first_at) < new Date(prior.firstAt))) prior.firstAt = row.first_at;
+                if (row.last_at && (!prior.lastAt || new Date(row.last_at) > new Date(prior.lastAt))) prior.lastAt = row.last_at;
+                merged.set(key, prior);
+            }
+        }
+
+        const accounts = Array.from(merged.entries()).map(([key, metrics]) => {
+            const current = accountMetadata.get(key);
+            const labels = historicalLabels.get(key) || [];
+            const isUnattributed = !metrics.channelAccountId;
+            return {
+                ...metrics,
+                llmCost: Math.round(metrics.llmCost * 10000) / 10000,
+                displayName: current?.displayName || labels.at(-1)?.label || metrics.channelAccountId || 'unknown',
+                isActive: current?.isActive ?? false,
+                attributionStatus: isUnattributed ? 'unattributed' : 'attributed',
+                historicalLabels: labels,
+            };
+        }).sort((a, b) => b.conversations - a.conversations || b.messages - a.messages);
+
+        const totals = accounts.reduce((sum, account) => {
+            for (const metric of ['conversations', 'messages', 'handoffs', 'appointments', 'leads', 'orders']) sum[metric] += account[metric];
+            sum.llmCost += account.llmCost;
+            return sum;
+        }, { conversations: 0, messages: 0, handoffs: 0, llmCost: 0, appointments: 0, leads: 0, orders: 0 });
+        totals.llmCost = Math.round(totals.llmCost * 10000) / 10000;
+
+        return { totals, accounts, unattributed: Number((unattributedRows as any[])[0]?.count || 0) };
+    }
+
     // ── 3. Response Times (median + P90) ──────────────────────────
 
     async getResponseTimes(
@@ -371,11 +557,12 @@ export class DashboardAnalyticsService {
     // ── 6. Export CSV ─────────────────────────────────────────────
 
     async exportCSV(tenantId: string, start: string, end: string): Promise<string> {
-        const [kpis, volume, responseTimes, ai] = await Promise.all([
+        const [kpis, volume, responseTimes, ai, accountBreakdown] = await Promise.all([
             this.getOverviewKPIs(tenantId, start, end),
             this.getConversationsVolume(tenantId, start, end),
             this.getResponseTimes(tenantId, start, end),
             this.getAIMetrics(tenantId, start, end),
+            this.getChannelAccountBreakdown(tenantId, start, end),
         ]);
 
         const lines: string[] = [];
@@ -392,6 +579,18 @@ export class DashboardAnalyticsService {
         lines.push('Date,WhatsApp,Instagram,Messenger,Telegram,Web Chat');
         for (const row of volume.series) {
             lines.push(`${row.date},${row.whatsapp},${row.instagram},${row.messenger},${row.telegram},${row.web_widget}`);
+        }
+
+        lines.push('');
+        lines.push('=== Operational Accounts ===');
+        lines.push('Channel,Account ID,Label,Active,Conversations,Messages,Handoffs,LLM Cost,Appointments,Leads,Orders');
+        const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+        for (const account of accountBreakdown.accounts) {
+            lines.push([
+                account.channelType, account.channelAccountId, account.displayName, account.isActive,
+                account.conversations, account.messages, account.handoffs, account.llmCost,
+                account.appointments, account.leads, account.orders,
+            ].map(csvCell).join(','));
         }
 
         lines.push('');
@@ -907,12 +1106,14 @@ export class DashboardAnalyticsService {
         kpis: any;
         timeSeries: any[];
         channelBreakdown: any[];
+        channelAccounts: any;
         aiMetrics: any;
     }> {
-        const [kpiData, volume, ai] = await Promise.all([
+        const [kpiData, volume, ai, channelAccounts] = await Promise.all([
             this.getOverviewKPIs(tenantId, start, end),
             this.getConversationsVolume(tenantId, start, end),
             this.getAIMetrics(tenantId, start, end),
+            this.getChannelAccountBreakdown(tenantId, start, end),
         ]);
 
         // Flatten KPIs for BI consumption
@@ -935,6 +1136,7 @@ export class DashboardAnalyticsService {
             kpis,
             timeSeries: volume.series,
             channelBreakdown: Object.entries(channels).map(([channel, count]) => ({ channel, count })),
+            channelAccounts,
             aiMetrics: {
                 resolutionRate: ai.resolutionRate,
                 containmentRate: ai.containmentRate,

@@ -8,6 +8,9 @@ export interface TrackEventParams {
     eventType: AnalyticsEventType;
     conversationId?: string;
     contactId?: string;
+    channelType?: string;
+    channelAccountId?: string;
+    channelAccountLabel?: string;
     data?: Record<string, unknown>;
 }
 
@@ -35,7 +38,10 @@ export class AnalyticsService {
      * Track an analytics event (fire-and-forget pattern with Redis buffer)
      */
     async trackEvent(params: TrackEventParams): Promise<void> {
-        const { tenantId, eventType, conversationId, contactId, data } = params;
+        const {
+            tenantId, eventType, conversationId, contactId,
+            channelType, channelAccountId, channelAccountLabel, data,
+        } = params;
         const timestamp = new Date().toISOString();
 
         // 1. Push to Redis for real-time counters (fast path)
@@ -70,7 +76,11 @@ export class AnalyticsService {
         }
 
         // 3. Persist to database (async, non-blocking)
-        this.persistEvent(tenantId, eventType, conversationId, contactId, data, timestamp)
+        this.persistEvent(
+            tenantId, eventType, conversationId, contactId,
+            channelType, channelAccountId, channelAccountLabel,
+            data, timestamp,
+        )
             .catch(err => this.logger.error(`Failed to persist event: ${err}`));
     }
 
@@ -82,6 +92,9 @@ export class AnalyticsService {
         eventType: string,
         conversationId?: string,
         contactId?: string,
+        channelType?: string,
+        channelAccountId?: string,
+        channelAccountLabel?: string,
         data?: Record<string, unknown>,
         timestamp?: string,
     ): Promise<void> {
@@ -89,9 +102,47 @@ export class AnalyticsService {
         if (!schemaName) return;
 
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO analytics_events (id, event_type, conversation_id, contact_id, data, created_at)
-       VALUES (gen_random_uuid(), $1, $2::uuid, $3::uuid, $4::jsonb, $5::timestamp)`,
-            [eventType, conversationId || null, contactId || null, JSON.stringify(data || {}), timestamp]
+            `INSERT INTO analytics_events (
+                id, event_type, conversation_id, contact_id,
+                channel_type, channel_account_id, channel_account_label,
+                attribution_source, data, created_at
+             )
+             SELECT
+                gen_random_uuid(), $1, $2::uuid, $3::uuid,
+                COALESCE($4, attributed.channel_type),
+                COALESCE($5, attributed.channel_account_id),
+                COALESCE($6, account.display_name, attributed.channel_account_id),
+                CASE
+                    WHEN $4 IS NOT NULL AND $5 IS NOT NULL THEN 'explicit'
+                    WHEN $2::uuid IS NOT NULL AND attributed.id IS NOT NULL THEN 'conversation'
+                    WHEN $3::uuid IS NOT NULL AND attributed.id IS NOT NULL THEN 'contact_recent'
+                    ELSE 'unattributed'
+                END,
+                $7::jsonb, $8::timestamp
+             FROM (SELECT 1) seed
+             LEFT JOIN LATERAL (
+                SELECT c.id, c.channel_type, c.channel_account_id
+                FROM conversations c
+                WHERE c.id = $2::uuid
+                   OR ($2::uuid IS NULL AND $3::uuid IS NOT NULL AND c.contact_id = $3::uuid)
+                ORDER BY CASE WHEN c.id = $2::uuid THEN 0 ELSE 1 END, c.updated_at DESC
+                LIMIT 1
+             ) attributed ON TRUE
+             LEFT JOIN public.channel_accounts account
+               ON account.tenant_id = $9::uuid
+              AND account.channel_type = COALESCE($4, attributed.channel_type)
+              AND account.account_id = COALESCE($5, attributed.channel_account_id)`,
+            [
+                eventType,
+                conversationId || null,
+                contactId || null,
+                channelType || null,
+                channelAccountId || null,
+                channelAccountLabel || null,
+                JSON.stringify(data || {}),
+                timestamp,
+                tenantId,
+            ]
         );
     }
 

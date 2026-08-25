@@ -33,6 +33,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import { Request as ExpressRequest } from 'express';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('whatsapp')
 @Controller('channels/whatsapp')
@@ -95,6 +96,7 @@ export class WhatsappController {
 
   @Post('connect/start')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @RequiresVerifiedEmail('activate_channel')
   @Roles('tenant_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Start WhatsApp connection onboarding' })
@@ -112,6 +114,7 @@ export class WhatsappController {
 
   @Post('connect/complete')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @RequiresVerifiedEmail('activate_channel')
   @Roles('tenant_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Complete WhatsApp connection onboarding' })
@@ -141,6 +144,7 @@ export class WhatsappController {
   @Post('disconnect')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('tenant_admin')
+  @RequiresVerifiedEmail('sensitive_admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Disconnect WhatsApp channel — calls Meta to unsubscribe the app from the WABA, then marks BD inactive' })
   async disconnect(@Request() req: any) {
@@ -267,6 +271,7 @@ export class WhatsappController {
   }
 
   @Post('business-profile')
+  @RequiresVerifiedEmail('sensitive_admin')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin')
   @ApiBearerAuth()
@@ -287,6 +292,7 @@ export class WhatsappController {
   }
 
   @Post('business-profile/photo')
+  @RequiresVerifiedEmail('sensitive_admin')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin')
   @ApiBearerAuth()
@@ -305,6 +311,7 @@ export class WhatsappController {
   }
 
   @Post('business-profile/photo/delete')
+  @RequiresVerifiedEmail('sensitive_admin')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin')
   @ApiBearerAuth()
@@ -343,6 +350,7 @@ export class WhatsappController {
   }
 
   @Post('templates/create')
+  @RequiresVerifiedEmail('send_outbound')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin')
   @ApiBearerAuth()
@@ -419,6 +427,7 @@ export class WhatsappController {
   // ======================== MESSAGING ========================
 
   @Post('send/template')
+  @RequiresVerifiedEmail('send_outbound')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin', 'tenant_agent')
   @ApiBearerAuth()
@@ -439,6 +448,7 @@ export class WhatsappController {
   }
 
   @Post('send/text')
+  @RequiresVerifiedEmail('send_outbound')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin', 'tenant_agent')
   @ApiBearerAuth()
@@ -458,6 +468,7 @@ export class WhatsappController {
   }
 
   @Post('send/interactive')
+  @RequiresVerifiedEmail('send_outbound')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin', 'tenant_agent')
   @ApiBearerAuth()
@@ -475,6 +486,7 @@ export class WhatsappController {
   }
 
   @Post('send/media')
+  @RequiresVerifiedEmail('send_outbound')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin', 'tenant_agent')
   @ApiBearerAuth()
@@ -495,6 +507,7 @@ export class WhatsappController {
   }
 
   @Post('send/location')
+  @RequiresVerifiedEmail('send_outbound')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin', 'tenant_agent')
   @ApiBearerAuth()

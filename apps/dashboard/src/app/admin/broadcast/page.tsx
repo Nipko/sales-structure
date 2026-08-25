@@ -16,24 +16,13 @@ import { cn } from "@/lib/utils";
 import {
     Send, Users, MessageSquare, Calendar, Clock, Plus, X,
     CheckCircle2, AlertCircle, Megaphone, BarChart3, Target,
-    FileText, Zap, ChevronRight, Mail, Phone, MessageCircle,
+    FileText, Zap, ChevronRight, MessageCircle,
     FlaskConical, Trophy, Loader2,
 } from "lucide-react";
 
-const BASE_CHANNEL_OPTIONS = [
+const CHANNEL_OPTIONS = [
     { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, color: "#25D366" },
-    { id: "email", label: "Email", icon: Mail, color: "#6c5ce7" },
 ];
-
-// SMS estuvo escondido "hasta que la integracion este lista" desde mayo, y las
-// fases de monetizacion (jul) nunca lo revirtieron: el tenant podia COMPRAR
-// creditos y no tenia ni una pantalla donde gastarlos. El unico camino que los
-// descuenta —el broadcast— solo era alcanzable por POST directo a la API.
-// Vender un saldo inutilizable es un reclamo garantizado.
-//
-// Aparece solo con el interruptor maestro de la plataforma encendido, asi que
-// mientras siga apagado nada cambia.
-const SMS_CHANNEL_OPTION = { id: "sms", label: "SMS", icon: Phone, color: "#f39c12" };
 
 const statusStyle: Record<string, { color: string; icon: any }> = {
     draft: { color: "#95a5a6", icon: FileText },
@@ -58,7 +47,6 @@ export default function BroadcastPage() {
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
-    const [smsEnabled, setSmsEnabled] = useState(false);
 
     const loadCampaigns = async () => {
         if (!activeTenantId) return;
@@ -72,15 +60,7 @@ export default function BroadcastPage() {
 
     useEffect(() => {
         loadCampaigns();
-        if (!activeTenantId) return;
-        api.getSmsBalance(activeTenantId)
-            .then(res => setSmsEnabled(!!(res?.data as any)?.enabled))
-            .catch(() => setSmsEnabled(false));
     }, [activeTenantId]);
-
-    const CHANNEL_OPTIONS = smsEnabled
-        ? [...BASE_CHANNEL_OPTIONS, SMS_CHANNEL_OPTION]
-        : BASE_CHANNEL_OPTIONS;
 
     const [showNewCampaign, setShowNewCampaign] = useState(false);
 
@@ -93,9 +73,6 @@ export default function BroadcastPage() {
     const [newCampaign, setNewCampaign] = useState({
         name: "",
         waTemplate: "",
-        emailSubject: "",
-        emailBody: "",
-        smsBody: "",
         targetAudience: "all",
         scheduledAt: "",
     });
@@ -110,8 +87,8 @@ export default function BroadcastPage() {
     // A/B Test state
     const [abTestEnabled, setAbTestEnabled] = useState(false);
     const [abSplitA, setAbSplitA] = useState(50);
-    const [abVariantA, setAbVariantA] = useState({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
-    const [abVariantB, setAbVariantB] = useState({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
+    const [abVariantA, setAbVariantA] = useState({ waTemplate: "" });
+    const [abVariantB, setAbVariantB] = useState({ waTemplate: "" });
     const [abTestConfig, setAbTestConfig] = useState({
         testPercentage: 20,
         autoSelectWinner: true,
@@ -191,13 +168,9 @@ export default function BroadcastPage() {
             // Both variants must have content for each selected channel
             for (const variant of [abVariantA, abVariantB]) {
                 if (selectedChannels.includes("whatsapp") && !variant.waTemplate) return false;
-                if (selectedChannels.includes("email") && (!variant.emailSubject || !variant.emailBody)) return false;
-                if (selectedChannels.includes("sms") && !variant.smsBody) return false;
             }
         } else {
             if (selectedChannels.includes("whatsapp") && !newCampaign.waTemplate) return false;
-            if (selectedChannels.includes("email") && (!newCampaign.emailSubject || !newCampaign.emailBody)) return false;
-            if (selectedChannels.includes("sms") && !newCampaign.smsBody) return false;
         }
         return selectedChannels.length > 0 && !!newCampaign.name;
     };
@@ -214,12 +187,6 @@ export default function BroadcastPage() {
         if (selectedChannels.includes("whatsapp")) {
             channelContent.whatsapp = { templateName: newCampaign.waTemplate, templateLanguage: "es" };
         }
-        if (selectedChannels.includes("email")) {
-            channelContent.email = { subject: newCampaign.emailSubject, html: newCampaign.emailBody, text: newCampaign.emailBody.replace(/<[^>]+>/g, "") };
-        }
-        if (selectedChannels.includes("sms")) {
-            channelContent.sms = { body: newCampaign.smsBody };
-        }
 
         setCreating(true);
 
@@ -228,12 +195,6 @@ export default function BroadcastPage() {
             const content: any = {};
             if (selectedChannels.includes("whatsapp")) {
                 content.whatsapp = { templateName: v.waTemplate, templateLanguage: "es" };
-            }
-            if (selectedChannels.includes("email")) {
-                content.email = { subject: v.emailSubject, html: v.emailBody, text: v.emailBody.replace(/<[^>]+>/g, "") };
-            }
-            if (selectedChannels.includes("sms")) {
-                content.sms = { body: v.smsBody };
             }
             return content;
         };
@@ -258,15 +219,15 @@ export default function BroadcastPage() {
         });
         if (res?.success) {
             setCreating(false);
-            setNewCampaign({ name: "", waTemplate: "", emailSubject: "", emailBody: "", smsBody: "", targetAudience: "all", scheduledAt: "" });
+            setNewCampaign({ name: "", waTemplate: "", targetAudience: "all", scheduledAt: "" });
             setSelectedChannels(["whatsapp"]);
             setSenderAccountId("");
             setAudienceType("all");
             setSelectedSegmentId("");
             setAbTestEnabled(false);
             setAbSplitA(50);
-            setAbVariantA({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
-            setAbVariantB({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
+            setAbVariantA({ waTemplate: "" });
+            setAbVariantB({ waTemplate: "" });
             setAbTestConfig({ testPercentage: 20, autoSelectWinner: true, minSampleSize: 100, significanceLevel: 0.05 });
             loadCampaigns();
             setShowNewCampaign(false);
@@ -657,43 +618,6 @@ export default function BroadcastPage() {
                                     </div>
                                 )}
 
-                                {selectedChannels.includes("email") && (
-                                    <div className="mb-3.5 p-3.5 rounded-xl border border-[#6c5ce7]/20 bg-[#6c5ce7]/5">
-                                        <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-                                            <Mail size={14} style={{ color: "#6c5ce7" }} /> {t('modal.emailLabel')}
-                                        </label>
-                                        <input
-                                            value={newCampaign.emailSubject}
-                                            onChange={e => setNewCampaign(p => ({ ...p, emailSubject: e.target.value }))}
-                                            placeholder={t('modal.emailSubjectPh')}
-                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border mb-2"
-                                        />
-                                        <textarea
-                                            value={newCampaign.emailBody}
-                                            onChange={e => setNewCampaign(p => ({ ...p, emailBody: e.target.value }))}
-                                            placeholder={t('modal.emailBodyPh')}
-                                            rows={4}
-                                            className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
-                                        />
-                                    </div>
-                                )}
-
-                                {selectedChannels.includes("sms") && (
-                                    <div className="mb-3.5 p-3.5 rounded-xl border border-[#f39c12]/20 bg-[#f39c12]/5">
-                                        <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-                                            <Phone size={14} style={{ color: "#f39c12" }} /> {t('modal.smsLabel')}
-                                        </label>
-                                        <textarea
-                                            value={newCampaign.smsBody}
-                                            onChange={e => setNewCampaign(p => ({ ...p, smsBody: e.target.value }))}
-                                            placeholder={t('modal.smsBodyPh')}
-                                            rows={2}
-                                            maxLength={160}
-                                            className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
-                                        />
-                                        <div className="text-[10px] text-muted-foreground mt-1 text-right">{newCampaign.smsBody.length}/160</div>
-                                    </div>
-                                )}
                             </>
                         )}
 
@@ -773,42 +697,6 @@ export default function BroadcastPage() {
                                             </div>
                                         )}
 
-                                        {selectedChannels.includes("email") && (
-                                            <div className="mb-2.5">
-                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
-                                                    <Mail size={12} style={{ color: "#6c5ce7" }} /> Email
-                                                </label>
-                                                <input
-                                                    value={abVariantA.emailSubject}
-                                                    onChange={e => setAbVariantA(p => ({ ...p, emailSubject: e.target.value }))}
-                                                    placeholder={t('modal.emailSubjectPh')}
-                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border mb-1.5"
-                                                />
-                                                <textarea
-                                                    value={abVariantA.emailBody}
-                                                    onChange={e => setAbVariantA(p => ({ ...p, emailBody: e.target.value }))}
-                                                    placeholder={t('modal.emailBodyPh')}
-                                                    rows={3}
-                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
-                                                />
-                                            </div>
-                                        )}
-
-                                        {selectedChannels.includes("sms") && (
-                                            <div className="mb-2.5">
-                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
-                                                    <Phone size={12} style={{ color: "#f39c12" }} /> SMS
-                                                </label>
-                                                <textarea
-                                                    value={abVariantA.smsBody}
-                                                    onChange={e => setAbVariantA(p => ({ ...p, smsBody: e.target.value }))}
-                                                    placeholder={t('modal.smsBodyPh')}
-                                                    rows={2}
-                                                    maxLength={160}
-                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
-                                                />
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* Variant B */}
@@ -832,42 +720,6 @@ export default function BroadcastPage() {
                                             </div>
                                         )}
 
-                                        {selectedChannels.includes("email") && (
-                                            <div className="mb-2.5">
-                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
-                                                    <Mail size={12} style={{ color: "#6c5ce7" }} /> Email
-                                                </label>
-                                                <input
-                                                    value={abVariantB.emailSubject}
-                                                    onChange={e => setAbVariantB(p => ({ ...p, emailSubject: e.target.value }))}
-                                                    placeholder={t('modal.emailSubjectPh')}
-                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border mb-1.5"
-                                                />
-                                                <textarea
-                                                    value={abVariantB.emailBody}
-                                                    onChange={e => setAbVariantB(p => ({ ...p, emailBody: e.target.value }))}
-                                                    placeholder={t('modal.emailBodyPh')}
-                                                    rows={3}
-                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
-                                                />
-                                            </div>
-                                        )}
-
-                                        {selectedChannels.includes("sms") && (
-                                            <div className="mb-2.5">
-                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
-                                                    <Phone size={12} style={{ color: "#f39c12" }} /> SMS
-                                                </label>
-                                                <textarea
-                                                    value={abVariantB.smsBody}
-                                                    onChange={e => setAbVariantB(p => ({ ...p, smsBody: e.target.value }))}
-                                                    placeholder={t('modal.smsBodyPh')}
-                                                    rows={2}
-                                                    maxLength={160}
-                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
-                                                />
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             </div>

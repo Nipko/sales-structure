@@ -6,6 +6,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yaml from 'js-yaml';
 import {
+    CERTIFIED_SELF_SERVICE_CHANNELS,
     TenantConfig,
     resolveAgentSkillset,
     skillsetGuidanceFor,
@@ -51,6 +52,24 @@ export class PersonaService {
         private throttleService: TenantThrottleService,
         private eventEmitter: EventEmitter2,
     ) { }
+
+    private assertSelfServiceAssignments(channels?: string[], bindings?: string[]): void {
+        const allowed = new Set<string>(CERTIFIED_SELF_SERVICE_CHANNELS);
+        const requestedChannels = (channels || []).map((channel) => String(channel).trim().toLowerCase());
+        const requestedBindingChannels = (bindings || []).map((binding) => String(binding).split(':', 1)[0].trim().toLowerCase());
+        const unsupported = Array.from(new Set(
+            [...requestedChannels, ...requestedBindingChannels]
+                .filter((channel) => channel && !allowed.has(channel)),
+        ));
+        if (unsupported.length > 0) {
+            throw new BadRequestException({
+                error: 'agent_channel_not_self_service',
+                unsupportedChannels: unsupported,
+                supportedChannels: Array.from(allowed),
+                message: 'El agente solo puede activarse en canales conversacionales autogestionables certificados.',
+            });
+        }
+    }
 
     /**
      * Load the active persona config for a tenant.
@@ -717,7 +736,7 @@ export class PersonaService {
                      VALUES ($1, $2::jsonb, true, true, $3::text[], '24_7', 'migration')`,
                     config?.persona?.name || 'Default Agent',
                     JSON.stringify(config),
-                    ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+                    ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
                 );
 
                 agents = await this.prisma.$queryRawUnsafe(
@@ -858,6 +877,8 @@ export class PersonaService {
         isDefault?: boolean;
         createdBy?: string;
     }): Promise<any> {
+        this.assertSelfServiceAssignments(data.channels, data.channelBindings);
+
         // Capability inheritance is a creation-only default. Resolve it before
         // lazy DDL or any UPDATE to another agent so invalid tenant settings do
         // not leave partial side effects.
@@ -991,6 +1012,8 @@ export class PersonaService {
         isActive?: boolean;
         isDefault?: boolean;
     }): Promise<any> {
+        this.assertSelfServiceAssignments(data.channels, data.channelBindings);
+
         // Ensure the table + channel_bindings column exist before we read/write them
         // (existing tenants may predate the multi-account column).
         await this.ensureTablesForTenant(tenantId);
@@ -3089,7 +3112,7 @@ export class PersonaService {
                 template.name,
                 template.id,
                 JSON.stringify(configJson),
-                ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+                ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
                 createdBy || 'onboarding',
             );
             this.logger.log(`Default agent "${template.name}" created for tenant ${tenantId} (goals: ${goals.join(', ')})`);

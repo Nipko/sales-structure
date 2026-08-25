@@ -29,7 +29,7 @@ export class GoogleAuthService {
                 audience: this.clientId,
             });
             const payload = ticket.getPayload();
-            if (!payload || !payload.email) {
+            if (!payload || !payload.email || payload.email_verified !== true) {
                 throw new UnauthorizedException('Invalid Google token');
             }
             return {

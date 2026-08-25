@@ -1,4 +1,4 @@
-import { providerFitsProfile, providerFreshnessFor } from '@parallext/shared';
+import { PROVIDER_API_VERSIONS, providerFitsProfile, providerFreshnessFor } from '@parallext/shared';
 
 export type VerticalProvider = 'toast' | 'mindbody' | 'cliniko';
 
@@ -65,6 +65,10 @@ export interface StoredIntegrationHealth {
 export interface IntegrationHealth {
     version: typeof INTEGRATION_HEALTH_VERSION;
     provider: VerticalProvider;
+    projectionVersion: 1;
+    connectionId: string;
+    resourceType: string;
+    resourceId: string;
     /**
      * A provider configuration exists and therefore owns the covered domain
      * boundary. This is deliberately independent from `connected`: an outage,
@@ -80,10 +84,24 @@ export interface IntegrationHealth {
     scopeStatus: IntegrationScopeStatus;
     lastCheckedAt: string | null;
     lastSuccessfulSyncAt: string | null;
+    /** Canonical P30 aliases consumed by runtime, UI, traces and BI. */
+    lastAttemptAt: string | null;
+    lastSuccessAt: string | null;
+    asOf: string | null;
+    expectedInterval: number;
+    freshUntil: string | null;
+    health: IntegrationHealthStatus;
+    degradedReason: string | null;
+    sourceVersion: string;
+    observedAt: string;
     freshness: {
         maxAgeSeconds: number;
         ageSeconds: number | null;
         stale: boolean;
+        state: 'fresh' | 'stale' | 'unknown';
+        asOf: string | null;
+        expectedInterval: number;
+        freshUntil: string | null;
     };
     /**
      * Si este proveedor aplica a la industria del negocio.
@@ -254,6 +272,12 @@ export function materializeIntegrationHealth(
     industry?: string | null,
     /** El subtipo permite distinguir, por ejemplo, clínica de farmacia. */
     subtype?: string | null,
+    projection?: {
+        connectionId?: string | null;
+        resourceType?: string | null;
+        resourceId?: string | null;
+        expectedInterval?: number | null;
+    },
 ): IntegrationHealth {
     const state = stored?.provider === provider ? stored : initialIntegrationHealth(provider);
     const syncMs = state.lastSuccessfulSyncAt ? Date.parse(state.lastSuccessfulSyncAt) : NaN;
@@ -261,7 +285,15 @@ export function materializeIntegrationHealth(
         ? Math.max(0, Math.floor((now.getTime() - syncMs) / 1000))
         : null;
     const maxAgeSeconds = freshnessBudgetFor(provider);
+    const policy = providerFreshnessFor(provider);
+    const expectedInterval = Number.isFinite(projection?.expectedInterval)
+        && Number(projection?.expectedInterval) > 0
+        ? Number(projection?.expectedInterval)
+        : (policy?.mirrorSyncIntervalSeconds ?? maxAgeSeconds);
     const stale = ageSeconds === null || ageSeconds > maxAgeSeconds;
+    const freshUntil = Number.isFinite(syncMs)
+        ? new Date(syncMs + maxAgeSeconds * 1000).toISOString()
+        : null;
     const connected = configured
         && state.credentialValidated
         && state.scopeStatus !== 'missing';
@@ -291,9 +323,20 @@ export function materializeIntegrationHealth(
         status = 'healthy';
     }
 
+    const degradedReason = status === 'healthy'
+        ? null
+        : state.lastError?.code
+            || (state.scopeStatus === 'missing' ? 'missing_scopes'
+                : state.circuitState === 'open' ? 'circuit_open'
+                    : status);
+
     return {
         version: INTEGRATION_HEALTH_VERSION,
         provider,
+        projectionVersion: 1,
+        connectionId: projection?.connectionId || 'default',
+        resourceType: projection?.resourceType || 'tenant',
+        resourceId: projection?.resourceId || 'all',
         configured,
         status,
         connected,
@@ -303,10 +346,23 @@ export function materializeIntegrationHealth(
         scopeStatus: state.scopeStatus,
         lastCheckedAt: state.lastCheckedAt,
         lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+        lastAttemptAt: state.lastCheckedAt,
+        lastSuccessAt: state.lastSuccessfulSyncAt,
+        asOf: state.lastSuccessfulSyncAt,
+        expectedInterval,
+        freshUntil,
+        health: status,
+        degradedReason,
+        sourceVersion: PROVIDER_API_VERSIONS[provider],
+        observedAt: now.toISOString(),
         freshness: {
             maxAgeSeconds,
             ageSeconds,
             stale,
+            state: ageSeconds === null ? 'unknown' : stale ? 'stale' : 'fresh',
+            asOf: state.lastSuccessfulSyncAt,
+            expectedInterval,
+            freshUntil,
         },
         industryEligible,
         consecutiveFailures: state.consecutiveFailures,

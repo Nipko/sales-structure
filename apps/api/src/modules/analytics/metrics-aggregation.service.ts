@@ -96,6 +96,56 @@ export class MetricsAggregationService {
             });
         }
 
+        // ── Operational channel-account dimension ──
+        const channelAccountRows: any[] = await this.prisma.$queryRawUnsafe(
+            `WITH accounts AS (
+                SELECT DISTINCT c.channel_type, c.channel_account_id
+                FROM "${schemaName}".conversations c
+                WHERE c.created_at >= $1::date AND c.created_at < $2::date
+                UNION
+                SELECT DISTINCT c.channel_type, c.channel_account_id
+                FROM "${schemaName}".messages m
+                JOIN "${schemaName}".conversations c ON c.id = m.conversation_id
+                WHERE m.created_at >= $1::date AND m.created_at < $2::date
+             )
+             SELECT a.channel_type, a.channel_account_id,
+                    (SELECT COUNT(*)::int FROM "${schemaName}".conversations c
+                     WHERE c.channel_type = a.channel_type AND c.channel_account_id IS NOT DISTINCT FROM a.channel_account_id
+                       AND c.created_at >= $1::date AND c.created_at < $2::date) AS conversations,
+                    (SELECT COUNT(*)::int FROM "${schemaName}".messages m
+                     JOIN "${schemaName}".conversations c ON c.id = m.conversation_id
+                     WHERE c.channel_type = a.channel_type AND c.channel_account_id IS NOT DISTINCT FROM a.channel_account_id
+                       AND m.created_at >= $1::date AND m.created_at < $2::date) AS messages,
+                    (SELECT COUNT(*)::int FROM "${schemaName}".conversation_assignments ca
+                     JOIN "${schemaName}".conversations c ON c.id = ca.conversation_id
+                     WHERE c.channel_type = a.channel_type AND c.channel_account_id IS NOT DISTINCT FROM a.channel_account_id
+                       AND ca.assigned_at >= $1::date AND ca.assigned_at < $2::date) AS handoffs,
+                    (SELECT COALESCE(SUM(m.llm_cost), 0)::numeric FROM "${schemaName}".messages m
+                     JOIN "${schemaName}".conversations c ON c.id = m.conversation_id
+                     WHERE c.channel_type = a.channel_type AND c.channel_account_id IS NOT DISTINCT FROM a.channel_account_id
+                       AND m.created_at >= $1::date AND m.created_at < $2::date) AS llm_cost
+             FROM accounts a`,
+            date, nextDateStr,
+        );
+
+        for (const row of channelAccountRows) {
+            await this.upsertMetric(
+                schemaName,
+                tenantId,
+                date,
+                'channel_account',
+                `${row.channel_type}:${row.channel_account_id || 'unknown'}`,
+                {
+                    channelType: row.channel_type,
+                    channelAccountId: row.channel_account_id,
+                    conversations: Number(row.conversations),
+                    messages: Number(row.messages),
+                    handoffs: Number(row.handoffs),
+                    llmCost: Math.round(Number(row.llm_cost) * 10000) / 10000,
+                },
+            );
+        }
+
         // ── Hourly dimension ──
         const hourlyRows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT EXTRACT(HOUR FROM created_at)::int as hour, COUNT(*)::int as count

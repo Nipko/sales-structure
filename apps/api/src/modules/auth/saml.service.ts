@@ -165,13 +165,14 @@ export class SamlService {
                         tenantId,
                         authProvider: 'saml',
                         emailVerified: true,
+                        emailVerificationState: 'verified',
                     },
                     include: { tenant: true },
                 });
             } else if (user.authProvider !== 'saml') {
                 user = await this.prisma.user.update({
                     where: { id: user.id },
-                    data: { authProvider: 'saml', emailVerified: true },
+                    data: { authProvider: 'saml', emailVerified: true, emailVerificationState: 'verified' },
                     include: { tenant: true },
                 });
             }
@@ -201,6 +202,7 @@ export class SamlService {
                 tenantId,
                 authProvider: 'saml',
                 emailVerified: true,
+                emailVerificationState: 'verified',
                 onboardingCompleted: true,
             },
             include: { tenant: true },

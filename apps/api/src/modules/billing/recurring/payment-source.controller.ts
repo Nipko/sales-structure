@@ -6,6 +6,7 @@ import { TenantGuard } from '../../../common/guards/tenant.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { PaymentSourceService } from './payment-source.service';
 import { PaymentSourceKind } from '../adapters/provider-capabilities';
+import { RequiresVerifiedEmail } from '../../../common/decorators/requires-verified-email.decorator';
 
 // Keep the public contract aligned with WOMPI_CAPABILITIES. Daviplata remains
 // a future adapter vocabulary value but is not commercially activated or
@@ -72,6 +73,7 @@ export class PaymentSourceController {
 
     @Post(':tenantId')
     @Roles('tenant_admin', 'super_admin')
+    @RequiresVerifiedEmail('manage_billing')
     async add(
         @Param('tenantId') tenantId: string,
         @Body() body: AddPaymentSourceDto,
@@ -103,6 +105,7 @@ export class PaymentSourceController {
 
     @Put(':tenantId/:sourceId/default')
     @Roles('tenant_admin', 'super_admin')
+    @RequiresVerifiedEmail('manage_billing')
     async makeDefault(@Param('tenantId') tenantId: string, @Param('sourceId') sourceId: string) {
         await this.paymentSources.setDefault(tenantId, sourceId);
         return { success: true };

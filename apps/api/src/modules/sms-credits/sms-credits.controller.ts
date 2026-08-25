@@ -18,8 +18,10 @@ export class SmsCreditsController {
     @Get('packages')
     @Roles('super_admin', 'tenant_admin')
     async getPackages() {
-        const packages = await this.smsCredits.getPackages(false);
-        return { success: true, data: packages };
+        // P26: balances/history remain readable for legacy obligations, but a
+        // tenant endpoint must never publish a price catalogue for a retired
+        // product even if an old platform setting is accidentally re-enabled.
+        return { success: true, data: [], meta: { retired: true, code: 'sms_product_retired' } };
     }
 
     // -------------------------------------------------------------- super admin

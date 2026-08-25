@@ -11,7 +11,8 @@
  *
  * Decisión: no bloquear el alta (cada punto de fricción en el registro es un
  * trial perdido, y el envío de correo puede fallar en silencio) pero insistir
- * acá, y bloquear en el backend sólo invitar usuarios y cargar el medio de pago.
+ * acá. El backend bloquea por capacidad las acciones que afectan clientes,
+ * canales, agentes, secretos, dinero o exportaciones; la lectura sigue abierta.
  *
  * No se muestra a quien entró con Google o Microsoft: esos proveedores ya
  * probaron la casilla, así que `emailVerified` viene en true y este componente

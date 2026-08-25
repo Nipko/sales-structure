@@ -34,7 +34,7 @@ async function fulfillSuccess(route: Route, data: unknown = {}) {
  */
 async function bootstrapTenantAdmin(
   page: Page,
-  options: { tourPending?: boolean } = {},
+  options: { tourPending?: boolean; emailVerified?: boolean } = {},
 ): Promise<NetworkState> {
   await page.context().addCookies([
     { name: "locale", value: "es", domain: "127.0.0.1", path: "/" },
@@ -107,7 +107,11 @@ async function bootstrapTenantAdmin(
         value: undefined,
       });
     },
-    { user: tenantAdmin, tenantId: TENANT_ID, tourPending: options.tourPending === true },
+    {
+      user: { ...tenantAdmin, emailVerified: options.emailVerified ?? true },
+      tenantId: TENANT_ID,
+      tourPending: options.tourPending === true,
+    },
   );
 
   const state: NetworkState = {
@@ -287,6 +291,140 @@ async function bootstrapTenantAdmin(
 
     if (method === "GET" && path === `/analytics/overview/${TENANT_ID}`) {
       await fulfillSuccess(route, { recentActivity: [], modelUsage: [] });
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/overview-kpis/${TENANT_ID}`) {
+      await fulfillSuccess(route, { kpis: [] });
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/conversations-volume/${TENANT_ID}`) {
+      await fulfillSuccess(route, { series: [] });
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/channel-accounts/${TENANT_ID}`) {
+      await fulfillSuccess(route, {
+        accounts: [{
+          channelAccountId: "wa-sales-bogota",
+          channelType: "whatsapp",
+          displayName: "WhatsApp Ventas Bogotá",
+          isActive: false,
+          conversations: 7,
+          messages: 18,
+          handoffs: 1,
+          llmCost: 0.12,
+          appointments: 2,
+          leads: 3,
+          orders: 1,
+        }],
+        unattributed: 2,
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/response-times/${TENANT_ID}`) {
+      await fulfillSuccess(route, { series: [] });
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/ai-metrics/${TENANT_ID}`) {
+      await fulfillSuccess(route, {});
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/heatmap/${TENANT_ID}`) {
+      await fulfillSuccess(route, { data: [] });
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/automation/${TENANT_ID}`) {
+      await fulfillSuccess(route, {});
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/broadcast/${TENANT_ID}`) {
+      await fulfillSuccess(route, {});
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/anomalies/${TENANT_ID}`) {
+      await fulfillSuccess(route, {});
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/cohorts/${TENANT_ID}`) {
+      await fulfillSuccess(route, {});
+      return;
+    }
+
+    if (method === "GET" && path === `/dashboard-analytics/realtime/${TENANT_ID}`) {
+      await fulfillSuccess(route, {
+        activeConversations: 0,
+        agentsOnline: 0,
+        agentsBusy: 0,
+        queueDepth: 0,
+        agentsOffline: 0,
+        messagesToday: 0,
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/vertical-integrations/${TENANT_ID}/config`) {
+      const health = (provider: string, resourceType: string, resourceId: string) => ({
+        projectionVersion: 1,
+        connectionId: `${provider}-primary`,
+        resourceType,
+        resourceId,
+        sourceVersion: `${provider}-e2e-v1`,
+        observedAt: "2026-08-24T12:00:00.000Z",
+        degradedReason: null,
+        status: "healthy",
+        connected: true,
+        credentialValidated: true,
+        requiredScopes: ["read"],
+        grantedScopes: ["read"],
+        scopeStatus: "satisfied",
+        lastCheckedAt: "2026-08-24T12:00:00.000Z",
+        lastSuccessfulSyncAt: "2026-08-24T12:00:00.000Z",
+        freshness: { maxAgeSeconds: 86_400, ageSeconds: 60, stale: false },
+        industryEligible: true,
+        consecutiveFailures: 0,
+        circuitState: "closed",
+        lastError: null,
+      });
+      await fulfillSuccess(route, {
+        toast: {
+          configured: true,
+          connected: true,
+          health: health("toast", "location", "loc-bogota"),
+        },
+        mindbody: {
+          configured: true,
+          connected: true,
+          health: health("mindbody", "site", "site-01"),
+        },
+      });
+      return;
+    }
+
+    if (method === "GET" && path === `/vertical-integrations/${TENANT_ID}/bindings/resources`) {
+      const provider = url.searchParams.get("provider");
+      await fulfillSuccess(route, provider === "toast" ? [{
+        version: 1,
+        id: "33333333-3333-4333-8333-333333333333",
+        tenantId: TENANT_ID,
+        provider: "toast",
+        connectionId: "toast-primary",
+        resourceType: "location",
+        resourceId: "local-bogota",
+        externalId: "ext-bogota",
+        scopeType: "site",
+        scopeId: "bogota",
+        state: "active",
+        generation: 3,
+      }] : []);
       return;
     }
 
@@ -528,5 +666,66 @@ test("the setup tour waits for the persistent sidebar and anchors to the AI agen
   await page.keyboard.press("Escape");
   await expect(tourCard).toBeHidden();
   await expect(page.locator("#main-content")).toBeFocused();
+  await expectHermeticNetwork(page, network);
+});
+
+test("legacy Email and SMS routes return to certified, non-SMS surfaces", async ({ page }) => {
+  const network = await bootstrapTenantAdmin(page);
+
+  await page.goto("/admin/channels/email");
+  await expect(page).toHaveURL(/\/admin\/channels$/);
+  await expect(page.getByRole("heading", { name: "Canales", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "WhatsApp", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Instagram DM", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Facebook Messenger", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Telegram", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Email", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "SMS", exact: true })).toHaveCount(0);
+
+  await page.goto("/admin/channels/sms");
+  await expect(page).toHaveURL(/\/admin\/channels$/);
+
+  await page.goto("/admin/settings/integrations/sms-notifications");
+  await expect(page).toHaveURL(/\/admin\/settings$/);
+  await expect(page.getByRole("link", { name: /Notificaciones SMS/i })).toHaveCount(0);
+  await expectHermeticNetwork(page, network);
+});
+
+test("an unverified tenant can read and test while sensitive capabilities remain visibly gated", async ({ page }) => {
+  const network = await bootstrapTenantAdmin(page, { emailVerified: false });
+
+  await page.goto("/admin/channels");
+  await expect(page).toHaveURL(/\/admin\/channels$/);
+  await expect(page.getByText(/Puedes explorar y probar; verifícalo para publicar/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reenviar código", exact: true })).toBeVisible();
+  await expectHermeticNetwork(page, network);
+});
+
+test("analytics exposes historical performance by operational channel account", async ({ page }) => {
+  const network = await bootstrapTenantAdmin(page);
+
+  await page.goto("/admin/analytics-v2");
+  await page.getByRole("button", { name: "Canales", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Rendimiento por cuenta operativa", exact: true })).toBeVisible();
+  await expect(page.getByText("WhatsApp Ventas Bogotá", { exact: true })).toBeVisible();
+  await expect(page.getByText("wa-sales-bogota", { exact: true })).toBeVisible();
+  await expect(page.getByText("Desconectada", { exact: true })).toBeVisible();
+  await expect(page.getByText("2 eventos sin atribuir", { exact: true })).toBeVisible();
+  await expectHermeticNetwork(page, network);
+});
+
+test("vertical integrations expose projection freshness, mappings, and the Mindbody live boundary", async ({ page }) => {
+  const network = await bootstrapTenantAdmin(page);
+
+  await page.goto("/admin/settings/integrations/vertical");
+  await expect(page.getByRole("heading", { name: "Integraciones verticales", exact: true })).toBeVisible();
+  await expect(page.getByText(/Recurso: location · loc-bogota · API toast-e2e-v1/)).toBeVisible();
+  await expect(page.getByText("location:local-bogota", { exact: true })).toBeVisible();
+  await expect(page.getByText("→ ext-bogota", { exact: true })).toBeVisible();
+  await expect(page.getByText("v3", { exact: true })).toBeVisible();
+  await expect(page.getByText(
+    "Sincroniza clases y horarios para descubrimiento. No confirma cupos ni reservas en vivo.",
+    { exact: true },
+  )).toBeVisible();
   await expectHermeticNetwork(page, network);
 });

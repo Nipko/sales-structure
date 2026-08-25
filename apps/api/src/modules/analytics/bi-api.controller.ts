@@ -53,6 +53,18 @@ export class BIApiController {
         return { success: true, data: result };
     }
 
+    @Get('channel-accounts')
+    @ApiOperation({ summary: 'BI: Metrics attributed to operational channel accounts' })
+    async getChannelAccounts(
+        @Req() req: any,
+        @Query('start') start: string,
+        @Query('end') end: string,
+        @Query('channelType') channelType?: string,
+    ) {
+        const result = await this.dashboardAnalytics.getChannelAccountBreakdown(req.tenantId, start, end, channelType);
+        return { success: true, data: result };
+    }
+
     @Get('realtime')
     @ApiOperation({ summary: 'BI: Real-time stats (active convos, agents, queue)' })
     async getRealtime(@Req() req: any) {

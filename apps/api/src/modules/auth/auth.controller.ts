@@ -17,6 +17,7 @@ import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 class LoginDto {
     @IsEmail()
@@ -348,6 +349,7 @@ export class AuthController {
     @Put('users/:userId/skills')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Update user skill tags (admin only)' })
@@ -381,6 +383,7 @@ export class AuthController {
     @Patch('users/:userId')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Update any user details, role or status (admin only)' })
@@ -403,7 +406,7 @@ export class AuthController {
         // Fetch target user first to verify tenant isolation
         const targetUser = await this.authService['prisma'].user.findUnique({
             where: { id: userId },
-            select: { tenantId: true, role: true },
+            select: { tenantId: true, role: true, emailVerified: true },
         });
 
         if (!targetUser) {
@@ -428,7 +431,12 @@ export class AuthController {
         if (body.firstName !== undefined) updateData.firstName = body.firstName;
         if (body.lastName !== undefined) updateData.lastName = body.lastName;
         if (body.role !== undefined) updateData.role = body.role;
-        if (body.isActive !== undefined) updateData.isActive = body.isActive;
+        if (body.isActive !== undefined) {
+            updateData.isActive = body.isActive;
+            updateData.emailVerificationState = body.isActive
+                ? (targetUser.emailVerified ? 'verified' : 'unverified')
+                : 'restricted';
+        }
         if (body.phone !== undefined) updateData.phone = body.phone;
         if (body.jobTitle !== undefined) updateData.jobTitle = body.jobTitle;
         if (body.maxCapacity !== undefined) updateData.maxCapacity = body.maxCapacity;
@@ -469,6 +477,7 @@ export class AuthController {
     @Delete('users/:userId')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Remove/Deactivate a user from the tenant (admin only)' })
@@ -496,7 +505,7 @@ export class AuthController {
         // Soft delete (setting isActive to false)
         await this.authService['prisma'].user.update({
             where: { id: userId },
-            data: { isActive: false, availabilityStatus: 'offline' },
+            data: { isActive: false, availabilityStatus: 'offline', emailVerificationState: 'restricted' },
         });
 
         // Revoke all sessions
@@ -533,7 +542,8 @@ export class AuthController {
     }
 
     @Post('send-verification')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthThrottleGuard, AuthGuard('jwt'))
+    @AuthThrottle(5, 900) // 5 resends per 15 minutes per IP
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Send email verification code' })

@@ -505,12 +505,16 @@ assert(
 const capabilityCounts = loadTsModule(path.join("src", "data", "product-capabilities.ts"))
   .PRODUCT_CAPABILITY_COUNTS;
 const channelRegistry = loadTsModule(path.join("src", "data", "channels.ts")).CHANNELS;
-const supportedChannelKeys = ["whatsapp", "instagram", "messenger", "telegram", "sms", "email"];
+const certifiedChannelPolicy = loadTsModule(path.join(
+  "..", "..", "packages", "shared", "src", "channel-policy.ts",
+)).CERTIFIED_SELF_SERVICE_CHANNELS;
+const expectedCertifiedChannelKeys = ["whatsapp", "instagram", "messenger", "telegram", "web_widget"];
 assert(capabilityCounts.verticals === verticals.length, "Capability stat must match the vertical registry");
 assert(
-  capabilityCounts.channels === Object.keys(channelRegistry || {}).length
-    && supportedChannelKeys.every((channel) => channelRegistry?.[channel]),
-  "Capability stat must match the six registered messaging adapters",
+  capabilityCounts.channels === certifiedChannelPolicy.length
+    && JSON.stringify(certifiedChannelPolicy) === JSON.stringify(expectedCertifiedChannelKeys)
+    && Object.keys(channelRegistry || {}).every((channel) => certifiedChannelPolicy.includes(channel)),
+  "Capability stat and demo skins must match the five certified self-service channels",
 );
 assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat must match es/en/pt/fr locales");
 

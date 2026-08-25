@@ -6,6 +6,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { VerticalIntegrationsService, VerticalProvider } from './vertical-integrations.service';
 import { UpdateVerticalIntegrationConfigDto } from './vertical-integrations.dto';
+import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
+import { ProviderResourceBindingService } from './provider-resource-binding.service';
 
 /**
  * Real vertical integrations (T3.19): Toast / Mindbody / Cliniko.
@@ -13,7 +15,10 @@ import { UpdateVerticalIntegrationConfigDto } from './vertical-integrations.dto'
 @Controller('vertical-integrations')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class VerticalIntegrationsController {
-    constructor(private readonly vi: VerticalIntegrationsService) {}
+    constructor(
+        private readonly vi: VerticalIntegrationsService,
+        private readonly bindings: ProviderResourceBindingService,
+    ) {}
 
     @Get(':tenantId/config')
     @Roles('super_admin', 'tenant_admin')
@@ -38,6 +43,7 @@ export class VerticalIntegrationsController {
 
     @Put(':tenantId/:provider/config')
     @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('activate_integration')
     async updateConfig(
         @Param('tenantId') tenantId: string,
         @Param('provider') provider: VerticalProvider,
@@ -61,9 +67,64 @@ export class VerticalIntegrationsController {
 
     @Delete(':tenantId/:provider')
     @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('sensitive_admin')
     async disconnect(@Param('tenantId') tenantId: string, @Param('provider') provider: VerticalProvider) {
+        await this.bindings.tombstoneProvider(tenantId, provider);
         await this.vi.disconnect(tenantId, provider);
         return { success: true };
+    }
+
+    @Get(':tenantId/bindings/resources')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async listBindings(
+        @Param('tenantId') tenantId: string,
+        @Query('provider') provider?: string,
+    ) {
+        return { success: true, data: await this.bindings.list(tenantId, provider) };
+    }
+
+    @Put(':tenantId/bindings/resources')
+    @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('activate_integration')
+    async upsertBinding(
+        @Param('tenantId') tenantId: string,
+        @Body() body: {
+            provider: string;
+            connectionId: string;
+            resourceType: string;
+            resourceId: string;
+            externalId: string;
+            scopeType?: string;
+            scopeId?: string;
+        },
+    ) {
+        return { success: true, data: await this.bindings.upsert(tenantId, body) };
+    }
+
+    @Delete(':tenantId/bindings/resources/:bindingId')
+    @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('activate_integration')
+    async tombstoneBinding(
+        @Param('tenantId') tenantId: string,
+        @Param('bindingId') bindingId: string,
+    ) {
+        await this.bindings.tombstone(tenantId, bindingId);
+        return { success: true };
+    }
+
+    @Get(':tenantId/bindings/resolve')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async resolveBinding(
+        @Param('tenantId') tenantId: string,
+        @Query('provider') provider: string,
+        @Query('connectionId') connectionId: string,
+        @Query('resourceType') resourceType: string,
+        @Query('resourceId') resourceId: string,
+    ) {
+        return {
+            success: true,
+            data: await this.bindings.resolve(tenantId, { provider, connectionId, resourceType, resourceId }),
+        };
     }
 
     @Post(':tenantId/:provider/test')
@@ -74,6 +135,7 @@ export class VerticalIntegrationsController {
 
     @Post(':tenantId/:provider/sync')
     @Roles('super_admin', 'tenant_admin')
+    @RequiresVerifiedEmail('activate_integration')
     async sync(@Param('tenantId') tenantId: string, @Param('provider') provider: VerticalProvider) {
         const result = await this.vi.sync(tenantId, provider);
         return {

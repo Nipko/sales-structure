@@ -72,6 +72,19 @@ export interface ProviderFreshnessPolicy {
     liveTools: readonly string[];
 }
 
+export type ProviderToolDataMode = 'mirrored_discovery' | 'available_live';
+
+export const PROVIDER_TOOL_DATA_MODES: Readonly<Record<string, ProviderToolDataMode>> = Object.freeze({
+    get_restaurant_menu: 'mirrored_discovery',
+    get_fitness_schedule: 'mirrored_discovery',
+    list_clinic_services: 'mirrored_discovery',
+    check_clinic_availability: 'available_live',
+});
+
+export function providerToolDataMode(tool: string): ProviderToolDataMode | undefined {
+    return PROVIDER_TOOL_DATA_MODES[tool];
+}
+
 /**
  * Cadencia ejecutable del re-sync de integraciones verticales.
  *

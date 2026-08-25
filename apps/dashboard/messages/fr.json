@@ -128,7 +128,7 @@
     }
   },
   "emailVerification": {
-    "message": "Votre e-mail {email} n’est pas encore vérifié.",
+    "message": "Votre e-mail {email} n’est pas encore vérifié. Vous pouvez explorer et tester ; vérifiez-le pour publier, envoyer, connecter des intégrations, encaisser ou exporter.",
     "resend": "Renvoyer le code",
     "enterCode": "J’ai le code",
     "sent": "Code envoyé",
@@ -5241,6 +5241,17 @@
     "readRate": "Taux Lecture",
     "total": "Total",
     "channel": "Canal",
+    "account": "Compte opérationnel",
+    "operationalAccounts": "Performance par compte opérationnel",
+    "operationalAccountsDescription": "Sépare chaque numéro, page, bot ou widget même lorsqu'ils partagent un canal.",
+    "unattributedEvents": "{count} événements non attribués",
+    "unattributedAccount": "Compte non attribué",
+    "historicalUnknown": "Historique sans preuve suffisante",
+    "noOperationalAccountData": "Aucune activité n'a été attribuée aux comptes opérationnels sur cette période.",
+    "disconnected": "Déconnecté",
+    "appointments": "Rendez-vous",
+    "leads": "Prospects",
+    "orders": "Commandes",
     "anomaliesTab": "Anomalies",
     "cohortsTab": "Cohortes",
     "anomaliesDetected": "Anomalies Détectées",
@@ -7690,7 +7701,7 @@
       ]
     },
     "settingsIntegrationsVertical": {
-      "betaNotice": "Ces intégrations sont en lecture seule et en bêta : elles synchronisent le catalogue (menu, cours, services) une fois par jour, mais n’écrivent rien dans le système source et n’ont pas encore été vérifiées sur un compte réel. Si vous en connectez une et que quelque chose ne fonctionne pas, dites-le-nous.",
+      "betaNotice": "Ces intégrations sont en lecture seule et en bêta : elles indiquent la source, la version et la fraîcheur, mais n’écrivent pas dans le système source et ne confirment pas la disponibilité en direct si le fournisseur ne l’expose pas. Signalez-nous tout problème.",
       "title": "Que sont les intégrations verticales ?",
       "description": "Connectez Parallly à des logiciels spécialisés de votre secteur (Toast pour les restaurants, Mindbody pour les salles de sport/wellness, Cliniko pour les cliniques) pour que l'agent consulte les disponibilités, réserve des rendez-vous et synchronise les données en temps réel.",
       "tips": [
@@ -10801,7 +10812,7 @@
     "provider_toast": "Toast (caisse restaurant)",
     "provider_toast_desc": "Synchronisez le menu, les articles et les prix pour prendre des commandes par chat.",
     "provider_mindbody": "Mindbody (salles de sport)",
-    "provider_mindbody_desc": "Synchronisez les cours et horaires pour les réservations par chat.",
+    "provider_mindbody_desc": "Synchronise les cours et horaires pour la découverte. Les places et réservations en direct ne sont pas confirmées.",
     "provider_cliniko": "Cliniko (santé)",
     "provider_cliniko_desc": "Types de rendez-vous et disponibilités. Pas d'accès au dossier clinique (évite HIPAA).",
     "testFirst": "Testez la connexion avant de synchroniser",
@@ -10824,9 +10835,26 @@
       "scopesMissing": "Permissions manquantes : {scopes}. La lecture revient vide sans expliquer pourquoi.",
       "scopesUnknown": "Nous ne savons pas encore quelles permissions le fournisseur a accordées. Testez la connexion.",
       "scopesSatisfied": "Permissions accordées : {scopes}",
+      "projectionTarget": "Ressource : {type} · {id}",
+      "sourceVersion": "API {version}",
       "lastError": "Dernière erreur du fournisseur : {code}",
       "circuit_open": "Mise en pause après plusieurs échecs. Elle réessaie seule ; testez la connexion pour la réactiver plus tôt.",
       "circuit_half_open": "Nouvel essai après plusieurs échecs."
+    },
+    "bindings": {
+      "title": "Mappage par ressource",
+      "description": "Associez chaque site, calendrier ou ressource locale à son identifiant externe. Un mappage n'active jamais les écritures à lui seul.",
+      "resourceType": "Type de ressource",
+      "localResourceId": "ID local",
+      "externalId": "ID externe",
+      "scopeType": "Type de portée (facultatif)",
+      "scopeId": "ID de portée (facultatif)",
+      "map": "Mapper",
+      "conflict": "Conflit : ID externe dupliqué",
+      "remove": "Supprimer le mappage",
+      "loadFailed": "Impossible de charger les mappages.",
+      "saveFailed": "Impossible d'enregistrer le mappage.",
+      "deleteFailed": "Impossible de supprimer le mappage."
     }
   },
   "mcp": {

@@ -9,6 +9,7 @@ import {
     VERTICAL_INTEGRATION_SYNC_CRON,
     providerFitsProfile,
     providerFreshnessFor,
+    type ProviderBindingResolutionV1,
 } from '@parallext/shared';
 import { randomUUID } from 'crypto';
 import {
@@ -40,6 +41,7 @@ import {
     type StoredIntegrationHealth,
     type VerticalProvider,
 } from './integration-health';
+import { ProviderResourceBindingService } from './provider-resource-binding.service';
 
 export type { VerticalProvider } from './integration-health';
 
@@ -150,7 +152,26 @@ export class VerticalIntegrationsService {
         private readonly cronLock: CronLockService,
         private readonly appConfig: ConfigService,
         private readonly secrets: TenantSecretCryptoService,
+        private readonly bindings: ProviderResourceBindingService,
     ) {}
+
+    private healthProjection(provider: VerticalProvider, rawConfig: unknown) {
+        const config = rawConfig && typeof rawConfig === 'object'
+            ? rawConfig as Record<string, any>
+            : {};
+        if (provider === 'toast') {
+            return { connectionId: config.locationGuid || 'default', resourceType: 'location', resourceId: config.locationGuid || 'all' };
+        }
+        if (provider === 'mindbody') {
+            return { connectionId: config.siteId || 'default', resourceType: 'site', resourceId: config.siteId || 'all' };
+        }
+        const resourceId = config.businessId || config.practitionerId || 'all';
+        return {
+            connectionId: resourceId === 'all' ? 'default' : resourceId,
+            resourceType: config.businessId ? 'business' : config.practitionerId ? 'practitioner' : 'tenant',
+            resourceId,
+        };
+    }
 
     private async assertProviderApplicable(
         tenantId: string,
@@ -367,6 +388,7 @@ export class VerticalIntegrationsService {
                     p, true, storedHealth[p], new Date(),
                     (settings.verticalConfig?.industry || tenant?.industry) as string | undefined,
                     settings.verticalConfig?.subType,
+                    this.healthProjection(p, vi[p]),
                 );
                 out[p] = {
                     ...vi[p],
@@ -507,6 +529,7 @@ export class VerticalIntegrationsService {
             new Date(),
             settings.verticalConfig?.industry || tenant?.industry,
             settings.verticalConfig?.subType,
+            this.healthProjection(provider, settings.verticalIntegrations?.[provider]),
         );
     }
 
@@ -525,6 +548,7 @@ export class VerticalIntegrationsService {
                 provider, !!configured[provider], stored[provider], now,
                 settings.verticalConfig?.industry || tenant?.industry,
                 settings.verticalConfig?.subType,
+                this.healthProjection(provider, configured[provider]),
             ),
         ])) as Record<VerticalProvider, IntegrationHealth>;
     }
@@ -615,6 +639,7 @@ export class VerticalIntegrationsService {
             new Date(),
             settings.verticalConfig?.industry || tenantIndustry,
             settings.verticalConfig?.subType,
+            this.healthProjection(provider, settings.verticalIntegrations?.[provider]),
         );
     }
 
@@ -622,8 +647,9 @@ export class VerticalIntegrationsService {
         tenantId: string,
         provider: VerticalProvider,
         toolName: string,
-    ): Promise<{ allowed: boolean; health: IntegrationHealth }> {
+    ): Promise<{ allowed: boolean; health: IntegrationHealth; binding: ProviderBindingResolutionV1 }> {
         const health = await this.getProviderHealth(tenantId, provider);
+        const binding = await this.resolveTenantProviderBinding(tenantId, health);
         const policy = providerFreshnessFor(provider);
         const isLive = !!policy?.liveTools.includes(toolName);
         const isMirror = !!policy?.mirrorBackedTools.includes(toolName);
@@ -634,14 +660,16 @@ export class VerticalIntegrationsService {
             && health.scopeStatus !== 'missing'
             && health.circuitState !== 'open'
             && !['unavailable', 'unhealthy', 'not_applicable'].includes(health.status);
-        const allowed = connectionUsable && (isLive || (isMirror && !health.freshness.stale));
+        const allowed = binding.allowExternalRead
+            && connectionUsable
+            && (isLive || (isMirror && !health.freshness.stale));
         if (!allowed) {
             this.logger.warn(
                 `[VI health] tool blocked tenant=${tenantId} provider=${provider} tool=${toolName} `
-                + `status=${health.status} circuit=${health.circuitState}`,
+                + `status=${health.status} circuit=${health.circuitState} binding=${binding.mode}`,
             );
         }
-        return { allowed, health };
+        return { allowed, health, binding };
     }
 
     /** Which providers are healthy. Used to gate AI tool registration. */
@@ -649,7 +677,7 @@ export class VerticalIntegrationsService {
         // Deliberately read durable health on every turn. A five-minute boolean
         // cache could keep registering a provider after it crossed staleAt.
         const health = await this.getAllHealth(tenantId);
-        const usable = (provider: VerticalProvider): boolean => {
+        const usable = async (provider: VerticalProvider): Promise<boolean> => {
             const value = health[provider];
             const policy = providerFreshnessFor(provider);
             const connection = value.connected
@@ -657,17 +685,56 @@ export class VerticalIntegrationsService {
                 && value.scopeStatus !== 'missing'
                 && value.circuitState !== 'open'
                 && !['unavailable', 'unhealthy', 'not_applicable'].includes(value.status);
-            return connection && (
+            if (!connection) return false;
+            const binding = await this.resolveTenantProviderBinding(tenantId, value);
+            return binding.allowExternalRead && (
                 !!policy?.liveTools.length
                 || (!!policy?.mirrorBackedTools.length && !value.freshness.stale)
             );
         };
-        const result = {
-            toast: usable('toast'),
-            mindbody: usable('mindbody'),
-            cliniko: usable('cliniko'),
-        } as Record<VerticalProvider, boolean>;
+        const [toast, mindbody, cliniko] = await Promise.all([
+            usable('toast'), usable('mindbody'), usable('cliniko'),
+        ]);
+        const result = { toast, mindbody, cliniko } as Record<VerticalProvider, boolean>;
         return result;
+    }
+
+    private async resolveTenantProviderBinding(
+        tenantId: string,
+        health: IntegrationHealth,
+    ): Promise<ProviderBindingResolutionV1> {
+        try {
+            return await this.bindings.resolve(tenantId, {
+                provider: health.provider,
+                connectionId: health.connectionId,
+                resourceType: health.resourceType,
+                // Existing provider tools are tenant-scoped. They retain the
+                // external read through the conservative fallback until a
+                // resource-aware tool supplies an exact local resource.
+                resourceId: 'all',
+            });
+        } catch (error: any) {
+            this.logger.error(
+                `[VI binding] resolution failed tenant=${tenantId} provider=${health.provider}: ${error?.message}`,
+            );
+            return {
+                version: 1,
+                provider: health.provider,
+                connectionId: health.connectionId,
+                resourceType: health.resourceType,
+                resourceId: 'all',
+                mode: 'conflict',
+                bindingId: null,
+                externalId: null,
+                generation: 0,
+                owner: 'blocked',
+                allowExternalRead: false,
+                allowExternalWrite: false,
+                allowLocalWrite: false,
+                reason: 'binding_resolution_failed',
+                cache: 'not_cached',
+            };
+        }
     }
 
     // ── Synced-items table ───────────────────────────────────
@@ -1167,7 +1234,7 @@ export class VerticalIntegrationsService {
     /** Live availability lookup for Cliniko (availability is dynamic, not synced). */
     async checkClinikoAvailability(tenantId: string, appointmentTypeId: string, from?: string, to?: string): Promise<any> {
         const gate = await this.getToolGate(tenantId, 'cliniko', 'check_clinic_availability');
-        if (!gate.allowed) return this.blockedToolResult(gate.health);
+        if (!gate.allowed) return this.blockedToolResult(gate.health, gate.binding);
         const config: ClinikoConfig = await this.getConfig(tenantId, 'cliniko');
         if (!config) return { error: 'Cliniko no está configurado' };
         if (!config.businessId || !config.practitionerId) {
@@ -1187,13 +1254,17 @@ export class VerticalIntegrationsService {
                 params: { from: fromDate, to: toDate },
             });
             const times = (res.data?.available_times || []).slice(0, 20).map((t: any) => t.appointment_start);
-            await this.updateHealth(tenantId, 'cliniko', {
+            const health = await this.updateHealth(tenantId, 'cliniko', {
                 outcome: 'success',
                 credentialValidated: true,
                 grantedScopes: requiredScopesForProvider('cliniko'),
                 configRevision: this.configRevisionOf(config),
             });
-            return { availableTimes: times };
+            return {
+                availableTimes: times,
+                mode: 'available_live',
+                integrationProjection: this.toolIntegrationProjection(health, gate.binding),
+            };
         } catch (e: any) {
             const health = e instanceof BadRequestException
                 ? gate.health
@@ -1212,25 +1283,62 @@ export class VerticalIntegrationsService {
                     ? 'Identificador de disponibilidad inválido'
                     : 'No se pudo obtener disponibilidad',
                 integrationStatus: health.status,
+                integrationProjection: this.toolIntegrationProjection(health, gate.binding),
             };
         }
     }
 
     // ── AI-facing read methods (used by tool executor) ───────
-    private blockedToolResult(health: IntegrationHealth): Record<string, unknown> {
+    private toolIntegrationProjection(
+        health: IntegrationHealth,
+        binding: ProviderBindingResolutionV1,
+    ): Record<string, unknown> {
+        return {
+            projectionVersion: health.projectionVersion,
+            provider: health.provider,
+            connectionId: health.connectionId,
+            resourceType: health.resourceType,
+            resourceId: health.resourceId,
+            lastAttemptAt: health.lastAttemptAt,
+            lastSuccessAt: health.lastSuccessAt,
+            asOf: health.asOf,
+            expectedInterval: health.expectedInterval,
+            freshUntil: health.freshUntil,
+            health: health.health,
+            freshness: health.freshness.state,
+            degradedReason: health.degradedReason,
+            sourceVersion: health.sourceVersion,
+            observedAt: health.observedAt,
+            binding: {
+                version: binding.version,
+                mode: binding.mode,
+                bindingId: binding.bindingId,
+                externalId: binding.externalId,
+                generation: binding.generation,
+                owner: binding.owner,
+                reason: binding.reason,
+            },
+        };
+    }
+
+    private blockedToolResult(
+        health: IntegrationHealth,
+        binding: ProviderBindingResolutionV1,
+    ): Record<string, unknown> {
         return {
             error: 'integration_unavailable',
             provider: health.provider,
             integrationStatus: health.status,
             connected: health.connected,
             retryable: health.status === 'stale' || health.status === 'degraded',
+            integrationProjection: this.toolIntegrationProjection(health, binding),
             message: 'La integración externa no está saludable; no uses ni inventes sus datos.',
         };
     }
 
     async getMenuForAI(tenantId: string, schemaName: string): Promise<any> {
         const gate = await this.getToolGate(tenantId, 'toast', 'get_restaurant_menu');
-        if (!gate.allowed) return this.blockedToolResult(gate.health);
+        if (!gate.allowed) return this.blockedToolResult(gate.health, gate.binding);
         const rows = await this.listItemsInSchema(schemaName, 'toast', 'menu_item', 80);
         return {
             items: rows.map((r) => ({
@@ -1240,12 +1348,14 @@ export class VerticalIntegrationsService {
                 description: r.data?.description,
             })),
             source: 'toast',
+            mode: 'mirrored_discovery',
+            integrationProjection: this.toolIntegrationProjection(gate.health, gate.binding),
         };
     }
 
     async getScheduleForAI(tenantId: string, schemaName: string): Promise<any> {
         const gate = await this.getToolGate(tenantId, 'mindbody', 'get_fitness_schedule');
-        if (!gate.allowed) return this.blockedToolResult(gate.health);
+        if (!gate.allowed) return this.blockedToolResult(gate.health, gate.binding);
         const rows = await this.listItemsInSchema(schemaName, 'mindbody', 'class', 80);
         // El sync de Mindbody trae una ventana de ~14 días que caduca sola: sin
         // este filtro, a la semana de conectar la IA ofrecía clases que ya
@@ -1259,18 +1369,29 @@ export class VerticalIntegrationsService {
             classes: upcoming.map((r) => ({
                 name: r.title, staff: r.subtitle,
                 start: r.data?.startDateTime, end: r.data?.endDateTime,
-                available: r.data?.isAvailable !== false, location: r.data?.location,
+                location: r.data?.location,
             })),
             // Si el filtro vació la lista pero había filas, el sync está viejo:
             // decírselo al modelo evita que responda "no hay clases" a secas.
             stale: rows.length > 0 && upcoming.length === 0,
             source: 'mindbody',
+            mode: 'mirrored_discovery',
+            asOf: gate.health.asOf,
+            liveCapacity: {
+                available: false,
+                status: 'unavailable',
+                error: 'live_capacity_unavailable',
+                bookingSupported: false,
+                nextAction: 'handoff_or_waitlist',
+            },
+            message: 'These mirrored classes are for schedule discovery only. Never claim a spot is available or confirm, hold, book, or cancel from this result.',
+            integrationProjection: this.toolIntegrationProjection(gate.health, gate.binding),
         };
     }
 
     async getClinicServicesForAI(tenantId: string, schemaName: string): Promise<any> {
         const gate = await this.getToolGate(tenantId, 'cliniko', 'list_clinic_services');
-        if (!gate.allowed) return this.blockedToolResult(gate.health);
+        if (!gate.allowed) return this.blockedToolResult(gate.health, gate.binding);
         const rows = await this.listItemsInSchema(schemaName, 'cliniko', 'appointment_type', 80);
         return {
             services: rows.map((r) => ({
@@ -1279,6 +1400,8 @@ export class VerticalIntegrationsService {
                 price: r.price_cents != null ? Number(r.price_cents) / 100 : null,
             })),
             source: 'cliniko',
+            mode: 'mirrored_discovery',
+            integrationProjection: this.toolIntegrationProjection(gate.health, gate.binding),
         };
     }
 }

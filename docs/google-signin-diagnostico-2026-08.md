@@ -1,4 +1,4 @@
-# Login con Google en la app móvil — diagnóstico (19-ago-2026)
+# Login con Google en la app móvil — diagnóstico (actualizado 25-ago-2026)
 
 ## Síntoma
 
@@ -48,6 +48,49 @@ Que el proyecto de FCM sea otro **no es el problema** — `google-services.json`
 sirve para Firebase/FCM. El problema es que en el proyecto **950001098107**, que es el
 dueño del webClientId, falta (o no coincide) el cliente OAuth de Android para
 `cloud.parallly.mobile` con el SHA-1 de arriba.
+
+### Verificación en Google Cloud (25-ago-2026)
+
+Se confirmó en la cuenta `nirlevin89@gmail.com`, proyecto **Parallext**
+(`parallext`, número `950001098107`), que sí existe un cliente llamado
+**Parallly Android**, pero está registrado así:
+
+| Campo | Valor actual |
+|---|---|
+| Paquete | `cloud.parallly.mobile` |
+| SHA-1 | `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25` |
+
+El paquete coincide, pero esa huella **no es** la firma con la que Google Play entrega
+la aplicación (`F7:46:...:69:DC`). La causa queda confirmada: falta un segundo cliente
+OAuth Android para la firma de Play. La clave de subida mostrada actualmente por Play
+también es distinta (`0F:CE:25:BB:9C:7C:B4:A4:57:47:A2:7C:5D:79:B4:F7:46:41:DF:2F`).
+
+### Corrección aplicada (25-ago-2026)
+
+Se creó correctamente un segundo cliente OAuth Android en el mismo proyecto:
+
+| Campo | Valor |
+|---|---|
+| Nombre | `Parallly Android - Google Play` |
+| Cliente | `950001098107-p7ikq3ph7eggk00d4h9nb9i0dfo08v1f.apps.googleusercontent.com` |
+| Paquete | `cloud.parallly.mobile` |
+| SHA-1 | `F7:46:78:C3:88:FB:E5:91:EC:69:9E:E1:1E:88:B1:E2:BB:14:69:DC` |
+
+El cliente anterior se conservó sin cambios. Google advierte que la propagación puede
+tardar entre unos minutos y algunas horas. La prueba final debe hacerse con la versión
+instalada desde Google Play.
+
+### Prueba final en dispositivo (25-ago-2026)
+
+Se inspeccionó por ADB la instalación de Google Play en el Samsung SM-S918B:
+
+- `versionName=1.0.0`, `versionCode=7`;
+- instalador `com.android.vending`;
+- al tocar **Continuar con Google**, el flujo nativo completó la autenticación y la app
+  avanzó hasta su propia pantalla de **Verificación en dos pasos**;
+- no volvió a presentarse `DEVELOPER_ERROR` (10).
+
+La corrección OAuth queda validada en la misma versión 7 rechazada, sin recompilación.
 
 Detalle que lo hace fácil de pasar por alto: **el SHA-1 cambió al publicar en Play**. Si
 el cliente Android se registró con la huella de la clave de *subida* de EAS, la app

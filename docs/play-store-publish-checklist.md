@@ -1,5 +1,17 @@
 # Play Store — Estado y checklist de publicación (Parallly Mobile)
 
+> **Actualización al 25-ago-2026.** El envío fue rechazado el 16-ago-2026 por
+> **“Declaración inexacta de aplicaciones de salud”**. La revisión técnica confirmó que
+> la app móvil no integra Health Connect, datos clínicos, diagnóstico, medicación ni
+> permisos de salud; su agenda es una capacidad horizontal para reuniones, servicios y
+> operaciones comerciales. Se declaró **Ninguna función de salud**, se retiraron las
+> categorías de salud y actividad física de Seguridad de los datos y se conservó
+> **App de Negocios**. El candidato vigente es v9 (`versionCode 9`), build EAS
+> `66ec0b67-5e25-450e-a65f-70b4f4766eff`, con Google Sign-In corregido y seis recursos
+> de marca con chulitos blancos. v9 fue publicada en prueba interna, instalada desde
+> Google Play en el Samsung SM-S918B y enviada a Producción. El ícono de la ficha de
+> 512×512 también fue reemplazado y la revisión se reinició para incluirlo.
+
 > **Estado al 10-ago-2026.** La aplicación ya existe en Google Play Console, la prueba
 > interna está activa y Producción fue enviada a revisión; todavía no está publicada. El
 > candidato vigente es el AAB `1.0.0 (7)`, generado desde el commit `8bea2bec`, validado
@@ -29,19 +41,19 @@
 
 | # | Requisito | Estado real |
 |---|---|---|
-| 1 | AAB final de Android | ✅ v7 construido, validado, firmado, instalado desde Play y cargado (§1) |
+| 1 | AAB final de Android | ✅ v9 construido, validado, firmado, instalado desde Play y cargado (§1) |
 | 2 | Prueba física del artefacto | ✅ Login, desconexión/reconexión y relanzamiento aprobados (§1) |
 | 3 | Cuenta de revisión | ✅ Activa, 2FA desactivado y Pro compensado hasta 7-ago-2036 (§2) |
 | 4 | Capturas de teléfono | ✅ 4 archivos compatibles, autorizados y cargados (§3) |
 | 5 | App access | ✅ Detalle agregado y página guardada |
 | 6 | Target audience | ✅ Guardado únicamente como `18 años o más` |
-| 7 | Data safety | ✅ Revisado y guardado; App content al día (§4) |
-| 8 | Ficha de tienda | ✅ Textos, ícono, gráfico y 4 capturas incluidos en la revisión |
-| 9 | Prueba interna | ✅ v7 activa, un verificador y enlace de participación disponibles |
+| 7 | Data safety | ✅ Guardado sin salud ni actividad física; App content al día (§4) |
+| 8 | Ficha de tienda | ✅ Nuevo ícono con chulitos blancos y demás recursos incluidos en revisión |
+| 9 | Prueba interna | ✅ v9 activa, un verificador y enlace de participación disponibles |
 | 10 | Declaración IA/opinión | ✅ 2 recursos promocionales etiquetados; 4 capturas reales sin etiqueta |
-| 11 | Producción | ◐ Rollout completo de v7 para 176 países/regiones + Resto del mundo; 11 cambios en revisión |
+| 11 | Producción | ◐ v9 y declaraciones corregidas en etapa de revisión |
 
-El camino crítico restante es la revisión de Google Play. Los 11 cambios ya fueron
+El camino crítico restante es la revisión de Google Play. Los cambios ya fueron
 enviados; no hay un envío manual pendiente. Como la publicación administrada está
 desactivada, la aprobación producirá la publicación automática del rollout completo.
 
@@ -58,15 +70,15 @@ desactivada, la aprobación producirá la publicación automática del rollout c
 | Secretos de build | `GOOGLE_SERVICES_JSON`, `SENTRY_ORG/PROJECT/AUTH_TOKEN` en EAS |
 | IARC | Completado con `support@parallext.com` |
 | Textos de tienda | Nombre, descripción corta y descripción completa guardados |
-| Ícono | `apps/mobile/store-assets/play-icon-512.png`, 512×512, cargado |
+| Ícono | `apps/mobile/store-assets/play-icon-512.png`, 512×512, chulitos blancos, cargado |
 | Gráfico destacado | `apps/mobile/store-assets/play-feature-graphic-1024x500.png`, 1024×500, cargado |
 | App access | Detalle de acceso agregado y página guardada |
 | Target audience | Guardado únicamente como `18 años o más` |
-| Data safety / App content | Formulario revisado y guardado; App content muestra `Ya estás al día` |
+| Data safety / App content | Sin salud ni actividad física; declaración de salud: ninguna función |
 | Capturas | Cuatro capturas de teléfono cargadas y ficha guardada |
 | Declaración IA/opinión | Completada; solo ícono y gráfico destacado etiquetados |
-| Estado de publicación | `Tus cambios están en proceso de revisión` |
-| Prueba interna | Release activo con `1.0.0 (7)` |
+| Estado de publicación | `Cambios en la etapa de revisión` |
+| Prueba interna | Release activo con `1.0.0 (9)` |
 
 ## 1. AAB v7 y prueba física
 
@@ -132,9 +144,10 @@ Resultado de login, desconexión/reconexión y relanzamiento: **PASS**.
 | v4 | `e268912b` | Descartado; anterior al arreglo de CRM |
 | v5 | `d9d81927` | Validado e instalado, pero sustituido por v6 |
 | v6 | `41d58962` | Publicado internamente, sustituido por v7 |
-| **v7** | **`8bea2bec`** | **Artefacto vigente de prueba interna y versión de Producción en revisión** |
+| v7 | `8bea2bec` | Rechazado en Producción; sustituido por v9 |
+| **v9** | **build EAS `66ec0b67-5e25-450e-a65f-70b4f4766eff`** | **Vigente en prueba interna y Producción en revisión** |
 
-La prueba interna publicada muestra versionCode `7` como versión activa.
+La prueba interna publicada muestra versionCode `9` como versión activa.
 
 ## 2. App access y cuenta demo verificados
 
@@ -248,29 +261,28 @@ Privacidad y eliminación de cuenta/datos están disponibles en **Más → Cuent
 - Aplicación gubernamental: No.
 - Advertising ID: No.
 - Funciones financieras: Seguros.
-- Salud: Administración y servicios de atención médica.
+- Salud: Ninguna función de salud.
 - App access agregado y guardado.
 - Target audience guardado únicamente como `18 años o más`.
-- Data safety guardado; App content al día.
+- Data safety guardado sin información de salud ni actividad física; App content al día.
 - Nombre, descripción, ícono, gráfico destacado y cuatro capturas guardados.
 - Declaración IA/opinión completada con los dos recursos promocionales etiquetados y
   las cuatro capturas reales sin etiquetar.
 - Ficha y demás cambios incluidos en el envío a revisión.
-- AAB v7 publicado en la prueba interna activa.
+- AAB v9 publicado en la prueba interna activa.
 - Lista de verificadores guardada y seleccionada con un verificador.
-- Release `1.0.0 (7)` activo y disponible para verificadores.
+- Release `1.0.0 (9)` activo y disponible para verificadores.
 - Instalación/actualización desde Google Play comprobada con instalador
   `com.android.vending`.
-- Rollout completo de Producción enviado con v7 para 176 países/regiones y `Resto del
+- Rollout completo de Producción enviado con v9 para 176 países/regiones y `Resto del
   mundo`.
-- Los 11 cambios fueron enviados y Play confirma `Tus cambios están en proceso de
-  revisión`.
+- El nuevo ícono de tienda se añadió y la revisión se reinició para incluirlo.
+- Play confirma `Cambios en la etapa de revisión`.
 - Publicación administrada desactivada; Play publicará automáticamente si aprueba.
 
 ### Pendiente
 
 - esperar la decisión de Google Play;
-- atender cualquier observación o rechazo si Play solicita cambios;
 - confirmar la publicación automática después de una aprobación.
 
 Textos vigentes de la ficha:
@@ -317,9 +329,9 @@ relanzamiento.
 
 ## 8. Orden para continuar
 
-1. Esperar la decisión de Google Play sobre los 11 cambios enviados.
+1. Esperar la decisión de Google Play sobre v9 y las declaraciones corregidas.
 2. Si Play solicita correcciones, resolverlas antes de reenviar.
-3. Si Play aprueba, confirmar la publicación automática de v7 y ejecutar el smoke de
+3. Si Play aprueba, confirmar la publicación automática y ejecutar el smoke de
    Producción.
 
 ## 9. Acceso a Producción
@@ -328,17 +340,17 @@ El panel de esta app muestra Producción habilitada y no presenta un requisito v
 de 12 testers durante 14 días. Esta es una observación de la consola para esta app, no
 una afirmación de que ese requisito nunca pueda aplicar en otras cuentas o momentos.
 
-El rollout completo de Producción con v7 fue enviado para 176 países/regiones más
-`Resto del mundo`. Play muestra 11 cambios y confirma **Tus cambios están en proceso de
+El rollout completo de Producción con v9 fue enviado para 176 países/regiones más
+`Resto del mundo`. Play confirma **Cambios en la etapa de
 revisión**. La app todavía no está publicada en Producción. La publicación administrada
 está desactivada: si Google aprueba, Play publicará automáticamente.
 
 ## 10. Notas de despliegue
 
 - Las páginas legales están desplegadas y responden HTTP 200.
-- El AAB v7 fue construido desde el commit móvil `8bea2bec` y EAS lo reportó como
-  `FINISHED`.
+- El AAB v9 fue generado por EAS con build ID
+  `66ec0b67-5e25-450e-a65f-70b4f4766eff` y validado en el dispositivo.
 - El v2 de Play es un borrador recuperable; no llegó a usuarios ni testers.
 - Mantener separados los estados **prueba interna activa**, **enviado a revisión** y
-  **publicado en Producción**. Actualmente v7 está activa para verificadores y los 11
+  **publicado en Producción**. Actualmente v9 está activa para verificadores y los
   cambios del rollout completo están en revisión, pero la app aún no está publicada.

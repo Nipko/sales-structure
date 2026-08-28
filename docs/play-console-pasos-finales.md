@@ -1,5 +1,19 @@
 # Play Console — estado final y seguimiento de publicación
 
+> **Actualización al 25-ago-2026.** Google Play rechazó la publicación del 16-ago-2026
+> por **“Declaración inexacta de aplicaciones de salud”**. La auditoría del binario y
+> del producto confirmó que la app móvil no integra Health Connect, datos clínicos,
+> diagnóstico, medicación ni permisos de salud. Las citas son una herramienta
+> horizontal para reuniones, servicios y operaciones comerciales. Se corrigió la
+> declaración a **Ninguna función de salud**, se retiraron `Información de salud` y
+> `Información de actividad física` de Seguridad de los datos y se conservó la categoría
+> **App de Negocios**. La versión vigente es v9 (`versionCode 9`), build EAS
+> `66ec0b67-5e25-450e-a65f-70b4f4766eff`, con inicio de sesión de Google verificado y
+> los seis recursos del logo actualizados con chulitos blancos. v9 quedó activa en la
+> prueba interna, instalada desde Google Play en el Samsung SM-S918B y enviada a
+> Producción. El ícono de 512×512 de la ficha también fue reemplazado y la revisión se
+> reinició para incluir todos los cambios.
+
 > Estado al 10-ago-2026. El AAB v7 está construido, validado, instalado desde Google
 > Play y publicado en una prueba interna activa. App access, Target audience,
 > Data safety y la ficha con cuatro capturas quedaron guardados; App content figura al
@@ -150,12 +164,15 @@ login fue verificado, y el smoke de desconexión, reconexión y relanzamiento te
 
 ## 7. Producción — en revisión
 
+> El envío inicial de v7 fue rechazado el 16-ago-2026. La corrección vigente sustituye
+> ese artefacto por v9 e incluye las declaraciones y el ícono de tienda actualizados.
+
 El panel permite acceder a Producción y no muestra un requisito visible de mantener 12
 testers durante 14 días. Este dato describe el estado observado de esta app en la
 consola; no debe presentarse como una exención general de las políticas de Google Play.
 
-El rollout completo de v7 fue enviado para 176 países/regiones más `Resto del mundo`.
-Play muestra 11 cambios y confirma **Tus cambios están en proceso de revisión**. La app
+El rollout completo de v9 fue enviado para 176 países/regiones más `Resto del mundo`.
+Play confirma **Cambios en la etapa de revisión**. La app
 todavía no está publicada en Producción. La publicación administrada está desactivada,
 así que Play publicará automáticamente si aprueba el envío.
 
@@ -182,21 +199,23 @@ La preparación queda completa solo cuando todos estos puntos estén confirmados
 - [x] App access agregado y guardado;
 - [x] 2FA desactivado y plan permanente confirmados;
 - [x] Target audience guardado como 18+;
-- [x] Data safety guardado y App content al día;
-- [x] AAB v7 cargado y reconocido como versionCode 7 en el release activo;
+- [x] Data safety guardado sin categorías de salud ni actividad física;
+- [x] declaración de salud guardada como `Ninguna función de salud`;
+- [x] categoría de tienda conservada como `App de Negocios`;
+- [x] AAB v9 cargado y reconocido como versionCode 9 en el release activo;
 - [x] cuatro capturas cargadas y ficha guardada;
 - [x] declaración de IA/opinión completada con los dos recursos promocionales
   etiquetados y las cuatro capturas reales sin etiquetar;
 - [x] ficha incluida en los cambios enviados a revisión;
 - [x] testers configurados;
 - [x] rollout interno iniciado;
-- [x] versión instalada/actualizada desde Play (`com.android.vending`) y smoke repetido;
+- [x] v9 instalada/actualizada desde Play (`com.android.vending`) y smoke repetido;
 - [x] rollout completo de Producción enviado para 176 países/regiones y `Resto del
   mundo`;
-- [x] 11 cambios enviados explícitamente a revisión;
+- [x] v9, declaraciones corregidas y nuevo ícono de tienda enviados a revisión;
 - [ ] revisión de Google Play aprobada;
 - [ ] publicación automática en Producción confirmada.
 
-La prueba interna v7 está publicada y los 11 cambios del rollout de Producción están en
+La prueba interna v9 está publicada y los cambios del rollout de Producción están en
 revisión. La app aún no está publicada; con publicación administrada desactivada, Play
 la publicará automáticamente después de aprobar.

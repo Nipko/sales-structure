@@ -73,6 +73,7 @@ const MAX_K = 5;
 // Fixed sandbox contact (valid UUID, hex-only) used for action verification. All
 // writes/asserts/cleanup are scoped to it so an eval never touches real customer data.
 const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
+const EVAL_SANDBOX_CHANNEL_ACCOUNT_ID = 'eval-sandbox';
 
 /**
  * Extensible effect-verifier registry. A family enters only after its writer
@@ -865,10 +866,10 @@ export class EvalService {
      */
     private async ensureSandboxConversation(schema: string): Promise<string | undefined> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `INSERT INTO conversations (contact_id, channel_type, status, stage)
-             VALUES ($1::uuid, 'web_widget', 'active', 'greeting')
+            `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage)
+             VALUES ($1::uuid, 'web_widget', $2, 'active', 'greeting')
              RETURNING id::text`,
-            [EVAL_SANDBOX_CONTACT_ID]);
+            [EVAL_SANDBOX_CONTACT_ID, EVAL_SANDBOX_CHANNEL_ACCOUNT_ID]);
         const conversationId = rows?.[0]?.id;
         if (!conversationId) throw new Error('eval_sandbox_conversation_not_created');
         return conversationId;

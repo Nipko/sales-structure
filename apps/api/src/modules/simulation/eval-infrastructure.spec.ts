@@ -101,6 +101,25 @@ describe('versioned multilingual eval infrastructure', () => {
             .toBeGreaterThanOrEqual(10);
     });
 
+    it('creates the sandbox conversation with the required channel account identity', async () => {
+        const { service, prisma } = buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([
+            { id: '11111111-1111-4111-8111-111111111111' },
+        ]);
+
+        await expect((service as any).ensureSandboxConversation('tenant_schema'))
+            .resolves.toBe('11111111-1111-4111-8111-111111111111');
+
+        const [, sql, params] = prisma.executeInTenantSchema.mock.calls[0];
+        expect(sql).toContain(
+            'INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage)',
+        );
+        expect(params).toEqual([
+            '00000000-0000-4000-8000-00000000eba1',
+            'eval-sandbox',
+        ]);
+    });
+
     it('always cleans a partially prepared sandbox when the model/provider path fails', async () => {
         const { service } = buildService();
         const cleanup = jest.spyOn(service as any, 'cleanupSandbox').mockResolvedValue(undefined);

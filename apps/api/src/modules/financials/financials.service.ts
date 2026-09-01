@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { COMMERCIAL_SUBSCRIPTIONS } from './commercial-scope.util';
+import { COMMERCIAL_SUBSCRIPTIONS, internalTenantIds } from './commercial-scope.util';
 
 @Injectable()
 export class FinancialsService {
@@ -154,7 +154,11 @@ export class FinancialsService {
             ? new Date(month + '-01')
             : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         const snapshots = await this.prisma.tenantFinancialSnapshot.findMany({
-            where: { snapshotMonth: targetMonth },
+            where: {
+                snapshotMonth: targetMonth,
+                // Meses previos al alcance comercial traen filas de tenants internos.
+                tenantId: { notIn: await internalTenantIds(this.prisma) },
+            },
         });
         // Get tenant names
         const tenantIds = snapshots.map((s: any) => s.tenantId);

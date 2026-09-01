@@ -1688,7 +1688,7 @@ export class BillingService {
                         jsonb_set(COALESCE(metadata, '{}'::jsonb), '{refundPendingAmountCents}', to_jsonb($2::int)),
                         '{refundPendingTotalCents}', to_jsonb($3::int)
                     )
-              WHERE id = $1
+              WHERE id = $1::uuid
                 AND status = 'succeeded'
                 AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'refundPendingAmountCents')
                 AND COALESCE((metadata->>'refundedAmountCents')::int, 0) = $4::int`,
@@ -1751,7 +1751,7 @@ export class BillingService {
                     SET metadata = COALESCE(metadata, '{}'::jsonb)
                                    - 'refundPendingAmountCents'
                                    - 'refundPendingTotalCents'
-                  WHERE id = $1
+                  WHERE id = $1::uuid
                     AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
                 input.paymentId, newTotal,
             ).catch(() => { /* si esto falla queda bloqueado, pero no se cobró de más */ });
@@ -1781,7 +1781,7 @@ export class BillingService {
                     SET metadata = COALESCE(metadata, '{}'::jsonb)
                                    - 'refundPendingAmountCents'
                                    - 'refundPendingTotalCents'
-                  WHERE id = $1
+                  WHERE id = $1::uuid
                     AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
                 input.paymentId, newTotal,
             );
@@ -1795,7 +1795,7 @@ export class BillingService {
                             '{refundedAmountCents}', to_jsonb($2::int)
                         ),
                         status = CASE WHEN $2::int >= amount_cents THEN 'refunded' ELSE 'succeeded' END
-                  WHERE id = $1
+                  WHERE id = $1::uuid
                     AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
                 input.paymentId, newTotal,
             );
@@ -1924,7 +1924,7 @@ export class BillingService {
                                            - 'refundPendingTotalCents'
                                            - 'refundPendingCheckCount'
                                            - 'refundPendingNextCheckAt'
-                          WHERE id = $1
+                          WHERE id = $1::uuid
                             AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
                         row.paymentId,
                         row.pendingTotalCents,
@@ -1968,7 +1968,7 @@ export class BillingService {
                         to_jsonb((NOW() + ($4::int * INTERVAL '1 second'))::text),
                         true
                     )
-              WHERE id = $1
+              WHERE id = $1::uuid
                 AND COALESCE((metadata->>'refundPendingTotalCents')::int, -1) = $2::int`,
             paymentId,
             pendingTotalCents,

@@ -81,6 +81,7 @@ export default function TenantsPage() {
           language: t.language || "es-CO",
           plan: t.plan || "starter",
           isActive: t.isActive ?? true,
+          isInternal: t.isInternal === true,
           createdAt: t.createdAt || "",
           channels: t._count?.channelAccounts || 0,
           conversations: 0,

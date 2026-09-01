@@ -26,6 +26,7 @@ import { PersonaService } from '../persona/persona.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { validateEmailDomain } from '../../common/utils/email.util';
+import { COMMERCIAL_PAYMENTS, COMMERCIAL_SUBSCRIPTIONS } from '../financials/commercial-scope.util';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import {
     mergeTenantSettingsAtomic,
@@ -668,6 +669,7 @@ export class TenantsService {
                     industry: true,
                     plan: true,
                     isActive: true,
+                    isInternal: true,
                     language: true,
                     subscriptionStatus: true,
                     trialEndsAt: true,
@@ -1344,7 +1346,7 @@ export class TenantsService {
 
         // Plan distribution (group active subscriptions by plan)
         const activeSubs = await this.prisma.billingSubscription.findMany({
-            where: { status: { in: ['active', 'trialing'] } },
+            where: { status: { in: ['active', 'trialing'] }, ...COMMERCIAL_SUBSCRIPTIONS },
             include: { plan: { select: { slug: true, priceUsdCents: true } } },
         });
 
@@ -1363,6 +1365,7 @@ export class TenantsService {
 
         // Recent payments (last 20)
         const recentPayments = await this.prisma.billingPayment.findMany({
+            where: { ...COMMERCIAL_PAYMENTS },
             orderBy: { createdAt: 'desc' },
             take: 20,
             select: {
@@ -1382,6 +1385,7 @@ export class TenantsService {
             where: {
                 status: 'failed',
                 createdAt: { gte: thirtyDaysAgo },
+                ...COMMERCIAL_PAYMENTS,
             },
             orderBy: { createdAt: 'desc' },
             select: {
@@ -1396,7 +1400,7 @@ export class TenantsService {
 
         // Total revenue (sum of succeeded payments)
         const succeededPayments = await this.prisma.billingPayment.aggregate({
-            where: { status: 'succeeded' },
+            where: { status: 'succeeded', ...COMMERCIAL_PAYMENTS },
             _sum: { amountCents: true },
         });
 

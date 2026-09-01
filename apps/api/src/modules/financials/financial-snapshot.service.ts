@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
-import { COMMERCIAL_PAYMENTS, COMMERCIAL_SUBSCRIPTIONS } from './commercial-scope.util';
+import { COMMERCIAL_PAYMENTS, COMMERCIAL_SUBSCRIPTIONS, internalTenantIds } from './commercial-scope.util';
 
 @Injectable()
 export class FinancialSnapshotService {
@@ -68,7 +68,7 @@ export class FinancialSnapshotService {
 
         // New customers this month
         const newCustomers = await this.prisma.tenant.count({
-            where: { createdAt: { gte: monthStart, lte: monthEnd } },
+            where: { createdAt: { gte: monthStart, lte: monthEnd }, isInternal: false },
         });
 
         // Cancelled this month
@@ -151,9 +151,14 @@ export class FinancialSnapshotService {
         const prevSnapshot = await this.prisma.financialSnapshot.findFirst({
             orderBy: { snapshotMonth: 'desc' },
         });
+        // Sin este filtro, un tenant interno presente en snapshots viejos (filas
+        // anteriores al alcance comercial) aparecería como churn fantasma.
         const prevTenantSnapshots = prevSnapshot
             ? await this.prisma.tenantFinancialSnapshot.findMany({
-                  where: { snapshotMonth: { lt: monthStart } },
+                  where: {
+                      snapshotMonth: { lt: monthStart },
+                      tenantId: { notIn: await internalTenantIds(this.prisma) },
+                  },
                   orderBy: { snapshotMonth: 'desc' },
                   distinct: ['tenantId'],
               })

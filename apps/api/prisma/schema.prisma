@@ -878,6 +878,10 @@ model FinancialSnapshot {
   llmCostCents          Int      @default(0) @map("llm_cost_cents")
   infraCostCents        Int      @default(0) @map("infra_cost_cents")
   planDistribution      Json     @default("{}") @map("plan_distribution")
+  /// Desglose del revenue por moneda de cobro + tasas usadas para llevarlo a
+  /// USD (revenue_collected_cents ES centavos USD desde ago-2026). Null en
+  /// filas anteriores al backfill.
+  revenueBreakdown      Json?    @map("revenue_breakdown")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 

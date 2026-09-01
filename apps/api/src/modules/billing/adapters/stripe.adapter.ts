@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { IPaymentProvider, WebhookSignatureContext } from './payment-provider.interface';
 import { StripeConfigService } from './stripe-config.service';
 import {
@@ -245,11 +245,16 @@ export class StripeAdapter implements IPaymentProvider {
             }
 
             default:
+                // Evento informativo/no soportado. BadRequestException es el
+                // contrato con webhook.controller para ACKear como no-op
+                // permanente (mismo patrón que Wompi) — devolver un tipo
+                // fabricado registraba SUBSCRIPTION_CREATED fantasma sin tenant
+                // y lo re-emitía a los listeners de la plataforma.
                 this.logger.debug(`Unhandled Stripe event type: ${event.type}`);
-                return {
-                    ...base,
-                    type: BillingEventType.SUBSCRIPTION_CREATED,
-                } as NormalizedBillingEvent;
+                throw new BadRequestException({
+                    error: 'unsupported_stripe_event_type',
+                    eventType: event.type,
+                });
         }
     }
 

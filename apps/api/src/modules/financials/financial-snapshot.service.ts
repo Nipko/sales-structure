@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { COMMERCIAL_PAYMENTS, COMMERCIAL_SUBSCRIPTIONS, internalTenantIds } from './commercial-scope.util';
+import { sumInUsdCents, toUsdCents, usdRateMap } from './fx.util';
 
 @Injectable()
 export class FinancialSnapshotService {
@@ -86,7 +87,18 @@ export class FinancialSnapshotService {
         });
         const succeeded = payments.filter((p: any) => p.status === 'succeeded');
         const failed = payments.filter((p: any) => p.status === 'failed');
-        const revenueCollected = succeeded.reduce((sum: number, p: any) => sum + p.amountCents, 0);
+        // Wompi cobra en COP y Stripe en USD: el revenue se normaliza a
+        // centavos USD (la moneda del MRR y de los costos) y el desglose crudo
+        // por moneda queda en revenueBreakdown.
+        const fxRates = await usdRateMap(this.prisma, succeeded.map((p: any) => p.currency), monthEnd);
+        const revenue = sumInUsdCents(succeeded, fxRates);
+        if (revenue.missingRates.length) {
+            this.logger.warn(
+                `Snapshot ${targetMonth.toISOString().slice(0, 7)}: sin tasa USD para ${revenue.missingRates.join(', ')} — ` +
+                `ese revenue queda fuera del total. Cargar la tasa en /admin/financials → Settings y regenerar.`,
+            );
+        }
+        const revenueCollected = revenue.usdCents;
 
         // Infra costs for the month
         const infraCosts = await this.prisma.infraCost.findMany({
@@ -127,7 +139,7 @@ export class FinancialSnapshotService {
 
                 const tenantRevenue = succeeded
                     .filter((p: any) => p.tenantId === tenant.id)
-                    .reduce((sum: number, p: any) => sum + p.amountCents, 0);
+                    .reduce((sum: number, p: any) => sum + (toUsdCents(p.amountCents, p.currency, fxRates) ?? 0), 0);
 
                 tenantSnapshots.push({
                     tenantId: tenant.id,
@@ -190,6 +202,11 @@ export class FinancialSnapshotService {
         }
 
         // Upsert financial snapshot
+        const revenueBreakdown = {
+            reportingCurrency: 'USD',
+            byCurrency: revenue.byCurrency,
+            missingRates: revenue.missingRates,
+        } as any;
         await this.prisma.financialSnapshot.upsert({
             where: { snapshotMonth: monthStart },
             create: {
@@ -207,6 +224,7 @@ export class FinancialSnapshotService {
                 trialsStarted: newCustomers,
                 trialsConverted: 0,
                 revenueCollectedCents: revenueCollected,
+                revenueBreakdown,
                 paymentsSucceeded: succeeded.length,
                 paymentsFailed: failed.length,
                 llmCostCents: llmCostTotal,
@@ -225,6 +243,7 @@ export class FinancialSnapshotService {
                 churnedCustomers,
                 trialingCustomers,
                 revenueCollectedCents: revenueCollected,
+                revenueBreakdown,
                 paymentsSucceeded: succeeded.length,
                 paymentsFailed: failed.length,
                 llmCostCents: llmCostTotal,

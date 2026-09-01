@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { COMMERCIAL_SUBSCRIPTIONS, internalTenantIds } from './commercial-scope.util';
+import { COMMERCIAL_PAYMENTS, COMMERCIAL_SUBSCRIPTIONS, internalTenantIds } from './commercial-scope.util';
+import { sumInUsdCents, toUsdCents, usdRateMap } from './fx.util';
 
 @Injectable()
 export class FinancialsService {
@@ -414,6 +415,102 @@ export class FinancialsService {
         const rSquared = totVar === 0 ? 1 : 1 - rss / totVar;
 
         return { slope, intercept, residualStdDev, rSquared };
+    }
+
+    /**
+     * POST /financials/snapshots/backfill-revenue
+     *
+     * Recalcula, para cada snapshot ya existente, SOLO los campos derivados de
+     * pagos (revenue, conteos, desglose por moneda y el revenue por tenant),
+     * porque `billing_payments` es inmutable y permite rehacerlos con la
+     * semántica actual: alcance comercial + normalización a USD. Los campos
+     * derivados del estado de suscripciones (MRR, customers) NO se tocan — el
+     * estado histórico de las suscripciones es irrecuperable y reescribirlos
+     * con el estado de hoy falsearía la serie. Idempotente.
+     */
+    async backfillSnapshotRevenue() {
+        const snapshots = await this.prisma.financialSnapshot.findMany({
+            orderBy: { snapshotMonth: 'asc' },
+        });
+        const results: Array<{
+            month: string;
+            revenueUsdCents: number;
+            paymentsSucceeded: number;
+            paymentsFailed: number;
+            missingRates: string[];
+            tenantRowsUpdated: number;
+        }> = [];
+
+        for (const snap of snapshots) {
+            const monthStart = new Date(snap.snapshotMonth);
+            // Mismo cálculo de fin de mes que generateSnapshot, para que ambos
+            // caminos cubran exactamente la misma ventana.
+            const monthEnd = new Date(
+                monthStart.getFullYear(),
+                monthStart.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+            );
+            const payments = await this.prisma.billingPayment.findMany({
+                where: { createdAt: { gte: monthStart, lte: monthEnd }, ...COMMERCIAL_PAYMENTS },
+            });
+            const succeeded = payments.filter((p: any) => p.status === 'succeeded');
+            const failed = payments.filter((p: any) => p.status === 'failed');
+            const fxRates = await usdRateMap(this.prisma, succeeded.map((p: any) => p.currency), monthEnd);
+            const revenue = sumInUsdCents(succeeded, fxRates);
+            if (revenue.missingRates.length) {
+                this.logger.warn(
+                    `Backfill ${monthStart.toISOString().slice(0, 7)}: sin tasa USD para ${revenue.missingRates.join(', ')} — ese revenue queda fuera del total.`,
+                );
+            }
+
+            await this.prisma.financialSnapshot.update({
+                where: { id: snap.id },
+                data: {
+                    revenueCollectedCents: revenue.usdCents,
+                    paymentsSucceeded: succeeded.length,
+                    paymentsFailed: failed.length,
+                    revenueBreakdown: {
+                        reportingCurrency: 'USD',
+                        byCurrency: revenue.byCurrency,
+                        missingRates: revenue.missingRates,
+                    } as any,
+                },
+            });
+
+            let tenantRowsUpdated = 0;
+            const tenantSnapshots = await this.prisma.tenantFinancialSnapshot.findMany({
+                where: { snapshotMonth: snap.snapshotMonth },
+            });
+            for (const ts of tenantSnapshots) {
+                const tenantRevenue = succeeded
+                    .filter((p: any) => p.tenantId === ts.tenantId)
+                    .reduce(
+                        (sum: number, p: any) => sum + (toUsdCents(p.amountCents, p.currency, fxRates) ?? 0),
+                        0,
+                    );
+                if (tenantRevenue !== ts.revenueCents) {
+                    await this.prisma.tenantFinancialSnapshot.update({
+                        where: { id: ts.id },
+                        data: { revenueCents: tenantRevenue },
+                    });
+                    tenantRowsUpdated++;
+                }
+            }
+
+            results.push({
+                month: monthStart.toISOString().slice(0, 7),
+                revenueUsdCents: revenue.usdCents,
+                paymentsSucceeded: succeeded.length,
+                paymentsFailed: failed.length,
+                missingRates: revenue.missingRates,
+                tenantRowsUpdated,
+            });
+        }
+
+        return { months: results.length, results };
     }
 
     // POST /financials/infra-costs

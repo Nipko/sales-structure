@@ -123,6 +123,17 @@ export class FinancialsController {
         return { success: true, month: body.month };
     }
 
+    /**
+     * Recalcula los campos derivados de pagos de TODOS los snapshots ya
+     * existentes (revenue normalizado a USD + alcance comercial). No toca los
+     * campos derivados del estado de suscripciones. Idempotente.
+     */
+    @Post('snapshots/backfill-revenue')
+    async backfillSnapshotRevenue() {
+        const data = await this.financialsService.backfillSnapshotRevenue();
+        return { success: true, ...data };
+    }
+
     // ─── CSV exports (super_admin only) ────────────────────────────
 
     @Get('export/revenue.csv')

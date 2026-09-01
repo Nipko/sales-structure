@@ -27,6 +27,7 @@ import { BusinessInfoService } from '../business-info/business-info.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { COMMERCIAL_PAYMENTS, COMMERCIAL_SUBSCRIPTIONS } from '../financials/commercial-scope.util';
+import { sumInUsdCents, usdRateMap } from '../financials/fx.util';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import {
     mergeTenantSettingsAtomic,
@@ -1398,18 +1399,34 @@ export class TenantsService {
             },
         });
 
-        // Total revenue (sum of succeeded payments)
-        const succeededPayments = await this.prisma.billingPayment.aggregate({
+        // Total revenue: los pagos viven en su moneda de cobro (COP vía Wompi,
+        // USD vía Stripe) — se agrupa por moneda y se normaliza a USD, la misma
+        // unidad que el MRR de arriba.
+        const revenueByCurrency = await this.prisma.billingPayment.groupBy({
+            by: ['currency'],
             where: { status: 'succeeded', ...COMMERCIAL_PAYMENTS },
             _sum: { amountCents: true },
         });
+        const fxRates = await usdRateMap(
+            this.prisma,
+            revenueByCurrency.map((r: any) => r.currency),
+            new Date(),
+        );
+        const totalRevenue = sumInUsdCents(
+            revenueByCurrency.map((r: any) => ({
+                amountCents: r._sum.amountCents || 0,
+                currency: r.currency,
+            })),
+            fxRates,
+        );
 
         return {
             mrr: mrrCents / 100,
             planDistribution,
             recentPayments,
             failedPayments,
-            totalRevenue: (succeededPayments._sum.amountCents || 0) / 100,
+            totalRevenue: totalRevenue.usdCents / 100,
+            totalRevenueMissingRates: totalRevenue.missingRates,
         };
     }
 

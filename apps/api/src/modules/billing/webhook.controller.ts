@@ -95,14 +95,17 @@ export class BillingWebhookController {
         try {
             normalized = await provider.parseWebhookEvent(rawBody, headers);
         } catch (err: any) {
-            this.logger.error(`[Webhook] ${providerName} parseWebhookEvent failed: ${err?.message}`);
-            await this.recordWebhookFailure(providerKey, 'parse');
             // A verified but unsupported/informational provider update is a
-            // permanent no-op. Network/provider/unknown failures have not been
-            // durably recorded and MUST stay retryable.
+            // permanent no-op — routine traffic once Stripe is live, so it does
+            // NOT count against the failure counter the platform monitor
+            // watches. Network/provider/unknown failures have not been durably
+            // recorded and MUST stay retryable.
             if (err instanceof BadRequestException) {
+                this.logger.debug(`[Webhook] ${providerName} event ignored: ${this.errorCode(err)}`);
                 return { received: true, status: 'ignored', reason: this.errorCode(err) };
             }
+            this.logger.error(`[Webhook] ${providerName} parseWebhookEvent failed: ${err?.message}`);
+            await this.recordWebhookFailure(providerKey, 'parse');
             throw new ServiceUnavailableException({
                 error: 'webhook_parse_retryable',
                 provider: providerName,

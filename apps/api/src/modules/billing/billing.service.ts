@@ -2316,39 +2316,65 @@ export class BillingService {
                     }
                 }
 
-                if (event.type === BillingEventType.PAYMENT_SUCCEEDED && event.payment) {
-                    await tx.billingPayment.create({
-                        data: {
-                            subscriptionId: sub.id,
-                            tenantId: sub.tenantId,
-                            amountCents: event.payment.amountCents,
-                            currency: event.payment.currency,
-                            status: 'succeeded',
-                            provider: event.provider,
-                            providerPaymentId: event.payment.providerPaymentId,
-                            paidAt: event.payment.paidAt ?? new Date(),
-                            // Sello del riel con el que se cobró. Un pago de
-                            // sandbox no puede convertirse en una factura DIAN
-                            // real, y el dato tiene que ser HISTÓRICO: si mañana
-                            // pasamos a producción, los pagos viejos siguen
-                            // siendo de prueba. Por eso viaja en la fila y no se
-                            // consulta la config al momento de facturar.
-                            metadata: { railEnvironment: this.railEnvironment(event.provider) } as any,
-                        },
-                    });
-                } else if (event.type === BillingEventType.PAYMENT_FAILED && event.payment) {
-                    await tx.billingPayment.create({
-                        data: {
-                            subscriptionId: sub.id,
-                            tenantId: sub.tenantId,
-                            amountCents: event.payment.amountCents,
-                            currency: event.payment.currency,
-                            status: 'failed',
-                            provider: event.provider,
-                            providerPaymentId: event.payment.providerPaymentId,
-                            failureReason: event.payment.failureReason,
-                        },
-                    });
+                const isPaymentEvent = (event.type === BillingEventType.PAYMENT_SUCCEEDED
+                    || event.type === BillingEventType.PAYMENT_FAILED) && !!event.payment;
+                if (isPaymentEvent && event.payment) {
+                    // Stripe reusa el payment_intent entre reintentos del mismo
+                    // invoice: un failed→succeeded llega con el MISMO
+                    // providerPaymentId y OTRO event id. Un create ciego choca
+                    // con el UNIQUE y aborta la transacción entera — incluida
+                    // la fila de billing_events que da la idempotencia — y el
+                    // proveedor queda reintentando para siempre. Una fila por
+                    // pago del proveedor: se crea una vez y solo se promueve
+                    // failed→succeeded; un succeeded/refunded nunca se degrada.
+                    const nextStatus = event.type === BillingEventType.PAYMENT_SUCCEEDED ? 'succeeded' : 'failed';
+                    const prior = event.payment.providerPaymentId
+                        ? await tx.billingPayment.findUnique({
+                              where: { providerPaymentId: event.payment.providerPaymentId },
+                          })
+                        : null;
+                    if (!prior) {
+                        await tx.billingPayment.create({
+                            data: {
+                                subscriptionId: sub.id,
+                                tenantId: sub.tenantId,
+                                amountCents: event.payment.amountCents,
+                                currency: event.payment.currency,
+                                status: nextStatus,
+                                provider: event.provider,
+                                providerPaymentId: event.payment.providerPaymentId,
+                                paidAt: nextStatus === 'succeeded' ? (event.payment.paidAt ?? new Date()) : null,
+                                failureReason: nextStatus === 'failed' ? event.payment.failureReason : null,
+                                // Sello del riel con el que se cobró. Un pago de
+                                // sandbox no puede convertirse en una factura DIAN
+                                // real, y el dato tiene que ser HISTÓRICO: si mañana
+                                // pasamos a producción, los pagos viejos siguen
+                                // siendo de prueba. Por eso viaja en la fila y no se
+                                // consulta la config al momento de facturar.
+                                metadata: nextStatus === 'succeeded'
+                                    ? ({ railEnvironment: this.railEnvironment(event.provider) } as any)
+                                    : ({} as any),
+                            },
+                        });
+                    } else if (prior.status === 'failed' && nextStatus === 'succeeded') {
+                        await tx.billingPayment.update({
+                            where: { id: prior.id },
+                            data: {
+                                status: 'succeeded',
+                                amountCents: event.payment.amountCents,
+                                currency: event.payment.currency,
+                                paidAt: event.payment.paidAt ?? new Date(),
+                                failureReason: null,
+                                metadata: {
+                                    ...((prior.metadata as any) ?? {}),
+                                    railEnvironment: this.railEnvironment(event.provider),
+                                } as any,
+                            },
+                        });
+                    }
+                    // Cualquier otro caso (duplicado exacto, failed fuera de
+                    // orden sobre un succeeded/refunded): no-op — la fila de
+                    // billing_events de arriba ya dejó constancia del evento.
                 }
             }
         });

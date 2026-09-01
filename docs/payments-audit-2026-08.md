@@ -98,13 +98,13 @@ qué filas están fuera de las métricas.
 
 | # | Sev | Qué | Dónde | Decisión que bloquea |
 |---|-----|-----|-------|----------------------|
-| 1 | **P1 métricas** | `revenueCollectedCents` suma `amountCents` crudos **mezclando monedas** (motor Wompi graba COP; MRR/costos LLM/infra en USD). El margen bruto de `/admin/financials` → Costs divide USD por COP. Existe `ExchangeRate` + su endpoint, pero el snapshot no la usa. Predata a Wompi (era MP igual). | `financial-snapshot.service.ts:89` y derivados (`getCostsTrend`, `tenant-profitability`, `totalRevenue` de platform-billing) | ¿Normalizar a USD al snapshotear (tasa del día de `paidAt`, fallback última) y guardar el desglose por moneda en JSON? Requiere mantener tasas cargadas. |
+| 1 | **P1 métricas** | **RESUELTO (1-sep, ver Addendum)** — `revenueCollectedCents` sumaba `amountCents` crudos mezclando monedas (Wompi graba COP; MRR/costos en USD). Ahora todo agregado de revenue se normaliza a USD vía `fx.util.ts` + `exchange_rates`. | `financial-snapshot.service.ts` y derivados | Decisión tomada: Stripe entra (riel USD) → USD como moneda de reporte. |
 | 2 | P2 | `getPlatformStats()` (conteos de tenants en `/admin/tenants`) incluye internos. Defendible: es inventario de plataforma y ahora el badge los distingue en la lista. | `tenants.service.ts:1209-1337` | ¿Conteos = plataforma o comercial? Si comercial: 1 línea por count. |
 | 3 | P2 | `getActivationMetrics()` (SQL crudo) cuenta tenants internos en activación/TTFV — contamina la métrica que el onboarding optimiza. | `financials.service.ts:227+` | Recomendado filtrar `is_internal = false` (2 WHEREs). |
 | 4 | P2 | `listPlans`/`getPlan` cuentan tenants por plan incluyendo internos en `/admin/plans`. | `billing-admin.controller.ts:131-135,158-160` | Igual que #2. |
 | 5 | P2 | Vistas cross-tenant de `/admin/billing-ops` sin filtrar — **probablemente intencional** (son las queries del runbook llevadas al panel; un operador debuggeando quiere ver TODO). | `billing-admin.controller.ts:536-635` | Confirmar intención; a lo sumo un aviso en la UI de que difiere de financials. |
-| 6 | P2 dormido | Stripe adapter: evento no reconocido se normaliza como `SUBSCRIPTION_CREATED` (sin tenant) → filas mal etiquetadas + evento fantasma a listeners. Hoy inalcanzable (Stripe dormido). | `stripe.adapter.ts:247-252` | Arreglar ANTES de despertar el riel internacional. |
-| 7 | P2 dormido | `billingPayment.create` del camino nativo (suscripciones del proveedor) sin catch `P2002` → un `providerPaymentId` repetido con event id distinto rollbackea la transacción incluida su marca de idempotencia → retry-loop de webhook hasta que Stripe se rinde. Solo camino Stripe. | `billing.service.ts:~2320` | Idem #6 — mismo patrón try/catch-P2002 que ya usa el resto del método. |
+| 6 | P2 dormido | **RESUELTO (1-sep, ver Addendum)** — el default del adapter Stripe fabricaba `SUBSCRIPTION_CREATED` fantasma; ahora lanza `BadRequestException` (el contrato de "ignorar como no-op permanente" que ya usaba Wompi). | `stripe.adapter.ts` | — |
+| 7 | P2 dormido | **RESUELTO (1-sep, ver Addendum)** — el pago del camino nativo ya no hace create ciego: busca por `providerPaymentId` y solo crea o **promueve failed→succeeded** (Stripe reusa el mismo payment_intent entre reintentos del invoice; el choque con el UNIQUE abortaba la transacción con la marca de idempotencia adentro → retry-loop). | `billing.service.ts` | — |
 | 8 | P2 | `getRestrictionStatus()` (banner de gracia del tenant) deriva días SOLO del espejo Redis `offboard:past_due:*`; la fuente durable es `dunningStartedAt` (Postgres). Si Redis pierde la clave, el tenant ve "10 días" estando a horas del lock real (el lock real no se afecta). | `billing.service.ts:2460-2502` | Derivar de `dunningStartedAt` y usar Redis como caché. |
 
 ## 3. Nits (P3)
@@ -189,6 +189,43 @@ cero type-arguments en `$queryRawUnsafe`; snake_case consistente; `analytics/` y
 no tocan las tablas de plata; `apps/whatsapp` no toca billing.
 
 ---
+
+## Addendum 1-sep-2026 — Multi-moneda USD (decisión tomada: entra Stripe)
+
+El dueño confirmó que el riel internacional Stripe se activa → habrá pagos COP (Wompi) y
+USD (Stripe) conviviendo. Implementado:
+
+- **`financials/fx.util.ts`** — conversión a USD para métricas. Tasas desde
+  `exchange_rates` (se cargan en `/admin/financials` → Settings), aceptando ambas
+  direcciones (USD→X como el catálogo de planes, o X→USD), última tasa ≤ fecha de
+  referencia con fallback a la última disponible. **Sin tasa NO se inventa nada**: el
+  monto queda fuera del total, declarado en `missingRates` + warning en logs. Spec
+  dedicado (`fx.util.spec.ts`) fija la aritmética.
+- **Snapshot mensual** — `revenueCollectedCents` y `TenantFinancialSnapshot.revenueCents`
+  pasan a ser centavos USD (la unidad del MRR y los costos → el margen bruto vuelve a
+  tener sentido). Nueva columna `financial_snapshots.revenue_breakdown` (JSONB, migración
+  aditiva `20260831120000`) con los montos crudos por moneda + tasas usadas.
+- **`POST /financials/snapshots/backfill-revenue`** — recalcula en TODOS los snapshots
+  existentes los campos derivados de pagos (revenue USD + alcance comercial + conteos +
+  desglose; también el revenue por tenant), porque `billing_payments` es inmutable y lo
+  permite. NO toca MRR/customers (estado histórico de suscripciones irrecuperable).
+  Idempotente. Arregla el "escalón" COP→USD que la serie histórica tendría si no.
+- **`getPlatformBilling.totalRevenue`** — groupBy por moneda + misma conversión
+  (+ `totalRevenueMissingRates` en la respuesta).
+- **Stripe pre-activación** — los dos P2 dormidos cerrados (tabla §2, #6 y #7). Además
+  `webhook.controller` ya no cuenta los eventos informativos ignorados (BadRequest)
+  como fallas de parse para el monitor — con Stripe vivo eran tráfico rutinario que
+  habría disparado alertas.
+
+**Requisito operativo**: cargar al menos una tasa USD→COP (p. ej. fecha hoy, from `USD`,
+to `COP`, rate `4100`) ANTES de generar/backfillear snapshots — sin tasa, el revenue COP
+queda declarado como no convertible (visible en `missingRates`, nunca sumado en silencio).
+Al activar Stripe: configurar el endpoint de webhooks para enviar SOLO los tipos
+manejados (`customer.subscription.*`, `invoice.payment_succeeded/failed`,
+`charge.refunded`) — el resto se ignora limpio, pero no tiene sentido recibirlos. Queda
+pendiente de ese día: `railEnvironment()` devuelve `'unknown'` para Stripe (ver Nits) —
+hay que enseñarle a distinguir test/live keys o los pagos Stripe quedarán
+`blocked_config` en la capa fiscal.
 
 ## 5. Operativa post-deploy (en orden)
 

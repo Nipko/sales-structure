@@ -1032,9 +1032,30 @@ export class PersonaService {
         // `tools` se FUSIONA con lo guardado (ver mergeAgentTools): lo que el emisor
         // manda gana, lo que no menciona sobrevive. Así el asistente guiado deja de
         // borrar los flags de herramienta que sembró el bootstrap vertical.
-        const configToSave = data.configJson !== undefined
+        let configToSave = data.configJson !== undefined
             ? this.mergeAgentTools(data.configJson, priorConfig)
             : undefined;
+
+        // El nombre del agente vive en DOS lugares: la columna `name`, que es lo
+        // que muestra el panel, y `config_json.persona.name`, que es lo que el
+        // prompt le dice al modelo que ES —la regla 2b del contrato L1 es
+        // tajante: "tu nombre es EXACTAMENTE ese, nunca te presentes con otro".
+        //
+        // `createAgent` los sincroniza; esto no lo hacía. Renombrar el agente
+        // cambiaba el panel y dejaba al modelo presentándose con el nombre
+        // anterior, que en un tenant recién creado es el que sembró la vertical.
+        // En producción el dueño veía "Laura Sofia" y sus clientes hablaban con
+        // "Maya", la asesora de viajes por defecto de turismo. Y la IA no estaba
+        // alucinando: obedecía al pie de la letra el nombre que le pasaban.
+        if (data.name) {
+            const base: any = configToSave ?? priorConfig;
+            if (base && typeof base === 'object') {
+                configToSave = {
+                    ...base,
+                    persona: { ...(base.persona || {}), name: data.name },
+                };
+            }
+        }
 
         // Gate de prerrequisitos de agenda: se aplica cuando este guardado ENCIENDE las
         // citas. Deliberadamente no se bloquea cuando ya venían encendidas — si no, un

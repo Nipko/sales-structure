@@ -41,7 +41,7 @@ NestJS 10 backend with 83 modules (folders in `src/modules/`). Port 3000. Global
 - `copilot/` — AI assistant for agents
 
 **Human handoff**:
-- `handoff/` — Trigger detection + escalation. Emits `handoff.escalated` event. Email notification to assigned agent. Skill-based routing (`tryAutoAssign` with skill_tags and max_capacity). SLA deadline on conversation_assignments (5 min default)
+- `handoff/` — Trigger detection + escalation. `shouldHandoff()` sólo mira el texto DEL CLIENTE (pide humano, queja, descuento, VIP, 3 fallos). **El agente NO tiene tool de escalada**, así que cuando decide transferir por una regla propia ("grupos de más de 10") la promesa salía al cliente y la conversación quedaba en `active`: sin evento, sin correo, sin push. Por eso el pipeline **honra la promesa**: si la respuesta final promete un humano (`promisesHumanHandoff`) y la conversación no está ya en handoff, ejecuta `executeHandoff('agent_promised_handoff')`. Se honra en vez de bloquear porque el cliente ya leyó que lo transferían. Emits `handoff.escalated` event. Email notification to assigned agent. Skill-based routing (`tryAutoAssign` with skill_tags and max_capacity). SLA deadline on conversation_assignments (5 min default)
 - `agent-console/` — WebSocket gateway (/inbox namespace). Agent availability, macros, snooze, canned responses. `inbox:handoff` + `inbox:handoff_direct` + `inbox:escalation` events
 - `agent-console/agent-availability.service.ts` — SLA escalation cron (`*/2 * * * *`): escalates conversations waiting >5 min without response → emits `handoff.escalated_supervisor` → WebSocket `inbox:escalation`
 

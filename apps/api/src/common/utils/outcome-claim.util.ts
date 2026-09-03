@@ -186,3 +186,61 @@ export function promisesLaterDelivery(text: string | null | undefined): boolean 
     if (!text) return false;
     return DEFERRED_DELIVERY.test(normalize(text));
 }
+
+/**
+ * Destinatarios humanos. Sin acentos porque `normalize` ya los quitó
+ * ("companero", no "compañero").
+ */
+const HUMAN_TARGET =
+    '(asesor|asesores|agente|agentes|equipo|humano|persona|representante|especialista'
+    + '|ejecutivo|operador|companero|colega|supervisor|team|human|advisor|representative'
+    + '|colleague|atendente|consultor|conseiller)';
+
+/**
+ * ¿La respuesta PROMETE pasar la conversación a un humano?
+ *
+ * El handoff sólo se dispara desde `shouldHandoff`, que mira el texto DEL
+ * CLIENTE (pide un humano, se queja, pide descuento…). Cuando el agente decide
+ * escalar por una regla de negocio propia —"para grupos de más de 10 personas
+ * lo conecto con el equipo"— no existe ningún camino que ejecute esa decisión:
+ * la promesa sale al cliente y la conversación queda en 'active'. Pasó en
+ * producción: el cliente confirmó, leyó "le paso con nuestro equipo
+ * especializado, espere un momento", y nadie fue notificado nunca.
+ *
+ * Deliberadamente estrecho, igual que `COMPLETION_CLAIM`: exige un verbo de
+ * transferencia Y un destinatario humano cerca. "Puedo ayudarte con el equipo
+ * de ventas" no es una promesa de transferencia.
+ */
+const HANDOFF_PROMISE = new RegExp(
+    [
+        // es — "le paso con un asesor", "lo transfiero con el equipo"
+        '(le|lo|la|te|los)\\s+(paso|transfiero|comunico|conecto|derivo|enlazo)\\s+(con|a)\\b[^.!?]{0,40}' + HUMAN_TARGET,
+        '(voy a|procedo a|paso a)\\s+(transferir|pasar|comunicar|conectar|derivar)\\b[^.!?]{0,40}' + HUMAN_TARGET,
+        // "un asesor se comunicara", "nuestro equipo lo contactara"
+        HUMAN_TARGET + '[^.!?]{0,40}(se (comunicara|contactara|pondra en contacto)|lo (contactara|atendera)|le (escribira|atendera)|te (contactara|atendera))',
+        // en
+        '(transferring|connecting) you\\b[^.!?]{0,40}' + HUMAN_TARGET,
+        "(i['’]?ll|i will|let me) (transfer|connect|put) you\\b[^.!?]{0,40}" + HUMAN_TARGET,
+        HUMAN_TARGET + '[^.!?]{0,40}will (contact|reach out|be with|get back)',
+        // pt
+        '(vou|estou) (transferir|transferindo|conectar|passar)\\b[^.!?]{0,40}' + HUMAN_TARGET,
+        // fr
+        'je vous (transfere|mets en relation|passe)\\b[^.!?]{0,40}' + HUMAN_TARGET,
+    ].join('|'),
+);
+
+/**
+ * Se evalúa por ORACIÓN y se saltean las interrogativas: un mismo mensaje suele
+ * llevar la oferta y la pregunta juntas ("…lo conecto con el equipo. ¿Desea que
+ * le transfiera ahora?"), y una pregunta no es una promesa cumplida.
+ */
+export function promisesHumanHandoff(reply: unknown): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    return normalize(reply)
+        .split(/(?<=[.!?])\s+|\n+/)
+        .some(sentence =>
+            !sentence.includes('?')
+            && !sentence.includes('\u00bf')
+            && HANDOFF_PROMISE.test(sentence));
+}
+

@@ -30,6 +30,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import {
     auditTurnClaim,
+    promisesHumanHandoff,
     promisesLaterDelivery,
     toolResultSucceeded,
 } from '../../common/utils/outcome-claim.util';
@@ -3546,6 +3547,47 @@ export class ConversationsService {
                     // Nunca romper el turno por la escalada: el cliente ya recibió su
                     // respuesta y el intake quedó guardado.
                     this.logger.error(`[Pipeline] No se pudo escalar tras el intake: ${e?.message}`);
+                }
+            }
+
+            // PROMETER NO ESCALA. El handoff sólo nace de `shouldHandoff`, que lee
+            // el texto DEL CLIENTE. Cuando el agente decide transferir por una
+            // regla suya —"para grupos de más de 10 lo conecto con el equipo"— no
+            // hay ningún camino que ejecute esa decisión: la promesa sale y la
+            // conversación queda 'active'.
+            //
+            // Pasó en producción (2-sep): el agente ofreció transferir, el cliente
+            // dijo "Si" —que para `shouldHandoff` es una confirmación, no un pedido
+            // de humano—, el agente respondió "le paso con nuestro equipo
+            // especializado, espere un momento", y ahí murió: sin evento, sin
+            // correo al agente, sin push, sin estado de handoff. El cliente quedó
+            // esperando a alguien que nunca se enteró de que existía.
+            //
+            // Se HONRA la promesa en vez de bloquearla: el cliente ya leyó que lo
+            // iban a transferir, así que reescribir el mensaje lo dejaría peor.
+            // `isInHandoff` impide re-escalar en cada turno siguiente.
+            if (!postToolHandoff && promisesHumanHandoff(finalResponse)) {
+                try {
+                    if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
+                        this.logger.warn(
+                            `[Pipeline] HANDOFF por promesa del agente en conversación ${conversation.id}`,
+                        );
+                        this.recordAgentSignal(tenantId, 'handoff_promise_honored');
+                        this.analyticsService.trackEvent({
+                            tenantId, eventType: 'handoff_triggered',
+                            conversationId: conversation.id,
+                            contactId: conversation.contact_id || undefined,
+                            data: { reason: 'agent_promised_handoff' },
+                        }).catch(() => {});
+                        await this.handoffService.executeHandoff(
+                            tenantId, conversation.id, msg, 'agent_promised_handoff',
+                        );
+                    }
+                } catch (e: any) {
+                    // Igual que arriba: la escalada no puede romper el turno.
+                    this.logger.error(
+                        `[Pipeline] No se pudo escalar tras la promesa del agente: ${e?.message}`,
+                    );
                 }
             }
 

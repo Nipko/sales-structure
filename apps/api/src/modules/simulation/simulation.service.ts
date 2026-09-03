@@ -399,7 +399,12 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 messages: [{ role: 'user', content: `Genera ${n} escenarios.` }],
                 systemPrompt,
                 temperature: 0.8,
-                maxTokens: 3000,
+                // El presupuesto SIGUE a la cantidad pedida. Estaba fijo en 3000
+                // mientras el pedido por defecto es 50 escenarios (~130 tokens
+                // cada uno = ~6500): la respuesta se cortaba cerca del 25, el
+                // array quedaba sin cerrar y el parseo devolvía vacío. Con los
+                // valores por defecto la simulación no podía terminar NUNCA.
+                maxTokens: Math.min(8000, 800 + n * 160),
                 tenantId,
             });
             raw = res.content || '';
@@ -725,13 +730,53 @@ Reglas:
     }
 
     private safeJsonArray(raw: string): any[] {
+        const text = raw
+            .trim()
+            .replace(/^```(?:json)?/i, '')
+            .replace(/```$/, '')
+            .trim();
         try {
-            const match = raw.match(/\[[\s\S]*\]/);
-            const parsed = JSON.parse(match ? match[0] : raw);
-            return Array.isArray(parsed) ? parsed : [];
+            const match = text.match(/\[[\s\S]*\]/);
+            const parsed = JSON.parse(match ? match[0] : text);
+            if (Array.isArray(parsed)) return parsed;
         } catch {
-            this.logger.warn('[Sim] Failed to parse scenario JSON array');
-            return [];
+            // Cae al rescate de abajo.
         }
+
+        // Rescate de respuesta truncada. Un array cortado a la mitad no cierra el
+        // corchete, así que el parseo completo falla y antes devolvíamos CERO
+        // escenarios — perdiendo también los veinte que sí habían llegado
+        // enteros. Se recuperan objeto por objeto, respetando comillas y escapes
+        // para no cortar dentro de un string.
+        const objects: any[] = [];
+        let depth = 0;
+        let start = -1;
+        let inString = false;
+        let escaped = false;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (inString) {
+                if (escaped) escaped = false;
+                else if (ch === '\\') escaped = true;
+                else if (ch === '"') inString = false;
+                continue;
+            }
+            if (ch === '"') { inString = true; continue; }
+            if (ch === '{') { if (depth === 0) start = i; depth++; continue; }
+            if (ch === '}' && depth > 0) {
+                depth--;
+                if (depth === 0 && start >= 0) {
+                    try { objects.push(JSON.parse(text.slice(start, i + 1))); } catch { /* incompleto */ }
+                    start = -1;
+                }
+            }
+        }
+
+        if (objects.length) {
+            this.logger.warn(`[Sim] Respuesta truncada: se rescataron ${objects.length} escenarios completos`);
+        } else {
+            this.logger.warn('[Sim] Failed to parse scenario JSON array');
+        }
+        return objects;
     }
 }

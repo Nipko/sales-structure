@@ -51,8 +51,19 @@ export class InternalController {
     ) {
     this.assertInternalService(request);
     this.assertTenantId(payload?.tenantId);
+    // La coexistencia reenvía por acá los SALIENTES de solo-guardado: los echos
+    // del celular del negocio (`waba_echo`) y el backfill histórico
+    // (`historical`), que processIncomingMessage ya desvía a storeOnlyMessage.
+    // Exigir direction==='inbound' los rechazaba con 400 → 8 reintentos → failed:
+    // los mensajes que el dueño manda desde su teléfono nunca aparecían en el
+    // inbox, y la mitad saliente del histórico tampoco. El destino ya existía y
+    // estaba probado; lo único que faltaba era dejarlos entrar.
+    const storeOnlySource = (payload?.metadata as any)?.source;
+    const isStoreOnly = storeOnlySource === 'waba_echo' || storeOnlySource === 'historical';
+    const directionOk = payload?.direction === 'inbound'
+      || (payload?.direction === 'outbound' && isStoreOnly);
     if (
-      payload?.direction !== 'inbound'
+      !directionOk
       || typeof payload.id !== 'string'
       || typeof payload.contactId !== 'string'
       || typeof payload.conversationId !== 'string'

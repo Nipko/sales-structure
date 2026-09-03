@@ -853,6 +853,18 @@ jobs:
             cd /opt/parallext-engine
             export DC="docker compose --env-file .env -f infra/docker/docker-compose.prod.yml"
 
+            echo "===> Validating Meta webhook signing secret..."
+            # La firma HMAC de los webhooks de WhatsApp hace fail-closed en
+            # produccion, pero el .env se regenera en cada deploy: un secret
+            # vacio en GitHub dejaba la linea vacia y, antes del fail-closed,
+            # las dos rutas publicas aceptaban cualquier POST sin firma. Se
+            # valida aca para que el deploy falle en vez de dejar la ingesta
+            # de WhatsApp muda (o abierta).
+            if [ -z "$(printenv PROD_META_APP_SECRET 2>/dev/null)" ]; then
+              echo "ERROR: required secret is missing: META_APP_SECRET (webhook signature verification)"
+              exit 1
+            fi
+
             echo "===> Validating Wompi production readiness..."
             for wompi_var in \
               PROD_WOMPI_PUBLIC_KEY \

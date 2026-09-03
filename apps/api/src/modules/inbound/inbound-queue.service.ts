@@ -5,6 +5,7 @@ import { NormalizedMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { INBOUND_QUEUE, InboundJobData } from './inbound-queue.constants';
 import { providerMessageId, sanitizeJobId } from '../../common/utils/provider-message-id.util';
+import * as Sentry from '@sentry/nestjs';
 
 /**
  * Producer for the inbound queue.
@@ -27,8 +28,62 @@ export class InboundQueueService {
         private readonly throttle: TenantThrottleService,
     ) {}
 
+    /**
+     * Campos sin los cuales el mensaje no es procesable, cualquiera sea su
+     * origen. `contactId` es a la vez la identidad del contacto y el
+     * destinatario de la respuesta (`sendResponse` lo usa como `to`): vacío, no
+     * hay a quién contestarle ni a quién atribuirle nada.
+     *
+     * OJO CON EL CONTRATO: esta cola también transporta salientes de
+     * SOLO-GUARDADO (`waba_echo` e `historical` de coexistencia), así que acá
+     * NO se valida `direction`. Esa exacta guarda, escrita mirando solo el
+     * turno de IA, es la que dejó muda a la coexistencia.
+     */
+    private invalidReason(msg: NormalizedMessage): string | null {
+        const missing = (v: unknown) => typeof v !== 'string' || !v.trim();
+        if (missing(msg?.tenantId)) return 'tenantId';
+        if (missing(msg?.contactId)) return 'contactId';
+        if (missing(msg?.channelType)) return 'channelType';
+        if (missing(msg?.channelAccountId)) return 'channelAccountId';
+        return null;
+    }
+
     async enqueue(msg: NormalizedMessage): Promise<void> {
         const pmid = providerMessageId(msg);
+
+        // Frontera común a los 7 productores. Un mensaje sin remitente entraba a
+        // la cola y recién reventaba en el INSERT de `contacts` (external_id NOT
+        // NULL) DENTRO del worker — con el proveedor ya ACKeado: 9 ejecuciones
+        // condenadas y el mensaje perdido sin llegar nunca al inbox. Validar solo
+        // en el productor que falló habría dejado los otros seis igual de
+        // abiertos.
+        //
+        // `return` y NO `throw`: lanzar propaga un 5xx al webhook y el proveedor
+        // redelivera el mismo cuerpo roto, en bucle. Es un fallo permanente.
+        //
+        // Nunca coercionar a '' para "salvar" el mensaje: el índice único
+        // (channel_type, external_id) colapsaría a todos los remitentes
+        // desconocidos en UN contacto — mismo lead, misma conversación, y la IA
+        // respondiéndole a alguien con el historial de otra persona.
+        const invalid = this.invalidReason(msg);
+        if (invalid) {
+            this.logger.error(
+                `[Inbound] DESCARTADO ${msg?.channelType ?? '?'}: ${invalid} vacío — ` +
+                `tenant=${msg?.tenantId ?? '?'} cuenta=${msg?.channelAccountId ?? '?'} ` +
+                `contactId=${JSON.stringify(msg?.contactId)} trace=${pmid || 'none'}`,
+            );
+            Sentry.captureMessage(`Inbound descartado: ${invalid} vacío`, {
+                level: 'error',
+                tags: {
+                    queue: INBOUND_QUEUE,
+                    channelType: msg?.channelType,
+                    tenantId: msg?.tenantId,
+                    reason: invalid,
+                },
+                extra: { pmid, contactId: msg?.contactId, channelAccountId: msg?.channelAccountId },
+            });
+            return;
+        }
 
         await this.inboundQueue.add(
             'process',

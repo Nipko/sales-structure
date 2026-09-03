@@ -1015,6 +1015,20 @@ export class ConversationsService {
      * Resolve or create contact, lead, conversation, and opportunity
      */
     private async resolveConversation(tenantId: string, contactId: string, channelType: string, msg: NormalizedMessage) {
+        // Si algo llega hasta acá sin remitente, la frontera de la cola falló, y
+        // eso tiene que ser RUIDOSO. Con contactId nulo el SELECT de abajo nunca
+        // puede coincidir (`external_id = NULL` es UNKNOWN), así que siempre caía
+        // al INSERT y moría con un 23502 de Postgres que no nombraba la causa.
+        // Tampoco se coerciona a '': el índice único (channel_type, external_id)
+        // fusionaría a todos los desconocidos en un solo contacto y la IA
+        // terminaría respondiendo con el historial de otra persona.
+        if (typeof contactId !== 'string' || !contactId.trim()) {
+            throw new Error(
+                `resolveConversation: contactId inválido (${JSON.stringify(contactId)}) ` +
+                `tenant=${tenantId} canal=${channelType}`,
+            );
+        }
+
         const schemaName = await this.tenantSchema(tenantId);
 
         // 1. Find or create contact

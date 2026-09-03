@@ -1,8 +1,9 @@
 import {
     Controller, Get, Post, Put, Delete, Body, Param,
-    Query, Request, UseGuards, NotFoundException, BadRequestException,
+    Query, Request, UseGuards, NotFoundException, BadRequestException, ConflictException,
 } from '@nestjs/common';
 import { ApiTags, ApiSecurity } from '@nestjs/swagger';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { AppointmentsService } from '../appointments/appointments.service';
@@ -104,13 +105,33 @@ export class PublicApiController {
         if (!body.name) throw new BadRequestException('name is required');
         const schema = await this.getSchema(req.tenantId);
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `INSERT INTO contacts (name, phone, email, channel_type, metadata, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), NOW())
-             RETURNING id, name, phone, email, channel_type, avatar_url, metadata, created_at, updated_at`,
-            [body.name, body.phone || null, body.email || null, body.channelType || 'api', JSON.stringify(body.metadata || {})],
-        );
+        // `external_id` es NOT NULL sin DEFAULT: omitirlo de la lista de columnas
+        // hacía que TODA llamada a este endpoint fallara con 23502 — roto al
+        // 100%, no en un caso borde. Se acepta el id del sistema externo (que es
+        // lo que hace útil a la columna: reimportar sin duplicar) y, si no viene,
+        // se sintetiza uno para esta fila.
+        const externalId = String(body.externalId || body.external_id || `api_${randomUUID()}`);
+
+        let rows: any[];
+        try {
+            rows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `INSERT INTO contacts (external_id, name, phone, email, channel_type, metadata, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())
+                 RETURNING id, external_id, name, phone, email, channel_type, avatar_url, metadata, created_at, updated_at`,
+                [externalId, body.name, body.phone || null, body.email || null, body.channelType || 'api', JSON.stringify(body.metadata || {})],
+            );
+        } catch (error: any) {
+            // (channel_type, external_id) es único. Reenviar el mismo externalId
+            // es un conflicto legítimo del integrador, no un fallo del servidor:
+            // sin esto sale como 500 opaco en una API pública.
+            if (error?.code === '23505' || /duplicate key/i.test(error?.message ?? '')) {
+                throw new ConflictException(
+                    `Ya existe un contacto con externalId "${externalId}" en el canal "${body.channelType || 'api'}"`,
+                );
+            }
+            throw error;
+        }
 
         return { data: rows[0] };
     }

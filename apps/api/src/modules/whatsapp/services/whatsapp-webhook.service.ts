@@ -49,8 +49,18 @@ export class WhatsappWebhookService {
 
     const appSecret = this.configService.get<string>('META_APP_SECRET');
     if (!appSecret) {
-      this.logger.warn('META_APP_SECRET not configured — skipping signature validation');
-      return true; // Allow in dev if secret not set
+      // Fail-open SOLO fuera de producción. Con el secreto vacío esta función
+      // aceptaba CUALQUIER POST sin firma en las dos rutas públicas que la usan
+      // (/channels/webhook/whatsapp y /whatsapp/webhook): cualquiera podía
+      // inyectar mensajes en la conversación de un tenant. Y como el `.env` se
+      // regenera en cada deploy, un secret de GitHub vacío dejaba la línea
+      // vacía sin que nada lo advirtiera.
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.error('META_APP_SECRET no configurado — webhook RECHAZADO (fail-closed en producción)');
+        return false;
+      }
+      this.logger.warn('META_APP_SECRET not configured — skipping signature validation (solo fuera de producción)');
+      return true;
     }
 
     const expectedSignature = 'sha256=' + crypto
@@ -250,7 +260,12 @@ export class WhatsappWebhookService {
          return;
      }
 
-     const contact = value?.contacts?.[0];
+     // `value.contacts[]` es de nivel LOTE y puede traer N remitentes. Tomar
+     // siempre el [0] etiquetaba el mensaje de una persona con el nombre de otra
+     // cuando Meta entrega varios mensajes juntos. Se cruza por wa_id y solo se
+     // cae al primero si el lote trae un único contacto, que es el caso en que
+     // no hay ambigüedad posible.
+     const contacts: any[] = value?.contacts ?? [];
 
      // Process EVERY message in the batch — WhatsApp can deliver several messages
      // in a single webhook; taking only messages[0] silently dropped the rest.
@@ -271,6 +286,27 @@ export class WhatsappWebhookService {
          }
 
          const fromPhone = msg?.from;
+         if (typeof fromPhone !== 'string' || !fromPhone.trim()) {
+             // Sin remitente el mensaje no es contestable ni atribuible: se
+             // descarta acá en vez de romper el INSERT de `contacts` dentro del
+             // worker. Se loguea el cuerpo CRUDO porque esta ruta —a diferencia
+             // del microservicio, que lo guarda en whatsapp_webhook_events— no lo
+             // persiste en ningún lado: sin esto, el próximo caso vuelve a
+             // depender de rescatar el job de Redis antes de que expire.
+             //
+             // NO se libera `idem:wa:` a propósito: el reintento de Meta traería
+             // el mismo cuerpo roto, en bucle.
+             this.logger.error(
+                 `[WhatsApp] Mensaje SIN REMITENTE descartado — wamid=${waMessageId} ` +
+                 `phone_number_id=${phoneNumberId} type=${msg?.type} ` +
+                 `keys=${Object.keys(msg || {}).join(',')} ` +
+                 `raw=${JSON.stringify(msg).slice(0, 1000)}`,
+             );
+             continue;
+         }
+
+         const contact = contacts.find((c: any) => c?.wa_id === fromPhone)
+             ?? (contacts.length === 1 ? contacts[0] : undefined);
          const messageText = msg?.text?.body
              || msg?.button?.text
              || msg?.interactive?.button_reply?.title

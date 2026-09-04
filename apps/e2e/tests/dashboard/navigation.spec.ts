@@ -1,6 +1,57 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
+const QUALITY_AGENT_ID = "44444444-4444-4444-8444-444444444444";
+
+/**
+ * A fully prepared agent. These navigation tests are about the menu and the
+ * tour, not about the setup card: a passing agent keeps Home on its normal
+ * layout instead of collapsing it to the "one guide" state.
+ */
+function qualityOverviewAllPassing() {
+  const check = (code: string, dimension: string) => ({
+    code,
+    dimension,
+    status: "pass" as const,
+    critical: true,
+    weight: 4,
+  });
+  return {
+    agent: { id: QUALITY_AGENT_ID, name: "Agente de prueba", version: 1, isActive: true },
+    status: "operating_with_evidence",
+    preparation: {
+      status: "ready",
+      dimensions: [
+        {
+          dimension: "business_scope",
+          checks: [check("persona_identity", "business_scope"), check("business_identity", "business_scope")],
+        },
+        {
+          dimension: "conversation_brand",
+          checks: [check("fallback_message", "conversation_brand"), check("behavior_rules", "conversation_brand")],
+        },
+        {
+          dimension: "knowledge_grounding",
+          checks: [check("knowledge_coverage", "knowledge_grounding")],
+        },
+        {
+          dimension: "safety_handoff",
+          checks: [check("handoff_triggers", "safety_handoff"), check("human_handoff_route", "safety_handoff")],
+        },
+        {
+          dimension: "actions_outcomes",
+          checks: [
+            check("channel_assignment", "actions_outcomes"),
+            check("channel_connection", "actions_outcomes"),
+            { ...check("tool_appointments", "actions_outcomes"), status: "not_applicable" as const },
+          ],
+        },
+      ],
+      criticalBlockers: [],
+    },
+    recommendations: [],
+  };
+}
 const RENTAL_ID = "33333333-3333-4333-8333-333333333333";
 
 type NetworkState = {
@@ -318,7 +369,26 @@ async function bootstrapTenantAdmin(
         hasInstagram: true,
         hasAutomation: true,
         hasTemplates: true,
+        // El estado único de puesta en marcha y el agente por defecto viajan
+        // en esta respuesta: sin ellos la tarjeta de Inicio sale a buscar el
+        // agente por su cuenta y el panel vuelve a adivinar en qué punto está.
+        onboardingStage: "completed",
+        defaultAgent: { id: QUALITY_AGENT_ID, name: "Agente de prueba", greeting: "Hola" },
       });
+      return;
+    }
+
+    // La tarjeta de puesta en marcha gradúa con los mismos chequeos que Salud
+    // de agentes, así que Inicio pide el estado del agente por defecto.
+    if (method === "GET" && path === `/quality/${TENANT_ID}/agents`) {
+      await fulfillSuccess(route, [
+        { id: QUALITY_AGENT_ID, name: "Agente de prueba", is_default: true, is_active: true },
+      ]);
+      return;
+    }
+
+    if (method === "GET" && path === `/quality/${TENANT_ID}/agents/${QUALITY_AGENT_ID}/overview`) {
+      await fulfillSuccess(route, qualityOverviewAllPassing());
       return;
     }
 

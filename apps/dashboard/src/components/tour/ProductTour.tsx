@@ -653,7 +653,9 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
 
     // ── Guardián en vivo: ningún paso puede quedar apuntando a la nada ──
     const toursRef = useRef(tours);
-    toursRef.current = tours;
+    // Escribir un ref en render rompe con render concurrente: se sincroniza en
+    // un efecto, igual que `latestRef` acá arriba.
+    useEffect(() => { toursRef.current = tours; });
     useEffect(() => {
         if (!isOnbordaVisible || !currentTour) return;
         let misses = 0;

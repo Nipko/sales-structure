@@ -103,6 +103,18 @@ export class ChannelManagementController {
             orderBy: { createdAt: 'desc' },
         });
 
+        // El chat web es un canal conversacional certificado, pero vive en
+        // `widget_configs` y no en `channel_accounts`. Sin esto, Salud de agentes
+        // lo contaba como conectado y esta respuesta no: la tarjeta de puesta en
+        // marcha pedía "conectá un canal" a un negocio que ya recibía mensajes
+        // por el widget, con el aviso de calidad diciendo lo contrario al lado.
+        const widgets = await this.prisma.$queryRawUnsafe(
+            `SELECT widget_id AS account_id, name
+               FROM public.widget_configs
+              WHERE tenant_id = $1::uuid AND is_active = true`,
+            tenantId,
+        ).catch(() => [] as any[]) as Array<{ account_id: string; name: string | null }>;
+
         // Fetch agent assignments from tenant schema. Resolution is per-connection:
         // an exact channel_binding ("type:accountId") wins over the type-level channel.
         const byType: Record<string, { id: string; name: string }> = {};
@@ -224,7 +236,26 @@ export class ChannelManagementController {
                     // A channel can be 'connected' and still unable to send.
                     needsReauth: isCredentialFailure(status),
                 };
-            }),
+            }).concat((widgets || []).map((widget) => {
+                const accountId = String(widget.account_id);
+                const assigned = byBinding[`web_widget:${accountId}`] || byType.web_widget || null;
+                return {
+                    id: `web_widget:${accountId}`,
+                    channelType: 'web_widget',
+                    accountId,
+                    displayName: widget.name || 'Chat web',
+                    isActive: true,
+                    metadata: null,
+                    assignedAgent: assigned,
+                    needsAssignment: !assigned,
+                    // El widget se sirve desde la propia plataforma: no depende
+                    // de un token de Meta que pueda vencer o ser revocado.
+                    credentialStatus: 'ok' as const,
+                    credentialExpiresAt: null,
+                    credentialDaysToExpiry: null,
+                    needsReauth: false,
+                };
+            })),
         };
     }
 

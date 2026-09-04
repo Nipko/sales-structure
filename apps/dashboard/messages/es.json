@@ -10984,7 +10984,7 @@
       "showMe": "Mostrarme dónde",
       "noneValue": "ninguno",
       "explanations": {
-        "fix_channel_connection": "{credentialIssue, select, none {{agent} no tiene ningún canal conectado que pueda recibir mensajes. Conecta {disconnected} o asigna un canal que ya esté conectado.} other {{agent} está conectado a {connectedChannels}, pero esa credencial requiere reautorizar ({credentialIssue}); mientras tanto el agente no puede enviar respuestas.}}",
+        "fix_channel_connection": "{credentialIssue, select, none {{agent} no tiene ningún canal conectado que pueda recibir mensajes. Conecta {disconnected} o asigna un canal que ya esté conectado.} expiring {{agent} responde con normalidad por {connectedChannels}, pero la autorización de ese canal vence pronto. Reautorízala antes de que deje de enviar.} unknown {{agent} está conectado a {connectedChannels}, pero no pudimos verificar la autorización de ese canal. Ábrelo en Canales para confirmar que sigue vigente.} other {{agent} está conectado a {connectedChannels}, pero esa autorización ya no sirve ({credentialIssue}): hasta reautorizarla, el agente no puede enviar respuestas.}}",
         "fix_channel_coverage": "{agent} está asignado a {assigned} canales y solo {connected} están conectados. Sin conexión: {disconnected}. Conecta ese canal o quítalo de la asignación del agente.",
         "fix_channel_assignment": "{agent} no tiene ningún canal asignado, así que hoy no atiende a nadie. Marca en el agente los canales que va a responder.",
         "fix_human_handoff_route": "No hay ninguna persona activa que pueda recibir la conversación cuando {agent} la pasa a un humano. Invita al menos a alguien con rol agente o supervisor.",
@@ -11261,7 +11261,14 @@
       "hasTone": "Tiene tono",
       "hasFormality": "Tiene formalidad",
       "minimumSample": "Muestra mínima",
-      "unknown": "Evidencia"
+      "unknown": "Evidencia",
+      "connectedChannels": "Canales que funcionan",
+      "disconnectedChannels": "Canales sin conectar",
+      "staleBindings": "Conexiones que cambiaron",
+      "credentialIssue": "Estado de la autorización",
+      "credentialAffectedAssignments": "Canales que no pueden enviar",
+      "credentialWarningAssignments": "Canales por revisar",
+      "hasCredentialIssue": "Hay un problema de autorización"
     },
     "common": {
       "yes": "Sí",

@@ -10984,7 +10984,7 @@
       "showMe": "Show me where",
       "noneValue": "none",
       "explanations": {
-        "fix_channel_connection": "{credentialIssue, select, none {{agent} has no connected channel that can receive messages. Connect {disconnected} or assign a channel that is already connected.} other {{agent} is connected to {connectedChannels}, but that credential needs to be reauthorized ({credentialIssue}); until then the agent cannot send replies.}}",
+        "fix_channel_connection": "{credentialIssue, select, none {{agent} has no connected channel that can receive messages. Connect {disconnected} or assign a channel that is already connected.} expiring {{agent} is replying normally over {connectedChannels}, but that channel’s authorisation expires soon. Renew it before it stops sending.} unknown {{agent} is connected to {connectedChannels}, but we could not verify that channel’s authorisation. Open it in Channels to confirm it is still valid.} other {{agent} is connected to {connectedChannels}, but that authorisation no longer works ({credentialIssue}): until it is renewed, the agent cannot send replies.}}",
         "fix_channel_coverage": "{agent} is assigned to {assigned} channels and only {connected} are connected. Not connected: {disconnected}. Connect that channel or remove it from the agent's assignment.",
         "fix_channel_assignment": "{agent} has no channel assigned, so right now it serves nobody. Pick the channels this agent should answer.",
         "fix_human_handoff_route": "There is no active person who can take the conversation when {agent} hands it to a human. Invite at least one agent or supervisor.",
@@ -11261,7 +11261,14 @@
       "hasTone": "Has tone",
       "hasFormality": "Has formality",
       "minimumSample": "Minimum sample",
-      "unknown": "Evidence"
+      "unknown": "Evidence",
+      "connectedChannels": "Working channels",
+      "disconnectedChannels": "Channels not connected",
+      "staleBindings": "Connections that changed",
+      "credentialIssue": "Authorisation status",
+      "credentialAffectedAssignments": "Channels that cannot send",
+      "credentialWarningAssignments": "Channels to review",
+      "hasCredentialIssue": "Authorisation problem"
     },
     "common": {
       "yes": "Yes",

@@ -189,7 +189,11 @@ export interface GuidedTourStartDetail {
  * from the reply and only keeps the FIRST one whose id is registered and
  * allowed for the authenticated role.
  */
-export const GUIDED_TOUR_MARKER_PATTERN = /\[\[\s*tour\s*:\s*([a-z_]{1,64})\s*\]\]/gi;
+// El id se acota al validarlo contra el registro. Acá el patrón es ancho a
+// propósito: un marcador con guiones o dígitos (`[[tour:connect-channel]]`) no
+// corresponde a ningún recorrido, pero si no lo reconociéramos quedaría escrito
+// tal cual en la respuesta que lee la persona.
+export const GUIDED_TOUR_MARKER_PATTERN = /\[\[\s*tour\s*:\s*([a-zA-Z0-9_-]{1,64})\s*\]\]/gi;
 
 const ROLE_RANK: Record<string, number> = {
     tenant_agent: 0,

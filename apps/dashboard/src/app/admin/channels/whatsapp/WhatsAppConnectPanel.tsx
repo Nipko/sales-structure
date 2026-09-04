@@ -2,78 +2,148 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Layers, Sparkles, FlaskConical, ChevronLeft, Check, ArrowRight } from "lucide-react";
-import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
+import { Layers, Sparkles, ArrowRightLeft, ChevronLeft, Check, ArrowRight, AlertTriangle, MessageSquare } from "lucide-react";
+import WhatsAppEmbeddedSignup, { isKnownWhatsAppWarning } from "./WhatsAppEmbeddedSignup";
 import WhatsAppPrerequisites from "./WhatsAppPrerequisites";
+import WhatsAppRouteBrief from "./WhatsAppRouteBrief";
+import {
+    WHATSAPP_CONNECT_ROUTES,
+    getWhatsAppConnectRoute,
+    whatsAppRouteKey,
+    type WhatsAppConnectRouteId,
+} from "./whatsapp-connect-routes";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
-type RouteId = "coexistence" | "new" | "sandbox";
+export interface WhatsAppConnectedPayload {
+    displayPhoneNumber?: string;
+    warnings?: string[];
+}
 
 interface WhatsAppConnectPanelProps {
     tenantId: string;
-    onConnected?: (data: { displayPhoneNumber?: string }) => void;
+    onConnected?: (data: WhatsAppConnectedPayload) => void;
+    /** Fired when the person acknowledges the connected state (wizard advance). */
+    onAcknowledged?: () => void;
     variant?: "page" | "onboarding";
 }
 
-const ROUTES: { id: RouteId; mode: "standard" | "coexistence"; icon: typeof Layers; color: string; recommended?: boolean }[] = [
-    { id: "coexistence", mode: "coexistence", icon: Layers, color: "#25D366", recommended: true },
-    { id: "new", mode: "standard", icon: Sparkles, color: "#128C7E" },
-    { id: "sandbox", mode: "standard", icon: FlaskConical, color: "#6b7280" },
-];
+const ROUTE_ICONS: Record<WhatsAppConnectRouteId, typeof Layers> = {
+    coexistence: Layers,
+    new: Sparkles,
+    migration: ArrowRightLeft,
+};
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-export default function WhatsAppConnectPanel({ tenantId, onConnected }: WhatsAppConnectPanelProps) {
+export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowledged }: WhatsAppConnectPanelProps) {
     const tw = useTranslations("channels.whatsapp");
+    const twn = useTranslations("channels.whatsapp.warnings");
     const t = useTranslations("setupWizard.connect");
-    const [route, setRoute] = useState<RouteId | null>(null);
+    const [route, setRoute] = useState<WhatsAppConnectRouteId | null>(null);
     const [prereqsOk, setPrereqsOk] = useState(false);
-    const [connected, setConnected] = useState<{ displayPhoneNumber?: string } | null>(null);
-    const [error, setError] = useState("");
+    const [connected, setConnected] = useState<WhatsAppConnectedPayload | null>(null);
 
     if (connected) {
+        const warnings = connected.warnings ?? [];
+        const digits = (connected.displayPhoneNumber || "").replace(/[^0-9]/g, "");
         return (
-            <div className="rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-5 text-center">
-                <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500 text-white flex items-center justify-center mb-3">
-                    <Check size={24} />
+            <div className="space-y-3">
+                {warnings.length > 0 ? (
+                    <div className="rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-5">
+                        <div className="flex items-start gap-2.5">
+                            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{twn("title")}</p>
+                                <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{twn("subtitle")}</p>
+                                <ul className="mt-3 space-y-2">
+                                    {warnings.map((warning) => (
+                                        <li key={warning} className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-300">
+                                            • {isKnownWhatsAppWarning(warning) ? twn(`codes.${warning}`) : warning}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-5 text-center">
+                        <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500 text-white flex items-center justify-center mb-3">
+                            <Check size={24} />
+                        </div>
+                        <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">{t("connected")}</p>
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400/80 mt-1">
+                            {t("connectedDesc", { phone: connected.displayPhoneNumber || "" })}
+                        </p>
+                    </div>
+                )}
+
+                {/* El cierre del bucle: mandarse un mensaje y verlo responder. Antes el
+                    asistente avanzaba solo a los 1,4 s y esta prueba nunca ocurría. */}
+                <div
+                    id={guidedTourAnchorId("whatsapp-test")}
+                    className="rounded-xl border border-emerald-200 dark:border-emerald-500/25 bg-white dark:bg-white/[0.04] p-4 flex flex-col gap-3 sm:flex-row sm:items-center"
+                >
+                    <div className="w-9 h-9 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                        <MessageSquare size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{tw("testAgentTitle")}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{tw("testAgentDesc", { number: connected.displayPhoneNumber || "" })}</p>
+                    </div>
+                    {digits && (
+                        <a
+                            href={`https://wa.me/${digits}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                        >
+                            {tw("testAgentCta")} <ArrowRight size={14} />
+                        </a>
+                    )}
                 </div>
-                <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">{t("connected")}</p>
-                <p className="text-xs text-emerald-700 dark:text-emerald-400/80 mt-1">
-                    {t("connectedDesc", { phone: connected.displayPhoneNumber || "" })}
-                </p>
+
+                {onAcknowledged && (
+                    <button
+                        type="button"
+                        onClick={onAcknowledged}
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 cursor-pointer"
+                    >
+                        {t("continue")} <ArrowRight size={16} />
+                    </button>
+                )}
             </div>
         );
     }
 
-    const activeRoute = ROUTES.find((r) => r.id === route);
+    const activeRoute = getWhatsAppConnectRoute(route);
 
     if (activeRoute) {
         return (
             <div>
                 <button
-                    onClick={() => { setRoute(null); setError(""); }}
+                    onClick={() => setRoute(null)}
                     className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground mb-4 cursor-pointer"
                 >
                     <ChevronLeft size={14} /> {t("back")}
                 </button>
-                {error && (
-                    <div className="mb-3 rounded-lg border border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-                        {error}
-                    </div>
-                )}
-                {(activeRoute.id === "coexistence" || activeRoute.id === "sandbox") && (
-                    <p className="mb-3 text-xs text-muted-foreground">
-                        {activeRoute.id === "coexistence" ? t("coexistenceHint") : t("sandboxHint")}
-                    </p>
-                )}
-                <WhatsAppEmbeddedSignup
-                    tenantId={tenantId}
-                    mode={activeRoute.mode}
-                    onSuccess={(data) => {
-                        setConnected({ displayPhoneNumber: data.displayPhoneNumber });
-                        onConnected?.({ displayPhoneNumber: data.displayPhoneNumber });
-                    }}
-                    onError={(e) => setError(e)}
-                />
+
+                {/* Pasos, requisitos y avisos ANTES del botón: es donde se decide si
+                    la persona tiene lo necesario, no dentro de la ventana de Meta. */}
+                <WhatsAppRouteBrief route={activeRoute} compact />
+
+                <div className="mt-4">
+                    <WhatsAppEmbeddedSignup
+                        tenantId={tenantId}
+                        mode={activeRoute.mode}
+                        onSuccess={(data) => {
+                            const payload = {
+                                displayPhoneNumber: data.displayPhoneNumber,
+                                warnings: data.warnings ?? [],
+                            };
+                            setConnected(payload);
+                            onConnected?.(payload);
+                        }}
+                        onError={() => { /* el propio componente muestra el error con su próximo paso */ }}
+                    />
+                </div>
             </div>
         );
     }
@@ -94,9 +164,9 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected }: WhatsApp
                     <p className="text-[12px] text-muted-foreground">{t("officialMeta")}</p>
                 </div>
             </div>
-            <div className="space-y-3">
-            {ROUTES.map((r) => {
-                const Icon = r.icon;
+            <div id={guidedTourAnchorId("whatsapp-routes")} className="space-y-3">
+            {WHATSAPP_CONNECT_ROUTES.map((r) => {
+                const Icon = ROUTE_ICONS[r.id];
                 return (
                     <button
                         key={r.id}
@@ -108,12 +178,12 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected }: WhatsApp
                                 {t("recommended")}
                             </span>
                         )}
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: r.color }}>
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: r.accent.solid }}>
                             <Icon size={20} />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{tw(`route${cap(r.id)}Title`)}</p>
-                            <p className="text-[12px] text-muted-foreground leading-snug">{tw(`route${cap(r.id)}Short`)}</p>
+                            <p className="text-sm font-semibold text-foreground">{tw(whatsAppRouteKey(r, "Title"))}</p>
+                            <p className="text-[12px] text-muted-foreground leading-snug">{tw(whatsAppRouteKey(r, "Short"))}</p>
                         </div>
                         <ArrowRight size={16} className="text-muted-foreground shrink-0" />
                     </button>

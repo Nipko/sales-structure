@@ -1,6 +1,8 @@
 import { CopilotService, CopilotChatRequest } from './copilot.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
+const AGENT_ID = '22222222-2222-4222-8222-222222222222';
+const SIGNAL_ID = '33333333-3333-4333-8333-333333333333';
 
 function createService() {
     const llmRouter = {
@@ -17,7 +19,14 @@ function createService() {
             effectiveCapabilities: ['crm_pipeline', 'nightly_booking'],
         }),
     };
-    const agentQuality = { getOverview: jest.fn() };
+    const agentQuality = {
+        getOverview: jest.fn(),
+        getTenantChannelSnapshot: jest.fn().mockResolvedValue({
+            generatedAt: '2026-09-04T12:00:00.000Z',
+            total: 1,
+            channels: [{ type: 'whatsapp', accounts: 1, health: 'ok' }],
+        }),
+    };
     const qualitySignals = { getSignalForAssistant: jest.fn() };
     const service = new CopilotService(
         {} as any,
@@ -32,6 +41,74 @@ function createService() {
         qualitySignals as any,
     );
     return { service, llmRouter, verticals, agentQuality, qualitySignals };
+}
+
+/** Minimal overview with one failing preparation check, shaped like the real one. */
+function channelBlockedOverview(evidence: Record<string, unknown> = { assigned: 2, connected: 1 }) {
+    return {
+        generatedAt: '2026-09-04T12:00:00.000Z',
+        agent: { id: AGENT_ID, name: 'Laura Sofia', version: 4, isActive: true },
+        status: 'review_required',
+        nextMilestone: 'complete_configuration',
+        preparation: {
+            status: 'blocked',
+            criticalBlockers: ['channel_connection'],
+            score: 60,
+            passed: 3,
+            applicable: 5,
+            dimensions: [{
+                dimension: 'actions_outcomes',
+                score: 50,
+                status: 'blocked',
+                passed: 1,
+                applicable: 2,
+                checks: [{
+                    code: 'channel_connection',
+                    dimension: 'actions_outcomes',
+                    status: 'fail',
+                    critical: true,
+                    weight: 6,
+                    href: '/admin/channels',
+                    evidence,
+                }],
+            }],
+        },
+        tested: { status: 'stale', stale: true, staleReasons: [], score: null, latestEval: null, latestSimulation: null },
+        production: { status: 'insufficient_evidence', sampleSize: 0, minimumSample: 20, periodDays: 30, metrics: [], topIssues: [] },
+        recommendations: [{
+            code: 'fix_channel_connection', pillar: 'preparation', dimension: 'actions_outcomes',
+            severity: 'critical', href: '/admin/channels',
+        }],
+    };
+}
+
+function channelSignal() {
+    return {
+        id: SIGNAL_ID,
+        agent: { id: AGENT_ID, name: 'Laura Sofia', version: 4 },
+        code: 'fix_channel_connection',
+        severity: 'critical',
+        pillar: 'preparation',
+        dimension: 'actions_outcomes',
+        evidenceCount: 0,
+        href: '/admin/channels',
+    };
+}
+
+function chatRequest(overrides: Partial<CopilotChatRequest['context']> = {}, extra: Partial<CopilotChatRequest> = {}): CopilotChatRequest {
+    return {
+        message: '¿Dónde conecto un canal?',
+        history: [],
+        context: {
+            tenantId: TENANT_ID,
+            userName: 'Usuario',
+            userRole: 'tenant_admin',
+            locale: 'es',
+            page: '/admin',
+            ...overrides,
+        },
+        ...extra,
+    };
 }
 
 describe('CopilotService authenticated context', () => {
@@ -246,5 +323,173 @@ describe('CopilotService authenticated context', () => {
         );
         expect(result).toEqual({ prompt: '', actions: [] });
         expect(agentQuality.getOverview).not.toHaveBeenCalled();
+    });
+
+    // ─── Connected channels: the block that stops the false "no tenés canales" ──
+
+    it.each(['tenant_admin', 'tenant_supervisor'])(
+        'injects the authoritative connected-channel list for %s',
+        async (userRole) => {
+            const { service, llmRouter, agentQuality } = createService();
+            jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+            jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
+
+            await service.chat(chatRequest({ userRole }));
+
+            expect(agentQuality.getTenantChannelSnapshot).toHaveBeenCalledWith(TENANT_ID);
+            const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
+            expect(prompt).toContain('CANALES CONECTADOS');
+            expect(prompt).toContain('"type":"whatsapp"');
+            expect(prompt).toContain('NUNCA afirmes que no hay canales conectados');
+        },
+    );
+
+    it('never exposes the tenant channel list to tenant agents', async () => {
+        const { service, llmRouter, agentQuality } = createService();
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+
+        await service.chat(chatRequest({ userRole: 'tenant_agent' }));
+
+        expect(agentQuality.getTenantChannelSnapshot).not.toHaveBeenCalled();
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('CANALES CONECTADOS');
+    });
+
+    it('omits the channel block when the snapshot provider is not deployed yet', async () => {
+        const { service, llmRouter, agentQuality } = createService();
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+        jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
+        delete (agentQuality as any).getTenantChannelSnapshot;
+
+        await service.chat(chatRequest());
+
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('CANALES CONECTADOS');
+    });
+
+    // ─── Guided tours from a quality signal ─────────────────────────────────
+
+    it('offers the channel tour and focus params to an admin on a channel signal', async () => {
+        const { service, agentQuality, qualitySignals } = createService();
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+        jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
+        agentQuality.getOverview.mockResolvedValue(channelBlockedOverview());
+        qualitySignals.getSignalForAssistant.mockResolvedValue(channelSignal());
+
+        const response = await service.chat(chatRequest({ userRole: 'tenant_admin', page: '/admin/agent/quality' }, {
+            target: { kind: 'agent_quality', agentId: AGENT_ID, signalId: SIGNAL_ID },
+        }));
+
+        expect(response.actions).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'start_guided_tour', labelKey: 'showMe', tourId: 'connect_channel', href: '/admin/channels' }),
+            expect.objectContaining({ code: 'open_quality_center' }),
+        ]));
+        const repair = response.actions!.find((action) => action.code === 'open_quality_action');
+        expect(repair!.href).toContain(`qa=${SIGNAL_ID}`);
+        expect(repair!.href).toContain(`qagent=${AGENT_ID}`);
+        expect(repair!.href.startsWith('/admin/channels?')).toBe(true);
+        expect(response.actions!.length).toBeLessThanOrEqual(3);
+    });
+
+    it('withholds an admin-only tour from a supervisor but still opens the quality center', async () => {
+        const { service, agentQuality, qualitySignals } = createService();
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
+        agentQuality.getOverview.mockResolvedValue(channelBlockedOverview());
+        qualitySignals.getSignalForAssistant.mockResolvedValue(channelSignal());
+
+        const response = await service.chat(chatRequest({ userRole: 'tenant_supervisor', page: '/admin/agent/quality' }, {
+            target: { kind: 'agent_quality', agentId: AGENT_ID, signalId: SIGNAL_ID },
+        }));
+
+        expect(response.actions!.some((action) => action.code === 'start_guided_tour')).toBe(false);
+        expect(response.actions).toEqual([
+            expect.objectContaining({ code: 'open_quality_center', href: `/admin/agent/quality?agent=${AGENT_ID}` }),
+        ]);
+    });
+
+    it('keeps critical blocker evidence bounded to short primitives', async () => {
+        const { service, agentQuality } = createService();
+        agentQuality.getOverview.mockResolvedValue(channelBlockedOverview({
+            assigned: 2,
+            connected: 1,
+            disconnectedChannels: 'instagram',
+            credentialIssue: false,
+            note: 'x'.repeat(90),
+            nested: { leaked: 'private-conversation' },
+            list: ['private-conversation'],
+            missing: null,
+        }));
+
+        const { prompt } = await (service as any).buildAgentQualityContext(
+            TENANT_ID,
+            { kind: 'agent_quality', agentId: AGENT_ID },
+            'tenant_admin',
+        );
+
+        expect(prompt).toContain('criticalBlockerEvidence');
+        expect(prompt).toContain('"assigned":2');
+        expect(prompt).toContain('"disconnectedChannels":"instagram"');
+        expect(prompt).toContain('"credentialIssue":false');
+        expect(prompt).not.toContain('x'.repeat(90));
+        expect(prompt).not.toContain('nested');
+        expect(prompt).not.toContain('private-conversation');
+        expect(prompt).not.toContain('"missing"');
+    });
+
+    // ─── Guided tours from free chat (model marker) ─────────────────────────
+
+    const kbArticle = (id: string) => ({
+        id, locale: 'es', title: id, routes: ['/admin'], roles: ['tenant_admin'],
+        keywords: [], body: 'Contenido de ayuda.',
+    });
+
+    it('turns an allowlisted marker into an action and removes it from the reply', async () => {
+        const { service, llmRouter } = createService();
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([kbArticle('base-conocimiento')]);
+        jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
+        llmRouter.execute.mockResolvedValue({
+            content: 'Se carga desde Base de conocimiento.\n[[tour:knowledge_base]]',
+            routingDecision: { selectedModel: { id: 'test-model' } },
+            usage: { totalTokens: 10 },
+        });
+
+        const response = await service.chat(chatRequest());
+
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('RECORRIDOS GUIADOS DISPONIBLES');
+        expect(response.reply).toBe('Se carga desde Base de conocimiento.');
+        expect(response.actions).toEqual([
+            expect.objectContaining({ code: 'start_guided_tour', tourId: 'knowledge_base', href: '/admin/knowledge' }),
+        ]);
+    });
+
+    it('strips a marker for a tour unrelated to the retrieved articles', async () => {
+        const { service, llmRouter } = createService();
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([kbArticle('facturacion-planes')]);
+        jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
+        llmRouter.execute.mockResolvedValue({
+            content: 'Eso se ve en Facturación.\n[[tour:knowledge_base]]',
+            routingDecision: { selectedModel: { id: 'test-model' } },
+            usage: { totalTokens: 10 },
+        });
+
+        const response = await service.chat(chatRequest());
+
+        expect(response.reply).toBe('Eso se ve en Facturación.');
+        expect(response.actions).toEqual([]);
+    });
+
+    it('strips an invented tour id without producing an action', async () => {
+        const { service, llmRouter } = createService();
+        jest.spyOn(service as any, 'searchKb').mockReturnValue([kbArticle('base-conocimiento')]);
+        jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
+        llmRouter.execute.mockResolvedValue({
+            content: 'Listo.\n[[tour:delete_everything]]',
+            routingDecision: { selectedModel: { id: 'test-model' } },
+            usage: { totalTokens: 10 },
+        });
+
+        const response = await service.chat(chatRequest());
+
+        expect(response.reply).toBe('Listo.');
+        expect(response.reply).not.toContain('[[tour:');
+        expect(response.actions).toEqual([]);
     });
 });

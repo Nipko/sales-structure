@@ -344,7 +344,9 @@ export default function SignupPage() {
 
                     <form onSubmit={handleSubmit}>
                         {/* Name row */}
-                        <div className="grid grid-cols-2 gap-3 mb-3.5">
+                        {/* Dos columnas fijas dejaban los campos a ~120 px en un
+                            teléfono, que es desde donde se registra la mayoría. */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3.5">
                             <div>
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('firstName')} <span className="text-rose-500">*</span></label>
                                 <div className="relative">

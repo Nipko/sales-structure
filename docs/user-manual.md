@@ -92,13 +92,21 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 
 # 2. Primeros Pasos
 
+> **Fuente vigente para el usuario final:** los artículos runtime de Parallly Assist
+> (`apps/api/kb/assistant/{es,en,pt,fr}/01-primeros-pasos.md` y `02-canales-whatsapp.md`).
+> Este manual es apoyo editorial; si difieren, manda la KB, que es lo que el usuario lee
+> dentro del panel. Ver `docs/platform-assistant-knowledge.md`.
+
 ## 2.1 Crear una cuenta
 
 1. Ir a [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud)
 2. Clic en **Registrarse**
 3. Ingresar email y contraseña (o usar Google OAuth)
-4. Verificar el email con el código de 6 dígitos que recibirás
-5. Completar el asistente de onboarding (sección 2.2)
+4. Al enviar el formulario se entra **directo** al asistente de onboarding (sección 2.2).
+   No hay ningún código que esperar en ese momento: el correo de verificación sale en
+   segundo plano y **no bloquea** la puesta en marcha (sección 2.4)
+5. Al terminar el onboarding, el panel abre el asistente **Conocé a tu agente** de
+   3 pasos (sección 2.2)
 
 ## 2.2 Asistente de Onboarding
 
@@ -147,6 +155,25 @@ tu plan desde **Configuración → Facturación**.
 - **FAQs base** de tu sector
 - **Servicios** ejemplo según tu tipo de negocio
 - **Tablas verticales** activadas (menú, planes, propiedades, etc. según corresponda)
+
+### Después del onboarding: «Conocé a tu agente»
+
+El panel abre un segundo asistente de **3 pasos**, reabrible desde
+**Configuración → Asistente de configuración** (ruta `/admin/setup-wizard`, solo
+`tenant_admin`):
+
+1. **Tu agente** — no se elige plantilla: el agente ya viene derivado de la industria y
+   los objetivos declarados, con nombre, rol y saludo. El paso sirve para confirmarlo o
+   ajustarlo (nombre y mensaje de bienvenida) y probarlo en el chat de al lado.
+   **Cambiar plantilla** es un botón secundario que lleva a la lista de agentes.
+2. **Conectá WhatsApp** — requisitos, ruta de conexión (coexistencia recomendada, número
+   nuevo o migración; **no** hay ruta de número de prueba) y el botón que abre la ventana
+   de Meta. **Conectar después** persiste el estado y se recuerda desde Inicio.
+3. **Listo** — los mismos esenciales de la tarjeta **Puesta en marcha**.
+
+La tarjeta **Puesta en marcha** de Inicio es la única fuente de progreso: sus ítems se
+derivan de los checks críticos de preparación más el canal, y cada ítem ofrece
+**Continuar** y **Mostrarme dónde** (recorrido guiado de solo lectura, escritorio).
 
 ## 2.3 Iniciar sesión
 

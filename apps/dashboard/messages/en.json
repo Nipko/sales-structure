@@ -58,8 +58,16 @@
     "planRequired": "Your current plan does not include customer payments. Existing payments remain readable, but you cannot connect accounts or create new links.",
     "reviewPlans": "Review plans",
     "providers": {
-      "wompi": { "name": "Wompi", "description": "Hosted links with a fixed COP amount and event-verified payment.", "credentialsHint": "Connect your business Wompi account keys." },
-      "mercadopago": { "name": "Mercado Pago", "description": "Checkout Pro using your business-owned credentials.", "credentialsHint": "Connect your business Mercado Pago credentials." }
+      "wompi": {
+        "name": "Wompi",
+        "description": "Hosted links with a fixed COP amount and event-verified payment.",
+        "credentialsHint": "Connect your business Wompi account keys."
+      },
+      "mercadopago": {
+        "name": "Mercado Pago",
+        "description": "Checkout Pro using your business-owned credentials.",
+        "credentialsHint": "Connect your business Mercado Pago credentials."
+      }
     },
     "active": "Active",
     "ready": "Ready",
@@ -400,8 +408,8 @@
       "settingsIntegrations": "Integrations",
       "settingsWebChatTriggers": "Web chat triggers",
       "setupWizard": "Setup wizard",
-        "tourDetail": "Tour or package details",
-        "acquisitionCampaigns": "Acquisition campaigns"
+      "tourDetail": "Tour or package details",
+      "acquisitionCampaigns": "Acquisition campaigns"
     },
     "command": {
       "title": "Search and navigate",
@@ -1441,6 +1449,10 @@
       "ecommerce": {
         "label": "Online store",
         "description": "Shopify or WooCommerce for the assistant catalog"
+      },
+      "setupWizard": {
+        "label": "Setup assistant",
+        "description": "Reopen \"Meet your agent\" and pick up where you left off"
       }
     },
     "account": "My Account",
@@ -1954,7 +1966,9 @@
         "saturday": "Sat",
         "sunday": "Sun"
       },
-      "timeSeparator": "to"
+      "timeSeparator": "to",
+      "appointmentsNotice": "These hours tell the agent when you are open. The availability for taking appointments is set separately, in Appointments → Settings.",
+      "appointmentsNoticeLink": "Go to Appointments → Settings"
     },
     "nurturingPage": {
       "title": "Auto Follow-up",
@@ -2034,7 +2048,8 @@
         "identity": "Identity",
         "contact": "Contact",
         "location": "Location",
-        "social": "Social links"
+        "social": "Social links",
+        "goals": "Goals and audience"
       },
       "fields": {
         "companyName": "Company name",
@@ -2046,7 +2061,9 @@
         "address": "Address",
         "city": "City",
         "country": "Country",
-        "logoUrl": "Company logo"
+        "logoUrl": "Company logo",
+        "chatReasons": "What do you want the agent for?",
+        "customerTypes": "Who writes to you?"
       },
       "placeholders": {
         "industry": "e.g. Tourism, Education, Retail",
@@ -2068,12 +2085,29 @@
       "errors": {
         "companyNameRequired": "Company name is required",
         "saveFailed": "Failed to save",
-        "connection": "Connection error"
+        "connection": "Connection error",
+        "aboutRequired": "Describe your business in 2 or 3 sentences: the agent needs it in order to answer."
       },
       "toast": {
         "saved": "Information saved",
         "logoUploaded": "Logo updated",
         "logoError": "Error uploading logo"
+      },
+      "aboutHelp": "2-3 sentences: what you sell, to whom and where.",
+      "goalsHint": "The agent uses this to know what it is for and who it is talking to.",
+      "goals": {
+        "faq": "Answer frequent questions",
+        "appointments": "Book appointments",
+        "sales": "Sell",
+        "support": "Provide support",
+        "promotions": "Share promotions",
+        "lead_qualification": "Qualify leads",
+        "response_time": "Reply faster"
+      },
+      "audiences": {
+        "b2c": "End consumers",
+        "b2b": "Other businesses",
+        "government": "Public bodies"
       }
     },
     "customAttributesPage": {
@@ -2200,6 +2234,28 @@
         "bot_token": "Bot token (from @BotFather)",
         "bot_username": "Bot username (without @)",
         "webhook_url": "Webhook URL"
+      }
+    },
+    "essentials": {
+      "title": "Essentials for your agent",
+      "description": "The minimum your agent needs to answer well. The rest can wait.",
+      "items": {
+        "businessInfo": {
+          "label": "Business information",
+          "description": "Name, what you do and how to reach you. The agent quotes it verbatim."
+        },
+        "businessHours": {
+          "label": "Business hours",
+          "description": "When you are open and what to reply outside those hours."
+        },
+        "team": {
+          "label": "Team",
+          "description": "Who the AI hands the conversation to when a customer asks for a person."
+        },
+        "setupWizard": {
+          "label": "Setup assistant",
+          "description": "Go back to the guided setup steps whenever you want."
+        }
       }
     }
   },
@@ -2525,7 +2581,12 @@
       "sourcePublic": "Online booking",
       "rating": "Rating",
       "ratingFeedback": "Customer feedback",
-      "cancellationReason": "Cancellation reason"
+      "cancellationReason": "Cancellation reason",
+      "useBusinessHours": "Same hours as the business?",
+      "useBusinessHoursDesc": "We copy in the hours you saved in Settings → Business hours. Review them and confirm below.",
+      "useBusinessHoursAction": "Use the business hours",
+      "useBusinessHoursApplied": "Done: we copied your hours. Review them and hit Confirm to save.",
+      "useBusinessHoursMissing": "You have not saved the business hours yet, in Settings → Business hours."
     },
     "staffSection": {
       "title": "Professional team",
@@ -3228,7 +3289,100 @@
         "auth": "Authorization",
         "connecting": "Connecting number",
         "activating": "Activating WhatsApp"
-      }
+      },
+      "routeRecommended": "Recommended",
+      "mobileNote": "This step works better on a computer. From your phone you can use the coexistence option and scan the QR code with your WhatsApp Business app.",
+      "brief": {
+        "title": "What this option involves"
+      },
+      "warnings": {
+        "title": "Connected, with a few things pending",
+        "subtitle": "Your number is connected, but Meta left these points open:",
+        "codes": {
+          "business_not_verified": "Your business is not verified with Meta yet. You can reply, but with a daily conversation limit until you complete verification in Meta Business.",
+          "webhook_subscription_failed": "We could not confirm the subscription to incoming messages. Send yourself a message: if your agent does not reply, write to us and we'll fix it.",
+          "phone_registration_deferred": "Number registration is still pending on Meta's side. It usually resolves itself within minutes.",
+          "template_sync_failed": "We could not fetch your message templates. You can sync them again from Templates."
+        }
+      },
+      "errors": {
+        "retry": "Try again",
+        "goToBilling": "Go to Plan and billing",
+        "checkingExisting": "Checking…",
+        "popupBlocked": {
+          "title": "The Meta window did not open",
+          "action": "Allow pop-ups for this site and try again. On a phone, check that your browser is not blocking them."
+        },
+        "phoneRegistration": {
+          "title": "We could not register that number",
+          "action": "This usually happens when the number already has WhatsApp active, or has two-step verification on. Delete WhatsApp from that number, or turn off the two-step PIN, and try again."
+        },
+        "tokenCoverage": {
+          "title": "The authorization does not cover this account",
+          "action": "Try again and, in the Meta window, authorize ALL the WhatsApp accounts it shows you. If you leave one out, we cannot send messages from it."
+        },
+        "planLimit": {
+          "title": "You reached your plan's limit",
+          "action": "Your plan does not allow another number. You can change plan or disconnect one of the ones you already have."
+        },
+        "channelNotInPlan": {
+          "title": "WhatsApp is not included in your plan",
+          "action": "Switch to a plan that includes WhatsApp and come back to this screen."
+        },
+        "invalidConfig": {
+          "title": "The connection is missing configuration",
+          "action": "This one is on us, not on you. Write to us and we'll get it running."
+        },
+        "onboardingInProgress": {
+          "title": "A connection is already in progress",
+          "action": "You started this process a moment ago and it was left halfway. Wait a couple of minutes and try again."
+        },
+        "permissions": {
+          "title": "Permissions were missing on Meta",
+          "action": "Try again and accept every permission the Meta window asks for. Without them we cannot read or send messages."
+        },
+        "entitlementUnavailable": {
+          "title": "We could not verify your plan",
+          "action": "It was temporary. Try again in a few seconds."
+        },
+        "coexistenceNotAcknowledged": {
+          "title": "Coexistence still needs confirming",
+          "action": "Pick \"I already use WhatsApp Business\" again and follow every step in the Meta window."
+        },
+        "codeExpired": {
+          "title": "The authorization expired",
+          "action": "Too much time passed between opening the window and finishing. Try again without long pauses."
+        },
+        "rateLimited": {
+          "title": "Too many attempts",
+          "action": "Meta asked us to wait. Try again in a few minutes."
+        },
+        "metaError": {
+          "title": "Meta rejected the connection",
+          "action": "Try again. If it happens again, copy the detail below and write to us."
+        },
+        "cancelled": {
+          "title": "You closed the Meta window",
+          "action": "No problem: you can try again whenever you want."
+        },
+        "authorization": {
+          "title": "We did not receive the authorization",
+          "action": "The window closed before finishing. Try again and don't close it until you see \"Connection successful\"."
+        },
+        "sdkNotLoaded": {
+          "title": "The Meta connector did not load",
+          "action": "Reload the page and try again. If you use a content blocker, disable it for this site."
+        },
+        "generic": {
+          "title": "We could not complete the connection",
+          "action": "Try again. If it persists, write to us with the detail below and we'll sort it out."
+        },
+        "network": {
+          "title": "We could not reach the server",
+          "action": "Check your internet connection and try again. If it keeps happening, try again in a few minutes."
+        }
+      },
+      "connectionRequestFailed": "We could not reach the server. Check your connection and try again."
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -3387,7 +3541,7 @@
     "unassignedChannels": "{count} channel(s) without an assigned agent",
     "unassignedDesc": "Messages from these channels will use the default agent. Assign an agent for a personalized experience.",
     "assignNow": "Assign agent now",
-    "noConnectedChannels": "No connected channels",
+    "noConnectedChannels": "You have not connected a channel yet",
     "createFirst": "Create your first agent",
     "noAgents": "No agents configured",
     "noAgentsDesc": "Create your first AI agent to start automating conversations across your channels.",
@@ -3577,7 +3731,9 @@
         "questionPlaceholder": "Ask the customer (e.g. What is your email?)",
         "addField": "Add field",
         "addContext": "Add context"
-      }
+      },
+      "handoffTriggersPlain": "When to pass to a human",
+      "handoffTriggersHint": "List the situations where you would rather someone on your team replied."
     },
     "aiModel": {
       "temperature": "Temperature",
@@ -3623,17 +3779,17 @@
       "offersDesc": "Mention live offers naturally in conversation",
       "ordersTitle": "Customer order history",
       "ordersDesc": "Answer about the customer's orders (status, total, date)",
-      "crmTitle": "CRM context",
-      "crmDesc": "Personalize using lead score, tags and pipeline stage",
-      "knowledgeTitle": "Knowledge base (RAG)",
+      "crmTitle": "Use what we know about the customer",
+      "crmDesc": "Personalise the reply with that customer's history, tags and current stage.",
+      "knowledgeTitle": "Documents and web pages the agent can consult",
       "knowledgeDesc": "Semantic search over your documents",
       "ragTuning": "Search tuning",
-      "topK": "Max results",
+      "topK": "How many passages to use",
       "topKHint": "How many chunks to return per search",
-      "similarityThreshold": "Relevance threshold",
+      "similarityThreshold": "How closely it must match",
       "similarityHint": "Filters out results below this score",
-      "kbTool": "Agent search tool",
-      "kbToolDesc": "Let the agent query the KB as a tool, in addition to auto-context",
+      "kbTool": "Let the agent search whenever it needs to",
+      "kbToolDesc": "On top of the automatic lookup, the agent can search your documents again mid-conversation.",
       "specializedToolsTitle": "Specialized tools",
       "recommended": "Recommended",
       "industryToolsTitle": "Industry tools",
@@ -3682,7 +3838,7 @@
       "skillset_sales_desc": "Recommends and closes sales.",
       "skillset_support_desc": "Resolves questions and orders.",
       "skillset_both_desc": "Sells and supports.",
-      "upsellTitle": "Upsell & cross-sell",
+      "upsellTitle": "Suggest additional products",
       "upsellDesc": "Proactively suggest products or upgrades.",
       "upsellIntensity": "Intensity",
       "upsell_subtle": "Subtle",
@@ -3703,7 +3859,10 @@
       "paymentsCreateLinksDesc": "The agent uses the active provider; it never chooses the amount or treats a pending link as paid.",
       "paymentsRailPending": "Payment credentials are loaded, but charging is not active yet: one last step is missing in Customer payments. With this switch on, the agent still will not be able to charge.",
       "paymentsRailMissing": "You have not connected a payments account yet. With this switch on, the agent will not be able to charge until you connect one.",
-      "paymentsConfigure": "Configure payments account"
+      "paymentsConfigure": "Configure payments account",
+      "knowledgeToggleTitle": "Consult my documents",
+      "knowledgeToggleDesc": "The agent looks the answer up in the documents and pages you uploaded before replying.",
+      "advancedSearch": "Advanced: fine-tune the search"
     },
     "customPrompt": {
       "title": "Custom System Prompt",
@@ -3794,11 +3953,42 @@
         "about": "Business description",
         "hours": "Hours",
         "knowledge": "Knowledge"
-      }
+      },
+      "blockersTitle": "Still to configure",
+      "fix": "Fix",
+      "more": "and {count} more"
+    },
+    "validation": {
+      "blocked": "Some required fields are missing. Check the fields marked in red.",
+      "nameRequired": "Enter a name: it is the name the agent introduces itself with to your customers.",
+      "roleRequired": "Enter the role: what this person does in your business (for example, \"sales advisor\").",
+      "fallbackRequired": "Write what it should say when it does not know the answer. Without this the agent may make things up.",
+      "rulesRequired": "Add at least one rule. Example: \"always confirm availability before quoting a price\".",
+      "handoffRequired": "Add at least one reason to pass the chat to a person. Example: \"the customer asks to talk to someone\".",
+      "fallbackHelp": "Required. Promise that a person will follow up instead of letting the agent improvise."
+    },
+    "activation": {
+      "label": "Status",
+      "activeHint": "It is answering your customers.",
+      "inactiveHint": "It is not answering. Messages go unanswered until you turn it on.",
+      "confirmActivateTitle": "Turn the agent on?",
+      "confirmActivateBody": "From then on it answers, on its own, the messages arriving through the channels you assigned to it.",
+      "confirmActivate": "Turn on",
+      "confirmDeactivateTitle": "Turn the agent off?",
+      "confirmDeactivateBody": "It stops answering. Messages keep arriving in the Inbox, but nobody replies until a person takes them.",
+      "confirmDeactivate": "Turn off",
+      "activated": "Agent turned on: it is answering now.",
+      "deactivated": "Agent turned off: it stopped answering."
+    },
+    "noConnectedChannelsHint": "Your agent cannot receive messages until you connect at least one (WhatsApp, Instagram, Messenger, Telegram or your website chat).",
+    "connectChannel": "Connect",
+    "advanced": {
+      "title": "Advanced",
+      "behaviorHint": "Data the agent must ask for in each situation. You do not need to touch it to get started."
     }
   },
   "knowledge": {
-    "title": "Knowledge Base",
+    "title": "Knowledge base",
     "tabs": {
       "library": "Library",
       "faqs": "FAQs",
@@ -3831,7 +4021,8 @@
         "category": "Category",
         "tags": "Tags (comma-separated)",
         "order": "Order",
-        "published": "Published (visible to agent)"
+        "published": "Published (visible to agent)",
+        "publishedHint": "The agent only uses published FAQs."
       },
       "placeholders": {
         "question": "What is your return policy?",
@@ -3842,7 +4033,10 @@
       "errors": {
         "required": "Question and answer are required",
         "saveFailed": "Failed to save"
-      }
+      },
+      "emptyTitle": "You have no frequently asked questions yet",
+      "emptyBody": "It is the quickest way to make the agent answer well: write the questions you get most and the exact answer you want it to give.",
+      "emptyAction": "Create my first FAQ"
     },
     "hash": "Hash",
     "approve": "Approve",
@@ -3851,7 +4045,11 @@
     "searchButton": "Search",
     "empty": {
       "library": "No resources in the knowledge base.",
-      "search": "No matches found."
+      "search": "No matches found.",
+      "libraryTitle": "You have not uploaded any document yet",
+      "libraryBody": "This is where your manuals, price lists, policies and web pages live. The agent consults them before replying, so it stops improvising.",
+      "libraryAction": "Upload my first document",
+      "libraryFaqAction": "Start with the FAQs"
     },
     "status": {
       "draft": "Draft",
@@ -4034,7 +4232,8 @@
         "feedbackCount": "Feedbacks"
       }
     },
-    "resourceLabel": "knowledge documents"
+    "resourceLabel": "knowledge documents",
+    "chunkCount": "{count} passages"
   },
   "identity": {
     "title": "Identity",
@@ -4175,6 +4374,16 @@
         "linkCopied": "Link copied"
       },
       "confirmRevoke": "Revoke this invitation? The link will stop working."
+    },
+    "roleDescriptions": {
+      "tenant_agent": "receives the chats the AI hands to a person, and replies.",
+      "tenant_supervisor": "does everything an agent does, plus sees reports and reassigns conversations.",
+      "tenant_admin": "configures the agent, the channels, the plan and the team. Full access."
+    },
+    "pendingNotice": {
+      "title": "{count} pending invitations",
+      "body": "Until they are accepted, the AI has nobody to hand the conversation to when a customer asks for a person.",
+      "action": "View invitations"
     }
   },
   "orders": {
@@ -5048,8 +5257,49 @@
     "couponApplied": "Coupon applied: {months} free month(s) added to your trial",
     "couponFailed": "We couldn't apply that code. Your account was created anyway — try again from Settings → Billing.",
     "bridge": {
-      "title": "Account ready!",
-      "subtitle": "Setting up your agent…"
+      "title": "Account created",
+      "subtitle": "Now let us introduce your agent…"
+    },
+    "helpLink": "Help",
+    "moreDetails": "More details",
+    "moreDetailsHint": "(optional)",
+    "timezoneDetected": "We detected {zone}",
+    "timezoneChange": "change",
+    "billingCountryDetected": "Billing from {country}",
+    "seeOtherPlans": "See other plans",
+    "validation": {
+      "summary": "Check the highlighted fields and try again.",
+      "tooLong": "This is too long. Please shorten it a little.",
+      "invalidEmail": "That email does not look valid. Example: hello@yourbusiness.com",
+      "invalidUrl": "That address does not look valid. Example: yourbusiness.com"
+    },
+    "errors": {
+      "plan_unavailable": "That plan is not available right now. Pick another one and we'll continue.",
+      "coupon_invalid": "The promo code is not valid. You can leave it empty and apply it later.",
+      "email_taken": "An account with that email already exists. Sign in instead of creating another one.",
+      "tenant_exists": "This account already has a business. We're taking you to the panel.",
+      "rate_limited": "Too many attempts in a row. Wait a minute and try again."
+    },
+    "coachMarks": {
+      "skip": "Skip",
+      "next": "Next",
+      "done": "Got it",
+      "industry": {
+        "title": "Start with your industry",
+        "body": "This is how we prepare your agent: what it knows, what it does and how it talks. You can change it later."
+      },
+      "about": {
+        "title": "Tell us what you do",
+        "body": "Two or three sentences: what you sell, to whom and where. This is what your agent will answer when customers ask."
+      },
+      "timezone": {
+        "title": "Your time zone is set",
+        "body": "We detected it for you. Tap the chip only if it is not the right one."
+      },
+      "submit": {
+        "title": "That's all for now",
+        "body": "Everything else is optional and you can fill it in later from the panel."
+      }
     }
   },
   "analytics": {
@@ -5300,12 +5550,12 @@
     "testTitle": "Try it",
     "connectTitle": "Connect it",
     "discoverTitle": "Discover",
-    "connectBannerTitle": "Connect your first channel",
-    "connectBannerDesc": "Your agent is ready but isn't receiving messages yet. Connect a channel to start.",
-    "connectBannerCta": "Connect channel",
-    "resumeBannerTitle": "Your agent is not customized yet",
-    "resumeBannerDesc": "You left the guided setup unfinished. Pick it up and in 3 minutes your agent sounds like your business.",
-    "resumeBannerCta": "Resume setup",
+    "connectBannerTitle": "You haven't connected a channel yet",
+    "connectBannerDesc": "Your agent is ready, but it cannot receive messages until you connect WhatsApp.",
+    "connectBannerCta": "Connect WhatsApp",
+    "resumeBannerTitle": "Pick up your setup",
+    "resumeBannerDesc": "You left the assistant halfway. Everything was saved: you can carry on where you were.",
+    "resumeBannerCta": "Resume",
     "connect": {
       "title": "Connect your first channel",
       "subtitle": "Connect at least one channel to start receiving customers. WhatsApp is the most popular, but you can pick any.",
@@ -5321,7 +5571,6 @@
       "connected": "Connected!",
       "connectedDesc": "Your agent is now live on {phone}.",
       "coexistenceHint": "Scan the QR code from your WhatsApp Business app to connect your current number without losing your chats.",
-      "sandboxHint": "Choose “use a display name only” in the Meta window to try with a test number, no verification.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
       "channel_telegram": "Telegram",
@@ -5333,7 +5582,6 @@
         "item1": "A phone number for WhatsApp: your current WhatsApp Business number, or a new one not used on WhatsApp.",
         "item2": "Access to that number's verification code (by SMS or call).",
         "item3": "A Facebook account to authorize with Meta (you can create one during the process).",
-        "sandboxNote": "Don't have a number ready? Choose Sandbox to try it risk-free.",
         "continue": "Continue",
         "checkAll": "Confirm the items to continue"
       },
@@ -5577,7 +5825,54 @@
       "finish": "Finish setup",
       "skip": "Skip for now",
       "stepOf": "Step {current} of {total}"
-    }
+    },
+    "pageTitle": "Meet your agent",
+    "pageSubtitle": "Three steps. You can leave whenever you want: nothing is lost.",
+    "exit": "Exit",
+    "exitHint": "We save what you did and take you back to the panel",
+    "steps": {
+      "agent": "Your agent",
+      "connect": "Connect WhatsApp",
+      "done": "Done"
+    },
+    "agentStep": {
+      "title": "Your agent",
+      "subtitle": "We prepared an agent from what you told us. Confirm it or change it.",
+      "prepared": "We prepared {name} using what you told us about your business. Confirm the name and greeting, and try it right here.",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "autosaveHint": "It saves on its own when you leave the field.",
+      "changeTemplate": "Change template"
+    },
+    "connectStep": {
+      "title": "Connect WhatsApp",
+      "subtitle": "This is the step that makes your agent actually start replying. It takes about 5 minutes.",
+      "laterTitle": "Not a good moment?",
+      "laterHint": "You can leave it for later: we'll remind you on Home and you can come back here whenever you want.",
+      "showMe": "Show me where"
+    },
+    "doneStep": {
+      "title": "You're set — the panel is yours",
+      "subtitle": "These are the three steps that change the most about what your agent can do.",
+      "subtitleDeferred": "We'll be waiting on Home to connect WhatsApp. Meanwhile, here is what comes next.",
+      "goToPanel": "Go to the panel",
+      "tourCta": "Take the panel tour",
+      "essentials": {
+        "channel": {
+          "title": "Connect WhatsApp",
+          "description": "Without a channel, your agent receives messages from nobody."
+        },
+        "knowledge": {
+          "title": "Load what your agent must know",
+          "description": "Prices, services and frequent questions: that is where its answers come from."
+        },
+        "team": {
+          "title": "Invite a person",
+          "description": "When the agent cannot solve something, it needs somebody to hand it to."
+        }
+      }
+    },
+    "connectBannerShowMe": "Show me where"
   },
   "copilot": {
     "subtitle": "Your platform assistant",
@@ -6954,13 +7249,13 @@
   "help": {
     "inbox": {
       "title": "How does the Inbox work?",
-      "description": "The Inbox brings every WhatsApp, Instagram, Messenger, Telegram and SMS conversation into a single chat-style view in real time. Use it to reply yourself, let the AI handle it, or take over when a customer needs a human (handoff).",
+      "description": "The Inbox brings your WhatsApp, Instagram, Messenger, Telegram and web chat conversations together in real time, in a single chat-style tray. Use it to reply yourself, let the AI handle it, or take over when a customer needs a person.",
       "tips": [
-        "Filter by 'Unassigned' or 'Mine' to focus; conversations handed to a human show an orange badge.",
-        "When you pick up a handoff, you'll see an AI-generated summary of the conversation at the top.",
-        "Open the right-hand panel to view and edit the contact's data without leaving the chat.",
-        "Use macros and canned responses to reply to common cases in one click (set them up in Settings → Macros).",
-        "If a conversation waits more than 5 minutes, it's automatically escalated to a supervisor."
+        "Filter by \"Unassigned\" or \"Mine\" to focus; conversations the AI handed to a person show an orange badge.",
+        "When you take a handed-over conversation, you will see an AI-generated summary of the chat at the top.",
+        "Open the right panel to view and edit contact details without leaving the chat.",
+        "Use macros and quick replies to answer the usual questions in one click (set them up in Settings → Macros).",
+        "If a handed-over conversation waits more than 5 minutes with no reply, a supervisor is alerted in the panel; and after 3 hours with nobody taking it, it goes back to the AI so the customer is not left waiting."
       ]
     },
     "contacts": {
@@ -7041,14 +7336,14 @@
       ]
     },
     "knowledge": {
-      "title": "How do I manage the Knowledge Base?",
+      "title": "How do I manage the knowledge base?",
       "description": "The Knowledge Base is your AI agent's memory: upload documents, add URLs to crawl automatically, create FAQs, and organize everything into categories. The more complete and up to date it is, the more accurate the agent's answers will be for your customers.",
       "tips": [
-        "Use the 'Bulk upload' button to load multiple files (PDF, Word, TXT) at once and assign them a category in the same step.",
-        "For web pages that change frequently (prices, menus, catalogs), use 'Add URL' and enable automatic re-crawl so the content stays up to date on its own.",
-        "In the 'Quality' tab you'll see a score from 0 to 100 for each document — prioritize the ones with low scores to rewrite or enrich them with more detail.",
-        "In the 'Analytics' tab review the 'Unanswered Queries': these are real questions the agent couldn't handle; create an article directly from that list by clicking the '+' icon.",
-        "Use the 'Gaps' tab together with 'AI Suggestions' to let the system automatically detect missing topics in your base and propose titles and outlines for new articles."
+        "Start with FAQs: open the FAQs tab and add the questions you are asked most. It is the fastest step and the one that improves answers the most.",
+        "To upload files (PDF, Word, TXT), use \"Create\" for one or \"Bulk import\" for several at once.",
+        "For web pages that change often (prices, menus, catalogues), use \"Import URL\" and turn on automatic re-crawling.",
+        "The Quality tab scores each document; start with the lowest ones and rewrite them.",
+        "In Analytics, review \"Unanswered queries\": these are real questions the agent could not resolve."
       ]
     },
     "analyticsV2": {
@@ -7063,14 +7358,14 @@
       ]
     },
     "channels": {
-      "title": "How do I connect and manage channels?",
-      "description": "Channels is the hub where you connect each messaging network (WhatsApp, Instagram DM, Facebook Messenger, Telegram, and Email) so your AI agent can receive and reply from everywhere. Each card shows whether the channel is 'Connected' or 'Disconnected' and takes you to its individual settings.",
+      "title": "How do I connect and manage my channels?",
+      "description": "Channels is where you connect each messaging network (WhatsApp, Instagram DM, Facebook Messenger and Telegram) so your agent can receive and reply everywhere. Each card shows whether the channel is \"Connected\" or \"Disconnected\" and takes you to its setup.",
       "tips": [
-        "Click 'Configure' on the WhatsApp card to start Meta's Embedded Signup; you'll need a WhatsApp Business account and a Facebook page.",
-        "For Instagram DM, the account must be a professional account linked to a Facebook page; the process uses OAuth and takes under 2 minutes.",
-        "Connecting Messenger requires logging in with Facebook (FB SDK) and selecting your business page to get the messaging token.",
-        "Telegram only needs a Bot Token: create a bot with @BotFather, copy the token, and paste it in the channel settings.",
-        "A connected channel shows the green 'Connected' badge; if you see the red 'Disconnected' badge, open the card to reconnect and assign an AI agent."
+        "Start with WhatsApp: open its card and follow Meta's official flow. You will need a WhatsApp Business account and a Facebook page.",
+        "For Instagram DM the account must be professional and linked to a Facebook page; the process uses OAuth and takes under 2 minutes.",
+        "Connecting Messenger asks you to sign in with Facebook and pick your business page.",
+        "Telegram only needs a Bot Token: create a bot with @BotFather, copy the token and paste it into the channel setup.",
+        "A connected channel shows the green \"Connected\" badge. After connecting, assign it an agent from AI Agents: with no agent assigned nobody replies."
       ]
     },
     "users": {
@@ -7121,11 +7416,11 @@
       "title": "What does the Dashboard show?",
       "description": "The Dashboard is your business overview: new leads today, hot leads, messages processed by the AI, and how much it cost. Use it every morning to decide where to focus before diving into the rest of the platform.",
       "tips": [
-        "The 'Leads Today' counter shows new contacts for the day — if it looks low, check whether your WhatsApp or other channel is active under 'Channels'.",
-        "The 'AI Cost Today' figure updates in real time — if it exceeds your daily budget, switch the LLM model from the 'AI' section.",
-        "The 'Recent Activity' card color-codes events: green for conversations, orange for handoffs, indigo for orders — click a handoff row to jump straight to that chat in the Inbox.",
-        "The 'Model Usage' chart shows which LLM handled the most requests today and at what percentage — useful for checking whether your router is using the right tier.",
-        "If you see the yellow 'No channel connected' banner, click 'Connect channel' to go directly to the WhatsApp, Instagram, or Telegram setup page."
+        "The \"Leads Today\" counter shows the day's new contacts; if the number looks low, check in Channels that WhatsApp is still connected.",
+        "\"AI Cost Today\" updates in real time: if it goes over your daily budget, adjust the model in Settings → AI.",
+        "The \"Recent Activity\" card separates conversations (green), hand-offs to a person (orange) and orders (blue); click a hand-off to open that chat in the Inbox.",
+        "The \"Model Usage\" chart shows which model handled the most requests today and in what proportion.",
+        "If you see the \"Connect your first channel\" notice, tap the button and we take you straight to the WhatsApp connection."
       ]
     },
     "dripSequences": {
@@ -7627,16 +7922,6 @@
         "The 'Webhook URL' for each channel is pre-filled; copy and paste it into the Meta or Telegram developer settings so messages arrive correctly."
       ]
     },
-    "settingsCompany": {
-      "title": "How do I set up my company information?",
-      "description": "Here you define your business general data: name, industry, size, website, and support contact. This information is used in email templates and in your AI agents' identity.",
-      "tips": [
-        "Fill in the 'Industry' field so the system tailors suggestions to your business type (e.g. choose 'Health' for clinics).",
-        "The 'Support email' appears in automatic emails sent to your customers; use a real mailbox your team monitors.",
-        "To add or change your company logo, click the 'Media bank' link at the bottom of the form.",
-        "After editing any field, press 'Save changes' — the button turns green with a checkmark when the operation succeeds."
-      ]
-    },
     "settingsCustomAttributes": {
       "title": "What are custom attributes for?",
       "description": "Custom attributes are extra fields you define to enrich information for your contacts, leads, companies, or conversations. They let you store business-specific data that doesn't exist by default.",
@@ -8097,6 +8382,41 @@
         "A PENDING template can take from minutes to 24 hours to be reviewed by Meta. APPROVED templates appear in green and can already be used in broadcast campaigns or the AI agent.",
         "If a template is REJECTED, check the rejection reason shown on the card (e.g. 'Promotional content in UTILITY category'). Adjust the content to match the correct category and create a new version."
       ]
+    },
+    "showMe": "Show me how",
+    "showMeHint": "We open the screen and point out each step. It never changes anything on its own.",
+    "agentEditor": {
+      "title": "How do I set up my agent?",
+      "description": "This is where you define who your agent is and how it behaves: its name and role, how it greets, what it says when it does not know, its rules, and when it hands the chat to a person. What you save here is what your customer reads on WhatsApp.",
+      "tips": [
+        "1. On the Identity tab, set the agent's name and role. Both are required: the agent introduces itself with that name in every chat.",
+        "2. Write the welcome message: it is the first thing your customer reads when they write for the first time.",
+        "3. Fill in \"Message when it cannot answer\". It is required and keeps the agent from inventing: use it to promise that a person will follow up.",
+        "4. Under Instructions, add at least one strict rule (for example: \"always confirm availability before quoting\").",
+        "5. Under \"When to pass to a human\", write at least one reason (for example: \"the customer asks to talk to a person\"). Without it the agent never escalates.",
+        "6. At the top, tick the channels this agent handles and leave it Active. Only channels you already connected are listed; if you see none, connect one first."
+      ]
+    },
+    "agentQuality": {
+      "title": "What is Agent health?",
+      "description": "It gathers three separate kinds of evidence about each agent: what is still unconfigured, what has been tested, and what happens in real conversations. It is not a score: critical blockers win even when everything else looks fine.",
+      "tips": [
+        "Start with the priority list: it is sorted by severity and every action takes you to the screen where the fix happens.",
+        "A channel ticked on the agent is not the same as a connected channel. \"Assigned channel coverage\" means the agent works but one ticked channel is not connected.",
+        "\"Not enough evidence\" is not a zero: it means there are not enough real conversations to measure yet.",
+        "If you change the agent, earlier tests go stale and need to be run again.",
+        "Use \"Show me how\" or \"Ask Assist\" when you do not know where something is fixed."
+      ]
+    },
+    "setupWizard": {
+      "title": "How does this assistant work?",
+      "description": "Three steps to get your agent answering: confirm it, connect WhatsApp, done. You can leave at any time: what you filled in is saved and you can come back from Settings, under Setup assistant.",
+      "tips": [
+        "Your agent already exists, built for your industry. In the first step you just confirm its name and greeting, or adjust them.",
+        "Test it in the chat before connecting anything: that is how you see it answer like a real customer would.",
+        "To connect WhatsApp, have the phone number and access to the code Meta sends by SMS or call.",
+        "If you would rather connect later, we remind you on Home and you can come back to this assistant any time."
+      ]
     }
   },
   "helpAssistant": {
@@ -8260,8 +8580,10 @@
         "contextDescription": "Assist will only use the state, priority, and safe route; it will not receive conversations or customer data.",
         "actions": {
           "openCenter": "Open agent health",
-          "resolvePriority": "Resolve priority"
-        }
+          "resolvePriority": "Resolve priority",
+          "showMe": "Show me where"
+        },
+        "showMeWhere": "Where do I fix this?"
       }
     },
     "faqs": {
@@ -9337,7 +9659,10 @@
       "pending_payment": "Awaiting payment",
       "cancelled": "Cancelled"
     },
-    "origin": { "agent": "Agent", "manual": "Manual" }
+    "origin": {
+      "agent": "Agent",
+      "manual": "Manual"
+    }
   },
   "tourBookings": {
     "title": "Tour bookings",
@@ -9355,7 +9680,10 @@
       "pending_payment": "Awaiting payment",
       "cancelled": "Cancelled"
     },
-    "origin": { "agent": "Agent", "manual": "Manual" }
+    "origin": {
+      "agent": "Agent",
+      "manual": "Manual"
+    }
   },
   "serviceCatalog": {
     "title": "Packages & services",
@@ -10638,50 +10966,322 @@
       "retry": "Try again",
       "continue": "Continue",
       "items": {
-        "agent": "Configure the agent",
-        "channel": "Connect a conversational channel",
-        "knowledge": "Add useful knowledge",
-        "catalog": "Configure the operational catalog"
+        "agent": "Review your agent",
+        "channel": "Connect WhatsApp",
+        "knowledge": "Load what the agent must know",
+        "catalog": "Load your catalog",
+        "business": "Tell us what your business does",
+        "team": "Invite someone to receive the chats",
+        "hours": "Confirm your hours"
+      },
+      "showMe": "Show me where"
+    },
+    "focus": {
+      "title": "Agent health action",
+      "from": "for {agent}",
+      "signalGone": "This action is no longer open: someone resolved it or snoozed it.",
+      "close": "Close",
+      "showMe": "Show me where",
+      "noneValue": "none",
+      "explanations": {
+        "fix_channel_connection": "{credentialIssue, select, none {{agent} has no connected channel that can receive messages. Connect {disconnected} or assign a channel that is already connected.} other {{agent} is connected to {connectedChannels}, but that credential needs to be reauthorized ({credentialIssue}); until then the agent cannot send replies.}}",
+        "fix_channel_coverage": "{agent} is assigned to {assigned} channels and only {connected} are connected. Not connected: {disconnected}. Connect that channel or remove it from the agent's assignment.",
+        "fix_channel_assignment": "{agent} has no channel assigned, so right now it serves nobody. Pick the channels this agent should answer.",
+        "fix_human_handoff_route": "There is no active person who can take the conversation when {agent} hands it to a human. Invite at least one agent or supervisor.",
+        "fix_handoff_triggers": "{agent} has no reasons to hand a conversation to a person, so it tries to answer everything. Add at least one escalation trigger.",
+        "fix_business_identity": "Basic business information is missing, so {agent} answers without knowing who it represents. Fill in the name and what the business does.",
+        "fix_rag_knowledge": "{agent} has no indexed knowledge to consult and answers only from its instructions. Upload documents or turn on a knowledge source.",
+        "fix_knowledge_coverage": "The knowledge you loaded does not cover the questions coming in, and some topics have no answer. Add content or publish what is still a draft.",
+        "fix_tool_appointments": "Booking is on but not fully set up, so {agent} will say there are no slots. Add services and availability blocks.",
+        "fix_business_hours": "The business has no hours defined, so {agent} cannot say when you are open or what to answer after hours. Set the schedule or mark 24/7.",
+        "fix_fallback_message": "The message for when {agent} cannot answer is missing, so the conversation ends in a dead end. Write what it should say and who takes over.",
+        "fix_behavior_rules": "{agent} has no behavior rules, so it improvises in every conversation. Write at least one rule about what to do and what not to do.",
+        "run_eval": "{agent} has not passed an automated test yet, so there is no evidence of how it answers. Run an evaluation before letting it work alone.",
+        "refresh_eval": "The last test for {agent} is stale: the configuration changed after it ran. Evaluate it again to measure what is live today.",
+        "collect_production_evidence": "There are not enough real conversations from {agent} to measure performance yet. Keep it working and come back when the sample grows.",
+        "resolve_knowledge_gaps": "Some questions could not be answered by {agent} with the available knowledge. Review those gaps and add the missing content.",
+        "generic": "This action is open for {agent}. Open the screen, fix what is missing, and the status updates on its own."
       }
     }
   },
   "agentQuality": {
-    "title": "Agent quality center", "subtitle": "See what still needs configuration, what has been tested, and what is happening in real conversations.", "loading": "Analyzing available evidence…", "statusLabel": "Current status", "agentInactive": "Inactive agent",
-    "agentSelector": { "label": "Agent to evaluate", "empty": "No agents", "default": "default" },
-    "actions": { "refresh": "Refresh evidence", "retry": "Try again", "editAgent": "Edit agent", "open": "Resolve", "openCenter": "Open quality center", "adminRequired": "Administrator required" },
-    "errors": { "title": "We couldn't load the quality center", "loadAgents": "Agents could not be loaded.", "loadOverview": "This agent could not be analyzed. Please try again." },
-    "empty": { "title": "There is no agent to evaluate yet", "description": "Create an agent, then return here to review its preparation, tests, and real performance.", "action": "Create agent" },
+    "title": "Agent quality center",
+    "subtitle": "See what still needs configuration, what has been tested, and what is happening in real conversations.",
+    "loading": "Analyzing available evidence…",
+    "statusLabel": "Current status",
+    "agentInactive": "Inactive agent",
+    "agentSelector": {
+      "label": "Agent to evaluate",
+      "empty": "No agents",
+      "default": "default"
+    },
+    "actions": {
+      "refresh": "Refresh evidence",
+      "retry": "Try again",
+      "editAgent": "Edit agent",
+      "open": "Resolve",
+      "openCenter": "Open quality center",
+      "adminRequired": "Administrator required"
+    },
+    "errors": {
+      "title": "We couldn't load the quality center",
+      "loadAgents": "Agents could not be loaded.",
+      "loadOverview": "This agent could not be analyzed. Please try again."
+    },
+    "empty": {
+      "title": "There is no agent to evaluate yet",
+      "description": "Create an agent, then return here to review its preparation, tests, and real performance.",
+      "action": "Create agent"
+    },
     "statuses": {
-      "not_evaluated": { "title": "Not evaluated yet", "description": "There is not enough evidence yet to say how this agent is performing. Complete its preparation and run tests." },
-      "configuration_incomplete": { "title": "Configuration incomplete", "description": "Required elements are missing before the agent can be tested with confidence. Resolve critical blockers first." },
-      "at_risk": { "title": "Agent at risk", "description": "Tests or interactions show important signals that require review before expanding its use." },
-      "ready_for_pilot": { "title": "Ready for a controlled pilot", "description": "Configuration and tests support a limited pilot. There is not yet enough real evidence to validate ongoing operation." },
-      "operating_with_evidence": { "title": "Operating with evidence", "description": "The agent has configuration, current tests, and a useful sample of real conversations. Keep monitoring trends and changes." },
-      "review_required": { "title": "Review required", "description": "Evidence is outdated or recent performance shows weak points. Review the priority actions." }
+      "not_evaluated": {
+        "title": "Not evaluated yet",
+        "description": "There is not enough evidence yet to say how this agent is performing. Complete its preparation and run tests."
+      },
+      "configuration_incomplete": {
+        "title": "Configuration incomplete",
+        "description": "Required elements are missing before the agent can be tested with confidence. Resolve critical blockers first."
+      },
+      "at_risk": {
+        "title": "Agent at risk",
+        "description": "Tests or interactions show important signals that require review before expanding its use."
+      },
+      "ready_for_pilot": {
+        "title": "Ready for a controlled pilot",
+        "description": "Configuration and tests support a limited pilot. There is not yet enough real evidence to validate ongoing operation."
+      },
+      "operating_with_evidence": {
+        "title": "Operating with evidence",
+        "description": "The agent has configuration, current tests, and a useful sample of real conversations. Keep monitoring trends and changes."
+      },
+      "review_required": {
+        "title": "Review required",
+        "description": "Evidence is outdated or recent performance shows weak points. Review the priority actions."
+      }
     },
-    "nextMilestone": { "label": "Next milestone", "complete_configuration": "Complete critical configuration", "pass_critical_tests": "Pass critical tests", "collect_production_evidence": "Collect enough production evidence", "maintain_quality": "Maintain quality and review changes" },
-    "evidence": { "generatedAt": "Analysis generated", "agentVersion": "Evaluated version", "agentUpdatedAt": "Last change", "latestEvidence": "Latest evidence" },
-    "layers": { "title": "Three evidence layers", "description": "Each layer answers a different question. Complete configuration does not replace testing or real performance." },
-    "pillarStatuses": { "unknown": "Not evaluated", "blocked": "Blocked", "needs_attention": "Needs attention", "ready": "Prepared", "stale": "Outdated", "insufficient_evidence": "Insufficient evidence", "evidenced": "Evidence available" },
+    "nextMilestone": {
+      "label": "Next milestone",
+      "complete_configuration": "Complete critical configuration",
+      "pass_critical_tests": "Pass critical tests",
+      "collect_production_evidence": "Collect enough production evidence",
+      "maintain_quality": "Maintain quality and review changes"
+    },
+    "evidence": {
+      "generatedAt": "Analysis generated",
+      "agentVersion": "Evaluated version",
+      "agentUpdatedAt": "Last change",
+      "latestEvidence": "Latest evidence"
+    },
+    "layers": {
+      "title": "Three evidence layers",
+      "description": "Each layer answers a different question. Complete configuration does not replace testing or real performance."
+    },
+    "pillarStatuses": {
+      "unknown": "Not evaluated",
+      "blocked": "Blocked",
+      "needs_attention": "Needs attention",
+      "ready": "Prepared",
+      "stale": "Outdated",
+      "insufficient_evidence": "Insufficient evidence",
+      "evidenced": "Evidence available"
+    },
     "pillars": {
-      "preparation": { "title": "Preparation", "description": "Does the agent have well-configured context, knowledge, actions, safety, and operational routes?", "passedChecks": "applicable checks passed", "blockers": "{count, plural, one {# critical blocker} other {# critical blockers}}" },
-      "tested": { "title": "Tested quality", "description": "Did this version pass repeatable cases, including critical outcomes and actions?", "gatePassed": "Critical test passed", "gateFailed": "Critical test failed", "result": "Result {score}/10 · threshold {threshold}/10", "trials": "{count, plural, one {# trial} other {# trials}}", "automatedEvidence": "Automated evidence; not a certification", "noEval": "No critical evaluation yet", "stale": "The test does not match the current configuration.", "simulation": "Supporting simulation: {count} scenarios" },
-      "production": { "title": "Production", "description": "What do real conversations attributed to this agent show during the observed period?", "sample": "evaluated interactions · minimum {minimum} · last {days} days", "needMore": "{count} more interactions are needed for an initial useful signal.", "attributedSince": "Attribution available since {date}" }
+      "preparation": {
+        "title": "Preparation",
+        "description": "Does the agent have well-configured context, knowledge, actions, safety, and operational routes?",
+        "passedChecks": "applicable checks passed",
+        "blockers": "{count, plural, one {# critical blocker} other {# critical blockers}}"
+      },
+      "tested": {
+        "title": "Tested quality",
+        "description": "Did this version pass repeatable cases, including critical outcomes and actions?",
+        "gatePassed": "Critical test passed",
+        "gateFailed": "Critical test failed",
+        "result": "Result {score}/10 · threshold {threshold}/10",
+        "trials": "{count, plural, one {# trial} other {# trials}}",
+        "automatedEvidence": "Automated evidence; not a certification",
+        "noEval": "No critical evaluation yet",
+        "stale": "The test does not match the current configuration.",
+        "simulation": "Supporting simulation: {count} scenarios"
+      },
+      "production": {
+        "title": "Production",
+        "description": "What do real conversations attributed to this agent show during the observed period?",
+        "sample": "evaluated interactions · minimum {minimum} · last {days} days",
+        "needMore": "{count} more interactions are needed for an initial useful signal.",
+        "attributedSince": "Attribution available since {date}"
+      }
     },
-    "priority": { "title": "What to improve first", "description": "Actions ordered by risk and impact. Resolving them does not guarantee perfection; it increases evidence and reduces known weaknesses.", "affected": "{count, plural, one {# affected interaction} other {# affected interactions}}", "empty": "There are no open priority actions in this analysis." },
-    "severities": { "critical": "Critical", "high": "High", "medium": "Medium", "low": "Low" },
-    "dimensions": { "title": "Preparation by dimension", "description": "Open each dimension to see checks, evidence, and correction links.", "passed": "{passed} of {applicable} applicable checks passed", "names": { "business_scope": "Business and scope", "knowledge_grounding": "Knowledge and grounding", "conversation_brand": "Conversation and brand", "actions_outcomes": "Actions and outcomes", "safety_handoff": "Safety and handoff", "robustness_operations": "Robustness and operations" } },
-    "checkStatuses": { "pass": "Pass", "warning": "Review", "fail": "Missing", "unknown": "Unverified", "not_applicable": "Not applicable" },
-    "checks": { "agent_active": "Active agent", "persona_identity": "Agent identity and role", "business_identity": "Business identity", "business_contact": "Business contact details", "business_context": "Context, goals, and audience", "agent_language": "Configured language", "brand_voice": "Brand voice and tone", "greeting": "Initial greeting", "fallback_message": "Unknown-answer response", "behavior_rules": "Behavior rules", "custom_prompt": "Custom prompt", "knowledge_coverage": "Knowledge coverage", "rag_knowledge": "Knowledge base ready", "rag_configuration": "Retrieval configuration", "tool_knowledge": "Knowledge tool", "tool_faqs": "Frequently asked questions", "tool_policies": "Business policies", "tool_catalog": "Available catalog", "tool_appointments": "Scheduling and availability", "tool_orders": "Order management", "tool_ecommerce": "Commerce integration", "tool_offers": "Current offers", "tool_crm": "CRM actions", "channel_assignment": "Channel assigned to agent", "operational_channel_scope": "Certified conversational channels only", "channel_connection": "Operational channel connection", "forbidden_topics": "Restricted topics", "handoff_triggers": "Handoff reasons", "human_handoff_route": "Human support route", "business_hours": "Business hours", "after_hours_behavior": "After-hours behavior", "llm_limits": "Model response limits", "vertical_tool": "Industry operational tool", "unknown": "Configuration check" },
-    "recommendations": { "fix": "Configure: {item}", "investigate": "Investigate: {item}", "run_eval": "Run the critical tests", "refresh_eval": "Repeat tests for the current version", "fix_failed_eval": "Fix cases that failed the critical test", "run_simulation": "Expand coverage with a simulation", "collect_production_evidence": "Collect more real conversations", "review_tool_failures": "Review tool failures", "resolve_knowledge_gaps": "Strengthen knowledge gaps", "unknown": "Review this recommendation" },
-    "productionDetails": { "label": "Production details", "metricsTitle": "Production signals", "metricsDescription": "Metrics observed during the last {days} days; they are not interpreted as a global score.", "basedOn": "Based on {count} cases", "noMetrics": "There are no metrics attributable to this agent yet.", "issuesTitle": "Detected weak points", "issuesDescription": "Frequent patterns worth reviewing in their source conversations.", "affectedCount": "{count, plural, one {# interaction} other {# interactions}}", "openInbox": "Open Inbox", "noIssues": "No recurring issues were found in the available evidence." },
-    "metrics": { "quality_overall": "Observed conversation quality", "verified_resolution_rate": "Verified resolution", "handoff_rate": "Human handoff", "tool_failure_rate": "Tool failures", "open_knowledge_gaps": "Open knowledge gaps", "unknown": "Observed metric" },
-    "issues": { "tool_failures": "Tool failures", "knowledge_gaps": "Knowledge gaps", "qa_knowledge_accuracy": "Ungrounded or inaccurate answers", "qa_unresolved_need": "Unresolved customer needs", "qa_missing_handoff": "Missed human handoffs", "qa_tone_empathy": "Tone or empathy problems", "qa_ignored_question": "Ignored customer questions", "qa_repetition_clarity": "Repetition or unclear answers", "qa_other": "Other quality pattern", "qa_generic": "Conversation quality pattern", "unknown": "Quality signal to review" },
-    "staleReasons": { "agent_configuration_changed_after_eval": "The agent changed after the critical evaluation.", "business_or_knowledge_changed_after_eval": "Business or knowledge changed after the critical evaluation.", "agent_configuration_changed_after_simulation": "The agent changed after the simulation.", "simulation_persona_version_mismatch": "The simulation evaluated another agent version.", "business_or_knowledge_changed_after_simulation": "Business or knowledge changed after the simulation.", "unknown": "An evaluated source changed since the last test." },
-    "evidenceKeys": { "count": "Count", "configured": "Configured", "enabled": "Enabled", "active": "Active", "ready": "Ready", "connected": "Connected", "assigned": "Assigned", "hasName": "Has name", "hasRole": "Has role", "hasAbout": "Has description", "goals": "Goals", "audiences": "Audiences", "availableSources": "Available sources", "unsupportedAssignments": "Unsupported assignments", "chunks": "Indexed chunks", "published": "Published", "services": "Services", "availabilitySlots": "Availability slots", "products": "Products", "existingOrders": "Existing orders", "activeOffers": "Active offers", "records": "Records", "activeHumans": "Active people", "maxTokens": "Token limit", "hasTone": "Has tone", "hasFormality": "Has formality", "minimumSample": "Minimum sample", "unknown": "Evidence" },
-    "common": { "yes": "Yes", "no": "No", "notAvailable": "Not available" },
-    "method": { "title": "How to interpret this center", "description": "This is a decision aid, not a promise of perfection or automatic learning. It combines verifiable configuration, repeatable tests, and evidence from real interactions; critical blockers take precedence over averages." },
-    "banner": { "loading": "Reviewing agent quality…", "unavailableTitle": "Quality analysis is unavailable", "unavailableDescription": "Open the center to retry and review the configuration.", "openCenter": "View quality", "blockers": "There {count, plural, one {is # critical blocker} other {are # critical blockers}} to resolve.", "stale": "Tests became outdated after changes to the agent.", "evidence": "Real evidence: {current} of {minimum} minimum interactions.", "current": "The evaluation is current; review details and trends." }
+    "priority": {
+      "title": "What to improve first",
+      "description": "Actions ordered by risk and impact. Resolving them does not guarantee perfection; it increases evidence and reduces known weaknesses.",
+      "affected": "{count, plural, one {# affected interaction} other {# affected interactions}}",
+      "empty": "There are no open priority actions in this analysis."
+    },
+    "severities": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "dimensions": {
+      "title": "Preparation by dimension",
+      "description": "Open each dimension to see checks, evidence, and correction links.",
+      "passed": "{passed} of {applicable} applicable checks passed",
+      "names": {
+        "business_scope": "Business and scope",
+        "knowledge_grounding": "Knowledge and grounding",
+        "conversation_brand": "Conversation and brand",
+        "actions_outcomes": "Actions and outcomes",
+        "safety_handoff": "Safety and handoff",
+        "robustness_operations": "Robustness and operations"
+      }
+    },
+    "checkStatuses": {
+      "pass": "Pass",
+      "warning": "Review",
+      "fail": "Missing",
+      "unknown": "Unverified",
+      "not_applicable": "Not applicable"
+    },
+    "checks": {
+      "agent_active": "Active agent",
+      "persona_identity": "Agent identity and role",
+      "business_identity": "Business identity",
+      "business_contact": "Business contact details",
+      "business_context": "Context, goals, and audience",
+      "agent_language": "Configured language",
+      "brand_voice": "Brand voice and tone",
+      "greeting": "Initial greeting",
+      "fallback_message": "Unknown-answer response",
+      "behavior_rules": "Behavior rules",
+      "custom_prompt": "Custom prompt",
+      "knowledge_coverage": "Knowledge coverage",
+      "rag_knowledge": "Knowledge base ready",
+      "rag_configuration": "Retrieval configuration",
+      "tool_knowledge": "Knowledge tool",
+      "tool_faqs": "Frequently asked questions",
+      "tool_policies": "Business policies",
+      "tool_catalog": "Available catalog",
+      "tool_appointments": "Scheduling and availability",
+      "tool_orders": "Order management",
+      "tool_ecommerce": "Commerce integration",
+      "tool_offers": "Current offers",
+      "tool_crm": "CRM actions",
+      "channel_assignment": "Channel assigned to agent",
+      "operational_channel_scope": "Certified conversational channels only",
+      "channel_connection": "Operational channel connection",
+      "forbidden_topics": "Restricted topics",
+      "handoff_triggers": "Handoff reasons",
+      "human_handoff_route": "Human support route",
+      "business_hours": "Business hours",
+      "after_hours_behavior": "After-hours behavior",
+      "llm_limits": "Model response limits",
+      "vertical_tool": "Industry operational tool",
+      "unknown": "Configuration check"
+    },
+    "recommendations": {
+      "fix": "Configure: {item}",
+      "investigate": "Investigate: {item}",
+      "run_eval": "Run the critical tests",
+      "refresh_eval": "Repeat tests for the current version",
+      "fix_failed_eval": "Fix cases that failed the critical test",
+      "run_simulation": "Expand coverage with a simulation",
+      "collect_production_evidence": "Collect more real conversations",
+      "review_tool_failures": "Review tool failures",
+      "resolve_knowledge_gaps": "Strengthen knowledge gaps",
+      "unknown": "Review this recommendation"
+    },
+    "productionDetails": {
+      "label": "Production details",
+      "metricsTitle": "Production signals",
+      "metricsDescription": "Metrics observed during the last {days} days; they are not interpreted as a global score.",
+      "basedOn": "Based on {count} cases",
+      "noMetrics": "There are no metrics attributable to this agent yet.",
+      "issuesTitle": "Detected weak points",
+      "issuesDescription": "Frequent patterns worth reviewing in their source conversations.",
+      "affectedCount": "{count, plural, one {# interaction} other {# interactions}}",
+      "openInbox": "Open Inbox",
+      "noIssues": "No recurring issues were found in the available evidence."
+    },
+    "metrics": {
+      "quality_overall": "Observed conversation quality",
+      "verified_resolution_rate": "Verified resolution",
+      "handoff_rate": "Human handoff",
+      "tool_failure_rate": "Tool failures",
+      "open_knowledge_gaps": "Open knowledge gaps",
+      "unknown": "Observed metric"
+    },
+    "issues": {
+      "tool_failures": "Tool failures",
+      "knowledge_gaps": "Knowledge gaps",
+      "qa_knowledge_accuracy": "Ungrounded or inaccurate answers",
+      "qa_unresolved_need": "Unresolved customer needs",
+      "qa_missing_handoff": "Missed human handoffs",
+      "qa_tone_empathy": "Tone or empathy problems",
+      "qa_ignored_question": "Ignored customer questions",
+      "qa_repetition_clarity": "Repetition or unclear answers",
+      "qa_other": "Other quality pattern",
+      "qa_generic": "Conversation quality pattern",
+      "unknown": "Quality signal to review"
+    },
+    "staleReasons": {
+      "agent_configuration_changed_after_eval": "The agent changed after the critical evaluation.",
+      "business_or_knowledge_changed_after_eval": "Business or knowledge changed after the critical evaluation.",
+      "agent_configuration_changed_after_simulation": "The agent changed after the simulation.",
+      "simulation_persona_version_mismatch": "The simulation evaluated another agent version.",
+      "business_or_knowledge_changed_after_simulation": "Business or knowledge changed after the simulation.",
+      "unknown": "An evaluated source changed since the last test."
+    },
+    "evidenceKeys": {
+      "count": "Count",
+      "configured": "Configured",
+      "enabled": "Enabled",
+      "active": "Active",
+      "ready": "Ready",
+      "connected": "Connected",
+      "assigned": "Assigned",
+      "hasName": "Has name",
+      "hasRole": "Has role",
+      "hasAbout": "Has description",
+      "goals": "Goals",
+      "audiences": "Audiences",
+      "availableSources": "Available sources",
+      "unsupportedAssignments": "Unsupported assignments",
+      "chunks": "Indexed chunks",
+      "published": "Published",
+      "services": "Services",
+      "availabilitySlots": "Availability slots",
+      "products": "Products",
+      "existingOrders": "Existing orders",
+      "activeOffers": "Active offers",
+      "records": "Records",
+      "activeHumans": "Active people",
+      "maxTokens": "Token limit",
+      "hasTone": "Has tone",
+      "hasFormality": "Has formality",
+      "minimumSample": "Minimum sample",
+      "unknown": "Evidence"
+    },
+    "common": {
+      "yes": "Yes",
+      "no": "No",
+      "notAvailable": "Not available"
+    },
+    "method": {
+      "title": "How to interpret this center",
+      "description": "This is a decision aid, not a promise of perfection or automatic learning. It combines verifiable configuration, repeatable tests, and evidence from real interactions; critical blockers take precedence over averages."
+    },
+    "banner": {
+      "loading": "Reviewing agent quality…",
+      "unavailableTitle": "Quality analysis is unavailable",
+      "unavailableDescription": "Open the center to retry and review the configuration.",
+      "openCenter": "View quality",
+      "blockers": "There {count, plural, one {is # critical blocker} other {are # critical blockers}} to resolve.",
+      "stale": "Tests became outdated after changes to the agent.",
+      "evidence": "Real evidence: {current} of {minimum} minimum interactions.",
+      "current": "The evaluation is current; review details and trends."
+    }
   },
   "simulation": {
     "falseClaim": "{count, plural, one {# false claim} other {# false claims}}",
@@ -11323,6 +11923,9 @@
     "verticalTool": {
       "title": "Tools for your industry",
       "content": "Here you manage {tool}: the industry-specific data your agent uses to answer and sell."
+    },
+    "unavailable": {
+      "body": "There is nothing to point at on this screen right now, so we cannot run the walkthrough. Open the page help to read the steps."
     }
   },
   "ecommerceIntegration": {
@@ -11511,11 +12114,44 @@
     "noTechnician": "No technician assigned",
     "selectTechnician": "Select a technician",
     "technicianHint": "This list uses active staff configured under Appointments → Staff.",
-    "status": { "intake": "Intake", "estimating": "Diagnosis/estimate", "awaiting_approval": "Awaiting approval", "approved": "Approved", "in_progress": "In repair", "ready": "Ready for delivery", "delivered": "Delivered", "rejected": "Estimate rejected", "cancelled": "Cancelled" },
-    "approval": { "not_requested": "Not requested", "pending": "Awaiting customer decision", "approved": "Customer approved", "rejected": "Customer rejected" },
-    "action": { "estimating": "Start diagnosis", "in_progress": "Start repair", "ready": "Mark ready", "delivered": "Mark delivered", "cancelled": "Cancel order" },
-    "event": { "created": "Order created", "estimate_requested": "Estimate published for approval", "estimate_approved": "Customer approved estimate", "estimate_rejected": "Customer rejected estimate", "details_updated": "Technical details updated", "status_changed": "Status updated", "cancelled_by_customer": "Customer cancelled order" },
-    "actor": { "tenant_user": "Workshop team", "agent": "Conversational agent", "system": "System" }
+    "status": {
+      "intake": "Intake",
+      "estimating": "Diagnosis/estimate",
+      "awaiting_approval": "Awaiting approval",
+      "approved": "Approved",
+      "in_progress": "In repair",
+      "ready": "Ready for delivery",
+      "delivered": "Delivered",
+      "rejected": "Estimate rejected",
+      "cancelled": "Cancelled"
+    },
+    "approval": {
+      "not_requested": "Not requested",
+      "pending": "Awaiting customer decision",
+      "approved": "Customer approved",
+      "rejected": "Customer rejected"
+    },
+    "action": {
+      "estimating": "Start diagnosis",
+      "in_progress": "Start repair",
+      "ready": "Mark ready",
+      "delivered": "Mark delivered",
+      "cancelled": "Cancel order"
+    },
+    "event": {
+      "created": "Order created",
+      "estimate_requested": "Estimate published for approval",
+      "estimate_approved": "Customer approved estimate",
+      "estimate_rejected": "Customer rejected estimate",
+      "details_updated": "Technical details updated",
+      "status_changed": "Status updated",
+      "cancelled_by_customer": "Customer cancelled order"
+    },
+    "actor": {
+      "tenant_user": "Workshop team",
+      "agent": "Conversational agent",
+      "system": "System"
+    }
   },
   "resourceRentals": {
     "title": "Rentals & stays",
@@ -11634,8 +12270,14 @@
       "saveFailed": "Could not save",
       "lifecycle": "{status} · version {version}",
       "status": {
-        "pending_review": "Pending review", "reserved": "Reserved", "picked_up": "Vehicle picked up", "returned": "Vehicle returned",
-        "checked_in": "Pet checked in", "checked_out": "Pet checked out", "rejected": "Rejected", "cancelled": "Cancelled"
+        "pending_review": "Pending review",
+        "reserved": "Reserved",
+        "picked_up": "Vehicle picked up",
+        "returned": "Vehicle returned",
+        "checked_in": "Pet checked in",
+        "checked_out": "Pet checked out",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled"
       },
       "careData": "Care information",
       "driverAndDocuments": "Driver, locations, deposit and contract",
@@ -11668,8 +12310,18 @@
       "signatureEvidence": "Signature/verified OTP reference",
       "eligibilityTitle": "Eligibility review",
       "eligibilityHelp": "A customer statement never approves identity, licence, insurance or payment. Review evidence or record why it does not apply.",
-      "eligibility": { "identity": "Identity", "driverLicense": "Driver licence", "insurance": "Insurance/coverage", "payment": "Payment" },
-      "eligibilityStatus": { "pending": "Pending", "verified": "Verified", "rejected": "Rejected", "not_required": "Not required" },
+      "eligibility": {
+        "identity": "Identity",
+        "driverLicense": "Driver licence",
+        "insurance": "Insurance/coverage",
+        "payment": "Payment"
+      },
+      "eligibilityStatus": {
+        "pending": "Pending",
+        "verified": "Verified",
+        "rejected": "Rejected",
+        "not_required": "Not required"
+      },
       "evidenceRef": "Evidence reference",
       "reviewReason": "Reason / note",
       "rejectReason": "Reason for rejecting the request",
@@ -11682,7 +12334,11 @@
       "fuelPercent": "Fuel (%)",
       "handoffMethod": "Handoff evidence",
       "handoffEvidence": "Evidence reference",
-      "handoff": { "manual": "Manual record", "otp": "Verified OTP", "signature": "Signature" },
+      "handoff": {
+        "manual": "Manual record",
+        "otp": "Verified OTP",
+        "signature": "Signature"
+      },
       "conditionNotes": "Condition and notes",
       "inspectionPhotos": "Required inspection photos",
       "damagePhotos": "Damage photos",
@@ -11702,8 +12358,17 @@
       "noInspections": "No inspections.",
       "noDamages": "No damage reported.",
       "noHistory": "No events.",
-      "inspectionType": { "pickup": "Pick-up", "return": "Return" },
-      "damageStatus": { "reported": "Reported", "acknowledged": "Acknowledged", "charged": "Charged", "resolved": "Resolved", "dismissed": "Dismissed" },
+      "inspectionType": {
+        "pickup": "Pick-up",
+        "return": "Return"
+      },
+      "damageStatus": {
+        "reported": "Reported",
+        "acknowledged": "Acknowledged",
+        "charged": "Charged",
+        "resolved": "Resolved",
+        "dismissed": "Dismissed"
+      },
       "unitLabel": "Where it sleeps",
       "compatibility": "Who it can be with",
       "compatibility_social": "With anyone",
@@ -11713,6 +12378,312 @@
       "mealsPerDay": "Meals per day",
       "belongings": "What it brought",
       "belongingsHint": "Blanket, toy, leash"
+    }
+  },
+  "guidedTours": {
+    "connect_channel": {
+      "steps": {
+        "menu": {
+          "title": "Channels",
+          "content": "This is where you connect WhatsApp, Instagram, Messenger, Telegram and the site chat. Open it to see which ones are connected."
+        },
+        "cards": {
+          "title": "Status of each channel",
+          "content": "Every card says whether the channel is connected, disconnected, or whether its credential needs to be reauthorized."
+        },
+        "whatsapp": {
+          "title": "The WhatsApp card",
+          "content": "Tap Configure on the WhatsApp card to open its screen and connect the number."
+        },
+        "status": {
+          "title": "Number status",
+          "content": "Here you confirm the number is connected. If it says reauthorization is needed, connect it again from the same button."
+        }
+      }
+    },
+    "assign_agent_channel": {
+      "steps": {
+        "menu": {
+          "title": "AI agents",
+          "content": "This is where you manage your agents and choose which channels each one answers."
+        },
+        "list": {
+          "title": "Pick the agent",
+          "content": "Open the agent you want to review. Each connection can have its own."
+        },
+        "channels": {
+          "title": "Channels it answers",
+          "content": "Tick only the channels this agent handles. A ticked channel that is not connected shows up as incomplete coverage."
+        },
+        "save": {
+          "title": "Save the change",
+          "content": "Nothing applies until you tap Save. Agent health updates afterwards."
+        }
+      }
+    },
+    "agent_handoff_rules": {
+      "steps": {
+        "name": {
+          "title": "Agent name",
+          "content": "This is the name it introduces itself with to your customers; keep it the same one you see in the panel."
+        },
+        "greeting": {
+          "title": "Welcome message",
+          "content": "It is the first thing the person reads. Keep it short and in your own voice."
+        },
+        "fallback": {
+          "title": "When it cannot answer",
+          "content": "Required: what the agent says when it does not know. Only promise to pass the case to a person if that route exists."
+        },
+        "rules": {
+          "title": "Behavior rules",
+          "content": "Write what it must do and what it must not. One rule per line, in plain language."
+        },
+        "handoff": {
+          "title": "When to hand off to a human",
+          "content": "Add the reasons that force an escalation: a complaint, a special-price request, whatever you decide."
+        },
+        "save": {
+          "title": "Save the change",
+          "content": "Tap Save to publish the new version of the agent."
+        }
+      }
+    },
+    "human_handoff_route": {
+      "steps": {
+        "menu": {
+          "title": "Users",
+          "content": "This is where the people who can take a conversation when the agent escalates live."
+        },
+        "invite": {
+          "title": "Invite a person",
+          "content": "Tap Invite and send the email of whoever will take the conversations."
+        },
+        "role": {
+          "title": "Choose the role",
+          "content": "An agent handles conversations; a supervisor also reviews and reassigns. One active person is enough for escalation to work."
+        },
+        "pending": {
+          "title": "Until they accept",
+          "content": "The invitation stays pending in this list, and the route to a human is not complete until the person signs in."
+        }
+      }
+    },
+    "business_identity": {
+      "steps": {
+        "name": {
+          "title": "Business name",
+          "content": "This is the name the agent uses when it introduces itself and talks about you."
+        },
+        "about": {
+          "title": "What your business does",
+          "content": "Describe it in a few lines: the agent uses this to answer with context."
+        },
+        "contact": {
+          "title": "Phone and email",
+          "content": "These are the details the agent can give when someone asks how to reach you."
+        },
+        "save": {
+          "title": "Save the change",
+          "content": "Tap Save; the agent picks up the new information in the next conversation."
+        }
+      }
+    },
+    "knowledge_base": {
+      "steps": {
+        "tabs": {
+          "title": "Documents and FAQs",
+          "content": "Knowledge lives in two places: long documents and frequently asked questions."
+        },
+        "newFaq": {
+          "title": "New frequent question",
+          "content": "Tap New FAQ to add a question with its answer."
+        },
+        "fields": {
+          "title": "Question and answer",
+          "content": "Write the question the way a customer would ask it, and the answer the way you would give it."
+        },
+        "published": {
+          "title": "Publish the answer",
+          "content": "The AI only uses what is published: if it stays a draft, the agent never sees it."
+        },
+        "documents": {
+          "title": "Documents and websites",
+          "content": "Here you upload files or import pages from your site for the agent to consult."
+        }
+      }
+    },
+    "appointments_setup": {
+      "steps": {
+        "tabs": {
+          "title": "Appointments",
+          "content": "Services, calendar and settings live in these tabs."
+        },
+        "service": {
+          "title": "Create a service",
+          "content": "Tap New service and enter its name and how long it takes. Without services the agent cannot book."
+        },
+        "schedule": {
+          "title": "Working hours",
+          "content": "In Settings define and confirm the hours. Without confirming here, the agent will say there is no availability."
+        }
+      }
+    },
+    "business_hours": {
+      "steps": {
+        "always": {
+          "title": "Open 24/7",
+          "content": "If you are always open, turn this on and you are done. If not, leave it off and set the days."
+        },
+        "timezone": {
+          "title": "Time zone",
+          "content": "Pick your business time zone: the hours the agent quotes come from here."
+        },
+        "days": {
+          "title": "Days and hours",
+          "content": "Tick which days you open and in which time ranges."
+        },
+        "message": {
+          "title": "After hours",
+          "content": "Write what the agent answers when someone writes while you are closed."
+        },
+        "save": {
+          "title": "Save the change",
+          "content": "Tap Save so the new schedule takes effect."
+        }
+      }
+    },
+    "run_agent_tests": {
+      "steps": {
+        "launch": {
+          "title": "Run a test",
+          "content": "Pick scenarios and launch the simulation: the agent holds the conversation and you see how it answers."
+        },
+        "history": {
+          "title": "Previous results",
+          "content": "Past runs and their scores stay here. Compare them after every change."
+        }
+      }
+    },
+    "agent_quality_center": {
+      "steps": {
+        "agent": {
+          "title": "Pick the agent",
+          "content": "Health is measured per agent. Start with the one that is answering."
+        },
+        "priority": {
+          "title": "What to fix first",
+          "content": "This list is ordered by severity: start at the top."
+        },
+        "dimensions": {
+          "title": "The evidence behind it",
+          "content": "Open each dimension to see, check by check, what happened and what is missing."
+        }
+      }
+    },
+    "home_first_steps": {
+      "steps": {
+        "card": {
+          "title": "Your essential steps",
+          "content": "These are the steps left before your agent can work. When you complete them, this card disappears on its own."
+        },
+        "next": {
+          "title": "Start here",
+          "content": "This is the step that changes the most. Connecting WhatsApp takes about 5 minutes."
+        },
+        "help": {
+          "title": "Help on every screen",
+          "content": "Every screen has this help: what it is and how it's done. Open it whenever you get lost."
+        },
+        "assistant": {
+          "title": "Ask in your own words",
+          "content": "If you'd rather ask, Parallly answers using your real setup and takes you to the exact place."
+        }
+      }
+    },
+    "first_channel_whatsapp": {
+      "steps": {
+        "status": {
+          "title": "Your WhatsApp status",
+          "content": "Here you see at a glance whether WhatsApp is already connected or not."
+        },
+        "routes": {
+          "title": "Pick your situation",
+          "content": "You already use the WhatsApp Business app (recommended: you keep your chats), you want a new number, or you're coming from another provider."
+        },
+        "prerequisites": {
+          "title": "Have these at hand",
+          "content": "Confirm these three points before touching the button. This is what makes people give up halfway."
+        },
+        "brief": {
+          "title": "What the option you picked involves",
+          "content": "After connecting you have 24 hours to authorize your history. If you come from another provider, turn off two-step verification first."
+        },
+        "connect": {
+          "title": "The button opens a Meta window",
+          "content": "Don't close it until you see \"Connection successful\". If it doesn't appear, allow pop-ups and try again."
+        },
+        "test": {
+          "title": "Try your agent",
+          "content": "Send a WhatsApp to your own number and watch it reply. That's the moment you know it works."
+        }
+      }
+    },
+    "resume_setup_wizard": {
+      "steps": {
+        "entry": {
+          "title": "Come back whenever you want",
+          "content": "From here you reopen the assistant without losing anything you already did."
+        },
+        "steps": {
+          "title": "Three steps",
+          "content": "You can jump straight to the one you're missing by tapping its number."
+        },
+        "connect": {
+          "title": "Connecting later isn't losing it",
+          "content": "If you choose to leave it for later, Home reminds you and you can come back here."
+        }
+      }
+    },
+    "help_system": {
+      "steps": {
+        "panel": {
+          "title": "Each screen's help",
+          "content": "This button is on every screen. It tells you what the screen is and how to do things, in order."
+        },
+        "showMe": {
+          "title": "Show me how",
+          "content": "When the explanation is not enough, this button walks you to the exact spot. It never changes anything on its own."
+        },
+        "palette": {
+          "title": "Quick search",
+          "content": "Press Ctrl+K (or ⌘+K on Mac) to find any screen by name without walking the menu."
+        },
+        "assistant": {
+          "title": "Ask Parallly",
+          "content": "Write in your own words. It answers using your real configuration and takes you to the screen where it is fixed."
+        }
+      }
+    },
+    "inbox_first_conversation": {
+      "steps": {
+        "list": {
+          "title": "Your conversations",
+          "content": "Messages from all your channels land here, in real time and in a single list."
+        },
+        "filter": {
+          "title": "The ones waiting for a person",
+          "content": "Filter by \"Unassigned\": these are the chats the AI handed to a person that nobody has taken yet."
+        },
+        "take": {
+          "title": "Take the conversation",
+          "content": "Once you take it, you reply and the AI steps out of that chat until you hand it back."
+        },
+        "summary": {
+          "title": "What happened before",
+          "content": "At the top you get the AI's summary of the chat: read it before replying so you do not repeat questions."
+        }
+      }
     }
   }
 }

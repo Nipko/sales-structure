@@ -3,7 +3,7 @@ id: canales-whatsapp
 title: "Conectar o WhatsApp"
 routes: ["/admin/channels", "/admin/channels/whatsapp", "/admin/channels/whatsapp/templates"]
 roles: ["tenant_admin"]
-keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app do whatsapp", "migrar numero", "templates", "modelos", "modelo whatsapp", "sincronizar conversas", "historico de conversas", "codigo qr", "verificacao", "meta", "facebook", "desconectar whatsapp", "janela de 24 horas", "varias contas", "segundo numero"]
+keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app do whatsapp", "migrar numero", "templates", "modelos", "modelo whatsapp", "sincronizar conversas", "historico de conversas", "codigo qr", "verificacao", "meta", "facebook", "desconectar whatsapp", "janela de 24 horas", "varias contas", "segundo numero", "exige reautorizar", "popup bloqueado", "conexao com avisos", "negocio nao verificado"]
 ---
 
 # Conectar o WhatsApp
@@ -21,18 +21,51 @@ O WhatsApp é o canal principal do Parallly: ao conectá-lo, seu agente de IA co
 
 1. Na barra lateral, seção **Administração**, entre em **Canais**.
 2. No card do **WhatsApp**, clique em **Conectar**.
-3. Você verá a tela **"Escolha seu método de conexão"** com estas opções:
-   - **Número de teste** — explore a plataforma sem compromisso e conecte seu número real depois.
-   - **Número novo** (~5 min) — para um número que nunca foi usado no WhatsApp. É o caminho mais rápido.
-   - **WhatsApp Business App** (etiqueta **Coexistência**, ~20 min) — se você já usa o app WhatsApp Business no seu celular e quer mantê-lo. É a opção mais popular; veja a próxima seção.
+3. Antes das rotas aparece **"Antes de conectar o WhatsApp"**: uma lista curta com o número, o acesso ao código de verificação dele e a conta do Facebook. Marque os três itens e clique em **Continuar**; até confirmar, o botão diz **Confirme os itens para continuar**. É um lembrete, não uma validação: nada dos seus dados é conferido ali. A mesma etapa aparece no assistente **Conheça o seu agente** e na tela do **WhatsApp**.
+4. Você verá a tela **"Escolha seu método de conexão"** com três rotas:
+   - **WhatsApp Business App** (etiqueta **Coexistência**, marcada **Recomendado**, ~20 min) — se você já usa o app WhatsApp Business no seu celular e quer mantê-lo junto com suas conversas. É a rota que sugerimos; veja a próxima seção.
+   - **Número novo** (~5 min) — para um número que nunca foi usado no WhatsApp. É o caminho mais rápido se você vai estrear uma linha.
    - **Migrar de outro provedor** (~15 min) — se você já usa o WhatsApp com outra plataforma (Wati, 360dialog, Twilio, etc.) e quer trazer seu número sem ficar fora do ar.
-4. Escolha seu método e clique em **Conectar com Facebook**. Uma janela da Meta será aberta.
-5. Faça login com sua conta do Facebook e selecione (ou crie) seu portfólio do Meta Business.
-6. Selecione ou adicione sua conta do WhatsApp Business e o número de telefone.
-7. Verifique o número com um **código por SMS ou chamada de voz** e aprove as permissões.
-8. Você acompanhará o progresso na tela: **Autorização → Conectando número → Ativando WhatsApp**. Ao terminar, aparece "Conexão bem-sucedida!" e seu agente já responde nesse número.
+5. Escolha seu método e clique em **Conectar com Facebook**. Uma janela da Meta será aberta.
+6. Faça login com sua conta do Facebook e selecione (ou crie) seu portfólio do Meta Business.
+7. Selecione ou adicione sua conta do WhatsApp Business e o número de telefone.
+8. Verifique o número com um **código por SMS ou chamada de voz** e aprove as permissões.
+9. Você acompanhará o progresso na tela: **Autorização → Conectando número → Ativando WhatsApp**. Ao terminar, aparece "Conexão bem-sucedida!" e seu agente já responde nesse número.
 
 > Dica: assim que conectar, a tela mostra o card **"Teste seu agente"** com o seu número. Mande um WhatsApp de outro celular e veja como ele responde.
+
+### Se a janela da Meta não aparecer
+
+A autorização acontece em uma janela pop-up da Meta. Se nada abrir ao clicar, ou se o
+botão ficar esperando, quase sempre é o navegador bloqueando pop-ups:
+
+1. Permita pop-ups para `admin.parallly-chat.cloud` pelo ícone de bloqueio da barra de
+   endereços.
+2. Clique de novo em **Conectar com Facebook**.
+3. Não feche a janela da Meta até ver a mensagem de conexão concluída. Se você a fechou no
+   meio do caminho, comece de novo em **Canais**.
+
+Esse passo funciona melhor em um computador: no celular a janela da Meta abre como outra
+aba e é fácil perdê-la de vista.
+
+### Conexão concluída com avisos
+
+Às vezes a conexão se completa, mas algo continua pendente do lado da Meta. Nesse caso a
+tela não mostra um sucesso limpo: aparece um **card âmbar** com os avisos. Os mais comuns:
+
+- **Negócio não verificado na Meta** — o número fica conectado, com limites de envio mais
+  baixos, até você concluir a verificação do negócio no Meta Business Suite.
+- **Assinatura do webhook falhou** — o Parallly não ficou inscrito nas mensagens recebidas
+  desse número, então o agente pode não receber nada. Tente conectar de novo e, se
+  repetir, fale com o suporte.
+- **Registro do número pendente** — a Meta terminou de registrar o número depois do resto
+  da conexão. Costuma se resolver sozinho em alguns minutos; volte à tela e confirme que o
+  número ficou ativo.
+- **Não conseguimos trazer seus modelos** — a sincronização de modelos falhou. A conexão
+  funciona do mesmo jeito; sincronize de novo em **Modelos** quando quiser.
+
+Leia o aviso antes de dar a instalação por concluída: o card âmbar significa "conectado,
+mas confira isto", não "tudo pronto".
 
 ## Modo coexistência: mantenha seu app WhatsApp Business
 
@@ -67,6 +100,13 @@ Requisitos: app WhatsApp Business atualizado (versão 2.24.17 ou superior), núm
 Em **Canais**, cada card mostra o status da conexão:
 
 - **Conectado** — o número está ativo e o agente responde.
+- **Conectado** + **Reconectar: credenciais expiradas** — o card mostra as duas etiquetas
+  ao mesmo tempo: a verde de sempre e, ao lado, uma vermelha. A conexão existe, mas a
+  permissão que o Parallly usa para enviar está vencida, revogada, com erro ou ausente. O
+  número pode continuar recebendo mensagens e as respostas não saem até você autorizar de
+  novo em **Conectar**.
+  A **Saúde dos agentes** reporta isso como conexão operacional afetada e trata como ação
+  crítica do agente.
 - **Desconectado** — ainda não há conexão, ou ela foi desfeita.
 
 Ao entrar em **WhatsApp** com um número conectado, você verá o card **Canal Ativo** com o **Número**, o **Nome verificado** e a **Qualidade** (a nota que a Meta dá ao seu número de acordo com a forma como os clientes recebem suas mensagens; mantê-la "alta" garante melhores limites de envio). Você também encontrará o card **Perfil comercial** com o botão **Gerenciar perfil** para editar as informações que seus clientes veem no WhatsApp.

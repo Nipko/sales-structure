@@ -3,16 +3,24 @@ id: base-conocimiento
 title: "Agent knowledge base"
 routes: ["/admin/knowledge", "/admin/knowledge/faqs"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["knowledge base", "knowledge", "upload documents", "pdf", "faq", "frequently asked questions", "import url", "web page", "crawl", "articles", "categories", "edit document", "versions", "quality", "suggestions", "gaps", "public portal", "help center for customers", "agent doesn't know the answer"]
+keywords: ["knowledge base", "knowledge", "upload documents", "pdf", "faq", "frequently asked questions", "import url", "web page", "crawl", "articles", "categories", "edit document", "versions", "quality", "suggestions", "gaps", "public portal", "help center for customers", "agent doesn't know the answer", "start with faqs", "documents and web pages"]
 ---
 
 # Agent knowledge base
 
-The knowledge base is your AI agent's "memory": the documents, FAQs and pages you upload here are the information it uses to answer your customers. The more complete and up to date it is, the more accurate its replies.
+The knowledge base is your AI agent's "memory": the **FAQs**, **documents** and **web pages** you add here are the information it uses to answer your customers. The more complete and up to date it is, the more accurate its replies.
 
 You'll find it under **AI & Growth → Knowledge Base**. Inside you'll see the **Library**, **FAQs**, **Search in context**, **Quality**, **Analytics** and **Gaps** tabs.
 
 > This section is managed by the **administrator** and **supervisor** roles.
+
+## Where to start: the FAQs
+
+**Start with FAQs.** They are the fastest thing to load and the most noticeable: you write the question the way a customer asks it, and the exact answer you want the agent to give. With ten well-written FAQs (prices, opening hours, location, payment methods, exchange policy) the agent already answers most of what arrives every day.
+
+Then add **documents and web pages**: the PDF of your menu, the warranty manual, your site's FAQ page. They cover the long and detailed material, while FAQs cover what must always be answered the same way.
+
+When a screen is empty, each tab offers the main action inline: **Create my first FAQ** or **Upload my first document**. The **Show me how** button, which highlights step by step where it is done, is not on that empty state but on the screen's **Help** panel.
 
 ## Availability and capacity
 

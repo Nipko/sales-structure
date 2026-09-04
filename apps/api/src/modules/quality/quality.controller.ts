@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -7,6 +7,8 @@ import { AgentQualityService } from './agent-quality.service';
 import { QualityService } from './quality.service';
 import { AgentQualitySignalService } from './agent-quality-signal.service';
 import type { AgentQualitySignalState } from '@parallext/shared';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Controller('quality')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
@@ -67,6 +69,29 @@ export class QualityController {
             state || 'open',
             parseInt(limit || '50', 10) || 50,
         );
+        return { success: true, data };
+    }
+
+    /**
+     * One still-open signal, so a surface that only holds an id (Assist, a
+     * guided tour, a deep link that was bookmarked) can show what the alert
+     * actually says instead of restating the code. Declared BEFORE the
+     * `:tenantId` catch-all below so Nest reaches it.
+     *
+     * `agentId` is required: the signal lookup is scoped by both ids, so a
+     * guessed signal UUID cannot surface another agent's evidence.
+     */
+    @Get(':tenantId/signals/:signalId')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async getSignal(
+        @Param('tenantId') tenantId: string,
+        @Param('signalId') signalId: string,
+        @Query('agentId') agentId?: string,
+    ) {
+        if (!agentId || !UUID_PATTERN.test(agentId)) {
+            throw new BadRequestException('agentId is required and must be a UUID');
+        }
+        const data = await this.qualitySignals.getActiveSignal(tenantId, signalId, agentId);
         return { success: true, data };
     }
 

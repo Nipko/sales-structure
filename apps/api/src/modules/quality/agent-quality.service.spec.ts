@@ -291,6 +291,133 @@ describe('AgentQualityService', () => {
         expect(overview.preparation.criticalBlockers).toContain('rag_configuration');
     });
 
+    it('does not block an agent whose WhatsApp works because Instagram was never connected', async () => {
+        const overview = await createHarness({
+            agent: { channels: ['whatsapp', 'instagram'] },
+            channelRows: [{ channel_type: 'whatsapp', account_id: 'wa-1' }],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        // It can receive and answer on WhatsApp: that is not an outage.
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'pass',
+            evidence: { assigned: 2, connected: 1, connectedChannels: 'whatsapp' },
+        });
+        expect(overview.preparation.criticalBlockers).not.toContain('channel_connection');
+        // The unusable assignment is still reported, but as coverage, not as a
+        // critical action that sends the person to a page showing nothing wrong.
+        expect(check(overview, 'channel_coverage')).toMatchObject({
+            status: 'fail',
+            critical: false,
+            href: `/admin/agent/${AGENT_ID}`,
+            evidence: { assigned: 2, connected: 1, disconnectedChannels: 'instagram', staleBindings: 0 },
+        });
+        expect(overview.recommendations).toContainEqual(expect.objectContaining({
+            code: 'fix_channel_coverage', severity: 'high', href: `/admin/agent/${AGENT_ID}`,
+        }));
+    });
+
+    it('blocks as critical only when no assignment can receive anything', async () => {
+        const overview = await createHarness({
+            agent: { channels: ['instagram'] },
+            channelRows: [],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'fail',
+            critical: true,
+            evidence: { assigned: 1, connected: 0, connectedChannels: '' },
+        });
+        expect(overview.preparation.criticalBlockers).toContain('channel_connection');
+    });
+
+    it('separates a stale account binding from a disconnected channel type', async () => {
+        const overview = await createHarness({
+            agent: { channels: [], channel_bindings: ['whatsapp:wa-old', 'instagram:ig-1'] },
+            channelRows: [
+                { channel_type: 'whatsapp', account_id: 'wa-new' },
+                { channel_type: 'instagram', account_id: 'ig-1', has_account_token: true, metadata: { tokenExpiresAt: '2026-09-01T00:00:00.000Z' } },
+            ],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        // The number was reconnected under a new id: the type is live, the
+        // binding is not. "Reasigná el número" is a different fix from "conectá
+        // WhatsApp", so the evidence has to tell them apart.
+        expect(check(overview, 'channel_coverage')).toMatchObject({
+            status: 'fail',
+            evidence: { assigned: 2, connected: 1, disconnectedChannels: 'whatsapp', staleBindings: 1 },
+        });
+        expect(check(overview, 'channel_connection').status).toBe('pass');
+    });
+
+    it('fails the connection check when the only assignment is a stale binding', async () => {
+        const overview = await createHarness({
+            agent: { channels: [], channel_bindings: ['whatsapp:wa-old'] },
+            channelRows: [{ channel_type: 'whatsapp', account_id: 'wa-new' }],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_connection')).toMatchObject({
+            status: 'fail',
+            evidence: { assigned: 1, connected: 0 },
+        });
+        expect(overview.preparation.criticalBlockers).toContain('channel_connection');
+        // Nothing operational at all: coverage would only duplicate the action.
+        expect(check(overview, 'channel_coverage').status).toBe('not_applicable');
+    });
+
+    it('leaves both channel checks aside when the agent has no assignment at all', async () => {
+        const overview = await createHarness({
+            agent: { channels: [], channel_bindings: [] },
+            channelRows: [],
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'channel_assignment').status).toBe('fail');
+        expect(check(overview, 'channel_connection').status).toBe('not_applicable');
+        expect(check(overview, 'channel_coverage').status).toBe('not_applicable');
+        expect(overview.preparation.criticalBlockers).toContain('channel_assignment');
+        expect(overview.preparation.criticalBlockers).not.toContain('channel_connection');
+    });
+
+    it('deep-links every editor check to the field that has to change', async () => {
+        const overview = await createHarness({
+            config: {
+                ...completeConfig,
+                persona: { ...completeConfig.persona, name: '', fallbackMessage: '' },
+                behavior: { rules: [], forbiddenTopics: [], handoffTriggers: [] },
+            },
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(check(overview, 'persona_identity').href).toBe(`/admin/agent/${AGENT_ID}?tab=persona&focus=name`);
+        expect(check(overview, 'fallback_message').href).toBe(`/admin/agent/${AGENT_ID}?tab=persona&focus=fallback`);
+        expect(check(overview, 'behavior_rules').href).toBe(`/admin/agent/${AGENT_ID}?tab=instructions&focus=rules`);
+        expect(check(overview, 'handoff_triggers').href).toBe(`/admin/agent/${AGENT_ID}?tab=instructions&focus=handoff`);
+        expect(check(overview, 'channel_assignment').href).toBe(`/admin/agent/${AGENT_ID}?tab=persona&focus=channels`);
+    });
+
+    it('describes the tenant channels for the assistant without identifying any account', async () => {
+        const snapshot = await createHarness({
+            channelRows: [
+                { channel_type: 'whatsapp', account_id: 'wa-1', display_name: '+57 300 1234567' },
+                { channel_type: 'instagram', account_id: 'ig-a', has_account_token: true, metadata: { tokenExpiresAt: '2026-08-11T11:59:59.000Z' } },
+                { channel_type: 'instagram', account_id: 'ig-b', has_account_token: true, metadata: { tokenExpiresAt: '2026-10-01T00:00:00.000Z' } },
+            ],
+        }).service.getTenantChannelSnapshot(TENANT_ID);
+
+        expect(snapshot).toMatchObject({
+            total: 3,
+            channels: [
+                // Worst account of the type wins: one expired token is not hidden
+                // behind a healthy sibling.
+                { type: 'instagram', accounts: 2, health: 'expired' },
+                { type: 'whatsapp', accounts: 1, health: 'ok' },
+            ],
+        });
+        expect(snapshot.generatedAt).toBe(NOW.toISOString());
+        const serialized = JSON.stringify(snapshot);
+        for (const secret of ['wa-1', 'ig-a', 'ig-b', '+57 300 1234567', 'account_id', 'display_name']) {
+            expect(serialized).not.toContain(secret);
+        }
+    });
+
     it('recognizes an active web widget as an operational connected channel', async () => {
         const overview = await createHarness({
             agent: { channels: ['web_widget'] },

@@ -3,7 +3,7 @@ id: inbox
 title: "Inbox and human support"
 routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["inbox", "handoff", "take conversation", "assist customer", "human agent", "return to bot", "internal notes", "macros", "quick replies", "canned responses", "snooze", "assign conversation", "resolve conversation", "copilot", "AI summary", "rewrite message", "AI suggestion", "notifications", "bell", "escalation"]
+keywords: ["inbox", "handoff", "take conversation", "assist customer", "human agent", "return to bot", "internal notes", "macros", "quick replies", "canned responses", "snooze", "assign conversation", "resolve conversation", "copilot", "AI summary", "rewrite message", "AI suggestion", "notifications", "bell", "escalation", "unattended", "180 minutes", "returns to the ai"]
 ---
 
 # Inbox and human support
@@ -36,6 +36,8 @@ Once you've resolved the case:
 2. Your work is done, the conversation is released, and the AI assistant takes over the customer's next messages again.
 
 Conversations with no activity for 72 hours are marked as resolved automatically to keep your inbox clean. You can view them with the **Resolved** filter; there the history is read-only, and if you need to pick one up again, use **Reopen conversation**.
+
+**If nobody takes it:** an escalated conversation that spends **180 minutes (3 hours)** without any person from the team replying, while the customer is still waiting, goes back to the AI on its own: the assignee is cleared and the agent picks the chat up again. It is a safety floor so the customer is not left in silence, not a punishment or a resolution: the conversation stays in your inbox and you can take it again whenever you want.
 
 ## Agent copilot: suggestions and rewriting
 
@@ -76,7 +78,7 @@ If a case can't move forward right now ("call me on Monday"), don't leave it tak
 - Any authorized team member can take an **unassigned** conversation with **Assign to me**; if it was already with someone else, only an admin or supervisor can reassign it.
 - If you set up **skills** in your team's profiles (**Users** menu), Parallly automatically routes each escalation to the right person — for example, English-language cases to the agent who speaks English.
 - Macros can also assign to a specific agent as part of their actions.
-- If an escalated conversation goes more than 5 minutes without a response, supervisors receive an alert so no one is left waiting.
+- If an escalated conversation spends several minutes without a response, supervisors receive a dashboard alert. That alert draws attention; what actually prevents silence is the automatic return to the AI after 180 minutes.
 
 The number of people who can use Parallly depends on your account capacity; check current usage and limits in **Plan & Billing**.
 
@@ -99,12 +101,15 @@ No. From the moment you take the conversation, the AI is paused and the customer
 No. Notes, summaries and copilot suggestions are for your team only. The customer only receives what you send from the message box.
 
 **What happens if no one takes an escalated conversation?**
-It keeps showing in the pending filter and, if more than 5 minutes pass without a response, supervisors receive an alert with sound so they can step in.
+It keeps showing in the pending filter and supervisors receive a dashboard alert so they can step in. That alert does not hold it forever: if nobody from the team replied and the customer is still waiting, after **180 minutes (3 hours)** the conversation **goes back to the AI**, the assignee is cleared, and the agent picks it up. If you want a person to handle it, take it before that deadline.
 
 **Can I make sure certain cases always reach the same person?**
 Yes. Set up skills in your team's profiles (**Users** menu) for automatic routing, or create a macro with the **Assign to agent** action.
 
 **Is a snoozed conversation lost if the customer writes before then?**
 It's not lost: the conversation reappears automatically on the date you chose and the full history is preserved.
+
+**Do SMS messages arrive in this inbox?**
+No. The inbox receives WhatsApp, Instagram, Messenger, Telegram, and your website chat. Text messages only go out as one-way notifications to your customers, or as alerts to your team; they do not open a conversation here.
 
 Need more help? Write to us at https://parallly-chat.cloud/support

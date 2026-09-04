@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { useState, useEffect, useCallback } from "react";
@@ -569,6 +570,7 @@ export default function KnowledgePage() {
                             <Globe size={16} /> {t("crawl.button")}
                         </button>
                         <button
+                            id={guidedTourAnchorId("knowledge-add")}
                             onClick={() => canCreate("knowledgeArticles", totalDocs) ? setShowCreateModal(true) : setShowUpgradeModal(true)}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect"
                         >
@@ -583,10 +585,11 @@ export default function KnowledgePage() {
                 description={tHelp("knowledge.description")}
                 tips={tHelp.raw("knowledge.tips") as string[]}
                 mediaKey="knowledge"
+                tourId="knowledge_base"
             />
 
             {/* Tabs */}
-            <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-fit">
+            <div id={guidedTourAnchorId("knowledge-tabs")} className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-fit">
                 <button onClick={() => setTab("library")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "library" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <BookOpen size={16} /> {t("tabs.library")}
                 </button>
@@ -692,7 +695,7 @@ export default function KnowledgePage() {
                                         )}
                                         {doc.chunk_count != null && (
                                             <span className="text-[10px] px-2 py-0.5 rounded-md bg-background text-muted-foreground font-semibold">
-                                                {doc.chunk_count} chunks
+                                                {t("chunkCount", { count: doc.chunk_count })}
                                             </span>
                                         )}
                                         {doc.language && doc.language !== "auto" && (
@@ -785,7 +788,27 @@ export default function KnowledgePage() {
                     ))}
 
                     {totalDocs === 0 && !loadingDocs && (
-                        <div className="text-center py-10 text-muted-foreground">{t("empty.library")}</div>
+                        <div className="rounded-[14px] border border-dashed border-border bg-card px-6 py-10 text-center">
+                            <BookOpen size={30} className="mx-auto text-muted-foreground mb-3" />
+                            <p className="text-sm font-semibold text-foreground">{t("empty.libraryTitle")}</p>
+                            <p className="mt-1 text-[13px] text-muted-foreground max-w-md mx-auto">{t("empty.libraryBody")}</p>
+                            {canEditKnowledge && (
+                                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                                    <button
+                                        onClick={() => canCreate("knowledgeArticles", totalDocs) ? setShowCreateModal(true) : setShowUpgradeModal(true)}
+                                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect"
+                                    >
+                                        <Plus size={16} /> {t("empty.libraryAction")}
+                                    </button>
+                                    <Link
+                                        href="/admin/knowledge/faqs"
+                                        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground font-medium text-sm cursor-pointer hover:bg-muted no-underline"
+                                    >
+                                        <HelpCircle size={16} /> {t("empty.libraryFaqAction")}
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
                     )}
                     {loadingDocs && totalDocs === 0 && (
                         <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>
@@ -1591,7 +1614,7 @@ export default function KnowledgePage() {
                                             </div>
                                             <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-2">
                                                 <Calendar size={11} /> {new Date(v.created_at).toLocaleString()}
-                                                {v.chunk_count != null && <span>• {v.chunk_count} chunks</span>}
+                                                {v.chunk_count != null && <span>• {t("chunkCount", { count: v.chunk_count })}</span>}
                                                 {v.changed_by && <span>• {v.changed_by}</span>}
                                             </div>
                                             {v.change_summary && (

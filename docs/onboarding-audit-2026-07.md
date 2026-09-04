@@ -234,3 +234,43 @@ Lo que desaparece: el segundo wizard como segundo onboarding, la pregunta duplic
 - **Los hallazgos sueltos de las dimensiones `primer-canal`, `backend-bootstrap` e `i18n-ux`** (FAQs que no llegan a la IA, verticales sin `availability_slots`, plantillas semilla que nunca se envían) tienen archivo:línea pero no fueron verificados.
 - **No hay datos de embudo reales** para priorizar por evidencia en vez de por razonamiento — y no los va a haber hasta que se arregle el #12, porque hoy la métrica es tautológica.
 - **Nada se probó en móvil**, que es donde la mayoría de las PYMES LatAm evalúa el producto.
+
+---
+
+## Addendum de estado — 4 de septiembre de 2026
+
+_Agregado al cerrar el diagnóstico de `docs/assist-quality-guided-tours-plan-2026-09.md`.
+Esta auditoría sigue siendo válida como radiografía de julio; lo que sigue corrige su
+estado, que quedó desactualizado._
+
+**13 de los 20 ítems del plan de julio están hechos** (§9.1 del plan de septiembre tiene
+la tabla completa con evidencia archivo:línea):
+
+- **Cerrados:** #1 fusible de sesión, #2 detección de canal (reemplazado por
+  `InitialSetupCard` + `lib/initial-setup.ts`), #3 borrador persistido (local), #4 el
+  email falla en voz alta, #5 salidas en `/verify-email` y verificación no bloqueante,
+  #6 botón final y 404 de Analytics, #7 limpieza de audiencias al cambiar industria,
+  #8 timezone del navegador + mapa de país, #10 autosave antes de "Pruébalo",
+  #11 alta idempotente con slug sufijado, #15 idioma desde el locale real.
+- **Dos ítems que este documento daba por pendientes ya estaban hechos cuando se
+  escribió:** **#14** (embudo + UTMs — existen `signup-attribution.ts`,
+  `tenants.service.ts:1979-2024` y `OnboardingMetricsCard`) y la nota de que **faltaba
+  `@Roles('tenant_admin')`** en el setup wizard (está puesto en
+  `persona.controller.ts:110,:267`). Ambas afirmaciones del cuerpo de arriba están
+  **desactualizadas**; no las tomes como pendientes.
+- **Parciales:** #9 (la plantilla derivada se preselecciona, pero el paso 0 sigue siendo
+  la grilla "Elige tu agente"), #12 (auth ya devuelve errores tipados en español; la
+  validación de DTO, el throttle y `plan_not_found` siguen crudos), #13 (falta la entrada
+  en Configuración y el banner "Retomar" se oculta justo cuando falta canal), #18
+  (industrias y subtipos vienen de la API; `VERTICAL_GOALS/AUDIENCES` siguen cableadas
+  como fallback muerto), #19 (responsive sí; "una sola guía al aterrizar" no).
+- **Pendientes:** #16 preview vivo del agente en `/onboarding`, #17 crawl automático del
+  sitio, #20 términos y privacidad en el alta.
+
+**Dónde sigue el trabajo.** El camino canónico (un solo `onboardingStage`) y la guía
+única al aterrizar —las dos decisiones que este documento eligió y que todavía no estaban
+en vigor— se ejecutan en la **Parte II** de
+`docs/assist-quality-guided-tours-plan-2026-09.md` (§8-16), junto con el paso 0 del
+wizard, la ruta fantasma de "número de prueba", el éxito con advertencias de Meta y el
+sistema de ayuda con recorridos guiados. Ese plan es el documento de ejecución vigente;
+esta auditoría queda como el diagnóstico que lo originó.

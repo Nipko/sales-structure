@@ -9,7 +9,7 @@ import {
   Scale, BookOpen, Sliders, Tag, Package, UserCircle,
   Home, Compass, HeartPulse, Building2, Stethoscope,
   UtensilsCrossed, Dumbbell, GraduationCap, ShieldCheck,
-  Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake, Briefcase, CreditCard,
+  Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake, Briefcase, CreditCard, ChevronDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -717,6 +717,9 @@ function ToolToggleCard({
 }
 
 function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onChange: (updates: Partial<PersonaConfig>) => void; t: any }) {
+  // topK / relevance threshold / "search tool" are tuning knobs, not setup.
+  // They live under "Avanzado" so the owner meets the on/off switch first.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const rag = config.rag ?? { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 };
   const tools: NonNullable<PersonaConfig["tools"]> = config.tools ?? { appointments: { enabled: false, canBook: true, canCancel: true } };
   const kbToolEnabled = tools.knowledge?.enabled === true;
@@ -729,8 +732,8 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
             <BookOpen size={18} className="text-indigo-500" />
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("knowledgeDesc")}</h4>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("knowledgeDesc")}</p>
+            <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("knowledgeToggleTitle")}</h4>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("knowledgeToggleDesc")}</p>
           </div>
         </div>
         <button
@@ -749,11 +752,20 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
       </div>
 
       {rag.enabled && (
-        <div className="space-y-3 border-t border-neutral-100 dark:border-neutral-800 pt-3">
-          <div className="flex items-center gap-2 text-xs font-medium text-neutral-700 dark:text-neutral-300">
+        <div className="border-t border-neutral-100 dark:border-neutral-800 pt-3">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen(!advancedOpen)}
+            aria-expanded={advancedOpen}
+            className="flex items-center gap-2 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 cursor-pointer bg-transparent border-none p-0 transition-colors"
+          >
+            <ChevronDown size={14} className={cn("transition-transform", advancedOpen && "rotate-180")} />
             <Sliders size={12} />
-            {t("ragTuning")}
-          </div>
+            {t("advancedSearch")}
+          </button>
+
+          {advancedOpen && (
+          <div className="space-y-3 mt-3">
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -780,6 +792,8 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
               <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("kbToolDesc")}</p>
             </div>
           </label>
+          </div>
+          )}
         </div>
       )}
     </div>

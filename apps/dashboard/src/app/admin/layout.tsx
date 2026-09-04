@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
 import TrialCountdownBanner from "@/components/TrialCountdownBanner";
@@ -24,8 +24,7 @@ import { canAccessPath } from "@/lib/roles";
 import { recordNavigationEvent } from "@/lib/navigation-telemetry";
 import { trackNavigation } from "@/lib/navigation-effort";
 import { isOperationalRoute } from "@/lib/navigation-surface-kind-routes";
-import { OnbordaProvider, Onborda } from "onborda";
-import { TourCard, useProductTourSteps, TourLauncher, TourBoundary } from "@/components/tour/ProductTour";
+import { GuidedTourProvider, ProductTourShell, TourBoundary } from "@/components/tour/ProductTour";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { ShieldAlert, X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -33,6 +32,7 @@ import NavigationCommandPalette from "@/components/layout/NavigationCommandPalet
 import { NavigationPageProvider } from "@/contexts/NavigationPageContext";
 import { QualityHealthProvider } from "@/contexts/QualityHealthContext";
 import QualityAttentionBanner from "@/components/quality/QualityAttentionBanner";
+import QualityFocusBanner from "@/components/quality/QualityFocusBanner";
 
 export type RestrictionLevel = "none" | "warning" | "soft_lock" | "hard_lock";
 
@@ -63,7 +63,6 @@ export default function AdminLayout({
     daysRemaining: 7,
     status: "active",
   });
-  const tourSteps = useProductTourSteps();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -206,6 +205,11 @@ export default function AdminLayout({
           <EmailVerificationBanner />
           <FiscalBanner />
           <QualityAttentionBanner />
+          {/* Lee `?qa=&qagent=` con useSearchParams: sin Suspense, Next 16
+              falla el build por CSR bailout de toda la ruta. */}
+          <Suspense fallback={null}>
+            <QualityFocusBanner />
+          </Suspense>
           <div className="flex-1 flex overflow-hidden">
             <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
           </div>
@@ -244,12 +248,9 @@ export default function AdminLayout({
   // si Onborda rompe en render, cae a `content` sin tour (no white-screen).
   return (
     <TourBoundary fallback={content}>
-      <OnbordaProvider>
-        <Onborda steps={tourSteps} cardComponent={TourCard} shadowRgb="0,0,0" shadowOpacity="0.5">
-          {content}
-          <TourLauncher />
-        </Onborda>
-      </OnbordaProvider>
+      <GuidedTourProvider>
+        <ProductTourShell>{content}</ProductTourShell>
+      </GuidedTourProvider>
     </TourBoundary>
   );
 }

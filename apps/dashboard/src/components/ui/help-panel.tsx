@@ -1,9 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { HelpCircle, X, ChevronDown, Sparkles, Lightbulb } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { HelpCircle, X, ChevronDown, Sparkles, Lightbulb, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
+import {
+    GUIDED_TOUR_START_EVENT,
+    canRoleRunGuidedTour,
+    getGuidedTour,
+    type GuidedTourId,
+    type GuidedTourStartDetail,
+} from "@parallext/shared";
+import { useRole } from "@/hooks/useRole";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
+
+/**
+ * Media keys that actually have an asset in `apps/dashboard/public/help/`.
+ *
+ * Every page passes a `mediaKey`, but the folder only holds a README: without
+ * this allow-list each open of the panel fires a GIF request that 404s (103
+ * pages × one dead request per session). Add a key here the same commit the
+ * `.gif` lands, never before — the guided tour replaces the GIF meanwhile.
+ */
+const HELP_MEDIA_KEYS: ReadonlySet<string> = new Set<string>([]);
+
+export function hasHelpMedia(mediaKey: string | undefined): boolean {
+    return Boolean(mediaKey && HELP_MEDIA_KEYS.has(mediaKey));
+}
 
 interface HelpPanelProps {
     title: string;
@@ -12,13 +36,29 @@ interface HelpPanelProps {
     images?: Array<{ src: string; alt: string; caption?: string }>;
     /**
      * Convention-based animated GIF/screenshot. When set (and `images` is not),
-     * the panel auto-loads `/help/{mediaKey}.gif` and renders it only if the file
-     * exists — a missing asset hides itself silently (no broken image).
-     * Drop assets into `apps/dashboard/public/help/` to light them up.
+     * the panel loads `/help/{mediaKey}.gif` — but ONLY for keys listed in
+     * `HELP_MEDIA_KEYS`, so a page whose asset was never recorded does not fire
+     * a dead request on every open.
      */
     mediaKey?: string;
     tips?: string[];
     defaultOpen?: boolean;
+    /**
+     * Guided tour this screen offers ("Mostrarme cómo"). The button renders only
+     * when the signed-in role may run the tour; clicking it dispatches
+     * `GUIDED_TOUR_START_EVENT` for the runner, which falls back to a spotlight
+     * below 768 px — so the button is rendered at every width.
+     */
+    tourId?: GuidedTourId;
+    /** Overrides the default "Mostrarme cómo" label. */
+    tourLabel?: string;
+}
+
+/** Fires the guided tour the page declared. No-op until the runner is mounted. */
+function startGuidedTour(tourId: GuidedTourId) {
+    if (typeof window === "undefined") return;
+    const detail: GuidedTourStartDetail = { tourId };
+    window.dispatchEvent(new CustomEvent(GUIDED_TOUR_START_EVENT, { detail }));
 }
 
 /** Auto-loaded help media that removes itself if the asset is missing. */
@@ -42,11 +82,43 @@ function HelpMedia({ src, alt }: { src: string; alt: string }) {
     );
 }
 
-export function HelpPanel({ title, description, videoUrl, images, mediaKey, tips, defaultOpen = false }: HelpPanelProps) {
+export function HelpPanel({
+    title, description, videoUrl, images, mediaKey, tips, defaultOpen = false, tourId, tourLabel,
+}: HelpPanelProps) {
     const [open, setOpen] = useState(defaultOpen);
+    const { role } = useRole();
+    const tHelp = useTranslations("help");
+
+    const tour = tourId ? getGuidedTour(tourId) : null;
+    const canRunTour = Boolean(tour && canRoleRunGuidedTour(tour, role));
+    const showMeLabel = tourLabel ?? tHelp("showMe");
+
+    const showMeButton = (variant: "header" | "footer", anchor: boolean) =>
+        canRunTour && tourId ? (
+            <motion.button
+                type="button"
+                id={anchor ? guidedTourAnchorId("help-show-me") : undefined}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => startGuidedTour(tourId)}
+                className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg font-semibold cursor-pointer transition-colors border",
+                    variant === "header"
+                        ? "px-2.5 py-1.5 text-[11.5px] border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-500/20"
+                        : "px-3.5 py-2 text-[12.5px] border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-500/20 self-start",
+                )}
+            >
+                <Compass size={variant === "header" ? 13 : 14} />
+                {showMeLabel}
+            </motion.button>
+        ) : null;
 
     return (
-        <div className="relative z-10">
+        // El ancla del recorrido vive en el contenedor, no en el botón plegado:
+        // el botón desaparece al abrir el panel, y el propio recorrido del
+        // sistema de ayuda pasaba del paso 1 (el botón) al paso 2 (algo que sólo
+        // existe con el panel abierto) sin nada que señalar en el medio.
+        <div id={guidedTourAnchorId("help-panel")} className="relative z-10">
             <AnimatePresence mode="wait">
                 {!open ? (
                     <motion.button
@@ -82,6 +154,8 @@ export function HelpPanel({ title, description, videoUrl, images, mediaKey, tips
                                 </div>
                                 <h3 className="text-[13.5px] font-bold text-neutral-800 dark:text-neutral-200 tracking-wide">{title}</h3>
                             </div>
+                            <div className="flex items-center gap-2">
+                            {showMeButton("header", true)}
                             <motion.button
                                 whileHover={{ scale: 1.08, rotate: 90 }}
                                 whileTap={{ scale: 0.92 }}
@@ -90,6 +164,7 @@ export function HelpPanel({ title, description, videoUrl, images, mediaKey, tips
                             >
                                 <X size={14.5} />
                             </motion.button>
+                            </div>
                         </div>
 
                         {/* Content */}
@@ -139,8 +214,8 @@ export function HelpPanel({ title, description, videoUrl, images, mediaKey, tips
                                 </div>
                             )}
 
-                            {/* Convention-based auto media (GIF/screenshot) */}
-                            {mediaKey && (!images || images.length === 0) && (
+                            {/* Convention-based auto media (GIF/screenshot), only for recorded assets */}
+                            {hasHelpMedia(mediaKey) && (!images || images.length === 0) && (
                                 <HelpMedia src={`/help/${mediaKey}.gif`} alt={title} />
                             )}
 
@@ -163,6 +238,16 @@ export function HelpPanel({ title, description, videoUrl, images, mediaKey, tips
                                             </span>
                                         </motion.div>
                                     ))}
+                                </div>
+                            )}
+
+                            {/* Guided tour ("Mostrarme cómo") after the tips */}
+                            {canRunTour && (
+                                <div className="flex flex-col gap-1.5 pt-1 border-t border-neutral-100 dark:border-neutral-800/50">
+                                    {showMeButton("footer", false)}
+                                    <span className="text-[11px] text-neutral-400 dark:text-neutral-500">
+                                        {tHelp("showMeHint")}
+                                    </span>
                                 </div>
                             )}
                         </div>

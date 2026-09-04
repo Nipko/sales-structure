@@ -60,7 +60,11 @@ export class AuthThrottleGuard implements CanActivate {
             throw new HttpException(
                 {
                     statusCode: HttpStatus.TOO_MANY_REQUESTS,
-                    message: 'Too many requests. Please try again later.',
+                    // Código estable para el panel + texto en español: esto lo
+                    // lee alguien que está intentando entrar a su cuenta, no un
+                    // integrador.
+                    error: 'too_many_attempts',
+                    message: 'Demasiados intentos. Esperá un momento y volvé a intentar.',
                     retryAfter: windowSeconds,
                 },
                 HttpStatus.TOO_MANY_REQUESTS,

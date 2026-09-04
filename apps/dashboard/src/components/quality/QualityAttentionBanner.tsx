@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AlertOctagon, Clock3, MessageCircle } from "lucide-react";
@@ -14,7 +14,20 @@ import {
   canRunProductTourAtWidth,
 } from "@/lib/product-tour-contract";
 import { askAssistAboutQuality } from "@/lib/quality-health-events";
-import { safeQualityHref, shouldShowQualityAttentionBanner } from "@/lib/quality-health";
+import {
+  getOnboardingLandingServerSnapshot,
+  getOnboardingLandingSignal,
+  isOnboardingGuidanceOwningHome,
+  subscribeOnboardingLanding,
+} from "@/lib/onboarding-guide-signal";
+import {
+  getFocusedQualitySignal,
+  getFocusedQualitySignalServerSnapshot,
+  safeQualityHref,
+  shouldShowQualityAttentionBanner,
+  subscribeFocusedQualitySignal,
+  withQualityFocus,
+} from "@/lib/quality-health";
 
 export default function QualityAttentionBanner() {
   const t = useTranslations("qualityHealth");
@@ -24,6 +37,23 @@ export default function QualityAttentionBanner() {
   const canLaunchTour = canEditAgent && canManageChannels;
   const [tourSuppressedPath, setTourSuppressedPath] = useState<string | null>(null);
   const [snoozing, setSnoozing] = useState(false);
+  // The context bar on the destination screen explains the SAME signal with
+  // more detail. Two red bars saying it read as two separate problems.
+  const focusedSignalId = useSyncExternalStore(
+    subscribeFocusedQualitySignal,
+    getFocusedQualitySignal,
+    getFocusedQualitySignalServerSnapshot,
+  );
+  // Una sola guía en la pantalla de inicio. Mientras la puesta en marcha manda
+  // en `/admin` —o mientras todavía no se sabe— esta barra roja se calla: sobre
+  // una cuenta recién creada `channel_connection` es crítico por definición, así
+  // que decía en tono de alarma lo mismo que la tarjeta de puesta en marcha ya
+  // estaba pidiendo paso a paso. En el resto de las pantallas no cambia nada.
+  const onboardingLanding = useSyncExternalStore(
+    subscribeOnboardingLanding,
+    getOnboardingLandingSignal,
+    getOnboardingLandingServerSnapshot,
+  );
 
   useEffect(() => {
     try {
@@ -48,11 +78,18 @@ export default function QualityAttentionBanner() {
   const topAction = summary?.topAction;
   if (!topAction || !shouldShowQualityAttentionBanner(summary)) return null;
   if (pathname === "/admin/setup-wizard" || pathname.startsWith("/admin/agent/quality")) return null;
+  if (pathname === "/admin" && isOnboardingGuidanceOwningHome(onboardingLanding)) return null;
   if (tourSuppressedPath === pathname) return null;
+  if (focusedSignalId && focusedSignalId === topAction.signalId) return null;
 
   const centerHref = safeQualityHref(null, topAction.agentId);
   const requestedHref = safeQualityHref(topAction.href, topAction.agentId);
-  const reviewHref = canAccess(requestedHref) ? requestedHref : centerHref;
+  const allowedHref = canAccess(requestedHref) ? requestedHref : centerHref;
+  // Carry the signal to the destination so the screen can say why it opened.
+  const reviewHref = withQualityFocus(allowedHref, {
+    signalId: topAction.signalId,
+    agentId: topAction.agentId,
+  });
 
   const handleSnooze = async () => {
     setSnoozing(true);
@@ -82,7 +119,7 @@ export default function QualityAttentionBanner() {
               agentName: topAction.agentName,
               code: topAction.code,
               severity: topAction.severity,
-              href: reviewHref,
+              href: allowedHref,
             })}
             className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-semibold hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 dark:hover:bg-red-900/50"
           >

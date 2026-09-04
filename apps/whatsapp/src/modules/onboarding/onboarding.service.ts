@@ -31,6 +31,23 @@ interface RequestUser {
   tenantId?: string;
 }
 
+/**
+ * Códigos estables de advertencia de un onboarding COMPLETED_WITH_WARNINGS.
+ *
+ * Hasta acá el servicio solo devolvía los textos unidos por ' | ' en
+ * `errorMessage`, un campo que el panel muestra únicamente cuando algo FALLÓ:
+ * un onboarding con advertencias se veía como un éxito limpio y el dueño se
+ * enteraba semanas después de que su negocio nunca se verificó o de que los
+ * webhooks no quedaron suscritos. Con códigos, el panel traduce cada
+ * advertencia y dice qué hacer.
+ */
+export const WHATSAPP_ONBOARDING_WARNING_CODES = [
+  'webhook_subscription_failed',
+  'business_not_verified',
+] as const;
+
+export type WhatsappOnboardingWarningCode = typeof WHATSAPP_ONBOARDING_WARNING_CODES[number];
+
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
@@ -435,23 +452,39 @@ export class OnboardingService {
 
       // ---- 15. Marcar completado ----
       const warnings: string[] = [];
+      const warningCodes: WhatsappOnboardingWarningCode[] = [];
       if (!webhookSuccess) {
         warnings.push('La suscripción de webhooks pudo haber fallado — verificar manualmente');
+        warningCodes.push('webhook_subscription_failed');
       }
       if (!businessVerified && verificationWarning) {
         warnings.push(verificationWarning);
+        warningCodes.push('business_not_verified');
       }
 
       const finalStatus = warnings.length > 0
         ? OnboardingStatus.COMPLETED_WITH_WARNINGS
         : OnboardingStatus.COMPLETED;
 
-      await this.prisma.whatsappOnboarding.update({
+      // Los códigos se persisten junto al payload del intercambio (JSONB ya
+      // existente, nunca se devuelve al cliente) para que el sondeo posterior
+      // del panel siga viendo las advertencias, no solo la respuesta inmediata.
+      const currentPayload = await this.prisma.whatsappOnboarding.findUnique({
+        where: { id: onboardingId },
+        select: { exchangePayload: true },
+      });
+      const basePayload = (currentPayload?.exchangePayload && typeof currentPayload.exchangePayload === 'object'
+        && !Array.isArray(currentPayload.exchangePayload))
+        ? currentPayload.exchangePayload as Record<string, unknown>
+        : {};
+
+      const completed = await this.prisma.whatsappOnboarding.update({
         where: { id: onboardingId },
         data: {
           status: finalStatus,
           completedAt: new Date(),
           errorMessage: warnings.length > 0 ? warnings.join(' | ') : null,
+          exchangePayload: { ...basePayload, warnings: warningCodes } as any,
         },
       });
 
@@ -484,9 +517,7 @@ export class OnboardingService {
 
       this.logger.log(`[Onboarding][${onboardingId}] ${finalStatus} for tenant=${tenantId}${warnings.length ? ' (warnings: ' + warnings.join('; ') + ')' : ''}`);
 
-      return this.formatOnboardingResponse(
-        await this.prisma.whatsappOnboarding.findUnique({ where: { id: onboardingId } }),
-      );
+      return this.formatOnboardingResponse(completed);
 
     } catch (error: any) {
       return this.handleOnboardingFailure(error, onboardingId, tenantId, userId);
@@ -586,12 +617,20 @@ export class OnboardingService {
         metaBusinessId: true,
         wabaId: true,
         completedAt: true,
+        // OJO: trae el token de larga duración. Se saca del spread a propósito
+        // (abajo) y de él solo se derivan los códigos de advertencia — nunca
+        // debe viajar al cliente.
+        exchangePayload: true,
       },
     });
     if (!onboarding) throw new NotFoundException('Onboarding no encontrado');
     this.assertTenantAccess(user, onboarding.tenantId);
-    const { metaBusinessId, ...status } = onboarding;
-    return { ...status, businessId: metaBusinessId };
+    const { metaBusinessId, exchangePayload, ...status } = onboarding;
+    return {
+      ...status,
+      businessId: metaBusinessId,
+      warnings: this.extractWarningCodes(exchangePayload),
+    };
   }
 
   /**
@@ -1431,6 +1470,20 @@ export class OnboardingService {
     });
   }
 
+  /**
+   * Advertencias persistidas, filtradas contra el catálogo: lo que se devuelve
+   * al panel es un código que sabe traducir, nunca texto libre de la base.
+   */
+  private extractWarningCodes(exchangePayload: unknown): WhatsappOnboardingWarningCode[] {
+    if (!exchangePayload || typeof exchangePayload !== 'object' || Array.isArray(exchangePayload)) return [];
+    const stored = (exchangePayload as Record<string, unknown>).warnings;
+    if (!Array.isArray(stored)) return [];
+    const known = new Set<string>(WHATSAPP_ONBOARDING_WARNING_CODES);
+    return stored.filter((code): code is WhatsappOnboardingWarningCode => (
+      typeof code === 'string' && known.has(code)
+    ));
+  }
+
   private formatOnboardingResponse(onboarding: any) {
     if (!onboarding) return null;
     return {
@@ -1445,7 +1498,11 @@ export class OnboardingService {
       verifiedName: onboarding.verifiedName,
       isCoexistence: onboarding.isCoexistence,
       errorCode: onboarding.errorCode,
+      // `errorMessage` se mantiene por compatibilidad (clientes viejos y
+      // soporte); `warnings` es lo que el panel traduce y muestra en la tarjeta
+      // ámbar de "conectado, pero con pendientes".
       errorMessage: onboarding.errorMessage,
+      warnings: this.extractWarningCodes(onboarding.exchangePayload),
       codeReceivedAt: onboarding.codeReceivedAt,
       exchangeCompletedAt: onboarding.exchangeCompletedAt,
       assetsSyncedAt: onboarding.assetsSyncedAt,

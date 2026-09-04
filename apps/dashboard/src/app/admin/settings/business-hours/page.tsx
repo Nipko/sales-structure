@@ -8,6 +8,8 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Clock, Save, CheckCircle, AlertCircle, Globe } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
+import Link from "next/link";
 import { TIMEZONE_GROUPS, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
 
 interface DaySchedule {
@@ -128,7 +130,21 @@ export default function BusinessHoursPage() {
                 description={tHelp("settingsBusinessHours.description")}
                 tips={tHelp.raw("settingsBusinessHours.tips") as string[]}
                 mediaKey="settingsBusinessHours"
+                tourId="business_hours"
             />
+
+            {/* These hours are NOT the appointment availability. Two schedules
+                with different defaults and no sync is why an owner saves this
+                page and the AI still answers "no availability". */}
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200 flex gap-2">
+                <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                <span>
+                    {t("appointmentsNotice")}{" "}
+                    <Link href="/admin/appointments?tab=config" className="font-semibold underline">
+                        {t("appointmentsNoticeLink")}
+                    </Link>
+                </span>
+            </div>
 
             {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
@@ -137,7 +153,7 @@ export default function BusinessHoursPage() {
             )}
 
             {/* 24/7 Toggle */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div id={guidedTourAnchorId("hours-247")} className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="flex items-center justify-between">
                     <div>
                         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
@@ -163,7 +179,7 @@ export default function BusinessHoursPage() {
             </div>
 
             {/* Timezone */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div id={guidedTourAnchorId("hours-timezone")} className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="flex items-center gap-2 mb-1">
                     <Globe size={16} className="text-neutral-400" />
                     <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
@@ -188,7 +204,7 @@ export default function BusinessHoursPage() {
 
             {/* Schedule (hidden when 24/7) */}
             {!config.is247 && (
-                <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div id={guidedTourAnchorId("hours-days")} className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                     <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
                         {t("scheduleTitle")}
                     </h2>
@@ -253,7 +269,7 @@ export default function BusinessHoursPage() {
             )}
 
             {/* After-hours message */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div id={guidedTourAnchorId("hours-message")} className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
                     {t("outOfHoursTitle")}
                 </h2>
@@ -271,6 +287,7 @@ export default function BusinessHoursPage() {
 
             <div className="flex justify-end">
                 <button
+                    id={guidedTourAnchorId("hours-save")}
                     onClick={handleSave}
                     disabled={saving}
                     className={cn(

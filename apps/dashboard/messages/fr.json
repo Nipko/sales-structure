@@ -58,8 +58,16 @@
     "planRequired": "Votre forfait actuel n’inclut pas les encaissements clients. Les paiements existants restent consultables, mais aucun compte ni nouveau lien ne peut être créé.",
     "reviewPlans": "Voir les forfaits",
     "providers": {
-      "wompi": { "name": "Wompi", "description": "Liens hébergés avec montant fixe en COP et paiement vérifié par événement.", "credentialsHint": "Connectez les clés du compte Wompi de votre entreprise." },
-      "mercadopago": { "name": "Mercado Pago", "description": "Checkout Pro avec les identifiants propres à votre entreprise.", "credentialsHint": "Connectez les identifiants Mercado Pago de votre entreprise." }
+      "wompi": {
+        "name": "Wompi",
+        "description": "Liens hébergés avec montant fixe en COP et paiement vérifié par événement.",
+        "credentialsHint": "Connectez les clés du compte Wompi de votre entreprise."
+      },
+      "mercadopago": {
+        "name": "Mercado Pago",
+        "description": "Checkout Pro avec les identifiants propres à votre entreprise.",
+        "credentialsHint": "Connectez les identifiants Mercado Pago de votre entreprise."
+      }
     },
     "active": "Actif",
     "ready": "Prêt",
@@ -400,8 +408,8 @@
       "settingsIntegrations": "Intégrations",
       "settingsWebChatTriggers": "Déclencheurs du chat web",
       "setupWizard": "Assistant de configuration",
-        "tourDetail": "Détails du tour ou du forfait",
-        "acquisitionCampaigns": "Campagnes d’acquisition"
+      "tourDetail": "Détails du tour ou du forfait",
+      "acquisitionCampaigns": "Campagnes d’acquisition"
     },
     "command": {
       "title": "Rechercher et naviguer",
@@ -1441,6 +1449,10 @@
       "ecommerce": {
         "label": "Boutique en ligne",
         "description": "Shopify ou WooCommerce pour le catalogue de l’assistant"
+      },
+      "setupWizard": {
+        "label": "Assistant de configuration",
+        "description": "Rouvrez « Faites connaissance avec votre agent » et reprenez où vous en étiez"
       }
     },
     "account": "Mon Compte",
@@ -1954,7 +1966,9 @@
         "saturday": "Sam",
         "sunday": "Dim"
       },
-      "timeSeparator": "à"
+      "timeSeparator": "à",
+      "appointmentsNotice": "Ces horaires indiquent à l'agent quand vous êtes ouvert. La disponibilité pour les rendez-vous se règle à part, dans Rendez-vous → Configuration.",
+      "appointmentsNoticeLink": "Aller à Rendez-vous → Configuration"
     },
     "nurturingPage": {
       "title": "Suivi Automatique",
@@ -2034,7 +2048,8 @@
         "identity": "Identité",
         "contact": "Contact",
         "location": "Localisation",
-        "social": "Liens sociaux"
+        "social": "Liens sociaux",
+        "goals": "Objectifs et public"
       },
       "fields": {
         "companyName": "Nom de l'entreprise",
@@ -2046,7 +2061,9 @@
         "address": "Adresse",
         "city": "Ville",
         "country": "Pays",
-        "logoUrl": "Logo de l'entreprise"
+        "logoUrl": "Logo de l'entreprise",
+        "chatReasons": "À quoi voulez-vous que serve l'agent ?",
+        "customerTypes": "Qui vous écrit ?"
       },
       "placeholders": {
         "industry": "Ex: Tourisme, Éducation, Commerce",
@@ -2068,12 +2085,29 @@
       "errors": {
         "companyNameRequired": "Le nom de l'entreprise est requis",
         "saveFailed": "Échec de l'enregistrement",
-        "connection": "Erreur de connexion"
+        "connection": "Erreur de connexion",
+        "aboutRequired": "Décrivez votre activité en 2 ou 3 phrases : l'agent en a besoin pour répondre."
       },
       "toast": {
         "saved": "Informations enregistrées",
         "logoUploaded": "Logo mis à jour",
         "logoError": "Erreur lors du téléchargement du logo"
+      },
+      "aboutHelp": "2-3 phrases : ce que vous vendez, à qui et où.",
+      "goalsHint": "L'agent s'en sert pour savoir à quoi il sert et à qui il parle.",
+      "goals": {
+        "faq": "Répondre aux questions fréquentes",
+        "appointments": "Prendre des rendez-vous",
+        "sales": "Vendre",
+        "support": "Assurer le support",
+        "promotions": "Diffuser des promotions",
+        "lead_qualification": "Qualifier les prospects",
+        "response_time": "Répondre plus vite"
+      },
+      "audiences": {
+        "b2c": "Consommateurs finaux",
+        "b2b": "D'autres entreprises",
+        "government": "Organismes publics"
       }
     },
     "customAttributesPage": {
@@ -2200,6 +2234,28 @@
         "bot_token": "Jeton du bot (de @BotFather)",
         "bot_username": "Nom d'utilisateur du bot (sans @)",
         "webhook_url": "URL do webhook"
+      }
+    },
+    "essentials": {
+      "title": "L'essentiel pour votre agent",
+      "description": "Le minimum pour que l'agent réponde bien. Le reste peut attendre.",
+      "items": {
+        "businessInfo": {
+          "label": "Informations sur l'entreprise",
+          "description": "Nom, activité et coordonnées. L'agent les cite tels quels."
+        },
+        "businessHours": {
+          "label": "Horaires",
+          "description": "Quand vous êtes ouvert et quoi répondre en dehors des horaires."
+        },
+        "team": {
+          "label": "Équipe",
+          "description": "À qui l'IA transmet la conversation quand un client demande une personne."
+        },
+        "setupWizard": {
+          "label": "Assistant de configuration",
+          "description": "Revenez aux étapes guidées de mise en route quand vous voulez."
+        }
       }
     }
   },
@@ -2525,7 +2581,12 @@
       "sourcePublic": "Réservation en ligne",
       "rating": "Note",
       "ratingFeedback": "Commentaire du client",
-      "cancellationReason": "Raison d'annulation"
+      "cancellationReason": "Raison d'annulation",
+      "useBusinessHours": "Mêmes horaires que l'entreprise ?",
+      "useBusinessHoursDesc": "Nous recopions les horaires enregistrés dans Paramètres → Horaires. Vérifiez-les puis confirmez ci-dessous.",
+      "useBusinessHoursAction": "Utiliser les horaires de l'entreprise",
+      "useBusinessHoursApplied": "C'est fait : vos horaires ont été copiés. Vérifiez puis appuyez sur Confirmer pour enregistrer.",
+      "useBusinessHoursMissing": "Vous n'avez pas encore enregistré les horaires dans Paramètres → Horaires."
     },
     "staffSection": {
       "title": "Équipe professionnelle",
@@ -3228,7 +3289,100 @@
         "auth": "Autorisation",
         "connecting": "Connexion du numéro",
         "activating": "Activation WhatsApp"
-      }
+      },
+      "routeRecommended": "Recommandé",
+      "mobileNote": "Cette étape fonctionne mieux sur un ordinateur. Depuis votre téléphone, vous pouvez utiliser l'option de coexistence et scanner le code QR avec votre WhatsApp Business.",
+      "brief": {
+        "title": "Ce que cette option implique"
+      },
+      "warnings": {
+        "title": "Connecté, avec quelques points en attente",
+        "subtitle": "Votre numéro est connecté, mais Meta a laissé ces points ouverts :",
+        "codes": {
+          "business_not_verified": "Votre entreprise n'est pas encore vérifiée chez Meta. Vous pourrez répondre, mais avec une limite quotidienne de conversations jusqu'à ce que la vérification soit terminée dans Meta Business.",
+          "webhook_subscription_failed": "Nous n'avons pas pu confirmer l'abonnement aux messages entrants. Envoyez-vous un message : si votre agent ne répond pas, écrivez-nous et nous réglons cela.",
+          "phone_registration_deferred": "L'enregistrement du numéro est encore en attente côté Meta. Cela se règle généralement tout seul en quelques minutes.",
+          "template_sync_failed": "Nous n'avons pas pu récupérer vos modèles de message. Vous pouvez les synchroniser à nouveau depuis Modèles."
+        }
+      },
+      "errors": {
+        "retry": "Réessayer",
+        "goToBilling": "Aller à Forfait et facturation",
+        "checkingExisting": "Vérification…",
+        "popupBlocked": {
+          "title": "La fenêtre Meta ne s'est pas ouverte",
+          "action": "Autorisez les fenêtres pop-up pour ce site et réessayez. Sur téléphone, vérifiez que votre navigateur ne les bloque pas."
+        },
+        "phoneRegistration": {
+          "title": "Nous n'avons pas pu enregistrer ce numéro",
+          "action": "Cela arrive souvent quand le numéro a déjà WhatsApp actif, ou que la validation en deux étapes est activée. Supprimez WhatsApp de ce numéro, ou désactivez le code PIN en deux étapes, puis réessayez."
+        },
+        "tokenCoverage": {
+          "title": "L'autorisation ne couvre pas ce compte",
+          "action": "Réessayez et, dans la fenêtre Meta, autorisez TOUS les comptes WhatsApp affichés. Si vous en laissez un de côté, nous ne pouvons pas envoyer de messages depuis celui-ci."
+        },
+        "planLimit": {
+          "title": "Vous avez atteint la limite de votre forfait",
+          "action": "Votre forfait ne permet pas un numéro de plus. Vous pouvez changer de forfait ou déconnecter l'un de ceux que vous avez déjà."
+        },
+        "channelNotInPlan": {
+          "title": "WhatsApp n'est pas inclus dans votre forfait",
+          "action": "Passez à un forfait qui inclut WhatsApp et revenez à cet écran."
+        },
+        "invalidConfig": {
+          "title": "Il manque de la configuration pour la connexion",
+          "action": "Le problème vient de nous, pas de vous. Écrivez-nous et nous remettons cela en marche."
+        },
+        "onboardingInProgress": {
+          "title": "Une connexion est déjà en cours",
+          "action": "Vous avez lancé ce processus il y a peu et il est resté à moitié. Attendez quelques minutes et réessayez."
+        },
+        "permissions": {
+          "title": "Des autorisations manquaient chez Meta",
+          "action": "Réessayez et acceptez toutes les autorisations demandées par la fenêtre Meta. Sans elles, nous ne pouvons ni lire ni envoyer de messages."
+        },
+        "entitlementUnavailable": {
+          "title": "Nous n'avons pas pu vérifier votre forfait",
+          "action": "C'était temporaire. Réessayez dans quelques secondes."
+        },
+        "coexistenceNotAcknowledged": {
+          "title": "La coexistence reste à confirmer",
+          "action": "Choisissez à nouveau l'option « J'utilise déjà WhatsApp Business » et suivez toutes les étapes dans la fenêtre Meta."
+        },
+        "codeExpired": {
+          "title": "L'autorisation a expiré",
+          "action": "Trop de temps s'est écoulé entre l'ouverture de la fenêtre et la fin. Réessayez sans longues pauses."
+        },
+        "rateLimited": {
+          "title": "Trop de tentatives",
+          "action": "Meta nous a demandé d'attendre. Réessayez dans quelques minutes."
+        },
+        "metaError": {
+          "title": "Meta a refusé la connexion",
+          "action": "Réessayez. Si cela se reproduit, copiez le détail ci-dessous et écrivez-nous."
+        },
+        "cancelled": {
+          "title": "Vous avez fermé la fenêtre Meta",
+          "action": "Aucun souci : vous pouvez réessayer quand vous voulez."
+        },
+        "authorization": {
+          "title": "Nous n'avons pas reçu l'autorisation",
+          "action": "La fenêtre s'est fermée avant la fin. Réessayez et ne la fermez pas avant de voir « Connexion réussie »."
+        },
+        "sdkNotLoaded": {
+          "title": "Le connecteur Meta ne s'est pas chargé",
+          "action": "Rechargez la page et réessayez. Si vous utilisez un bloqueur de contenu, désactivez-le pour ce site."
+        },
+        "generic": {
+          "title": "Nous n'avons pas pu terminer la connexion",
+          "action": "Réessayez. Si cela persiste, écrivez-nous avec le détail ci-dessous et nous réglons cela."
+        },
+        "network": {
+          "title": "Impossible de joindre le serveur",
+          "action": "Vérifie ta connexion internet et réessaie. Si cela persiste, réessaie dans quelques minutes."
+        }
+      },
+      "connectionRequestFailed": "Impossible de joindre le serveur. Vérifie ta connexion et réessaie."
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -3387,7 +3541,7 @@
     "unassignedChannels": "{count} canal(aux) sans agent assigné",
     "unassignedDesc": "Les messages de ces canaux utiliseront l'agent par défaut. Assignez un agent pour une expérience personnalisée.",
     "assignNow": "Assigner un agent maintenant",
-    "noConnectedChannels": "Aucun canal connecté",
+    "noConnectedChannels": "Vous n'avez pas encore connecté de canal",
     "createFirst": "Créez votre premier agent",
     "noAgents": "Aucun agent configuré",
     "noAgentsDesc": "Créez votre premier agent IA pour commencer à automatiser les conversations sur vos canaux.",
@@ -3577,7 +3731,9 @@
         "questionPlaceholder": "Demander au client (ex: Quel est votre email ?)",
         "addField": "Ajouter champ",
         "addContext": "Ajouter contexte"
-      }
+      },
+      "handoffTriggersPlain": "Quand passer à une personne",
+      "handoffTriggersHint": "Indiquez les situations où vous préférez qu'une personne de votre équipe réponde."
     },
     "aiModel": {
       "temperature": "Température",
@@ -3623,17 +3779,17 @@
       "offersDesc": "Mentionner les offres en cours pendant la conversation",
       "ordersTitle": "Historique des commandes",
       "ordersDesc": "Répondre sur les commandes du client (statut, total, date)",
-      "crmTitle": "Contexte CRM",
-      "crmDesc": "Personnaliser avec le lead score, tags et étape du client",
-      "knowledgeTitle": "Base de connaissances (RAG)",
+      "crmTitle": "Utiliser ce que nous savons du client",
+      "crmDesc": "Personnaliser la réponse avec l'historique, les étiquettes et l'étape du client.",
+      "knowledgeTitle": "Documents et pages web que l'agent peut consulter",
       "knowledgeDesc": "Recherche sémantique dans vos documents",
       "ragTuning": "Réglage de recherche",
-      "topK": "Résultats maximum",
+      "topK": "Nombre de passages à utiliser",
       "topKHint": "Combien de fragments retourner par recherche",
-      "similarityThreshold": "Seuil de pertinence",
+      "similarityThreshold": "Degré de correspondance exigé",
       "similarityHint": "Filtre les résultats en dessous de ce score",
-      "kbTool": "Outil de recherche agent",
-      "kbToolDesc": "Permet à l'agent d'interroger la KB comme outil, en plus du contexte automatique",
+      "kbTool": "Laisser l'agent chercher quand il en a besoin",
+      "kbToolDesc": "En plus de la recherche automatique, l'agent peut reconsulter vos documents en cours de conversation.",
       "specializedToolsTitle": "Outils spécialisés",
       "recommended": "Recommandé",
       "industryToolsTitle": "Outils de votre industrie",
@@ -3682,7 +3838,7 @@
       "skillset_sales_desc": "Recommande et conclut des ventes.",
       "skillset_support_desc": "Résout questions et commandes.",
       "skillset_both_desc": "Vend et assiste.",
-      "upsellTitle": "Upsell et cross-sell",
+      "upsellTitle": "Suggérer des produits complémentaires",
       "upsellDesc": "Suggérer des produits ou améliorations de façon proactive.",
       "upsellIntensity": "Intensité",
       "upsell_subtle": "Subtile",
@@ -3703,7 +3859,10 @@
       "paymentsCreateLinksDesc": "L'agent utilise le prestataire actif ; il ne choisit jamais le montant et ne considère jamais un lien en attente comme payé.",
       "paymentsRailPending": "Vos identifiants d’encaissement sont enregistrés, mais l’encaissement n’est pas encore actif : il manque la dernière étape dans Encaissements clients. Avec cet interrupteur activé, l’agent ne pourra quand même pas encaisser.",
       "paymentsRailMissing": "Vous n’avez pas encore connecté de compte d’encaissement. Avec cet interrupteur activé, l’agent ne pourra pas encaisser tant que ce ne sera pas fait.",
-      "paymentsConfigure": "Configurer le compte d'encaissement"
+      "paymentsConfigure": "Configurer le compte d'encaissement",
+      "knowledgeToggleTitle": "Consulter mes documents",
+      "knowledgeToggleDesc": "L'agent cherche la réponse dans les documents et pages que vous avez ajoutés avant de répondre.",
+      "advancedSearch": "Avancé : affiner la recherche"
     },
     "customPrompt": {
       "title": "Prompt système personnalisé",
@@ -3794,7 +3953,38 @@
         "about": "Description de l'entreprise",
         "hours": "Horaires",
         "knowledge": "Connaissance"
-      }
+      },
+      "blockersTitle": "Reste à configurer",
+      "fix": "Corriger",
+      "more": "et {count} de plus"
+    },
+    "validation": {
+      "blocked": "Des champs obligatoires manquent. Vérifiez les champs en rouge.",
+      "nameRequired": "Saisissez un nom : c'est celui sous lequel l'agent se présente à vos clients.",
+      "roleRequired": "Saisissez le rôle : ce que cette personne fait dans votre entreprise (par exemple, « conseillère commerciale »).",
+      "fallbackRequired": "Indiquez ce qu'il doit dire quand il ne connaît pas la réponse. Sans cela, l'agent risque d'inventer.",
+      "rulesRequired": "Ajoutez au moins une règle. Exemple : « toujours confirmer la disponibilité avant d'annoncer un prix ».",
+      "handoffRequired": "Ajoutez au moins un motif de transfert à une personne. Exemple : « le client demande à parler à quelqu'un ».",
+      "fallbackHelp": "Obligatoire. Promettez qu'une personne prendra le relais plutôt que de laisser l'agent improviser."
+    },
+    "activation": {
+      "label": "Statut",
+      "activeHint": "Il répond à vos clients.",
+      "inactiveHint": "Il ne répond pas. Les messages restent sans réponse jusqu'à activation.",
+      "confirmActivateTitle": "Activer l'agent ?",
+      "confirmActivateBody": "À partir de là, il répond seul aux messages arrivant par les canaux que vous lui avez attribués.",
+      "confirmActivate": "Activer",
+      "confirmDeactivateTitle": "Désactiver l'agent ?",
+      "confirmDeactivateBody": "Il cesse de répondre. Les messages continuent d'arriver dans la boîte de réception, mais personne ne répond tant qu'une personne ne les prend pas.",
+      "confirmDeactivate": "Désactiver",
+      "activated": "Agent activé : il répond désormais.",
+      "deactivated": "Agent désactivé : il a cessé de répondre."
+    },
+    "noConnectedChannelsHint": "Votre agent ne peut recevoir aucun message tant que vous n'en avez pas connecté au moins un (WhatsApp, Instagram, Messenger, Telegram ou le chat de votre site).",
+    "connectChannel": "Connecter",
+    "advanced": {
+      "title": "Avancé",
+      "behaviorHint": "Données que l'agent doit demander selon la situation. Inutile d'y toucher pour démarrer."
     }
   },
   "knowledge": {
@@ -3831,7 +4021,8 @@
         "category": "Catégorie",
         "tags": "Tags (séparés par virgule)",
         "order": "Ordre",
-        "published": "Publiée (visible à l'agent)"
+        "published": "Publiée (visible à l'agent)",
+        "publishedHint": "L'agent n'utilise que les FAQ publiées."
       },
       "placeholders": {
         "question": "Quelle est votre politique de retour ?",
@@ -3842,7 +4033,10 @@
       "errors": {
         "required": "Question et réponse requises",
         "saveFailed": "Échec de l'enregistrement"
-      }
+      },
+      "emptyTitle": "Vous n'avez pas encore de questions fréquentes",
+      "emptyBody": "C'est le moyen le plus rapide pour que l'agent réponde bien : notez les questions les plus fréquentes et la réponse exacte souhaitée.",
+      "emptyAction": "Créer ma première FAQ"
     },
     "hash": "Hash",
     "approve": "Approuver",
@@ -3851,7 +4045,11 @@
     "searchButton": "Rechercher",
     "empty": {
       "library": "Aucune ressource dans la base de connaissances.",
-      "search": "Aucun résultat."
+      "search": "Aucun résultat.",
+      "libraryTitle": "Vous n'avez encore ajouté aucun document",
+      "libraryBody": "C'est ici que vivent vos manuels, tarifs, politiques et pages web. L'agent les consulte avant de répondre, il cesse ainsi d'improviser.",
+      "libraryAction": "Ajouter mon premier document",
+      "libraryFaqAction": "Commencer par les FAQ"
     },
     "status": {
       "draft": "Brouillon",
@@ -4034,7 +4232,8 @@
         "feedbackCount": "Retours"
       }
     },
-    "resourceLabel": "documents de connaissance"
+    "resourceLabel": "documents de connaissance",
+    "chunkCount": "{count} fragments"
   },
   "identity": {
     "title": "Identité",
@@ -4175,6 +4374,16 @@
         "linkCopied": "Lien copié"
       },
       "confirmRevoke": "Annuler cette invitation ? Le lien cessera de fonctionner."
+    },
+    "roleDescriptions": {
+      "tenant_agent": "reçoit les conversations que l'IA transmet à une personne, et répond.",
+      "tenant_supervisor": "fait tout ce que fait un agent, et voit les rapports et réattribue les conversations.",
+      "tenant_admin": "configure l'agent, les canaux, le forfait et l'équipe. Accès complet."
+    },
+    "pendingNotice": {
+      "title": "{count} invitations en attente",
+      "body": "Tant qu'elles ne sont pas acceptées, l'IA n'a personne à qui transmettre la conversation quand un client demande une personne.",
+      "action": "Voir les invitations"
     }
   },
   "orders": {
@@ -5048,8 +5257,49 @@
     "couponApplied": "Code appliqué : {months} mois gratuit(s) ajouté(s) à votre essai",
     "couponFailed": "Nous n'avons pas pu appliquer ce code. Votre compte a bien été créé : réessayez depuis Paramètres → Facturation.",
     "bridge": {
-      "title": "Compte prêt !",
-      "subtitle": "Préparation de la configuration de votre agent…"
+      "title": "Compte créé",
+      "subtitle": "Nous vous présentons maintenant votre agent…"
+    },
+    "helpLink": "Aide",
+    "moreDetails": "Plus de détails",
+    "moreDetailsHint": "(facultatif)",
+    "timezoneDetected": "Nous avons détecté {zone}",
+    "timezoneChange": "modifier",
+    "billingCountryDetected": "Facturation depuis {country}",
+    "seeOtherPlans": "Voir les autres forfaits",
+    "validation": {
+      "summary": "Vérifiez les champs signalés et réessayez.",
+      "tooLong": "C'est trop long. Raccourcissez un peu.",
+      "invalidEmail": "Cet e-mail ne semble pas valide. Exemple : bonjour@votreentreprise.com",
+      "invalidUrl": "Cette adresse ne semble pas valide. Exemple : votreentreprise.com"
+    },
+    "errors": {
+      "plan_unavailable": "Ce forfait n'est pas disponible pour le moment. Choisissez-en un autre et nous continuons.",
+      "coupon_invalid": "Le code promo n'est pas valide. Vous pouvez le laisser vide et l'appliquer plus tard.",
+      "email_taken": "Un compte existe déjà avec cet e-mail. Connectez-vous au lieu d'en créer un autre.",
+      "tenant_exists": "Ce compte a déjà une entreprise. Nous vous emmenons au panneau.",
+      "rate_limited": "Trop de tentatives d'affilée. Attendez une minute et réessayez."
+    },
+    "coachMarks": {
+      "skip": "Passer",
+      "next": "Suivant",
+      "done": "Compris",
+      "industry": {
+        "title": "Commencez par votre secteur",
+        "body": "C'est ainsi que nous préparons votre agent : ce qu'il sait, ce qu'il fait et comment il parle. Vous pourrez le changer plus tard."
+      },
+      "about": {
+        "title": "Dites-nous ce que vous faites",
+        "body": "Deux ou trois phrases : ce que vous vendez, à qui et où. C'est ce que votre agent répondra quand on lui posera la question."
+      },
+      "timezone": {
+        "title": "Votre fuseau horaire est prêt",
+        "body": "Nous l'avons détecté pour vous. Touchez la puce seulement s'il n'est pas le bon."
+      },
+      "submit": {
+        "title": "C'est tout pour l'instant",
+        "body": "Le reste est facultatif et vous pourrez le compléter plus tard depuis le panneau."
+      }
     }
   },
   "analytics": {
@@ -5300,12 +5550,12 @@
     "testTitle": "Testez",
     "connectTitle": "Connectez",
     "discoverTitle": "Découvrez",
-    "connectBannerTitle": "Connectez votre premier canal",
-    "connectBannerDesc": "Votre agent est prêt mais ne reçoit pas encore de messages. Connectez un canal pour démarrer.",
-    "connectBannerCta": "Connecter un canal",
-    "resumeBannerTitle": "Votre agent n'est pas encore personnalisé",
-    "resumeBannerDesc": "Vous avez laissé la configuration guidée inachevée. Reprenez-la et en 3 minutes votre agent parle comme votre entreprise.",
-    "resumeBannerCta": "Reprendre la configuration",
+    "connectBannerTitle": "Vous n'avez pas encore connecté de canal",
+    "connectBannerDesc": "Votre agent est prêt, mais il ne peut recevoir aucun message tant que WhatsApp n'est pas connecté.",
+    "connectBannerCta": "Connecter WhatsApp",
+    "resumeBannerTitle": "Reprenez votre configuration",
+    "resumeBannerDesc": "Vous avez laissé l'assistant à moitié. Tout a été enregistré : vous pouvez continuer là où vous en étiez.",
+    "resumeBannerCta": "Reprendre",
     "connect": {
       "title": "Connectez votre premier canal",
       "subtitle": "Connectez au moins un canal pour commencer à recevoir des clients. WhatsApp est le plus utilisé, mais vous pouvez en choisir un autre.",
@@ -5321,7 +5571,6 @@
       "connected": "Connecté !",
       "connectedDesc": "Votre agent est maintenant actif sur {phone}.",
       "coexistenceHint": "Scannez le QR code depuis votre app WhatsApp Business pour connecter votre numéro actuel sans perdre vos conversations.",
-      "sandboxHint": "Choisissez « utiliser uniquement un nom » dans la fenêtre Meta pour tester avec un numéro de test, sans vérification.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
       "channel_telegram": "Telegram",
@@ -5333,7 +5582,6 @@
         "item1": "Un numéro de téléphone pour WhatsApp : votre numéro WhatsApp Business actuel, ou un nouveau sans WhatsApp.",
         "item2": "L'accès au code de vérification de ce numéro (par SMS ou appel).",
         "item3": "Un compte Facebook pour autoriser avec Meta (vous pouvez en créer un pendant le processus).",
-        "sandboxNote": "Pas de numéro prêt ? Choisissez Sandbox pour essayer sans engagement.",
         "continue": "Continuer",
         "checkAll": "Confirmez les points pour continuer"
       },
@@ -5577,7 +5825,54 @@
       "finish": "Terminer la configuration",
       "skip": "Passer pour l'instant",
       "stepOf": "Étape {current} sur {total}"
-    }
+    },
+    "pageTitle": "Faites connaissance avec votre agent",
+    "pageSubtitle": "Trois étapes. Vous pouvez sortir quand vous voulez : rien n'est perdu.",
+    "exit": "Sortir",
+    "exitHint": "Nous gardons ce que vous avez fait et vous ramenons au panneau",
+    "steps": {
+      "agent": "Votre agent",
+      "connect": "Connectez WhatsApp",
+      "done": "Terminé"
+    },
+    "agentStep": {
+      "title": "Votre agent",
+      "subtitle": "Nous avons préparé un agent à partir de ce que vous nous avez dit. Confirmez-le ou modifiez-le.",
+      "prepared": "Nous avons préparé {name} à partir de ce que vous nous avez dit de votre activité. Confirmez le nom et le message d'accueil, puis testez-le juste à côté.",
+      "saving": "Enregistrement…",
+      "saved": "Enregistré",
+      "autosaveHint": "Cela s'enregistre tout seul quand vous quittez le champ.",
+      "changeTemplate": "Changer de modèle"
+    },
+    "connectStep": {
+      "title": "Connectez WhatsApp",
+      "subtitle": "C'est l'étape qui fait que votre agent commence vraiment à répondre. Environ 5 minutes.",
+      "laterTitle": "Ce n'est pas le bon moment ?",
+      "laterHint": "Vous pouvez le faire plus tard : nous vous le rappellerons sur l'Accueil et vous pourrez revenir ici quand vous voulez.",
+      "showMe": "Montrez-moi où"
+    },
+    "doneStep": {
+      "title": "C'est bon, le panneau est à vous",
+      "subtitle": "Voici les trois étapes qui changent le plus ce que votre agent peut faire.",
+      "subtitleDeferred": "Nous vous attendons sur l'Accueil pour connecter WhatsApp. En attendant, voici la suite.",
+      "goToPanel": "Aller au panneau",
+      "tourCta": "Voir la visite du panneau",
+      "essentials": {
+        "channel": {
+          "title": "Connecter WhatsApp",
+          "description": "Sans canal, votre agent ne reçoit de message de personne."
+        },
+        "knowledge": {
+          "title": "Charger ce que votre agent doit savoir",
+          "description": "Prix, services et questions fréquentes : c'est de là que viennent ses réponses."
+        },
+        "team": {
+          "title": "Inviter une personne",
+          "description": "Quand l'agent ne peut pas résoudre quelque chose, il doit pouvoir le transmettre à quelqu'un."
+        }
+      }
+    },
+    "connectBannerShowMe": "Montrez-moi où"
   },
   "copilot": {
     "subtitle": "Votre assistant de la plateforme",
@@ -6954,13 +7249,13 @@
   "help": {
     "inbox": {
       "title": "Comment fonctionne la boîte de réception ?",
-      "description": "La boîte de réception regroupe en temps réel toutes les conversations WhatsApp, Instagram, Messenger, Telegram et SMS dans une seule vue de type chat. Elle sert à répondre vous-même, laisser l'IA gérer, ou reprendre la main quand un client a besoin d'un humain (transfert).",
+      "description": "La boîte de réception regroupe en temps réel vos conversations WhatsApp, Instagram, Messenger, Telegram et chat web dans une seule vue de type messagerie. Répondez vous-même, laissez l'IA gérer, ou reprenez la main quand un client a besoin d'une personne.",
       "tips": [
-        "Filtrez par « Non attribuées » ou « Les miennes » pour vous concentrer ; les conversations transférées à un humain affichent un badge orange.",
-        "Lorsque vous prenez un transfert, un résumé de la conversation généré par l'IA s'affiche en haut.",
-        "Ouvrez le panneau de droite pour voir et modifier les données du contact sans quitter le chat.",
-        "Utilisez les macros et réponses prédéfinies pour répondre aux cas fréquents en un clic (configurez-les dans Paramètres → Macros).",
-        "Si une conversation attend plus de 5 minutes, elle est automatiquement escaladée à un superviseur."
+        "Filtrez par « Non attribuées » ou « Les miennes » pour vous concentrer ; les conversations que l'IA a transmises à une personne portent un badge orange.",
+        "Quand vous reprenez une conversation transmise, un résumé généré par l'IA s'affiche en haut.",
+        "Ouvrez le panneau de droite pour consulter et modifier la fiche du contact sans quitter la conversation.",
+        "Utilisez les macros et réponses rapides pour traiter les demandes courantes en un clic (à configurer dans Paramètres → Macros).",
+        "Si une conversation transmise attend plus de 5 minutes sans réponse, un superviseur est alerté dans le panneau ; et au bout de 3 heures sans personne pour la prendre, elle revient à l'IA pour que le client ne reste pas sans réponse."
       ]
     },
     "contacts": {
@@ -7041,14 +7336,14 @@
       ]
     },
     "knowledge": {
-      "title": "Comment gérer la Base de Connaissances ?",
+      "title": "Comment gérer la base de connaissances ?",
       "description": "La Base de Connaissances est la mémoire de ton agent IA : importe des documents, ajoute des URLs à crawler automatiquement, crée des FAQs et organise tout en catégories. Plus elle est complète et à jour, plus les réponses de l'agent seront précises pour tes clients.",
       "tips": [
-        "Utilise le bouton 'Importation en masse' pour charger plusieurs fichiers (PDF, Word, TXT) en une fois et leur attribuer une catégorie dans la même étape.",
-        "Pour les pages web qui changent fréquemment (prix, menus, catalogues), utilise 'Ajouter une URL' et active le re-crawl automatique pour que le contenu se mette à jour tout seul.",
-        "Dans l'onglet 'Qualité' tu verras un score de 0 à 100 par document — priorise ceux qui ont un score bas pour les réécrire ou les enrichir avec plus de détails.",
-        "Dans l'onglet 'Analytiques' consulte les 'Requêtes sans réponse' : ce sont des questions réelles que l'agent n'a pas pu traiter ; crée un article directement depuis cette liste en cliquant sur l'icône '+'.",
-        "Utilise l'onglet 'Lacunes' avec 'Suggestions IA' pour que le système détecte automatiquement les sujets manquants dans ta base et te propose des titres et des plans pour de nouveaux articles."
+        "Commencez par les FAQ : ouvrez l'onglet FAQ et saisissez les questions les plus fréquentes. C'est l'étape la plus rapide et celle qui améliore le plus les réponses.",
+        "Pour envoyer des fichiers (PDF, Word, TXT), utilisez « Créer » pour un seul ou « Import en masse » pour plusieurs à la fois.",
+        "Pour les pages web qui changent souvent (tarifs, menus, catalogues), utilisez « Importer URL » et activez la ré-exploration automatique.",
+        "L'onglet Qualité note chaque document ; commencez par les plus faibles et réécrivez-les.",
+        "Dans Analytique, consultez les « Requêtes sans réponse » : ce sont de vraies questions que l'agent n'a pas su résoudre."
       ]
     },
     "analyticsV2": {
@@ -7063,14 +7358,14 @@
       ]
     },
     "channels": {
-      "title": "Comment connecter et gérer les canaux ?",
-      "description": "Canaux est le hub où vous connectez chaque réseau de messagerie (WhatsApp, Instagram DM, Facebook Messenger, Telegram et Email) pour que votre agent IA puisse recevoir et répondre depuis partout. Chaque carte indique si le canal est 'Connecté' ou 'Déconnecté' et vous mène à sa configuration individuelle.",
+      "title": "Comment connecter et gérer vos canaux ?",
+      "description": "Canaux est l'endroit où vous connectez chaque messagerie (WhatsApp, Instagram DM, Facebook Messenger et Telegram) pour que votre agent puisse recevoir et répondre partout. Chaque carte indique si le canal est « Connecté » ou « Déconnecté » et mène à sa configuration.",
       "tips": [
-        "Cliquez sur 'Configurer' sur la carte WhatsApp pour démarrer le processus Embedded Signup de Meta ; vous aurez besoin d'un compte WhatsApp Business et d'une page Facebook.",
+        "Commencez par WhatsApp : ouvrez sa carte et suivez le parcours officiel de Meta. Il vous faut un compte WhatsApp Business et une page Facebook.",
         "Pour Instagram DM, le compte doit être professionnel et lié à une page Facebook ; le processus utilise OAuth et prend moins de 2 minutes.",
-        "Connecter Messenger nécessite de se connecter avec Facebook (FB SDK) et de sélectionner la page de votre entreprise pour obtenir le token de messagerie.",
-        "Telegram n'a besoin que d'un Bot Token : créez un bot avec @BotFather, copiez le token et collez-le dans les paramètres du canal.",
-        "Un canal connecté affiche le badge vert 'Connecté' ; si vous voyez le badge rouge 'Déconnecté', ouvrez la carte pour vous reconnecter et assigner un agent IA."
+        "Connecter Messenger demande de vous connecter avec Facebook et de choisir la page de votre entreprise.",
+        "Telegram ne demande qu'un Bot Token : créez un bot avec @BotFather, copiez le token et collez-le dans la configuration du canal.",
+        "Un canal connecté affiche le badge vert « Connecté ». Après la connexion, attribuez-lui un agent depuis Agents IA : sans agent attribué, personne ne répond."
       ]
     },
     "users": {
@@ -7121,11 +7416,11 @@
       "title": "Que montre le Tableau de bord ?",
       "description": "Le Tableau de bord est ta vue d'ensemble : leads du jour, leads chauds, messages traités par l'IA et coût total. Consulte-le chaque matin pour savoir où concentrer ton énergie avant d'explorer le reste de la plateforme.",
       "tips": [
-        "Le compteur 'Leads Aujourd'hui' affiche les nouveaux contacts du jour — s'il est bas, vérifie si ton canal WhatsApp est actif dans 'Canaux'.",
-        "La valeur 'Coût IA Aujourd'hui' se met à jour en temps réel — si elle dépasse ton budget quotidien, change le modèle LLM depuis la section 'IA'.",
-        "La carte 'Activité Récente' distingue les conversations (vert), les handoffs (orange) et les commandes (indigo) — clique sur une ligne de handoff pour aller directement au chat dans l'Inbox.",
-        "Le graphique 'Utilisation des Modèles' montre quel LLM a traité le plus de requêtes aujourd'hui et à quel pourcentage — utile pour vérifier si le routeur utilise le bon tier.",
-        "Si tu vois la bannière jaune 'Aucun canal connecté', clique sur 'Connecter un canal' pour aller directement à la configuration de WhatsApp, Instagram ou Telegram."
+        "Le compteur « Leads du jour » indique les nouveaux contacts de la journée ; si le chiffre est bas, vérifiez dans Canaux que WhatsApp est toujours connecté.",
+        "« Coût IA du jour » se met à jour en temps réel : s'il dépasse votre budget quotidien, ajustez le modèle dans Paramètres → IA.",
+        "La carte « Activité récente » distingue les conversations (vert), les transferts vers une personne (orange) et les commandes (bleu) ; cliquez sur un transfert pour ouvrir cette conversation dans la boîte de réception.",
+        "Le graphique « Utilisation des modèles » montre quel modèle a traité le plus de demandes aujourd'hui et dans quelle proportion.",
+        "Si vous voyez l'avis « Connectez votre premier canal », appuyez sur le bouton : nous vous emmenons directement à la connexion WhatsApp."
       ]
     },
     "dripSequences": {
@@ -7627,16 +7922,6 @@
         "L'URL 'Webhook URL' de chaque canal est pré-remplie ; copiez-la et collez-la dans les paramètres développeur de Meta ou Telegram pour que les messages arrivent correctement."
       ]
     },
-    "settingsCompany": {
-      "title": "Comment configurer les informations de mon entreprise ?",
-      "description": "Ici vous définissez les données générales de votre entreprise : nom, secteur, taille, site web et contact support. Ces informations sont utilisées dans les modèles d'email et l'identité de vos agents IA.",
-      "tips": [
-        "Renseignez le champ 'Secteur' pour que le système adapte ses suggestions à votre activité (ex. : choisissez 'Santé' pour les cliniques).",
-        "L''Email de support' apparaît dans les emails automatiques envoyés à vos clients ; utilisez une boîte réelle surveillée par votre équipe.",
-        "Pour ajouter ou changer le logo de l'entreprise, cliquez sur le lien 'Banque de médias' en bas du formulaire.",
-        "Après avoir modifié un champ, appuyez sur 'Enregistrer les modifications' — le bouton devient vert avec une coche quand l'opération réussit."
-      ]
-    },
     "settingsCustomAttributes": {
       "title": "À quoi servent les attributs personnalisés ?",
       "description": "Les attributs personnalisés sont des champs supplémentaires que vous définissez pour enrichir les informations de vos contacts, leads, entreprises ou conversations. Ils permettent de stocker des données métier spécifiques qui n'existent pas par défaut.",
@@ -8097,6 +8382,41 @@
         "Un modèle PENDING peut prendre de quelques minutes à 24 heures pour être examiné par Meta. Les modèles APPROVED apparaissent en vert et peuvent déjà être utilisés dans des campagnes de diffusion ou dans l'agent IA.",
         "Si un modèle est REJECTED, consultez la raison du rejet affichée sur la carte (ex. : 'Contenu promotionnel dans la catégorie UTILITY'). Ajustez le contenu pour correspondre à la bonne catégorie et créez une nouvelle version."
       ]
+    },
+    "showMe": "Montrez-moi comment",
+    "showMeHint": "Nous ouvrons l'écran et indiquons chaque étape. Rien n'est modifié automatiquement.",
+    "agentEditor": {
+      "title": "Comment configurer mon agent ?",
+      "description": "Vous définissez ici qui est votre agent et comment il se comporte : son nom et son rôle, son message d'accueil, sa réponse quand il ne sait pas, ses règles et les cas où il passe la main à une personne. Ce que vous enregistrez ici est ce que votre client lit sur WhatsApp.",
+      "tips": [
+        "1. Dans l'onglet Identité, renseignez le nom et le rôle de l'agent. Les deux sont obligatoires : l'agent se présente avec ce nom dans chaque conversation.",
+        "2. Rédigez le message de bienvenue : c'est la première chose que lit votre client lorsqu'il écrit pour la première fois.",
+        "3. Remplissez « Message quand il ne peut pas répondre ». Il est obligatoire et empêche l'agent d'inventer : utilisez-le pour promettre qu'une personne prendra le relais.",
+        "4. Dans Instructions, ajoutez au moins une règle stricte (par exemple : « toujours confirmer la disponibilité avant de chiffrer »).",
+        "5. Dans « Quand passer à une personne », écrivez au moins un motif (par exemple : « le client demande à parler à quelqu'un »). Sans cela l'agent n'escalade jamais.",
+        "6. En haut, cochez les canaux que cet agent gère et laissez-le Actif. Seuls les canaux déjà connectés apparaissent ; si vous n'en voyez aucun, connectez-en un d'abord."
+      ]
+    },
+    "agentQuality": {
+      "title": "Qu'est-ce que la Santé des agents ?",
+      "description": "Elle réunit trois types de preuves distincts sur chaque agent : ce qui reste à configurer, ce qui a été testé et ce qui se passe dans les vraies conversations. Ce n'est pas une note : les blocages critiques l'emportent même si tout le reste va bien.",
+      "tips": [
+        "Commencez par la liste des priorités : elle est triée par gravité et chaque action vous mène à l'écran où la correction se fait.",
+        "Un canal coché sur l'agent n'est pas la même chose qu'un canal connecté. « Couverture des canaux assignés » signifie que l'agent fonctionne mais qu'un canal coché n'est pas connecté.",
+        "« Preuves insuffisantes » n'est pas un zéro : il manque encore des conversations réelles pour mesurer.",
+        "Si vous modifiez l'agent, les tests précédents deviennent obsolètes et doivent être relancés.",
+        "Utilisez « Montrez-moi comment » ou « Demander à Assist » quand vous ne savez pas où corriger quelque chose."
+      ]
+    },
+    "setupWizard": {
+      "title": "Comment fonctionne cet assistant ?",
+      "description": "Trois étapes pour que votre agent réponde : le confirmer, connecter WhatsApp, et c'est tout. Vous pouvez sortir quand vous voulez : ce que vous avez rempli est enregistré et vous revenez depuis Configuration, dans Assistant de configuration.",
+      "tips": [
+        "Votre agent existe déjà, construit pour votre secteur. À la première étape vous confirmez seulement son nom et son message d'accueil, ou vous les ajustez.",
+        "Testez-le dans le chat avant de connecter quoi que ce soit : c'est ainsi que vous voyez comment il répond à un vrai client.",
+        "Pour connecter WhatsApp, ayez sous la main le numéro et l'accès au code que Meta envoie par SMS ou appel.",
+        "Si vous préférez connecter plus tard, nous vous le rappelons sur l'Accueil et vous pouvez revenir à cet assistant à tout moment."
+      ]
     }
   },
   "helpAssistant": {
@@ -8260,8 +8580,10 @@
         "contextDescription": "Assist utilisera uniquement l'état, la priorité et la route sûre ; il ne recevra ni conversations ni données client.",
         "actions": {
           "openCenter": "Ouvrir la santé des agents",
-          "resolvePriority": "Résoudre la priorité"
-        }
+          "resolvePriority": "Résoudre la priorité",
+          "showMe": "Montrez-moi où"
+        },
+        "showMeWhere": "Où corriger cela ?"
       }
     },
     "faqs": {
@@ -9337,7 +9659,10 @@
       "pending_payment": "Paiement attendu",
       "cancelled": "Annulé"
     },
-    "origin": { "agent": "Agent", "manual": "Manuel" }
+    "origin": {
+      "agent": "Agent",
+      "manual": "Manuel"
+    }
   },
   "tourBookings": {
     "title": "Réservations de tours",
@@ -9355,7 +9680,10 @@
       "pending_payment": "Paiement attendu",
       "cancelled": "Annulé"
     },
-    "origin": { "agent": "Agent", "manual": "Manuel" }
+    "origin": {
+      "agent": "Agent",
+      "manual": "Manuel"
+    }
   },
   "serviceCatalog": {
     "title": "Forfaits et services",
@@ -10638,50 +10966,322 @@
       "retry": "Réessayer",
       "continue": "Continuer",
       "items": {
-        "agent": "Configurer l'agent",
-        "channel": "Connecter un canal conversationnel",
-        "knowledge": "Ajouter des connaissances utiles",
-        "catalog": "Configurer le catalogue opérationnel"
+        "agent": "Vérifier votre agent",
+        "channel": "Connecter WhatsApp",
+        "knowledge": "Charger ce que l'agent doit savoir",
+        "catalog": "Charger votre catalogue",
+        "business": "Nous dire ce que fait votre entreprise",
+        "team": "Inviter une personne qui recevra les conversations",
+        "hours": "Confirmer vos horaires"
+      },
+      "showMe": "Montrez-moi où"
+    },
+    "focus": {
+      "title": "Action de santé de l'agent",
+      "from": "pour {agent}",
+      "signalGone": "Cette action n'est plus ouverte : quelqu'un l'a résolue ou reportée.",
+      "close": "Fermer",
+      "showMe": "Montrez-moi où",
+      "noneValue": "aucun",
+      "explanations": {
+        "fix_channel_connection": "{credentialIssue, select, none {{agent} n'a aucun canal connecté capable de recevoir des messages. Connectez {disconnected} ou attribuez un canal déjà connecté.} other {{agent} est connecté à {connectedChannels}, mais cette autorisation doit être renouvelée ({credentialIssue}) ; en attendant, l'agent ne peut pas envoyer de réponses.}}",
+        "fix_channel_coverage": "{agent} est attribué à {assigned} canaux et seuls {connected} sont connectés. Non connectés : {disconnected}. Connectez ce canal ou retirez-le de l'attribution de l'agent.",
+        "fix_channel_assignment": "{agent} n'a aucun canal attribué, il ne répond donc à personne. Cochez les canaux que cet agent doit traiter.",
+        "fix_human_handoff_route": "Aucune personne active ne peut reprendre la conversation quand {agent} la transfère à un humain. Invitez au moins un agent ou un superviseur.",
+        "fix_handoff_triggers": "{agent} n'a aucun motif de transfert vers une personne, il essaie donc de tout répondre. Ajoutez au moins un motif d'escalade.",
+        "fix_business_identity": "Les informations de base de l'entreprise manquent, alors {agent} répond sans savoir qui il représente. Renseignez le nom et l'activité.",
+        "fix_rag_knowledge": "{agent} n'a aucune connaissance indexée à consulter et répond seulement avec ses instructions. Ajoutez des documents ou activez une source de connaissances.",
+        "fix_knowledge_coverage": "Les connaissances chargées ne couvrent pas les questions reçues et certains sujets restent sans réponse. Ajoutez du contenu ou publiez ce qui est encore en brouillon.",
+        "fix_tool_appointments": "La prise de rendez-vous est activée mais incomplète, alors {agent} dira qu'il n'y a pas de créneaux. Ajoutez des services et des plages de disponibilité.",
+        "fix_business_hours": "L'entreprise n'a pas d'horaires définis, alors {agent} ne peut pas dire quand vous êtes ouverts ni quoi répondre en dehors. Définissez les horaires ou cochez 24h/24 et 7j/7.",
+        "fix_fallback_message": "Il manque le message pour les cas où {agent} ne peut pas répondre, et la conversation se termine dans une impasse. Écrivez ce qu'il doit dire et qui prend le relais.",
+        "fix_behavior_rules": "{agent} n'a aucune règle de comportement, il improvise donc à chaque conversation. Écrivez au moins une règle sur ce qu'il faut faire et ne pas faire.",
+        "run_eval": "{agent} n'a pas encore passé de test automatique : rien ne prouve comment il répond. Lancez une évaluation avant de le laisser travailler seul.",
+        "refresh_eval": "Le dernier test de {agent} est périmé : la configuration a changé depuis. Réévaluez-le pour mesurer ce qui est publié aujourd'hui.",
+        "collect_production_evidence": "Il n'y a pas encore assez de conversations réelles de {agent} pour mesurer sa performance. Continuez et revenez quand l'échantillon aura grandi.",
+        "resolve_knowledge_gaps": "Des questions n'ont pas pu être traitées par {agent} avec les connaissances disponibles. Examinez ces lacunes et ajoutez le contenu manquant.",
+        "generic": "Cette action reste ouverte pour {agent}. Ouvrez l'écran, corrigez ce qui manque et le statut se met à jour tout seul."
       }
     }
   },
   "agentQuality": {
-    "title": "Centre de qualité de l'agent", "subtitle": "Identifiez ce qu'il reste à configurer, ce qui a été testé et ce qui se passe dans les conversations réelles.", "loading": "Analyse des preuves disponibles…", "statusLabel": "État actuel", "agentInactive": "Agent inactif",
-    "agentSelector": { "label": "Agent à évaluer", "empty": "Aucun agent", "default": "par défaut" },
-    "actions": { "refresh": "Actualiser les preuves", "retry": "Réessayer", "editAgent": "Modifier l'agent", "open": "Résoudre", "openCenter": "Ouvrir le centre de qualité", "adminRequired": "Administrateur requis" },
-    "errors": { "title": "Impossible de charger le centre de qualité", "loadAgents": "Impossible de charger les agents.", "loadOverview": "Impossible d'analyser cet agent. Réessayez." },
-    "empty": { "title": "Aucun agent à évaluer pour le moment", "description": "Créez un agent, puis revenez ici pour examiner sa préparation, ses tests et ses performances réelles.", "action": "Créer un agent" },
+    "title": "Centre de qualité de l'agent",
+    "subtitle": "Identifiez ce qu'il reste à configurer, ce qui a été testé et ce qui se passe dans les conversations réelles.",
+    "loading": "Analyse des preuves disponibles…",
+    "statusLabel": "État actuel",
+    "agentInactive": "Agent inactif",
+    "agentSelector": {
+      "label": "Agent à évaluer",
+      "empty": "Aucun agent",
+      "default": "par défaut"
+    },
+    "actions": {
+      "refresh": "Actualiser les preuves",
+      "retry": "Réessayer",
+      "editAgent": "Modifier l'agent",
+      "open": "Résoudre",
+      "openCenter": "Ouvrir le centre de qualité",
+      "adminRequired": "Administrateur requis"
+    },
+    "errors": {
+      "title": "Impossible de charger le centre de qualité",
+      "loadAgents": "Impossible de charger les agents.",
+      "loadOverview": "Impossible d'analyser cet agent. Réessayez."
+    },
+    "empty": {
+      "title": "Aucun agent à évaluer pour le moment",
+      "description": "Créez un agent, puis revenez ici pour examiner sa préparation, ses tests et ses performances réelles.",
+      "action": "Créer un agent"
+    },
     "statuses": {
-      "not_evaluated": { "title": "Pas encore évalué", "description": "Il n'y a pas encore assez de preuves pour déterminer les performances de cet agent. Terminez sa préparation et lancez des tests." },
-      "configuration_incomplete": { "title": "Configuration incomplète", "description": "Des éléments requis manquent avant de pouvoir tester l'agent avec confiance. Résolvez d'abord les blocages critiques." },
-      "at_risk": { "title": "Agent à risque", "description": "Les tests ou interactions révèlent des signaux importants à examiner avant d'étendre son utilisation." },
-      "ready_for_pilot": { "title": "Prêt pour un pilote contrôlé", "description": "La configuration et les tests permettent un pilote limité. Les preuves réelles ne suffisent pas encore à valider son fonctionnement." },
-      "operating_with_evidence": { "title": "Opérationnel avec des preuves", "description": "L'agent dispose d'une configuration, de tests à jour et d'un échantillon utile de conversations réelles. Continuez à surveiller les tendances et changements." },
-      "review_required": { "title": "Révision requise", "description": "Les preuves sont obsolètes ou les performances récentes révèlent des points faibles. Examinez les actions prioritaires." }
+      "not_evaluated": {
+        "title": "Pas encore évalué",
+        "description": "Il n'y a pas encore assez de preuves pour déterminer les performances de cet agent. Terminez sa préparation et lancez des tests."
+      },
+      "configuration_incomplete": {
+        "title": "Configuration incomplète",
+        "description": "Des éléments requis manquent avant de pouvoir tester l'agent avec confiance. Résolvez d'abord les blocages critiques."
+      },
+      "at_risk": {
+        "title": "Agent à risque",
+        "description": "Les tests ou interactions révèlent des signaux importants à examiner avant d'étendre son utilisation."
+      },
+      "ready_for_pilot": {
+        "title": "Prêt pour un pilote contrôlé",
+        "description": "La configuration et les tests permettent un pilote limité. Les preuves réelles ne suffisent pas encore à valider son fonctionnement."
+      },
+      "operating_with_evidence": {
+        "title": "Opérationnel avec des preuves",
+        "description": "L'agent dispose d'une configuration, de tests à jour et d'un échantillon utile de conversations réelles. Continuez à surveiller les tendances et changements."
+      },
+      "review_required": {
+        "title": "Révision requise",
+        "description": "Les preuves sont obsolètes ou les performances récentes révèlent des points faibles. Examinez les actions prioritaires."
+      }
     },
-    "nextMilestone": { "label": "Prochaine étape", "complete_configuration": "Terminer la configuration critique", "pass_critical_tests": "Réussir les tests critiques", "collect_production_evidence": "Recueillir suffisamment de preuves de production", "maintain_quality": "Maintenir la qualité et examiner les changements" },
-    "evidence": { "generatedAt": "Analyse générée", "agentVersion": "Version évaluée", "agentUpdatedAt": "Dernière modification", "latestEvidence": "Preuve la plus récente" },
-    "layers": { "title": "Trois niveaux de preuve", "description": "Chaque niveau répond à une question distincte. Une configuration complète ne remplace ni les tests ni les performances réelles." },
-    "pillarStatuses": { "unknown": "Non évalué", "blocked": "Bloquée", "needs_attention": "Attention requise", "ready": "Préparée", "stale": "Obsolète", "insufficient_evidence": "Preuves insuffisantes", "evidenced": "Avec preuves" },
+    "nextMilestone": {
+      "label": "Prochaine étape",
+      "complete_configuration": "Terminer la configuration critique",
+      "pass_critical_tests": "Réussir les tests critiques",
+      "collect_production_evidence": "Recueillir suffisamment de preuves de production",
+      "maintain_quality": "Maintenir la qualité et examiner les changements"
+    },
+    "evidence": {
+      "generatedAt": "Analyse générée",
+      "agentVersion": "Version évaluée",
+      "agentUpdatedAt": "Dernière modification",
+      "latestEvidence": "Preuve la plus récente"
+    },
+    "layers": {
+      "title": "Trois niveaux de preuve",
+      "description": "Chaque niveau répond à une question distincte. Une configuration complète ne remplace ni les tests ni les performances réelles."
+    },
+    "pillarStatuses": {
+      "unknown": "Non évalué",
+      "blocked": "Bloquée",
+      "needs_attention": "Attention requise",
+      "ready": "Préparée",
+      "stale": "Obsolète",
+      "insufficient_evidence": "Preuves insuffisantes",
+      "evidenced": "Avec preuves"
+    },
     "pillars": {
-      "preparation": { "title": "Préparation", "description": "L'agent dispose-t-il d'un contexte, de connaissances, d'actions, d'une sécurité et de parcours opérationnels bien configurés ?", "passedChecks": "contrôles applicables réussis", "blockers": "{count, plural, one {# blocage critique} other {# blocages critiques}}" },
-      "tested": { "title": "Qualité testée", "description": "Cette version a-t-elle réussi des cas reproductibles, y compris des résultats et actions critiques ?", "gatePassed": "Test critique réussi", "gateFailed": "Échec du test critique", "result": "Résultat {score}/10 · seuil {threshold}/10", "trials": "{count, plural, one {# essai} other {# essais}}", "automatedEvidence": "Preuve automatisée ; ce n'est pas une certification", "noEval": "Aucune évaluation critique pour le moment", "stale": "Le test ne correspond pas à la configuration actuelle.", "simulation": "Simulation complémentaire : {count} scénarios" },
-      "production": { "title": "Production", "description": "Que montrent les conversations réelles attribuées à cet agent sur la période observée ?", "sample": "interactions évaluées · minimum {minimum} · {days} derniers jours", "needMore": "Il manque {count} interactions pour obtenir un premier signal utile.", "attributedSince": "Attribution disponible depuis le {date}" }
+      "preparation": {
+        "title": "Préparation",
+        "description": "L'agent dispose-t-il d'un contexte, de connaissances, d'actions, d'une sécurité et de parcours opérationnels bien configurés ?",
+        "passedChecks": "contrôles applicables réussis",
+        "blockers": "{count, plural, one {# blocage critique} other {# blocages critiques}}"
+      },
+      "tested": {
+        "title": "Qualité testée",
+        "description": "Cette version a-t-elle réussi des cas reproductibles, y compris des résultats et actions critiques ?",
+        "gatePassed": "Test critique réussi",
+        "gateFailed": "Échec du test critique",
+        "result": "Résultat {score}/10 · seuil {threshold}/10",
+        "trials": "{count, plural, one {# essai} other {# essais}}",
+        "automatedEvidence": "Preuve automatisée ; ce n'est pas une certification",
+        "noEval": "Aucune évaluation critique pour le moment",
+        "stale": "Le test ne correspond pas à la configuration actuelle.",
+        "simulation": "Simulation complémentaire : {count} scénarios"
+      },
+      "production": {
+        "title": "Production",
+        "description": "Que montrent les conversations réelles attribuées à cet agent sur la période observée ?",
+        "sample": "interactions évaluées · minimum {minimum} · {days} derniers jours",
+        "needMore": "Il manque {count} interactions pour obtenir un premier signal utile.",
+        "attributedSince": "Attribution disponible depuis le {date}"
+      }
     },
-    "priority": { "title": "Ce qu'il faut améliorer en premier", "description": "Actions classées par risque et impact. Les résoudre ne garantit pas la perfection ; cela augmente les preuves et réduit les faiblesses connues.", "affected": "{count, plural, one {# interaction concernée} other {# interactions concernées}}", "empty": "Aucune action prioritaire ouverte dans cette analyse." },
-    "severities": { "critical": "Critique", "high": "Élevée", "medium": "Moyenne", "low": "Faible" },
-    "dimensions": { "title": "Préparation par dimension", "description": "Ouvrez chaque dimension pour voir les contrôles, les preuves et les liens de correction.", "passed": "{passed} contrôles réussis sur {applicable} applicables", "names": { "business_scope": "Entreprise et périmètre", "knowledge_grounding": "Connaissances et fondement", "conversation_brand": "Conversation et marque", "actions_outcomes": "Actions et résultats", "safety_handoff": "Sécurité et transfert", "robustness_operations": "Robustesse et opérations" } },
-    "checkStatuses": { "pass": "Conforme", "warning": "À vérifier", "fail": "Manquant", "unknown": "Non vérifié", "not_applicable": "Non applicable" },
-    "checks": { "agent_active": "Agent actif", "persona_identity": "Identité et rôle de l'agent", "business_identity": "Identité de l'entreprise", "business_contact": "Coordonnées de l'entreprise", "business_context": "Contexte, objectifs et public", "agent_language": "Langue configurée", "brand_voice": "Voix et ton de la marque", "greeting": "Message d'accueil", "fallback_message": "Réponse en cas d'incertitude", "behavior_rules": "Règles de comportement", "custom_prompt": "Prompt personnalisé", "knowledge_coverage": "Couverture des connaissances", "rag_knowledge": "Base de connaissances prête", "rag_configuration": "Configuration de la récupération", "tool_knowledge": "Outil de connaissance", "tool_faqs": "Questions fréquentes", "tool_policies": "Politiques de l'entreprise", "tool_catalog": "Catalogue disponible", "tool_appointments": "Agenda et disponibilité", "tool_orders": "Gestion des commandes", "tool_ecommerce": "Intégration commerciale", "tool_offers": "Offres actuelles", "tool_crm": "Actions CRM", "channel_assignment": "Canal attribué à l'agent", "operational_channel_scope": "Uniquement les canaux conversationnels certifiés", "channel_connection": "Connexion opérationnelle du canal", "forbidden_topics": "Sujets restreints", "handoff_triggers": "Motifs de transfert", "human_handoff_route": "Parcours vers un humain", "business_hours": "Horaires d'ouverture", "after_hours_behavior": "Comportement hors horaires", "llm_limits": "Limites de réponse du modèle", "vertical_tool": "Outil opérationnel du secteur", "unknown": "Contrôle de configuration" },
-    "recommendations": { "fix": "Configurez : {item}", "investigate": "Examinez : {item}", "run_eval": "Lancez les tests critiques", "refresh_eval": "Répétez les tests pour la version actuelle", "fix_failed_eval": "Corrigez les cas ayant échoué au test critique", "run_simulation": "Élargissez la couverture avec une simulation", "collect_production_evidence": "Recueillez davantage de conversations réelles", "review_tool_failures": "Examinez les échecs d'outils", "resolve_knowledge_gaps": "Renforcez les lacunes de connaissance", "unknown": "Examinez cette recommandation" },
-    "productionDetails": { "label": "Détails de production", "metricsTitle": "Signaux de production", "metricsDescription": "Métriques observées au cours des {days} derniers jours ; elles ne constituent pas une note globale.", "basedOn": "Basé sur {count} cas", "noMetrics": "Aucune métrique n'est encore attribuable à cet agent.", "issuesTitle": "Points faibles détectés", "issuesDescription": "Tendances fréquentes à examiner dans les conversations d'origine.", "affectedCount": "{count, plural, one {# interaction} other {# interactions}}", "openInbox": "Ouvrir l'Inbox", "noIssues": "Aucun problème récurrent dans les preuves disponibles." },
-    "metrics": { "quality_overall": "Qualité conversationnelle observée", "verified_resolution_rate": "Résolution vérifiée", "handoff_rate": "Transfert vers un humain", "tool_failure_rate": "Échecs d'outils", "open_knowledge_gaps": "Lacunes de connaissance ouvertes", "unknown": "Métrique observée" },
-    "issues": { "tool_failures": "Échecs d'outils", "knowledge_gaps": "Lacunes de connaissance", "qa_knowledge_accuracy": "Réponses non fondées ou inexactes", "qa_unresolved_need": "Besoins clients non résolus", "qa_missing_handoff": "Transferts humains omis", "qa_tone_empathy": "Problèmes de ton ou d'empathie", "qa_ignored_question": "Questions clients ignorées", "qa_repetition_clarity": "Répétition ou manque de clarté", "qa_other": "Autre tendance de qualité", "qa_generic": "Tendance de qualité conversationnelle", "unknown": "Signal de qualité à examiner" },
-    "staleReasons": { "agent_configuration_changed_after_eval": "L'agent a changé après l'évaluation critique.", "business_or_knowledge_changed_after_eval": "L'entreprise ou les connaissances ont changé après l'évaluation critique.", "agent_configuration_changed_after_simulation": "L'agent a changé après la simulation.", "simulation_persona_version_mismatch": "La simulation a évalué une autre version de l'agent.", "business_or_knowledge_changed_after_simulation": "L'entreprise ou les connaissances ont changé après la simulation.", "unknown": "Une source évaluée a changé depuis le dernier test." },
-    "evidenceKeys": { "count": "Nombre", "configured": "Configuré", "enabled": "Activé", "active": "Actif", "ready": "Prêt", "connected": "Connecté", "assigned": "Attribué", "hasName": "Nom renseigné", "hasRole": "Rôle renseigné", "hasAbout": "Description renseignée", "goals": "Objectifs", "audiences": "Publics", "availableSources": "Sources disponibles", "unsupportedAssignments": "Attributions incompatibles", "chunks": "Fragments indexés", "published": "Publiées", "services": "Services", "availabilitySlots": "Créneaux de disponibilité", "products": "Produits", "existingOrders": "Commandes existantes", "activeOffers": "Offres actives", "records": "Enregistrements", "activeHumans": "Personnes actives", "maxTokens": "Limite de jetons", "hasTone": "Ton renseigné", "hasFormality": "Formalité renseignée", "minimumSample": "Échantillon minimal", "unknown": "Preuve" },
-    "common": { "yes": "Oui", "no": "Non", "notAvailable": "Non disponible" },
-    "method": { "title": "Comment interpréter ce centre", "description": "Il s'agit d'une aide à la décision, et non d'une promesse de perfection ou d'apprentissage automatique. Elle combine configuration vérifiable, tests reproductibles et preuves d'interactions réelles ; les blocages critiques prévalent sur les moyennes." },
-    "banner": { "loading": "Vérification de la qualité de l'agent…", "unavailableTitle": "L'analyse de qualité n'est pas disponible", "unavailableDescription": "Ouvrez le centre pour réessayer et examiner la configuration.", "openCenter": "Voir la qualité", "blockers": "{count, plural, one {# blocage critique reste} other {# blocages critiques restent}} à résoudre.", "stale": "Les tests sont devenus obsolètes après des modifications de l'agent.", "evidence": "Preuves réelles : {current} interactions sur un minimum de {minimum}.", "current": "L'évaluation est à jour ; examinez les détails et les tendances." }
+    "priority": {
+      "title": "Ce qu'il faut améliorer en premier",
+      "description": "Actions classées par risque et impact. Les résoudre ne garantit pas la perfection ; cela augmente les preuves et réduit les faiblesses connues.",
+      "affected": "{count, plural, one {# interaction concernée} other {# interactions concernées}}",
+      "empty": "Aucune action prioritaire ouverte dans cette analyse."
+    },
+    "severities": {
+      "critical": "Critique",
+      "high": "Élevée",
+      "medium": "Moyenne",
+      "low": "Faible"
+    },
+    "dimensions": {
+      "title": "Préparation par dimension",
+      "description": "Ouvrez chaque dimension pour voir les contrôles, les preuves et les liens de correction.",
+      "passed": "{passed} contrôles réussis sur {applicable} applicables",
+      "names": {
+        "business_scope": "Entreprise et périmètre",
+        "knowledge_grounding": "Connaissances et fondement",
+        "conversation_brand": "Conversation et marque",
+        "actions_outcomes": "Actions et résultats",
+        "safety_handoff": "Sécurité et transfert",
+        "robustness_operations": "Robustesse et opérations"
+      }
+    },
+    "checkStatuses": {
+      "pass": "Conforme",
+      "warning": "À vérifier",
+      "fail": "Manquant",
+      "unknown": "Non vérifié",
+      "not_applicable": "Non applicable"
+    },
+    "checks": {
+      "agent_active": "Agent actif",
+      "persona_identity": "Identité et rôle de l'agent",
+      "business_identity": "Identité de l'entreprise",
+      "business_contact": "Coordonnées de l'entreprise",
+      "business_context": "Contexte, objectifs et public",
+      "agent_language": "Langue configurée",
+      "brand_voice": "Voix et ton de la marque",
+      "greeting": "Message d'accueil",
+      "fallback_message": "Réponse en cas d'incertitude",
+      "behavior_rules": "Règles de comportement",
+      "custom_prompt": "Prompt personnalisé",
+      "knowledge_coverage": "Couverture des connaissances",
+      "rag_knowledge": "Base de connaissances prête",
+      "rag_configuration": "Configuration de la récupération",
+      "tool_knowledge": "Outil de connaissance",
+      "tool_faqs": "Questions fréquentes",
+      "tool_policies": "Politiques de l'entreprise",
+      "tool_catalog": "Catalogue disponible",
+      "tool_appointments": "Agenda et disponibilité",
+      "tool_orders": "Gestion des commandes",
+      "tool_ecommerce": "Intégration commerciale",
+      "tool_offers": "Offres actuelles",
+      "tool_crm": "Actions CRM",
+      "channel_assignment": "Canal attribué à l'agent",
+      "operational_channel_scope": "Uniquement les canaux conversationnels certifiés",
+      "channel_connection": "Connexion opérationnelle du canal",
+      "forbidden_topics": "Sujets restreints",
+      "handoff_triggers": "Motifs de transfert",
+      "human_handoff_route": "Parcours vers un humain",
+      "business_hours": "Horaires d'ouverture",
+      "after_hours_behavior": "Comportement hors horaires",
+      "llm_limits": "Limites de réponse du modèle",
+      "vertical_tool": "Outil opérationnel du secteur",
+      "unknown": "Contrôle de configuration"
+    },
+    "recommendations": {
+      "fix": "Configurez : {item}",
+      "investigate": "Examinez : {item}",
+      "run_eval": "Lancez les tests critiques",
+      "refresh_eval": "Répétez les tests pour la version actuelle",
+      "fix_failed_eval": "Corrigez les cas ayant échoué au test critique",
+      "run_simulation": "Élargissez la couverture avec une simulation",
+      "collect_production_evidence": "Recueillez davantage de conversations réelles",
+      "review_tool_failures": "Examinez les échecs d'outils",
+      "resolve_knowledge_gaps": "Renforcez les lacunes de connaissance",
+      "unknown": "Examinez cette recommandation"
+    },
+    "productionDetails": {
+      "label": "Détails de production",
+      "metricsTitle": "Signaux de production",
+      "metricsDescription": "Métriques observées au cours des {days} derniers jours ; elles ne constituent pas une note globale.",
+      "basedOn": "Basé sur {count} cas",
+      "noMetrics": "Aucune métrique n'est encore attribuable à cet agent.",
+      "issuesTitle": "Points faibles détectés",
+      "issuesDescription": "Tendances fréquentes à examiner dans les conversations d'origine.",
+      "affectedCount": "{count, plural, one {# interaction} other {# interactions}}",
+      "openInbox": "Ouvrir l'Inbox",
+      "noIssues": "Aucun problème récurrent dans les preuves disponibles."
+    },
+    "metrics": {
+      "quality_overall": "Qualité conversationnelle observée",
+      "verified_resolution_rate": "Résolution vérifiée",
+      "handoff_rate": "Transfert vers un humain",
+      "tool_failure_rate": "Échecs d'outils",
+      "open_knowledge_gaps": "Lacunes de connaissance ouvertes",
+      "unknown": "Métrique observée"
+    },
+    "issues": {
+      "tool_failures": "Échecs d'outils",
+      "knowledge_gaps": "Lacunes de connaissance",
+      "qa_knowledge_accuracy": "Réponses non fondées ou inexactes",
+      "qa_unresolved_need": "Besoins clients non résolus",
+      "qa_missing_handoff": "Transferts humains omis",
+      "qa_tone_empathy": "Problèmes de ton ou d'empathie",
+      "qa_ignored_question": "Questions clients ignorées",
+      "qa_repetition_clarity": "Répétition ou manque de clarté",
+      "qa_other": "Autre tendance de qualité",
+      "qa_generic": "Tendance de qualité conversationnelle",
+      "unknown": "Signal de qualité à examiner"
+    },
+    "staleReasons": {
+      "agent_configuration_changed_after_eval": "L'agent a changé après l'évaluation critique.",
+      "business_or_knowledge_changed_after_eval": "L'entreprise ou les connaissances ont changé après l'évaluation critique.",
+      "agent_configuration_changed_after_simulation": "L'agent a changé après la simulation.",
+      "simulation_persona_version_mismatch": "La simulation a évalué une autre version de l'agent.",
+      "business_or_knowledge_changed_after_simulation": "L'entreprise ou les connaissances ont changé après la simulation.",
+      "unknown": "Une source évaluée a changé depuis le dernier test."
+    },
+    "evidenceKeys": {
+      "count": "Nombre",
+      "configured": "Configuré",
+      "enabled": "Activé",
+      "active": "Actif",
+      "ready": "Prêt",
+      "connected": "Connecté",
+      "assigned": "Attribué",
+      "hasName": "Nom renseigné",
+      "hasRole": "Rôle renseigné",
+      "hasAbout": "Description renseignée",
+      "goals": "Objectifs",
+      "audiences": "Publics",
+      "availableSources": "Sources disponibles",
+      "unsupportedAssignments": "Attributions incompatibles",
+      "chunks": "Fragments indexés",
+      "published": "Publiées",
+      "services": "Services",
+      "availabilitySlots": "Créneaux de disponibilité",
+      "products": "Produits",
+      "existingOrders": "Commandes existantes",
+      "activeOffers": "Offres actives",
+      "records": "Enregistrements",
+      "activeHumans": "Personnes actives",
+      "maxTokens": "Limite de jetons",
+      "hasTone": "Ton renseigné",
+      "hasFormality": "Formalité renseignée",
+      "minimumSample": "Échantillon minimal",
+      "unknown": "Preuve"
+    },
+    "common": {
+      "yes": "Oui",
+      "no": "Non",
+      "notAvailable": "Non disponible"
+    },
+    "method": {
+      "title": "Comment interpréter ce centre",
+      "description": "Il s'agit d'une aide à la décision, et non d'une promesse de perfection ou d'apprentissage automatique. Elle combine configuration vérifiable, tests reproductibles et preuves d'interactions réelles ; les blocages critiques prévalent sur les moyennes."
+    },
+    "banner": {
+      "loading": "Vérification de la qualité de l'agent…",
+      "unavailableTitle": "L'analyse de qualité n'est pas disponible",
+      "unavailableDescription": "Ouvrez le centre pour réessayer et examiner la configuration.",
+      "openCenter": "Voir la qualité",
+      "blockers": "{count, plural, one {# blocage critique reste} other {# blocages critiques restent}} à résoudre.",
+      "stale": "Les tests sont devenus obsolètes après des modifications de l'agent.",
+      "evidence": "Preuves réelles : {current} interactions sur un minimum de {minimum}.",
+      "current": "L'évaluation est à jour ; examinez les détails et les tendances."
+    }
   },
   "simulation": {
     "falseClaim": "{count, plural, one {# affirmation fausse} other {# affirmations fausses}}",
@@ -11323,6 +11923,9 @@
     "verticalTool": {
       "title": "Outils de votre secteur",
       "content": "Ici, vous gérez {tool} : les données propres à votre activité que votre agent utilise pour répondre et vendre."
+    },
+    "unavailable": {
+      "body": "Il n'y a rien à mettre en évidence sur cet écran pour le moment, la visite ne peut donc pas démarrer. Ouvre l'aide de la page pour lire les étapes."
     }
   },
   "ecommerceIntegration": {
@@ -11511,11 +12114,44 @@
     "noTechnician": "Aucun technicien affecté",
     "selectTechnician": "Sélectionner un technicien",
     "technicianHint": "La liste utilise l’équipe active configurée dans Rendez-vous → Équipe.",
-    "status": { "intake": "Réception", "estimating": "Diagnostic/devis", "awaiting_approval": "En attente d’approbation", "approved": "Approuvé", "in_progress": "En réparation", "ready": "Prêt à livrer", "delivered": "Livré", "rejected": "Devis refusé", "cancelled": "Annulé" },
-    "approval": { "not_requested": "Pas encore demandé", "pending": "En attente de la décision du client", "approved": "Approuvé par le client", "rejected": "Refusé par le client" },
-    "action": { "estimating": "Démarrer le diagnostic", "in_progress": "Démarrer la réparation", "ready": "Marquer prêt", "delivered": "Marquer livré", "cancelled": "Annuler l’ordre" },
-    "event": { "created": "Ordre créé", "estimate_requested": "Devis publié pour approbation", "estimate_approved": "Le client a approuvé le devis", "estimate_rejected": "Le client a refusé le devis", "details_updated": "Détails techniques mis à jour", "status_changed": "Statut mis à jour", "cancelled_by_customer": "Le client a annulé l’ordre" },
-    "actor": { "tenant_user": "Équipe de l’atelier", "agent": "Agent conversationnel", "system": "Système" }
+    "status": {
+      "intake": "Réception",
+      "estimating": "Diagnostic/devis",
+      "awaiting_approval": "En attente d’approbation",
+      "approved": "Approuvé",
+      "in_progress": "En réparation",
+      "ready": "Prêt à livrer",
+      "delivered": "Livré",
+      "rejected": "Devis refusé",
+      "cancelled": "Annulé"
+    },
+    "approval": {
+      "not_requested": "Pas encore demandé",
+      "pending": "En attente de la décision du client",
+      "approved": "Approuvé par le client",
+      "rejected": "Refusé par le client"
+    },
+    "action": {
+      "estimating": "Démarrer le diagnostic",
+      "in_progress": "Démarrer la réparation",
+      "ready": "Marquer prêt",
+      "delivered": "Marquer livré",
+      "cancelled": "Annuler l’ordre"
+    },
+    "event": {
+      "created": "Ordre créé",
+      "estimate_requested": "Devis publié pour approbation",
+      "estimate_approved": "Le client a approuvé le devis",
+      "estimate_rejected": "Le client a refusé le devis",
+      "details_updated": "Détails techniques mis à jour",
+      "status_changed": "Statut mis à jour",
+      "cancelled_by_customer": "Le client a annulé l’ordre"
+    },
+    "actor": {
+      "tenant_user": "Équipe de l’atelier",
+      "agent": "Agent conversationnel",
+      "system": "Système"
+    }
   },
   "resourceRentals": {
     "title": "Locations et séjours",
@@ -11633,7 +12269,16 @@
       "loadFailed": "Impossible de charger les détails opérationnels.",
       "saveFailed": "Enregistrement impossible",
       "lifecycle": "{status} · version {version}",
-      "status": { "pending_review": "En attente de vérification", "reserved": "Réservée", "picked_up": "Véhicule remis", "returned": "Véhicule rendu", "checked_in": "Animal arrivé", "checked_out": "Animal récupéré", "rejected": "Refusée", "cancelled": "Annulée" },
+      "status": {
+        "pending_review": "En attente de vérification",
+        "reserved": "Réservée",
+        "picked_up": "Véhicule remis",
+        "returned": "Véhicule rendu",
+        "checked_in": "Animal arrivé",
+        "checked_out": "Animal récupéré",
+        "rejected": "Refusée",
+        "cancelled": "Annulée"
+      },
       "careData": "Données de prise en charge",
       "driverAndDocuments": "Conducteur, lieux, caution et contrat",
       "notSet": "Non défini",
@@ -11665,8 +12310,18 @@
       "signatureEvidence": "Référence de signature/OTP vérifié",
       "eligibilityTitle": "Vérification de l’éligibilité",
       "eligibilityHelp": "La déclaration du client n’approuve jamais l’identité, le permis, l’assurance ou le paiement. Vérifiez la preuve ou indiquez pourquoi elle ne s’applique pas.",
-      "eligibility": { "identity": "Identité", "driverLicense": "Permis", "insurance": "Assurance/couverture", "payment": "Paiement" },
-      "eligibilityStatus": { "pending": "En attente", "verified": "Vérifié", "rejected": "Refusé", "not_required": "Non requis" },
+      "eligibility": {
+        "identity": "Identité",
+        "driverLicense": "Permis",
+        "insurance": "Assurance/couverture",
+        "payment": "Paiement"
+      },
+      "eligibilityStatus": {
+        "pending": "En attente",
+        "verified": "Vérifié",
+        "rejected": "Refusé",
+        "not_required": "Non requis"
+      },
       "evidenceRef": "Référence de preuve",
       "reviewReason": "Motif / note",
       "rejectReason": "Motif du refus de la demande",
@@ -11679,7 +12334,11 @@
       "fuelPercent": "Carburant (%)",
       "handoffMethod": "Preuve de remise",
       "handoffEvidence": "Référence de preuve",
-      "handoff": { "manual": "Procès-verbal manuel", "otp": "OTP vérifié", "signature": "Signature" },
+      "handoff": {
+        "manual": "Procès-verbal manuel",
+        "otp": "OTP vérifié",
+        "signature": "Signature"
+      },
       "conditionNotes": "État et observations",
       "inspectionPhotos": "Photos obligatoires de l’inspection",
       "damagePhotos": "Photos des dommages",
@@ -11699,8 +12358,17 @@
       "noInspections": "Aucune inspection.",
       "noDamages": "Aucun dommage signalé.",
       "noHistory": "Aucun événement.",
-      "inspectionType": { "pickup": "Départ", "return": "Retour" },
-      "damageStatus": { "reported": "Signalé", "acknowledged": "Reconnu", "charged": "Facturé", "resolved": "Résolu", "dismissed": "Écarté" },
+      "inspectionType": {
+        "pickup": "Départ",
+        "return": "Retour"
+      },
+      "damageStatus": {
+        "reported": "Signalé",
+        "acknowledged": "Reconnu",
+        "charged": "Facturé",
+        "resolved": "Résolu",
+        "dismissed": "Écarté"
+      },
       "unitLabel": "Où il dort",
       "compatibility": "Avec qui il peut être",
       "compatibility_social": "Avec tout le monde",
@@ -11710,6 +12378,312 @@
       "mealsPerDay": "Repas par jour",
       "belongings": "Ce qu’il a apporté",
       "belongingsHint": "Couverture, jouet, laisse"
+    }
+  },
+  "guidedTours": {
+    "connect_channel": {
+      "steps": {
+        "menu": {
+          "title": "Canaux",
+          "content": "C'est ici que vous connectez WhatsApp, Instagram, Messenger, Telegram et le chat du site. Entrez pour voir lesquels sont connectés."
+        },
+        "cards": {
+          "title": "État de chaque canal",
+          "content": "Chaque carte indique si le canal est connecté, déconnecté, ou si son autorisation doit être renouvelée."
+        },
+        "whatsapp": {
+          "title": "La carte WhatsApp",
+          "content": "Touchez Configurer sur la carte WhatsApp pour ouvrir son écran et connecter le numéro."
+        },
+        "status": {
+          "title": "État du numéro",
+          "content": "Vous confirmez ici que le numéro est connecté. S'il faut renouveler l'autorisation, reconnectez-le avec le même bouton."
+        }
+      }
+    },
+    "assign_agent_channel": {
+      "steps": {
+        "menu": {
+          "title": "Agents IA",
+          "content": "C'est ici que vous gérez vos agents et choisissez les canaux que chacun traite."
+        },
+        "list": {
+          "title": "Choisissez l'agent",
+          "content": "Ouvrez l'agent que vous voulez revoir. Chaque connexion peut avoir le sien."
+        },
+        "channels": {
+          "title": "Canaux qu'il traite",
+          "content": "Cochez seulement les canaux auxquels cet agent répond. Un canal coché mais non connecté apparaît comme couverture incomplète."
+        },
+        "save": {
+          "title": "Enregistrez",
+          "content": "Rien ne s'applique tant que vous n'avez pas touché Enregistrer. La santé de l'agent se met à jour ensuite."
+        }
+      }
+    },
+    "agent_handoff_rules": {
+      "steps": {
+        "name": {
+          "title": "Nom de l'agent",
+          "content": "C'est le nom sous lequel il se présente à vos clients ; gardez celui que vous voyez dans le panneau."
+        },
+        "greeting": {
+          "title": "Message de bienvenue",
+          "content": "C'est la première chose que la personne lit. Faites court et dans votre ton."
+        },
+        "fallback": {
+          "title": "Quand il ne peut pas répondre",
+          "content": "Obligatoire : ce que dit l'agent quand il ne sait pas. Ne promettez de passer à une personne que si cette route existe."
+        },
+        "rules": {
+          "title": "Règles de comportement",
+          "content": "Écrivez ici ce qu'il doit faire et ne pas faire. Une règle par ligne, en langage simple."
+        },
+        "handoff": {
+          "title": "Quand passer à un humain",
+          "content": "Ajoutez les motifs qui obligent à escalader : une réclamation, une demande de prix spécial, ce que vous décidez."
+        },
+        "save": {
+          "title": "Enregistrez",
+          "content": "Touchez Enregistrer pour publier la nouvelle version de l'agent."
+        }
+      }
+    },
+    "human_handoff_route": {
+      "steps": {
+        "menu": {
+          "title": "Utilisateurs",
+          "content": "C'est ici que vivent les personnes qui peuvent reprendre une conversation quand l'agent escalade."
+        },
+        "invite": {
+          "title": "Invitez une personne",
+          "content": "Touchez Inviter et envoyez l'e-mail de celle qui prendra les conversations."
+        },
+        "role": {
+          "title": "Choisissez le rôle",
+          "content": "L'agent traite les conversations ; le superviseur révise et réattribue en plus. Une personne active suffit pour que l'escalade fonctionne."
+        },
+        "pending": {
+          "title": "Jusqu'à ce qu'elle accepte",
+          "content": "L'invitation reste en attente dans cette liste, et la route vers un humain est incomplète tant que la personne n'est pas entrée."
+        }
+      }
+    },
+    "business_identity": {
+      "steps": {
+        "name": {
+          "title": "Nom de l'entreprise",
+          "content": "C'est le nom que l'agent utilise pour se présenter et parler de vous."
+        },
+        "about": {
+          "title": "Ce que fait votre entreprise",
+          "content": "Décrivez-la en quelques lignes : l'agent s'en sert pour répondre avec du contexte."
+        },
+        "contact": {
+          "title": "Téléphone et e-mail",
+          "content": "Ce sont les coordonnées que l'agent peut donner quand on les demande."
+        },
+        "save": {
+          "title": "Enregistrez",
+          "content": "Touchez Enregistrer ; l'agent reprend les nouvelles informations dès la conversation suivante."
+        }
+      }
+    },
+    "knowledge_base": {
+      "steps": {
+        "tabs": {
+          "title": "Documents et FAQ",
+          "content": "Les connaissances vivent à deux endroits : les documents longs et les questions fréquentes."
+        },
+        "newFaq": {
+          "title": "Nouvelle question fréquente",
+          "content": "Touchez Nouvelle FAQ pour ajouter une question et sa réponse."
+        },
+        "fields": {
+          "title": "Question et réponse",
+          "content": "Écrivez la question comme un client la poserait, et la réponse comme vous la donneriez."
+        },
+        "published": {
+          "title": "Publiez la réponse",
+          "content": "L'IA n'utilise que ce qui est publié : si cela reste un brouillon, l'agent ne le voit pas."
+        },
+        "documents": {
+          "title": "Documents et sites",
+          "content": "Ici vous téléversez des fichiers ou importez des pages de votre site pour que l'agent les consulte."
+        }
+      }
+    },
+    "appointments_setup": {
+      "steps": {
+        "tabs": {
+          "title": "Rendez-vous",
+          "content": "Services, agenda et configuration vivent dans ces onglets."
+        },
+        "service": {
+          "title": "Créez un service",
+          "content": "Touchez Nouveau service et indiquez son nom et sa durée. Sans services, l'agent ne peut pas réserver."
+        },
+        "schedule": {
+          "title": "Heures d'ouverture",
+          "content": "Dans Configuration, définissez et confirmez les horaires. Sans confirmation ici, l'agent dira qu'il n'y a aucune disponibilité."
+        }
+      }
+    },
+    "business_hours": {
+      "steps": {
+        "always": {
+          "title": "Ouvert 24h/24 et 7j/7",
+          "content": "Si vous êtes toujours ouverts, activez ceci et c'est réglé. Sinon, laissez désactivé et définissez les jours."
+        },
+        "timezone": {
+          "title": "Fuseau horaire",
+          "content": "Choisissez le fuseau de votre entreprise : les horaires annoncés par l'agent en découlent."
+        },
+        "days": {
+          "title": "Jours et horaires",
+          "content": "Cochez les jours où vous ouvrez et sur quelles plages."
+        },
+        "message": {
+          "title": "En dehors des horaires",
+          "content": "Écrivez ce que répond l'agent quand on vous écrit alors que c'est fermé."
+        },
+        "save": {
+          "title": "Enregistrez",
+          "content": "Touchez Enregistrer pour que le nouvel horaire s'applique."
+        }
+      }
+    },
+    "run_agent_tests": {
+      "steps": {
+        "launch": {
+          "title": "Lancez un test",
+          "content": "Choisissez des scénarios et lancez la simulation : l'agent mène la conversation et vous voyez comment il répond."
+        },
+        "history": {
+          "title": "Résultats précédents",
+          "content": "Les exécutions et leurs scores restent ici. Comparez-les après chaque changement."
+        }
+      }
+    },
+    "agent_quality_center": {
+      "steps": {
+        "agent": {
+          "title": "Choisissez l'agent",
+          "content": "La santé se mesure par agent. Commencez par celui qui répond."
+        },
+        "priority": {
+          "title": "Quoi corriger en premier",
+          "content": "Cette liste est triée par gravité : commencez par celle du haut."
+        },
+        "dimensions": {
+          "title": "Les preuves derrière",
+          "content": "Ouvrez chaque dimension pour voir, contrôle par contrôle, ce qui s'est passé et ce qui manque."
+        }
+      }
+    },
+    "home_first_steps": {
+      "steps": {
+        "card": {
+          "title": "Vos étapes essentielles",
+          "content": "Voici les étapes qui manquent pour que votre agent travaille. Une fois terminées, cette carte disparaît d'elle-même."
+        },
+        "next": {
+          "title": "Commencez par ici",
+          "content": "C'est l'étape qui change le plus de choses. Connecter WhatsApp prend environ 5 minutes."
+        },
+        "help": {
+          "title": "De l'aide sur chaque écran",
+          "content": "Chaque écran a cette aide : ce que c'est et comment on fait. Ouvrez-la dès que vous êtes perdu."
+        },
+        "assistant": {
+          "title": "Demandez avec vos mots",
+          "content": "Si vous préférez demander, Parallly répond avec votre configuration réelle et vous emmène à l'endroit exact."
+        }
+      }
+    },
+    "first_channel_whatsapp": {
+      "steps": {
+        "status": {
+          "title": "L'état de votre WhatsApp",
+          "content": "Ici vous voyez d'un coup d'œil si WhatsApp est déjà connecté ou pas encore."
+        },
+        "routes": {
+          "title": "Choisissez votre situation",
+          "content": "Vous utilisez déjà l'application WhatsApp Business (recommandé : vous gardez vos conversations), vous voulez un nouveau numéro, ou vous venez d'un autre fournisseur."
+        },
+        "prerequisites": {
+          "title": "Ayez ceci sous la main",
+          "content": "Confirmez ces trois points avant de toucher le bouton. C'est ce qui fait le plus abandonner en cours de route."
+        },
+        "brief": {
+          "title": "Ce qu'implique l'option choisie",
+          "content": "Après la connexion, vous avez 24 heures pour autoriser votre historique. Si vous venez d'un autre fournisseur, désactivez d'abord la validation en deux étapes."
+        },
+        "connect": {
+          "title": "Le bouton ouvre une fenêtre Meta",
+          "content": "Ne la fermez pas avant de voir « Connexion réussie ». Si elle n'apparaît pas, autorisez les fenêtres pop-up et réessayez."
+        },
+        "test": {
+          "title": "Testez votre agent",
+          "content": "Envoyez un WhatsApp à votre propre numéro et regardez la réponse. C'est là que vous savez que ça marche."
+        }
+      }
+    },
+    "resume_setup_wizard": {
+      "steps": {
+        "entry": {
+          "title": "Revenez quand vous voulez",
+          "content": "D'ici vous rouvrez l'assistant sans rien perdre de ce que vous avez déjà fait."
+        },
+        "steps": {
+          "title": "Trois étapes",
+          "content": "Vous pouvez sauter directement à celle qui manque en touchant son numéro."
+        },
+        "connect": {
+          "title": "Connecter plus tard, ce n'est pas y renoncer",
+          "content": "Si vous choisissez de le faire plus tard, l'Accueil vous le rappelle et vous pouvez revenir ici."
+        }
+      }
+    },
+    "help_system": {
+      "steps": {
+        "panel": {
+          "title": "L'aide de chaque écran",
+          "content": "Ce bouton est présent sur chaque écran. Il explique de quoi il s'agit et comment procéder, dans l'ordre."
+        },
+        "showMe": {
+          "title": "Montrez-moi comment",
+          "content": "Quand l'explication ne suffit pas, ce bouton vous conduit pas à pas au bon endroit. Il ne modifie rien de lui-même."
+        },
+        "palette": {
+          "title": "Recherche rapide",
+          "content": "Avec Ctrl+K (ou ⌘+K sur Mac), trouvez n'importe quel écran par son nom sans parcourir le menu."
+        },
+        "assistant": {
+          "title": "Demandez à Parallly",
+          "content": "Écrivez avec vos mots. Il répond selon votre configuration réelle et vous emmène à l'écran où corriger."
+        }
+      }
+    },
+    "inbox_first_conversation": {
+      "steps": {
+        "list": {
+          "title": "Vos conversations",
+          "content": "Les messages de tous vos canaux arrivent ici, en temps réel et dans une seule liste."
+        },
+        "filter": {
+          "title": "Celles qui attendent une personne",
+          "content": "Filtrez par « Non attribuées » : ce sont les conversations que l'IA a transmises et que personne n'a encore prises."
+        },
+        "take": {
+          "title": "Prendre la conversation",
+          "content": "Une fois prise, c'est vous qui répondez et l'IA se retire de cette conversation jusqu'à ce que vous la lui rendiez."
+        },
+        "summary": {
+          "title": "Ce qui s'est passé avant",
+          "content": "En haut, le résumé de la conversation rédigé par l'IA : lisez-le avant de répondre pour ne pas répéter les questions."
+        }
+      }
     }
   }
 }

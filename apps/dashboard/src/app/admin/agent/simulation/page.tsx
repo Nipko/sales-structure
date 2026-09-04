@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 // ── Types ───────────────────────────────────────────────────
 interface Agent { id: string; name: string; is_default?: boolean; is_active?: boolean; }
@@ -158,6 +159,7 @@ export default function AgentSimulationPage() {
                 description={tHelp("agentSimulation.description")}
                 tips={tHelp.raw("agentSimulation.tips") as string[]}
                 mediaKey="agentSimulation"
+                tourId="run_agent_tests"
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -233,6 +235,7 @@ export default function AgentSimulationPage() {
                     </div>
 
                     <button
+                        id={guidedTourAnchorId("simulation-launch")}
                         onClick={launch}
                         disabled={launching || !agentId}
                         className="w-full flex items-center justify-center gap-2 rounded-lg bg-accent text-white px-4 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-50"
@@ -254,7 +257,7 @@ export default function AgentSimulationPage() {
                     )}
 
                     {/* History */}
-                    <div className={CARD}>
+                    <div id={guidedTourAnchorId("simulation-history")} className={CARD}>
                         <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                             <HistoryIcon size={16} className="text-muted-foreground" />
                             {t("history")}

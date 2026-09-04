@@ -501,6 +501,83 @@ export class PersonaService {
     }
 
     /**
+     * Campos sin los cuales un agente no puede atender, con la ruta exacta que
+     * el panel usa para llevar a la persona al campo (`?tab=&focus=`).
+     */
+    private static isNonEmptyText(value: unknown): boolean {
+        return typeof value === 'string' && value.trim().length > 0;
+    }
+
+    private static hasAnyEntry(value: unknown): boolean {
+        return Array.isArray(value) && value.some((entry) => PersonaService.isNonEmptyText(entry));
+    }
+
+    private static readonly AGENT_REQUIRED_FIELDS: ReadonlyArray<{
+        path: string;
+        read: (config: any) => unknown;
+        isValid: (value: unknown) => boolean;
+    }> = [
+        { path: 'persona.name', read: (c) => c?.persona?.name, isValid: PersonaService.isNonEmptyText },
+        { path: 'persona.role', read: (c) => c?.persona?.role, isValid: PersonaService.isNonEmptyText },
+        { path: 'persona.fallbackMessage', read: (c) => c?.persona?.fallbackMessage, isValid: PersonaService.isNonEmptyText },
+        { path: 'behavior.rules', read: (c) => c?.behavior?.rules, isValid: PersonaService.hasAnyEntry },
+        { path: 'behavior.handoffTriggers', read: (c) => c?.behavior?.handoffTriggers, isValid: PersonaService.hasAnyEntry },
+    ];
+
+    /**
+     * Valida el agente ANTES de escribirlo.
+     *
+     * Hasta acá el controller recibía `@Body() body: any` y el servicio escribía
+     * `config_json` sin mirar: se podía borrar el nombre, el mensaje de
+     * fallback, todas las reglas y todos los motivos de escalado, ver "guardado
+     * con éxito"... y recién después enterarse por un bloqueo crítico del
+     * centro de calidad. El error es TIPADO (`agent_invalid` + `fields`) para
+     * que el panel lo muestre bajo cada campo en el idioma del usuario.
+     *
+     * `partial` = borrador explícito del asistente de configuración: valida solo
+     * los campos que vienen en el guardado, porque el asistente persiste el paso
+     * 1 antes de que la persona haya visto los demás.
+     */
+    private assertAgentConfigValid(config: any, options: { partial?: boolean } = {}): void {
+        if (!config || typeof config !== 'object') {
+            throw new BadRequestException({
+                error: 'agent_invalid',
+                fields: ['config'],
+                message: 'La configuración del agente no es válida.',
+            });
+        }
+
+        const invalid: string[] = [];
+
+        // Modo prompt: la persona escribió sus propias instrucciones y ese texto
+        // reemplaza a la estructura. Exigir reglas y triggers acá bloquearía a
+        // quien eligió justamente no usarlos.
+        // Las dos claves conviven en producción (`_mode`/`_customPrompt` es la
+        // forma vieja); el centro de calidad ya lee ambas y acá se lee igual,
+        // para no rechazar un agente que el panel considera válido.
+        const promptMode = config.editorMode === 'prompt' || config._mode === 'prompt';
+        if (promptMode) {
+            const customPrompt = config.customPrompt ?? config._customPrompt;
+            if (!PersonaService.isNonEmptyText(customPrompt)) invalid.push('customPrompt');
+        } else {
+            for (const field of PersonaService.AGENT_REQUIRED_FIELDS) {
+                const value = field.read(config);
+                // En un borrador se valida solo lo que vino en el guardado.
+                if (options.partial && value === undefined) continue;
+                if (!field.isValid(value)) invalid.push(field.path);
+            }
+        }
+
+        if (invalid.length > 0) {
+            throw new BadRequestException({
+                error: 'agent_invalid',
+                fields: invalid,
+                message: 'Faltan datos obligatorios del agente. Revisá los campos marcados.',
+            });
+        }
+    }
+
+    /**
      * Validate persona config structure
      */
     private validateConfig(config: any): void {
@@ -1011,8 +1088,24 @@ export class PersonaService {
         scheduleMode?: string;
         isActive?: boolean;
         isDefault?: boolean;
+        /**
+         * Borrador explícito del asistente de configuración: valida solo los
+         * campos presentes. Un guardado normal del editor valida el agente
+         * entero.
+         */
+        partialDraft?: boolean;
     }): Promise<any> {
         this.assertSelfServiceAssignments(data.channels, data.channelBindings);
+
+        // El nombre vive también en la columna que muestra el panel: vaciarlo
+        // dejaba un agente sin nombre en la lista y sin identidad en el prompt.
+        if (data.name !== undefined && !PersonaService.isNonEmptyText(data.name)) {
+            throw new BadRequestException({
+                error: 'agent_invalid',
+                fields: ['persona.name'],
+                message: 'Faltan datos obligatorios del agente. Revisá los campos marcados.',
+            });
+        }
 
         // Ensure the table + channel_bindings column exist before we read/write them
         // (existing tenants may predate the multi-account column).
@@ -1055,6 +1148,13 @@ export class PersonaService {
                     persona: { ...(base.persona || {}), name: data.name },
                 };
             }
+        }
+
+        // Validar ANTES de cualquier escritura (incluida la reasignación de
+        // canales y de `is_default`, que ya tocan otras filas): un rechazo no
+        // puede dejar el tenant a medio camino.
+        if (data.configJson !== undefined && configToSave !== undefined) {
+            this.assertAgentConfigValid(configToSave, { partial: data.partialDraft === true });
         }
 
         // Gate de prerrequisitos de agenda: se aplica cuando este guardado ENCIENDE las
@@ -1366,7 +1466,14 @@ export class PersonaService {
                         handoffTriggers: ['Pregunta fuera del conocimiento base', 'Cliente disputa la respuesta dada', 'Pregunta requiere solución técnica avanzada'],
                         requiredFields: {},
                     },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    // La plantilla de FAQs arranca por FAQs, no por RAG.
+                    // Encender `rag` prometía documentos vectorizados que nadie
+                    // había subido: el check crítico `rag_knowledge` marcaba en
+                    // rojo a un tenant cuyas preguntas frecuentes funcionaban
+                    // perfecto. Los documentos y páginas web se activan después,
+                    // cuando el tenant efectivamente carga alguno.
+                    tools: { faqs: { enabled: true } },
+                    rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
                 },
             },
             {
@@ -1499,7 +1606,9 @@ export class PersonaService {
                         forbiddenTopics: ['Speculation', 'Unverified information', 'Legal/medical advice'],
                         handoffTriggers: ['Question outside knowledge base', 'Customer disputes answer'],
                         requiredFields: {} },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    // Ver la nota de `tpl_faq` en castellano: FAQs sí, RAG no.
+                    tools: { faqs: { enabled: true } },
+                    rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
                 },
             },
             {

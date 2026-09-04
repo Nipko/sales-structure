@@ -1,3 +1,4 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -22,6 +23,7 @@ describe('QualityController agent quality endpoints', () => {
         getAttentionSummary: jest.fn(),
         reconcileTenantManual: jest.fn(),
         getSignals: jest.fn(),
+        getActiveSignal: jest.fn(),
         acknowledgeSignal: jest.fn(),
         snoozeSignal: jest.fn(),
     };
@@ -40,6 +42,7 @@ describe('QualityController agent quality endpoints', () => {
         'getAttentionSummary',
         'reconcileAttention',
         'getSignals',
+        'getSignal',
         'acknowledgeSignal',
         'snoozeSignal',
     ] as const)(
@@ -87,6 +90,38 @@ describe('QualityController agent quality endpoints', () => {
         await expect(controller.getSignals(TENANT_ID, 'acknowledged', '25'))
             .resolves.toEqual({ success: true, data: [] });
         expect(qualitySignals.getSignals).toHaveBeenCalledWith(TENANT_ID, 'acknowledged', 25);
+    });
+
+    it('returns a single active signal scoped by both tenant and agent', async () => {
+        const data = { id: SIGNAL_ID, code: 'fix_channel_coverage', state: 'open' };
+        qualitySignals.getActiveSignal.mockResolvedValue(data);
+
+        await expect(controller.getSignal(TENANT_ID, SIGNAL_ID, AGENT_ID))
+            .resolves.toEqual({ success: true, data });
+        expect(qualitySignals.getActiveSignal).toHaveBeenCalledWith(TENANT_ID, SIGNAL_ID, AGENT_ID);
+    });
+
+    it.each([
+        ['missing', undefined],
+        ['empty', ''],
+        ['not a UUID', 'not-a-uuid'],
+        ['a path traversal attempt', '../../admin'],
+    ])('rejects a signal lookup whose agentId is %s', async (_case, agentId) => {
+        await expect(controller.getSignal(TENANT_ID, SIGNAL_ID, agentId))
+            .rejects.toBeInstanceOf(BadRequestException);
+        expect(qualitySignals.getActiveSignal).not.toHaveBeenCalled();
+    });
+
+    it('does not resurrect a signal that is no longer active', async () => {
+        qualitySignals.getActiveSignal.mockRejectedValue(new NotFoundException('Active quality signal not found'));
+
+        await expect(controller.getSignal(TENANT_ID, SIGNAL_ID, AGENT_ID))
+            .rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('is declared before the :tenantId catch-all so the route is reachable', () => {
+        const methods = Object.getOwnPropertyNames(QualityController.prototype);
+        expect(methods.indexOf('getSignal')).toBeLessThan(methods.indexOf('getSummary'));
     });
 
     it('derives the acknowledgement actor from the authenticated request', async () => {

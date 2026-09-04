@@ -1,30 +1,48 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
-  Shield, AlertTriangle, MessageSquare, Plus, X,
+  Shield, AlertTriangle, MessageSquare, Plus, X, ChevronDown,
   ClipboardList, Folder, Lock, FileText, Lightbulb,
 } from "lucide-react";
 import { inputCls } from "../_types";
 import type { PersonaConfig } from "../_types";
 import { UNIVERSAL_FORBIDDEN_TOPICS } from "@parallext/shared";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 interface BehaviorSectionProps {
   config: PersonaConfig;
   onChange: (updates: Partial<PersonaConfig>) => void;
+  errors?: Partial<Record<string, string>>;
+  focusField?: string | null;
 }
 
 type BehaviorField = "rules" | "forbiddenTopics" | "handoffTriggers";
 
-const sectionDefs: { key: BehaviorField; titleKey: string; placeholderKey: string; icon: typeof Shield }[] = [
-  { key: "rules", titleKey: "strictRules", placeholderKey: "rulesPlaceholder", icon: Shield },
+/**
+ * `handoffTriggers` is labelled "Cuando pasar a un humano" now: "Triggers de
+ * escalado" is jargon for the person who has to fill it in.
+ */
+const sectionDefs: {
+  key: BehaviorField;
+  titleKey: string;
+  placeholderKey: string;
+  icon: typeof Shield;
+  anchorId?: string;
+  focus?: string;
+  required?: boolean;
+}[] = [
+  { key: "rules", titleKey: "strictRules", placeholderKey: "rulesPlaceholder", icon: Shield, anchorId: guidedTourAnchorId("agent-rules"), focus: "rules", required: true },
   { key: "forbiddenTopics", titleKey: "forbiddenTopics", placeholderKey: "forbiddenPlaceholder", icon: AlertTriangle },
-  { key: "handoffTriggers", titleKey: "handoffTriggers", placeholderKey: "handoffPlaceholder", icon: MessageSquare },
+  { key: "handoffTriggers", titleKey: "handoffTriggersPlain", placeholderKey: "handoffPlaceholder", icon: MessageSquare, anchorId: guidedTourAnchorId("agent-handoff-triggers"), focus: "handoff", required: true },
 ];
 
-export function BehaviorSection({ config, onChange }: BehaviorSectionProps) {
+export function BehaviorSection({ config, onChange, errors = {}, focusField = null }: BehaviorSectionProps) {
   const t = useTranslations("agent.behaviorSection");
+  const tv = useTranslations("agent");
+  const locale = useLocale();
 
   function updateList(field: BehaviorField, index: number, value: string) {
     const list = [...config.behavior[field]];
@@ -90,7 +108,9 @@ export function BehaviorSection({ config, onChange }: BehaviorSectionProps) {
             {UNIVERSAL_FORBIDDEN_TOPICS.map(topic => (
               <div key={topic.key} className="flex items-center gap-2 text-[12px] text-red-700 dark:text-red-300/90">
                 <Lock size={10} className="shrink-0 opacity-50" />
-                <span>{topic.label.es}</span>
+                {/* Localized: these were hardcoded to Spanish, so a Brazilian or
+                    French tenant read the platform guardrails in Spanish. */}
+                <span>{(topic.label as Record<string, string>)[locale] ?? topic.label.es}</span>
               </div>
             ))}
           </div>
@@ -104,15 +124,33 @@ export function BehaviorSection({ config, onChange }: BehaviorSectionProps) {
         </h3>
         <div className="space-y-5">
           {sectionDefs.map(section => (
-            <div key={section.key}>
+            <div
+              key={section.key}
+              id={section.anchorId}
+              className={cn(
+                "rounded-xl p-1 -m-1 transition-shadow",
+                section.focus && focusField === section.focus
+                  ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-neutral-900"
+                  : "",
+              )}
+            >
               <h4 className="text-[13px] font-semibold text-neutral-600 dark:text-neutral-300 mb-2 flex items-center gap-1.5">
                 <section.icon size={14} className="text-indigo-500" /> {t(section.titleKey)}
+                {section.required && <span className="text-red-500" aria-hidden="true">*</span>}
                 {section.key === "forbiddenTopics" && (
                   <span className="text-[10px] text-muted-foreground font-normal ml-1">
                     ({t("additionalTopics")})
                   </span>
                 )}
               </h4>
+              {section.key === "handoffTriggers" && (
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-2">{t("handoffTriggersHint")}</p>
+              )}
+              {section.focus && errors[section.focus] && (
+                <p role="alert" className="mb-2 text-[11.5px] font-medium text-red-600 dark:text-red-400">
+                  {errors[section.focus]}
+                </p>
+              )}
               <div className="flex flex-col gap-2">
                 {config.behavior[section.key].map((item, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
@@ -145,8 +183,32 @@ export function BehaviorSection({ config, onChange }: BehaviorSectionProps) {
       </section>
 
       {/* ── Required Fields ── */}
-      <RequiredFieldsSection config={config} onChange={onChange} />
+      {/* Avanzado: "Informacion requerida por contexto" is a power feature with
+          placeholders like nombre_del_contexto. It stays available, but a
+          first-time owner should not meet it while filling in the basics. */}
+      <AdvancedBehavior label={tv("advanced.title")} hint={tv("advanced.behaviorHint")}>
+        <RequiredFieldsSection config={config} onChange={onChange} />
+      </AdvancedBehavior>
     </div>
+  );
+}
+
+function AdvancedBehavior({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 cursor-pointer transition-colors bg-transparent border-none p-0"
+      >
+        <ChevronDown size={16} className={cn("transition-transform", open && "rotate-180")} />
+        {label}
+      </button>
+      {!open && <p className="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500">{hint}</p>}
+      {open && <div className="mt-3">{children}</div>}
+    </section>
   );
 }
 

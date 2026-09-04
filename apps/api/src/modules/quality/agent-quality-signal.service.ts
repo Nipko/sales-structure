@@ -458,12 +458,13 @@ export class AgentQualitySignalService {
     }
 
     /**
-     * Purpose-limited lookup for Parallly Assist. Both signal and agent are
-     * required predicates inside the tenant schema, so a guessed signal UUID
+     * Purpose-limited lookup of ONE still-active signal, used by Parallly Assist
+     * and by `GET /quality/:tenantId/signals/:signalId`. Both signal and agent
+     * are required predicates inside the tenant schema, so a guessed signal UUID
      * cannot reveal another agent or tenant. The returned wire type is already
      * stripped of internal fingerprints, actors and any conversation evidence.
      */
-    async getSignalForAssistant(
+    async getActiveSignal(
         tenantId: string,
         signalId: string,
         agentId: string,
@@ -490,6 +491,15 @@ export class AgentQualitySignalService {
         );
         if (!rows[0]) throw new NotFoundException('Active quality signal not found');
         return this.toSignal(rows[0]);
+    }
+
+    /** @deprecated Name kept for existing callers; use {@link getActiveSignal}. */
+    async getSignalForAssistant(
+        tenantId: string,
+        signalId: string,
+        agentId: string,
+    ): Promise<AgentQualitySignal> {
+        return this.getActiveSignal(tenantId, signalId, agentId);
     }
 
     async acknowledgeSignal(tenantId: string, signalId: string, actorId: string): Promise<AgentQualitySignal> {

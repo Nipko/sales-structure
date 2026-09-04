@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { HelpCircle, Plus, Trash2, Save, X, Edit2, Eye, EyeOff, Tag, BookOpen, Search } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { useRole } from "@/hooks/useRole";
 
 type Faq = {
@@ -136,6 +137,7 @@ export default function FaqsPage() {
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
                 {canEditKnowledge && <button
+                    id={guidedTourAnchorId("faq-new")}
                     onClick={openNew}
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors"
                 >
@@ -162,6 +164,7 @@ export default function FaqsPage() {
                 description={tHelp("faqs.description")}
                 tips={tHelp.raw("faqs.tips") as string[]}
                 mediaKey="faqs"
+                tourId="knowledge_base"
             />
 
             {loading ? (
@@ -169,7 +172,16 @@ export default function FaqsPage() {
             ) : faqs.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 p-12 text-center">
                     <HelpCircle size={32} className="mx-auto text-neutral-400 mb-3" />
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">{t("empty")}</p>
+                    <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{t("emptyTitle")}</p>
+                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400 max-w-md mx-auto">{t("emptyBody")}</p>
+                    {canEditKnowledge && (
+                        <button
+                            onClick={openNew}
+                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors cursor-pointer border-none"
+                        >
+                            <Plus size={16} /> {t("emptyAction")}
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -217,7 +229,7 @@ export default function FaqsPage() {
                         )}
 
                         <div className="space-y-4">
-                            <div>
+                            <div id={guidedTourAnchorId("faq-fields")}>
                                 <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.question")} *</label>
                                 <input className={inputCls} value={form.question} onChange={e => setForm({ ...form, question: e.target.value })} placeholder={t("placeholders.question")} />
                             </div>
@@ -239,9 +251,12 @@ export default function FaqsPage() {
                                 <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.tags")}</label>
                                 <input className={inputCls} value={form.tagsRaw} onChange={e => setForm({ ...form, tagsRaw: e.target.value })} placeholder={t("placeholders.tags")} />
                             </div>
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input type="checkbox" checked={form.isPublished} onChange={e => setForm({ ...form, isPublished: e.target.checked })} className="rounded" />
-                                <span className="text-neutral-700 dark:text-neutral-300">{t("fields.published")}</span>
+                            <label id={guidedTourAnchorId("faq-published")} className="flex items-start gap-2 text-sm cursor-pointer">
+                                <input type="checkbox" checked={form.isPublished} onChange={e => setForm({ ...form, isPublished: e.target.checked })} className="rounded mt-0.5" />
+                                <span className="text-neutral-700 dark:text-neutral-300">
+                                    {t("fields.published")}
+                                    <span className="block text-[11px] text-neutral-500 dark:text-neutral-400">{t("fields.publishedHint")}</span>
+                                </span>
                             </label>
                         </div>
 

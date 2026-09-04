@@ -3,16 +3,24 @@ id: base-conocimiento
 title: "Base de connaissances de l'agent"
 routes: ["/admin/knowledge", "/admin/knowledge/faqs"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["base de connaissances", "connaissance", "knowledge base", "téléverser des documents", "pdf", "faq", "questions fréquentes", "importer une url", "page web", "crawl", "articles", "catégories", "modifier un document", "versions", "qualité", "suggestions", "lacunes", "portail public", "aide aux clients", "l'agent ne sait pas répondre"]
+keywords: ["base de connaissances", "connaissance", "knowledge base", "téléverser des documents", "pdf", "faq", "questions fréquentes", "importer une url", "page web", "crawl", "articles", "catégories", "modifier un document", "versions", "qualité", "suggestions", "lacunes", "portail public", "aide aux clients", "l'agent ne sait pas répondre", "commencer par les faq", "documents et pages web"]
 ---
 
 # Base de connaissances de l'agent
 
-La base de connaissances est la « mémoire » de votre agent IA : les documents, questions fréquentes et pages que vous ajoutez ici sont les informations avec lesquelles il répond à vos clients. Plus elle est complète et à jour, plus ses réponses sont précises.
+La base de connaissances est la « mémoire » de votre agent IA : les **questions fréquentes**, les **documents** et les **pages web** que vous ajoutez ici sont les informations avec lesquelles il répond à vos clients. Plus elle est complète et à jour, plus ses réponses sont précises.
 
 Vous la trouvez dans **IA et croissance → Base de connaissances**. À l'intérieur, vous verrez les onglets **Bibliothèque**, **FAQ**, **Rechercher dans le contexte**, **Qualité**, **Analytique** et **Lacunes**.
 
 > Cette section est administrée par les rôles **administrateur** et **superviseur**.
+
+## Par quoi commencer : les questions fréquentes
+
+**Commencez par les FAQ.** Ce sont les plus rapides à charger et les plus visibles : vous écrivez la question telle qu'un client la pose, et la réponse exacte que vous voulez que l'agent donne. Avec dix questions fréquentes bien écrites (tarifs, horaires, adresse, moyens de paiement, politique d'échange), l'agent répond déjà à l'essentiel de ce qui arrive chaque jour.
+
+Ajoutez ensuite des **documents et des pages web** : le PDF de votre carte, le manuel de garantie, la page de questions fréquentes de votre site. Ils couvrent le long et le détaillé, tandis que les FAQ couvrent ce qui doit toujours recevoir la même réponse.
+
+Quand un écran est vide, chaque onglet propose l'action principale sur place : **Créer ma première FAQ** ou **Importer mon premier document**. Le bouton **Montrez-moi comment**, qui met en évidence étape par étape où cela se fait, ne se trouve pas sur cet état vide mais dans le panneau d'**Aide** de l'écran.
 
 ## Disponibilité et capacité
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Check, ShieldCheck } from "lucide-react";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 /**
  * Pre-check de prerrequisitos mostrado ANTES de lanzar el Embedded Signup de Meta.
@@ -10,6 +11,9 @@ import { Check, ShieldCheck } from "lucide-react";
  * el usuario descubre a mitad de camino que no tiene un número libre / acceso al OTP /
  * cuenta de Facebook. Confirmar estos puntos por adelantado reduce falsos inicios.
  * Es un gate suave (awareness), no validación dura.
+ *
+ * La nota que ofrecía "probá con un número de prueba" salió: esa ruta no existe
+ * más en el producto, así que era una salida a ninguna parte.
  */
 export default function WhatsAppPrerequisites({ onContinue }: { onContinue: () => void }) {
     const t = useTranslations("setupWizard.connect");
@@ -19,7 +23,7 @@ export default function WhatsAppPrerequisites({ onContinue }: { onContinue: () =
     const items = [t("prereqs.item1"), t("prereqs.item2"), t("prereqs.item3")];
 
     return (
-        <div>
+        <div id={guidedTourAnchorId("whatsapp-prerequisites")}>
             <div className="flex items-center gap-3 mb-4 pb-4 border-b border-neutral-200 dark:border-white/10">
                 <div className="w-11 h-11 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                     <ShieldCheck size={22} />
@@ -43,7 +47,6 @@ export default function WhatsAppPrerequisites({ onContinue }: { onContinue: () =
                     </button>
                 ))}
             </div>
-            <p className="text-[12px] text-muted-foreground mb-4">{t("prereqs.sandboxNote")}</p>
             <button
                 onClick={onContinue}
                 disabled={!allChecked}

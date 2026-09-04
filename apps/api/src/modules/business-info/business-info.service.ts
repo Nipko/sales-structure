@@ -87,12 +87,12 @@ export class BusinessInfoService {
                  LIMIT 1`,
             ) as any[];
             if (fallback.length === 0) return null;
-            const identity = this.rowToIdentity(tenantId, fallback[0]);
+            const identity = await this.withBusinessContext(tenantId, this.rowToIdentity(tenantId, fallback[0]));
             await this.redis.setJson(cacheKey, identity, 600);
             return identity;
         }
 
-        const identity = this.rowToIdentity(tenantId, rows[0]);
+        const identity = await this.withBusinessContext(tenantId, this.rowToIdentity(tenantId, rows[0]));
         await this.redis.setJson(cacheKey, identity, 600);
         return identity;
     }
@@ -163,11 +163,15 @@ export class BusinessInfoService {
                 social,
             ) as any[];
             await this.invalidateCache(tenantId);
+            // The insert branch used to skip this, so the very first save left
+            // the tenant settings (and therefore the prompt) without the
+            // business context the same call had just collected.
+            await this.syncToTenantSettings(tenantId, input);
             this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
                 tenantId,
                 source: 'business_info',
             });
-            return this.rowToIdentity(tenantId, rows[0]);
+            return this.withBusinessContext(tenantId, this.rowToIdentity(tenantId, rows[0]));
         }
 
         const rows = await this.prisma.$queryRawUnsafe(
@@ -206,7 +210,17 @@ export class BusinessInfoService {
             tenantId,
             source: 'business_info',
         });
-        return this.rowToIdentity(tenantId, rows[0]);
+        return this.withBusinessContext(tenantId, this.rowToIdentity(tenantId, rows[0]));
+    }
+
+    /** Free text the agent prompt reads: bounded, deduplicated, never trusted raw. */
+    private sanitizeContextList(value: unknown): string[] | null {
+        if (!Array.isArray(value)) return null;
+        const items = value
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim().slice(0, 120))
+            .filter((item) => item.length > 0);
+        return [...new Set(items)].slice(0, 20);
     }
 
     private async syncToTenantSettings(tenantId: string, input: UpsertBusinessIdentityInput): Promise<void> {
@@ -219,9 +233,42 @@ export class BusinessInfoService {
             if (input.phone != null) patch.phone = input.phone;
             if (input.email != null) patch.supportEmail = input.email;
             if (input.socialLinks != null) patch.socialLinks = input.socialLinks;
+            const chatReasons = this.sanitizeContextList(input.chatReasons);
+            if (chatReasons !== null) patch.chatReasons = chatReasons;
+            const customerTypes = this.sanitizeContextList(input.customerTypes);
+            if (customerTypes !== null) patch.customerTypes = customerTypes;
             await mergeTenantSettingsAtomic(this.prisma, tenantId, patch);
         } catch (e: any) {
             this.logger.warn(`syncToTenantSettings failed (non-fatal): ${e.message}`);
+        }
+    }
+
+    /**
+     * `chatReasons`/`customerTypes` live in `tenant.settings` (the signup wizard
+     * writes them there and the prompt reads them there), so the identity is
+     * completed from that source instead of the companies row.
+     */
+    private async withBusinessContext(
+        tenantId: string,
+        identity: BusinessIdentity,
+    ): Promise<BusinessIdentity> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true },
+            });
+            const settings = (tenant?.settings ?? {}) as Record<string, unknown>;
+            const chatReasons = this.sanitizeContextList(settings.chatReasons);
+            const customerTypes = this.sanitizeContextList(settings.customerTypes);
+            return {
+                ...identity,
+                ...(chatReasons?.length ? { chatReasons } : {}),
+                ...(customerTypes?.length ? { customerTypes } : {}),
+            };
+        } catch (e: any) {
+            // Business info must still render if the tenant row is unreachable.
+            this.logger.warn(`withBusinessContext failed (non-fatal): ${e.message}`);
+            return identity;
         }
     }
 
@@ -277,4 +324,8 @@ export interface UpsertBusinessIdentityInput {
     country?: string;
     logoUrl?: string;
     socialLinks?: SocialLinks;
+    /** Why customers write. Editable from Settings → Business info. */
+    chatReasons?: string[];
+    /** Who the customers are. */
+    customerTypes?: string[];
 }

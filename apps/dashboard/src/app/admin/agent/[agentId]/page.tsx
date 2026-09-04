@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -10,13 +10,15 @@ import Link from "next/link";
 import {
   Bot, User, Shield, Wrench, Save, CheckCircle, AlertTriangle,
   ArrowLeft, MoreVertical, BookmarkPlus, Star, Clock, TestTube2,
-  MessageSquare, Instagram, Facebook, Send, X, Phone, Globe2,
+  MessageSquare, Instagram, Facebook, Send, X, Globe2, Plug,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import { Badge } from "@/components/ui/badge";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
 import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 import type { PersonaConfig } from "../_types";
 import { defaultConfig } from "../_types";
@@ -33,11 +35,53 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   instagram: { label: "Instagram", icon: Instagram,     color: "text-pink-500" },
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
-  sms:       { label: "SMS",       icon: Phone,         color: "text-amber-500" },
-  web_widget:{ label: "Web Widget",icon: Globe2,        color: "text-violet-500" },
+  web_widget:{ label: "Chat web",  icon: Globe2,        color: "text-violet-500" },
+  // `sms` is deliberately absent: SMS is a one-way notification product, never a
+  // conversational channel an agent can be assigned to.
 };
 
-const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "sms", "web_widget"];
+/**
+ * Order the chips are shown in. Only types that actually have a CONNECTED
+ * account are rendered — offering "assign Instagram" for a channel nobody
+ * connected is exactly what leaves the agent with a critical connection
+ * failure while the owner believes the setup is done.
+ */
+const CHANNEL_ORDER = ["whatsapp", "instagram", "messenger", "telegram", "web_widget"];
+
+// ── Deep links from the quality center: ?tab=<id>&focus=<field> ──
+
+type FocusField = "name" | "role" | "greeting" | "fallback" | "rules" | "handoff" | "channels" | "active";
+
+const FOCUS_TAB: Record<FocusField, string | null> = {
+  name: "persona",
+  role: "persona",
+  greeting: "persona",
+  fallback: "persona",
+  rules: "instructions",
+  handoff: "instructions",
+  channels: null,   // lives in the hero, above the tabs
+  active: null,
+};
+
+const FOCUS_ANCHOR: Record<FocusField, string> = {
+  name: "agent-name",
+  role: "agent-name",
+  greeting: "agent-greeting",
+  fallback: "agent-fallback",
+  rules: "agent-rules",
+  handoff: "agent-handoff-triggers",
+  channels: "agent-channels",
+  active: "agent-active",
+};
+
+const TAB_IDS = ["persona", "instructions", "tools", "schedule"];
+
+function isFocusField(value: string | null): value is FocusField {
+  return !!value && value in FOCUS_TAB;
+}
+
+/** Fields the editor (and the API) require before an agent can be saved. */
+export type AgentFieldErrors = Partial<Record<FocusField, string>>;
 
 // A connected account of a channel (from /channels/overview).
 interface ChannelAccountLite { channelType: string; accountId: string; displayName?: string }
@@ -79,10 +123,13 @@ export default function AgentEditorPage() {
   const t = useTranslations("agent");
   const tc = useTranslations("common");
   const tt = useTranslations("agent.tabs");
+  const th = useTranslations("help");
   const { activeTenantId } = useTenant();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const agentId = params.agentId as string;
+  const heroRef = useRef<HTMLDivElement | null>(null);
 
   const [activeTab, setActiveTab] = useState("persona");
   const [mode, setMode] = useState<"guided" | "prompt">("guided");
@@ -92,6 +139,11 @@ export default function AgentEditorPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [isDefault, setIsDefault] = useState(false);
+  const [isActive, setIsActive] = useState(true);
+  const [activePending, setActivePending] = useState(false);
+  const [confirmActive, setConfirmActive] = useState<null | boolean>(null);
+  const [fieldErrors, setFieldErrors] = useState<AgentFieldErrors>({});
+  const [focusField, setFocusField] = useState<FocusField | null>(null);
   const [assignedChannels, setAssignedChannels] = useState<string[]>([]);
   const [assignedBindings, setAssignedBindings] = useState<string[]>([]);
   const [accounts, setAccounts] = useState<ChannelAccountLite[]>([]);
@@ -126,6 +178,9 @@ export default function AgentEditorPage() {
           const configData = data.config_json || {};
           setConfig(deepMerge(structuredClone(defaultConfig), configData));
           setIsDefault(data.is_default ?? false);
+          // The `agent_active` quality check reads the COLUMN, not
+          // `config_json.isActive`; the hero must show the same truth.
+          setIsActive(data.is_active !== false);
           if (configData._customPrompt) {
             setCustomPrompt(configData._customPrompt);
             setMode("prompt");
@@ -143,7 +198,12 @@ export default function AgentEditorPage() {
           const countByType: Record<string, number> = {};
           for (const a of accts) countByType[a.channelType] = (countByType[a.channelType] || 0) + 1;
           const bindingTypes = srcBindings.map(b => b.split(":")[0]);
-          const allTypes = Array.from(new Set([...srcChannels, ...bindingTypes, ...Object.keys(countByType)]));
+          // Drop anything that is not a certified conversational channel (`sms`
+          // above all). The API rejects those on save, so keeping a legacy `sms`
+          // assignment in state would make every save fail with a code the owner
+          // has no control to clear.
+          const allTypes = Array.from(new Set([...srcChannels, ...bindingTypes, ...Object.keys(countByType)]))
+            .filter((type) => Boolean(CHANNEL_META[type]));
           const nextChannels: string[] = [];
           const nextBindings: string[] = [];
           for (const type of allTypes) {
@@ -242,10 +302,115 @@ export default function AgentEditorPage() {
     return new Set(Object.keys(c).filter(t => c[t] >= 2));
   })();
 
+  // Only channel types with a real, connected account are offered. A type the
+  // agent still carries from an older assignment stays visible so it can be
+  // unassigned instead of silently haunting the connection check.
+  const connectedChannelTypes = (() => {
+    const connected = new Set(accounts.map(a => a.channelType));
+    const assignedTypes = new Set([
+      ...assignedChannels,
+      ...assignedBindings.map(b => b.split(":")[0]),
+    ]);
+    return CHANNEL_ORDER.filter(type =>
+      CHANNEL_META[type] && (connected.has(type) || assignedTypes.has(type)));
+  })();
+
+  // ── Deep link: ?tab=<id>&focus=<field> ─────────────────────
+  //
+  // The quality center links straight to the field that fails. Landing on the
+  // right tab is half the job; the other half is scrolling to the control and
+  // ringing it, because "Revisar" that drops you at the top of a long form is
+  // the same dead end as a page that says nothing.
+
+  useEffect(() => {
+    if (loading) return;
+    const tab = searchParams.get("tab");
+    const focus = searchParams.get("focus");
+    const target = isFocusField(focus) ? focus : null;
+    if (tab && TAB_IDS.includes(tab)) setActiveTab(tab);
+    else if (target && FOCUS_TAB[target]) setActiveTab(FOCUS_TAB[target] as string);
+    if (target) setFocusField(target);
+  }, [loading, searchParams]);
+
+  useEffect(() => {
+    if (!focusField) return;
+    const anchor = FOCUS_ANCHOR[focusField];
+    // One frame so the tab we just selected has rendered its fields.
+    const raf = window.requestAnimationFrame(() => {
+      const element = document.getElementById(guidedTourAnchorId(anchor))
+        ?? (focusField === "active" ? heroRef.current : null);
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const timer = window.setTimeout(() => setFocusField(null), 4_000);
+    return () => { window.cancelAnimationFrame(raf); window.clearTimeout(timer); };
+  }, [focusField, activeTab]);
+
+  const highlightCls = (field: FocusField) =>
+    focusField === field ? "rounded-xl ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-neutral-900" : "";
+
+  // ── Validation (mirrors persona.service.updateAgent) ───────
+  //
+  // The editor used to save an agent with no name, no fallback, no rules and no
+  // handoff reason, and the banner only said "1 critical blocker". Both halves
+  // are fixed: we block the save AND we say which field.
+
+  function validateAgent(): AgentFieldErrors {
+    const errors: AgentFieldErrors = {};
+    const filled = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+    const anyFilled = (list: unknown) => Array.isArray(list) && list.some((item) => filled(item));
+    if (!filled(config.persona.name)) errors.name = t("validation.nameRequired");
+    if (!filled(config.persona.role)) errors.role = t("validation.roleRequired");
+    if (!filled(config.persona.fallbackMessage)) errors.fallback = t("validation.fallbackRequired");
+    if (!anyFilled(config.behavior.rules)) errors.rules = t("validation.rulesRequired");
+    if (!anyFilled(config.behavior.handoffTriggers)) errors.handoff = t("validation.handoffRequired");
+    return errors;
+  }
+
+  /** Jump to the tab that owns the first invalid field so the message is visible. */
+  function revealFirstError(errors: AgentFieldErrors) {
+    const first = (Object.keys(errors) as FocusField[])[0];
+    if (!first) return;
+    const tab = FOCUS_TAB[first];
+    if (tab) setActiveTab(tab);
+    setFocusField(first);
+  }
+
+  // ── Active / inactive ──────────────────────────────────────
+
+  async function applyActive(next: boolean) {
+    if (!activeTenantId || !agentId) return;
+    setConfirmActive(null);
+    setActivePending(true);
+    try {
+      const res = await api.updateAgent(activeTenantId, agentId, { isActive: next });
+      if (res?.success) {
+        setIsActive(next);
+        setConfig((prev) => ({ ...prev, isActive: next }));
+        setToast(next ? t("activation.activated") : t("activation.deactivated"));
+        window.setTimeout(requestQualityHealthRefresh, 1_500);
+        setQualityRefreshKey((current) => current + 1);
+      } else {
+        setToast((res as any)?.error || tc("errorSaving"));
+      }
+    } catch {
+      setToast(tc("errorSaving"));
+    } finally {
+      setActivePending(false);
+    }
+  }
+
   // ── Save ───────────────────────────────────────────────────
 
   async function handleSave() {
     if (!activeTenantId || !agentId) return;
+    const errors = validateAgent();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      revealFirstError(errors);
+      setToast(t("validation.blocked"));
+      return;
+    }
+    setFieldErrors({});
     setSaving(true);
     try {
       // Multi-account types are driven by per-account bindings; keep them OUT of
@@ -259,9 +424,13 @@ export default function AgentEditorPage() {
         ...assignedChannels.filter(t => !multiAccountTypes.has(t)),
         ...foldedTypes,
       ]));
+      // `_personalizedAt` is what tells the agent list this agent was reviewed by
+      // a person. Keying the "personalize your agent" banner on template NAMES
+      // meant vertical tenants (almost all of them) never saw it.
+      const base = { ...config, _personalizedAt: new Date().toISOString() };
       const configJson = mode === "prompt"
-        ? { ...config, _customPrompt: customPrompt, _mode: "prompt" }
-        : { ...config, _customPrompt: undefined, _mode: "wizard" };
+        ? { ...base, _customPrompt: customPrompt, _mode: "prompt" }
+        : { ...base, _customPrompt: undefined, _mode: "wizard" };
       const payload: any = {
         configJson,
         channels: channelsToSave,
@@ -276,6 +445,21 @@ export default function AgentEditorPage() {
         // Refresh the global card/badge shortly after that reconciliation instead
         // of leaving the previous health snapshot visible for up to five minutes.
         window.setTimeout(requestQualityHealthRefresh, 1_500);
+      } else if ((res as any)?.errorCode === "agent_invalid") {
+        // The API enforces the same rules. Its `fields` list is not forwarded by
+        // the HTTP wrapper today, so re-derive the per-field messages locally
+        // instead of showing a bare code the person cannot act on.
+        const remote: string[] = Array.isArray((res as any)?.fields) ? (res as any).fields : [];
+        const local = validateAgent();
+        const errors: AgentFieldErrors = Object.keys(local).length > 0
+          ? local
+          : remote.reduce<AgentFieldErrors>((acc, field) => {
+              if (isFocusField(field)) acc[field] = t("validation.blocked");
+              return acc;
+            }, {});
+        setFieldErrors(errors);
+        revealFirstError(errors);
+        setToast(t("validation.blocked"));
       } else {
         setToast((res as any)?.error || tc("errorSaving"));
       }
@@ -397,6 +581,7 @@ export default function AgentEditorPage() {
             </Link>
             <button
               type="button"
+              id={guidedTourAnchorId("agent-save")}
               onClick={handleSave}
               disabled={saving}
               className={cn(
@@ -439,11 +624,18 @@ export default function AgentEditorPage() {
         }
       />
 
+      <HelpPanel
+        title={th("agentEditor.title")}
+        description={th("agentEditor.description")}
+        tips={th.raw("agentEditor.tips") as string[]}
+        tourId="agent_handoff_rules"
+      />
+
       {/* ── Resumen persistente del pasaporte de calidad ── */}
       <AgentReadinessBanner tenantId={activeTenantId} agentId={agentId} refreshKey={qualityRefreshKey} />
 
       {/* ── Agent profile hero + channels ── */}
-      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">
+      <div ref={heroRef} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shrink-0">
             <Bot size={28} className="text-white" />
@@ -464,31 +656,80 @@ export default function AgentEditorPage() {
                 </Badge>
               )}
               <Badge
-                variant={config.isActive ? "default" : "secondary"}
+                variant={isActive ? "default" : "secondary"}
                 className={cn("text-[11px]",
-                  config.isActive
+                  isActive
                     ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
                     : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
                 )}
               >
-                {config.isActive ? t("profile.active") : t("profile.inactive")}
+                {isActive ? t("profile.active") : t("profile.inactive")}
               </Badge>
             </div>
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
               {config.persona.role || t("profile.noRoleDefined")}
             </p>
           </div>
+
+          {/* Activo / Inactivo — the `agent_active` critical check had NO control
+              anywhere in the panel: the owner saw "Inactivo" and a blocker that
+              sent them to a page where nothing could be turned on. */}
+          <div
+            id={guidedTourAnchorId("agent-active")}
+            className={cn("flex flex-col items-end gap-1 shrink-0 p-2", highlightCls("active"))}
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              {t("activation.label")}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isActive}
+              aria-label={t("activation.label")}
+              disabled={activePending}
+              onClick={() => setConfirmActive(!isActive)}
+              className={cn(
+                "relative w-12 h-6 rounded-full transition-colors cursor-pointer border-none",
+                activePending && "opacity-60 cursor-not-allowed",
+                isActive ? "bg-emerald-500" : "bg-neutral-300 dark:bg-neutral-600",
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
+                isActive ? "translate-x-[26px]" : "translate-x-0.5",
+              )} />
+            </button>
+            <span className="text-[11px] text-neutral-400 dark:text-neutral-500 max-w-[190px] text-right leading-tight">
+              {isActive ? t("activation.activeHint") : t("activation.inactiveHint")}
+            </span>
+          </div>
         </div>
 
-        {/* Channel assignment — inline */}
-        <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+        {/* Channel assignment — inline. Only CONNECTED accounts are offered. */}
+        <div
+          id={guidedTourAnchorId("agent-channels")}
+          className={cn("mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800", highlightCls("channels"))}
+        >
           <div className="flex items-center gap-2 mb-3">
             <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
               {t("channelAssignment")}
             </span>
           </div>
+
+          {connectedChannelTypes.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-4">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t("noConnectedChannels")}</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">{t("noConnectedChannelsHint")}</p>
+              <Link
+                href="/admin/channels"
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold no-underline transition-colors"
+              >
+                <Plug size={14} /> {t("connectChannel")}
+              </Link>
+            </div>
+          ) : (
           <div className="flex flex-wrap gap-2">
-            {ALL_CHANNELS.flatMap(ch => {
+            {connectedChannelTypes.flatMap(ch => {
               const meta = CHANNEL_META[ch];
               if (!meta) return [];
               const Icon = meta.icon;
@@ -538,6 +779,7 @@ export default function AgentEditorPage() {
               )];
             })}
           </div>
+          )}
           {(assignedChannels.some(ch => getChannelOwner(ch)) || assignedBindings.some(k => getBindingOwner(k))) && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
               <AlertTriangle size={12} />
@@ -572,11 +814,11 @@ export default function AgentEditorPage() {
 
       <div className="rounded-b-xl border border-t-0 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-6 min-h-[400px]">
         {activeTab === "persona" && (
-          <PersonaTab config={config} onChange={updateConfig} />
+          <PersonaTab config={config} onChange={updateConfig} errors={fieldErrors} focusField={focusField} />
         )}
 
         {activeTab === "instructions" && (
-          <BehaviorSection config={config} onChange={updateConfig} />
+          <BehaviorSection config={config} onChange={updateConfig} errors={fieldErrors} focusField={focusField} />
         )}
 
         {activeTab === "tools" && (
@@ -634,6 +876,39 @@ export default function AgentEditorPage() {
         </div>
       )}
 
+      {/* ── Activate / deactivate confirmation ── */}
+      {confirmActive !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setConfirmActive(null)}>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 max-w-md w-full shadow-xl p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              {confirmActive ? t("activation.confirmActivateTitle") : t("activation.confirmDeactivateTitle")}
+            </h3>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1.5">
+              {confirmActive ? t("activation.confirmActivateBody") : t("activation.confirmDeactivateBody")}
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setConfirmActive(null)}
+                className="px-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-200 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+              >
+                {tc("cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => applyActive(confirmActive)}
+                className={cn(
+                  "px-4 py-2 rounded-lg border-none text-white text-sm font-semibold cursor-pointer transition-colors",
+                  confirmActive ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700",
+                )}
+              >
+                {confirmActive ? t("activation.confirmActivate") : t("activation.confirmDeactivate")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Sticky Save Bar ── */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
         <span className="text-xs text-neutral-400 mr-auto">{t("title")}</span>
@@ -643,6 +918,11 @@ export default function AgentEditorPage() {
         >
           <TestTube2 size={14} /> {t("testAgent")}
         </Link>
+        {Object.keys(fieldErrors).length > 0 && (
+          <span className="text-xs font-medium text-red-600 dark:text-red-400 flex items-center gap-1">
+            <AlertTriangle size={13} /> {t("validation.blocked")}
+          </span>
+        )}
         <button
           type="button"
           onClick={handleSave}

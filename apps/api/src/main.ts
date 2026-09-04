@@ -3,7 +3,8 @@ import './instrument';
 
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import type { ValidationError } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import * as Sentry from '@sentry/nestjs';
@@ -13,6 +14,39 @@ import { PublicApiModule } from './modules/public-api/public-api.module';
 
 // PostgreSQL COUNT(*) returns BigInt which JSON.stringify cannot serialize
 (BigInt.prototype as any).toJSON = function () { return Number(this); };
+
+export interface ValidationFieldError {
+    /** Ruta del campo tal como viaja en el cuerpo: `company.email`, `plan`. */
+    path: string;
+    /** Nombre del validador que falló (`isEmail`, `isNotEmpty`, `maxLength`…). */
+    constraint: string;
+}
+
+/**
+ * Aplana los errores de class-validator, incluidos los anidados.
+ *
+ * El nombre del validador es un CÓDIGO estable: el panel lo traduce y lo
+ * muestra bajo el campo. El texto crudo de class-validator viene en inglés y
+ * con el nombre técnico de la propiedad ("company.email must be an email"), y
+ * era lo único que veía alguien que se estaba registrando —en el último paso
+ * del alta, sin ninguna pista de a qué campo volver.
+ */
+export function flattenValidationErrors(
+    errors: ValidationError[],
+    parentPath = '',
+): ValidationFieldError[] {
+    const fields: ValidationFieldError[] = [];
+    for (const error of errors || []) {
+        const path = parentPath ? `${parentPath}.${error.property}` : String(error.property);
+        for (const constraint of Object.keys(error.constraints || {})) {
+            fields.push({ path, constraint });
+        }
+        if (error.children?.length) {
+            fields.push(...flattenValidationErrors(error.children, path));
+        }
+    }
+    return fields;
+}
 
 async function bootstrap() {
     const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -97,6 +131,15 @@ async function bootstrap() {
             whitelist: true,
             transform: true,
             transformOptions: { enableImplicitConversion: true },
+            // Error tipado (sigue siendo 400): el panel mapea cada
+            // `{ path, constraint }` a su mensaje en el idioma del usuario y
+            // salta al paso donde vive el campo. `message` queda en español
+            // para los clientes viejos que solo leen ese campo.
+            exceptionFactory: (errors: ValidationError[]) => new BadRequestException({
+                error: 'validation_failed',
+                message: 'Revisá los datos: hay campos incompletos o con formato inválido.',
+                fields: flattenValidationErrors(errors),
+            }),
         }),
     );
 

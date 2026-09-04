@@ -22,6 +22,8 @@ import { JwtPayload, UserRole } from '@parallext/shared';
 import { TIMEZONE_COUNTRY, SPANISH_SPEAKING_COUNTRIES } from '../../common/utils/billing-country.util';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { COUNTRY_DEFAULT_TIMEZONE, PLATFORM_FALLBACK_COUNTRY } from '@parallext/shared';
+import type { OnboardingStage } from '@parallext/shared';
+import { deriveOnboardingStage } from '@parallext/shared';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
@@ -95,6 +97,72 @@ export class AuthService {
     /** Public for SAML and any boundary that must mint a tenant-scoped session. */
     async resolveReadyTenantIdForUser(userId: string, claimedTenantId?: string | null): Promise<string | undefined> {
         return (await resolveReadyUserTenantContext(this.prisma, this.redis, userId, claimedTenantId))?.tenantId;
+    }
+
+    /**
+     * The tenant's real onboarding stage, for the payloads that decide where a
+     * login lands.
+     *
+     * It is DERIVED, never read raw (`deriveOnboardingStage`): a tenant created
+     * before the field existed has no stored stage, and a stored
+     * `account_created` written the day of the signup must lose to the channel
+     * the owner connected afterwards. Without this the dashboard received no
+     * stage at all, defaulted to `account_created`, and dropped every
+     * tenant_admin into the setup wizard on every login — for years, if the
+     * account was that old.
+     *
+     * Returns `undefined` when it cannot be established (no tenant, missing
+     * row, database hiccup). The dashboard treats a missing stage as "no
+     * evidence" and goes to `/admin`, which reads the authoritative
+     * setup-status and bounces only if it really has to. Never throw: failing a
+     * login because a COUNT(*) failed would be a far worse outcome than a
+     * redirect that lands one screen away.
+     *
+     * Deliberately NOT called from `validateUser`: that runs on every
+     * authenticated request, and nothing on that path reads the stage.
+     * `/auth/me` (which the panel calls rarely, and never per request) resolves
+     * it explicitly through this method.
+     */
+    async resolveOnboardingStageForTenant(
+        tenantId?: string | null,
+    ): Promise<OnboardingStage | undefined> {
+        if (!tenantId) return undefined;
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true, schemaName: true },
+            });
+            if (!tenant) return undefined;
+            const settings = (tenant.settings as any) || {};
+
+            const channelRows = (await this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`,
+                tenantId,
+            )) as Array<{ c: number }>;
+            const hasAnyChannel = Number(channelRows?.[0]?.c || 0) > 0;
+
+            let hasAgent = false;
+            if (tenant.schemaName) {
+                const agentRows = (await this.prisma.$queryRawUnsafe(
+                    `SELECT COUNT(*)::int AS c FROM "${tenant.schemaName}".agent_personas WHERE is_active = true`,
+                ).catch(() => [{ c: 0 }])) as Array<{ c: number }>;
+                hasAgent = Number(agentRows?.[0]?.c || 0) > 0;
+            }
+
+            return deriveOnboardingStage({
+                stage: settings.onboardingStage,
+                hasAnyChannel,
+                setupWizardCompleted: settings.setupWizardCompleted === true,
+                setupWizardSkipped: settings.setupWizardSkipped === true,
+                hasAgent,
+                channelConnectSkippedAt: settings.channelConnectSkippedAt ?? null,
+            });
+        } catch (error: any) {
+            this.logger.warn(
+                `Could not resolve onboarding stage for tenant ${tenantId}: ${error?.message || error}`,
+            );
+            return undefined;
+        }
     }
 
     // ── Token helpers ─────────────────────────────────────────────
@@ -523,6 +591,11 @@ export class AuthService {
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
+        // Dónde pertenece este login lo decide la etapa REAL del tenant. Sin
+        // este campo el panel no recibía ninguna y caía en `account_created`,
+        // que manda al asistente de configuración: un tenant de dos años con
+        // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
+        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
 
         return {
             requires2FA: false,
@@ -544,6 +617,9 @@ export class AuthService {
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
                 onboardingCompleted: effectiveOnboarding,
+                // `undefined` = no se pudo establecer. El panel lo lee como
+                // "sin evidencia" y NO manda a nadie al asistente.
+                onboardingStage,
             },
         };
     }
@@ -604,7 +680,11 @@ export class AuthService {
             };
             const session = await this.redis.getJson<SessionData>(sessionKey);
             const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, { sid: session?.sid, clientType });
-            return { accessToken, refreshToken: newRefresh };
+            // La etapa viaja con cada renovación: el usuario guardado en el
+            // panel se escribió en el login y una sesión larga lo deja viejo.
+            // `undefined` = no se pudo establecer, y el panel no infiere nada.
+            const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
+            return { accessToken, refreshToken: newRefresh, onboardingStage };
         }
 
         // Check if this token exists in Redis (not revoked)
@@ -665,7 +745,11 @@ export class AuthService {
             clientType,
         });
 
-        return { accessToken, refreshToken: newRefresh };
+        // Ver arriba: la etapa acompaña a la renovación para que el panel no
+        // siga leyendo la que se guardó el día del login.
+        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
+
+        return { accessToken, refreshToken: newRefresh, onboardingStage };
     }
 
     /**
@@ -897,6 +981,11 @@ export class AuthService {
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
+        // Dónde pertenece este login lo decide la etapa REAL del tenant. Sin
+        // este campo el panel no recibía ninguna y caía en `account_created`,
+        // que manda al asistente de configuración: un tenant de dos años con
+        // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
+        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
 
         return {
             requires2FA: false,
@@ -918,6 +1007,9 @@ export class AuthService {
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
                 onboardingCompleted: effectiveOnboarding,
+                // `undefined` = no se pudo establecer. El panel lo lee como
+                // "sin evidencia" y NO manda a nadie al asistente.
+                onboardingStage,
             },
         };
     }
@@ -1010,6 +1102,11 @@ export class AuthService {
 
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
         const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
+        // Dónde pertenece este login lo decide la etapa REAL del tenant. Sin
+        // este campo el panel no recibía ninguna y caía en `account_created`,
+        // que manda al asistente de configuración: un tenant de dos años con
+        // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
+        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
 
         return {
             requires2FA: false,
@@ -1027,6 +1124,9 @@ export class AuthService {
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
                 onboardingCompleted: effectiveOnboarding,
+                // `undefined` = no se pudo establecer. El panel lo lee como
+                // "sin evidencia" y NO manda a nadie al asistente.
+                onboardingStage,
             },
         };
     }
@@ -1472,6 +1572,11 @@ export class AuthService {
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
+        // Dónde pertenece este login lo decide la etapa REAL del tenant. Sin
+        // este campo el panel no recibía ninguna y caía en `account_created`,
+        // que manda al asistente de configuración: un tenant de dos años con
+        // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
+        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
 
         let deviceTrustToken: string | undefined;
         if (trustDevice && deviceInfo) {
@@ -1498,6 +1603,9 @@ export class AuthService {
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
                 onboardingCompleted: effectiveOnboarding,
+                // `undefined` = no se pudo establecer. El panel lo lee como
+                // "sin evidencia" y NO manda a nadie al asistente.
+                onboardingStage,
             },
         };
     }
@@ -2003,6 +2111,10 @@ export class AuthService {
                     tenantId: existingTenantId,
                     tenantName: tenant?.name,
                     onboardingCompleted: true,
+                    // Un alta reintentada sobre un tenant que ya existía es una
+                    // sesión como cualquier otra: sin el estado, el panel vuelve
+                    // a adivinar en qué punto está la cuenta.
+                    onboardingStage: await this.resolveOnboardingStageForTenant(existingTenantId),
                 },
                 verticalConfig,
                 coupon: couponResult,
@@ -2110,6 +2222,7 @@ export class AuthService {
         // Reserve the definitive tenant id first so the lifecycle lease exists
         // before the tenant/user transaction becomes visible to purge workers.
         const provisioningTenantId = crypto.randomUUID();
+        const initialOnboardingStage: OnboardingStage = 'account_created';
         return this.withTenantLifecycleLease(provisioningTenantId, async (assertLifecycleOwned) => {
         const assertLockOwned = async () => {
             await assertOnboardingLockOwned();
@@ -2149,6 +2262,12 @@ export class AuthService {
                         // schema/agente/bootstrap aunque el cliente se cierre.
                         subType,
                         businessInfoDraft,
+                        // Punto de partida del estado único de puesta en marcha.
+                        // Sin él, cada superficie de guía (redirect, Inicio,
+                        // tarjeta, tour) volvía a adivinar por su cuenta en qué
+                        // punto estaba la cuenta, y el dueño se encontraba con
+                        // varias guías a la vez. Solo avanza (advanceOnboardingStage).
+                        onboardingStage: initialOnboardingStage,
                     },
                     signupSource,
                 },
@@ -2324,6 +2443,9 @@ export class AuthService {
                 tenantId: result.user.tenantId,
                 tenantName: result.tenant.name,
                 onboardingCompleted: result.user.onboardingCompleted,
+                // El tenant se acaba de crear con esta etapa exacta: el puente
+                // /onboarding → asistente se apoya en un hecho, no en un default.
+                onboardingStage: initialOnboardingStage,
             },
             verticalConfig,
             coupon: couponResult,
@@ -2558,6 +2680,10 @@ export class AuthService {
                 tenantName: tenant.name,
                 emailVerified: true,
                 onboardingCompleted: true,
+                // Impersonando se ve el panel del tenant: sin el estado, el
+                // operador podría ser enviado al asistente de bienvenida de una
+                // cuenta que hace meses terminó de configurarse.
+                onboardingStage: await this.resolveOnboardingStageForTenant(readyTenantId),
             },
         };
     }

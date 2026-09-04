@@ -11,6 +11,15 @@ import * as fs from 'fs';
 import { CopilotRateLimitService } from './copilot-rate-limit.service';
 import { AgentQualityService } from '../quality/agent-quality.service';
 import { AgentQualitySignalService } from '../quality/agent-quality-signal.service';
+import {
+    GuidedTourDefinition,
+    GuidedTourId,
+    canRoleRunGuidedTour,
+    extractGuidedTourMarker,
+    findGuidedTourForQualityCode,
+    getGuidedTour,
+    guidedToursForArticles,
+} from '@parallext/shared';
 
 export interface CopilotQualityTarget {
     kind: 'agent_quality';
@@ -18,10 +27,26 @@ export interface CopilotQualityTarget {
     signalId?: string;
 }
 
-export interface CopilotChatAction {
-    code: 'open_quality_center' | 'open_quality_action';
-    labelKey: 'openCenter' | 'resolvePriority';
-    href: string;
+export type CopilotChatAction =
+    | { code: 'open_quality_center'; labelKey: 'openCenter'; href: string }
+    | { code: 'open_quality_action'; labelKey: 'resolvePriority'; href: string }
+    /** Opens the screen and walks the person through it. `href` always comes
+     *  from the shared registry (mobile fallback), never from model text. */
+    | { code: 'start_guided_tour'; labelKey: 'showMe'; href: string; tourId: GuidedTourId };
+
+/**
+ * What the tenant actually has connected. Provided by `AgentQualityService`;
+ * declared structurally here so the copilot compiles and degrades to "no
+ * channel block" while the provider method is being rolled out.
+ */
+interface TenantChannelSnapshot {
+    generatedAt: string;
+    total: number;
+    channels: { type: string; accounts: number; health: string }[];
+}
+
+interface TenantChannelSnapshotProvider {
+    getTenantChannelSnapshot(tenantId: string): Promise<TenantChannelSnapshot>;
 }
 
 // ─── Existing interfaces (platform copilot chat) ────────────────────────────
@@ -443,6 +468,156 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
         return value.slice(0, 512);
     }
 
+    // ─── Channels, evidence and guided tours (bounded, server-derived) ──────
+
+    /** Roles that may see tenant-wide configuration context. Agents get none. */
+    private static readonly TENANT_CONTEXT_ROLES = ['super_admin', 'tenant_admin', 'tenant_supervisor'];
+
+    /** Focus params the dashboard reads to explain why the user landed there. */
+    private static readonly QUALITY_FOCUS_SIGNAL_PARAM = 'qa';
+    private static readonly QUALITY_FOCUS_AGENT_PARAM = 'qagent';
+
+    private static readonly UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    /** Evidence is bounded on purpose: codes and counts, never free text. */
+    private static readonly EVIDENCE_KEY_PATTERN = /^[a-z0-9_]{1,40}$/i;
+    private static readonly EVIDENCE_VALUE_PATTERN = /^[a-z0-9_,:.-]{1,80}$/i;
+    private static readonly MAX_EVIDENCE_KEYS = 8;
+    private static readonly MAX_CHAT_ACTIONS = 3;
+
+    /** One line per tour, shown to the model so it can offer the right one. */
+    private static readonly GUIDED_TOUR_DESCRIPTIONS: Record<GuidedTourId, string> = {
+        connect_channel: 'dónde conectar, revisar o reautorizar un canal',
+        assign_agent_channel: 'dónde elegir qué canales atiende un agente',
+        agent_handoff_rules: 'dónde configurar reglas de comportamiento, motivos de escalamiento y mensaje de respaldo',
+        human_handoff_route: 'dónde invitar personas que reciban las conversaciones escaladas',
+        business_identity: 'dónde completar los datos del negocio que usa el agente',
+        knowledge_base: 'dónde cargar documentos y preguntas frecuentes de la base de conocimiento',
+        appointments_setup: 'dónde definir servicios y disponibilidad para agendar citas',
+        business_hours: 'dónde configurar el horario de atención',
+        run_agent_tests: 'dónde probar el agente antes de publicarlo',
+        agent_quality_center: 'dónde ver el estado de calidad del agente y su acción prioritaria',
+        home_first_steps: 'dónde están los primeros pasos de la cuenta',
+        first_channel_whatsapp: 'dónde conectar el primer número de WhatsApp',
+        resume_setup_wizard: 'dónde retomar la configuración inicial pendiente',
+        help_system: 'dónde están las ayudas en pantalla y este asistente',
+        inbox_first_conversation: 'dónde se atienden las conversaciones en el inbox',
+    };
+
+    /** Short, safe token (channel type, health state). Anything else is dropped. */
+    private boundedToken(value: unknown): string | null {
+        if (typeof value !== 'string') return null;
+        const trimmed = value.trim();
+        return /^[a-z0-9_.-]{1,40}$/i.test(trimmed) ? trimmed : null;
+    }
+
+    /**
+     * Keep only bounded primitives from a check's evidence. Long strings,
+     * arrays, objects and nulls are dropped, so transcripts, prompts, labels
+     * and conversation ids can never reach the model through this path.
+     */
+    private sanitizeEvidence(evidence: unknown): Record<string, string | number | boolean> | null {
+        if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return null;
+        const safe: Record<string, string | number | boolean> = {};
+        let kept = 0;
+        for (const [key, value] of Object.entries(evidence as Record<string, unknown>)) {
+            if (kept >= CopilotService.MAX_EVIDENCE_KEYS) break;
+            if (!CopilotService.EVIDENCE_KEY_PATTERN.test(key)) continue;
+            if (typeof value === 'number') {
+                if (!Number.isFinite(value)) continue;
+                safe[key] = value;
+            } else if (typeof value === 'boolean') {
+                safe[key] = value;
+            } else if (typeof value === 'string') {
+                if (!CopilotService.EVIDENCE_VALUE_PATTERN.test(value)) continue;
+                safe[key] = value;
+            } else {
+                continue;
+            }
+            kept++;
+        }
+        return kept > 0 ? safe : null;
+    }
+
+    /** Evidence of the preparation check behind a blocker or `fix_<check>` code. */
+    private checkEvidenceForCode(overview: any, code: unknown): Record<string, string | number | boolean> | null {
+        if (typeof code !== 'string' || !code) return null;
+        const checkCode = code.startsWith('fix_') ? code.slice(4) : code;
+        const dimensions = Array.isArray(overview?.preparation?.dimensions) ? overview.preparation.dimensions : [];
+        for (const dimension of dimensions) {
+            const checks = Array.isArray(dimension?.checks) ? dimension.checks : [];
+            for (const check of checks) {
+                if (check?.code === checkCode) return this.sanitizeEvidence(check.evidence);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The authoritative list of what this tenant actually has connected. Without
+     * it the model reads a `channel_connection` blocker as "there are no
+     * channels" and tells the owner something false while WhatsApp is running.
+     */
+    private async buildChannelContext(tenantId: string, userRole: string): Promise<string> {
+        if (!CopilotService.TENANT_CONTEXT_ROLES.includes(userRole)) return '';
+        const provider = this.agentQuality as unknown as Partial<TenantChannelSnapshotProvider> | null;
+        if (typeof provider?.getTenantChannelSnapshot !== 'function') return '';
+        try {
+            const snapshot = await provider.getTenantChannelSnapshot(tenantId);
+            const rawChannels = Array.isArray(snapshot?.channels) ? snapshot.channels : [];
+            const channels = rawChannels
+                .map((channel: any) => ({
+                    type: this.boundedToken(channel?.type),
+                    accounts: Number.isFinite(Number(channel?.accounts)) ? Math.max(0, Math.trunc(Number(channel.accounts))) : 0,
+                    health: this.boundedToken(channel?.health) || 'unknown',
+                }))
+                .filter((channel) => !!channel.type)
+                .slice(0, 20);
+            const total = Number.isFinite(Number(snapshot?.total))
+                ? Math.max(0, Math.trunc(Number(snapshot.total)))
+                : channels.length;
+            return `## CANALES CONECTADOS (autoritativo, derivado del tenant autenticado)
+${JSON.stringify({ total, channels })}
+REGLA DE CANALES: esta lista es la ÚNICA fuente sobre qué canales están conectados. Si no está vacía, NUNCA afirmes que no hay canales conectados; nombra los tipos conectados. Una señal de calidad sobre canales significa que UNA asignación del agente no está conectada, que un vínculo por cuenta quedó obsoleto o que una credencial requiere reautorizar; no significa que el negocio no tenga canales. Si la lista está vacía, indícalo y guía a Administración → Canales.`;
+        } catch (error: any) {
+            this.logger.warn(`buildChannelContext failed: ${error?.message || error}`);
+            return '';
+        }
+    }
+
+    /** Catalog of tours the model may offer this turn, plus the marker rule. */
+    private buildGuidedTourContext(tours: GuidedTourDefinition[]): string {
+        if (tours.length === 0) return '';
+        const lines = tours
+            .map((tour) => `- ${tour.id} — ${CopilotService.GUIDED_TOUR_DESCRIPTIONS[tour.id]}`)
+            .join('\n');
+        return `## RECORRIDOS GUIADOS DISPONIBLES (el botón "Mostrarme dónde" abre la pantalla y resalta paso a paso; no modifica nada)
+${lines}
+REGLA DE RECORRIDOS: cuando el usuario pregunte DÓNDE o CÓMO hacer algo que cubre un recorrido de esta lista, termina tu respuesta con una línea exacta [[tour:ID]] (un solo marcador, ID de esta lista). No lo uses para preguntas conceptuales ni para recorridos que no estén en la lista.`;
+    }
+
+    /** At most one tour action per reply; the href always comes from the registry. */
+    private addGuidedTourAction(actions: CopilotChatAction[], tourId: GuidedTourId | null): void {
+        if (!tourId) return;
+        if (actions.some((action) => action.code === 'start_guided_tour')) return;
+        const tour = getGuidedTour(tourId);
+        if (!tour) return;
+        actions.push({ code: 'start_guided_tour', labelKey: 'showMe', href: tour.route, tourId: tour.id });
+    }
+
+    /** Focus params so the destination screen can say why the user is there. */
+    private withQualityFocus(href: string, focus: { signalId?: string; agentId?: string }): string {
+        const signalId = focus.signalId || '';
+        const agentId = focus.agentId || '';
+        if (!CopilotService.UUID_PATTERN.test(signalId) || !CopilotService.UUID_PATTERN.test(agentId)) return href;
+        const separator = href.includes('?') ? '&' : '?';
+        const next = `${href}${separator}`
+            + `${CopilotService.QUALITY_FOCUS_SIGNAL_PARAM}=${encodeURIComponent(signalId)}`
+            + `&${CopilotService.QUALITY_FOCUS_AGENT_PARAM}=${encodeURIComponent(agentId)}`;
+        if (next.length > 512) return href;
+        return this.safeAdminHref(next) || href;
+    }
+
     /** Bounded, server-derived quality context. It intentionally excludes
      * transcripts, judge text, prompts, issue labels and conversation IDs. */
     private async buildAgentQualityContext(
@@ -472,6 +647,14 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
             }
         }
         const canOpenRepairActions = userRole === 'tenant_admin' || userRole === 'super_admin';
+        const criticalBlockers = overview.preparation.criticalBlockers.slice(0, 10);
+        // Codes alone made the model invent the cause ("no tenés canales").
+        // Bounded evidence lets it say what is actually failing, and nothing else.
+        const criticalBlockerEvidence: Record<string, Record<string, string | number | boolean>> = {};
+        for (const blocker of criticalBlockers) {
+            const evidence = this.checkEvidenceForCode(overview, blocker);
+            if (evidence) criticalBlockerEvidence[blocker] = evidence;
+        }
         const recommendations = overview.recommendations.slice(0, 5).map((item) => ({
             code: item.code,
             pillar: item.pillar,
@@ -489,7 +672,8 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
             nextMilestone: overview.nextMilestone,
             preparation: {
                 status: overview.preparation.status,
-                criticalBlockers: overview.preparation.criticalBlockers.slice(0, 10),
+                criticalBlockers,
+                criticalBlockerEvidence,
             },
             tested: { status: overview.tested.status, stale: overview.tested.stale },
             production: {
@@ -503,6 +687,7 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
                 pillar: requestedSignal.pillar,
                 dimension: requestedSignal.dimension,
                 evidenceCount: requestedSignal.evidenceCount,
+                evidence: this.checkEvidenceForCode(overview, requestedSignal.code),
                 href: canOpenRepairActions ? this.safeAdminHref(requestedSignal.href) : null,
             } : null,
             recommendations,
@@ -520,8 +705,18 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
             },
         ];
         if (preferredHref && preferredHref !== actions[0].href) {
-            actions.unshift({ code: 'open_quality_action', labelKey: 'resolvePriority', href: preferredHref });
+            const focusedHref = this.withQualityFocus(preferredHref, {
+                signalId: requestedSignal?.id || target.signalId,
+                agentId: requestedSignal?.agent?.id || overview.agent.id || target.agentId,
+            });
+            actions.unshift({ code: 'open_quality_action', labelKey: 'resolvePriority', href: focusedHref });
         }
+        // "Mostrarme dónde" for the very thing being explained. The tour only
+        // opens and highlights the screen; the person still makes the change.
+        const tour = findGuidedTourForQualityCode(
+            requestedSignal?.code ?? recommendations[0]?.code ?? criticalBlockers[0],
+        );
+        if (tour && canRoleRunGuidedTour(tour, userRole)) this.addGuidedTourAction(actions, tour.id);
         return {
             prompt: `## ESTADO REAL DEL AGENTE (autoritativo, derivado del tenant autenticado)\n${JSON.stringify(qualityContext)}\nREGLA: explica este estado y prioriza una sola acción. No inventes evidencia, puntajes, causas ni enlaces. No afirmes que un cambio fue aplicado.`,
             actions,
@@ -914,13 +1109,22 @@ Reglas estrictas:
         const langNames: Record<string, string> = { es: 'español latinoamericano', en: 'English', pt: 'português brasileiro', fr: 'français' };
         const replyLang = langNames[locale] || langNames.es;
 
+        // Tours the authenticated role may run for the retrieved topics. This is
+        // also the allowlist that bounds any marker the model emits.
+        const availableTours = guidedToursForArticles(
+            articles.map((article) => article.id),
+            request.context.userRole,
+        );
+        const guidedTourContext = this.buildGuidedTourContext(availableTours);
+
         // The user's live plan + per-plan capability matrix, so "can I do X on my
         // plan?" is answered accurately and personally.
-        const [planContext, verticalContext, qualityContext] = await Promise.all([
+        const [planContext, verticalContext, channelContext, qualityContext] = await Promise.all([
             request.context.userRole === 'tenant_admin'
                 ? this.buildPlanContext(tenantId)
                 : Promise.resolve(''),
             this.buildVerticalContext(tenantId),
+            this.buildChannelContext(tenantId, request.context.userRole),
             this.buildAgentQualityContext(tenantId, request.target, request.context.userRole).catch((error: any) => {
                 this.logger.warn(`Agent quality context unavailable: ${error?.message || error}`);
                 if (!request.target) return { prompt: '', actions: [] };
@@ -939,7 +1143,9 @@ Tu única misión: ayudar a los usuarios (administradores, supervisores y agente
 ${kbContext}
 ${planContext ? '\n' + planContext + '\n' : ''}
 ${verticalContext ? '\n' + verticalContext + '\n' : ''}
+${channelContext ? '\n' + channelContext + '\n' : ''}
 ${qualityContext.prompt ? '\n' + qualityContext.prompt + '\n' : ''}
+${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
 
 ## REGLAS CRÍTICAS:
 1. **RESPONDE SOLO DESDE LA BASE DE CONOCIMIENTO.** Toda afirmación sobre la plataforma (menús, funciones, límites, precios, pasos) debe salir de los artículos de arriba. Si la información no está ahí, dilo con honestidad: "No tengo esa información con certeza" y sugiere escribir a soporte (https://parallly-chat.cloud/support). NUNCA inventes menús, funciones, precios ni límites.
@@ -951,6 +1157,7 @@ ${qualityContext.prompt ? '\n' + qualityContext.prompt + '\n' : ''}
 7. **CONSCIENCIA DE PLAN:** si hay un bloque "PLAN DEL USUARIO", úsalo para responder con precisión qué puede o no hacer el usuario según SU plan; para límites/disponibilidad por plan, ese bloque manda sobre cualquier cifra de los artículos. Si algo no está en su plan, indícalo y menciona desde qué plan se obtiene. Si NO hay bloque de plan, no reveles ni infieras el plan, las cuotas o la facturación del tenant; indica que esa información corresponde al administrador.
 8. **CONTEXTO VERTICAL:** si existe el bloque de contexto vertical, úsalo para priorizar ejemplos relevantes. No anuncies herramientas o flujos verticales que no aparezcan en effectiveCapabilities.
 9. **CALIDAD DEL AGENTE:** si existe el bloque de estado real, ese bloque manda sobre explicaciones genéricas de la KB. Explica evidencia y prioridad sin revelar identificadores internos, transcripciones ni texto de clientes. Los cambios siempre requieren revisión humana.
+10. **RECORRIDOS:** cuando exista un recorrido guiado para lo que pide el usuario, prefiere ofrecerlo antes que describir menús largos. El recorrido no cambia ninguna configuración por sí mismo: abre la pantalla y muestra dónde; la persona hace el cambio.
 
 ## Contexto de la consulta:
 - Rol autenticado: ${request.context.userRole}
@@ -980,17 +1187,27 @@ ${qualityContext.prompt ? '\n' + qualityContext.prompt + '\n' : ''}
                 `via ${response.routingDecision?.selectedModel?.id || 'default'}`
             );
 
+            // Always strip markers, even with no tours available: an invented
+            // marker must never reach the user as literal text, and only an
+            // allowlisted id can turn into an action.
+            const { text, tourId } = extractGuidedTourMarker(
+                response.content || this.getFallbackResponse(locale),
+                availableTours,
+            );
+            const actions = [...qualityContext.actions];
+            this.addGuidedTourAction(actions, tourId);
+
             return {
-                reply: response.content || this.getFallbackResponse(locale),
+                reply: text || this.getFallbackResponse(locale),
                 model: response.routingDecision?.selectedModel?.id,
                 tokensUsed: response.usage?.totalTokens,
-                actions: qualityContext.actions,
+                actions: actions.slice(0, CopilotService.MAX_CHAT_ACTIONS),
             };
         } catch (error: any) {
             this.logger.error('Copilot chat error, returning fallback:', error);
             return {
                 reply: this.getFallbackResponse(locale),
-                actions: qualityContext.actions,
+                actions: qualityContext.actions.slice(0, CopilotService.MAX_CHAT_ACTIONS),
             };
         }
     }

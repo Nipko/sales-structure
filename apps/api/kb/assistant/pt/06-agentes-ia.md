@@ -3,7 +3,7 @@ id: agentes-ia
 title: "Agentes de IA: criar e configurar"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agente", "agentes de ia", "bot", "chatbot", "assistente virtual", "criar agente", "modelo", "personalidade", "instruções", "tom", "horário do agente", "atribuir canal", "conexão", "duplicar agente", "agente padrão", "limite de agentes", "canais sem agente", "testar agente", "regras", "temas proibidos"]
+keywords: ["agente", "agentes de ia", "bot", "chatbot", "assistente virtual", "criar agente", "modelo", "personalidade", "instruções", "tom", "horário do agente", "atribuir canal", "conexão", "duplicar agente", "agente padrão", "limite de agentes", "canais sem agente", "testar agente", "regras", "temas proibidos", "campos obrigatorios", "quando passar para um humano", "mensagem de apoio", "ativo inativo", "avancado"]
 ---
 
 # Agentes de IA: criar e configurar
@@ -29,13 +29,29 @@ Seu agente de IA é o "vendedor virtual" que responde aos seus clientes no Whats
 
 O agente fica criado e o editor dele abre para você personalizar.
 
+## O que o editor exige para salvar
+
+Um agente só atende bem com o mínimo definido. Ao salvar, o editor confere e aponta o campo que falta:
+
+- **Nome do agente** — como ele se apresenta aos seus clientes.
+- **Função** — o que ele faz (por exemplo, "Consultora de vendas" ou "Recepcionista").
+- **Mensagem para quando não souber responder** — a frase exata que o agente diz quando a pergunta foge do que ele sabe. É melhor prometer buscar uma pessoa do que improvisar.
+- **Pelo menos uma regra** de comportamento.
+- **Pelo menos um motivo** em **Quando passar para um humano**.
+
+Se você esvaziar um desses campos para reescrevê-lo, salve só quando estiver completo: um agente sem mensagem de apoio ou sem motivos de transferência aparece como bloqueio crítico na **Saúde dos agentes**.
+
+**Se o seu agente estiver no modo prompt personalizado**, esta lista muda. Quando a sua conta tem esse recurso habilitado e o agente o usa, um único texto escrito por você substitui a personalidade guiada: a **Saúde dos agentes** marca identidade, tom, saudação, mensagem de apoio e regras como **Não se aplica** e passa a exigir que esse prompt não esteja vazio. O que **continua obrigatório** é pelo menos um motivo em **Quando passar para um humano**: sem isso a conversa nunca chega a uma pessoa, escreva o que escrever no prompt. Se você vir “Não se aplica” onde este guia diz “obrigatório”, é por isso, não por um erro.
+
 ## Como configurar a personalidade e as instruções
 
-Dentro de **Agente IA**, clique em **Editar** no agente. O editor está organizado em cartões:
+Dentro de **Agente IA**, clique em **Editar** no agente. O editor está organizado em abas e cartões:
 
 - **Identidade** — nome, função ou título (por exemplo, "Consultora de vendas") e idioma.
 - **Personalidade** — o **Estilo de comunicação** (Amigável, Profissional, Formal, Casual ou Empático), o **Tamanho das respostas** (Conciso, Padrão ou Detalhado) e a saudação inicial.
-- **Comportamento** — suas próprias regras em texto livre (por exemplo, "sempre ofereça o combo família antes de fechar"), os temas proibidos que o agente nunca deve tocar e o modo de resposta (sempre IA, sempre humano ou híbrido).
+- **Mensagem para quando não souber responder** — o texto de apoio, obrigatório.
+- **Instruções** — suas próprias regras em texto livre (por exemplo, "sempre ofereça o combo família antes de fechar"), os temas proibidos que o agente nunca deve tocar e o modo de resposta (sempre IA, sempre humano ou híbrido).
+- **Quando passar para um humano** — a lista de motivos que fazem o agente parar de responder e avisar sua equipe: o cliente pede, reclama, pergunta por desconto, ou o agente erra várias vezes seguidas. Sem pelo menos um motivo, a conversa nunca chega a uma pessoa.
 - **Modelo IA** — qual mecanismo o agente usa. O editor mostra os modelos habilitados para a sua conta.
 - **Horário** — quando ele está ativo (veja mais abaixo).
 - **Capacidades** — o que o agente pode fazer, com interruptores para ativar ou desativar cada uma:
@@ -45,7 +61,18 @@ Dentro de **Agente IA**, clique em **Editar** no agente. O editor está organiza
   - Criar pedidos ou reservas
   - Passar a conversa para uma pessoa da sua equipe quando for preciso
 
+**Avançado** não é um cartão: são duas seções recolhidas, em duas abas diferentes, e por isso você não as encontra juntas:
+
+- **Avançado: ajustar a busca** — dentro de **Capacidades**, abaixo do interruptor da busca no seu conhecimento (só aparece com esse interruptor ligado). É ali que ficam quantos trechos usar e o quão parecido o conteúdo precisa ser.
+- **Avançado** — dentro de **Instruções**, com os dados que o agente deve pedir em cada contexto.
+
+As duas vêm com valores razoáveis; mude só se souber o que está ajustando.
+
 Quando terminar, clique em **Salvar alterações** — o botão fica sempre visível na barra inferior, então você não perde as edições ao rolar a página.
+
+## Ativo ou inativo
+
+No cabeçalho do editor há um interruptor **Ativo / Inativo**. Um agente **inativo** não responde em nenhuma das suas conexões, mesmo com o canal conectado e o horário dizendo que sim. Use para preparar um agente sem expô-lo aos clientes, ou para desligá-lo por um tempo sem apagar nada. A **Saúde dos agentes** marca como bloqueio crítico qualquer agente inativo, com ou sem conexões atribuídas.
 
 ## Como definir o horário do agente
 

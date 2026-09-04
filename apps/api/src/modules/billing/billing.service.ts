@@ -185,7 +185,7 @@ export class BillingService {
         }
 
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug: input.planSlug } });
-        if (!plan || !plan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug });
+        if (!plan || !plan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug, message: 'Ese plan ya no está disponible. Elegí otro para continuar.' });
 
         if (plan.slug === 'custom' || (plan.features as any)?.salesLed === true) {
             throw new BadRequestException({

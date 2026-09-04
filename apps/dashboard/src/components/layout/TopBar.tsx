@@ -17,6 +17,7 @@ import {
   resolveNavigationDisplayLabel,
 } from "@/lib/navigation-contract";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
   Sun, Moon, Monitor, ChevronDown, ChevronLeft, ChevronRight, LogOut, Menu, User, Settings,
   Bell, MessageSquare, Calendar, Shield, AlertTriangle,
@@ -432,6 +433,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       {/* Global command palette integration */}
       <button
         type="button"
+        id={guidedTourAnchorId("command-palette")}
         onClick={(event) => window.dispatchEvent(new CustomEvent("navigation:command-open", {
           detail: { restoreFocus: event.currentTarget },
         }))}

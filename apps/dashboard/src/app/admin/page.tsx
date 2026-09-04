@@ -25,7 +25,21 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { resolveVerticalCapabilityManifest } from "@parallext/shared";
+import {
+    GUIDED_TOUR_START_EVENT,
+    resolveVerticalCapabilityManifest,
+    type GuidedTourStartDetail,
+    type OnboardingGuide,
+} from "@parallext/shared";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
+import {
+    UNKNOWN_ONBOARDING_GUIDE,
+    isOnboardingGuideKnown,
+    readSetupStatusFacts,
+    resolveDashboardOnboardingGuide,
+    type SetupStatusFacts,
+} from "@/lib/onboarding-guide";
+import { publishOnboardingLanding } from "@/lib/onboarding-guide-signal";
 import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { useRole } from "@/hooks/useRole";
@@ -156,8 +170,10 @@ export default function AdminDashboard() {
     const [verticalLeads, setVerticalLeads] = useState<any[]>([]);
     const [verticalLoading, setVerticalLoading] = useState(false);
     const [isLive, setIsLive] = useState(false);
-    const [needsChannel, setNeedsChannel] = useState(false);
-    const [wizardSkipped, setWizardSkipped] = useState(false);
+    // Una sola guía por pantalla. `null` = todavía no se sabe: mostrar un aviso y
+    // retirarlo medio segundo después es peor que mostrarlo un momento más tarde.
+    const [setupFacts, setSetupFacts] = useState<SetupStatusFacts | null>(null);
+    const [setupIncomplete, setSetupIncomplete] = useState<boolean | undefined>(undefined);
     const [platformStats, setPlatformStats] = useState({
         totalTenants: 0,
         totalUsers: 0,
@@ -168,8 +184,15 @@ export default function AdminDashboard() {
         verticalDistribution: [] as { industry: string; count: number }[],
     });
 
-    // Check if setup wizard needs to be shown
+    // Los hechos de la puesta en marcha. Es la ÚNICA lectura de `setup-status`
+    // del dashboard: el aviso rojo de calidad y la burbuja del asistente leen la
+    // señal que se publica más abajo en vez de repetir la consulta.
     useEffect(() => {
+        let cancelled = false;
+        // Cambió el tenant (o el rol): lo que sabíamos del anterior no vale acá.
+        setSetupFacts(null);
+        setSetupIncomplete(undefined);
+
         async function checkSetupWizard() {
             if (!user?.tenantId || user?.role === "super_admin") return;
             // El agente es la configuración del negocio entero: empujar a un
@@ -179,34 +202,40 @@ export default function AdminDashboard() {
             const canConfigureAgent = user?.role === "tenant_admin";
             const canConnectChannels = canConfigureAgent || user?.role === "tenant_supervisor";
             if (!canConnectChannels) return;
-            // Loop kill switch — if we just came back from /admin/setup-wizard
-            // and the flag is still unset (backend write failed for some
-            // reason), do NOT redirect again. Stay on /admin so the user is
-            // not trapped. They can re-run the wizard manually from settings.
+
+            // Loop kill switch — si acabamos de volver de /admin/setup-wizard y el
+            // flag del servidor sigue sin escribirse, NO se vuelve a redirigir.
+            // Sólo eso: antes este `return` cortaba ANTES de leer los hechos, así
+            // que durante 30 s la guía valía "normal" — se escondía el aviso ámbar
+            // y aparecía la salud del agente, exactamente la regla al revés.
+            let recentlyBounced = false;
             const justBouncedKey = `setupWizard_lastBounce_${user.tenantId}`;
-            const lastBounce = parseInt(sessionStorage.getItem(justBouncedKey) || "0", 10);
-            if (Date.now() - lastBounce < 30_000) return;
+            try {
+                const lastBounce = parseInt(sessionStorage.getItem(justBouncedKey) || "0", 10);
+                recentlyBounced = Number.isFinite(lastBounce) && Date.now() - lastBounce < 30_000;
+            } catch { /* sin sessionStorage el rebote lo frena el stage del servidor */ }
 
             try {
                 const res = await api.getSetupStatus(user.tenantId);
-                if (!res.success) return;
+                const facts = readSetupStatusFacts(res);
+                if (cancelled) return;
+                // Una lectura fallida no cambia nada: sin datos no se inventa
+                // una etapa ni se manda a nadie al asistente. La guía se queda en
+                // `unknown` y la pantalla no dibuja ninguna guía.
+                if (!facts) return;
+                setSetupFacts(facts);
 
-                if (!res.data?.setupWizardCompleted) {
-                    if (!canConfigureAgent) return;
-                    sessionStorage.setItem(justBouncedKey, String(Date.now()));
-                    window.location.href = "/admin/setup-wizard";
-                    return;
+                const guide = resolveDashboardOnboardingGuide({ facts, role: user.role });
+                if (guide.redirect && canConfigureAgent && !recentlyBounced) {
+                    try {
+                        sessionStorage.setItem(justBouncedKey, String(Date.now()));
+                    } catch { /* el rebote es mejor sin memoria que no ocurrir */ }
+                    window.location.href = guide.redirect;
                 }
-
-                // Apretó "Saltar": el asistente quedó marcado como completo para no
-                // reabrir el bucle de redirect, y hasta ahora eso lo borraba del sistema
-                // de guía — no existe ningún enlace al wizard en toda la app. Ofrecerle
-                // retomarlo en vez de dejarlo con un agente sin personalizar.
-                if (canConfigureAgent && res.data?.setupWizardSkipped) setWizardSkipped(true);
-                if (!res.data?.hasAnyChannel) setNeedsChannel(true);
             } catch { /* proceed to dashboard */ }
         }
         checkSetupWizard();
+        return () => { cancelled = true; };
     }, [user?.tenantId, user?.role]);
 
     useEffect(() => {
@@ -361,9 +390,48 @@ export default function AdminDashboard() {
         lost: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     };
 
+    /**
+     * La regla de guía única. Mientras los hechos no estén leídos la guía vale
+     * `unknown` y ninguna superficie se dibuja; una vez conocida, `landing`
+     * decide qué se muestra y —sobre todo— qué se calla.
+     */
+    const guide: OnboardingGuide = setupFacts
+        ? resolveDashboardOnboardingGuide({ facts: setupFacts, role: role ?? null, setupIncomplete })
+        : UNKNOWN_ONBOARDING_GUIDE;
+    /**
+     * A quién le corresponde una puesta en marcha propia. Un super_admin (con o
+     * sin impersonación) y un agente no la tienen: para ellos la guía no manda,
+     * y tratar su `unknown` como "todavía no sé" apagaría para siempre avisos
+     * que sí les corresponde ver.
+     */
+    const guideOwnsHome = Boolean(user?.tenantId)
+        && (user?.role === "tenant_admin" || user?.role === "tenant_supervisor");
+    const guideKnown = isOnboardingGuideKnown(guide);
+    /** La lectura no volvió (o falló): no se dibuja NINGUNA guía de puesta en marcha. */
+    const guideSilent = guideOwnsHome && !guideKnown;
+    const setupCardOnly = guideOwnsHome && guideKnown && guide.landing === "setup_card_only";
+
+    // Única publicación de la señal: el aviso rojo de calidad y la burbuja del
+    // asistente se callan cuando la puesta en marcha es dueña de la pantalla.
+    const publishedLanding = guideOwnsHome
+        ? guide.landing
+        : (user ? "not_applicable" as const : "unknown" as const);
+    useEffect(() => {
+        publishOnboardingLanding(publishedLanding);
+    }, [publishedLanding]);
+
+    const startPrimaryTour = () => {
+        if (!guide.primaryTourId) return;
+        const detail: GuidedTourStartDetail = { tourId: guide.primaryTourId };
+        window.dispatchEvent(new CustomEvent(GUIDED_TOUR_START_EVENT, { detail }));
+    };
+
     // Empty-state: tenant sin actividad real todavía (ya cargó datos pero todo en cero).
-    // Muestra un hero guiado en vez de un panel de puros ceros.
+    // Muestra un hero guiado en vez de un panel de puros ceros. Se calla mientras
+    // la puesta en marcha no tiene ni un canal: tres tarjetas de "explorá" sobre
+    // una cuenta que todavía no puede recibir un mensaje sólo agregan ruido.
     const isEmptyTenant = user?.role !== "super_admin" && isLive && activity.length === 0
+        && !setupCardOnly && !guideSilent
         && (overview.messagesProcessed ?? 0) === 0 && (overview.leadsToday ?? 0) === 0;
     const emptyActions = [
         { href: "/admin/channels/whatsapp", icon: MessageSquare, tk: "test", iconBg: "bg-emerald-500/10", iconText: "text-emerald-500" },
@@ -373,8 +441,8 @@ export default function AdminDashboard() {
 
     return (
         <div className="animate-in">
-            {needsChannel && user?.role !== "super_admin" && canManageChannels && (
-                <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4 flex items-center gap-3">
+            {setupCardOnly && canManageChannels && (
+                <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
                         <MessageSquare size={18} className="text-amber-600 dark:text-amber-400" />
                     </div>
@@ -382,15 +450,30 @@ export default function AdminDashboard() {
                         <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{tSetup("connectBannerTitle")}</p>
                         <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5">{tSetup("connectBannerDesc")}</p>
                     </div>
-                    <Link href="/admin/channels/whatsapp" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900 transition-colors">
-                        {tSetup("connectBannerCta")} <ArrowUpRight size={14} />
-                    </Link>
+                    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+                        <Link href="/admin/channels/whatsapp" className="inline-flex w-full items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900 transition-colors sm:w-auto">
+                            {tSetup("connectBannerCta")} <ArrowUpRight size={14} />
+                        </Link>
+                        {guide.primaryTourId && (
+                            <button
+                                type="button"
+                                onClick={startPrimaryTour}
+                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-500/10 sm:w-auto"
+                            >
+                                {tSetup("connectBannerShowMe")}
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
-            {/* Retomar el asistente guiado. Sin esto, "Saltar" era irreversible: no
-                existe ningún otro enlace al wizard en toda la aplicación. */}
-            {wizardSkipped && !needsChannel && canAccess("/admin/setup-wizard") && (
-                <div className="mb-6 rounded-xl border border-indigo-300 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 p-4 flex items-center gap-3">
+            {/* Retomar el asistente guiado. Antes se ocultaba justo cuando faltaba un
+                canal — es decir, exactamente cuando hacía falta: quien apretaba
+                "Saltar" y no conectaba nada quedaba sin ninguna vía de vuelta. */}
+            {!guideSilent && guide.showResumeBanner && canAccess("/admin/setup-wizard") && (
+                <div
+                    id={guidedTourAnchorId("resume-setup")}
+                    className="mb-6 rounded-xl border border-indigo-300 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center"
+                >
                     <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center shrink-0">
                         <Sparkles size={18} className="text-indigo-600 dark:text-indigo-400" />
                     </div>
@@ -398,7 +481,7 @@ export default function AdminDashboard() {
                         <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">{tSetup("resumeBannerTitle")}</p>
                         <p className="text-xs text-indigo-700 dark:text-indigo-400/80 mt-0.5">{tSetup("resumeBannerDesc")}</p>
                     </div>
-                    <Link href="/admin/setup-wizard" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                    <Link href="/admin/setup-wizard" className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors sm:w-auto">
                         {tSetup("resumeBannerCta")} <ArrowUpRight size={14} />
                     </Link>
                 </div>
@@ -425,8 +508,15 @@ export default function AdminDashboard() {
                 mediaKey="dashboard"
             />
 
-            {canViewAgentHealth && <AgentHealthCard />}
-            {canViewAgentHealth && <InitialSetupCard />}
+            {/* Salud de agentes aparece recién cuando hay un canal: sobre una cuenta
+                recién creada sólo repetiría, en rojo, lo que la tarjeta de puesta en
+                marcha ya está diciendo con sus pasos. */}
+            {canViewAgentHealth && !setupCardOnly && !guideSilent && <AgentHealthCard />}
+            {canViewAgentHealth && !guideSilent && (
+                <InitialSetupCard
+                    onProgress={({ total, completed }) => setSetupIncomplete(total > 0 && completed < total)}
+                />
+            )}
 
             {/* Empty-state guiado (Fase 4) — tenant nuevo sin actividad todavía */}
             {isEmptyTenant && (

@@ -3,7 +3,7 @@ id: inbox
 title: "Bandeja de entrada y atención humana"
 routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["inbox", "bandeja de entrada", "handoff", "tomar conversacion", "atender cliente", "agente humano", "devolver al bot", "notas internas", "macros", "respuestas rapidas", "posponer", "snooze", "asignar conversacion", "resolver conversacion", "copiloto", "resumen IA", "reescribir mensaje", "sugerencia IA", "notificaciones", "campana", "escalacion"]
+keywords: ["inbox", "bandeja de entrada", "handoff", "tomar conversacion", "atender cliente", "agente humano", "devolver al bot", "notas internas", "macros", "respuestas rapidas", "posponer", "snooze", "asignar conversacion", "resolver conversacion", "copiloto", "resumen IA", "reescribir mensaje", "sugerencia IA", "notificaciones", "campana", "escalacion", "sin atender", "180 minutos", "vuelve a la ia"]
 ---
 
 # Bandeja de entrada y atención humana
@@ -36,6 +36,8 @@ Cuando ya resolviste el caso:
 2. Tu atención termina, la conversación se libera y el asistente de IA vuelve a encargarse de los próximos mensajes de ese cliente.
 
 Las conversaciones sin actividad durante 72 horas se marcan como resueltas automáticamente para mantener tu bandeja limpia. Puedes verlas con el filtro **Resueltas**; ahí el historial es de solo lectura, y si necesitas retomarla usa **Reabrir conversación**.
+
+**Si nadie la toma:** una conversación escalada que pasa **180 minutos (3 horas)** sin que ninguna persona del equipo responda, y con el cliente todavía esperando, vuelve sola a la IA: se libera el responsable y el agente retoma la charla. Es un piso de seguridad para que el cliente no quede en silencio, no un castigo ni una resolución: la conversación sigue en tu bandeja y puedes tomarla de nuevo cuando quieras.
 
 ## Copiloto del agente: sugerencias y reescritura
 
@@ -76,7 +78,7 @@ Si un caso no puede avanzar ahora ("llámame el lunes"), no lo dejes ocupando tu
 - Cualquier miembro habilitado del equipo puede tomar una conversación **sin asignar** con **Asignarme**; si ya estaba con otra persona, solo un administrador o supervisor puede reasignarla.
 - Si configuras **habilidades (skills)** en los perfiles de tu equipo (menú **Usuarios**), Parallly enruta automáticamente cada escalamiento a la persona adecuada — por ejemplo, casos en inglés al agente que habla inglés.
 - Las macros también pueden asignar a un agente específico como parte de sus acciones.
-- Si una conversación escalada lleva más de 5 minutos sin respuesta, los supervisores reciben una alerta para que nadie quede esperando.
+- Si una conversación escalada pasa varios minutos sin respuesta, los supervisores reciben un aviso en el panel. Ese aviso llama la atención; lo que realmente evita el silencio es el regreso automático a la IA a los 180 minutos.
 
 La cantidad de personas que pueden usar Parallly depende de la capacidad de tu cuenta; consulta el uso y límite vigentes en **Plan y facturación**.
 
@@ -99,12 +101,15 @@ No. Desde que tomas la conversación, la IA queda pausada y el cliente habla sol
 No. Las notas, los resúmenes y las sugerencias del copiloto son solo para tu equipo. Al cliente únicamente le llega lo que tú envías desde el cuadro de mensaje.
 
 **¿Qué pasa si nadie toma una conversación escalada?**
-Sigue apareciendo en el filtro de pendientes y, si pasan más de 5 minutos sin respuesta, los supervisores reciben una alerta con sonido para intervenir.
+Sigue apareciendo en el filtro de pendientes y los supervisores reciben un aviso en el panel para intervenir. Ese aviso no la retiene indefinidamente: si nadie del equipo respondió y el cliente sigue esperando, a los **180 minutos (3 horas)** la conversación **vuelve a la IA**, queda sin responsable y el agente retoma. Si quieres que la atienda una persona, tómala antes de ese plazo.
 
 **¿Puedo hacer que ciertos casos lleguen siempre a la misma persona?**
 Sí. Configura habilidades en los perfiles del equipo (menú **Usuarios**) para el enrutamiento automático, o crea una macro con la acción **Asignar a agente**.
 
 **¿Una conversación pospuesta se pierde si el cliente escribe antes?**
 No se pierde: la conversación reaparece automáticamente en la fecha que elegiste y el historial completo se conserva.
+
+**¿Llegan mensajes de SMS a esta bandeja?**
+No. La bandeja recibe WhatsApp, Instagram, Messenger, Telegram y el chat de tu sitio web. Los SMS solo salen como notificación de una vía a tus clientes, o como aviso a tu equipo; no abren una conversación aquí.
 
 ¿Necesitas más ayuda? Escríbenos en https://parallly-chat.cloud/support

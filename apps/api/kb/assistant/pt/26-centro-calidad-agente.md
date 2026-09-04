@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Saúde dos agentes e Centro de qualidade"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["saude dos agentes", "centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "configuracao incompleta", "acoes criticas", "badge", "adiar", "Parallly Assist", "melhorar agente"]
+keywords: ["saude dos agentes", "centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "configuracao incompleta", "acoes criticas", "badge", "adiar", "Parallly Assist", "melhorar agente", "cobertura dos canais", "conexao operacional do canal", "mostrar onde", "roteiro guiado", "barra de contexto", "exige reautorizar"]
 ---
 
 # Saúde dos agentes e Centro de qualidade
@@ -40,6 +40,66 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
 Evidências históricas que não identificam o agente de forma inequívoca não são
 atribuídas retroativamente. Por isso, uma versão recém-publicada pode precisar de
 novas interações antes de exibir um sinal de produção útil.
+
+## O que a "Conexão operacional do canal" verifica
+
+Esse controle de **Preparação** separa três coisas que costumam se confundir:
+
+- **Atribuição** — no editor do agente você marcou os canais que este agente atende.
+- **Conexão** — essa conta existe e está ativa em **Administração → Canais**.
+- **Credencial** — a permissão continua válida, então o canal ainda consegue enviar
+  respostas.
+
+Um canal marcado no agente mas sem conexão **já não bloqueia** o agente quando outro
+canal atribuído está operando: ele aparece como **Cobertura dos canais atribuídos**, uma
+ação Alta e não crítica, com quantas atribuições o agente tem, quantas estão conectadas e
+quais ficaram sem conexão.
+
+**Conexão operacional do canal** bloqueia como crítica apenas em dois casos:
+
+- nenhum canal atribuído consegue **receber** mensagens (não há conexão ativa), ou
+- uma credencial **exige reautorizar** (vencida, revogada, com erro ou ausente), então o
+  agente não consegue **enviar** a resposta.
+
+Há um terceiro controle crítico, à parte, para atribuições que não correspondem a um canal
+conversacional certificado: **Alcance operacional do canal** rejeita o agente atribuído a
+um tipo de canal que não atende conversas (por exemplo, SMS, que só envia notificações, ou
+e-mail, que hoje não tem configuração de autosserviço certificada). Não basta desconectar:
+é preciso desmarcar esse tipo no editor do agente e deixar só canais certificados —
+WhatsApp, Instagram, Messenger, Telegram ou o chat web.
+
+Um vínculo que aponta para uma conta que já não existe (por exemplo, o número foi
+reconectado e mudou de identificador) conta como atribuição sem conexão: basta marcar de
+novo a conta vigente no editor do agente.
+
+## O que acontece ao clicar em Revisar
+
+**Revisar** abre a tela onde a mudança é feita e, no topo dessa tela, aparece uma **barra
+de contexto** que explica por que você chegou ali. Ela mostra a ação pendente, o agente
+afetado, uma explicação em linguagem simples com a evidência do controle (por exemplo,
+"atribuído a 2 canais, 1 conectado, sem conexão: instagram") e até quatro botões: **Mostrar
+onde**, **Perguntar ao Assist**, **Adiar por 24 h** e fechar. **Mostrar onde** aparece só
+quando existe um roteiro que cobre aquele sinal e o seu papel pode executá-lo; caso
+contrário, a barra mostra os outros três. Faz parte da tela, não é uma
+notificação: nada é enviado para lugar nenhum e ela some ao fechá-la ou ao voltar a essa
+tela sem esse link.
+
+**Revisar** já não deixa você na porta: o link carrega a aba e o campo, então o editor abre
+aquela aba, rola até o campo e o destaca. Se o sinal for a mensagem de apoio, você chega
+com esse campo marcado; o mesmo vale para as regras ou os canais atribuídos. Você não
+precisa vasculhar um formulário longo atrás do que faltava.
+
+## Mostrar onde (roteiro guiado)
+
+**Mostrar onde** abre a tela certa e destaca, passo a passo, onde a mudança é feita: qual
+campo, qual aba, qual botão. O roteiro **não modifica** nenhuma configuração; ele só
+aponta o lugar, e a pessoa decide o que escrever e quando salvar. Funciona no computador,
+onde ficam esses elementos do painel. Admin vê os roteiros de edição (conectar um canal,
+atribuir canais ao agente, regras de transferência); Supervisor vê os de revisão (Centro
+de qualidade, evidência de produção). Dois roteiros alcançam também o papel **agente**: o
+do sistema de ajuda (onde fica a ajuda de cada tela) e o da primeira conversa da caixa de
+entrada. Você também pode pedi-lo no chat: quando pergunta ao
+Assist onde ou como fazer algo que tem roteiro, a resposta traz esse botão.
 
 ## Como interpretar o estado
 
@@ -89,6 +149,12 @@ O contexto contém apenas estado, versão, marco, códigos de bloqueio, atualida
 testes, amostra, gravidade, pilar, dimensão e contagens. Exclui transcrições, texto de
 clientes, IDs de conversa, prompts, consultas de recuperação, texto livre do avaliador
 e segredos. O Assist não aplica mudanças nem inicia comunicações externas.
+
+Além do estado do agente, o Assist também recebe a **lista de canais conectados do
+negócio** (tipo de canal, quantas contas e seu estado de credencial) e a evidência
+limitada do controle: contagens e tipos de canal, nunca nomes, números ou
+identificadores. Por isso ele consegue dizer qual canal está operando e qual falta
+conectar, em vez de afirmar que você não tem canais conectados.
 
 ## Perguntas frequentes
 

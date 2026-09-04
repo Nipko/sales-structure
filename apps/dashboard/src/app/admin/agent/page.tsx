@@ -15,6 +15,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { SetupBanner } from "@/components/SetupBanner";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { Badge } from "@/components/ui/badge";
 
 // ── Channel metadata ────────────────────────────────────────
@@ -41,6 +42,8 @@ interface Agent {
   config_json?: any;
   rule_count?: number;
   tool_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface PlanFeatures {
@@ -258,6 +261,14 @@ export default function AgentListPage() {
   }
 
   // ── Setup banner check ─────────────────────────────────────
+  //
+  // The old rule compared the agent name against the GENERIC template names, so
+  // a tenant bootstrapped from a vertical ("Sofía, asesora de la clínica") never
+  // saw the banner even though nobody had ever opened the editor. What actually
+  // marks an agent as reviewed is a save: `config_json._personalizedAt` when the
+  // editor stamps it, and otherwise `updated_at` moving away from `created_at`.
+  // The name heuristic stays only as the fallback when neither timestamp came
+  // back from the API (never widen it — it is what caused the bug).
 
   const TEMPLATE_NAMES = [
     t("templateNames.salesAdvisor"),
@@ -268,10 +279,19 @@ export default function AgentListPage() {
     t("templateNames.blankAgent"),
     t("templateNames.defaultAgent"),
   ];
-  const needsPersonalization = agents.length > 0 && agents.every(a => {
-    const name = a.name || a.config_json?.persona?.name || "";
+
+  function isUntouched(agent: Agent): boolean {
+    if (agent.config_json?._personalizedAt) return false;
+    const created = agent.created_at ? Date.parse(agent.created_at) : NaN;
+    const updated = agent.updated_at ? Date.parse(agent.updated_at) : NaN;
+    // A second of slack: provisioning writes created_at and updated_at in the
+    // same transaction but not always with the same clock reading.
+    if (Number.isFinite(created) && Number.isFinite(updated)) return Math.abs(updated - created) < 1000;
+    const name = agent.name || agent.config_json?.persona?.name || "";
     return TEMPLATE_NAMES.includes(name) || name === "";
-  });
+  }
+
+  const needsPersonalization = agents.length > 0 && agents.every(isUntouched);
   const needsSetup = agents.length === 0 || needsPersonalization;
 
   // ── Schedule summary ───────────────────────────────────────
@@ -383,6 +403,7 @@ export default function AgentListPage() {
         description={tHelp("agent.description")}
         tips={tHelp.raw("agent.tips") as string[]}
         mediaKey="agent"
+        tourId="assign_agent_channel"
       />
 
       <SetupBanner show={needsSetup} onAction={() => {
@@ -423,7 +444,7 @@ export default function AgentListPage() {
       </p>
 
       {/* Agent grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div id={guidedTourAnchorId("agent-list")} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {agents.map(agent => (
           <AgentCard
             key={agent.id}

@@ -15,6 +15,12 @@ export * from './vertical-builder-contract';
 export * from './automation-trigger-contract';
 export * from './agent-quality-contract';
 
+// ---- Guided tours: which tour helps with what, validated on both sides ----
+export * from './guided-tour-contract';
+
+// ---- One place that knows where an account is in its setup ----
+export * from './onboarding-stage-contract';
+
 // ---- Read semantics for agent tools (empty vs stale vs error) ----
 export * from './tool-read-result';
 
@@ -570,6 +576,15 @@ export interface BusinessIdentity {
     country?: string;
     logoUrl?: string;
     socialLinks?: SocialLinks;
+    /**
+     * Why customers write and who they are. The signup wizard collects both and
+     * the agent prompt reads them, but until now no screen could edit them, so
+     * the quality check "Contexto, objetivos y público" pointed at a page that
+     * did not have the fields. They live in `tenant.settings`, not in the
+     * companies row, and travel with the identity for convenience.
+     */
+    chatReasons?: string[];
+    customerTypes?: string[];
     isPrimary: boolean;
     createdAt: Date;
     updatedAt: Date;

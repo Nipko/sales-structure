@@ -9,10 +9,29 @@ import {
 } from "lucide-react";
 import { inputCls, selectCls, labelCls } from "../_types";
 import type { PersonaConfig } from "../_types";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 interface PersonaTabProps {
   config: PersonaConfig;
   onChange: (updates: Partial<PersonaConfig>) => void;
+  /** Per-field messages from the editor's validation (mirrors the API rules). */
+  errors?: Partial<Record<string, string>>;
+  /** Field the quality center deep-linked to; briefly ringed so it is findable. */
+  focusField?: string | null;
+}
+
+/** Red asterisk + accessible marker for a field the agent cannot work without. */
+function RequiredMark() {
+  return <span className="text-red-500 ml-0.5" aria-hidden="true">*</span>;
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p role="alert" className="mt-1 text-[11.5px] font-medium text-red-600 dark:text-red-400">
+      {message}
+    </p>
+  );
 }
 
 const TONE_PRESETS = [
@@ -74,8 +93,9 @@ const ANSWER_LENGTHS = [
   { id: "detailed", icon: AlignJustify, temperature: 0.8, maxTokens: 1200 },
 ] as const;
 
-export function PersonaTab({ config, onChange }: PersonaTabProps) {
+export function PersonaTab({ config, onChange, errors = {}, focusField = null }: PersonaTabProps) {
   const t = useTranslations("agent.persona");
+  const tv = useTranslations("agent");
   const ti = useTranslations("agent.identity");
   const tp = useTranslations("agent.personality");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -134,6 +154,10 @@ export function PersonaTab({ config, onChange }: PersonaTabProps) {
   const activePresetId = getActivePresetId();
   const currentLength = getAnswerLengthId();
 
+  const ringCls = (field: string) =>
+    focusField === field ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-neutral-900" : "";
+  const errCls = (field: string) => (errors[field] ? "border-red-400 dark:border-red-500/60" : "");
+
   return (
     <div className="space-y-8 py-6">
       {/* ── Identity ── */}
@@ -142,25 +166,31 @@ export function PersonaTab({ config, onChange }: PersonaTabProps) {
           {t("identityTitle")}
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>{ti("agentName")}</label>
+          <div id={guidedTourAnchorId("agent-name")} className={cn("rounded-xl p-1 -m-1 transition-shadow", ringCls("name"), ringCls("role"))}>
+            <label className={labelCls}>{ti("agentName")}<RequiredMark /></label>
             <input
-              className={inputCls}
+              className={cn(inputCls, errCls("name"))}
               placeholder={ti("agentNamePlaceholder")}
+              aria-required="true"
+              aria-invalid={Boolean(errors.name)}
               value={config.persona.name}
               onChange={e => updatePersona("name", e.target.value)}
             />
+            <FieldError message={errors.name} />
           </div>
           <div>
-            <label className={labelCls}>{ti("role")}</label>
+            <label className={labelCls}>{ti("role")}<RequiredMark /></label>
             <input
-              className={inputCls}
+              className={cn(inputCls, errCls("role"))}
               placeholder={ti("rolePlaceholder")}
+              aria-required="true"
+              aria-invalid={Boolean(errors.role)}
               value={config.persona.role}
               onChange={e => updatePersona("role", e.target.value)}
             />
+            <FieldError message={errors.role} />
           </div>
-          <div className="sm:col-span-2">
+          <div id={guidedTourAnchorId("agent-greeting")} className={cn("sm:col-span-2 rounded-xl p-1 -m-1 transition-shadow", ringCls("greeting"))}>
             <label className={labelCls}>{ti("welcomeMessage")}</label>
             <textarea
               className={cn(inputCls, "min-h-20 resize-y")}
@@ -169,14 +199,18 @@ export function PersonaTab({ config, onChange }: PersonaTabProps) {
               onChange={e => updatePersona("greeting", e.target.value)}
             />
           </div>
-          <div className="sm:col-span-2">
-            <label className={labelCls}>{ti("fallbackMessage")}</label>
+          <div id={guidedTourAnchorId("agent-fallback")} className={cn("sm:col-span-2 rounded-xl p-1 -m-1 transition-shadow", ringCls("fallback"))}>
+            <label className={labelCls}>{ti("fallbackMessage")}<RequiredMark /></label>
             <textarea
-              className={cn(inputCls, "min-h-20 resize-y")}
+              className={cn(inputCls, "min-h-20 resize-y", errCls("fallback"))}
               placeholder={ti("fallbackPlaceholder")}
+              aria-required="true"
+              aria-invalid={Boolean(errors.fallback)}
               value={config.persona.fallbackMessage}
               onChange={e => updatePersona("fallbackMessage", e.target.value)}
             />
+            <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{tv("validation.fallbackHelp")}</p>
+            <FieldError message={errors.fallback} />
           </div>
           <div>
             <label className={labelCls}>{ti("language")}</label>

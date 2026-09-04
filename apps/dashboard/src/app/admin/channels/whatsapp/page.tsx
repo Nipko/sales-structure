@@ -8,18 +8,29 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { cn } from "@/lib/utils";
 import {
-    MessageSquare, CheckCircle, Check, X,
+    MessageSquare, CheckCircle, Check,
     Phone, Sparkles, Layers, ArrowRightLeft,
     AlertCircle, ArrowRight, Sprout, Clock, XCircle, LogOut,
-    AlertTriangle, Shield, Timer, Info, Plus, Trash2, Loader2,
+    AlertTriangle, Shield, Timer, Plus, Trash2,
 } from "lucide-react";
-import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
+import WhatsAppEmbeddedSignup, { isKnownWhatsAppWarning } from "./WhatsAppEmbeddedSignup";
+import WhatsAppPrerequisites from "./WhatsAppPrerequisites";
+import WhatsAppRouteBrief from "./WhatsAppRouteBrief";
+import {
+    WHATSAPP_CONNECT_ROUTES,
+    getWhatsAppConnectRoute,
+    whatsAppRouteKey,
+    type WhatsAppConnectRouteId,
+} from "./whatsapp-connect-routes";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
 
-type Route = "new" | "coexistence" | "migration";
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const ROUTE_ICONS: Record<WhatsAppConnectRouteId, typeof Layers> = {
+    coexistence: Layers,
+    new: Sparkles,
+    migration: ArrowRightLeft,
+};
 
 const MetaLogo = ({ className }: { className?: string }) => (
     <svg className={className} viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -28,47 +39,20 @@ const MetaLogo = ({ className }: { className?: string }) => (
     </svg>
 );
 
-const ROUTES: {
-    id: Route;
-    icon: typeof Sparkles;
-    iconColor: string;
-    iconBg: string;
-    tagColor: string;
-}[] = [
-    {
-        id: "new",
-        icon: Sparkles,
-        iconColor: "text-[#25D366]",
-        iconBg: "bg-[#25D366]/10",
-        tagColor: "bg-[#25D366]/10 text-[#25D366]",
-    },
-    {
-        id: "coexistence",
-        icon: Layers,
-        iconColor: "text-[#1877F2]",
-        iconBg: "bg-[#1877F2]/10",
-        tagColor: "bg-[#1877F2]/10 text-[#1877F2]",
-    },
-    {
-        id: "migration",
-        icon: ArrowRightLeft,
-        iconColor: "text-orange-500",
-        iconBg: "bg-orange-500/10",
-        tagColor: "bg-orange-500/10 text-orange-500",
-    },
-];
-
 export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
     const t = useTranslations("channels");
     const tw = useTranslations("channels.whatsapp");
+    const twn = useTranslations("channels.whatsapp.warnings");
     const tHelp = useTranslations("help");
     const twt = useTranslations("whatsappTemplates");
     const router = useRouter();
     const { user } = useAuth();
     const { canAddChannelAccount } = usePlanLimits();
 
-    const [selectedRoute, setSelectedRoute] = useState<Route>("new");
+    const [selectedRoute, setSelectedRoute] = useState<WhatsAppConnectRouteId>("coexistence");
+    const [prereqsOk, setPrereqsOk] = useState(false);
+    const [connectWarnings, setConnectWarnings] = useState<string[]>([]);
     const [showAddNumber, setShowAddNumber] = useState(false);
     const [status, setStatus] = useState<any>(null);
     const [templates, setTemplates] = useState<any[]>([]);
@@ -163,6 +147,7 @@ export default function WhatsAppSetupPage() {
         : (waSrc.channel ? [waSrc.channel]
         : (waSrc.account ? [waSrc.account] : []));
     const canAddWa = canAddChannelAccount("whatsapp", waChannels.length);
+    const activeRoute = getWhatsAppConnectRoute(selectedRoute);
 
     return (
         <div className="mx-auto max-w-[960px]">
@@ -177,7 +162,7 @@ export default function WhatsAppSetupPage() {
                     </div>
                     <p className="text-[var(--text-secondary)] mt-1">{tw("pageSubtitle")}</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div id={guidedTourAnchorId("whatsapp-status")} className="flex items-center gap-3">
                     <div className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
                         isConnected
@@ -204,11 +189,33 @@ export default function WhatsAppSetupPage() {
                 description={tHelp("channelsWhatsapp.description")}
                 tips={tHelp.raw("channelsWhatsapp.tips") as string[]}
                 mediaKey="channelsWhatsapp"
+                tourId="first_channel_whatsapp"
             />
+
+            {/* Meta conectó, pero con reservas. Sin esto la persona veía "conectado"
+                y se enteraba de la verificación pendiente cuando fallaba un envío. */}
+            {connectWarnings.length > 0 && (
+                <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4">
+                    <div className="flex items-start gap-2.5">
+                        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{twn("title")}</p>
+                            <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{twn("subtitle")}</p>
+                            <ul className="mt-3 space-y-2">
+                                {connectWarnings.map((warning) => (
+                                    <li key={warning} className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-300">
+                                        • {isKnownWhatsAppWarning(warning) ? twn(`codes.${warning}`) : warning}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Probá tu agente — cierra el loop "canal 100% funcional" tras conectar */}
             {isConnected && phoneNumber && (
-                <div className="mb-6 rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-4 flex items-center gap-3">
+                <div id={guidedTourAnchorId("whatsapp-test")} className="mb-6 rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="w-9 h-9 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0">
                         <MessageSquare size={18} />
                     </div>
@@ -258,203 +265,78 @@ export default function WhatsAppSetupPage() {
                         <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">{tw("routeSubtitle")}</p>
                     </div>
 
-                    {/* Route cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-                        {ROUTES.map((route) => {
-                            const isSelected = selectedRoute === route.id;
-                            const Icon = route.icon;
-                            return (
-                                <button
-                                    key={route.id}
-                                    onClick={() => setSelectedRoute(route.id)}
-                                    className={cn(
-                                        "relative flex flex-col items-start p-5 rounded-xl border-2 transition-all text-left cursor-pointer bg-[var(--bg-secondary)]",
-                                        isSelected
-                                            ? "border-[#25D366] shadow-[0_0_0_1px_rgba(37,211,102,0.15),0_4px_12px_rgba(37,211,102,0.08)]"
-                                            : "border-border hover:border-[var(--text-secondary)]/30"
-                                    )}
-                                >
-                                    <div className={cn(
-                                        "absolute top-4 right-4 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
-                                        isSelected ? "border-[#25D366] bg-[#25D366]" : "border-[var(--text-secondary)]/25"
-                                    )}>
-                                        {isSelected && <Check size={12} className="text-white" />}
-                                    </div>
-                                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-3", route.iconBg)}>
-                                        <Icon size={20} className={route.iconColor} />
-                                    </div>
-                                    <h3 className="text-[14px] font-semibold mb-0.5 pr-6">{tw(`route${cap(route.id)}Title`)}</h3>
-                                    <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed mb-3">{tw(`route${cap(route.id)}Short`)}</p>
-                                    <div className="flex items-center gap-2 mt-auto">
-                                        <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-md", route.tagColor)}>
-                                            {tw(`route${cap(route.id)}Tag`)}
-                                        </span>
-                                        <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1">
-                                            <Timer size={11} />
-                                            {tw(`route${cap(route.id)}Time`)}
-                                        </span>
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* ─── Route detail panel ─── */}
-                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
-                        {/* Overview */}
-                        <div className="p-6 border-b border-border">
-                            <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
-                                {tw(`route${cap(selectedRoute)}Overview`)}
-                            </p>
+                    {/* Pre-check. Vivia solo en el asistente, asi que quien conectaba
+                        desde esta pagina descubria adentro de la ventana de Meta que le
+                        faltaba el numero o el codigo de verificacion. */}
+                    {!prereqsOk ? (
+                        <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-6 mb-6">
+                            <WhatsAppPrerequisites onContinue={() => setPrereqsOk(true)} />
                         </div>
-
-                        {/* Coexistence: sync table */}
-                        {selectedRoute === "coexistence" && (
-                            <>
-                                <div className="p-6 border-b border-border">
-                                    <h3 className="text-sm font-semibold mb-4">{tw("routeCoexSyncTitle")}</h3>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                        <div>
-                                            <p className="text-[11px] font-semibold text-[#2ecc71] mb-2.5 uppercase tracking-wider">{tw("syncYes")}</p>
-                                            <div className="flex flex-col gap-2">
-                                                {[1, 2, 3, 4].map(i => (
-                                                    <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
-                                                        <CheckCircle size={13} className="text-[#2ecc71] shrink-0 mt-0.5" />
-                                                        <span>{tw(`routeCoexSyncYes${i}`)}</span>
-                                                    </div>
-                                                ))}
+                    ) : (
+                        <>
+                            {/* Route cards */}
+                            <div id={guidedTourAnchorId("whatsapp-routes")} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+                                {WHATSAPP_CONNECT_ROUTES.map((route) => {
+                                    const isSelected = selectedRoute === route.id;
+                                    const Icon = ROUTE_ICONS[route.id];
+                                    return (
+                                        <button
+                                            key={route.id}
+                                            onClick={() => setSelectedRoute(route.id)}
+                                            className={cn(
+                                                "relative flex flex-col items-start p-5 rounded-xl border-2 transition-all text-left cursor-pointer bg-[var(--bg-secondary)]",
+                                                isSelected
+                                                    ? "border-[#25D366] shadow-[0_0_0_1px_rgba(37,211,102,0.15),0_4px_12px_rgba(37,211,102,0.08)]"
+                                                    : "border-border hover:border-[var(--text-secondary)]/30"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "absolute top-4 right-4 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                                                isSelected ? "border-[#25D366] bg-[#25D366]" : "border-[var(--text-secondary)]/25"
+                                            )}>
+                                                {isSelected && <Check size={12} className="text-white" />}
                                             </div>
-                                        </div>
-                                        <div>
-                                            <p className="text-[11px] font-semibold text-[#e74c3c] mb-2.5 uppercase tracking-wider">{tw("syncNo")}</p>
-                                            <div className="flex flex-col gap-2">
-                                                {[1, 2, 3, 4].map(i => (
-                                                    <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
-                                                        <X size={13} className="text-[#e74c3c] shrink-0 mt-0.5" />
-                                                        <span>{tw(`routeCoexSyncNo${i}`)}</span>
-                                                    </div>
-                                                ))}
+                                            {route.recommended && (
+                                                <span className="absolute -top-2.5 left-4 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500 text-white">
+                                                    {tw("routeRecommended")}
+                                                </span>
+                                            )}
+                                            <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-3", route.accent.bg)}>
+                                                <Icon size={20} className={route.accent.fg} />
                                             </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Limitations */}
-                                <div className="p-6 border-b border-border">
-                                    <h3 className="text-sm font-semibold mb-3">{tw("routeCoexLimitTitle")}</h3>
-                                    <div className="flex flex-col gap-2.5">
-                                        {[1, 2, 3, 4].map(i => (
-                                            <div key={i} className="flex items-start gap-2.5 text-[12px] text-[var(--text-secondary)]">
-                                                <Info size={13} className="text-amber-500 shrink-0 mt-0.5" />
-                                                <span>{tw(`routeCoexLimit${i}`)}</span>
+                                            <h3 className="text-[14px] font-semibold mb-0.5 pr-6">{tw(whatsAppRouteKey(route, "Title"))}</h3>
+                                            <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed mb-3">{tw(whatsAppRouteKey(route, "Short"))}</p>
+                                            <div className="flex items-center gap-2 mt-auto">
+                                                <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-md", route.accent.bg, route.accent.fg)}>
+                                                    {tw(whatsAppRouteKey(route, "Tag"))}
+                                                </span>
+                                                <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1">
+                                                    <Timer size={11} />
+                                                    {tw(whatsAppRouteKey(route, "Time"))}
+                                                </span>
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        {/* Migration: preserved / lost */}
-                        {selectedRoute === "migration" && (
-                            <div className="p-6 border-b border-border">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                    <div>
-                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                            <CheckCircle size={14} className="text-[#2ecc71]" />
-                                            {tw("routeMigPreservedTitle")}
-                                        </h3>
-                                        <div className="flex flex-col gap-2">
-                                            {[1, 2, 3, 4, 5].map(i => (
-                                                <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
-                                                    <CheckCircle size={13} className="text-[#2ecc71] shrink-0 mt-0.5" />
-                                                    <span>{tw(`routeMigPreserved${i}`)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                            <XCircle size={14} className="text-[#e74c3c]" />
-                                            {tw("routeMigLostTitle")}
-                                        </h3>
-                                        <div className="flex flex-col gap-2">
-                                            {[1, 2, 3, 4].map(i => (
-                                                <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
-                                                    <X size={13} className="text-[#e74c3c] shrink-0 mt-0.5" />
-                                                    <span>{tw(`routeMigLost${i}`)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
-                        )}
 
-                        {/* Steps */}
-                        <div className="p-6 border-b border-border">
-                            <h3 className="text-sm font-semibold mb-3">{tw("stepsTitle")}</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                {[1, 2, 3, 4].map(i => (
-                                    <div key={i} className="flex items-start gap-2.5 rounded-lg border border-border bg-[var(--bg-tertiary)] p-3">
-                                        <span className="w-6 h-6 rounded-full bg-[#25D366] text-white text-xs font-bold flex items-center justify-center shrink-0">{i}</span>
-                                        <span className="text-[12px] text-[var(--text-secondary)] leading-relaxed mt-0.5">
-                                            {tw(`route${cap(selectedRoute)}Step${i}`)}
-                                        </span>
-                                    </div>
-                                ))}
+                            {/* Resumen de la ruta elegida: pasos, requisitos y avisos ANTES del boton */}
+                            {activeRoute && <WhatsAppRouteBrief route={activeRoute} />}
+
+                            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-6 mt-4 mb-6">
+                                <WhatsAppEmbeddedSignup
+                                    mode={activeRoute?.mode ?? "standard"}
+                                    tenantId={getTenantId()}
+                                    onSuccess={(result) => {
+                                        setConnectWarnings(result.warnings ?? []);
+                                        setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
+                                        loadData();
+                                    }}
+                                    onError={() => { /* el componente ya explica el error y ofrece el proximo paso */ }}
+                                />
                             </div>
-                        </div>
-
-                        {/* Prerequisites */}
-                        <div className="p-6 border-b border-border">
-                            <h3 className="text-sm font-semibold mb-3">{tw("reqsTitle")}</h3>
-                            <div className="flex flex-col gap-2">
-                                {[1, 2, 3, 4].map(i => (
-                                    <div key={i} className="flex items-start gap-2.5 text-[12px] text-[var(--text-secondary)]">
-                                        <Shield size={13} className="text-[#25D366] shrink-0 mt-0.5" />
-                                        <span>{tw(`route${cap(selectedRoute)}Req${i}`)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Warnings (coexistence) */}
-                        {selectedRoute === "coexistence" && (
-                            <div className="p-6 border-b border-border">
-                                <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4">
-                                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                                    <span className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">{tw("routeCoexNote")}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Warnings (migration) */}
-                        {selectedRoute === "migration" && (
-                            <div className="p-6 border-b border-border flex flex-col gap-2.5">
-                                <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4">
-                                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                                    <span className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">{tw("routeMigWarnBM")}</span>
-                                </div>
-                                <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4">
-                                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                                    <span className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">{tw("routeMigWarn2FA")}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Connect button */}
-                        <div className="p-6">
-                            <WhatsAppEmbeddedSignup
-                                mode={selectedRoute === "coexistence" ? "coexistence" : "standard"}
-                                tenantId={getTenantId()}
-                                onSuccess={(result) => {
-                                    setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
-                                    loadData();
-                                }}
-                                onError={(error) => setMessage({ type: "error", text: error })}
-                            />
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </>
             ) : (
                 /* ═══════════ CONNECTED STATE (multi-number) ═══════════ */
@@ -532,11 +414,12 @@ export default function WhatsAppSetupPage() {
                                         mode="standard"
                                         tenantId={getTenantId()}
                                         onSuccess={(result) => {
+                                            setConnectWarnings(result.warnings ?? []);
                                             setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
                                             setShowAddNumber(false);
                                             loadData();
                                         }}
-                                        onError={(error) => setMessage({ type: "error", text: error })}
+                                        onError={() => { /* el componente ya explica el error y ofrece el proximo paso */ }}
                                     />
                                 )}
                             </div>

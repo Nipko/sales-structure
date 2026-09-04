@@ -11,6 +11,8 @@ import { useIdleTimer } from "@/hooks/useIdleTimer";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import SessionConflictModal from "@/components/SessionConflictModal";
 import { readSignupAttribution } from "@/lib/signup-attribution";
+import { isOnboardingStage } from "@parallext/shared";
+import { resolveLoginRedirect } from "@/lib/onboarding-guide";
 
 // ============================================
 // Constants
@@ -41,6 +43,8 @@ interface User {
     emailVerified?: boolean;
     emailVerificationState?: "unverified" | "pending_change" | "verified" | "restricted";
     onboardingCompleted?: boolean;
+    /** `tenant.settings.onboardingStage`; absent on tenants created before it existed. */
+    onboardingStage?: string;
 }
 
 interface GoogleLoginResult {
@@ -199,6 +203,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
     }, []);
 
+    /**
+     * La etapa de puesta en marcha que devuelve la renovación de token.
+     *
+     * El usuario guardado se escribió el día del login; una sesión larga lo
+     * deja viejo. Se ignora cualquier valor que no sea una etapa conocida:
+     * "no vino" nunca puede degradar a la que ya teníamos.
+     */
+    const syncOnboardingStage = useCallback((stage: unknown) => {
+        if (!isOnboardingStage(stage)) return;
+        try {
+            const raw = localStorage.getItem("user");
+            if (raw) {
+                const stored = JSON.parse(raw);
+                if (stored && typeof stored === "object" && stored.onboardingStage !== stage) {
+                    localStorage.setItem("user", JSON.stringify({ ...stored, onboardingStage: stage }));
+                }
+            }
+        } catch { /* usuario guardado corrupto: no es motivo para romper el refresh */ }
+        setUser((prev) => (prev && prev.onboardingStage !== stage ? { ...prev, onboardingStage: stage } : prev));
+    }, []);
+
     // ── Proactive token refresh ──
     useEffect(() => {
         if (isPublicPage) return;
@@ -228,6 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             if (data.data.refreshToken) {
                                 localStorage.setItem("refreshToken", data.data.refreshToken);
                             }
+                            syncOnboardingStage(data.data.onboardingStage);
                             scheduleRefresh(); // Schedule next refresh
                         }
                     }
@@ -242,7 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
         };
-    }, [isAuthenticated, isPublicPage, pathname]);
+    }, [isAuthenticated, isPublicPage, pathname, syncOnboardingStage]);
 
     // ── Activity ping — keeps server-side session alive ──
     useEffect(() => {
@@ -310,10 +336,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     if (data.data.refreshToken) {
                         localStorage.setItem("refreshToken", data.data.refreshToken);
                     }
+                    syncOnboardingStage(data.data.onboardingStage);
                 }
             }
         } catch { /* noop */ }
-    }, [resetActivity]);
+    }, [resetActivity, syncOnboardingStage]);
 
     // ── Fetch vertical config ──
     const fetchVerticalConfig = useCallback(async (tenantId: string) => {
@@ -379,15 +406,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // ── Auth methods ──
 
-    const getRedirectPath = useCallback((userData: User): string => {
-        if (userData.role === "super_admin" || userData.tenantId) return "/admin";
-        // Email verification is progressive: a new owner may complete the
-        // non-operational onboarding and enter a tenant with a persistent
-        // warning. Sensitive actions remain server-gated per capability.
-        if (!userData.onboardingCompleted) return "/onboarding";
-        if (!userData.emailVerified) return "/verify-email";
-        return "/admin";
-    }, []);
+    /**
+     * One resolver decides where an account belongs (`lib/onboarding-guide`).
+     * Before this, the login redirect, `/admin` and the setup card each had
+     * their own idea of "is this tenant set up", so a new owner met several
+     * guides at once — and sometimes a bounce that contradicted them.
+     *
+     * The rule that matters here: the wizard is a destination reached ON
+     * EVIDENCE only. A stage the payload did not carry is not evidence, and
+     * "the login response knows nothing about channels" is not the same as
+     * "this account has no channel". Sending anyone to the wizard on a default
+     * is how a fully configured tenant met "conocé a tu agente" on every single
+     * login.
+     */
+    const getRedirectPath = useCallback((userData: User): string => (
+        resolveLoginRedirect(userData)
+    ), []);
 
     const login = useCallback(async (email: string, password: string, rememberMe = false, force = false): Promise<LoginResult> => {
         try {

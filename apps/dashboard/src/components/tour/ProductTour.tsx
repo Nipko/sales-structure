@@ -1,12 +1,39 @@
 "use client";
 
-import React, { Component, useCallback, useEffect, useRef } from "react";
+import React, {
+    Component,
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useOnborda } from "onborda";
-import type { CardComponentProps } from "onborda";
-import { X, ArrowRight, ArrowLeft } from "lucide-react";
+import { Onborda, OnbordaProvider, useOnborda } from "onborda";
+import type { CardComponentProps, Step } from "onborda";
+import { X, ArrowRight, ArrowLeft, Compass } from "lucide-react";
+import {
+    GUIDED_TOUR_IDS,
+    GUIDED_TOUR_START_EVENT,
+    canRoleRunGuidedTour,
+    getGuidedTour,
+    isGuidedTourId,
+    type GuidedTourId,
+} from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
+import {
+    buildGuidedTourSteps,
+    getGuidedTourStepDefinitions,
+    guidedTourEntryRoute,
+    planGuidedTourRun,
+    shouldRunGuidedTourInPlace,
+    type GuidedTourContext as GuidedTourStepContext,
+    type GuidedTourRunPlan,
+} from "@/lib/guided-tours";
 import { resolveNavigationDisplayLabel } from "@/lib/navigation-contract";
 import {
     PRODUCT_TOUR_PENDING_KEY,
@@ -23,6 +50,174 @@ import { resolveVerticalDashboard } from "@/lib/vertical-dashboard-resolver";
 export const TOUR_PENDING_KEY = PRODUCT_TOUR_PENDING_KEY;
 
 /**
+ * Contexto de los recorridos guiados ("Mostrarme dónde").
+ *
+ * Los pasos de varios recorridos apuntan al editor de UN agente concreto
+ * (`/admin/agent/{agentId}`). El id llega en el evento que dispara la barra de
+ * contexto o Assist, así que el runner lo deja acá ANTES de arrancar y las
+ * fábricas de pasos lo leen para resolver la ruta.
+ */
+interface GuidedTourRuntimeValue {
+    context: GuidedTourStepContext;
+    setContext: (next: GuidedTourStepContext) => void;
+    /**
+     * Qué pasos entran REALMENTE en esta corrida. Onborda no reintenta: cuando
+     * un selector no existe deja el anillo donde estaba y tapa la pantalla con
+     * su capa, así que los pasos imposibles se descartan ANTES de arrancar.
+     */
+    plan: GuidedTourRunPlan | null;
+    setPlan: (next: GuidedTourRunPlan | null) => void;
+}
+
+const GuidedTourRuntimeContext = createContext<GuidedTourRuntimeValue>({
+    context: {},
+    setContext: () => { /* sin provider los recorridos guiados quedan sin agente */ },
+    plan: null,
+    setPlan: () => { /* sin provider se muestran todos los pasos declarados */ },
+});
+
+export function GuidedTourProvider({ children }: { children: React.ReactNode }) {
+    const [context, setContext] = useState<GuidedTourStepContext>({});
+    const [plan, setPlan] = useState<GuidedTourRunPlan | null>(null);
+    const value = useMemo<GuidedTourRuntimeValue>(
+        () => ({ context, setContext, plan, setPlan }),
+        [context, plan],
+    );
+    return <GuidedTourRuntimeContext.Provider value={value}>{children}</GuidedTourRuntimeContext.Provider>;
+}
+
+/** Qué capacidad del rol exige cada recorrido, además del `minRole` del contrato. */
+type GuidedTourCapability =
+    | "canManageChannels"
+    | "canEditAgent"
+    | "canEditKnowledge"
+    | "canManageSettings"
+    | "canManageUsers"
+    | "canHandleConversations";
+
+const GUIDED_TOUR_CAPABILITY: Record<GuidedTourId, GuidedTourCapability | null> = {
+    connect_channel: "canManageChannels",
+    assign_agent_channel: "canEditAgent",
+    agent_handoff_rules: "canEditAgent",
+    human_handoff_route: "canManageUsers",
+    business_identity: "canManageSettings",
+    knowledge_base: "canEditKnowledge",
+    appointments_setup: "canManageSettings",
+    business_hours: "canManageSettings",
+    run_agent_tests: "canEditAgent",
+    agent_quality_center: null,
+    home_first_steps: null,
+    first_channel_whatsapp: "canManageChannels",
+    resume_setup_wizard: "canEditAgent",
+    help_system: null,
+    inbox_first_conversation: "canHandleConversations",
+};
+
+const GUIDED_TOUR_ANCHOR_TIMEOUT_MS = 8_000;
+/**
+ * Cada cuánto se comprueba que el paso en curso siga teniendo a qué apuntar, y
+ * cuántas comprobaciones seguidas en falso hacen falta para actuar (4 s). La
+ * tolerancia existe porque un salto de ruta borra el anclaje anterior por un
+ * instante antes de que aparezca el siguiente, y cerrar por eso un recorrido
+ * sano sería cambiar un defecto por otro.
+ */
+const ANCHOR_LOST_POLL_MS = 500;
+const ANCHOR_LOST_TOLERANCE = 8;
+const SPOTLIGHT_STYLE_ID = "parallly-guided-tour-spotlight-style";
+const SPOTLIGHT_CLASS = "parallly-guided-tour-spotlight";
+const SPOTLIGHT_CSS = `
+@keyframes parallly-guided-tour-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(99, 102, 241, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+.${SPOTLIGHT_CLASS} {
+  animation: parallly-guided-tour-pulse 1.3s ease-out 2;
+  border-radius: 12px;
+  scroll-margin-top: 96px;
+  scroll-margin-bottom: 96px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .${SPOTLIGHT_CLASS} { animation: none; outline: 2px solid rgba(99, 102, 241, 0.8); outline-offset: 3px; }
+}`;
+
+/**
+ * Debajo de 768 px el overlay de Onborda no cabe (sus anclas viven en el
+ * sidebar de escritorio). En vez de no hacer nada —que desde el botón se lee
+ * como "no funciona"— llevamos el primer anclaje a la vista y lo destacamos.
+ */
+function spotlightAnchor(selector: string): boolean {
+    const element = document.querySelector<HTMLElement>(selector);
+    if (!element) return false;
+    if (!document.getElementById(SPOTLIGHT_STYLE_ID)) {
+        const style = document.createElement("style");
+        style.id = SPOTLIGHT_STYLE_ID;
+        style.textContent = SPOTLIGHT_CSS;
+        document.head.appendChild(style);
+    }
+    element.scrollIntoView({ block: "center", behavior: "smooth" });
+    element.classList.add(SPOTLIGHT_CLASS);
+    window.setTimeout(() => element.classList.remove(SPOTLIGHT_CLASS), 2_800);
+    return true;
+}
+
+function isAnchorPresent(selector: string): boolean {
+    return Boolean(document.querySelector(selector));
+}
+
+/** Espera a que el `router.push` haya llegado de verdad antes de medir nada. */
+function waitForRoute(route: string, timeoutMs = GUIDED_TOUR_ANCHOR_TIMEOUT_MS): Promise<boolean> {
+    return new Promise((resolve) => {
+        if (window.location.pathname === route) {
+            resolve(true);
+            return;
+        }
+        const started = Date.now();
+        const timer = window.setInterval(() => {
+            if (window.location.pathname === route) {
+                window.clearInterval(timer);
+                resolve(true);
+            } else if (Date.now() - started >= timeoutMs) {
+                window.clearInterval(timer);
+                resolve(false);
+            }
+        }, 100);
+    });
+}
+
+/**
+ * Espera a que la pantalla se quede quieta antes de decidir qué pasos existen.
+ *
+ * Medir apenas llega la ruta descarta pasos que sí iban a aparecer (la página
+ * todavía está cargando sus datos); esperar el timeout completo cuando NUNCA
+ * van a aparecer deja a la persona ocho segundos frente a nada. Se espera a que
+ * el conjunto de anclajes presentes no cambie por un momento, con tope.
+ */
+function waitForAnchorsToSettle(
+    selectors: readonly string[],
+    { quietMs = 400, timeoutMs = 3_000 }: { quietMs?: number; timeoutMs?: number } = {},
+): Promise<boolean> {
+    const snapshot = () => selectors.filter(isAnchorPresent).join("|");
+    return new Promise((resolve) => {
+        const started = Date.now();
+        let last = snapshot();
+        let stableSince = last ? Date.now() : 0;
+        const timer = window.setInterval(() => {
+            const current = snapshot();
+            if (current !== last) {
+                last = current;
+                stableSince = current ? Date.now() : 0;
+            }
+            const settled = Boolean(last) && stableSince > 0 && Date.now() - stableSince >= quietMs;
+            if (settled || Date.now() - started >= timeoutMs) {
+                window.clearInterval(timer);
+                resolve(Boolean(last));
+            }
+        }, 120);
+    });
+}
+
+/**
  * Pasos del tour guiado. Bloque A (impactan al agente de chat) primero, Bloque B
  * (valor adicional) después. Targetean items SIEMPRE visibles del sidebar por id
  * (`tour-${labelKey}`); los headers de acordeón existen aunque estén colapsados.
@@ -30,8 +225,10 @@ export const TOUR_PENDING_KEY = PRODUCT_TOUR_PENDING_KEY;
 export function useProductTourSteps() {
     const t = useTranslations("productTour");
     const tNav = useTranslations("nav");
+    const tRoot = useTranslations();
     const locale = useLocale();
     const { verticalConfig } = useAuth();
+    const { context: guidedContext, plan: guidedPlan } = useContext(GuidedTourRuntimeContext);
     const common = { side: "right" as const, showControls: true, pointerPadding: 8, pointerRadius: 12 };
 
     const steps: any[] = [
@@ -64,7 +261,14 @@ export function useProductTourSteps() {
         { icon: "📊", title: tNav("items.analytics"), content: t("analytics.content"), selector: getProductTourSelector(PRODUCT_TOUR_TARGETS.analytics), ...common },
     );
 
-    return [{ tour: "main", steps }];
+    // Los recorridos guiados se registran SIEMPRE: Onborda necesita conocer el
+    // tour antes de que alguien lo pida, y el permiso se valida al arrancar.
+    const guidedTours = GUIDED_TOUR_IDS.map((id) => ({
+        tour: id as string,
+        steps: buildGuidedTourSteps(id, guidedContext, (key: string) => tRoot(key), guidedPlan) as any[],
+    }));
+
+    return [{ tour: "main", steps }, ...guidedTours];
 }
 
 /** Tarjeta del tour (shadcn-styled). */
@@ -287,6 +491,349 @@ export function TourLauncher() {
     }, [canLaunchTour, startOnborda]);
 
     return null;
+}
+
+/** Un recorrido tal como se va a mostrar: pasos ya traducidos y filtrados. */
+type GuidedTourRegistry = ReadonlyArray<{ tour: string; steps: Step[] }>;
+
+/**
+ * Aviso breve y NO bloqueante: "este recorrido no se puede mostrar acá".
+ *
+ * Antes, cuando el anclaje no aparecía, el runner despachaba el evento de
+ * cierre y volvía sin decir nada: la persona apretaba un botón, veía cambiar la
+ * pantalla y esperaba ocho segundos frente a nada, sin saber si había fallado
+ * ella o el producto.
+ */
+function GuidedTourNotice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+    const t = useTranslations("productTour");
+    return (
+        <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-4 left-1/2 z-[10000] w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-2xl dark:border-white/10 dark:bg-neutral-900"
+        >
+            <div className="flex items-start gap-2.5">
+                <Compass size={15} className="mt-0.5 shrink-0 text-indigo-500" aria-hidden />
+                <p className="flex-1 text-[13px] leading-relaxed text-neutral-700 dark:text-neutral-300">{text}</p>
+                <button
+                    type="button"
+                    onClick={onDismiss}
+                    aria-label={t("close")}
+                    className="-mr-1 -mt-1 shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                >
+                    <X size={14} />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * El recorrido en pantallas angostas.
+ *
+ * Debajo de 768 px el overlay de Onborda no cabe, así que antes sólo quedaba un
+ * destello sobre el primer anclaje: cero texto, que es justamente lo que el
+ * recorrido tenía para decir. Acá el destello va acompañado del paso escrito,
+ * en una tarjeta que no tapa la pantalla ni bloquea los clicks de abajo.
+ */
+function GuidedTourMobileCard({
+    steps, index, onIndexChange, onClose,
+}: {
+    steps: Step[];
+    index: number;
+    onIndexChange: (next: number) => void;
+    onClose: () => void;
+}) {
+    const t = useTranslations("productTour");
+    const step = steps[index];
+    const selector = step?.selector;
+
+    useEffect(() => {
+        if (selector) spotlightAnchor(selector);
+    }, [selector]);
+
+    if (!step) return null;
+    const isLast = index + 1 >= steps.length;
+
+    return (
+        <div
+            role="dialog"
+            aria-modal="false"
+            aria-label={step.title}
+            className="fixed bottom-3 left-3 right-3 z-[10000] rounded-2xl border border-neutral-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-neutral-900"
+        >
+            <div className="mb-2 flex items-start gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-base dark:bg-indigo-500/15">
+                    {step.icon}
+                </div>
+                <h3 className="flex-1 pt-1 text-[14px] font-semibold leading-tight text-foreground">{step.title}</h3>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label={t("close")}
+                    className="-mr-1 -mt-1 shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                >
+                    <X size={15} />
+                </button>
+            </div>
+            <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">{step.content}</p>
+            <div className="flex items-center justify-between">
+                <span className="text-[12px] tabular-nums text-muted-foreground">{index + 1} / {steps.length}</span>
+                <div className="flex items-center gap-2">
+                    {index > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => onIndexChange(index - 1)}
+                            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-neutral-100 hover:text-foreground dark:hover:bg-white/5"
+                        >
+                            <ArrowLeft size={14} /> {t("prev")}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => (isLast ? onClose() : onIndexChange(index + 1))}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-indigo-700"
+                    >
+                        {isLast ? t("finish") : t("next")} {!isLast && <ArrowRight size={14} />}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Runner de los recorridos guiados ("Mostrarme dónde").
+ *
+ * Vive dentro de <Onborda> junto a TourLauncher. Escucha el evento del contrato
+ * compartido y, antes de arrancar, verifica TODO lo que puede fallar en
+ * silencio: id registrado, rol permitido, capacidad del usuario, ancho de
+ * pantalla, ruta de entrada y qué anclajes existen de verdad en pantalla.
+ *
+ * Tres reglas que antes no estaban:
+ * - Los pasos imposibles se descartan ANTES de arrancar. Onborda no reintenta:
+ *   con un selector que no existe deja el anillo en el elemento anterior y
+ *   mantiene una capa que tapa toda la pantalla, así que la persona no podía ni
+ *   tocar las casillas que el propio recorrido le estaba pidiendo marcar.
+ * - Ya arrancado, un paso que se queda sin anclaje salta al siguiente que sí
+ *   esté, y si no queda ninguno el recorrido se cierra en vez de bloquear.
+ * - Si el recorrido no se puede mostrar, se dice. Y si para intentarlo hubo que
+ *   navegar, se vuelve a donde estaba la persona.
+ */
+export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
+    const { startOnborda, closeOnborda, setCurrentStep, currentStep, currentTour, isOnbordaVisible } = useOnborda();
+    const router = useRouter();
+    const pathname = usePathname();
+    const capabilities = useRole();
+    const { role } = capabilities;
+    const { setContext, setPlan } = useContext(GuidedTourRuntimeContext);
+    const tRoot = useTranslations();
+    const tTour = useTranslations("productTour");
+    const [notice, setNotice] = useState<string | null>(null);
+    const [mobileRun, setMobileRun] = useState<{ steps: Step[]; index: number } | null>(null);
+    const runRef = useRef(0);
+    const noticeTimerRef = useRef<number | null>(null);
+
+    const showNotice = useCallback((text: string) => {
+        setNotice(text);
+        if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+        noticeTimerRef.current = window.setTimeout(() => setNotice(null), 7_000);
+    }, []);
+    useEffect(() => () => {
+        if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    }, []);
+
+    // El listener se registra UNA vez: `useRole()` devuelve un objeto nuevo en
+    // cada render, así que ponerlo en las dependencias re-suscribía el evento
+    // constantemente y podía perder un despacho justo en el medio.
+    const latestRef = useRef({ role, capabilities, pathname, setContext, setPlan, startOnborda, router, tRoot, tTour, showNotice });
+    useEffect(() => {
+        latestRef.current = { role, capabilities, pathname, setContext, setPlan, startOnborda, router, tRoot, tTour, showNotice };
+    });
+
+    // ── Guardián en vivo: ningún paso puede quedar apuntando a la nada ──
+    const toursRef = useRef(tours);
+    toursRef.current = tours;
+    useEffect(() => {
+        if (!isOnbordaVisible || !currentTour) return;
+        let misses = 0;
+        const timer = window.setInterval(() => {
+            const steps = toursRef.current.find((entry) => entry.tour === currentTour)?.steps ?? [];
+            const step = steps[currentStep];
+            if (!step) return;
+            if (isAnchorPresent(step.selector)) {
+                misses = 0;
+                return;
+            }
+            // Un salto de ruta hace desaparecer el anclaje anterior por un
+            // instante: se tolera, y sólo se actúa si la ausencia persiste.
+            misses += 1;
+            if (misses < ANCHOR_LOST_TOLERANCE) return;
+            window.clearInterval(timer);
+            const nextIndex = steps.findIndex(
+                (candidate, index) => index > currentStep && isAnchorPresent(candidate.selector),
+            );
+            if (nextIndex >= 0) {
+                setCurrentStep(nextIndex);
+                return;
+            }
+            closeOnborda();
+            window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+            latestRef.current.showNotice(latestRef.current.tTour("unavailable.body"));
+        }, ANCHOR_LOST_POLL_MS);
+        return () => window.clearInterval(timer);
+    }, [closeOnborda, currentStep, currentTour, isOnbordaVisible, setCurrentStep]);
+
+    useEffect(() => {
+        let startTimer: number | null = null;
+
+        const handler = (event: Event) => {
+            const runtime = latestRef.current;
+            const detail = (event as CustomEvent<unknown>).detail as
+                { tourId?: unknown; signalId?: unknown; agentId?: unknown } | undefined;
+            if (!detail || !isGuidedTourId(detail.tourId)) return;
+            const tourId = detail.tourId;
+            const tour = getGuidedTour(tourId);
+            if (!tour || !canRoleRunGuidedTour(tour, runtime.role)) return;
+
+            const capability = GUIDED_TOUR_CAPABILITY[tourId];
+            if (capability && !runtime.capabilities[capability]) return;
+
+            const agentId = typeof detail.agentId === "string" && detail.agentId ? detail.agentId : null;
+            const stepContext: GuidedTourStepContext = { agentId };
+            runtime.setContext(stepContext);
+
+            const definitions = getGuidedTourStepDefinitions(tourId, stepContext);
+            if (definitions.length === 0) return;
+            const selectors = definitions.map((definition) => definition.selector);
+            const originRoute = runtime.pathname;
+            const entryRoute = guidedTourEntryRoute(tourId, stepContext);
+            // Dentro del asistente de puesta en marcha el recorrido corre donde
+            // está la persona: pedir ayuda no puede significar que te expulsen
+            // del formulario a medio llenar.
+            const inPlace = shouldRunGuidedTourInPlace(tourId, originRoute);
+            const wide = canRunProductTourAtWidth(window.innerWidth);
+            const runId = ++runRef.current;
+            setMobileRun(null);
+
+            const giveUp = (navigated: boolean) => {
+                if (navigated) runtime.router.push(originRoute);
+                window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+                runtime.showNotice(runtime.tTour("unavailable.body"));
+            };
+
+            void (async () => {
+                const mustNavigate = !inPlace && originRoute !== entryRoute;
+                if (mustNavigate) {
+                    runtime.router.push(entryRoute);
+                    const arrived = await waitForRoute(entryRoute);
+                    if (runId !== runRef.current) return;
+                    if (!arrived) {
+                        giveUp(true);
+                        return;
+                    }
+                }
+                await waitForAnchorsToSettle(selectors);
+                if (runId !== runRef.current) return;
+
+                const currentRoute = mustNavigate ? entryRoute : originRoute;
+                const plan = planGuidedTourRun(tourId, stepContext, {
+                    currentRoute,
+                    // En pantalla angosta no hay saltos de ruta: sólo se muestra
+                    // lo que está en pantalla, con su texto.
+                    inPlace: inPlace || !wide,
+                    isPresent: isAnchorPresent,
+                });
+                const firstKept = plan.stepIndexes.length > 0 ? definitions[plan.stepIndexes[0]] : undefined;
+                // Arrancar en un paso que no está en pantalla es exactamente el
+                // caso que dejaba el anillo sobre el elemento equivocado.
+                if (!firstKept || !isAnchorPresent(firstKept.selector)) {
+                    giveUp(mustNavigate);
+                    return;
+                }
+
+                if (!wide) {
+                    const steps = buildGuidedTourSteps(tourId, stepContext, (key) => runtime.tRoot(key), plan);
+                    setMobileRun({ steps, index: 0 });
+                    return;
+                }
+
+                runtime.setPlan(plan);
+                window.dispatchEvent(new Event(PRODUCT_TOUR_PREPARE_EVENT));
+                if (startTimer !== null) window.clearTimeout(startTimer);
+                // React revela primero las secciones colapsadas del sidebar y
+                // aplica el plan; recién entonces Onborda mide los anclajes.
+                startTimer = window.setTimeout(() => {
+                    if (runId !== runRef.current) return;
+                    try {
+                        latestRef.current.startOnborda(tourId);
+                    } catch {
+                        window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+                    }
+                }, 350);
+            })();
+        };
+
+        window.addEventListener(GUIDED_TOUR_START_EVENT, handler);
+        return () => {
+            window.removeEventListener(GUIDED_TOUR_START_EVENT, handler);
+            runRef.current += 1;
+            if (startTimer !== null) window.clearTimeout(startTimer);
+        };
+    }, []);
+
+    const closeMobileRun = useCallback(() => {
+        setMobileRun(null);
+        window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+    }, []);
+
+    const moveMobileRun = useCallback((next: number) => {
+        setMobileRun((run) => {
+            if (!run) return run;
+            const direction = next > run.index ? 1 : -1;
+            for (let index = next; index >= 0 && index < run.steps.length; index += direction) {
+                if (isAnchorPresent(run.steps[index].selector)) return { ...run, index };
+            }
+            // Nada más que señalar en esa dirección: se termina limpio.
+            window.dispatchEvent(new Event(PRODUCT_TOUR_CLOSED_EVENT));
+            return null;
+        });
+    }, []);
+
+    return (
+        <>
+            {mobileRun && (
+                <GuidedTourMobileCard
+                    steps={mobileRun.steps}
+                    index={mobileRun.index}
+                    onIndexChange={moveMobileRun}
+                    onClose={closeMobileRun}
+                />
+            )}
+            {notice && <GuidedTourNotice text={notice} onDismiss={() => setNotice(null)} />}
+        </>
+    );
+}
+
+/**
+ * Envoltorio de Onborda. Vive acá y no en el layout para que los pasos se
+ * construyan DENTRO del GuidedTourProvider: el agente enfocado cambia los
+ * selectores y las rutas de varios recorridos.
+ */
+export function ProductTourShell({ children }: { children: React.ReactNode }) {
+    const steps = useProductTourSteps();
+    return (
+        <OnbordaProvider>
+            <Onborda steps={steps} cardComponent={TourCard} shadowRgb="0,0,0" shadowOpacity="0.5">
+                {children}
+                <TourLauncher />
+                {/* El runner recibe los MISMOS pasos que Onborda: su guardián en
+                    vivo tiene que juzgar lo que se está mostrando, no la
+                    declaración sin filtrar. */}
+                <GuidedTourRunner tours={steps} />
+            </Onborda>
+        </OnbordaProvider>
+    );
 }
 
 /**

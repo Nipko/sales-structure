@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { api } from "@/lib/api";
 import { ActiveObjectsCard } from "@/components/inbox/ActiveObjectsCard";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1319,6 +1320,7 @@ export default function InboxPage() {
                         ]).map(f => (
                             <button
                                 key={f.key}
+                                id={f.key === "unassigned" ? guidedTourAnchorId("inbox-filter-unassigned") : undefined}
                                 onClick={() => setFilter(f.key)}
                                 className={cn(
                                     "py-1 px-3 rounded-full border text-xs cursor-pointer transition-all",
@@ -1351,6 +1353,7 @@ export default function InboxPage() {
                         description={tHelp("inbox.description")}
                         tips={tHelp.raw("inbox.tips") as string[]}
                         mediaKey="inbox"
+                        tourId="inbox_first_conversation"
                     />
                 </div>
 
@@ -1363,7 +1366,7 @@ export default function InboxPage() {
                 )}
 
                 {/* Conversation List */}
-                <div className="inbox-scrollbar flex-1 overflow-auto">
+                <div id={guidedTourAnchorId("inbox-list")} className="inbox-scrollbar flex-1 overflow-auto">
                     {loadingConv && conversations.length === 0 && (
                         <div className="p-2 space-y-1.5">
                             {Array.from({ length: 6 }).map((_, i) => (
@@ -1708,6 +1711,7 @@ export default function InboxPage() {
                                 {(!selectedConv.assignedAgentId ||
                                     (canReassignConversations && selectedConv.assignedAgentId !== user?.id)) && (
                                     <button
+                                        id={guidedTourAnchorId("inbox-take")}
                                         onClick={handleAssign}
                                         disabled={assignLoading}
                                         className={cn(
@@ -1880,7 +1884,7 @@ export default function InboxPage() {
                         >
                             {/* Handoff Summary Banner */}
                             {selectedConv?.handoffSummary && ['waiting_human', 'with_human', 'handoff'].includes(selectedConv.status) && (
-                                <div className="mb-3 px-4 py-3 rounded-xl bg-gradient-to-r from-orange-500/[0.08] to-amber-500/[0.08] border border-orange-500/20">
+                                <div id={guidedTourAnchorId("inbox-summary")} className="mb-3 px-4 py-3 rounded-xl bg-gradient-to-r from-orange-500/[0.08] to-amber-500/[0.08] border border-orange-500/20">
                                     <div className="flex items-start gap-2.5">
                                         <FileText size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
                                         <div className="flex-1 min-w-0">

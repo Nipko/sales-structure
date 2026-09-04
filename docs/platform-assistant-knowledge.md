@@ -31,6 +31,8 @@ del dashboard por sí solo no lo publica.
 | Plan vigente del tenant | Contexto de plan inyectado desde `billing_plans` |
 | Vertical y herramientas | Manifest v2 y capacidades efectivas del tenant |
 | Salud y calidad del agente | `agent-quality-contract.ts`, guards de `/quality/:tenantId/agents*`, `/attention-summary`, `/signals*` y `/admin/agent/quality` |
+| Recorridos guiados ("Mostrarme dónde" / "Mostrarme cómo") | `packages/shared/src/guided-tour-contract.ts` (ids, ruta de entrada, rol mínimo, códigos de calidad que resuelve, artículos de KB relacionados) + `apps/dashboard/src/lib/guided-tours.ts` (pasos y anclajes reales de cada pantalla) |
+| Etapa de onboarding y tarjeta de puesta en marcha | `packages/shared/src/onboarding-stage-contract.ts` (`OnboardingStage` + `resolveOnboardingGuide`), `tenant.settings.onboardingStage` y `components/InitialSetupCard.tsx` |
 | Manual narrativo tenant | `docs/user-manual.md` como apoyo editorial, no como fuente runtime |
 | App móvil | `docs/mobile-user-manual.md` contrastado con `apps/mobile/src` |
 
@@ -100,6 +102,17 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
    lectura Supervisor y edición Admin.
 8. Coach contextual de calidad: contexto server-side acotado, privacidad, revisión
    humana y ausencia de autoedición o comunicaciones externas.
+9. Orden real del onboarding: alta → asistente de bienvenida de 4 pasos → asistente
+   "Conocé a tu agente" de 3 pasos (el paso 1 confirma el agente ya derivado de la
+   industria, no elige plantilla) → verificación de correo no bloqueante; "Conectar
+   después" queda registrado y se recuerda desde Inicio; el asistente se reabre desde
+   **Configuración → Asistente de configuración**.
+10. Recorridos guiados: qué hace **Mostrarme dónde/cómo**, que es de solo lectura, que
+    corre en escritorio y que Admin ve los de edición mientras Supervisor ve los de
+    revisión; y la barra de contexto que muestra la pantalla destino tras **Revisar**.
+11. Diferencia entre asignación, conexión y credencial de un canal: qué bloquea al
+    agente (`channel_connection`) y qué solo advierte (`channel_coverage`), más el
+    estado "Conectado, pero requiere reautorizar".
 
 ## Reglas editoriales
 
@@ -118,6 +131,12 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
   Posponer o reconocer administra la atención, no resuelve la causa.
 - No prometer correo ni push para Salud de agentes. La superficie proactiva vigente es
   interna del dashboard.
+- No prometer que un recorrido guiado cambia configuración. Abre la pantalla y resalta
+  dónde se hace el cambio; la persona lo hace y lo guarda.
+- No describir la barra de contexto como una notificación: es parte de la pantalla
+  destino, derivada de los parámetros `qa`/`qagent` que agrega **Revisar**.
+- No describir un número de prueba o sandbox de WhatsApp como ruta de conexión. Las
+  rutas certificadas son coexistencia (recomendada), número nuevo y migración.
 - No incluir transcripciones, datos de clientes, IDs de conversación, prompts, texto
   libre del juez, consultas RAG, secretos ni actores de una señal en el contexto de
   Parallly Assist.

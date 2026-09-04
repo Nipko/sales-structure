@@ -6,25 +6,9 @@ import { useTranslations } from "next-intl";
 import { useQualityHealth } from "@/contexts/QualityHealthContext";
 import { useRole } from "@/hooks/useRole";
 import { askAssistAboutQuality } from "@/lib/quality-health-events";
-import { getQualityAttentionCount, QUALITY_STATUS_TONE, safeQualityHref } from "@/lib/quality-health";
+import { getQualityAttentionCount, QUALITY_STATUS_TONE, safeQualityHref, withQualityFocus } from "@/lib/quality-health";
+import { useRecommendationLabel } from "@/lib/quality-labels";
 import { cn } from "@/lib/utils";
-
-function useRecommendationLabel() {
-  const t = useTranslations("agentQuality");
-  return (code: string): string => {
-    const direct = `recommendations.${code}`;
-    if (t.has(direct)) return t(direct);
-    if (code.startsWith("fix_")) {
-      const check = `checks.${code.slice(4)}`;
-      return t("recommendations.fix", { item: t.has(check) ? t(check) : t("checks.unknown") });
-    }
-    if (code.startsWith("investigate_")) {
-      const issue = `issues.${code.slice(12)}`;
-      return t("recommendations.investigate", { item: t.has(issue) ? t(issue) : t("issues.unknown") });
-    }
-    return t("recommendations.unknown");
-  };
-}
 
 export default function AgentHealthCard() {
   const t = useTranslations("qualityHealth");
@@ -36,7 +20,11 @@ export default function AgentHealthCard() {
   const topAction = summary?.topAction;
   const centerHref = safeQualityHref(null, topAction?.agentId);
   const requestedHref = safeQualityHref(topAction?.href, topAction?.agentId);
-  const reviewHref = canAccess(requestedHref) ? requestedHref : centerHref;
+  const allowedHref = canAccess(requestedHref) ? requestedHref : centerHref;
+  // The destination must be able to explain why it was opened.
+  const reviewHref = topAction
+    ? withQualityFocus(allowedHref, { signalId: topAction.signalId, agentId: topAction.agentId })
+    : allowedHref;
   const attentionCount = getQualityAttentionCount(summary);
   const worstStatus = summary?.worstStatus || "not_evaluated";
 
@@ -132,7 +120,7 @@ export default function AgentHealthCard() {
                     agentName: topAction.agentName,
                     code: topAction.code,
                     severity: topAction.severity,
-                    href: reviewHref,
+                    href: allowedHref,
                   })}
                   className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-neutral-200 px-3 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
                 >

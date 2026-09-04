@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
@@ -435,7 +436,7 @@ export default function UsersPage() {
                     icon={Users}
                     badge={<DataSourceBadge isLive={isLive} />}
                     action={isAdmin ? (
-                        <button onClick={() => setShowInvite(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                        <button id={guidedTourAnchorId("users-invite")} onClick={() => setShowInvite(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
                             <UserPlus size={16} /> {t("modal.inviteButton")}
                         </button>
                     ) : null}
@@ -446,7 +447,31 @@ export default function UsersPage() {
                     description={tHelp("users.description")}
                     tips={tHelp.raw("users.tips") as string[]}
                     mediaKey="users"
+                    tourId="human_handoff_route"
                 />
+
+                {/* An invitation that nobody accepted is not a person the AI can
+                    hand a conversation to. "Ruta hacia atencion humana" stays red
+                    and nothing on this page said why. */}
+                {pendingInvCount > 0 && (
+                    <div className="mb-5 flex items-start gap-3 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/25 dark:bg-amber-500/10">
+                        <Clock size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div className="flex-1">
+                            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                                {t("pendingNotice.title", { count: pendingInvCount })}
+                            </p>
+                            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+                                {t("pendingNotice.body")}
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setTab("invitations")}
+                            className="shrink-0 self-center rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 cursor-pointer hover:bg-amber-100 dark:border-amber-500/30 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10"
+                        >
+                            {t("pendingNotice.action")}
+                        </button>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-4 gap-4 mb-6">
                     {([
@@ -516,7 +541,7 @@ export default function UsersPage() {
                             </select>
                         </div>
 
-                        <div className="rounded-[14px] border border-border overflow-hidden">
+                        <div id={guidedTourAnchorId("users-list")} className="rounded-[14px] border border-border overflow-hidden">
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="bg-card">
@@ -726,7 +751,7 @@ export default function UsersPage() {
                             />
                         </div>
 
-                        <div className="mb-3.5">
+                        <div id={guidedTourAnchorId("users-role")} className="mb-3.5">
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.role")}</label>
                             <select
                                 value={inviteForm.role}
@@ -737,6 +762,25 @@ export default function UsersPage() {
                                 <option value="tenant_supervisor">⭐ {tRoles("supervisor")}</option>
                                 <option value="tenant_admin">👑 {tRoles("admin")}</option>
                             </select>
+
+                            {/* Picking a role from a list of three words is a
+                                guess; each one now says what that person gets. */}
+                            <ul className="mt-2 space-y-1">
+                                {(["tenant_agent", "tenant_supervisor", "tenant_admin"] as const).map((roleKey) => (
+                                    <li
+                                        key={roleKey}
+                                        className={cn(
+                                            "rounded-lg px-2.5 py-1.5 text-[11.5px] leading-snug transition-colors",
+                                            inviteForm.role === roleKey
+                                                ? "bg-primary/10 text-foreground"
+                                                : "text-muted-foreground",
+                                        )}
+                                    >
+                                        <span className="font-semibold">{tRoles(roleKey === "tenant_agent" ? "agent" : roleKey === "tenant_supervisor" ? "supervisor" : "admin")}:</span>{" "}
+                                        {t(`roleDescriptions.${roleKey}`)}
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
 
                         {inviteSkillsApplicable && (

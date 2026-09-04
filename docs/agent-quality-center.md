@@ -12,7 +12,11 @@ Estas respuestas no se mezclan en un porcentaje decorativo. Un campo diligenciad
 
 La tarjeta **Puesta en marcha esencial** de Inicio sigue siendo una guía de adopción
 inicial. No es una certificación del agente y reemplaza el antiguo checklist flotante
-con progreso `8/9`.
+con progreso `8/9`. Sus ítems se derivan de los checks críticos de preparación más el
+canal (`/channels/overview`), de modo que la tarjeta y Salud de agentes no puedan
+contradecirse: es la **única** fuente de progreso de la puesta en marcha. Cada ítem
+ofrece **Continuar** y **Mostrarme dónde**; la tarjeta desaparece al completarse y recién
+entonces Inicio muestra `AgentHealthCard`.
 
 ## Superficie y acceso
 
@@ -23,6 +27,20 @@ con progreso `8/9`.
   **Críticas + Altas** que continúan abiertas; no representa un puntaje.
 - **Aviso global:** solo aparece ante una señal crítica abierta o un estado global
   **En riesgo**. Permite revisar, preguntar a Parallly Assist o posponer la señal 24 h.
+- **Barra de contexto en el destino:** **Revisar** no navega "a secas". Agrega
+  `?qa=<signalId>&qagent=<agentId>` al `href` del check y la pantalla destino monta una
+  barra de contexto con la acción pendiente, el agente, la explicación en lenguaje llano
+  construida con la evidencia del check y los botones **Mostrarme dónde**, **Preguntar a
+  Assist**, **Posponer 24 h** y cerrar. Es parte de la pantalla, no una notificación:
+  nada se envía por correo, push ni SMS. Mientras la barra muestra la misma señal, el
+  aviso global se oculta para no duplicar el rojo. Si el endpoint responde 404 (señal ya
+  resuelta, o API vieja durante un rolling restart), la barra degrada a un mensaje
+  cerrable y nunca rompe la página.
+- **Mostrarme dónde:** abre la pantalla y resalta paso a paso dónde se hace el cambio.
+  El recorrido es de solo lectura: no escribe configuración. El registro compartido
+  `packages/shared/src/guided-tour-contract.ts` mapea código de calidad → recorrido y
+  rol mínimo (Admin ve los de edición, Supervisor los de revisión); el dashboard resuelve
+  los pasos en `apps/dashboard/src/lib/guided-tours.ts`.
 - **Lectura en el dashboard:** `tenant_admin` y `tenant_supervisor`; un `super_admin`
   entra al workspace mediante impersonación autorizada. En API, `super_admin` puede usar
   un `tenantId` explícito, validado y auditado por `TenantGuard`.
@@ -31,6 +49,10 @@ con progreso `8/9`.
   agentes; `GET /api/v1/quality/:tenantId/agents/:agentId/overview`, la evidencia del
   agente elegido; y `GET /api/v1/quality/:tenantId/attention-summary`, el agregado
   acotado que consumen Inicio, navegación y el aviso global.
+  `GET /api/v1/quality/:tenantId/signals/:signalId?agentId=<uuid>` (aditivo) devuelve
+  **una** señal activa (`open|acknowledged|snoozed`) del agente indicado para alimentar
+  la barra de contexto; responde 404 si la señal ya no está activa o no pertenece a ese
+  agente. Roles: `super_admin`, `tenant_admin`, `tenant_supervisor`.
 - **Contrato:** `packages/shared/src/agent-quality-contract.ts` define estados, pilares, dimensiones, métricas y recomendaciones que comparten API y dashboard.
 
 Los endpoints y la interfaz no editan prompts, políticas ni conocimiento. Las recomendaciones dirigen a una persona hacia la superficie adecuada y conservan la revisión humana antes de cualquier cambio.
@@ -66,6 +88,30 @@ Es determinista y se calcula por agente. Evalúa:
 - horarios y condiciones operativas.
 
 Una capacidad deshabilitada que no forma parte del alcance se marca como **No aplica** y no reduce el resultado. Si el agente promete una capacidad, sus datos y controles pasan a ser obligatorios.
+
+**Canales: asignación, conexión y credencial son tres cosas distintas.** La preparación
+las separa en tres checks para que el aviso y el destino digan lo mismo:
+
+| Check | Crítico | Cuándo falla |
+|---|---|---|
+| `channel_assignment` | sí | el agente no tiene ningún canal marcado (`assignedCount === 0`). |
+| `channel_connection` | sí | `not_applicable` cuando `assignedCount === 0` (ya lo bloquea `channel_assignment`); `fail` cuando **ninguna** asignación tiene conexión operativa —el agente no puede recibir— o cuando una credencial requiere reautorizar (`error`/`revoked`/`expired`/`missing`) y por tanto no puede enviar; `warning` con credenciales `unknown`/`expiring`. |
+| `channel_coverage` (dimensión `actions_outcomes`, `weight: 3`) | **no** | alguna asignación quedó sin conexión activa —tipo desconectado o vínculo por cuenta obsoleto— mientras el agente **sí** tiene otra operativa. Genera recomendación `high`, con `href` al editor del agente. |
+
+Un canal marcado y sin conectar ya **no** produce un bloqueo crítico si otro canal del
+agente opera: eso era el defecto que mostraba "acción crítica" con WhatsApp respondiendo
+y mandaba a Canales, donde todo se veía verde.
+
+La evidencia es primitiva y acotada: `connectedChannels` (tipos con al menos una conexión
+operativa, `join(',')`, ≤120 chars) en `channel_connection`; `{ assigned, connected,
+disconnectedChannels, staleBindings }` en `channel_coverage`. Un `binding` cuyo tipo sí
+está conectado pero cuya cuenta ya no existe cuenta como `staleBinding` (el número se
+reconectó y cambió de id).
+
+La salud de credenciales tiene una sola fuente de verdad,
+`apps/api/src/modules/channels/channel-credential-health.util.ts` (función pura), que
+consumen tanto el servicio de calidad como `/channels/overview`. Antes había dos: calidad
+leía `missing` donde el overview devolvía `unknown` y la página lo ocultaba.
 
 ### Calidad probada
 
@@ -170,8 +216,37 @@ prompts, consultas de recuperación, secretos y actores que reconocieron o pospu
 la señal. El nombre configurable del agente permanece en la interfaz, no se usa como
 instrucción del modelo.
 
+**Bloque de canales conectados (autoritativo).** Para admin y supervisor —nunca para
+`tenant_agent`— el prompt incluye un snapshot del tenant obtenido con
+`AgentQualityService.getTenantChannelSnapshot(tenantId)`: por tipo de canal, cuántas
+cuentas activas y la peor salud de credencial (`{ type, accounts, health }`). Sin nombres,
+sin ids, sin números de teléfono. La regla que lo acompaña es explícita: si la lista no
+está vacía, el modelo **nunca** puede afirmar que no hay canales conectados; debe nombrar
+los tipos conectados y explicar que una señal de canales significa que **una asignación**
+no está conectada, que un vínculo por cuenta quedó obsoleto o que una credencial requiere
+reautorizar. Ese bloque es el que corrige el síntoma original ("no tenés canales
+conectados" con WhatsApp operando), porque antes el modelo solo recibía el código
+`channel_connection` sin evidencia y lo interpretaba como ausencia de canales.
+
+Junto al bloque de canales viaja la **evidencia acotada del check**:
+`criticalBlockerEvidence` (la evidencia del check de cada bloqueador crítico) y
+`selectedSignal.evidence` cuando la señal es `fix_<check>`, filtradas a
+`number | boolean | string` que cumplan `/^[a-z0-9_,:.-]{1,80}$/i`, con un máximo de 8
+claves por check. Sigue sin viajar nada de texto libre ni IDs de conversación.
+
+**Acción `start_guided_tour`.** Además de `open_quality_center` y `open_quality_action`,
+`/copilot/chat` puede devolver `{ code: 'start_guided_tour', labelKey: 'showMe', href,
+tourId }` cuando existe un recorrido para el código de la señal (o cuando el modelo cierra
+su respuesta con el marcador `[[tour:<id>]]` y ese id está en la lista de recorridos
+disponibles para los artículos recuperados y el rol). El `href` sale siempre del registro
+compartido, nunca del texto del modelo, y los marcadores inventados se eliminan de la
+respuesta. Máximo una acción de tour y tres acciones en total. El `href` de
+`open_quality_action` lleva `qa=` y `qagent=` para que el destino monte la barra de
+contexto.
+
 Assist puede explicar y dirigir; no confirma que un cambio fue aplicado, no edita el
-agente ni el conocimiento y no inicia comunicaciones externas.
+agente ni el conocimiento y no inicia comunicaciones externas. Un recorrido guiado
+tampoco escribe nada: abre la pantalla y señala el lugar.
 
 ### Bucle de mejora desde interacciones
 

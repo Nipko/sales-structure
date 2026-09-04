@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import AnimatedLogo from "@/components/AnimatedLogo";
+import LocaleSwitcher from "@/components/LocaleSwitcher";
 
 export default function VerifyEmailPage() {
     const t = useTranslations('auth');
@@ -204,6 +205,12 @@ export default function VerifyEmailPage() {
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
 
             <div className="w-full max-w-[420px] relative z-10">
+                {/* El idioma se sigue pudiendo cambiar acá: quien llega desde un
+                    correo puede caer en un idioma que no es el suyo. */}
+                <div className="flex items-center justify-end mb-4">
+                    <LocaleSwitcher />
+                </div>
+
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <AnimatedLogo height={44} animate showPoweredBy={false} />
@@ -274,6 +281,12 @@ export default function VerifyEmailPage() {
                             />
                         ))}
                     </div>
+
+                    {/* El código caduca. Decirlo acá evita el "lo pegué y no anda"
+                        de quien vuelve al correo veinte minutos después. */}
+                    <p className="-mt-3 mb-6 text-center text-[12px] text-muted-foreground">
+                        {t('codeExpires')}
+                    </p>
 
                     {/* Loading indicator */}
                     {isSubmitting && (

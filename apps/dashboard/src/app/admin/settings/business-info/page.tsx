@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { Building2, Save, CheckCircle, AlertCircle, Globe, Mail, Phone, MapPin, Info, Upload, Loader2, Link2, Image as ImageIcon } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 type SocialLinks = {
     facebook?: string;
@@ -28,6 +29,10 @@ type BusinessForm = {
     country: string;
     logoUrl: string;
     socialLinks: SocialLinks;
+    /** What the agent is for. Written by the sign-up flow and, until now, by nothing else. */
+    chatReasons: string[];
+    /** Who writes in. Same story. */
+    customerTypes: string[];
 };
 
 const EMPTY: BusinessForm = {
@@ -42,7 +47,19 @@ const EMPTY: BusinessForm = {
     country: "",
     logoUrl: "",
     socialLinks: {},
+    chatReasons: [],
+    customerTypes: [],
 };
+
+/** Same vocabulary the sign-up flow writes, so the two never disagree. */
+const GOAL_KEYS = ["faq", "appointments", "sales", "support", "promotions", "lead_qualification", "response_time"];
+const AUDIENCE_KEYS = ["b2c", "b2b", "government"];
+
+/** A value the sign-up flow stored as `other:<free text>` still shows its text. */
+function chipLabel(value: string, translate: (key: string) => string, hasKey: (key: string) => boolean, prefix: string): string {
+    if (value.startsWith("other:")) return value.slice(6).trim() || value;
+    return hasKey(`${prefix}.${value}`) ? translate(`${prefix}.${value}`) : value;
+}
 
 function logoFullUrl(relative: string): string {
     if (!relative) return "";
@@ -84,6 +101,8 @@ export default function BusinessInfoPage() {
                     country: res.data.country || "",
                     logoUrl,
                     socialLinks: res.data.socialLinks || {},
+                    chatReasons: Array.isArray(res.data.chatReasons) ? res.data.chatReasons : [],
+                    customerTypes: Array.isArray(res.data.customerTypes) ? res.data.customerTypes : [],
                 });
                 if (logoUrl && logoUrl.startsWith("http")) {
                     setLogoMode("url");
@@ -97,6 +116,13 @@ export default function BusinessInfoPage() {
         if (!activeTenantId) return;
         if (!form.companyName.trim()) {
             setError(t("errors.companyNameRequired"));
+            return;
+        }
+        // `business_identity` is a CRITICAL quality check and it needs both the
+        // name and "Sobre nosotros"; the page only ever asked for the name, so a
+        // tenant could save a form that looked complete and stay blocked.
+        if (!form.about.trim()) {
+            setError(t("errors.aboutRequired"));
             return;
         }
         setSaving(true);
@@ -170,6 +196,7 @@ export default function BusinessInfoPage() {
                 description={tHelp("settingsBusinessInfo.description")}
                 tips={tHelp.raw("settingsBusinessInfo.tips") as string[]}
                 mediaKey="settingsBusinessInfo"
+                tourId="business_identity"
             />
 
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 flex gap-2">
@@ -192,7 +219,7 @@ export default function BusinessInfoPage() {
             <section className={sectionCls}>
                 <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("sections.identity")}</h2>
                 <div className="space-y-4">
-                    <div>
+                    <div id={guidedTourAnchorId("business-name")}>
                         <label className={labelCls}>{t("fields.companyName")} *</label>
                         <input className={inputCls} value={form.companyName} onChange={e => setField("companyName", e.target.value)} />
                     </div>
@@ -206,9 +233,17 @@ export default function BusinessInfoPage() {
                             <input className={inputCls} value={form.website} onChange={e => setField("website", e.target.value)} placeholder="https://" />
                         </div>
                     </div>
-                    <div>
-                        <label className={labelCls}>{t("fields.about")}</label>
-                        <textarea className={textareaCls} value={form.about} onChange={e => setField("about", e.target.value)} placeholder={t("placeholders.about")} />
+                    <div id={guidedTourAnchorId("business-about")}>
+                        <label className={labelCls}>{t("fields.about")} *</label>
+                        <textarea
+                            className={textareaCls}
+                            value={form.about}
+                            aria-required="true"
+                            aria-invalid={!form.about.trim()}
+                            onChange={e => setField("about", e.target.value)}
+                            placeholder={t("placeholders.about")}
+                        />
+                        <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{t("aboutHelp")}</p>
                     </div>
 
                     {/* Logo */}
@@ -287,8 +322,57 @@ export default function BusinessInfoPage() {
                 </div>
             </section>
 
-            {/* Contact */}
+            {/* Goals and audience — the agent quotes these; until now only the
+                sign-up flow could ever write them. */}
             <section className={sectionCls}>
+                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{t("sections.goals")}</h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">{t("goalsHint")}</p>
+
+                <p className={labelCls}>{t("fields.chatReasons")}</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                    {Array.from(new Set([...GOAL_KEYS, ...form.chatReasons])).map((key) => {
+                        const selected = form.chatReasons.includes(key);
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setField("chatReasons", selected
+                                    ? form.chatReasons.filter(v => v !== key)
+                                    : [...form.chatReasons, key])}
+                                className={`px-3 py-1.5 rounded-full border text-xs font-medium cursor-pointer transition-colors ${selected
+                                    ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+                                    : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600"}`}
+                            >
+                                {chipLabel(key, (k) => t(k), (k) => t.has(k), "goals")}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <p className={labelCls}>{t("fields.customerTypes")}</p>
+                <div className="flex flex-wrap gap-2">
+                    {Array.from(new Set([...AUDIENCE_KEYS, ...form.customerTypes])).map((key) => {
+                        const selected = form.customerTypes.includes(key);
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setField("customerTypes", selected
+                                    ? form.customerTypes.filter(v => v !== key)
+                                    : [...form.customerTypes, key])}
+                                className={`px-3 py-1.5 rounded-full border text-xs font-medium cursor-pointer transition-colors ${selected
+                                    ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+                                    : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600"}`}
+                            >
+                                {chipLabel(key, (k) => t(k), (k) => t.has(k), "audiences")}
+                            </button>
+                        );
+                    })}
+                </div>
+            </section>
+
+            {/* Contact */}
+            <section id={guidedTourAnchorId("business-contact")} className={sectionCls}>
                 <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("sections.contact")}</h2>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -347,6 +431,7 @@ export default function BusinessInfoPage() {
 
             <div className="flex justify-end sticky bottom-4 bg-neutral-50 dark:bg-neutral-950 py-3">
                 <button
+                    id={guidedTourAnchorId("business-save")}
                     onClick={handleSave}
                     disabled={saving}
                     className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 px-4 py-2 text-sm font-medium text-white transition-colors"

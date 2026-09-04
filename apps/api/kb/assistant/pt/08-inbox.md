@@ -3,7 +3,7 @@ id: inbox
 title: "Caixa de entrada e atendimento humano"
 routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["inbox", "caixa de entrada", "handoff", "assumir conversa", "atender cliente", "agente humano", "devolver ao bot", "notas internas", "macros", "respostas rapidas", "adiar", "snooze", "atribuir conversa", "resolver conversa", "copiloto", "resumo IA", "reescrever mensagem", "sugestao IA", "notificacoes", "sino", "escalonamento"]
+keywords: ["inbox", "caixa de entrada", "handoff", "assumir conversa", "atender cliente", "agente humano", "devolver ao bot", "notas internas", "macros", "respostas rapidas", "adiar", "snooze", "atribuir conversa", "resolver conversa", "copiloto", "resumo IA", "reescrever mensagem", "sugestao IA", "notificacoes", "sino", "escalonamento", "sem atendimento", "180 minutos", "volta para a ia"]
 ---
 
 # Caixa de entrada e atendimento humano
@@ -36,6 +36,8 @@ Quando você já resolveu o caso:
 2. Seu atendimento termina, a conversa é liberada e o assistente de IA volta a cuidar das próximas mensagens desse cliente.
 
 As conversas sem atividade por 72 horas são marcadas como resolvidas automaticamente para manter sua caixa organizada. Você pode vê-las com o filtro **Resolvidas**; ali o histórico é somente leitura e, se precisar retomá-la, use **Reabrir conversa**.
+
+**Se ninguém assumir:** uma conversa escalada que passa **180 minutos (3 horas)** sem que nenhuma pessoa da equipe responda, com o cliente ainda esperando, volta sozinha para a IA: o responsável é liberado e o agente retoma a conversa. É um piso de segurança para o cliente não ficar no silêncio, não um castigo nem uma resolução: a conversa continua na sua caixa e você pode assumi-la de novo quando quiser.
 
 ## Copiloto do agente: sugestões e reescrita
 
@@ -76,7 +78,7 @@ Se um caso não pode avançar agora ("me ligue na segunda"), não o deixe ocupan
 - Qualquer membro autorizado da equipe pode assumir uma conversa **sem atribuição** com **Atribuir a mim**; se ela já estava com outra pessoa, somente um administrador ou supervisor pode reatribuí-la.
 - Se você configurar **habilidades (skills)** nos perfis da sua equipe (menu **Usuários**), o Parallly encaminha automaticamente cada escalonamento para a pessoa certa — por exemplo, casos em inglês para o agente que fala inglês.
 - As macros também podem atribuir a um agente específico como parte de suas ações.
-- Se uma conversa escalada fica mais de 5 minutos sem resposta, os supervisores recebem um alerta para que ninguém fique esperando.
+- Se uma conversa escalada passa vários minutos sem resposta, os supervisores recebem um aviso no painel. Esse aviso chama a atenção; o que realmente evita o silêncio é o retorno automático para a IA aos 180 minutos.
 
 A quantidade de pessoas que podem usar a Parallly depende da capacidade da sua conta; confira o uso e o limite atuais em **Plano e faturamento**.
 
@@ -99,12 +101,15 @@ Não. A partir do momento em que você assume a conversa, a IA fica pausada e o 
 Não. As notas, os resumos e as sugestões do copiloto são só para a sua equipe. Ao cliente chega apenas o que você envia pelo campo de mensagem.
 
 **O que acontece se ninguém assumir uma conversa escalada?**
-Ela continua aparecendo no filtro de pendentes e, se passarem mais de 5 minutos sem resposta, os supervisores recebem um alerta com som para intervir.
+Ela continua aparecendo no filtro de pendentes e os supervisores recebem um aviso no painel para intervir. Esse aviso não a retém indefinidamente: se ninguém da equipe respondeu e o cliente segue esperando, aos **180 minutos (3 horas)** a conversa **volta para a IA**, fica sem responsável e o agente retoma. Se você quer que uma pessoa atenda, assuma antes desse prazo.
 
 **Posso fazer com que certos casos cheguem sempre à mesma pessoa?**
 Sim. Configure habilidades nos perfis da equipe (menu **Usuários**) para o encaminhamento automático, ou crie uma macro com a ação **Atribuir a agente**.
 
 **Uma conversa adiada se perde se o cliente escrever antes?**
 Não se perde: a conversa reaparece automaticamente na data que você escolheu e o histórico completo é preservado.
+
+**Chegam mensagens de SMS nesta caixa?**
+Não. A caixa recebe WhatsApp, Instagram, Messenger, Telegram e o chat do seu site. Os SMS só saem como notificação de mão única para seus clientes, ou como aviso para sua equipe; eles não abrem uma conversa aqui.
 
 Precisa de mais ajuda? Fale com a gente em https://parallly-chat.cloud/support

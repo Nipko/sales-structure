@@ -23,6 +23,7 @@ import {
     Building2,
     CalendarCheck,
     Clock,
+    Compass,
     CreditCard,
     Database,
     GitBranch,
@@ -93,6 +94,10 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
         key: "company",
         visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
         items: [
+            // Reabrir "Conocé a tu agente". Sin esta entrada, cerrar el asistente
+            // era irreversible: no existía ningún enlace a él en toda la app, así
+            // que quien salía quedaba con el agente a medio confirmar y sin vuelta.
+            { key: "setupWizard", href: "/admin/setup-wizard", icon: Compass, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10", visible: (r) => r.canManageBilling },
             { key: "businessInfo", href: "/admin/settings/business-info", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
             { key: "localization", href: "/admin/settings/localization", icon: Globe, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "fiscal", href: "/admin/settings/fiscal", icon: Receipt, iconColor: "text-teal-500", iconBg: "bg-teal-500/10", visible: (r) => r.canManageBilling },

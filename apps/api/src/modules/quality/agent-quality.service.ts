@@ -15,6 +15,14 @@ import type {
 } from '@parallext/shared';
 import { AGENT_QUALITY_DIMENSIONS } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    CREDENTIAL_TYPE_BY_CHANNEL,
+    isCredentialFailure,
+    isCredentialWarning,
+    resolveCredentialHealth,
+    worstCredentialHealth,
+    type ChannelCredentialHealth,
+} from '../channels/channel-credential-health.util';
 
 const PRODUCTION_DAYS = 30;
 const MINIMUM_PRODUCTION_SAMPLE = 20;
@@ -22,12 +30,8 @@ const HEALTHY_VERIFIED_RESOLUTION_RATE = 70;
 const CRITICAL_VERIFIED_RESOLUTION_RATE = 50;
 const RECURRING_ISSUE_COUNT = 3;
 const OPERATIONAL_CHANNELS = new Set(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);
-const CREDENTIAL_TYPE_BY_CHANNEL: Record<string, string> = {
-    whatsapp: 'system_user_token',
-    instagram: 'instagram_token',
-    messenger: 'messenger_token',
-    telegram: 'telegram_token',
-};
+/** Evidence strings stay bounded: a channel list can never grow into free text. */
+const MAX_EVIDENCE_LIST_CHARS = 120;
 const DIMENSION_WEIGHTS: Record<AgentQualityDimension, number> = {
     business_scope: 15,
     knowledge_grounding: 20,
@@ -50,15 +54,31 @@ type AgentRow = {
 
 type TenantContext = {
     settings: Record<string, any>;
+    /** False when the connected-accounts read failed: absence is unknown, not zero. */
+    channelLookupAvailable: boolean;
     industry: string | null;
     updatedAt: Date | string | null;
     activeChannelTypes: Set<string>;
     activeAccountBindings: Set<string>;
     activeHumanCount: number;
     channelCredentialHealth: Map<string, CredentialHealth>;
+    /** Aggregate by channel type — no ids, names or phone numbers. */
+    channelTypeSummary: Array<{ type: string; accounts: number; health: CredentialHealth }>;
+    activeAccountCount: number;
 };
 
-type CredentialHealth = 'ok' | 'expiring' | 'unknown' | 'missing' | 'error' | 'revoked' | 'expired';
+type CredentialHealth = ChannelCredentialHealth;
+
+/**
+ * What Parallly Assist is allowed to know about a tenant's connections: how
+ * many, of which type, and whether they can send. No account id, display name
+ * or phone number ever crosses into the model's context.
+ */
+export interface TenantChannelSnapshot {
+    generatedAt: string;
+    total: number;
+    channels: Array<{ type: string; accounts: number; health: ChannelCredentialHealth }>;
+}
 
 type CredentialHealthRow = {
     credentialType: string;
@@ -219,7 +239,11 @@ export class AgentQualityService {
                    FROM channel_accounts
                   WHERE tenant_id = $1::uuid AND is_active = true`,
                 tenantId,
-            ).catch(() => [] as any[]),
+            ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
+                // An unreadable table is not an empty table. Reporting zero
+                // connections here raised a critical blocker and told Assist the
+                // business had no channels — both claims we never verified.
+                .catch(() => ({ available: false, rows: [] as any[] })),
             this.prisma.$queryRawUnsafe(
                 `SELECT 'web_widget' AS channel_type, widget_id AS account_id
                    FROM public.widget_configs
@@ -244,8 +268,8 @@ export class AgentQualityService {
             this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT phone_number_id AS account_id,
-                        CASE WHEN access_token_ref IS NOT NULL
-                                   AND access_token_ref NOT IN ('', 'credential_ref')
+                        CASE WHEN btrim(COALESCE(access_token_ref, '')) NOT IN
+                                   ('', 'credential_ref', 'encrypted_ref')
                              THEN true ELSE false END AS has_legacy_credential
                    FROM whatsapp_channels`,
                 [],
@@ -262,8 +286,9 @@ export class AgentQualityService {
                 [],
             ).catch(() => []),
         ]);
+        const channelLookup = channels as { available: boolean; rows: any[] };
         const channelRows = [
-            ...(Array.isArray(channels) ? channels as any[] : []),
+            ...(Array.isArray(channelLookup?.rows) ? channelLookup.rows : []),
             ...(Array.isArray(widgets) ? widgets as any[] : []),
         ];
         const humanRows = Array.isArray(humans) ? humans as any[] : [];
@@ -279,28 +304,22 @@ export class AgentQualityService {
             .map((row) => String(row.account_id)));
         const explicitlyBoundAccounts = new Set((boundBindingRows || []).map((row) => String(row.binding)));
         const channelGroups = new Map<string, CredentialHealth[]>();
+        const typeGroups = new Map<string, CredentialHealth[]>();
         for (const row of channelRows) {
             const channel = String(row.channel_type);
             const accountId = String(row.account_id);
-            const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
-            let health: CredentialHealth = 'ok';
-            if (channel === 'whatsapp') {
-                health = this.credentialHealth(
-                    latestByType.get(CREDENTIAL_TYPE_BY_CHANNEL.whatsapp) || null,
-                    credentialLookup.available,
-                );
-                if ((health === 'missing' || health === 'unknown') && legacyWhatsAppAccounts.has(accountId)) {
-                    health = 'ok';
-                }
-            } else if (channel === 'instagram' && row.has_account_token === true) {
-                health = this.expiryHealth((metadata as any).tokenExpiresAt);
-            } else if (channel !== 'web_widget' && row.has_account_token !== true) {
-                const credentialType = CREDENTIAL_TYPE_BY_CHANNEL[channel];
-                health = credentialType
-                    ? this.credentialHealth(latestByType.get(credentialType) || null, credentialLookup.available)
-                    : 'unknown';
-            }
+            // One definition of "this connection can send", shared with
+            // /channels/overview so Canales and Salud de agentes agree.
+            const health = resolveCredentialHealth({
+                channelType: channel,
+                hasAccountToken: row.has_account_token === true,
+                metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : null,
+                latestCredential: latestByType.get(CREDENTIAL_TYPE_BY_CHANNEL[channel]) || null,
+                lookupAvailable: credentialLookup.available,
+                hasLegacyWhatsAppToken: legacyWhatsAppAccounts.has(accountId),
+            });
             healthByAssignment.set(`${channel}:${accountId}`, health);
+            typeGroups.set(channel, [...(typeGroups.get(channel) || []), health]);
             // A type-level assignment is the fallback for accounts without an
             // exact binding. Evaluate every account it can actually receive;
             // one expired account must not be hidden by another healthy one.
@@ -311,46 +330,51 @@ export class AgentQualityService {
             }
         }
         for (const [channel, health] of channelGroups) {
-            healthByAssignment.set(channel, this.worstCredentialHealth(health));
+            healthByAssignment.set(channel, worstCredentialHealth(health));
+        }
+        // Every account of this type is explicitly bound to some agent, so the
+        // group above is empty. Falling through to the default 'missing'
+        // invented a credential failure for a connection whose token is fine,
+        // and sent the owner to a Canales screen showing everything green.
+        for (const [channel, health] of typeGroups) {
+            if (!healthByAssignment.has(channel)) {
+                healthByAssignment.set(channel, worstCredentialHealth(health));
+            }
         }
         return {
             settings: (tenant?.settings as Record<string, any>) || {},
             industry: tenant?.industry || null,
             updatedAt: tenant?.updatedAt || null,
+            channelLookupAvailable: channelLookup?.available !== false,
             activeChannelTypes: new Set(channelRows.map((row) => String(row.channel_type))),
             activeAccountBindings: new Set(channelRows.map((row) => `${row.channel_type}:${row.account_id}`)),
             activeHumanCount: Number(humanRows[0]?.count) || 0,
             channelCredentialHealth: healthByAssignment,
+            channelTypeSummary: [...typeGroups.entries()]
+                .map(([type, values]) => ({ type, accounts: values.length, health: worstCredentialHealth(values) }))
+                .sort((left, right) => left.type.localeCompare(right.type)),
+            activeAccountCount: channelRows.length,
         };
     }
 
-    private credentialHealth(
-        credential: { rotationState?: string | null; expiresAt?: Date | string | null } | null,
-        lookupAvailable: boolean,
-    ): CredentialHealth {
-        if (!lookupAvailable) return 'unknown';
-        if (!credential) return 'missing';
-        if (credential.rotationState === 'error') return 'error';
-        if (credential.rotationState === 'revoked') return 'revoked';
-        if (credential.rotationState && credential.rotationState !== 'active') return 'unknown';
-        return credential.expiresAt ? this.expiryHealth(credential.expiresAt) : 'ok';
-    }
-
-    private expiryHealth(value: Date | string | null | undefined): CredentialHealth {
-        if (!value) return 'unknown';
-        const expiresAt = new Date(value).getTime();
-        if (!Number.isFinite(expiresAt)) return 'unknown';
-        const remaining = expiresAt - Date.now();
-        if (remaining < 0) return 'expired';
-        if (remaining <= 7 * 86_400_000) return 'expiring';
-        return 'ok';
-    }
-
-    private worstCredentialHealth(values: CredentialHealth[]): CredentialHealth {
-        const rank: Record<CredentialHealth, number> = {
-            ok: 0, expiring: 1, unknown: 2, missing: 3, error: 4, revoked: 5, expired: 6,
+    /**
+     * What Parallly Assist may state about the tenant's connections. It exists
+     * because the assistant used to be handed only the blocker CODE
+     * (`channel_connection`) with no evidence, and answered "no tenés canales
+     * conectados" to a tenant whose WhatsApp was operating.
+     *
+     * Deliberately aggregate: counts and health by channel type, never an
+     * account id, display name or phone number.
+     */
+    async getTenantChannelSnapshot(tenantId: string): Promise<TenantChannelSnapshot> {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+        const context = await this.loadTenantContext(tenantId, schemaName);
+        return {
+            generatedAt: new Date().toISOString(),
+            total: context.activeAccountCount,
+            channels: context.channelTypeSummary.map(({ type, accounts, health }) => ({ type, accounts, health })),
         };
-        return [...values].sort((left, right) => rank[right] - rank[left])[0] || 'missing';
     }
 
     private async loadReadinessFacts(schemaName: string): Promise<ReadinessFacts> {
@@ -660,20 +684,30 @@ export class AgentQualityService {
         const operationalBindings = bindings.filter((binding) => OPERATIONAL_CHANNELS.has(binding.split(':', 1)[0]));
         const assignedCount = operationalChannels.length + operationalBindings.length;
         const unsupportedCount = channels.length + bindings.length - assignedCount;
-        const isCredentialFailure = (health: CredentialHealth) =>
-            health === 'missing' || health === 'error' || health === 'revoked' || health === 'expired';
-        const isCredentialWarning = (health: CredentialHealth) => health === 'unknown' || health === 'expiring';
-        const assignmentHealth: Array<{ connected: boolean; health: CredentialHealth }> = [
+        const assignmentHealth: Array<{ type: string; connected: boolean; stale: boolean; health: CredentialHealth }> = [
             ...operationalChannels.map((channel) => ({
+                type: channel,
                 connected: tenant.activeChannelTypes.has(channel),
-                health: tenant.channelCredentialHealth.get(channel) || (channel === 'web_widget' ? 'ok' : 'missing'),
+                stale: false,
+                health: (tenant.channelCredentialHealth.get(channel)
+                    || (channel === 'web_widget' ? 'ok' : 'missing')) as CredentialHealth,
             })),
-            ...operationalBindings.map((binding) => ({
-                connected: tenant.activeAccountBindings.has(binding),
-                health: tenant.channelCredentialHealth.get(binding) || 'missing',
-            })),
+            ...operationalBindings.map((binding) => {
+                const type = binding.split(':', 1)[0];
+                const connected = tenant.activeAccountBindings.has(binding);
+                return {
+                    type,
+                    connected,
+                    // The account this agent was bound to is gone, but the channel
+                    // type is connected: the number was reconnected under a new id
+                    // and the binding needs reassigning, not a new connection.
+                    stale: !connected && tenant.activeChannelTypes.has(type),
+                    health: (tenant.channelCredentialHealth.get(binding) || 'missing') as CredentialHealth,
+                };
+            }),
         ];
-        const connectedAssignments = assignmentHealth
+        // "Operational" = it can receive AND it can send back.
+        const connectedOperational = assignmentHealth
             .filter(({ connected, health }) => connected && !isCredentialFailure(health)).length;
         const credentialAffectedAssignments = assignmentHealth
             .filter(({ connected, health }) => connected && isCredentialFailure(health)).length;
@@ -685,6 +719,14 @@ export class AgentQualityService {
         const credentialIssue = credentialIssueCodes.length === 0
             ? null
             : credentialIssueCodes.length === 1 ? credentialIssueCodes[0] : 'multiple';
+        const channelList = (values: string[]) =>
+            [...new Set(values)].sort().join(',').slice(0, MAX_EVIDENCE_LIST_CHARS);
+        const connectedChannels = channelList(assignmentHealth
+            .filter(({ connected, health }) => connected && !isCredentialFailure(health))
+            .map(({ type }) => type));
+        const disconnectedAssignments = assignmentHealth.filter(({ connected }) => !connected);
+        const disconnectedChannels = channelList(disconnectedAssignments.map(({ type }) => type));
+        const staleBindings = assignmentHealth.filter(({ stale }) => stale).length;
 
         const checks: AgentQualityCheck[] = [];
         const add = (check: CheckInput) => checks.push(check);
@@ -695,7 +737,10 @@ export class AgentQualityService {
         add({ code: 'agent_active', dimension: 'business_scope', status: status(agent.is_active), critical: true, weight: 4, href: `/admin/agent/${agent.id}`, evidence: { active: agent.is_active } });
         const promptMode = (config as any).editorMode === 'prompt' || (config as any)._mode === 'prompt';
         const customPrompt = (config as any).customPrompt ?? (config as any)._customPrompt;
-        add({ code: 'persona_identity', dimension: 'business_scope', status: promptMode ? 'not_applicable' : status(text(persona.name) && text(persona.role)), critical: !promptMode, weight: 4, href: `/admin/agent/${agent.id}`, evidence: { hasName: text(persona.name), hasRole: text(persona.role) } });
+        // The editor checks deep-link to the exact field, not just to the agent:
+        // "Revisar" that lands on a long form the person has to search through is
+        // the same dead end as landing on a page that says nothing.
+        add({ code: 'persona_identity', dimension: 'business_scope', status: promptMode ? 'not_applicable' : status(text(persona.name) && text(persona.role)), critical: !promptMode, weight: 4, href: `/admin/agent/${agent.id}?tab=persona&focus=name`, evidence: { hasName: text(persona.name), hasRole: text(persona.role) } });
         add({ code: 'business_identity', dimension: 'business_scope', status: status(!!facts.company && text(facts.company.name) && text(facts.company.about)), critical: true, weight: 4, href: '/admin/settings/business-info', evidence: { configured: !!facts.company, hasAbout: text(facts.company?.about) } });
         const businessContactMethods = [facts.company?.phone, facts.company?.email, facts.company?.website, facts.company?.address].filter(text).length;
         add({ code: 'business_contact', dimension: 'business_scope', status: status(businessContactMethods > 0, 'warning'), critical: false, weight: 2, href: '/admin/settings/business-info', evidence: { contactMethods: businessContactMethods } });
@@ -706,8 +751,8 @@ export class AgentQualityService {
         add({ code: 'agent_language', dimension: 'conversation_brand', status: status(text(config.language), 'warning'), critical: false, weight: 2, href: `/admin/agent/${agent.id}`, evidence: { configured: text(config.language) } });
         add({ code: 'brand_voice', dimension: 'conversation_brand', status: promptMode ? 'not_applicable' : status(text(persona.personality?.tone) && text(persona.personality?.formality), 'warning'), critical: false, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { hasTone: text(persona.personality?.tone), hasFormality: text(persona.personality?.formality) } });
         add({ code: 'greeting', dimension: 'conversation_brand', status: promptMode ? 'not_applicable' : status(text(persona.greeting), 'warning'), critical: false, weight: 2, href: `/admin/agent/${agent.id}`, evidence: { configured: text(persona.greeting) } });
-        add({ code: 'fallback_message', dimension: 'conversation_brand', status: promptMode ? 'not_applicable' : status(text(persona.fallbackMessage)), critical: !promptMode, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { configured: text(persona.fallbackMessage) } });
-        add({ code: 'behavior_rules', dimension: 'conversation_brand', status: promptMode ? 'not_applicable' : status(list(behavior.rules)), critical: !promptMode, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { count: Array.isArray(behavior.rules) ? behavior.rules.length : 0 } });
+        add({ code: 'fallback_message', dimension: 'conversation_brand', status: promptMode ? 'not_applicable' : status(text(persona.fallbackMessage)), critical: !promptMode, weight: 3, href: `/admin/agent/${agent.id}?tab=persona&focus=fallback`, evidence: { configured: text(persona.fallbackMessage) } });
+        add({ code: 'behavior_rules', dimension: 'conversation_brand', status: promptMode ? 'not_applicable' : status(list(behavior.rules)), critical: !promptMode, weight: 3, href: `/admin/agent/${agent.id}?tab=instructions&focus=rules`, evidence: { count: Array.isArray(behavior.rules) ? behavior.rules.length : 0 } });
         add({ code: 'custom_prompt', dimension: 'conversation_brand', status: promptMode ? status(text(customPrompt)) : 'not_applicable', critical: promptMode, weight: 4, href: `/admin/agent/${agent.id}`, evidence: { promptMode, configured: text(customPrompt) } });
 
         const knowledgeRequired = config.rag?.enabled === true || tools.knowledge?.enabled === true;
@@ -723,24 +768,60 @@ export class AgentQualityService {
         add({ code: 'tool_faqs', dimension: 'knowledge_grounding', status: this.optionalToolStatus(tools.faqs, facts.faqs > 0), critical: tools.faqs?.enabled === true, weight: 3, href: '/admin/knowledge/faqs', evidence: { enabled: tools.faqs?.enabled === true, published: facts.faqs } });
         add({ code: 'tool_policies', dimension: 'knowledge_grounding', status: this.optionalToolStatus(tools.policies, facts.policies > 0), critical: tools.policies?.enabled === true, weight: 3, href: '/admin/settings/policies', evidence: { enabled: tools.policies?.enabled === true, active: facts.policies } });
 
-        add({ code: 'channel_assignment', dimension: 'actions_outcomes', status: status(assignedCount > 0), critical: true, weight: 5, href: `/admin/agent/${agent.id}`, evidence: { assigned: assignedCount } });
+        add({ code: 'channel_assignment', dimension: 'actions_outcomes', status: status(assignedCount > 0), critical: true, weight: 5, href: `/admin/agent/${agent.id}?tab=persona&focus=channels`, evidence: { assigned: assignedCount } });
         add({ code: 'operational_channel_scope', dimension: 'actions_outcomes', status: unsupportedCount > 0 ? 'fail' : 'pass', critical: true, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { unsupportedAssignments: unsupportedCount } });
+        // A critical block here means "this agent cannot work at all": nothing can
+        // reach it, or what reaches it cannot be answered. A partially connected
+        // agent is a coverage problem (below), not an outage — calling it critical
+        // is what made the banner shout while Canales showed WhatsApp in green.
         add({
             code: 'channel_connection',
             dimension: 'actions_outcomes',
-            status: assignedCount === 0 || connectedAssignments < assignedCount
-                ? 'fail'
-                : credentialWarningAssignments > 0 ? 'warning' : 'pass',
+            status: assignedCount === 0
+                // `channel_assignment` already blocks this; two critical blockers
+                // for one cause send the person to two different screens.
+                ? 'not_applicable'
+                // We could not read the connections at all. Declaring an outage
+                // would be a claim we never verified — the same mistake that
+                // made Assist announce the business had no channels.
+                : !tenant.channelLookupAvailable
+                    ? 'unknown'
+                    : connectedOperational === 0 || credentialAffectedAssignments > 0
+                        ? 'fail'
+                        : credentialWarningAssignments > 0 ? 'warning' : 'pass',
             critical: true,
             weight: 5,
             href: '/admin/channels',
             evidence: {
                 assigned: assignedCount,
-                connected: connectedAssignments,
+                connected: connectedOperational,
                 credentialAffectedAssignments,
                 credentialWarningAssignments,
                 hasCredentialIssue: credentialAffectedAssignments + credentialWarningAssignments > 0,
                 credentialIssue,
+                // The focus banner names the channel to connect from this key;
+                // without it the sentence rendered as "connect none".
+                connectedChannels,
+                disconnectedChannels,
+            },
+        });
+        add({
+            code: 'channel_coverage',
+            dimension: 'actions_outcomes',
+            status: assignedCount === 0 || disconnectedAssignments.length === 0
+                ? (assignedCount === 0 ? 'not_applicable' : 'pass')
+                // With nothing operational this is the same outage
+                // `channel_connection` already owns; reporting it twice would
+                // duplicate the action, and reporting `pass` would be a lie.
+                : connectedOperational > 0 ? 'fail' : 'not_applicable',
+            critical: false,
+            weight: 3,
+            href: `/admin/agent/${agent.id}`,
+            evidence: {
+                assigned: assignedCount,
+                connected: connectedOperational,
+                disconnectedChannels,
+                staleBindings,
             },
         });
         add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: '/admin/appointments', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
@@ -773,7 +854,7 @@ export class AgentQualityService {
         }
 
         add({ code: 'forbidden_topics', dimension: 'safety_handoff', status: promptMode ? 'not_applicable' : status(list(behavior.forbiddenTopics), 'warning'), critical: false, weight: 4, href: `/admin/agent/${agent.id}`, evidence: { count: Array.isArray(behavior.forbiddenTopics) ? behavior.forbiddenTopics.length : 0 } });
-        add({ code: 'handoff_triggers', dimension: 'safety_handoff', status: status(list(behavior.handoffTriggers)), critical: true, weight: 5, href: `/admin/agent/${agent.id}`, evidence: { count: Array.isArray(behavior.handoffTriggers) ? behavior.handoffTriggers.length : 0 } });
+        add({ code: 'handoff_triggers', dimension: 'safety_handoff', status: status(list(behavior.handoffTriggers)), critical: true, weight: 5, href: `/admin/agent/${agent.id}?tab=instructions&focus=handoff`, evidence: { count: Array.isArray(behavior.handoffTriggers) ? behavior.handoffTriggers.length : 0 } });
         add({ code: 'human_handoff_route', dimension: 'safety_handoff', status: list(behavior.handoffTriggers) ? status(tenant.activeHumanCount > 0) : 'unknown', critical: true, weight: 5, href: '/admin/users', evidence: { activeHumans: tenant.activeHumanCount } });
 
         const hasHours = hours.is247 === true || (hours.schedule && Object.keys(hours.schedule).length > 0)
@@ -904,7 +985,13 @@ export class AgentQualityService {
                     code: `fix_${check.code}`,
                     pillar: 'preparation',
                     dimension: check.dimension,
-                    severity: check.critical ? 'critical' : check.status === 'fail' || check.status === 'unknown' ? 'high' : 'medium',
+                    // Severity follows the OUTCOME, not the label. A critical check
+                    // sitting at `warning` — a token expiring next week — is worth
+                    // attention, not the red "critical action" bar this file was
+                    // rewritten to stop raising over a working WhatsApp.
+                    severity: check.status === 'warning'
+                        ? (check.critical ? 'high' : 'medium')
+                        : check.critical ? 'critical' : 'high',
                     href: check.href || '/admin/agent',
                     params: check.evidence,
                 });

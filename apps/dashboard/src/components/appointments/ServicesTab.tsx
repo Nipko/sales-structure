@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { api } from "@/lib/api";
 import {
     Plus, Pencil, Trash2, Timer, DollarSign, Clock, Search,
@@ -144,7 +145,7 @@ export default function ServicesTab({
                         )}
                     </p>
                 </div>
-                <button onClick={onCreateService}
+                <button id={guidedTourAnchorId("appointments-new-service")} onClick={onCreateService}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 text-white font-semibold text-sm cursor-pointer hover:bg-indigo-600 transition-colors border-none shadow-sm">
                     <Plus size={16} /> {t("servicesSection.newService")}
                 </button>

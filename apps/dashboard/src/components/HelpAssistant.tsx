@@ -6,12 +6,19 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
 } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { ChevronRight, Compass, Loader2, Send, Sparkles } from "lucide-react";
+import {
+  GUIDED_TOUR_START_EVENT,
+  isGuidedTourId,
+  type GuidedTourId,
+  type GuidedTourStartDetail,
+} from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
@@ -28,7 +35,14 @@ import {
   type QualityAssistantTarget,
 } from "@/lib/quality-assistant-contract";
 import { ParalllyAssistant } from "@/components/ParalllyAssistant";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
+import {
+  getOnboardingLandingServerSnapshot,
+  getOnboardingLandingSignal,
+  isSetupCardTheActiveGuide,
+  subscribeOnboardingLanding,
+} from "@/lib/onboarding-guide-signal";
 import {
   Sheet,
   SheetContent,
@@ -48,11 +62,52 @@ const INTRO_SPARKS = [
 ];
 
 type IntroPhase = "hidden" | "enter" | "talk" | "done";
-type ChatAction = {
-  code: "open_quality_center" | "open_quality_action";
-  labelKey: "openCenter" | "resolvePriority";
-  href: string;
-};
+/**
+ * Acciones que el servidor puede devolver junto a una respuesta.
+ *
+ * `start_guided_tour` NO cambia nada: abre la pantalla y resalta paso a paso
+ * dónde se hace el cambio. El `href` es el respaldo para móvil, donde el
+ * overlay no cabe; el `tourId` sale del registro compartido, nunca del texto
+ * del modelo, y se vuelve a validar acá antes de renderizar un botón.
+ */
+type ChatAction =
+  | {
+    code: "open_quality_center" | "open_quality_action";
+    labelKey: "openCenter" | "resolvePriority";
+    href: string;
+  }
+  | {
+    code: "start_guided_tour";
+    labelKey: "showMe";
+    href: string;
+    tourId: GuidedTourId;
+  };
+
+function isSafeAdminActionHref(href: unknown): href is string {
+  return typeof href === "string"
+    && (href === "/admin" || href.startsWith("/admin/"))
+    && !href.startsWith("//")
+    && !href.includes("..");
+}
+
+function parseChatAction(action: unknown): ChatAction | null {
+  const candidate = action as { code?: unknown; labelKey?: unknown; href?: unknown; tourId?: unknown } | null;
+  if (!candidate || !isSafeAdminActionHref(candidate.href)) return null;
+  if ((candidate.code === "open_quality_center" && candidate.labelKey === "openCenter")
+    || (candidate.code === "open_quality_action" && candidate.labelKey === "resolvePriority")) {
+    return {
+      code: candidate.code,
+      labelKey: candidate.labelKey,
+      href: candidate.href,
+    } as ChatAction;
+  }
+  if (candidate.code === "start_guided_tour"
+    && candidate.labelKey === "showMe"
+    && isGuidedTourId(candidate.tourId)) {
+    return { code: "start_guided_tour", labelKey: "showMe", href: candidate.href, tourId: candidate.tourId };
+  }
+  return null;
+}
 type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[] };
 
 const useIntroLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -94,6 +149,15 @@ function TenantHelpAssistant() {
   const [isSending, setIsSending] = useState(false);
   const [qualityTarget, setQualityTarget] = useState<QualityAssistantTarget>();
   const [qualityDetail, setQualityDetail] = useState<QualityAssistantOpenDetail>();
+  // El recorrido guiado se ancla al sidebar de escritorio; en móvil la acción
+  // degrada a un enlace a la pantalla, que sí sirve para llegar.
+  const [canRunGuidedTour, setCanRunGuidedTour] = useState(false);
+  // Señal publicada por `/admin`: nadie más vuelve a pedir `setup-status`.
+  const setupCardIsTheGuide = isSetupCardTheActiveGuide(useSyncExternalStore(
+    subscribeOnboardingLanding,
+    getOnboardingLandingSignal,
+    getOnboardingLandingServerSnapshot,
+  ));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const requestEpochRef = useRef(0);
 
@@ -119,6 +183,13 @@ function TenantHelpAssistant() {
 
   useIntroLayoutEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
+    // Mientras la tarjeta de puesta en marcha es la guía activa, la burbuja que
+    // saluda sola es una guía más encima de las otras. No se marca como
+    // anunciada: cuando la cuenta arranca de verdad, el saludo sigue disponible.
+    if (setupCardIsTheGuide) {
+      setIntro("done");
+      return;
+    }
     try {
       if (typeof window === "undefined" || sessionStorage.getItem(ANNOUNCED_KEY)) return;
       if (canRunProductTourAtWidth(window.innerWidth)
@@ -153,7 +224,7 @@ function TenantHelpAssistant() {
     }
 
     return () => timers.forEach(clearTimeout);
-  }, []);
+  }, [setupCardIsTheGuide]);
 
   useEffect(() => {
     try {
@@ -196,6 +267,24 @@ function TenantHelpAssistant() {
   }, [t]);
 
   useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const sync = () => setCanRunGuidedTour(canRunProductTourAtWidth(window.innerWidth));
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  const startGuidedTour = useCallback((tourId: GuidedTourId) => {
+    const detail: GuidedTourStartDetail = {
+      tourId,
+      signalId: qualityTarget?.signalId,
+      agentId: qualityTarget?.agentId,
+    };
+    setOpen(false);
+    window.dispatchEvent(new CustomEvent<GuidedTourStartDetail>(GUIDED_TOUR_START_EVENT, { detail }));
+  }, [qualityTarget]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
@@ -224,14 +313,10 @@ function TenantHelpAssistant() {
         ? response.data.reply
         : response?.error || t("chat.invalidResponse");
       const actions = response?.success && Array.isArray(response.data?.actions)
-        ? response.data.actions.filter((action): action is ChatAction => (
-          (action?.code === "open_quality_center" || action?.code === "open_quality_action")
-          && (action?.labelKey === "openCenter" || action?.labelKey === "resolvePriority")
-          && typeof action?.href === "string"
-          && (action.href === "/admin" || action.href.startsWith("/admin/"))
-          && !action.href.startsWith("//")
-          && !action.href.includes("..")
-        )).slice(0, 2)
+        ? response.data.actions
+          .map(parseChatAction)
+          .filter((action): action is ChatAction => action !== null)
+          .slice(0, 3)
         : undefined;
       setMessages((current) => [...current, { role: "assistant", content, actions }]);
     } catch (error) {
@@ -313,6 +398,9 @@ function TenantHelpAssistant() {
   const chatSuggestions = [
     qualityTarget ? t("chat.quality.firstPriority") : null,
     qualityTarget ? t("chat.quality.explainBlocker") : null,
+    // "¿Dónde lo corrijo?" — el servidor responde con la acción de recorrido
+    // que corresponde a la señal, así que la pregunta abre la pantalla.
+    qualityTarget ? t("chat.quality.showMeWhere") : null,
     canManageChannels ? t("chat.suggestions.connectWhatsApp") : null,
     canEditPipeline ? t("chat.suggestions.leadScoring") : null,
     canEditKnowledge ? t("chat.suggestions.configureRag") : null,
@@ -326,6 +414,7 @@ function TenantHelpAssistant() {
       <SheetTrigger asChild>
         <button
           type="button"
+          id={guidedTourAnchorId("assistant")}
           onClick={openAssistant}
           aria-label={t("launcherTooltip")}
           className={`group fixed bottom-4 right-4 z-40 flex cursor-pointer items-end justify-center drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] transition-[transform,opacity] duration-300 hover:scale-105 active:scale-95 sm:right-6 ${
@@ -415,14 +504,25 @@ function TenantHelpAssistant() {
                 {message.role === "assistant" && message.actions && message.actions.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {message.actions.map((action) => (
-                      <Link
-                        key={`${index}-${action.code}-${action.href}`}
-                        href={action.href}
-                        onClick={() => setOpen(false)}
-                        className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
-                      >
-                        {t(`chat.quality.actions.${action.labelKey}`)} <ChevronRight className="size-2.5" />
-                      </Link>
+                      action.code === "start_guided_tour" && canRunGuidedTour ? (
+                        <button
+                          key={`${index}-${action.code}-${action.tourId}`}
+                          type="button"
+                          onClick={() => startGuidedTour(action.tourId)}
+                          className="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
+                        >
+                          <Compass className="size-2.5" /> {t(`chat.quality.actions.${action.labelKey}`)}
+                        </button>
+                      ) : (
+                        <Link
+                          key={`${index}-${action.code}-${action.href}`}
+                          href={action.href}
+                          onClick={() => setOpen(false)}
+                          className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
+                        >
+                          {t(`chat.quality.actions.${action.labelKey}`)} <ChevronRight className="size-2.5" />
+                        </Link>
+                      )
                     ))}
                   </div>
                 )}

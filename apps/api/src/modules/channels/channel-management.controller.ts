@@ -16,8 +16,16 @@ import { RedisService } from '../redis/redis.service';
 import { personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
-import { CERTIFIED_SELF_SERVICE_CHANNELS } from '@parallext/shared';
+import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage } from '@parallext/shared';
+import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
+import {
+    CREDENTIAL_TYPE_BY_CHANNEL,
+    hasRealToken,
+    isCredentialFailure,
+    resolveCredentialHealth,
+    type ChannelCredentialRecord,
+} from './channel-credential-health.util';
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -63,6 +71,25 @@ export class ChannelManagementController {
         } catch (e: any) {
             this.logger.warn(`markFirstChannelConnected failed for ${tenantId}: ${e?.message}`);
         }
+        // The onboarding stage is the single source of truth for the guidance
+        // surfaces (setup card, resume banner, first-channel tour). Connecting
+        // is exactly the event they wait for, so advance it here — monotonically,
+        // and never breaking the connection flow if the write fails.
+        try {
+            // Read-modify-write under the row lock: a plain read + `tenant.update`
+            // would rewrite the whole settings snapshot and silently drop any
+            // other branch written between the two statements. `tenant-settings-branch`
+            // has an architectural test that rejects exactly that pattern.
+            await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
+                const stage = advanceOnboardingStage(current.onboardingStage, 'channel_connected');
+                // Returning the same object is the transformer's no-op signal:
+                // no write, no updated_at churn on every reconnection.
+                if (current.onboardingStage === stage) return current as Record<string, unknown>;
+                return { ...current, onboardingStage: stage };
+            });
+        } catch (e: any) {
+            this.logger.warn(`onboardingStage advance failed for ${tenantId}: ${e?.message}`);
+        }
     }
 
     @Get('overview')
@@ -80,8 +107,9 @@ export class ChannelManagementController {
         // an exact channel_binding ("type:accountId") wins over the type-level channel.
         const byType: Record<string, { id: string; name: string }> = {};
         const byBinding: Record<string, { id: string; name: string }> = {};
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+            .catch(() => null);
         try {
-            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
             if (tenant?.schemaName) {
                 // Self-heal: existing tenants whose agent_personas predates multi-account
                 // may lack channel_bindings (the lazy ALTER in PersonaService only runs on
@@ -117,40 +145,68 @@ export class ChannelManagementController {
         // credential that expired or failed to refresh still rendered as
         // "connected" with no warning until a customer message silently went
         // unanswered. Surface it so the tenant can re-authorise BEFORE it breaks.
-        const credsByType = new Map<string, { rotationState: string; expiresAt: Date | null }>();
+        //
+        // Resolved with the SAME util as Salud de agentes: this page used to call
+        // an absent credential `unknown` (which it hides) while quality called it
+        // `missing` (a critical action), so the banner shouted about a channel
+        // this screen painted green.
+        const credsByType = new Map<string, ChannelCredentialRecord>();
+        let credentialLookupAvailable = true;
         try {
             const creds = await this.prisma.whatsappCredential.findMany({
                 where: { tenantId },
+                orderBy: { createdAt: 'desc' },
                 select: { credentialType: true, rotationState: true, expiresAt: true },
             }) as Array<{ credentialType: string; rotationState: string; expiresAt: Date | null }>;
-            for (const c of creds) credsByType.set(c.credentialType, c);
-        } catch { /* best-effort: never block the overview on credential health */ }
+            // Newest first: keep the first row seen per type.
+            for (const c of creds) if (!credsByType.has(c.credentialType)) credsByType.set(c.credentialType, c);
+        } catch {
+            // Best-effort: never block the overview on credential health, but do
+            // not claim a failure we could not observe either.
+            credentialLookupAvailable = false;
+        }
+
+        // Legacy per-number WhatsApp tokens: numbers that predate the system-user
+        // rollout do send, and must not be reported as missing a credential.
+        const legacyWhatsAppAccounts = new Set<string>();
+        if (tenant?.schemaName) {
+            try {
+                const legacyRows = await this.prisma.executeInTenantSchema<any[]>(
+                    tenant.schemaName,
+                    `SELECT phone_number_id, access_token_ref FROM whatsapp_channels`,
+                    [],
+                );
+                for (const row of (legacyRows || [])) {
+                    if (hasRealToken(row.access_token_ref)) legacyWhatsAppAccounts.add(String(row.phone_number_id));
+                }
+            } catch { /* table may not exist yet on this tenant */ }
+        }
 
         const now = Date.now();
-        const credentialHealth = (channelType: string) => {
-            const credentialTypeByChannel: Record<string, string> = {
-                whatsapp: 'system_user_token',
-                instagram: 'instagram_token',
-                messenger: 'messenger_token',
-                telegram: 'telegram_token',
-            };
-            const credentialType = credentialTypeByChannel[channelType];
-            const c = credentialType ? credsByType.get(credentialType) : undefined;
-            if (!c) return { status: 'unknown' as const, expiresAt: null, daysToExpiry: null };
-            if (c.rotationState === 'error') return { status: 'error' as const, expiresAt: c.expiresAt, daysToExpiry: null };
-            if (c.rotationState === 'revoked') return { status: 'revoked' as const, expiresAt: c.expiresAt, daysToExpiry: null };
-            if (!c.expiresAt) return { status: 'ok' as const, expiresAt: null, daysToExpiry: null };
-            const days = Math.floor((new Date(c.expiresAt).getTime() - now) / 86_400_000);
-            if (days < 0) return { status: 'expired' as const, expiresAt: c.expiresAt, daysToExpiry: days };
-            if (days <= 7) return { status: 'expiring' as const, expiresAt: c.expiresAt, daysToExpiry: days };
-            return { status: 'ok' as const, expiresAt: c.expiresAt, daysToExpiry: days };
+        const expiryOf = (account: any, hasAccountToken: boolean): Date | null => {
+            if (account.channelType === 'instagram' && hasAccountToken) {
+                const raw = (account.metadata as any)?.tokenExpiresAt;
+                const parsed = raw ? new Date(raw) : null;
+                return parsed && Number.isFinite(parsed.getTime()) ? parsed : null;
+            }
+            return credsByType.get(CREDENTIAL_TYPE_BY_CHANNEL[account.channelType])?.expiresAt as Date | null ?? null;
         };
 
         return {
             success: true,
             data: accounts.map((a: any) => {
                 const assigned = byBinding[`${a.channelType}:${a.accountId}`] || byType[a.channelType] || null;
-                const health = credentialHealth(a.channelType);
+                const hasAccountToken = hasRealToken(a.accessToken);
+                const status = resolveCredentialHealth({
+                    channelType: a.channelType,
+                    hasAccountToken,
+                    metadata: a.metadata && typeof a.metadata === 'object' ? a.metadata : null,
+                    latestCredential: credsByType.get(CREDENTIAL_TYPE_BY_CHANNEL[a.channelType]) || null,
+                    lookupAvailable: credentialLookupAvailable,
+                    hasLegacyWhatsAppToken: legacyWhatsAppAccounts.has(String(a.accountId)),
+                    now,
+                });
+                const expiresAt = expiryOf(a, hasAccountToken);
                 return {
                     id: a.id,
                     channelType: a.channelType,
@@ -160,11 +216,13 @@ export class ChannelManagementController {
                     metadata: a.metadata,
                     assignedAgent: assigned,
                     needsAssignment: !assigned,
-                    credentialStatus: health.status,
-                    credentialExpiresAt: health.expiresAt,
-                    credentialDaysToExpiry: health.daysToExpiry,
+                    credentialStatus: status,
+                    credentialExpiresAt: expiresAt,
+                    credentialDaysToExpiry: expiresAt
+                        ? Math.floor((expiresAt.getTime() - now) / 86_400_000)
+                        : null,
                     // A channel can be 'connected' and still unable to send.
-                    needsReauth: health.status === 'error' || health.status === 'expired' || health.status === 'revoked',
+                    needsReauth: isCredentialFailure(status),
                 };
             }),
         };

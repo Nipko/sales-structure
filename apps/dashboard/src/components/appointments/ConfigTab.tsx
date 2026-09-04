@@ -5,10 +5,11 @@ import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
     Clock, Calendar, Link2, Ban, Bell, Users, Settings2,
     Plus, Trash2, CheckCircle2, AlertTriangle, ChevronDown,
-    Pencil, X, Check, MessageSquare,
+    Pencil, X, Check, MessageSquare, CalendarClock,
 } from "lucide-react";
 
 interface AvailabilitySlot {
@@ -328,6 +329,49 @@ export default function ConfigTab({
 
     const inputCls = "w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20";
 
+    // The business hours (Configuracion -> Horarios) and the appointment
+    // availability are two different schedules with two different defaults and
+    // no sync at all: the owner saves one, assumes the agenda follows, and the
+    // AI keeps answering "no hay disponibilidad". This copies the saved business
+    // hours into the slots; it still has to be confirmed with the save button
+    // below, so nothing is written behind the owner's back.
+    const [importingHours, setImportingHours] = useState(false);
+
+    const importBusinessHours = async () => {
+        setImportingHours(true);
+        try {
+            const result: any = await api.getTenant(activeTenantId);
+            const businessHours = result?.success ? (result.data as any)?.settings?.businessHours : null;
+            if (!businessHours) {
+                showToast(t("configSection.useBusinessHoursMissing"));
+                return;
+            }
+            if (businessHours.is247) {
+                toggle247(true);
+                showToast(t("configSection.useBusinessHoursApplied"));
+                return;
+            }
+            const schedule = businessHours.schedule || {};
+            const next: AvailabilitySlot[] = DAY_KEYS.map((day, i) => {
+                const source = schedule[day];
+                const current = availabilitySlots[i];
+                if (!source) return current ?? { dayOfWeek: i + 1, startTime: "09:00", endTime: "18:00", active: false };
+                return {
+                    dayOfWeek: i + 1,
+                    startTime: (source.open || "09:00").slice(0, 5),
+                    endTime: (source.close || "18:00").slice(0, 5),
+                    active: source.enabled !== false,
+                };
+            });
+            setAvailabilitySlots(next);
+            showToast(t("configSection.useBusinessHoursApplied"));
+        } catch {
+            showToast(t("configSection.useBusinessHoursMissing"));
+        } finally {
+            setImportingHours(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
 
@@ -500,8 +544,24 @@ export default function ConfigTab({
             </ConfigCard>
 
             {/* ── 2. Working Hours ── */}
+            <div id={guidedTourAnchorId("appointments-schedule")}>
             <ConfigCard icon={Clock} iconColor="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
                 title={t("configSection.schedule")} description={t("configSection.scheduleDesc")}>
+
+                <div className="flex flex-wrap items-center gap-3 mb-4 p-3 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-500/5">
+                    <div className="flex-1 min-w-[220px]">
+                        <p className="text-sm font-medium text-foreground">{t("configSection.useBusinessHours")}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{t("configSection.useBusinessHoursDesc")}</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={importBusinessHours}
+                        disabled={importingHours}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-neutral-800 border border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-300 text-sm font-semibold cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        <CalendarClock size={15} /> {t("configSection.useBusinessHoursAction")}
+                    </button>
+                </div>
 
                 {/* 24/7 Toggle */}
                 <div className="flex items-center justify-between p-4 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 mb-5">
@@ -554,6 +614,7 @@ export default function ConfigTab({
                     {t("actions.confirm")}
                 </button>
             </ConfigCard>
+            </div>
 
             {/* ── 3. Reminders ── */}
             <ConfigCard icon={Bell} iconColor="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"

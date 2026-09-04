@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { TabNav } from "@/components/ui/tab-nav";
 import ConfigTab from "@/components/appointments/ConfigTab";
 import ServicesTab from "@/components/appointments/ServicesTab";
@@ -847,6 +848,7 @@ export default function AppointmentsPage() {
           description={tHelp("appointments.description")}
           tips={tHelp.raw("appointments.tips") as string[]}
           mediaKey="appointments"
+          tourId="appointments_setup"
         />
 
         {/* ── KPI row (compact) ─────────────────────────────────── */}
@@ -913,7 +915,9 @@ export default function AppointmentsPage() {
           </div>
         )}
 
-        <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as typeof activeTab)} />
+        <div id={guidedTourAnchorId("appointments-tabs")}>
+          <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as typeof activeTab)} />
+        </div>
 
         {/* ============================================================ */}
         {/*  LOADING STATE                                                */}

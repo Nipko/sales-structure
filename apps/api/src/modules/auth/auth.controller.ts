@@ -209,7 +209,13 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Get current user info' })
     async me(@CurrentUser() user: any) {
-        return { success: true, data: user };
+        // El usuario actual también lleva la etapa de puesta en marcha: es el
+        // mismo dato que decide dónde aterriza un login, y devolverlo acá evita
+        // que una sesión larga siga trabajando con la foto del día que entró.
+        // `undefined` cuando no se puede establecer — el panel lo lee como
+        // "sin evidencia" y no manda a nadie al asistente por las dudas.
+        const onboardingStage = await this.authService.resolveOnboardingStageForTenant(user?.tenantId);
+        return { success: true, data: { ...user, onboardingStage } };
     }
 
     @Post('activity-ping')

@@ -45,6 +45,14 @@ export const RESERVED_TENANT_SETTING_KEYS = [
     'provisioning',
     'verticalProvisioning',
     'verticalConfigPending',
+    // Estado de puesta en marcha. Es MONÓTONO (`advanceOnboardingStage`): un
+    // PATCH genérico que lo reescribiera podría devolver al asistente a un
+    // tenant que ya conectó su canal, o borrar el "conectar después" que
+    // mantiene vivo el recordatorio en Inicio. Sus dueños son
+    // `auth.completeOnboarding` (lo siembra) y el asistente de configuración
+    // en `persona.controller` (lo avanza y lo publica en `setup-status`).
+    'onboardingStage',
+    'channelConnectSkippedAt',
 ] as const;
 
 /**

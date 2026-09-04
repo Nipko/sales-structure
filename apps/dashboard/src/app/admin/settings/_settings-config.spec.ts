@@ -52,10 +52,13 @@ describe("Settings information architecture", () => {
         expect(new Set(keys).size).toBe(keys.length);
         expect(new Set(hrefs).size).toBe(hrefs.length);
         // P26 removes the tenant-facing SMS notifications destination. The
-        // previous count asserted the retired-product dead end.
-        expect(keys).toHaveLength(31);
+        // previous count asserted the retired-product dead end. +1: the setup
+        // assistant, which had no entry point anywhere in the app.
+        expect(keys).toHaveLength(32);
         expect(keys).toContain("billing");
         expect(hrefs).toContain("/admin/settings/billing");
+        // Closing "Conocé a tu agente" used to be irreversible.
+        expect(hrefs).toContain("/admin/setup-wizard");
     });
 
     it("separates developer and governance destinations from business integrations", () => {

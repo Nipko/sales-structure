@@ -6,7 +6,7 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
-import type { AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal } from "@parallext/shared";
+import type { AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
@@ -1230,7 +1230,15 @@ export const api = {
         history: { role: "user" | "assistant"; content: string }[];
         target?: QualityAssistantTarget;
     }) =>
-        apiPost<{ reply: string; actions?: Array<{ code: "open_quality_center" | "open_quality_action"; labelKey: "openCenter" | "resolvePriority"; href: string }> }>("/copilot/chat", data),
+        apiPost<{
+            reply: string;
+            actions?: Array<{
+                code: "open_quality_center" | "open_quality_action" | "start_guided_tour";
+                labelKey: "openCenter" | "resolvePriority" | "showMe";
+                href: string;
+                tourId?: GuidedTourId;
+            }>;
+        }>("/copilot/chat", data),
 
     // Conversation copilot (inbox)
     getCopilotSuggestions: (conversationId: string) =>
@@ -1456,6 +1464,11 @@ export const api = {
         apiGet<AgentQualityAttentionSummary>(`/quality/${tenantId}/attention-summary`),
     reconcileAgentQualityAttention: (tenantId: string) =>
         apiPost<AgentQualityAttentionSummary>(`/quality/${tenantId}/reconcile`, {}),
+    /** One active signal, for the focus banner that explains why a page was opened. */
+    getAgentQualitySignal: (tenantId: string, signalId: string, agentId: string) =>
+        apiGet<AgentQualitySignal>(
+            `/quality/${tenantId}/signals/${encodeURIComponent(signalId)}?agentId=${encodeURIComponent(agentId)}`,
+        ),
     listAgentQualitySignals: (tenantId: string, state = "open", limit = 50) =>
         apiGet<AgentQualitySignal[]>(`/quality/${tenantId}/signals?state=${encodeURIComponent(state)}&limit=${limit}`),
     acknowledgeAgentQualitySignal: (tenantId: string, signalId: string) =>
@@ -2670,53 +2683,80 @@ export const api = {
 // `errorCode` transporta el código estable que lanza el backend
 // (`{ error: 'email_taken', message }`), para que la UI traduzca en vez de mostrar
 // el mensaje crudo en inglés. `error` sigue siendo el texto, como respaldo.
-async function apiGet<T = any>(endpoint: string): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
+//
+// `fields` transporta el detalle por campo de `validation_failed` y de
+// `agent_invalid`. Sin él la pantalla tiene que adivinar cuál de los campos
+// rechazó el servidor, que es justo lo que hacía que alguien llenara cuatro
+// pasos y recibiera un error sin saber dónde estaba el problema.
+export interface ApiFieldError { path: string; constraint?: string; message?: string }
+export interface ApiEnvelope<T> {
+    success: boolean;
+    data?: T;
+    error?: string;
+    errorCode?: string;
+    fields?: ApiFieldError[];
+}
+
+function readFieldErrors(json: any): ApiFieldError[] | undefined {
+    const raw = json?.fields;
+    if (!Array.isArray(raw)) return undefined;
+    const fields = raw
+        .filter((entry: any) => entry && typeof entry === "object" && typeof entry.path === "string")
+        .slice(0, 50)
+        .map((entry: any) => ({
+            path: String(entry.path).slice(0, 120),
+            ...(typeof entry.constraint === "string" ? { constraint: entry.constraint.slice(0, 80) } : {}),
+            ...(typeof entry.message === "string" ? { message: entry.message.slice(0, 300) } : {}),
+        }));
+    return fields.length ? fields : undefined;
+}
+async function apiGet<T = any>(endpoint: string): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint);
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
     }
 }
 
-async function apiPost<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
+async function apiPost<T = any>(endpoint: string, body: any): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint, {
             method: "POST",
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
     }
 }
 
-async function apiPut<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
+async function apiPut<T = any>(endpoint: string, body: any): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint, {
             method: "PUT",
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
     }
 }
 
-async function apiPatch<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
+async function apiPatch<T = any>(endpoint: string, body: any): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint, {
             method: "PATCH",
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
@@ -2736,14 +2776,14 @@ async function apiGetBlob(endpoint: string): Promise<Blob | null> {
 // A diferencia de los otros cuatro, este descartaba `json.error`. Los guards de
 // purga rechazan con `{ error: 'tenant_purge_...' }` y SIN `message`, así que el
 // panel mostraba "Error 409" y el motivo real solo existía en los logs del API.
-async function apiDelete<T = any>(endpoint: string): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
+async function apiDelete<T = any>(endpoint: string): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint, { method: "DELETE" });
         if (res.status === 204) return { success: true };
         const json = await res.json();
         if (!res.ok) {
             const code = typeof json.error === "string" ? json.error : undefined;
-            return { success: false, error: json.message || code || `Error ${res.status}`, errorCode: code };
+            return { success: false, error: json.message || code || `Error ${res.status}`, errorCode: code, fields: readFieldErrors(json) };
         }
         return json;
     } catch (err) {

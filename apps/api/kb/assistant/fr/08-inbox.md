@@ -3,7 +3,7 @@ id: inbox
 title: "Boîte de réception et prise en charge humaine"
 routes: ["/admin/inbox", "/admin/settings/macros", "/admin/settings/integrations/sms-notifications"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["boîte de réception", "inbox", "transfert", "handoff", "prendre la conversation", "prendre en charge un client", "agent humain", "rendre au bot", "notes internes", "macros", "réponses rapides", "reporter", "snooze", "assigner une conversation", "résoudre une conversation", "copilote", "résumé IA", "reformuler un message", "suggestion IA", "notifications", "cloche", "escalade"]
+keywords: ["boîte de réception", "inbox", "transfert", "handoff", "prendre la conversation", "prendre en charge un client", "agent humain", "rendre au bot", "notes internes", "macros", "réponses rapides", "reporter", "snooze", "assigner une conversation", "résoudre une conversation", "copilote", "résumé IA", "reformuler un message", "suggestion IA", "notifications", "cloche", "escalade", "sans reponse", "180 minutes", "revient a l ia"]
 ---
 
 # Boîte de réception et prise en charge humaine
@@ -36,6 +36,8 @@ Une fois le cas résolu :
 2. Votre prise en charge se termine, la conversation est libérée et l'assistant IA reprend la gestion des prochains messages de ce client.
 
 Les conversations sans activité pendant 72 heures sont marquées comme résolues automatiquement afin de garder votre boîte propre. Vous pouvez les retrouver avec le filtre **Résolues** ; là, l'historique est en lecture seule, et si vous devez la reprendre, utilisez **Rouvrir la conversation**.
+
+**Si personne ne la prend :** une conversation transférée qui reste **180 minutes (3 heures)** sans qu'aucune personne de l'équipe ne réponde, alors que le client attend toujours, revient d'elle-même à l'IA : le responsable est libéré et l'agent reprend l'échange. C'est un filet de sécurité pour que le client ne reste pas sans réponse, ni une sanction ni une résolution : la conversation reste dans votre boîte et vous pouvez la reprendre quand vous voulez.
 
 ## Copilote de l'agent : suggestions et reformulation
 
@@ -76,7 +78,7 @@ Si un cas ne peut pas avancer maintenant (« rappelez-moi lundi »), ne le laiss
 - Tout membre autorisé de l'équipe peut prendre une conversation **non assignée** avec **M'attribuer** ; si elle était déjà avec quelqu'un d'autre, seul un administrateur ou un superviseur peut la réattribuer.
 - Si vous configurez des **compétences (skills)** dans les profils de votre équipe (menu **Utilisateurs**), Parallly achemine automatiquement chaque escalade vers la bonne personne — par exemple, les cas en anglais vers l'agent qui parle anglais.
 - Les macros peuvent également assigner à un agent précis dans le cadre de leurs actions.
-- Si une conversation escaladée reste plus de 5 minutes sans réponse, les superviseurs reçoivent une alerte pour que personne ne reste en attente.
+- Si une conversation transférée reste plusieurs minutes sans réponse, les superviseurs reçoivent une alerte dans le tableau de bord. Cette alerte attire l'attention ; ce qui évite réellement le silence, c'est le retour automatique à l'IA au bout de 180 minutes.
 
 Le nombre de personnes pouvant utiliser Parallly dépend de la capacité de votre compte ; consultez l'utilisation et la limite actuelles dans **Forfait et facturation**.
 
@@ -99,12 +101,15 @@ Non. Dès que vous prenez la conversation, l'IA est mise en pause et le client �
 Non. Les notes, les résumés et les suggestions du copilote sont réservés à votre équipe. Le client ne reçoit que ce que vous envoyez depuis la zone de message.
 
 **Que se passe-t-il si personne ne prend une conversation escaladée ?**
-Elle continue d'apparaître dans le filtre des conversations en attente et, si plus de 5 minutes s'écoulent sans réponse, les superviseurs reçoivent une alerte sonore pour intervenir.
+Elle continue d'apparaître dans le filtre des conversations en attente et les superviseurs reçoivent une alerte dans le tableau de bord pour intervenir. Cette alerte ne la retient pas indéfiniment : si personne de l'équipe n'a répondu et que le client attend toujours, au bout de **180 minutes (3 heures)** la conversation **revient à l'IA**, le responsable est libéré et l'agent reprend. Si vous voulez qu'une personne s'en occupe, prenez-la avant ce délai.
 
 **Puis-je faire en sorte que certains cas arrivent toujours à la même personne ?**
 Oui. Configurez des compétences dans les profils de l'équipe (menu **Utilisateurs**) pour l'acheminement automatique, ou créez une macro avec l'action **Assigner à un agent**.
 
 **Une conversation reportée est-elle perdue si le client écrit avant ?**
 Elle n'est pas perdue : la conversation réapparaît automatiquement à la date que vous avez choisie et l'historique complet est conservé.
+
+**Des messages SMS arrivent-ils dans cette boîte ?**
+Non. La boîte reçoit WhatsApp, Instagram, Messenger, Telegram et le chat de votre site web. Les SMS partent uniquement comme notification à sens unique vers vos clients, ou comme alerte à votre équipe ; ils n'ouvrent pas de conversation ici.
 
 Besoin d'aide supplémentaire ? Écrivez-nous sur https://parallly-chat.cloud/support

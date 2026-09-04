@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { cn } from "@/lib/utils";
 import {
     Globe,
@@ -129,10 +130,11 @@ export default function ChannelsOverviewPage() {
                 description={tHelp("channels.description")}
                 tips={tHelp.raw("channels.tips") as string[]}
                 mediaKey="channels"
+                tourId="connect_channel"
             />
 
             {/* Channel Cards Grid */}
-            <div className="grid grid-cols-3 gap-6">
+            <div id={guidedTourAnchorId("channel-cards")} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {channels.map((ch) => {
                     const isConnected = connectedChannels.includes(ch.key);
                     const MULTI = ["whatsapp", "instagram", "messenger", "telegram", "web_widget"];
@@ -144,6 +146,9 @@ export default function ChannelsOverviewPage() {
                     return (
                         <div
                             key={ch.key}
+                            id={ch.key === "whatsapp"
+                                ? guidedTourAnchorId("channel-card-whatsapp")
+                                : guidedTourAnchorId(`channel-card-${ch.key}`)}
                             className="rounded-xl border border-border bg-card overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
                             onClick={() => router.push(ch.href)}
                         >

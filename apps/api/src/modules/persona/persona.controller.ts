@@ -10,7 +10,13 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
-import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import {
+    advanceOnboardingStage,
+    deriveOnboardingStage,
+    isOnboardingStage,
+} from '@parallext/shared';
+import type { OnboardingStage } from '@parallext/shared';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 
 @ApiTags('persona')
@@ -62,6 +68,40 @@ export class PersonaController {
         };
     }
 
+    /**
+     * Marca de tiempo del cliente ("conectar después"). Un valor no parseable
+     * se ignora en vez de romper el guardado: la decisión de diferir vale más
+     * que su reloj, y el estado (`channel_deferred`) ya la deja registrada.
+     */
+    private normalizeIsoTimestamp(value: unknown): string | null {
+        if (typeof value !== 'string' || !value.trim()) return null;
+        const parsed = new Date(value.trim());
+        if (Number.isNaN(parsed.getTime())) {
+            this.logger.warn(`Ignoring invalid channelConnectSkippedAt: ${value.slice(0, 40)}`);
+            return null;
+        }
+        return parsed.toISOString();
+    }
+
+    /**
+     * ¿Hay al menos una conexión activa? Fail-closed hacia el recordatorio: si
+     * no se puede confirmar, se asume que falta el canal. Perder el
+     * recordatorio es peor que mostrarlo de más — sin canal la cuenta no puede
+     * recibir un solo mensaje.
+     */
+    private async tenantHasActiveChannel(tenantId: string): Promise<boolean> {
+        try {
+            const rows = (await this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`,
+                tenantId,
+            )) as Array<{ c: number }>;
+            return Number(rows?.[0]?.c || 0) > 0;
+        } catch (error: any) {
+            this.logger.warn(`Could not resolve channel presence for tenant ${tenantId}: ${error?.message || error}`);
+            return false;
+        }
+    }
+
     // ── Templates for Setup Wizard ──
 
     @Get('templates')
@@ -106,15 +146,109 @@ export class PersonaController {
         };
     }
 
+    /**
+     * Escribe SOLO el progreso de puesta en marcha del asistente en
+     * `tenant.settings`. No mira ni toca al agente.
+     *
+     * Separar esto del camino de plantilla es el arreglo de fondo: abrir el
+     * asistente y salir (Escape, "Salir", o el rebote de un login) mandaba un
+     * `applySetupTemplate` con `templateId`, que reconstruía la configuración
+     * DESDE LA PLANTILLA y la escribía sobre el agente vivo — reglas de
+     * comportamiento, disparadores de traspaso, temas prohibidos, RAG, mensaje
+     * de respaldo y horarios se perdían en silencio, y la reasignación de
+     * canales se los quitaba a los demás agentes del tenant. Avanzar de etapa
+     * no puede costar la configuración del negocio.
+     */
+    private async persistWizardProgress(
+        tenantId: string,
+        input: {
+            stages: OnboardingStage[];
+            markCompleted: boolean;
+            channelConnectSkippedAt?: string | null;
+            businessHours?: unknown;
+            /** Solo se registran cuando el asistente aplicó de verdad una plantilla. */
+            templateId?: string | null;
+            selectedChannels?: string[] | null;
+        },
+    ) {
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
+            let onboardingStage = isOnboardingStage(current.onboardingStage)
+                ? current.onboardingStage
+                : undefined;
+            for (const candidate of input.stages) {
+                onboardingStage = advanceOnboardingStage(onboardingStage, candidate);
+            }
+            return {
+                ...current,
+                // Los horarios son configuración del tenant, no del wizard: se
+                // guardan igual aunque todavía no se haya cerrado el asistente.
+                ...(input.businessHours ? { businessHours: input.businessHours } : {}),
+                ...(input.channelConnectSkippedAt ? { channelConnectSkippedAt: input.channelConnectSkippedAt } : {}),
+                ...(input.markCompleted ? {
+                    setupWizardCompleted: true,
+                    ...(input.templateId ? { setupWizardTemplate: input.templateId } : {}),
+                    ...(input.selectedChannels ? { setupWizardChannels: input.selectedChannels } : {}),
+                    setupWizardCompletedAt: new Date().toISOString(),
+                } : {}),
+                ...(onboardingStage ? { onboardingStage } : {}),
+            };
+        });
+    }
+
     @Post(':tenantId/setup-wizard')
     @Roles('tenant_admin')
-    @RequiresVerifiedEmail('activate_agent')
-    @ApiOperation({ summary: 'Apply a persona template from the setup wizard; marks the wizard completed unless markCompleted=false' })
+    /**
+     * SIN `@RequiresVerifiedEmail`, a propósito.
+     *
+     * Dejar listo el agente PROPIO no es una capacidad sensible: el correo sin
+     * verificar sigue gateando lo que afecta a terceros o al dinero (cobros,
+     * difusión, exportación, secretos). Con el gate acá, un alta por
+     * email+contraseña —que nace sin verificar— recibía 403 en cada guardado
+     * del asistente; `apiPost` lo convierte en `{success:false}` con HTTP 200,
+     * nadie lo miraba, y el resultado era un asistente donde NADA se guardaba,
+     * la etapa se quedaba en `account_created` y el panel rebotaba de vuelta
+     * para siempre. Los demás usos de `activate_agent` en este archivo (guardar
+     * persona, crear/actualizar/duplicar agente) se dejan como están.
+     */
+    @ApiOperation({ summary: 'Advance the setup wizard; applies a persona template only when the wizard actually has edits to save' })
     async applyTemplate(
         @Param('tenantId') tenantId: string,
-        @Body() body: { templateId: string; customizations?: any; selectedChannels?: string[]; markCompleted?: boolean },
+        @Body() body: {
+            templateId?: string;
+            customizations?: any;
+            selectedChannels?: string[];
+            markCompleted?: boolean;
+            /** Estado de puesta en marcha que declara el asistente (solo avanza). */
+            stage?: string;
+            /**
+             * Avanzar la puesta en marcha SIN tocar el agente. Lo usa el
+             * asistente cuando no hay ninguna edición que guardar (salir,
+             * "conectar después", cerrar sin cambios).
+             */
+            stageOnly?: boolean;
+        },
         @Req() req: any,
     ) {
+        const requestedStage = isOnboardingStage(body.stage) ? body.stage : null;
+        const skippedAt = this.normalizeIsoTimestamp(
+            body.customizations?.channelConnectSkippedAt ?? (body as any).channelConnectSkippedAt,
+        );
+
+        // Camino solo-estado: ni plantilla, ni configuración, ni canales.
+        if (body.stageOnly === true) {
+            const stages: OnboardingStage[] = [];
+            if (skippedAt) stages.push('channel_deferred');
+            if (requestedStage) stages.push(requestedStage);
+            await this.persistWizardProgress(tenantId, {
+                stages,
+                // Un ping de solo-estado no cierra el asistente salvo que lo pida.
+                markCompleted: body.markCompleted === true,
+                channelConnectSkippedAt: skippedAt,
+            });
+            this.logger.log(`Setup wizard stage advanced for tenant ${tenantId} (stageOnly, stage=${requestedStage || 'none'})`);
+            return { success: true, data: { stageOnly: true } };
+        }
+
         // Look up the template across all three sources: legacy PERSONA_TEMPLATES
         // (older onboarding wizard), new generic builtins (tpl_sales, tpl_support…)
         // and vertical templates (tpl_salud_*, tpl_turismo_*…). The first hit wins.
@@ -126,27 +260,87 @@ export class PersonaController {
         const settings = (tenantForLang?.settings as any) || {};
         const industry = settings?.verticalConfig?.industry || tenantForLang?.industry || undefined;
 
+        // El huso REAL del tenant, elegido en el alta a partir de su país. Las
+        // plantillas legacy traen 'America/Bogota' incrustado: un negocio en
+        // México quedaba "cerrado" mientras estaba abierto y su agente
+        // respondía el mensaje de fuera de horario a plena luz del día.
+        const tenantTimezone = typeof settings.timezone === 'string' && settings.timezone.trim()
+            ? settings.timezone.trim()
+            : null;
+        const effectiveTimezone = tenantTimezone || 'America/Bogota';
+
         const verticalSet = industry ? (this.personaService.getVerticalTemplates(industry, lang) || []) : [];
         const builtinSet = this.personaService.getBuiltinTemplates(lang);
 
-        const newSystemMatch = [...verticalSet, ...builtinSet].find(t => t.id === body.templateId);
-        const legacyMatch = PERSONA_TEMPLATES.find(t => t.id === body.templateId);
+        const newSystemMatch = body.templateId
+            ? [...verticalSet, ...builtinSet].find(t => t.id === body.templateId)
+            : undefined;
+        const legacyMatch = body.templateId
+            ? PERSONA_TEMPLATES.find(t => t.id === body.templateId)
+            : undefined;
         const sourceConfig = newSystemMatch?.config_json || newSystemMatch?.config || legacyMatch?.config;
 
-        if (!sourceConfig) {
+        // Una plantilla que se pidió y no existe es un error del emisor. NO
+        // pedirla es legítimo: el asistente que solo edita nombre y saludo de
+        // un agente que ya existe no tiene ninguna plantilla que aplicar, y
+        // obligarlo a inventar una es justamente lo que hacía que el panel
+        // eligiera `templates[0]` —una plantilla que el tenant nunca eligió—
+        // y la escribiera encima de su agente.
+        if (body.templateId && !sourceConfig) {
             return { success: false, error: 'Template not found' };
         }
 
-        // Merge template config with customizations
-        const config = JSON.parse(JSON.stringify(sourceConfig));
+        // Los agentes se leen ANTES de construir la configuración.
+        //
+        // Si el tenant YA tiene su agente por defecto, la base es SU
+        // configuración vigente y la plantilla queda solo como respaldo para el
+        // agente que todavía no existe. Reconstruir siempre desde la plantilla
+        // era lo que borraba —en silencio y sin que nadie lo pidiera— las
+        // reglas de comportamiento, los disparadores de traspaso, los temas
+        // prohibidos, el RAG, el mensaje de respaldo y los horarios de un
+        // negocio que solo había entrado al asistente a cambiar un nombre.
+        const agents = await this.personaService.listAgents(tenantId);
+        const defaultAgent = agents.find((a: any) => a.is_default);
+        const liveConfig = defaultAgent?.config_json;
+        const baseConfig = liveConfig && typeof liveConfig === 'object' && liveConfig.persona
+            ? liveConfig
+            : sourceConfig;
+
+        // Sin agente y sin plantilla no hay nada que construir. El progreso se
+        // registra igual (para no dejar la etapa clavada) pero se devuelve el
+        // fallo: el asistente tiene que poder DECIRLO, no fingir un guardado.
+        if (!baseConfig) {
+            const fallbackStages: OnboardingStage[] = [];
+            if (skippedAt) fallbackStages.push('channel_deferred');
+            if (requestedStage) fallbackStages.push(requestedStage);
+            await this.persistWizardProgress(tenantId, {
+                stages: fallbackStages,
+                markCompleted: false,
+                channelConnectSkippedAt: skippedAt,
+            });
+            return { success: false, error: 'Template not found' };
+        }
+
+        // Merge the base config with customizations
+        const config = JSON.parse(JSON.stringify(baseConfig));
+        if (!config.persona || typeof config.persona !== 'object') config.persona = {};
         if (body.customizations) {
             if (body.customizations.agentName) config.persona.name = body.customizations.agentName;
             if (body.customizations.greeting) config.persona.greeting = body.customizations.greeting;
-            if (body.customizations.tone) config.persona.personality.tone = body.customizations.tone;
-            if (body.customizations.afterHoursMessage) config.hours.afterHoursMessage = body.customizations.afterHoursMessage;
-            if (body.customizations.schedule) config.hours.schedule = body.customizations.schedule;
+            if (body.customizations.tone) {
+                if (!config.persona.personality || typeof config.persona.personality !== 'object') config.persona.personality = {};
+                config.persona.personality.tone = body.customizations.tone;
+            }
+            if (body.customizations.afterHoursMessage) {
+                if (!config.hours || typeof config.hours !== 'object') config.hours = { timezone: effectiveTimezone, schedule: {} };
+                config.hours.afterHoursMessage = body.customizations.afterHoursMessage;
+            }
+            if (body.customizations.schedule) {
+                if (!config.hours || typeof config.hours !== 'object') config.hours = { timezone: effectiveTimezone, afterHoursMessage: '' };
+                config.hours.schedule = body.customizations.schedule;
+            }
             if (body.customizations.is247 !== undefined) {
-                if (!config.hours) config.hours = { timezone: 'America/Bogota', schedule: {}, afterHoursMessage: '' };
+                if (!config.hours) config.hours = { timezone: effectiveTimezone, schedule: {}, afterHoursMessage: '' };
                 if (body.customizations.is247) {
                     const allDay = { start: '00:00', end: '23:59' };
                     config.hours.schedule = { lun: allDay, mar: allDay, mie: allDay, jue: allDay, vie: allDay, sab: allDay, dom: allDay };
@@ -166,17 +360,36 @@ export class PersonaController {
             }
         }
 
-        // Replace placeholders
+        // El huso del tenant manda sobre el de la plantilla.
+        if (tenantTimezone && config.hours && typeof config.hours === 'object') {
+            config.hours.timezone = tenantTimezone;
+        }
+
+        // Replace placeholders. `config` puede venir del agente vivo, donde
+        // estos campos ya están sustituidos o directamente no existen: la
+        // sustitución solo se aplica a texto real.
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
         const companyName = tenant?.name || '';
-        config.persona.greeting = config.persona.greeting.replace('{company}', companyName).replace('{agentName}', config.persona.name);
-        config.persona.fallbackMessage = config.persona.fallbackMessage.replace('{company}', companyName).replace('{agentName}', config.persona.name);
+        const fillPlaceholders = (value: unknown): unknown => (
+            typeof value === 'string'
+                ? value.replace('{company}', companyName).replace('{agentName}', config.persona.name || '')
+                : value
+        );
+        config.persona.greeting = fillPlaceholders(config.persona.greeting);
+        config.persona.fallbackMessage = fillPlaceholders(config.persona.fallbackMessage);
 
         // Auto-disable appointments if the prerequisites aren't configured yet. Se
         // chequean LOS DOS (servicios y horarios), que son los mismos que exige el gate
         // de persona.service: mirando solo los horarios, un tenant con horarios pero sin
         // servicios hacía fallar el asistente entero con un 400 en vez de degradar.
-        if (config.tools?.appointments?.enabled) {
+        //
+        // SOLO cuando este guardado ENCIENDE la agenda. Si el agente ya la tenía
+        // encendida, apagarla acá sería el mismo daño silencioso que el resto de
+        // este arreglo elimina: un dueño que entra a cambiar un nombre no puede
+        // salir con su agenda desactivada porque un COUNT(*) falló. Es la misma
+        // regla que ya aplica `persona.service.updateAgent`.
+        const appointmentsWereOn = liveConfig?.tools?.appointments?.enabled === true;
+        if (config.tools?.appointments?.enabled && !appointmentsWereOn) {
             try {
                 const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { schemaName: true } });
                 const sn = t?.schemaName;
@@ -199,31 +412,62 @@ export class PersonaController {
             }
         }
 
-        // Save persona
         const createdBy = req.user?.sub || 'setup-wizard';
-        const yamlContent = yaml.dump(config, { lineWidth: -1 });
-        await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
 
         // Sync to agent_personas (multi-agent system) — the setup wizard must
         // update the actual agent record, not just the legacy persona_config.
-        const scheduleMode = body.customizations?.is247 === false ? 'business_hours' : '24_7';
-        const selectedChannels = body.selectedChannels || ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'];
-        const agents = await this.personaService.listAgents(tenantId);
-        const defaultAgent = agents.find((a: any) => a.is_default);
+        //
+        // Ni los canales ni el modo de horario se ENSANCHAN por omisión: el
+        // asistente ya no pregunta por ellos, y mandarlos igual escribía los
+        // cinco tipos de canal sobre el agente por defecto —quitándoselos a
+        // todos los demás agentes del tenant en el bucle de reasignación— y
+        // reponía `24_7` sobre el horario comercial que el dueño había puesto.
+        // Solo se envían cuando el emisor los pidió de verdad.
+        const scheduleMode = body.customizations?.is247 === undefined
+            ? undefined
+            : (body.customizations.is247 === false ? 'business_hours' : '24_7');
+        const selectedChannels = Array.isArray(body.selectedChannels) ? body.selectedChannels : undefined;
         if (defaultAgent) {
+            // Deliberadamente NO se escribe `persona_config` (el respaldo
+            // legado): con un agente por defecto vivo nadie lo lee —la
+            // resolución es canal → agente por defecto → legado— y su gate de
+            // agenda es más estricto que el del editor, así que un tenant con
+            // la agenda encendida y sin cupos vigentes no podría ni cambiarle
+            // el nombre a su agente. El editor de agentes tampoco lo escribe.
             await this.personaService.updateAgent(tenantId, defaultAgent.id, {
                 name: config.persona.name,
                 configJson: config,
-                channels: selectedChannels,
-                scheduleMode,
+                ...(selectedChannels ? { channels: selectedChannels } : {}),
+                ...(scheduleMode ? { scheduleMode } : {}),
+                // El asistente persiste el paso del agente antes de que la
+                // persona haya visto los demás: se valida lo que ya escribió,
+                // no lo que todavía no le preguntamos.
+                // El asistente sólo edita nombre y saludo: no muestra reglas ni
+                // motivos de escalamiento, así que no puede exigirlos. Un agente
+                // heredado al que le falte uno quedaba sin poder terminar la
+                // puesta en marcha, sin ninguna pantalla donde arreglarlo. El
+                // contrato completo lo hace cumplir el editor del agente, que sí
+                // tiene esos campos, y el Centro de calidad, que lleva hasta ellos.
+                partialDraft: true,
             });
         } else {
+            // Agente NUEVO: acá sí hay que decidir dónde atiende. Los cinco
+            // tipos solo se siembran cuando el tenant no tiene ningún otro
+            // agente; con otros agentes vivos, quedarse con lo que el emisor
+            // eligió evita robarles sus canales.
+            const channelsForNewAgent = selectedChannels
+                ?? (agents.length === 0
+                    ? ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']
+                    : undefined);
+            // Sin agente durable, `persona_config` SÍ es lo que lee el runtime.
+            const yamlContent = yaml.dump(config, { lineWidth: -1 });
+            await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
             await this.personaService.createAgent(tenantId, {
                 name: config.persona.name,
                 templateId: body.templateId,
                 configJson: config,
-                channels: selectedChannels,
-                scheduleMode,
+                ...(channelsForNewAgent ? { channels: channelsForNewAgent } : {}),
+                scheduleMode: scheduleMode ?? '24_7',
                 isDefault: true,
                 createdBy,
             });
@@ -233,8 +477,11 @@ export class PersonaController {
         // pipeline (loadTenantBusinessHours) y el readiness. El wizard envía businessHours;
         // si no, se deriva del toggle is247 para no dejar el horario sin sembrar.
         let businessHours = body.customizations?.businessHours;
+        if (businessHours && typeof businessHours === 'object' && !businessHours.timezone) {
+            businessHours = { ...businessHours, timezone: effectiveTimezone };
+        }
         if (!businessHours && body.customizations?.is247 !== undefined) {
-            businessHours = { is247: !!body.customizations.is247, timezone: 'America/Bogota', schedule: {} };
+            businessHours = { is247: !!body.customizations.is247, timezone: effectiveTimezone, schedule: {} };
         }
 
         // `markCompleted: false` guarda el agente SIN cerrar el wizard. Lo usa el paso
@@ -243,22 +490,33 @@ export class PersonaController {
         // chat de prueba respondía con el agente viejo y el usuario concluía —con razón—
         // que nada de lo que había escrito se había guardado.
         const markCompleted = body.markCompleted !== false;
-        await mergeTenantSettingsAtomic(this.prisma, tenantId, {
-            // Los horarios son configuración del tenant, no del wizard: se
-            // guardan igual aunque todavía no se haya cerrado el asistente.
-            ...(businessHours ? { businessHours } : {}),
-            ...(markCompleted ? {
-                setupWizardCompleted: true,
-                setupWizardTemplate: body.templateId,
-                setupWizardChannels: selectedChannels,
-                setupWizardCompletedAt: new Date().toISOString(),
-            } : {}),
+
+        // "Conectar después" no bloquea nada, pero deja memoria: la marca de
+        // tiempo + `channel_deferred` son lo que hace que Inicio vuelva a
+        // ofrecer el canal en vez de dejar la cuenta muda para siempre.
+        const channelConnectSkippedAt = skippedAt;
+
+        // El estado SOLO avanza (`advanceOnboardingStage`), así que un guardado
+        // tardío del asistente no puede devolver al wizard a un tenant que ya
+        // conectó su canal. Guardar el agente es, por sí mismo, "agent_reviewed".
+        const requestedStages: OnboardingStage[] = ['agent_reviewed'];
+        if (channelConnectSkippedAt) requestedStages.push('channel_deferred');
+        if (requestedStage) requestedStages.push(requestedStage);
+
+        await this.persistWizardProgress(tenantId, {
+            stages: requestedStages,
+            markCompleted,
+            channelConnectSkippedAt,
+            businessHours,
+            templateId: body.templateId,
+            selectedChannels,
         });
 
+        const templateLabel = body.templateId || 'la configuración vigente del agente';
         this.logger.log(
             markCompleted
-                ? `Setup wizard completed for tenant ${tenantId} with template ${body.templateId}`
-                : `Setup wizard draft saved for tenant ${tenantId} with template ${body.templateId}`,
+                ? `Setup wizard completed for tenant ${tenantId} with ${templateLabel}`
+                : `Setup wizard draft saved for tenant ${tenantId} with ${templateLabel}`,
         );
         return { success: true };
     }
@@ -267,12 +525,22 @@ export class PersonaController {
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Mark the setup wizard as skipped without applying a template — prevents redirect loop' })
     async skipSetupWizard(@Param('tenantId') tenantId: string) {
-        await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+        // Saltar el asistente no puede hacer pasar por resuelto lo que no lo
+        // está: sin ninguna conexión activa, el estado queda en
+        // `channel_deferred` y la puesta en marcha se sigue ofreciendo desde
+        // Inicio. Con un canal ya conectado no se toca el estado — ahí manda la
+        // realidad, que el resolver deriva de los canales.
+        const hasAnyChannel = await this.tenantHasActiveChannel(tenantId);
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => ({
+            ...current,
             setupWizardCompleted: true,
             setupWizardSkipped: true,
             setupWizardCompletedAt: new Date().toISOString(),
-        });
-        this.logger.log(`Setup wizard skipped for tenant ${tenantId}`);
+            ...(hasAnyChannel ? {} : {
+                onboardingStage: advanceOnboardingStage(current.onboardingStage, 'channel_deferred'),
+            }),
+        }));
+        this.logger.log(`Setup wizard skipped for tenant ${tenantId} (hasAnyChannel=${hasAnyChannel})`);
         return { success: true };
     }
 
@@ -293,6 +561,9 @@ export class PersonaController {
         let hasAutomation = false;
         let hasTemplates = false;
         let hasAnyChannel = false;
+        // Los tipos de canal con al menos una conexión activa. El asistente lo
+        // usa para no ofrecer conectar lo que ya está conectado.
+        let connectedChannelTypes: string[] = [];
         let hasBusinessAbout = false;
         // El catálogo REAL de la vertical, que no es la base de conocimiento.
         //
@@ -311,6 +582,10 @@ export class PersonaController {
         // sobrescribir la respuesta que el usuario ya dio en /onboarding.
         let defaultAgentTemplateId: string | null = null;
         let defaultAgentName: string | null = null;
+        // El agente ya existe con nombre y saludo desde el alta. El asistente
+        // lo PRESENTA ("Preparamos a Sofía, recepcionista de clínica") en vez
+        // de volver a pedir una plantilla y pisar lo que el dueño ya respondió.
+        let defaultAgent: { id: string; name: string | null; greeting: string | null } | null = null;
 
         // Readiness del agente: horarios de atención viven en tenant.settings.businessHours
         // (nivel tenant, no requiere query). 24/7 o ≥1 día con horario cuenta como configurado.
@@ -342,13 +617,38 @@ export class PersonaController {
                 hasAnyChannel = val(checks[6]) > 0;
                 hasBusinessAbout = val(checks[7]) > 0;
 
+                // QUÉ canales están conectados, no solo cuántos. El asistente
+                // dibujaba siempre el panel de conexión de WhatsApp porque su
+                // único "conectado" era el de un alta hecha en esa misma
+                // sesión: un admin con WhatsApp ya en vivo veía el selector de
+                // ruta y podía lanzar un segundo Embedded Signup sobre su
+                // número en producción.
+                if (hasAnyChannel) {
+                    const typeRows = (await this.prisma.$queryRawUnsafe(
+                        `SELECT DISTINCT channel_type FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`,
+                        tenantId,
+                    ).catch(() => [])) as Array<{ channel_type?: string | null }>;
+                    connectedChannelTypes = typeRows
+                        .map((row) => (typeof row?.channel_type === 'string' ? row.channel_type.trim() : ''))
+                        .filter((value) => value.length > 0);
+                }
+
                 const agentRows = (await this.prisma.$queryRawUnsafe(
-                    `SELECT name, template_id FROM "${schema}".agent_personas
+                    `SELECT id, name, template_id, config_json FROM "${schema}".agent_personas
                      WHERE is_default = true AND is_active = true
                      ORDER BY created_at ASC LIMIT 1`,
-                ).catch(() => [])) as Array<{ name?: string; template_id?: string }>;
+                ).catch(() => [])) as Array<{ id?: string; name?: string; template_id?: string; config_json?: any }>;
                 defaultAgentTemplateId = agentRows?.[0]?.template_id ?? null;
                 defaultAgentName = agentRows?.[0]?.name ?? null;
+                if (agentRows?.[0]?.id) {
+                    const agentConfig = agentRows[0].config_json || {};
+                    const greeting = agentConfig?.persona?.greeting;
+                    defaultAgent = {
+                        id: String(agentRows[0].id),
+                        name: agentRows[0].name ?? agentConfig?.persona?.name ?? null,
+                        greeting: typeof greeting === 'string' && greeting.trim() ? greeting : null,
+                    };
+                }
 
                 // Tabla del catálogo por industria. Las verticales sin objeto
                 // propio (salud, belleza…) no tienen catálogo aparte: para ellas
@@ -390,6 +690,7 @@ export class PersonaController {
                 hasAutomation,
                 hasTemplates,
                 hasAnyChannel,
+                connectedChannelTypes,
                 hasBusinessAbout,
                 hasBusinessHours,
                 // null = esta vertical no tiene catálogo propio y el paso sigue
@@ -398,6 +699,23 @@ export class PersonaController {
                 verticalCatalogRoute,
                 defaultAgentTemplateId,
                 defaultAgentName,
+                defaultAgent,
+                // Estado único de puesta en marcha. Se DERIVA (no se lee crudo)
+                // para que los tenants anteriores al campo tengan uno coherente
+                // sin backfill, y para que un canal ya conectado gane siempre
+                // sobre un estado viejo guardado antes de esa conexión.
+                onboardingStage: deriveOnboardingStage({
+                    stage: settings.onboardingStage,
+                    hasAnyChannel,
+                    setupWizardCompleted: settings.setupWizardCompleted === true,
+                    setupWizardSkipped: settings.setupWizardSkipped === true,
+                    hasAgent: hasPersona,
+                    channelConnectSkippedAt: settings.channelConnectSkippedAt ?? null,
+                }),
+                channelConnectSkippedAt: settings.channelConnectSkippedAt || null,
+                // El huso del tenant: el asistente lo muestra como chip y los
+                // horarios lo necesitan para no asumir Bogotá.
+                timezone: settings.timezone || null,
             },
         };
     }

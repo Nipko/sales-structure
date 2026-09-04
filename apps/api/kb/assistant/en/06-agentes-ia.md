@@ -3,7 +3,7 @@ id: agentes-ia
 title: "AI Agents: create and configure"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics"]
+keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics", "required fields", "when to hand off to a human", "fallback message", "active inactive", "advanced"]
 ---
 
 # AI Agents: create and configure
@@ -29,13 +29,29 @@ Your AI agent is the "virtual salesperson" that replies to your customers on Wha
 
 The agent is created and its editor opens so you can customize it.
 
+## What the editor requires before saving
+
+An agent only works well when the minimum is defined. On save, the editor checks and points at the missing field:
+
+- **Agent name** — how it introduces itself to your customers.
+- **Role** — what it does (for example, "Sales advisor" or "Receptionist").
+- **Message for when it cannot answer** — the exact sentence the agent says when the question falls outside what it knows. Promising to find a person beats improvising.
+- **At least one rule** of behavior.
+- **At least one reason** under **When to hand off to a human**.
+
+If you clear one of those fields to rewrite it, save only once it is complete again: an agent with no fallback message or no handoff reasons shows up as a critical blocker in **Agent health**.
+
+**If your agent runs in custom-prompt mode**, this list changes. When your account has that feature enabled and the agent uses it, a single text you write replaces the guided personality: **Agent health** marks identity, tone, greeting, fallback message, and rules as **Not applicable**, and requires instead that the prompt is not empty. What **stays mandatory** is at least one reason under **When to hand off to a human**: without it the conversation never reaches a person, whatever the prompt says. If you see “Not applicable” where this guide says “required”, that is why, not a mistake.
+
 ## How to configure personality and instructions
 
-Inside **AI Agent**, click **Edit** on the agent. The editor is organized into cards:
+Inside **AI Agent**, click **Edit** on the agent. The editor is organized into tabs and cards:
 
 - **Identity** — name, role or title (for example, "Sales advisor") and language.
 - **Personality** — the **Communication style** (Friendly, Professional, Formal, Casual or Empathetic), the **Response length** (Concise, Standard or Detailed) and the opening greeting.
-- **Behavior** — your own free-text rules (for example, "always offer the family combo before closing"), the forbidden topics the agent must never touch, and the response mode (always AI, always human or hybrid).
+- **Message for when it cannot answer** — the fallback text, required.
+- **Instructions** — your own free-text rules (for example, "always offer the family combo before closing"), the forbidden topics the agent must never touch, and the response mode (always AI, always human or hybrid).
+- **When to hand off to a human** — the list of reasons that make the agent stop replying and alert your team: the customer asks for it, complains, asks about a discount, or the agent fails several times in a row. Without at least one reason, the conversation never reaches a person.
 - **AI Model** — which engine the agent uses. The editor shows the models enabled for your account.
 - **Schedule** — when the agent is active (see below).
 - **Capabilities** — what the agent can do, with switches to turn each one on or off:
@@ -45,7 +61,18 @@ Inside **AI Agent**, click **Edit** on the agent. The editor is organized into c
   - Create orders or reservations
   - Hand the conversation over to a person on your team when needed
 
+**Advanced** is not one card: it is two collapsible sections in two different tabs, which is why you never find them together:
+
+- **Advanced: fine-tune the search** — inside **Capabilities**, under the knowledge-search switch (it only appears when that switch is on). That is where how many passages to use and how closely they must match live.
+- **Advanced** — inside **Instructions**, with the data the agent must ask for in each context.
+
+Both ship with sensible values; change them only if you know what you are tuning.
+
 When you're done, click **Save changes** — the button is always visible in the bottom bar, so you won't lose edits while scrolling.
+
+## Active or inactive
+
+The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. Use it to prepare an agent without exposing it to customers, or to turn it off for a while without deleting anything. **Agent health** flags any inactive agent as a critical blocker, with or without assigned connections.
 
 ## How to set the agent's schedule
 

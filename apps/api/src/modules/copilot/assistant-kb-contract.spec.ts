@@ -309,6 +309,103 @@ describe('Parallly Assist knowledge-base contract', () => {
     expect(setup!.body).toMatch(expected.setupRetired);
   });
 
+  /**
+   * Markers for the consequential-alert release (Sep 2026). Each locale must document,
+   * in `centro-calidad-agente`:
+   *  - `channelCoverage`: the new non-critical "assigned channel coverage" action. A
+   *    ticked-but-unconnected channel no longer blocks the agent when another one works,
+   *    so the article must name that action instead of describing a blanket failure.
+   *  - `contextBar`: the context bar the destination screen shows after **Review**. It is
+   *    part of the screen, never a notification (see the KB README rules).
+   *  - `guidedTourReadOnly`: the "Show me where" tour paired, within a short distance,
+   *    with the promise that it changes nothing by itself.
+   *  - `assistChannels`: the connected-channel list Assist now receives, which is what
+   *    stops it from claiming the tenant has no channels.
+   */
+  const QUALITY_RELEASE_MARKERS: Record<(typeof LOCALES)[number], {
+    channelCoverage: RegExp;
+    contextBar: RegExp;
+    guidedTourReadOnly: RegExp;
+    assistChannels: RegExp;
+  }> = {
+    es: {
+      channelCoverage: /Cobertura de los canales asignados/,
+      contextBar: /barra\s+de contexto/i,
+      guidedTourReadOnly: /\*\*Mostrarme dónde\*\*[\s\S]{0,240}no modifica/i,
+      assistChannels: /lista de canales conectados del\s+negocio/i,
+    },
+    en: {
+      channelCoverage: /Assigned channel coverage/,
+      contextBar: /context\s+bar/i,
+      guidedTourReadOnly: /\*\*Show me where\*\*[\s\S]{0,240}does not change/i,
+      assistChannels: /list of the business's connected\s+channels/i,
+    },
+    pt: {
+      channelCoverage: /Cobertura dos canais atribuídos/,
+      contextBar: /barra\s+de contexto/i,
+      guidedTourReadOnly: /\*\*Mostrar onde\*\*[\s\S]{0,240}não modifica/i,
+      assistChannels: /lista de canais conectados do\s+negócio/i,
+    },
+    fr: {
+      channelCoverage: /Couverture des canaux assignés/,
+      contextBar: /barre\s+de contexte/i,
+      guidedTourReadOnly: /\*\*Montrez-moi où\*\*[\s\S]{0,240}ne modifie/i,
+      assistChannels: /liste des canaux connectés de\s+l'entreprise/i,
+    },
+  };
+
+  /**
+   * The onboarding wizard is the three-step "Meet your agent" assistant whose first step
+   * confirms the agent already derived from the industry; it is no longer a 5-step flow
+   * that opens on a template grid.
+   */
+  const MEET_YOUR_AGENT_MARKERS: Record<(typeof LOCALES)[number], RegExp> = {
+    es: /\*\*Conoce a tu agente\*\*[\s\S]{0,120}\*\*tres pasos\*\*/i,
+    en: /\*\*Meet your agent\*\*[\s\S]{0,120}\*\*three-step\*\*/i,
+    pt: /\*\*Conheça o seu agente\*\*[\s\S]{0,120}\*\*três etapas\*\*/i,
+    fr: /\*\*Faites connaissance avec votre agent\*\*[\s\S]{0,120}\*\*trois étapes\*\*/i,
+  };
+
+  /** The WhatsApp test/sandbox number is not a certified connection route. */
+  const SANDBOX_ROUTE =
+    /sandbox|n[uú]mero de prueba|n[uú]mero de teste|num[eé]ro de test|num[eé]ro d'essai|test number|trial number/i;
+
+  it.each(LOCALES)('%s explains the channel check, the context bar, and the read-only guided tour', (locale) => {
+    const quality = byLocale[locale].find(
+      (article) => article.id === 'centro-calidad-agente',
+    );
+    expect(quality).toBeDefined();
+    const expected = QUALITY_RELEASE_MARKERS[locale];
+    expect(quality!.body).toMatch(expected.channelCoverage);
+    expect(quality!.body).toMatch(expected.contextBar);
+    expect(quality!.body).toMatch(expected.guidedTourReadOnly);
+    expect(quality!.body).toMatch(expected.assistChannels);
+  });
+
+  it.each(LOCALES)('%s documents the real onboarding order without a sandbox number', (locale) => {
+    const setup = byLocale[locale].find((article) => article.id === 'primeros-pasos');
+    const whatsapp = byLocale[locale].find(
+      (article) => article.id === 'canales-whatsapp',
+    );
+    expect(setup).toBeDefined();
+    expect(whatsapp).toBeDefined();
+    expect(setup!.body).toMatch(MEET_YOUR_AGENT_MARKERS[locale]);
+    expect(setup!.raw).not.toMatch(SANDBOX_ROUTE);
+    expect(whatsapp!.raw).not.toMatch(SANDBOX_ROUTE);
+  });
+
+  it.each(LOCALES)('%s keeps SMS out of the Inbox description and states the real unattended timeout', (locale) => {
+    const inbox = byLocale[locale].find((article) => article.id === 'inbox');
+    expect(inbox).toBeDefined();
+    // The description is everything before the first "## " section heading.
+    const description = inbox!.body.split(/^##\s/m)[0];
+    expect(description).not.toMatch(/\bSMS\b/i);
+    // Nobody answering returns the conversation to the AI after 180 minutes; it is not
+    // a five-minute supervisor escalation that parks the conversation forever.
+    expect(inbox!.body).toContain('180');
+    expect(inbox!.body).not.toMatch(/\b5 (?:min|minut)/i);
+  });
+
   it.each(LOCALES)('%s keeps Inbox and mobile references on canonical web routes', (locale) => {
     const articles = new Map(byLocale[locale].map((article) => [article.id, article]));
     expect(articles.get('inbox')?.routes).toContain('/admin/inbox');

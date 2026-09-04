@@ -3,16 +3,24 @@ id: base-conocimiento
 title: "Base de conhecimento do agente"
 routes: ["/admin/knowledge", "/admin/knowledge/faqs"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["base de conhecimento", "conhecimento", "knowledge base", "enviar documentos", "pdf", "faq", "perguntas frequentes", "importar url", "página web", "rastreamento", "artigos", "categorias", "editar documento", "versões", "qualidade", "sugestões", "lacunas", "portal público", "ajuda para clientes", "o agente não sabe responder"]
+keywords: ["base de conhecimento", "conhecimento", "knowledge base", "enviar documentos", "pdf", "faq", "perguntas frequentes", "importar url", "página web", "rastreamento", "artigos", "categorias", "editar documento", "versões", "qualidade", "sugestões", "lacunas", "portal público", "ajuda para clientes", "o agente não sabe responder", "comecar pelas faqs", "documentos e paginas web"]
 ---
 
 # Base de conhecimento do agente
 
-A base de conhecimento é a "memória" do seu agente de IA: os documentos, perguntas frequentes e páginas que você envia aqui são a informação com que ele responde aos seus clientes. Quanto mais completa e atualizada estiver, mais precisas são as respostas.
+A base de conhecimento é a "memória" do seu agente de IA: as **perguntas frequentes**, os **documentos** e as **páginas web** que você adiciona aqui são a informação com que ele responde aos seus clientes. Quanto mais completa e atualizada estiver, mais precisas são as respostas.
 
 Você a encontra em **IA e crescimento → Base de Conhecimento**. Lá dentro você verá as abas **Biblioteca**, **FAQs**, **Buscar no contexto**, **Qualidade**, **Análises** e **Lacunas**.
 
 > Esta seção é administrada pelos papéis **administrador** e **supervisor**.
+
+## Por onde começar: as perguntas frequentes
+
+**Comece pelas FAQs.** São o que se carrega mais rápido e o que mais se nota: você escreve a pergunta do jeito que o cliente faz e a resposta exata que quer que o agente dê. Com dez perguntas frequentes bem escritas (preços, horários, endereço, formas de pagamento, política de troca) o agente já responde a maior parte do que chega todo dia.
+
+Depois some **documentos e páginas web**: o PDF do seu cardápio, o manual de garantias, a página de perguntas frequentes do seu site. Eles cobrem o longo e o detalhado, enquanto as FAQs cobrem o que deve ser respondido sempre igual.
+
+Se a tela estiver vazia, cada aba oferece a ação principal ali mesmo: **Criar minha primeira FAQ** ou **Enviar meu primeiro documento**. O botão **Mostrar como**, que destaca passo a passo onde isso é feito, não fica nesse estado vazio e sim no painel de **Ajuda** da tela.
 
 ## Disponibilidade e capacidade
 

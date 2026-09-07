@@ -4977,3 +4977,23 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_release_reviews" (
     checks JSONB NOT NULL,sample_hashes TEXT[] NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(reviewer_id,request_key)
 );
 -- END AGENT RELEASE CANDIDATES
+
+-- BEGIN AGENT PUBLICATION HISTORY
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_publication_events" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_id UUID NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('publish','rollback')),candidate_id UUID,
+    rollback_of UUID REFERENCES "{{SCHEMA_NAME}}"."agent_publication_events"(id),
+    base_version INTEGER NOT NULL CHECK(base_version>0),published_version INTEGER NOT NULL,
+    before_body JSONB NOT NULL,after_body JSONB NOT NULL,before_hash TEXT NOT NULL,after_hash TEXT NOT NULL,evidence_hash TEXT,
+    requested_by UUID NOT NULL,request_key TEXT NOT NULL,request_hash TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(requested_by,request_key),UNIQUE(agent_id,published_version),UNIQUE(agent_id,id),
+    CHECK(published_version=base_version+1),
+    CHECK((kind='publish' AND candidate_id IS NOT NULL AND evidence_hash IS NOT NULL AND rollback_of IS NULL)
+        OR (kind='rollback' AND candidate_id IS NULL AND evidence_hash IS NULL AND rollback_of IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_publication_candidate ON "{{SCHEMA_NAME}}"."agent_publication_events"(candidate_id) WHERE candidate_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_publication_heads" (
+    agent_id UUID PRIMARY KEY,event_id UUID NOT NULL,
+    FOREIGN KEY(agent_id,event_id) REFERENCES "{{SCHEMA_NAME}}"."agent_publication_events"(agent_id,id)
+);
+-- END AGENT PUBLICATION HISTORY

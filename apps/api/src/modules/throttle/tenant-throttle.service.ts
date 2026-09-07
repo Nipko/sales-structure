@@ -3,7 +3,8 @@ import { persistenceDisabled, type ServiceExecutionContext } from '../../common/
 import { PrismaService } from '../prisma/prisma.service';
 import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-branch.util';
 import { RedisService } from '../redis/redis.service';
-import { FEATURE_OVERRIDE_KEYS, OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
+import { OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
+import { applyPlanFeatureOverrides } from './plan-feature-overrides';
 
 /**
  * Plan-based rate limiting and feature gating for multi-tenant fairness.
@@ -187,14 +188,7 @@ export class TenantThrottleService {
     }
 
     private applyOverrides(base: Record<string, any>, overrides: QuotaOverrides): Record<string, any> {
-        const merged: Record<string, any> = { ...base };
-        // Apply every overridable flat feature/limit key present as a number.
-        // (Rate-limit keys are applied separately in resolveLimits.)
-        for (const key of FEATURE_OVERRIDE_KEYS) {
-            const ov = (overrides as Record<string, any>)[key];
-            if (typeof ov === 'number') merged[key] = ov;
-        }
-        return merged;
+        return applyPlanFeatureOverrides(base, overrides);
     }
 
     /**

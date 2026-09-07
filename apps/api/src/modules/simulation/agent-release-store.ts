@@ -64,7 +64,7 @@ export class AgentReleaseStore {
             ||revisionHash(candidate.scenarios)!==candidate.scenario_hash
             ||revisionHash(candidate.channels)!==revisionHash(assertReleaseChannels(candidate.agent_snapshot)))conflict('agent_release_integrity_mismatch');
     }
-    private async lockReviewed(query:RevisionQuery,tenantId:string,agentId:string,candidateId:string):Promise<{candidate:any;evaluations:any[]}|null>{
+    async lockReviewed(query:RevisionQuery,tenantId:string,agentId:string,candidateId:string):Promise<{candidate:any;evaluations:any[]}|null>{
         const before=await this.read(query,agentId,candidateId);
         if(!before)return null;
         this.assertCandidate(before.candidate,tenantId);

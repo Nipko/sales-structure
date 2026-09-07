@@ -1595,9 +1595,8 @@ export class ToolExecutionControlService {
         // held to the same evidence: the engine must be parked on `confirm`, the
         // message must classify as an unambiguous confirmation, and every bound
         // field below must still match what the customer was shown.
-        if (evidence.source !== 'text_confirmation') {
-            const expectedInbound = evidence.source === 'confirm_yes' ? 'confirm_yes' : '__flow_response__';
-            if (String(latest.content_text || '').trim().toLowerCase() !== expectedInbound) {
+        if (evidence.source === 'flow_response') {
+            if (String(latest.content_text || '').trim().toLowerCase() !== '__flow_response__') {
                 return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
             }
         }
@@ -1609,6 +1608,14 @@ export class ToolExecutionControlService {
         let state: Record<string, any>;
         try { state = JSON.parse(String(rawState)); } catch {
             return this.block('booking_confirmation_state_invalid', 'El estado de confirmación no es válido.', true);
+        }
+        if (evidence.source === 'confirm_yes'
+            && (!state.confirmationId || String(latest.content_text || '').trim() !== `confirm_yes:${state.confirmationId}`)) {
+            return this.block('booking_confirmation_proposal_mismatch', 'El botón corresponde a una propuesta anterior. Revisa la reserva actual antes de confirmar.');
+        }
+        if (state.confirmationIssuedAt && (Date.now() - Date.parse(state.confirmationIssuedAt) > CONFIRMATION_TTL_MS
+            || !Number.isFinite(Date.parse(state.confirmationIssuedAt)))) {
+            return this.block('booking_confirmation_expired', 'La propuesta debe revisarse de nuevo antes de confirmar.');
         }
 
         // Both the button and the typed yes answer the same rendered summary, so

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
@@ -6,6 +7,9 @@ import { InterpretedIntent } from './intent-interpreter.service';
 import type { ToolExecutionAuthority } from '@parallext/shared';
 import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
+import { bookingConfirmationHash } from './booking-confirmation';
+import { isPauseMessage, isResumeMessage } from '../../common/conversation/intent-normalizer';
+import { procedureDialogueMessages } from './procedure-dialogue-messages';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -248,6 +252,13 @@ export interface BookingState {
     payableReference?: string | null;
     /** ISO timestamp set when a WhatsApp Flow was sent; used to expire stale Flows (>1h). */
     flowStartedAt?: string;
+    /** Backend timestamp; a conversational pause does not discard the mission. */
+    savedAt?: string;
+    pausedAt?: string | null;
+    resumedAfterExpiry?: boolean;
+    confirmationId?: string;
+    confirmationHash?: string;
+    confirmationIssuedAt?: string;
 }
 
 export interface EngineResult {
@@ -308,6 +319,11 @@ export class BookingEngineService {
         private toolExecutor: AIToolExecutorService,
     ) {}
 
+    /** Reuses this engine with request-scoped boundaries; never rewires a singleton. */
+    forExecution(ports: { redis: RedisService; toolExecutor: AIToolExecutorService }): BookingEngineService {
+        return new BookingEngineService(this.prisma, ports.redis, ports.toolExecutor);
+    }
+
     /**
      * Process using INTERPRETED intent (not raw text).
      */
@@ -334,6 +350,15 @@ export class BookingEngineService {
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
+        if (!['idle', 'booked'].includes(state.step) && isPauseMessage(rawText)) {
+            state.pausedAt = new Date().toISOString();
+            return { handled: true, state, text: procedureDialogueMessages(L).paused };
+        }
+        if (state.pausedAt) {
+            if (!isResumeMessage(rawText) && intent.intent !== 'cancel') return { handled: false, state };
+            state.pausedAt = null;
+            if (isResumeMessage(rawText)) return this.repromptCurrentStep(state, L);
+        }
 
         // Defense in depth: the orchestrator checks this before entering the
         // engine, and the engine checks again before reading cached services or
@@ -765,7 +790,10 @@ export class BookingEngineService {
             const slot = state.slots.find(s => s.time === time);
             if (slot) { state.time = slot.time; return this.collectMissingInfo(state, L); }
         }
-        if (rawText === 'confirm_yes') {
+        if (rawText === 'confirm_yes' || rawText.startsWith('confirm_yes:')) {
+            if (!state.confirmationId || rawText !== `confirm_yes:${state.confirmationId}` || state.step !== 'confirm') {
+                return this.repromptCurrentStep(state, L);
+            }
             return this.createBooking(
                 schemaName,
                 tenantId,
@@ -777,7 +805,8 @@ export class BookingEngineService {
                 'confirm_yes',
             );
         }
-        if (rawText === 'confirm_no') {
+        if ((rawText === 'confirm_no' || rawText.startsWith('confirm_no:')) && state.confirmationId
+            && rawText === `confirm_no:${state.confirmationId}`) {
             Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
             return { handled: true, state, text: msg(L, 'cancelled') };
         }
@@ -1009,6 +1038,14 @@ export class BookingEngineService {
         const withStaff = state.staffName ? `\n${sl.with}: ${state.staffName}` : '';
         const service = state.services?.find(s => s.id === state.serviceId);
         const priceSummary = service ? '\n' + msg(lang, 'bookingPrice', { amount: String(service.price), currency: service.currency }) : '';
+        const termsHash = bookingConfirmationHash(state);
+        if (!state.confirmationId || state.confirmationHash !== termsHash
+            || Date.now() - Date.parse(state.confirmationIssuedAt || '') > 30 * 60 * 1000
+            || !Number.isFinite(Date.parse(state.confirmationIssuedAt || ''))) {
+            state.confirmationId = randomUUID();
+            state.confirmationHash = termsHash;
+            state.confirmationIssuedAt = new Date().toISOString();
+        }
         const dueSummary = service?.requiresPaymentToConfirm ? '\n' + msg(lang, 'bookingPaymentDue', { amount: String(service.amountDueToConfirm ?? service.price), currency: service.currency }) : '';
         const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}${priceSummary}${dueSummary}`;
         return {
@@ -1017,8 +1054,8 @@ export class BookingEngineService {
             buttonMessage: {
                 body: msg(lang, 'confirmButton', { summary }),
                 buttons: [
-                    { id: 'confirm_yes', title: msg(lang, 'btnConfirm') },
-                    { id: 'confirm_no', title: msg(lang, 'btnCancel') },
+                    { id: `confirm_yes:${state.confirmationId}`, title: msg(lang, 'btnConfirm') },
+                    { id: `confirm_no:${state.confirmationId}`, title: msg(lang, 'btnCancel') },
                 ],
             },
         };
@@ -1036,6 +1073,12 @@ export class BookingEngineService {
         confirmationSource?: 'confirm_yes' | 'flow_response' | 'text_confirmation',
     ): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
+        if (confirmationSource && confirmationSource !== 'flow_response'
+            && (!state.confirmationId || state.confirmationHash !== bookingConfirmationHash(state)
+                || !Number.isFinite(Date.parse(state.confirmationIssuedAt || ''))
+                || Date.now() - Date.parse(state.confirmationIssuedAt!) > 30 * 60 * 1000)) {
+            return this.collectMissingInfo(state, lang);
+        }
 
         // Appointment columns store tenant-local wall-clock timestamps. A replay
         // must preserve that clock and exclude payment holds that have expired.

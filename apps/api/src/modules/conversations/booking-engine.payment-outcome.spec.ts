@@ -7,6 +7,7 @@ function harness(existing: any[] = [], result: any = {}) {
     const engine = new BookingEngineService(prisma as any, {} as any, executor as any);
     const state: BookingState = { step: 'confirm', serviceId: 'service', serviceName: 'Consultation', date: '2027-01-01', time: '10:00', customerName: 'Ana', customerEmail: 'ana@example.test',
         services: [{ id: 'service', name: 'Consultation', durationMinutes: 30, price: 100000, currency: 'COP', requiresPaymentToConfirm: true, amountDueToConfirm: 30000 }] };
+    (engine as any).collectMissingInfo(state, 'es');
     return { engine: engine as any, executor, state, prisma };
 }
 describe('booking engine communicates persisted outcome', () => {

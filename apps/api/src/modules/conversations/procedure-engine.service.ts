@@ -73,8 +73,15 @@ export interface ProcedureAgentContext {
 }
 
 const STATE_TTL = 3600; // 1h
+const MISSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const ACTIVE_CACHE_TTL = 300; // 5min
 const MAX_STEPS_PER_TURN = 25;
+
+export interface ProcedureStateStore {
+    load(schemaName: string, conversationId: string): Promise<ProcedureRunState | null>;
+    save(schemaName: string, conversationId: string, state: ProcedureRunState): Promise<void>;
+    clear(schemaName: string, conversationId: string): Promise<void>;
+}
 
 /**
  * Deterministic procedure (AOP/SOP) execution engine — T2.12.
@@ -89,6 +96,7 @@ const MAX_STEPS_PER_TURN = 25;
 @Injectable()
 export class ProcedureEngineService {
     private readonly logger = new Logger(ProcedureEngineService.name);
+    private stateStore?: ProcedureStateStore;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -100,15 +108,64 @@ export class ProcedureEngineService {
         return `procedure:${conversationId}`;
     }
 
-    async getState(conversationId: string): Promise<ProcedureRunState | null> {
-        return this.redis.getJson<ProcedureRunState>(this.stateKey(conversationId));
+    forExecution(ports: { redis?: RedisService; toolExecutor?: AIToolExecutorService; persistence: ProcedureStateStore }): ProcedureEngineService {
+        const engine = new ProcedureEngineService(this.prisma, ports.redis || this.redis, ports.toolExecutor || this.toolExecutor);
+        engine.stateStore = ports.persistence;
+        return engine;
     }
 
-    private async saveState(conversationId: string, state: ProcedureRunState): Promise<void> {
-        await this.redis.setJson(this.stateKey(conversationId), state, STATE_TTL);
+    async getState(conversationId: string, schemaName?: string): Promise<ProcedureRunState | null> {
+        if (this.stateStore) {
+            if (!schemaName) throw new Error('procedure_schema_required');
+            return this.stateStore.load(schemaName, conversationId);
+        }
+        if (!schemaName) return this.redis.getJson<ProcedureRunState>(this.stateKey(conversationId));
+        // Read the durable marker before the cache: a completed or erased task
+        // must not be resurrected by an old Redis value after a cache failure.
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT metadata FROM conversations WHERE id = $1::uuid`, [conversationId]);
+        if (!rows[0]) return null;
+        const metadata = rows[0].metadata || {};
+        if (metadata.procedureStateManaged) {
+            const state = metadata.procedureState;
+            if (!state?.procedureId) return null;
+            if (!state.expiresAt || Date.parse(state.expiresAt) <= Date.now() || !Number.isFinite(Date.parse(state.expiresAt))) {
+                await this.clearState(conversationId, schemaName);
+                return null;
+            }
+            return state;
+        }
+        // One-time migration of still-live legacy cache entries.
+        const legacy = await this.redis.getJson<ProcedureRunState>(this.stateKey(conversationId)).catch(() => null);
+        if (legacy?.procedureId) await this.saveState(conversationId, legacy, schemaName);
+        return legacy;
     }
 
-    async clearState(conversationId: string): Promise<void> {
+    private async saveState(conversationId: string, state: ProcedureRunState, schemaName?: string): Promise<void> {
+        state.updatedAt = new Date().toISOString();
+        state.expiresAt = new Date(Date.now() + MISSION_RETENTION_MS).toISOString();
+        if (this.stateStore) {
+            if (!schemaName) throw new Error('procedure_schema_required');
+            await this.stateStore.save(schemaName, conversationId, state);
+            return;
+        }
+        if (schemaName) {
+            const saved = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid RETURNING id`,
+                [conversationId, JSON.stringify({ procedureStateManaged: true, procedureState: state })]);
+            if (!saved[0]) throw new Error('procedure_conversation_missing');
+        }
+        await this.redis.setJson(this.stateKey(conversationId), state, STATE_TTL).catch(() => {});
+    }
+
+    async clearState(conversationId: string, schemaName?: string): Promise<void> {
+        if (this.stateStore) {
+            if (!schemaName) throw new Error('procedure_schema_required');
+            await this.stateStore.clear(schemaName, conversationId);
+            return;
+        }
+        if (schemaName) await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET metadata = (COALESCE(metadata, '{}'::jsonb) - 'procedureState') || '{"procedureStateManaged":true}'::jsonb WHERE id = $1::uuid`, [conversationId]);
         await this.redis.del(this.stateKey(conversationId)).catch(() => {});
     }
 
@@ -186,8 +243,9 @@ export class ProcedureEngineService {
                 // carried on because the resume query forgot to ask.
                 vertical: r.vertical || undefined,
             };
-        } catch {
-            return null;
+        } catch (error) {
+            // A transient read failure cannot cancel a durable customer task.
+            throw error;
         }
     }
 
@@ -229,7 +287,7 @@ export class ProcedureEngineService {
         userText: string,
         agent?: ProcedureAgentContext,
     ): Promise<ProcedureProcessResult> {
-        let state = await this.getState(conversationId);
+        let state = await this.getState(conversationId, schemaName);
         const resumingProcedure = !!state;
         let procedure: ProcedureDefinition | null = null;
 
@@ -241,7 +299,7 @@ export class ProcedureEngineService {
                 || procedure.status !== 'active'
                 || procedure.version !== state.version
                 || !this.appliesToVertical(procedure, agent)) {
-                await this.clearState(conversationId);
+                await this.clearState(conversationId, schemaName);
                 return { handled: false };
             }
         } else {
@@ -267,26 +325,26 @@ export class ProcedureEngineService {
         const messages = procedureDialogueMessages(new LanguageDetectorService().detect(userText, agent?.language ?? 'es'));
         const dialogue = normalizeCustomerIntent(userText);
         if ((resumingProcedure && dialogue.intent === 'cancel') || dialogue.intent === 'opt_out') {
-            await this.clearState(conversationId);
+            await this.clearState(conversationId, schemaName);
             return { handled: true, completed: false, dialogueAct: 'cancel', text: messages.cancelled, procedureName: procedure.name };
         }
         if (dialogue.intent === 'request_human') {
-            await this.saveState(conversationId, state);
+            await this.saveState(conversationId, state, schemaName);
             return { handled: true, completed: false, handoff: true, handoffReason: 'procedure_customer_request', text: messages.handoff, procedureName: procedure.name };
         }
         if (isPauseMessage(userText)) {
             state.pausedAt = new Date().toISOString();
-            await this.saveState(conversationId, state);
+            await this.saveState(conversationId, state, schemaName);
             return { handled: true, completed: false, dialogueAct: 'pause', text: messages.paused, procedureName: procedure.name };
         }
         if (state.pausedAt) {
             // A later unrelated message cannot silently resume and become a slot.
             if (!/^(?:continuemos|continuar|continua|sigamos|retomemos|reanudar|resume|continue|let s continue|let's continue|vamos continuar|continuons|reprendre|reprenons)[.!\s]*$/.test(normalizeForIntent(userText))) {
-                await this.saveState(conversationId, state);
-                return { handled: true, completed: false, dialogueAct: 'pause', text: messages.paused, procedureName: procedure.name };
+                await this.saveState(conversationId, state, schemaName);
+                return { handled: false, completed: false, dialogueAct: 'pause', procedureName: procedure.name };
             }
             state.pausedAt = null;
-            await this.saveState(conversationId, state);
+            await this.saveState(conversationId, state, schemaName);
             const ask = byId.get(state.currentStepId ?? '');
             if (state.awaitingField) {
                 return { handled: true, completed: false, dialogueAct: 'resume', text: ask?.config.question, procedureName: procedure.name };
@@ -299,7 +357,7 @@ export class ProcedureEngineService {
         if (state.awaitingField) {
             const ask = byId.get(state.currentStepId ?? '');
             if (isInformationSeekingMessage(userText)) {
-                await this.saveState(conversationId, state);
+                await this.saveState(conversationId, state, schemaName);
                 return {
                     handled: true, completed: false, dialogueAct: 'question', procedureName: procedure.name,
                     text: ask?.config.explanation || messages.question,
@@ -326,7 +384,7 @@ export class ProcedureEngineService {
             const invalidName = spec.type === 'name' && /^(?:no|nao|non|not|quiero|necesito|prefiero|i want|i need|je veux|je ne|quero|preciso)\b/.test(normalizeForIntent(value));
             if (!skipOptional && (!value || !coercion.ok || invalidDialogue || invalidName
                 || (spec.choices?.length && !spec.choices.includes(String(coercion.value))))) {
-                await this.saveState(conversationId, state);
+                await this.saveState(conversationId, state, schemaName);
                 return { handled: true, completed: false, dialogueAct: 'invalid', text: [messages.invalid, ask?.config.question].filter(Boolean).join('\n\n'), procedureName: procedure.name };
             }
             if (!skipOptional) state.collected[state.awaitingField] = coercion.value;
@@ -349,7 +407,7 @@ export class ProcedureEngineService {
             if (step.type === 'ask') {
                 if (step.config.question) parts.push(step.config.question);
                 state.awaitingField = step.config.field || `field_${step.id}`;
-                await this.saveState(conversationId, state);
+                await this.saveState(conversationId, state, schemaName);
                 return { handled: true, text: parts.join('\n\n'), procedureName: procedure.name };
             }
 
@@ -365,7 +423,7 @@ export class ProcedureEngineService {
                         `[Procedure] step "${step.id}" names "${toolName}" `
                         + `(${stepAuthority.reason}): ${stepAuthority.detail} — escalando`,
                     );
-                    await this.clearState(conversationId);
+                    await this.clearState(conversationId, schemaName);
                     return {
                         handled: true,
                         completed: false,
@@ -395,7 +453,7 @@ export class ProcedureEngineService {
                         `[Procedure] step "${step.id}" args unresolved (missing: ${rendered.missing.join(', ') || 'none'};`
                         + ` invalid: ${rendered.invalid.map(i => i.arg).join(', ') || 'none'})`,
                     );
-                    await this.saveState(conversationId, state);
+                    await this.saveState(conversationId, state, schemaName);
                     return {
                         handled: true,
                         completed: false,
@@ -407,6 +465,9 @@ export class ProcedureEngineService {
                 }
 
                 try {
+                    // Checkpoint the exact step before any tool can act. A
+                    // worker restart resumes through the same execution ledger.
+                    await this.saveState(conversationId, state, schemaName);
                     const result = await this.toolExecutor.execute(
                         schemaName, tenantId, contactId, toolName, rendered.args, conversationId,
                         {
@@ -419,7 +480,7 @@ export class ProcedureEngineService {
                     if (result?.error) {
                         const explicitlyRejected = ['action_rejected', 'approval_rejected'].includes(result.error);
                         if (explicitlyRejected) {
-                            await this.clearState(conversationId);
+                            await this.clearState(conversationId, schemaName);
                             return {
                                 handled: true,
                                 completed: true,
@@ -433,7 +494,7 @@ export class ProcedureEngineService {
                         // so the next turn resumes the control handshake instead of
                         // silently skipping the writer.
                         if (step.config.saveAs) state.collected[step.config.saveAs] = result;
-                        await this.saveState(conversationId, state);
+                        await this.saveState(conversationId, state, schemaName);
                         return {
                             handled: true,
                             completed: false,
@@ -449,7 +510,7 @@ export class ProcedureEngineService {
                 } catch (e: any) {
                     this.logger.warn(`[Procedure] tool ${toolName} failed: ${e.message}`);
                     if (step.config.saveAs) state.collected[step.config.saveAs] = { error: true };
-                    await this.saveState(conversationId, state);
+                    await this.saveState(conversationId, state, schemaName);
                     return {
                         handled: true,
                         completed: false,
@@ -470,7 +531,7 @@ export class ProcedureEngineService {
             }
 
             if (step.type === 'handoff') {
-                await this.clearState(conversationId);
+                await this.clearState(conversationId, schemaName);
                 return {
                     handled: true,
                     text: parts.length ? parts.join('\n\n') : undefined,
@@ -488,7 +549,7 @@ export class ProcedureEngineService {
         // procedure is NOT complete — persist the state and resume next turn
         // instead of wrongly marking it completed and discarding mid-flow state.
         if (state.currentStepId) {
-            await this.saveState(conversationId, state);
+            await this.saveState(conversationId, state, schemaName);
             return {
                 handled: parts.length > 0,
                 text: parts.length ? parts.join('\n\n') : undefined,
@@ -498,7 +559,7 @@ export class ProcedureEngineService {
         }
 
         // Reached the end → procedure complete.
-        await this.clearState(conversationId);
+        await this.clearState(conversationId, schemaName);
         return {
             handled: parts.length > 0,
             text: parts.length ? parts.join('\n\n') : undefined,

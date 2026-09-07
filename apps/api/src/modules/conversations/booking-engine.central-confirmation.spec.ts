@@ -47,13 +47,14 @@ describe('BookingEngine trusted confirmation wiring', () => {
             execute: jest.fn().mockResolvedValue({ success: true, appointmentId: 'appointment-1' }),
         };
         const engine = new BookingEngineService(prisma as any, redis as any, toolExecutor as any);
+        (engine as any).collectMissingInfo(bookingState, "es");
 
         const result = await engine.process(
             schemaName,
             tenantId,
             contactId,
             { intent: 'general_question', isConfirmation: true } as any,
-            'confirm_yes',
+            `confirm_yes:${bookingState.confirmationId}`,
             bookingState,
             {},
             '2026-08-08',
@@ -121,6 +122,7 @@ describe('BookingEngine trusted confirmation wiring', () => {
             execute: jest.fn().mockResolvedValue({ success: true, appointmentId: 'appointment-1' }),
         };
         const engine = new BookingEngineService(prisma as any, redis as any, toolExecutor as any);
+        (engine as any).collectMissingInfo(bookingState, "es");
 
         const result = await engine.process(
             schemaName,
@@ -172,6 +174,7 @@ describe('BookingEngine trusted confirmation wiring', () => {
             execute: jest.fn().mockResolvedValue({ success: true, appointmentId: 'appointment-1' }),
         };
         const engine = new BookingEngineService(prisma as any, redis as any, toolExecutor as any);
+        (engine as any).collectMissingInfo(bookingState, "es");
 
         const result = await engine.process(
             schemaName, tenantId, contactId,
@@ -209,11 +212,12 @@ describe('BookingEngine trusted confirmation wiring', () => {
             execute: jest.fn().mockResolvedValue({ success: true, appointmentId: 'appointment-1' }),
         };
         const engine = new BookingEngineService(prisma as any, redis as any, toolExecutor as any);
+        (engine as any).collectMissingInfo(bookingState, "es");
 
         const result = await engine.process(
             schemaName, tenantId, contactId,
             { intent: 'general_question', isConfirmation: true } as any,
-            'confirm_yes', bookingState, {}, '2026-08-08', 'es',
+            `confirm_yes:${bookingState.confirmationId}`, bookingState, {}, '2026-08-08', 'es',
             { authority: BOOKING_AUTHORITY, conversationId },
         );
 
@@ -242,11 +246,12 @@ describe('BookingEngine trusted confirmation wiring', () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: 'appointment-existing' }]) };
         const toolExecutor = { execute: jest.fn().mockResolvedValue({ success: true }) };
         const engine = new BookingEngineService(prisma as any, redis as any, toolExecutor as any);
+        (engine as any).collectMissingInfo(bookingState, "es");
 
         const result = await engine.process(
             schemaName, tenantId, contactId,
             { intent: 'general_question', isConfirmation: true } as any,
-            'confirm_yes', bookingState, {}, '2026-08-08', 'es',
+            `confirm_yes:${bookingState.confirmationId}`, bookingState, {}, '2026-08-08', 'es',
             { authority: BOOKING_AUTHORITY, conversationId },
         );
 

@@ -806,8 +806,8 @@ describe('ToolExecutionControlService', () => {
 
     it('accepts BookingEngine confirmation only when inbound and persisted state bind every argument', async () => {
         const { service, state } = createHarness();
-        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes' };
-        state.bookingState = {
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -841,8 +841,8 @@ describe('ToolExecutionControlService', () => {
 
     it('rejects a stale or mismatched BookingEngine authority claim', async () => {
         const { service, state } = createHarness();
-        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes' };
-        state.bookingState = {
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-other',
             date: '2026-08-10',
@@ -882,7 +882,7 @@ describe('ToolExecutionControlService', () => {
     it('accepts a typed confirmation with the same binding the button requires', async () => {
         const { service, state } = createHarness();
         state.latestMessage = { id: firstMessageId, content_text: 'Sí, confirmo la cita' };
-        state.bookingState = {
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -916,7 +916,7 @@ describe('ToolExecutionControlService', () => {
     it('refuses a typed confirmation that is not an unambiguous yes', async () => {
         const { service, state } = createHarness();
         state.latestMessage = { id: firstMessageId, content_text: 'sí, pero cambiá la hora' };
-        state.bookingState = {
+        state.bookingState = { confirmationId: 'proposal',
             step: 'confirm',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -951,7 +951,7 @@ describe('ToolExecutionControlService', () => {
     it('refuses a typed confirmation when the engine is not parked on the confirm step', async () => {
         const { service, state } = createHarness();
         state.latestMessage = { id: firstMessageId, content_text: 'confirmo' };
-        state.bookingState = {
+        state.bookingState = { confirmationId: 'proposal',
             step: 'ask_email',
             serviceId: 'service-1',
             date: '2026-08-10',
@@ -1014,8 +1014,8 @@ describe('ToolExecutionControlService', () => {
     // internal problem they never saw.
     it('marks its own technical blocks so the pipeline can tell them from a domain escalation', async () => {
         const { service, state } = createHarness();
-        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes' };
-        state.bookingState = { step: 'ask_email', serviceId: 'service-1' };
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        state.bookingState = { confirmationId: 'proposal', step: 'ask_email', serviceId: 'service-1' };
 
         const result = await service.preflight({
             schemaName,

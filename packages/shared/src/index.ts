@@ -1358,7 +1358,7 @@ export interface ProcedureDefinition {
     sourceSop?: string;
 }
 
-/** Redis-backed execution state for an in-progress procedure. */
+/** Durable mission state; Redis caches it but never owns its lifetime. */
 export interface ProcedureRunState {
     procedureId: string;
     version: number;
@@ -1369,5 +1369,7 @@ export interface ProcedureRunState {
     /** An explicit pause requires a resume turn before collecting or executing. */
     pausedAt?: string | null;
     startedAt: string;
+    updatedAt?: string;
+    expiresAt?: string;
 }
 export type { KnowledgeGapReport } from './knowledge';

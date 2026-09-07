@@ -100,6 +100,10 @@ export function isPauseMessage(raw: unknown): boolean {
     return /\b(?:prefiero hacerlo despues|lo hago despues|continuamos despues|mas tarde|en otro momento|por ahora no|espera|esperar|pause|wait|do this later|continue later|not now|mais tarde|prefiro depois|depois eu|agora nao|plus tard|pas maintenant|attendez)\b/.test(text);
 }
 
+export function isResumeMessage(raw: unknown): boolean {
+    return /^(?:continuemos|continuar|continua|sigamos|retomemos|reanudar|resume|continue|let s continue|let's continue|vamos continuar|continuons|reprendre|reprenons)[.!\s]*$/.test(normalizeForIntent(String(raw || '')));
+}
+
 /**
  * Consume the entire acceptance, not just its first word. Courtesy may surround
  * acceptance, but gratitude by itself and a new date/price/task are not consent

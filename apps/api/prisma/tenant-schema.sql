@@ -389,6 +389,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_document_versions" (
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_kdv_doc_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_document_versions" ("document_id", "version" DESC);
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents"
+    ADD COLUMN IF NOT EXISTS "audience" VARCHAR(16) NOT NULL DEFAULT 'customer',
+    ADD COLUMN IF NOT EXISTS "agent_ids" UUID[] NOT NULL DEFAULT '{}'::uuid[];
 
 -- ---- KB Retrieval Analytics ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_retrieval_log" (
@@ -3530,6 +3533,19 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_facts" (
     "last_seen_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_cmf_owner" ON "{{SCHEMA_NAME}}"."customer_memory_facts" ("owner_kind", "owner_id");
+ALTER TABLE "{{SCHEMA_NAME}}"."customer_memory_facts"
+    ADD COLUMN IF NOT EXISTS "fact_key" TEXT,
+    ADD COLUMN IF NOT EXISTS "fact_kind" VARCHAR(16) NOT NULL DEFAULT 'context',
+    ADD COLUMN IF NOT EXISTS "status" VARCHAR(16) NOT NULL DEFAULT 'active',
+    ADD COLUMN IF NOT EXISTS "source_contact_id" UUID,
+    ADD COLUMN IF NOT EXISTS "source_conversation_id" UUID,
+    ADD COLUMN IF NOT EXISTS "evidence_text" TEXT,
+    ADD COLUMN IF NOT EXISTS "valid_until" TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS "superseded_at" TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_erasure" (
+    "contact_id" UUID PRIMARY KEY,
+    "erased_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- ---- Saved reports (analytics) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."saved_reports" (

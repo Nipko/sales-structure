@@ -184,8 +184,9 @@ export class ComplianceService {
         tenantId: string,
         contactId: string,
         requestedBy: string,
-    ): Promise<{ erasedTables: string[]; totalRecordsAffected: number }> {
+    ): Promise<{ erasedTables: string[]; failedTables: string[]; completed: boolean; totalRecordsAffected: number }> {
         const erasedTables: string[] = [];
+        const failedTables: string[] = [];
         let totalRecords = 0;
         const anon = `[ERASED-${contactId.slice(0, 8)}]`;
 
@@ -198,9 +199,27 @@ export class ComplianceService {
                     totalRecords += typeof count === 'number' ? count : 1;
                 }
             } catch (err: any) {
+                failedTables.push(label);
                 this.logger.warn(`[GDPR Erase] Skipped ${label}: ${err.message}`);
             }
         };
+
+        // Publish the erasure tombstone before redacting the transcript. The memory
+        // extractor checks it again under the same lock immediately before commit.
+        try {
+            const counts = await this.eraseCustomerMemory(schemaName, contactId);
+            erasedTables.push('customer_memories', 'customer_memory_facts');
+            totalRecords += counts;
+        } catch (err: any) {
+            failedTables.push('customer_memory');
+            this.logger.warn(`[GDPR Erase] Memory erasure failed: ${err.message}`);
+        }
+
+        // Resolve the original phone before the contact row is anonymized.
+        await run('campaign_recipients',
+            `UPDATE campaign_recipients SET phone = $2
+             WHERE phone IN (SELECT phone FROM contacts WHERE id = $1::uuid) RETURNING id`,
+            [contactId, anon]);
 
         // 1. Contacts — anonymize name, phone, email
         await run('contacts',
@@ -241,18 +260,10 @@ export class ComplianceService {
             [contactId, anon],
         );
 
-        // 6. Campaign recipients — anonymize phone
-        await run('campaign_recipients',
-            `UPDATE campaign_recipients SET phone = $2
-             WHERE phone IN (SELECT phone FROM contacts WHERE id = $1::uuid)
-             RETURNING id`,
-            [contactId, anon],
-        );
-
         // 7. Customer profiles — anonymize if exists
         await run('customer_profiles',
             `UPDATE customer_profiles SET primary_phone = $2, primary_email = NULL, display_name = $2
-             WHERE id IN (SELECT customer_profile_id FROM contacts WHERE id = $1::uuid AND customer_profile_id IS NOT NULL)
+             WHERE id IN (SELECT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid)
              RETURNING id`,
             [contactId, anon],
         );
@@ -274,7 +285,7 @@ export class ComplianceService {
         );
 
         // 10. Mark all pending deletion requests for this contact as completed
-        await run('deletion_requests',
+        if (!failedTables.length) await run('deletion_requests',
             `UPDATE deletion_requests SET status = 'completed', processed_at = NOW()
              WHERE lead_id IN (SELECT id FROM leads WHERE contact_id = $1::uuid) AND status = 'pending'
              RETURNING id`,
@@ -286,9 +297,9 @@ export class ComplianceService {
             await this.prisma.auditLog.create({
                 data: {
                     tenantId,
-                    action: 'gdpr.contact_erased',
+                    action: failedTables.length ? 'gdpr.contact_erasure_incomplete' : 'gdpr.contact_erased',
                     resource: 'contact',
-                    details: { contactId, erasedTables, totalRecordsAffected: totalRecords, requestedBy },
+                    details: { contactId, erasedTables, failedTables, totalRecordsAffected: totalRecords, requestedBy },
                 },
             });
         } catch (e: any) {
@@ -296,7 +307,36 @@ export class ComplianceService {
         }
 
         this.logger.log(`[GDPR Erase] Contact ${contactId} erased in tenant ${tenantId}: ${erasedTables.join(', ')} (${totalRecords} records)`);
-        return { erasedTables, totalRecordsAffected: totalRecords };
+        return { erasedTables, failedTables, completed: failedTables.length === 0, totalRecordsAffected: totalRecords };
+    }
+
+    private async eraseCustomerMemory(schema: string, contactId: string): Promise<number> {
+        await this.prisma.executeInTenantSchema(schema,
+            `CREATE TABLE IF NOT EXISTS customer_memory_erasure (
+                contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+        return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const profiles = await query<any[]>(
+                `SELECT DISTINCT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid`, [contactId]);
+            const profileIds = profiles.map(p => p.customer_profile_id).filter(Boolean).sort();
+            const linked = await query<any[]>(
+                `SELECT DISTINCT contact_id FROM contact_identities WHERE customer_profile_id = ANY($1::uuid[])`, [profileIds]);
+            const contactIds = [...new Set([contactId, ...linked.map(c => c.contact_id)])].sort();
+            const locks = [
+                ...profileIds.map(id => `customer-memory:${schema}:profile:${id}`),
+                ...contactIds.map(id => `customer-memory:${schema}:contact:${id}`),
+            ].sort();
+            for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [lock]);
+            await query(`INSERT INTO customer_memory_erasure (contact_id)
+                SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
+            const facts = await query<any[]>(
+                `DELETE FROM customer_memory_facts
+                 WHERE (owner_kind = 'profile' AND owner_id = ANY($1::uuid[]))
+                    OR (owner_kind = 'contact' AND owner_id = ANY($2::uuid[]))
+                    OR source_contact_id = ANY($2::uuid[]) RETURNING id`, [profileIds, contactIds]);
+            const merged = await query<any[]>(
+                `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
+            return facts.length + merged.length;
+        });
     }
 
     // ─── Cross-tenant overview (super_admin) ──────────────────────────

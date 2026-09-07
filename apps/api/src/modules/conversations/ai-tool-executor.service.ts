@@ -2523,7 +2523,9 @@ export class AIToolExecutorService {
         conversationId?: string,
     ): Promise<any> {
         try {
-            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext);
+            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext, {
+                agentId: settings?.agentId, audience: settings?.audience, jurisdiction,
+            });
             // "El negocio no cargó base de conocimiento" y "la búsqueda no
             // encontró nada" son respuestas distintas, y ninguna de las dos es
             // "la consulta falló".

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,9 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LlmKeyService } from '../settings/llm-key.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { kbmsg } from './knowledge-i18n';
+import type { KnowledgeHit, KnowledgeSearchOptions, KnowledgeSourceMetadata } from './knowledge-contracts';
+import { knowledgeSourceAvailable } from './knowledge-contracts';
+import type { KnowledgeGapReport } from '@parallext/shared';
 import OpenAI from 'openai';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -75,7 +78,7 @@ export class KnowledgeService {
 
     async ingestDocument(
         tenantId: string,
-        file: {
+        file: KnowledgeSourceMetadata & {
             name: string;
             content?: string;
             fileBase64?: string;
@@ -122,14 +125,19 @@ export class KnowledgeService {
         const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
 
         const detectedLang = this.detectLanguage(textContent);
+        const source = this.validateSourceMetadata(file);
+        await this.validateSourceAgents(schema, source.agentIds);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status, source_type, source_url, crawl_hash, category, is_public, slug, excerpt, language)
-             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status, source_type, source_url, crawl_hash, category, is_public, slug, excerpt, language,
+                is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids)
+             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::date, $17::date, $18, $19::uuid[]) RETURNING *`,
             [file.name, file.name, file.mimeType || 'text/plain', textContent,
              file.sourceType || 'upload', file.sourceUrl || null, contentHash,
-             file.category || null, file.isPublic ?? false, slug, excerpt, detectedLang],
+             file.category || null, file.isPublic ?? false, slug, excerpt, detectedLang,
+             source.isRegulated ?? false, source.jurisdiction ?? null, source.authority ?? null,
+             source.validFrom ?? null, source.validTo ?? null, source.audience ?? 'customer', source.agentIds ?? []],
         );
         const document = rows[0];
 
@@ -271,7 +279,7 @@ export class KnowledgeService {
     async updateDocument(
         tenantId: string,
         documentId: string,
-        update: {
+        update: KnowledgeSourceMetadata & {
             name?: string; content?: string; fileBase64?: string; mimeType?: string; crawlHash?: string;
             category?: string; isPublic?: boolean; autoRecrawl?: boolean;
             changedBy?: string; changeSummary?: string;
@@ -280,8 +288,21 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
 
         const existing = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, title, file_type, version FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
+            `SELECT id, title, file_type, version, updated_at, is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids, is_public
+             FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
         if (!existing?.[0]) throw new BadRequestException({ error: 'document_not_found' });
+        const source = this.validateSourceMetadata({
+            isRegulated: existing[0].is_regulated,
+            jurisdiction: existing[0].jurisdiction,
+            authority: existing[0].authority,
+            audience: existing[0].audience,
+            agentIds: existing[0].agent_ids,
+            isPublic: existing[0].is_public,
+            validFrom: existing[0].valid_from ? new Date(existing[0].valid_from).toISOString().slice(0, 10) : null,
+            validTo: existing[0].valid_to ? new Date(existing[0].valid_to).toISOString().slice(0, 10) : null,
+            ...update,
+        });
+        await this.validateSourceAgents(schema, source.agentIds);
 
         let textContent = update.content || '';
         if (!textContent && update.fileBase64) {
@@ -310,56 +331,67 @@ export class KnowledgeService {
 
         const contentHash = update.crawlHash || crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
 
-        // Save current version before overwriting
+        // Build the replacement completely before touching the live source. Neither a
+        // provider failure nor a partial embedding insert may unpublish the last version.
         const currentVersion = existing[0].version || 1;
-        await this.prisma.executeInTenantSchema(schema,
-            `INSERT INTO knowledge_document_versions (document_id, version, title, content_text, chunk_count, changed_by, change_summary)
-             SELECT id, COALESCE(version, 1), title, content_text, chunk_count, $2, $3
-             FROM knowledge_documents WHERE id = $1::uuid`,
-            [documentId, update.changedBy || null, update.changeSummary || null]);
-
         const newVersion = currentVersion + 1;
-
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE knowledge_documents SET status = 'processing', updated_at = NOW() WHERE id = $1::uuid`, [documentId]);
-
         try {
-            await this.prisma.executeInTenantSchema(schema,
-                `DELETE FROM knowledge_embeddings WHERE document_id = $1::uuid`, [documentId]);
-
-            await this.embedAndStoreChunks(schema, documentId, textContent, tenantId);
-            const chunks = this.chunkText(textContent);
+            const prepared = await this.prepareEmbeddedChunks(schema, textContent, tenantId);
 
             const slug = (update.name || existing[0].title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
             const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
             const detectedLang = this.detectLanguage(textContent);
 
-            await this.prisma.executeInTenantSchema(schema,
+            await this.prisma.transactionInTenantSchema(schema, async (query) => {
+                const locked = await query<any[]>(
+                    `SELECT version, updated_at FROM knowledge_documents WHERE id = $1::uuid FOR UPDATE`, [documentId]);
+                if (!locked[0] || (locked[0].version || 1) !== currentVersion ||
+                    new Date(locked[0].updated_at).getTime() !== new Date(existing[0].updated_at).getTime()) {
+                    throw new ConflictException({ error: 'document_changed_during_indexing' });
+                }
+                await query(
+                    `INSERT INTO knowledge_document_versions (document_id, version, title, content_text, chunk_count, changed_by, change_summary)
+                     SELECT id, COALESCE(version, 1), title, content_text, chunk_count, $2, $3
+                     FROM knowledge_documents WHERE id = $1::uuid`,
+                    [documentId, update.changedBy || null, update.changeSummary || null]);
+                await query(`DELETE FROM knowledge_embeddings WHERE document_id = $1::uuid`, [documentId]);
+                await this.storePreparedChunks(query, documentId, prepared);
+                await query(
                 `UPDATE knowledge_documents
                  SET title = COALESCE($2, title), content_text = $3, chunk_count = $4,
-                     status = 'ready', crawl_hash = $5,
+                     status = 'ready', error_message = NULL, crawl_hash = $5,
                      last_crawled_at = CASE WHEN source_type = 'url' THEN NOW() ELSE last_crawled_at END,
                      category = COALESCE($6, category),
                      is_public = COALESCE($7, is_public),
                      auto_recrawl = COALESCE($8, auto_recrawl),
                      slug = $9, excerpt = $10,
                      version = $11, language = $12,
+                     is_regulated = $13, jurisdiction = $14, authority = $15, valid_from = $16::date, valid_to = $17::date,
+                     audience = $18, agent_ids = $19::uuid[],
                      updated_at = NOW()
                  WHERE id = $1::uuid`,
-                [documentId, update.name || null, textContent, chunks.length, contentHash,
+                [documentId, update.name || null, textContent, prepared.length, contentHash,
                  update.category !== undefined ? update.category : null,
                  update.isPublic !== undefined ? update.isPublic : null,
                  update.autoRecrawl !== undefined ? update.autoRecrawl : null,
-                 slug, excerpt, newVersion, detectedLang]);
+                 slug, excerpt, newVersion, detectedLang, source.isRegulated ?? false,
+                 source.jurisdiction ?? null, source.authority ?? null, source.validFrom ?? null, source.validTo ?? null,
+                 source.audience ?? 'customer', source.agentIds ?? []]);
+            });
 
             await this.invalidateHasKnowledgeCache(tenantId);
             this.emitQualityDependency(tenantId);
-            this.logger.log(`Document ${documentId} updated to v${newVersion}: ${chunks.length} chunks re-embedded`);
-            return { documentId, chunkCount: chunks.length, status: 'ready', version: newVersion };
+            this.logger.log(`Document ${documentId} updated to v${newVersion}: ${prepared.length} chunks re-embedded`);
+            return { documentId, chunkCount: prepared.length, status: 'ready', version: newVersion };
         } catch (error: any) {
-            await this.prisma.executeInTenantSchema(schema,
-                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1::uuid`,
-                [documentId, error.message]);
+            // The transaction restored content, chunks and version. Keep the source
+            // readable; expose the failed attempt without overwriting a newer edit.
+            if (!(error instanceof ConflictException)) {
+                await this.prisma.executeInTenantSchema(schema,
+                    `UPDATE knowledge_documents SET error_message = $2
+                     WHERE id = $1::uuid AND COALESCE(version, 1) = $3 AND updated_at = $4::timestamptz`,
+                    [documentId, String(error.message).slice(0, 1000), currentVersion, existing[0].updated_at]).catch(() => {});
+            }
             throw error;
         }
     }
@@ -653,31 +685,8 @@ export class KnowledgeService {
         tenantId: string,
         query: string,
         topK = 5,
-        options?: {
-            similarityThreshold?: number;
-            poolSize?: number;
-            conversationId?: string;
-            language?: string;
-            rerank?: boolean;
-            rerankTopN?: number;
-            executionContext?: ServiceExecutionContext;
-            /**
-             * Operating country of the tenant this turn belongs to.
-             *
-             * A document marked `is_regulated` is EXCLUDED when its jurisdiction
-             * is a different country, rather than merely down-ranked. Language
-             * was the only signal retrieval had, and only as a ranking boost —
-             * so Colombian regulation answered a Mexican tenant's customer,
-             * confidently and with a citation. In health, finance, insurance and
-             * legal that is a wrong answer with a source attached.
-             *
-             * Absent, no regulated document is returned at all: answering a
-             * regulatory question without knowing the jurisdiction is the
-             * failure this filter exists to prevent.
-             */
-            jurisdiction?: string | null;
-        },
-    ): Promise<any[]> {
+        options?: KnowledgeSearchOptions,
+    ): Promise<KnowledgeHit[]> {
         const schema = await this.tenantSchema(tenantId);
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
         const similarityThreshold = options?.similarityThreshold ?? 0;
@@ -700,20 +709,27 @@ export class KnowledgeService {
         // in force today: an expired norm cited as current is its own kind of
         // wrong answer.
         const jurisdiction = (options?.jurisdiction || '').trim().toUpperCase() || null;
+        const agentId = options?.agentId || null;
+        const audience = options?.audience ?? 'customer';
+        const SCOPE_GATE = `AND COALESCE(kd.audience, 'customer') = $AUDIENCE$::text
+            AND (COALESCE(cardinality(kd.agent_ids), 0) = 0
+                OR ($AGENT$::uuid IS NOT NULL AND $AGENT$::uuid = ANY(kd.agent_ids)))`;
         const REGULATED_GATE = `
                    AND (
                        COALESCE(kd.is_regulated, false) = false
                        OR (
                            $JURISDICTION$::text IS NOT NULL
-                           AND (kd.jurisdiction IS NULL OR kd.jurisdiction = $JURISDICTION$::text)
-                           AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
-                           AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)
+                           AND kd.jurisdiction = $JURISDICTION$::text
                        )
-                   )`;
+                   )
+                   AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
+                   AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)`;
         const DOC_COLUMNS = `kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
                         kd.jurisdiction AS doc_jurisdiction, kd.authority AS doc_authority,
                         kd.valid_from AS doc_valid_from, kd.valid_to AS doc_valid_to,
-                        COALESCE(kd.is_regulated, false) AS doc_is_regulated`;
+                        COALESCE(kd.is_regulated, false) AS doc_is_regulated,
+                        COALESCE(kd.version, 1) AS doc_version, kd.source_url AS doc_source_url,
+                        COALESCE(kd.audience, 'customer') AS doc_audience, kd.agent_ids AS doc_agent_ids`;
 
         const [vectorPool, tsPool] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
@@ -724,9 +740,10 @@ export class KnowledgeService {
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
                  WHERE kd.status = 'ready'
                  ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$3')}
+                 ${SCOPE_GATE.replace(/\$AUDIENCE\$/g, '$4').replace(/\$AGENT\$/g, '$5')}
                  ORDER BY ke.embedding <=> $1::vector
                  LIMIT $2`,
-                [embeddingStr, poolSize, jurisdiction]),
+                [embeddingStr, poolSize, jurisdiction, audience, agentId]),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
                         ${DOC_COLUMNS}
@@ -734,9 +751,10 @@ export class KnowledgeService {
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
                  WHERE kd.status = 'ready' AND ke.search_tsv @@ plainto_tsquery($1::regconfig, $2)
                  ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$4')}
+                 ${SCOPE_GATE.replace(/\$AUDIENCE\$/g, '$5').replace(/\$AGENT\$/g, '$6')}
                  ORDER BY ts_rank(ke.search_tsv, plainto_tsquery($1::regconfig, $2)) DESC
                  LIMIT $3`,
-                [regconfig, query, poolSize, jurisdiction]).catch(() => [] as any[]),
+                [regconfig, query, poolSize, jurisdiction, audience, agentId]).catch(() => [] as any[]),
         ]);
 
         const RRF_K = 60;
@@ -766,6 +784,7 @@ export class KnowledgeService {
         });
 
         const ranked = [...fused.values()]
+            .filter(({ row }) => knowledgeSourceAvailable(row, options))
             .map(({ row, rrf, vecSim, inTs }) => {
                 let keywordBoost = inTs ? KEYWORD_BOOST : 0;
                 if (queryTokens.length) {
@@ -785,6 +804,16 @@ export class KnowledgeService {
                     chunk_text: row.chunk_text,
                     chunk_index: row.chunk_index,
                     metadata: row.metadata,
+                    doc_language: row.doc_language ?? null,
+                    doc_jurisdiction: row.doc_jurisdiction ?? null,
+                    doc_authority: row.doc_authority ?? null,
+                    doc_valid_from: row.doc_valid_from ?? null,
+                    doc_valid_to: row.doc_valid_to ?? null,
+                    doc_is_regulated: row.doc_is_regulated === true,
+                    doc_version: Number(row.doc_version ?? 1),
+                    doc_source_url: row.doc_source_url ?? null,
+                    doc_audience: row.doc_audience ?? 'customer',
+                    doc_agent_ids: row.doc_agent_ids ?? [],
                     similarity: vecSim,
                     keywordHit: inTs || keywordBoost > 0,
                     score,
@@ -1011,7 +1040,8 @@ export class KnowledgeService {
         return this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message,
                     source_type, source_url, last_crawled_at, category, is_public, slug, excerpt,
-                    auto_recrawl, language, version, created_at, updated_at, content_text
+                    auto_recrawl, language, version, created_at, updated_at, content_text,
+                    is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids
              FROM knowledge_documents
              ${where}
              ORDER BY created_at DESC`,
@@ -1040,9 +1070,26 @@ export class KnowledgeService {
     async updateDocumentMeta(
         tenantId: string,
         documentId: string,
-        meta: { category?: string; isPublic?: boolean; autoRecrawl?: boolean; name?: string },
+        meta: KnowledgeSourceMetadata & { category?: string; isPublic?: boolean; autoRecrawl?: boolean; name?: string },
     ) {
         const schema = await this.tenantSchema(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids, is_public,
+                    updated_at::text AS revision FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
+        if (!rows?.[0]) throw new BadRequestException({ error: 'document_not_found' });
+        const previous = rows[0];
+        const source = this.validateSourceMetadata({
+            isRegulated: previous.is_regulated,
+            jurisdiction: previous.jurisdiction,
+            authority: previous.authority,
+            audience: previous.audience,
+            agentIds: previous.agent_ids,
+            isPublic: previous.is_public,
+            validFrom: previous.valid_from ? new Date(previous.valid_from).toISOString().slice(0, 10) : null,
+            validTo: previous.valid_to ? new Date(previous.valid_to).toISOString().slice(0, 10) : null,
+            ...meta,
+        });
+        await this.validateSourceAgents(schema, source.agentIds);
         const sets: string[] = ['updated_at = NOW()'];
         const params: any[] = [documentId];
         let idx = 2;
@@ -1051,6 +1098,13 @@ export class KnowledgeService {
         if (meta.category !== undefined) { sets.push(`category = $${idx}`); params.push(meta.category || null); idx++; }
         if (meta.isPublic !== undefined) { sets.push(`is_public = $${idx}`); params.push(meta.isPublic); idx++; }
         if (meta.autoRecrawl !== undefined) { sets.push(`auto_recrawl = $${idx}`); params.push(meta.autoRecrawl); idx++; }
+        for (const [key, column, cast] of [
+            ['isRegulated', 'is_regulated', ''], ['jurisdiction', 'jurisdiction', ''],
+            ['authority', 'authority', ''], ['validFrom', 'valid_from', '::date'], ['validTo', 'valid_to', '::date'],
+            ['audience', 'audience', ''], ['agentIds', 'agent_ids', '::uuid[]'],
+        ] as const) {
+            if (meta[key] !== undefined) { sets.push(`${column} = $${idx}${cast}`); params.push(source[key]); idx++; }
+        }
 
         if (meta.name !== undefined) {
             const slug = meta.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
@@ -1059,11 +1113,66 @@ export class KnowledgeService {
             idx++;
         }
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1::uuid`, params);
+        params.push(previous.revision);
+        const updated = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1::uuid AND updated_at = $${idx}::timestamptz RETURNING id`, params);
+        if (!updated.length) throw new ConflictException({ error: 'document_changed_during_metadata_update' });
 
         this.emitQualityDependency(tenantId);
         return { success: true };
+    }
+
+    private validateSourceMetadata(source: KnowledgeSourceMetadata & { isPublic?: boolean }): KnowledgeSourceMetadata {
+        if (source.isRegulated !== undefined && typeof source.isRegulated !== 'boolean') {
+            throw new BadRequestException({ error: 'invalid_source_regulation' });
+        }
+        const normalized = { ...source };
+        if (source.audience !== undefined && !['customer', 'internal'].includes(source.audience)) {
+            throw new BadRequestException({ error: 'invalid_source_audience' });
+        }
+        if (source.audience === 'internal' && source.isPublic) {
+            throw new BadRequestException({ error: 'internal_source_cannot_be_public' });
+        }
+        if (source.agentIds !== undefined) {
+            if (!Array.isArray(source.agentIds) || source.agentIds.length > 100 ||
+                source.agentIds.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+                throw new BadRequestException({ error: 'invalid_source_agents' });
+            }
+            normalized.agentIds = [...new Set(source.agentIds)];
+        }
+        if (source.jurisdiction != null) {
+            if (typeof source.jurisdiction !== 'string' || !/^[a-z]{2}$/i.test(source.jurisdiction.trim())) {
+                throw new BadRequestException({ error: 'invalid_source_jurisdiction' });
+            }
+            normalized.jurisdiction = source.jurisdiction.trim().toUpperCase();
+        }
+        if (source.authority != null) {
+            if (typeof source.authority !== 'string' || source.authority.length > 300) {
+                throw new BadRequestException({ error: 'invalid_source_authority' });
+            }
+            normalized.authority = source.authority.trim() || null;
+        }
+        for (const key of ['validFrom', 'validTo'] as const) {
+            const value = source[key];
+            if (value != null && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+                Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) {
+                throw new BadRequestException({ error: 'invalid_source_validity' });
+            }
+        }
+        if (source.validFrom && source.validTo && source.validFrom > source.validTo) {
+            throw new BadRequestException({ error: 'invalid_source_validity_range' });
+        }
+        if (source.isRegulated && (!normalized.jurisdiction || !normalized.authority)) {
+            throw new BadRequestException({ error: 'regulated_source_requires_jurisdiction_and_authority' });
+        }
+        return normalized;
+    }
+
+    private async validateSourceAgents(schema: string, agentIds?: string[]) {
+        if (!agentIds?.length) return;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id FROM agent_personas WHERE id = ANY($1::uuid[])`, [agentIds]);
+        if (rows.length !== agentIds.length) throw new BadRequestException({ error: 'source_agent_not_found' });
     }
 
     // ─── Tenant Knowledge Check (cached) ─────────────────────────────────────
@@ -1071,14 +1180,21 @@ export class KnowledgeService {
     async tenantHasKnowledge(
         tenantId: string,
         executionContext?: ServiceExecutionContext,
+        scope?: Pick<KnowledgeSearchOptions, 'agentId' | 'audience' | 'jurisdiction'>,
     ): Promise<boolean> {
-        if (persistenceDisabled(executionContext)) {
+        if (persistenceDisabled(executionContext) || scope) {
             const schema = await this.tenantSchema(tenantId);
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
                 `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings ke
                  JOIN knowledge_documents kd ON kd.id = ke.document_id
-                 WHERE kd.status = 'ready'`,
+                 WHERE kd.status = 'ready'
+                    AND COALESCE(kd.audience, 'customer') = $1
+                    AND (COALESCE(cardinality(kd.agent_ids), 0) = 0 OR $2::uuid = ANY(kd.agent_ids))
+                    AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
+                    AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)
+                    AND (COALESCE(kd.is_regulated, false) = false OR kd.jurisdiction = $3)`,
+                [scope?.audience ?? 'customer', scope?.agentId || null, scope?.jurisdiction?.toUpperCase() || null],
             );
             return rows[0]?.cnt > 0;
         }
@@ -1095,7 +1211,11 @@ export class KnowledgeService {
             // (searchRelevant only returns chunks of status='ready' docs).
             `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings ke
              JOIN knowledge_documents kd ON kd.id = ke.document_id
-             WHERE kd.status = 'ready'`,
+             WHERE kd.status = 'ready' AND COALESCE(kd.audience, 'customer') = 'customer'
+                AND COALESCE(cardinality(kd.agent_ids), 0) = 0
+                AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
+                AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)
+                AND COALESCE(kd.is_regulated, false) = false`,
         );
         const hasKnowledge = rows[0]?.cnt > 0;
         await this.redis.set(cacheKey, hasKnowledge ? '1' : '0', HAS_KNOWLEDGE_TTL);
@@ -1153,6 +1273,14 @@ export class KnowledgeService {
     // ─── Chunking & Embedding ────────────────────────────────────────────────
 
     private async embedAndStoreChunks(schema: string, documentId: string, text: string, tenantId?: string) {
+        const prepared = await this.prepareEmbeddedChunks(schema, text, tenantId);
+        await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            await this.storePreparedChunks(query, documentId, prepared);
+        });
+        return prepared.length;
+    }
+
+    private async prepareEmbeddedChunks(schema: string, text: string, tenantId?: string) {
         const chunks = this.chunkText(text);
 
         if (tenantId) {
@@ -1181,16 +1309,10 @@ export class KnowledgeService {
         // Index BM25 with the document's OWN language so stemming matches the query-side
         // regconfig (instead of always Spanish). Default Spanish for unknown/auto.
         const docRegconfig = this.pgRegconfig(this.detectLanguage(text));
+        const prepared: Array<{ text: string; embedding: string; regconfig: string }> = [];
         for (let i = 0; i < chunks.length; i++) {
             const embedding = await this.generateEmbedding(chunks[i], tenantId);
-            const embeddingStr = `[${embedding.join(',')}]`;
-            await this.prisma.executeInTenantSchema(
-                schema,
-                `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata, search_tsv)
-                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb, to_tsvector($6::regconfig, $3))`,
-                [documentId, i, chunks[i], embeddingStr,
-                 JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) }), docRegconfig],
-            );
+            prepared.push({ text: chunks[i], embedding: `[${embedding.join(',')}]`, regconfig: docRegconfig });
         }
 
         if (tenantId) {
@@ -1205,7 +1327,22 @@ export class KnowledgeService {
             await this.redis.expire(costKey, ttl);
         }
 
-        return chunks.length;
+        return prepared;
+    }
+
+    private async storePreparedChunks(
+        query: (sql: string, params: any[]) => Promise<unknown>,
+        documentId: string,
+        prepared: Array<{ text: string; embedding: string; regconfig: string }>,
+    ) {
+        for (let i = 0; i < prepared.length; i++) {
+            const chunk = prepared[i];
+            await query(
+                `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata, search_tsv)
+                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb, to_tsvector($6::regconfig, $3))`,
+                [documentId, i, chunk.text, chunk.embedding,
+                 JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) }), chunk.regconfig]);
+        }
     }
 
     private chunkText(text: string): string[] {
@@ -1670,23 +1807,24 @@ export class KnowledgeService {
         return { success: true };
     }
 
-    async getGapReport(tenantId: string, days: number) {
+    async getGapReport(tenantId: string, days: number): Promise<KnowledgeGapReport> {
         const schema = await this.tenantSchema(tenantId);
         await this.ensureKbFeedbackTable(schema);
         const since = new Date(Date.now() - days * 86_400_000).toISOString();
+        const unavailableSections: KnowledgeGapReport['unavailableSections'] = [];
 
         const unansweredQueries = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, query, occurrences, last_seen_at
              FROM kb_unanswered_queries
              WHERE resolved = false
              ORDER BY occurrences DESC
-             LIMIT 20`).catch(() => []);
+             LIMIT 20`).catch(() => { unavailableSections.push('unansweredQueries'); return []; });
 
         const lowSatisfactionDocs = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, title, satisfaction_score, feedback_count
              FROM knowledge_documents
              WHERE satisfaction_score < 3 AND feedback_count > 0 AND status != 'deleted'
-             ORDER BY satisfaction_score ASC`).catch(() => []);
+             ORDER BY satisfaction_score ASC`).catch(() => { unavailableSections.push('lowSatisfactionDocs'); return []; });
 
         let staleDocuments: any[] = [];
         try {
@@ -1707,6 +1845,7 @@ export class KnowledgeService {
                 [since]) || [];
         } catch {
             staleDocuments = [];
+            unavailableSections.push('staleDocuments');
         }
 
         const falsePositiveCounts = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -1716,9 +1855,10 @@ export class KnowledgeService {
              WHERE fb.is_false_positive = true AND fb.created_at >= $1::timestamp
              GROUP BY fb.document_id, kd.title
              ORDER BY false_positive_count DESC`,
-            [since]).catch(() => []);
+            [since]).catch(() => { unavailableSections.push('falsePositiveCounts'); return []; });
 
         return {
+            unavailableSections,
             unansweredQueries: unansweredQueries || [],
             lowSatisfactionDocs: lowSatisfactionDocs || [],
             staleDocuments: staleDocuments || [],

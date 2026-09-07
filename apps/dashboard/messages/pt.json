@@ -3988,6 +3988,19 @@
     }
   },
   "knowledge": {
+    "source": {
+      "audience": "Quem pode usar estas informações",
+      "customer": "Agentes que respondem a clientes",
+      "internal": "Somente consulta interna da equipe",
+      "agentScope": "Selecione os agentes que podem usá-las. Sem seleção, aplica-se a todos os agentes desta conta.",
+      "title": "Origem e validade",
+      "hint": "Identifique quem respalda estas informações e quando elas se aplicam. Fontes reguladas exigem país e autoridade; as datas limitam quando o agente pode usá-las.",
+      "isRegulated": "Contém informações reguladas",
+      "jurisdiction": "País (código de duas letras)",
+      "authority": "Autoridade ou responsável pela fonte",
+      "validFrom": "Válida a partir de",
+      "validTo": "Válida até"
+    },
     "title": "Base de conhecimento",
     "tabs": {
       "library": "Biblioteca",
@@ -4181,6 +4194,7 @@
       "dismiss": "Descartar"
     },
     "gaps": {
+      "partial": "Algumas verificações não estão disponíveis. Valores pendentes não significam ausência de problemas; recarregue esta análise.",
       "tab": "Lacunas",
       "title": "Análise de lacunas de conteúdo",
       "subtitle": "Identifique perguntas sem resposta e documentos com baixo desempenho",
@@ -4202,6 +4216,7 @@
       "satisfactionScore": "Satisfação",
       "feedbackCount": "Feedbacks",
       "staleDocs": {
+        "retrievalCount": "Consultas recentes",
         "title": "Documentos desatualizados",
         "description": "Documentos que precisam de atualização",
         "document": "Documento",

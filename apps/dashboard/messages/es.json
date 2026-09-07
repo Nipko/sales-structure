@@ -3988,6 +3988,19 @@
     }
   },
   "knowledge": {
+    "source": {
+      "audience": "Quién puede utilizar esta información",
+      "customer": "Agentes que responden a clientes",
+      "internal": "Solo consulta interna del equipo",
+      "agentScope": "Selecciona los agentes que pueden usarla. Sin selección, aplica a todos los agentes de esta cuenta.",
+      "title": "Procedencia y vigencia",
+      "hint": "Identifica quién respalda esta información y cuándo aplica. Las fuentes reguladas requieren país y autoridad; las fechas limitan cuándo el agente puede usarlas.",
+      "isRegulated": "Contiene información regulada",
+      "jurisdiction": "País (código de dos letras)",
+      "authority": "Autoridad o responsable de la fuente",
+      "validFrom": "Válida desde",
+      "validTo": "Válida hasta"
+    },
     "title": "Base de conocimiento",
     "documents": "Documentos",
     "upload": "Subir documento",
@@ -4181,6 +4194,7 @@
       "dismiss": "Descartar"
     },
     "gaps": {
+      "partial": "Algunas comprobaciones no están disponibles. Los valores pendientes no significan que no haya problemas; vuelve a cargar el análisis.",
       "tab": "Brechas",
       "title": "Análisis de brechas de contenido",
       "subtitle": "Identifica preguntas sin respuesta y documentos con bajo rendimiento",
@@ -4202,6 +4216,7 @@
       "satisfactionScore": "Satisfacción",
       "feedbackCount": "Feedbacks",
       "staleDocs": {
+        "retrievalCount": "Consultas recientes",
         "title": "Documentos desactualizados",
         "description": "Documentos que necesitan actualización",
         "document": "Documento",

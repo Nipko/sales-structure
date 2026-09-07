@@ -3988,6 +3988,19 @@
     }
   },
   "knowledge": {
+    "source": {
+      "audience": "Who may use this information",
+      "customer": "Agents responding to customers",
+      "internal": "Internal team reference only",
+      "agentScope": "Select the agents that may use it. With none selected, it applies to all agents in this account.",
+      "title": "Source and validity",
+      "hint": "Identify who supports this information and when it applies. Regulated sources require a country and authority; dates limit when the agent can use them.",
+      "isRegulated": "Contains regulated information",
+      "jurisdiction": "Country (two-letter code)",
+      "authority": "Source authority or owner",
+      "validFrom": "Valid from",
+      "validTo": "Valid until"
+    },
     "title": "Knowledge base",
     "tabs": {
       "library": "Library",
@@ -4181,6 +4194,7 @@
       "dismiss": "Dismiss"
     },
     "gaps": {
+      "partial": "Some checks are unavailable. Pending values do not mean there are no issues; reload this analysis.",
       "tab": "Gaps",
       "title": "Content gap analysis",
       "subtitle": "Identify unanswered questions and underperforming documents",
@@ -4202,6 +4216,7 @@
       "satisfactionScore": "Satisfaction",
       "feedbackCount": "Feedbacks",
       "staleDocs": {
+        "retrievalCount": "Recent retrievals",
         "title": "Outdated documents",
         "description": "Documents that need updating",
         "document": "Document",

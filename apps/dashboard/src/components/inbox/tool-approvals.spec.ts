@@ -80,6 +80,14 @@ describe('Human action review has readable scope and honest execution state', ()
             expect(html).toContain(mockMessages.es.delivery.error); expect(html).not.toContain('private_provider_error');
             expect(approvalActions(item, 'tenant_admin').resume).toBe(false); expect(html).not.toContain('<button');
         });
+    it.each(['es','en','pt','fr'])('describes stored Web Chat content without asserting provider delivery in %s',locale=>{
+        mockLocale=locale;
+        const html=render(ticket({status:'approved',executionStatus:'succeeded',resumeState:'completed',deliveryState:'completed',
+            deliveryEffects:[{id:'stored-effect',kind:'media',state:'stored'}]}));
+        expect(html).toContain(mockMessages[locale].delivery.effects.stored);
+        expect(html).not.toContain(mockMessages[locale].delivery.effects.sent);
+        expect(html).not.toContain('stored-effect');
+    });
     it('does not invent delivery success for legacy tickets without delivery evidence', () => {
         const html = render(ticket({ status: 'approved', executionStatus: 'succeeded', resumeState: 'completed' }));
         expect(html).toContain(mockMessages.es.delivery.unknown);

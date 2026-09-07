@@ -4,7 +4,7 @@ export type ApprovalDeliveryState = 'not_required' | 'pending' | 'queued' | 'pro
 export interface ApprovalDeliveryEffect {
     id: string;
     kind: 'media' | 'handoff' | 'payment_link';
-    state: Exclude<ApprovalDeliveryState, 'not_required'> | 'sent';
+    state: Exclude<ApprovalDeliveryState, 'not_required'> | 'sent' | 'stored';
     errorCode?: string;
 }
 

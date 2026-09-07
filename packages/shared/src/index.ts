@@ -758,6 +758,8 @@ export interface RetrievedKnowledgeItem {
     validFrom?: string;
     validTo?: string;
     isRegulated?: boolean;
+    conflictReviewStatus?: 'available' | 'unavailable';
+    conflicts?: import('./knowledge-conflict-contract').KnowledgeConflictAnnotation[];
 }
 
 // ---- Versioned active domain-object context ----

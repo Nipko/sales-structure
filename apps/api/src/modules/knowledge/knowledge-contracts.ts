@@ -47,6 +47,8 @@ export interface KnowledgeHit {
     doc_source_url: string | null;
     doc_audience: 'customer' | 'internal';
     doc_agent_ids: string[];
+    conflictReviewStatus?: RetrievedKnowledgeItem['conflictReviewStatus'];
+    conflicts?: RetrievedKnowledgeItem['conflicts'];
 }
 
 /** One provenance projection for automatic context, fuzzy context and tools. */
@@ -58,6 +60,7 @@ export function knowledgeHitToContext(hit: KnowledgeHit): RetrievedKnowledgeItem
         score: hit.score, title: hit.title, content: hit.chunk_text,
         isRegulated: hit.doc_is_regulated, jurisdiction: hit.doc_jurisdiction || undefined,
         authority: hit.doc_authority || undefined, validFrom: date(hit.doc_valid_from), validTo: date(hit.doc_valid_to),
+        conflictReviewStatus: hit.conflictReviewStatus, conflicts: hit.conflicts,
     };
 }
 

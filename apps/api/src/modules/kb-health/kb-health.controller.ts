@@ -1,14 +1,34 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { KbHealthService } from './kb-health.service';
+import { KnowledgeConflictService } from './knowledge-conflict.service';
+import type { ConflictReviewInput } from './knowledge-conflict.contracts';
 
 @Controller('kb-health')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class KbHealthController {
-    constructor(private readonly kbHealth: KbHealthService) {}
+    constructor(private readonly kbHealth: KbHealthService, private readonly conflicts: KnowledgeConflictService) {}
+
+    @Get(':tenantId/conflicts')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async conflictsOverview(@Param('tenantId') tenantId: string) {
+        return {success:true,data:await this.conflicts.overview(tenantId)};
+    }
+
+    @Post(':tenantId/conflicts/scan')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async scanEvidence(@Param('tenantId') tenantId: string, @Body() input: {language?:string}) {
+        return {success:true,data:await this.conflicts.scan(tenantId,input?.language)};
+    }
+
+    @Post(':tenantId/conflicts/:caseId/review')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async reviewConflict(@Param('tenantId') tenantId: string, @Param('caseId') caseId: string, @Req() req: any, @Body() input: ConflictReviewInput) {
+        return {success:true,data:await this.conflicts.review(tenantId,caseId,req.user.sub || req.user.id,input)};
+    }
 
     @Get(':tenantId')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
@@ -20,8 +40,8 @@ export class KbHealthController {
     @Post(':tenantId/scan')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async scan(@Param('tenantId') tenantId: string) {
-        const found = await this.kbHealth.scanContradictions(tenantId);
-        return { success: true, data: { found } };
+        const report = await this.conflicts.scan(tenantId);
+        return { success: true, data: {...report,found:report.newIssues} };
     }
 
     @Post(':tenantId/:id/status')

@@ -4421,7 +4421,7 @@
       "queryFrequency": "Query frequency",
       "freshnessScore": "Freshness score",
       "noData": "No gap data available",
-      "allClear": "All clear",
+      "allClear": "No alerts in these metrics. Review potential conflicts between sources separately.",
       "noUnanswered": "No unanswered queries",
       "noLowSat": "All documents have good satisfaction",
       "noStale": "All documents are up to date",
@@ -13346,9 +13346,84 @@
         "completed": "Follow-up action recorded",
         "failed": "Could not be processed",
         "suppressed": "Stopped by safety checks",
-        "reconciliation_required": "Uncertain result: reconciliation required"
+        "reconciliation_required": "Uncertain result: reconciliation required",
+        "stored": "Saved in Web Chat history"
       },
       "handoffRecorded": "Handoff recorded"
     }
+  },
+  "knowledgeConflicts": {
+    "title": "Conflicts between sources",
+    "description": "Compare business information, FAQs, policies and documents. Review differences and their evidence before choosing a source to follow.",
+    "potentialConflict": "Potential conflict for review",
+    "quoteEvidenceOnly": "These quotes show what each source says. They do not prove which one is correct.",
+    "sourceLabel": "Source {label} · {kind}",
+    "authority": "Declared authority: {authority}",
+    "validity": "Valid from {from} to {to}",
+    "notSpecified": "Not specified",
+    "openSource": "Open editing area",
+    "sourceReference": "View version reference",
+    "revision": "Version: {revision}",
+    "lastReview": "Previous review: {decision} · {date}",
+    "staleHelp": "A source changed after the analysis. The previous review no longer applies. Analyze again before deciding.",
+    "reviewHelp": "A preference applies only to these versions and the stated scope. It does not edit the source or authorize prices, stock, availability or operational outcomes.",
+    "decision": "How to handle this difference",
+    "chooseDecision": "Choose a decision",
+    "agentScope": "Agents in scope",
+    "allAgents": "All agents within this scope",
+    "agentReference": "Agent · reference {reference}",
+    "allCountries": "All countries within this scope",
+    "scope": "Audience: {audience} · Country: {country}",
+    "reason": "What you checked and why you chose this",
+    "checked": "I reviewed both quotes, their validity and the scope of this decision.",
+    "saveReview": "Save review",
+    "refresh": "Refresh",
+    "scan": "Analyze sources",
+    "working": "Processing…",
+    "loading": "Loading evidence…",
+    "empty": "No conflicts are recorded in this query. This does not confirm that the sources are correct.",
+    "notScanned": "No analysis has been recorded yet. Source correctness is unverified.",
+    "unavailable": "Unverified",
+    "coverage": "{sampled} sampled sources · {candidates} selected pairs · {checked} reviewed · {unknown} without a verifiable result",
+    "sampleLimit": "Selected excerpts are compared. This is not an exhaustive analysis and does not verify source truth.",
+    "partialHelp": "Some evidence could not be read or analyzed. Refresh or analyze again; do not interpret this as an absence of conflicts.",
+    "kinds": {
+      "document": "Document",
+      "faq": "FAQ",
+      "policy": "Policy",
+      "business": "Business information"
+    },
+    "states": {
+      "open": "Pending",
+      "reviewed": "Review recorded",
+      "stale": "Source changed"
+    },
+    "scanStates": {
+      "completed_sample": "Sample analysis finished",
+      "partial": "Incomplete analysis",
+      "unavailable": "Analysis unavailable"
+    },
+    "decisions": {
+      "prefer_a": "Prefer source A for this fact",
+      "prefer_b": "Prefer source B for this fact",
+      "different_scope": "The sources describe different situations",
+      "defer": "Keep pending verification"
+    },
+    "audiences": {
+      "customer": "Customers",
+      "internal": "Internal team"
+    },
+    "errors": {
+      "requestFailed": "We could not verify the current state. Select Refresh to try again.",
+      "mutationUncertain": "We could not confirm the request response. The current state was fetched; review it before retrying.",
+      "conflict_revision_changed": "Someone else reviewed this case. Refresh and review their decision.",
+      "conflict_source_changed": "A source changed. Analyze again before deciding.",
+      "conflict_scope_not_applicable": "The selected scope does not apply to both sources. Refresh the information.",
+      "structured_source_authority_required": "Edit the policy or business information in its own area. A document cannot replace that authority.",
+      "invalid_conflict_review": "Check the decision, its scope and the reason before saving."
+    },
+    "reviewedAgent": "Agents covered by this review: {agent}",
+    "reviewReference": "View review author",
+    "reviewer": "Reviewer reference: {reference}"
   }
 }

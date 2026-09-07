@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
 import { knowledgeSourceAvailable } from './knowledge-contracts';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const documentId = '22222222-2222-4222-8222-222222222222';
@@ -103,6 +104,26 @@ describe('Knowledge source publication', () => {
 });
 
 describe('Knowledge provenance and availability', () => {
+    it('attaches conflict evidence only to the retrieved quote and preserves unknown review availability',async()=>{
+        const {service,prisma}=build();
+        const row={document_id:documentId,title:'Conditions',distance:0,doc_audience:'customer',doc_agent_ids:[]};
+        prisma.executeInTenantSchema.mockImplementation(async(_schema,sql)=>sql.includes('FROM knowledge_embeddings')?[
+            {...row,chunk_id:'relevant',chunk_text:'The exact disputed source quote.'},
+            {...row,chunk_id:'unrelated',chunk_text:'A different undisputed topic.'},
+        ] as any:[]);
+        jest.spyOn(service as any,'ensureKbSearchVector').mockResolvedValue(undefined);
+        jest.spyOn(service as any,'embedQueryCached').mockResolvedValue([0.1,0.2]);
+        jest.spyOn(service as any,'trackRetrieval').mockResolvedValue(undefined);
+        const annotations=jest.fn().mockResolvedValue({available:true,annotations:{[documentId]:[{quote:'exact disputed source quote',state:'potential_conflict'}]}});
+        (service as any).conflicts={annotations};
+        const options={agentId:tenantId,jurisdiction:'CO',executionContext:AGENT_TEST_EXECUTION_CONTEXT};
+        const result=await service.searchRelevant(tenantId,'source quote',2,options);
+        expect(annotations).toHaveBeenCalledWith('tenant_integrity',[documentId],{audience:'customer',agentId:tenantId,jurisdiction:'CO'},AGENT_TEST_EXECUTION_CONTEXT);
+        expect(result.find(hit=>hit.id==='relevant')).toMatchObject({conflictReviewStatus:'available',conflicts:[{state:'potential_conflict'}]});
+        expect(result.find(hit=>hit.id==='unrelated')).toMatchObject({conflictReviewStatus:'available',conflicts:[]});
+        annotations.mockResolvedValue({available:false,annotations:{}});
+        expect((await service.searchRelevant(tenantId,'source quote',2,options))[0]).toMatchObject({conflictReviewStatus:'unavailable',conflicts:[]});
+    });
     it('rejects a metadata update if a concurrent editor changed the audience after its source read', async () => {
         const { service, prisma } = build();
         const oldRevision='2026-09-01 10:00:00.123456+00';

@@ -4,11 +4,12 @@ import { KbHealthController } from './kb-health.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { AIModule } from '../ai/ai.module';
+import { KnowledgeConflictService } from './knowledge-conflict.service';
 
 @Module({
     imports: [PrismaModule, RedisModule, AIModule],
-    providers: [KbHealthService],
+    providers: [KbHealthService, KnowledgeConflictService],
     controllers: [KbHealthController],
-    exports: [KbHealthService],
+    exports: [KbHealthService, KnowledgeConflictService],
 })
 export class KbHealthModule {}

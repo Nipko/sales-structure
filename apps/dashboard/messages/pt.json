@@ -4421,7 +4421,7 @@
       "queryFrequency": "Frequência de consultas",
       "freshnessScore": "Pontuação de frescor",
       "noData": "Nenhum dado de lacunas disponível",
-      "allClear": "Tudo em ordem",
+      "allClear": "Sem alertas nestas métricas. Revise separadamente os possíveis conflitos entre fontes.",
       "noUnanswered": "Nenhuma consulta sem resposta",
       "noLowSat": "Todos os documentos têm boa satisfação",
       "noStale": "Todos os documentos estão atualizados",
@@ -13346,9 +13346,84 @@
         "completed": "Ação de acompanhamento registrada",
         "failed": "Não foi possível processar",
         "suppressed": "Interrompido pelas verificações de segurança",
-        "reconciliation_required": "Resultado incerto: exige conciliação"
+        "reconciliation_required": "Resultado incerto: exige conciliação",
+        "stored": "Salvo no histórico do Web Chat"
       },
       "handoffRecorded": "Transferência registrada"
     }
+  },
+  "knowledgeConflicts": {
+    "title": "Conflitos entre fontes",
+    "description": "Compare informações do negócio, perguntas frequentes, políticas e documentos. Revise as diferenças e suas evidências antes de escolher uma fonte.",
+    "potentialConflict": "Possível conflito para revisão",
+    "quoteEvidenceOnly": "Estas citações mostram o que cada fonte diz. Não provam qual está correta.",
+    "sourceLabel": "Fonte {label} · {kind}",
+    "authority": "Autoridade declarada: {authority}",
+    "validity": "Vigência: de {from} a {to}",
+    "notSpecified": "Não informada",
+    "openSource": "Abrir área de edição",
+    "sourceReference": "Ver referência da versão",
+    "revision": "Versão: {revision}",
+    "lastReview": "Revisão anterior: {decision} · {date}",
+    "staleHelp": "Uma fonte mudou após a análise. A revisão anterior não se aplica mais. Analise novamente antes de decidir.",
+    "reviewHelp": "A preferência vale apenas para estas versões e o escopo indicado. Não edita a fonte nem autoriza preços, estoque, disponibilidade ou resultados operacionais.",
+    "decision": "Como tratar esta diferença",
+    "chooseDecision": "Escolha uma decisão",
+    "agentScope": "Agentes incluídos",
+    "allAgents": "Todos os agentes deste escopo",
+    "agentReference": "Agente · referência {reference}",
+    "allCountries": "Todos os países deste escopo",
+    "scope": "Público: {audience} · País: {country}",
+    "reason": "O que você verificou e por que decidiu assim",
+    "checked": "Revisei as duas citações, sua vigência e o escopo desta decisão.",
+    "saveReview": "Salvar revisão",
+    "refresh": "Atualizar",
+    "scan": "Analisar fontes",
+    "working": "Processando…",
+    "loading": "Consultando evidências…",
+    "empty": "Não há conflitos registrados nesta consulta. Isso não confirma que as fontes estejam corretas.",
+    "notScanned": "Ainda não há análise registrada. As fontes não foram verificadas.",
+    "unavailable": "Não verificado",
+    "coverage": "{sampled} fontes na amostra · {candidates} pares selecionados · {checked} revisados · {unknown} sem resultado verificável",
+    "sampleLimit": "São comparados trechos selecionados. A análise não é exaustiva nem verifica a veracidade das fontes.",
+    "partialHelp": "Parte da evidência não pôde ser consultada ou analisada. Atualize ou analise novamente; não interprete isso como ausência de conflitos.",
+    "kinds": {
+      "document": "Documento",
+      "faq": "Pergunta frequente",
+      "policy": "Política",
+      "business": "Informações do negócio"
+    },
+    "states": {
+      "open": "Pendente",
+      "reviewed": "Revisão registrada",
+      "stale": "Fonte alterada"
+    },
+    "scanStates": {
+      "completed_sample": "Análise da amostra concluída",
+      "partial": "Análise incompleta",
+      "unavailable": "Análise indisponível"
+    },
+    "decisions": {
+      "prefer_a": "Preferir a fonte A para este dado",
+      "prefer_b": "Preferir a fonte B para este dado",
+      "different_scope": "As fontes tratam de situações diferentes",
+      "defer": "Manter pendente de verificação"
+    },
+    "audiences": {
+      "customer": "Clientes",
+      "internal": "Equipe interna"
+    },
+    "errors": {
+      "requestFailed": "Não foi possível verificar o estado atual. Selecione Atualizar para tentar novamente.",
+      "mutationUncertain": "Não foi possível confirmar a resposta da solicitação. O estado atual foi consultado; revise antes de tentar novamente.",
+      "conflict_revision_changed": "Outra pessoa revisou este caso. Atualize e revise a decisão.",
+      "conflict_source_changed": "Uma fonte mudou. Analise novamente antes de decidir.",
+      "conflict_scope_not_applicable": "O escopo escolhido não se aplica às duas fontes. Atualize as informações.",
+      "structured_source_authority_required": "Edite a política ou as informações do negócio em sua própria área. Um documento não pode substituir essa autoridade.",
+      "invalid_conflict_review": "Confira a decisão, o escopo e o motivo antes de salvar."
+    },
+    "reviewedAgent": "Agentes desta revisão: {agent}",
+    "reviewReference": "Ver responsável pela revisão",
+    "reviewer": "Referência do responsável: {reference}"
   }
 }

@@ -2630,6 +2630,8 @@ export class AIToolExecutorService {
                     validTo: r.doc_valid_to,
                     version: r.doc_version,
                     sourceUrl: r.doc_source_url,
+                    conflictReviewStatus: r.conflictReviewStatus,
+                    conflicts: r.conflicts,
                 })),
             });
         } catch (e: any) {

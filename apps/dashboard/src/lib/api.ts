@@ -9,6 +9,7 @@ import type { VerticalDefinitions } from "./vertical-catalog";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AppliedAgentConfiguration, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning";
+import type { KnowledgeConflictOverview, KnowledgeConflictReview } from "@/lib/knowledge-conflicts";
 import type { ToolApprovalItem } from "@/lib/tool-approvals";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
@@ -1625,6 +1626,10 @@ export const api = {
     updateSmsNotificationsConfig: (tenantId: string, body: any) => apiPut(`/sms-notifications/${tenantId}/config`, body),
 
     // KB health / contradictions (T2.14)
+    getKnowledgeConflicts: (tenantId: string) => apiGet<KnowledgeConflictOverview>(`/kb-health/${tenantId}/conflicts`),
+    scanKnowledgeConflicts: (tenantId: string, language: string) => apiPost(`/kb-health/${tenantId}/conflicts/scan`, {language}),
+    reviewKnowledgeConflict: (tenantId: string, caseId: string, input: KnowledgeConflictReview) =>
+        apiPost<KnowledgeConflictOverview>(`/kb-health/${tenantId}/conflicts/${caseId}/review`, input),
     getKbHealth: (tenantId: string) => apiGet(`/kb-health/${tenantId}`),
     scanKbHealth: (tenantId: string) => apiPost(`/kb-health/${tenantId}/scan`, {}),
     updateKbHealthIssue: (tenantId: string, id: string, status: string) =>

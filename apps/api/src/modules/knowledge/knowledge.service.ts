@@ -9,6 +9,7 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { kbmsg } from './knowledge-i18n';
 import type { KnowledgeHit, KnowledgeSearchOptions, KnowledgeSourceMetadata } from './knowledge-contracts';
 import { knowledgeSourceAvailable } from './knowledge-contracts';
+import { KnowledgeConflictService } from '../kb-health/knowledge-conflict.service';
 import type { KnowledgeGapReport, RetrievedKnowledgeItem } from '@parallext/shared';
 import { attributeKnowledgeResponse, knowledgeDocumentReadiness } from './knowledge-attribution';
 import { KNOWLEDGE_ATTRIBUTION_SCHEMA } from './knowledge-attribution-schema';
@@ -54,6 +55,7 @@ export class KnowledgeService {
         private readonly llmKeys: LlmKeyService,
         private readonly llmRouter: LLMRouterService,
         @Optional() private readonly events?: EventEmitter2,
+        @Optional() private readonly conflicts?: KnowledgeConflictService,
     ) {}
 
     /**
@@ -817,8 +819,13 @@ export class KnowledgeService {
             : ranked;
 
         const retrievalBatchId = crypto.randomUUID();
+        const conflictEvidence = this.conflicts ? await this.conflicts.annotations(schema,
+            [...new Set(reranked.slice(0,topK).map(row => row.document_id))],
+            {audience,agentId,jurisdiction}, options?.executionContext) : null;
         const enriched = reranked.slice(0, topK).map(({ _rrf, ...rest }) => ({
             ...rest, retrievalId: crypto.randomUUID(), retrievalBatchId,
+            ...(conflictEvidence ? {conflictReviewStatus: conflictEvidence.available ? 'available' as const : 'unavailable' as const,
+                conflicts: (conflictEvidence.annotations[rest.document_id] || []).filter(note => rest.chunk_text.includes(note.quote))} : {}),
         }));
 
         // Await the best-effort insert so final-response attribution cannot race

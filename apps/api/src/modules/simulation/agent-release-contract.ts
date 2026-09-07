@@ -3,6 +3,8 @@ import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { assessAgentRelease, type AgentReleaseRunEvidence } from './agent-release-policy';
 import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { releaseReviewSubject } from './agent-release-review-subject';
+import { releaseOperationReview } from './agent-release-operation-review';
 
 export const RELEASE_UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 export const AGENT_RELEASE_QUEUE='agent-release-evaluation';
@@ -50,6 +52,8 @@ export function releaseReviewEvidence(candidate:any,evaluations:any[]) {
         &&new Set(evaluations.map(row=>row.channel_type)).size===evaluations.length
         &&evaluations.every(row=>candidate.channels.includes(row.channel_type)&&row.evidence?.channelType===row.channel_type);
     const body={candidateId:candidate.id,configurationRevisionId:candidate.configuration_revision_id,
+        subject: releaseReviewSubject(snapshot),
+        operationChecks: releaseOperationReview(snapshot, runs),
         dependencyRevision:snapshot?.manifest?.revision||null,configurationHash:snapshot?.configurationRevisionHash||null,
         runHashes:runs.map(row=>row.evidenceHash).sort(),readiness,sampleHashes:samples.map(row=>row.hash).sort()};
     return {...body,evidenceHash:revisionHash(body),samples,

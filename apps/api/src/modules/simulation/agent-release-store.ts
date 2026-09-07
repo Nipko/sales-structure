@@ -36,7 +36,8 @@ export class AgentReleaseStore {
         const replay=await this.findRequest(query,input.agentId,input.actor,input.requestKey,input.snapshot.configurationRevisionId!);
         if(replay)return replay;
         const draft=await new AgentConfigurationRevisionStore(this.prisma).readCurrentRevisionWithQuery(query,input.agentId,input.snapshot.configurationRevisionId!);
-        if(draft.body_hash!==input.snapshot.configurationRevisionHash||revisionHash(draft.body.configJson)!==input.snapshot.configHash)
+        if(draft.body_hash!==input.snapshot.configurationRevisionHash||revisionHash(draft.body.configJson)!==input.snapshot.configHash
+            ||draft.base_operational_hash!==input.snapshot.configurationBaseOperationalHash)
             conflict('agent_release_draft_mismatch');
         await assertReviewedRegressionScenarios(query,input.scenarios,input.agentId);
         const ids=regressionCaseIds(input.scenarios);

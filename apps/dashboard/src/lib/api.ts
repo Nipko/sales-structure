@@ -12,6 +12,7 @@ import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning
 import type { KnowledgeConflictOverview, KnowledgeConflictReview } from "@/lib/knowledge-conflicts";
 import type { ToolApprovalItem } from "@/lib/tool-approvals";
 import type { DiscardAgentDraftRequest } from '@parallext/shared';
+import type { AgentReleaseDetail, AgentReleaseListItem, AgentReleaseRequest, AgentReleaseReviewRequest } from './agent-release-review';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -584,6 +585,10 @@ async function doRefresh(): Promise<string | null> {
 // ============================================
 
 export const api = {
+    getAgentReleases: (tenantId: string, agentId: string) => apiGet<AgentReleaseListItem[]>(`/agent-releases/${tenantId}/agents/${agentId}`),
+    getAgentRelease: (tenantId: string, agentId: string, candidateId: string) => apiGet<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}/${candidateId}`),
+    prepareAgentRelease: (tenantId: string, agentId: string, body: AgentReleaseRequest) => apiPost<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}`, body),
+    reviewAgentRelease: (tenantId: string, agentId: string, candidateId: string, body: AgentReleaseReviewRequest) => apiPost<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}/${candidateId}/review`, body),
     // --- Auth ---
     login: (email: string, password: string) =>
         apiPost("/auth/login", { email, password }),

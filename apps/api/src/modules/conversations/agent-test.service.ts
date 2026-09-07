@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { CONVERSATIONAL_CHANNELS, type NormalizedMessage, type TestAgentRequest, type TestAgentResponse } from '@parallext/shared';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { PersonaService } from '../persona/persona.service';
+import { operationalConfigurationBody, operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { TenantsService } from '../tenants/tenants.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LearningService } from '../learning/learning.service';
@@ -55,13 +56,17 @@ export class AgentTestService {
         if (!agent) throw new NotFoundException('Agent not found');
         const revision=options
             ?await this.personaService.readConfigurationRevision(tenantId,agentId,options.configurationRevisionId,AGENT_TEST_EXECUTION_CONTEXT):null;
+        const operationalBody=revision?structuredClone(operationalConfigurationBody(agent)):undefined;
+        if(revision&&operationalConfigurationHash({...agent,id:agentId})!==revision.base_operational_hash)
+            throw new Error('agent_operational_configuration_changed');
         if(revision){
             const body=revision.body;
             agent={...agent,name:body.name,config_json:body.configJson,channels:body.channels,channel_bindings:body.channelBindings,
                 schedule_mode:body.scheduleMode,is_active:body.isActive,is_default:body.isDefault};
         }
         const snapshot = evaluationSnapshot(tenantId, agentId, agent);
-        if(revision){snapshot.configurationRevisionId=revision.id;snapshot.configurationRevisionHash=revision.body_hash;}
+        if(revision){snapshot.configurationRevisionId=revision.id;snapshot.configurationRevisionHash=revision.body_hash;
+            snapshot.configurationBaseOperationalHash=revision.base_operational_hash;snapshot.configurationBaseOperationalBody=operationalBody;}
         snapshot.releaseScope = await this.revisions.captureAgentReleaseScope(tenantId, agent);
         const release = await this.learning?.getPublishedReleaseSnapshot(tenantId, agentId, resolveAgentTestContactId());
         snapshot.learningReleaseId = release?.releaseId || null;

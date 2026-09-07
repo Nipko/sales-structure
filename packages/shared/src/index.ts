@@ -17,6 +17,7 @@ export * from './agent-quality-contract';
 export * from './agent-assessment-contract';
 export * from './agent-configuration-contract';
 export * from './agent-draft-contract';
+export * from './agent-release-subject';
 
 // ---- Guided tours: which tour helps with what, validated on both sides ----
 export * from './guided-tour-contract';

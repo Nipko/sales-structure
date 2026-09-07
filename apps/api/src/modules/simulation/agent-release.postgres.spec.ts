@@ -24,10 +24,12 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         .map(row=>({...row,key:row.storageKey,managedSeedKey:row.key,seedOrigin:row.origin,expectedActions:row.expectedActions||[]}));
     const request=async(channels=['web_widget','telegram'])=>{
         const operational=(await query('SELECT * FROM agent_personas WHERE id=$1::uuid',[agentId]))[0];
+        const baseBody=structuredClone(operationalConfigurationBody(operational));
         const body=operationalConfigurationBody(operational);body.configJson.behavior.rules=['Candidate rule'];body.channels=channels;body.channelBindings=channels.map(channel=>`${channel}:owned`);
         const draft=await tx(q=>new AgentConfigurationRevisionStore(prisma).saveWithQuery(q,{tenantId,agentId,actor,requestKey:randomUUID(),expectedOperationalVersion:7,expectedDraftRevision:null,body}));
         const snapshot=evaluationSnapshot(tenantId,agentId,{version:7,config_json:body.configJson});
         snapshot.configurationRevisionId=draft.id;snapshot.configurationRevisionHash=draft.body_hash;
+        snapshot.configurationBaseOperationalHash=draft.base_operational_hash;snapshot.configurationBaseOperationalBody=baseBody;
         snapshot.releaseScope={profileId:'education/capacitacion',intentKeys:['ask_question'],missionConfigured:true,channels,languages:[...EVAL_LANGUAGES]};
         snapshot.mcpTools=[];snapshot.mcpToolsHash=revisionHash([]);snapshot.procedures=[];snapshot.proceduresHash=revisionHash([]);
         snapshot.runtimeInputs={providerHealth:{},planFeatures:{},llmSpendUsdCents:0,mcpDiscoveredCount:0,mcpApprovedCount:0};snapshot.runtimeInputsHash=revisionHash(snapshot.runtimeInputs);

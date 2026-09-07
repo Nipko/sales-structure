@@ -14,6 +14,8 @@ export * from './vertical-product-policy';
 export * from './vertical-builder-contract';
 export * from './automation-trigger-contract';
 export * from './agent-quality-contract';
+export * from './agent-assessment-contract';
+export * from './agent-configuration-contract';
 
 // ---- Guided tours: which tour helps with what, validated on both sides ----
 export * from './guided-tour-contract';
@@ -229,6 +231,7 @@ export interface ConversationAssignedEvent {
 export type EditorMode = 'guided' | 'prompt';
 
 export interface TenantConfig {
+    mission?: import('./agent-assessment-contract').AgentMissionV1;
     id: string;
     name: string;
     slug: string;
@@ -951,8 +954,9 @@ export interface TurnCapability {
 }
 
 export interface TurnContext {
+    learningExamples?: Array<{ id: string; releaseId: string; releaseHash: string; situation: string; responsePattern: string; rationale: string; factsRequired: string[]; authority: 'style_only' }>;
     channelType?: ChannelType;
-    executionMode?: 'live' | 'draft';
+    executionMode?: 'live' | 'draft' | 'agent_test' | 'evaluation';
     language: string;
     timezone: string;
     /** Operating country, currency, locale and form of address for this turn. */
@@ -1106,6 +1110,7 @@ export interface VerticalContext {
 
 // ---- Test Agent Types ----
 export interface TestAgentRequest {
+    runtimeSessionId?: string;
     message: string;
     /** Resolve the exact live capability contract for this certified channel. */
     channelType?: ConversationalChannelType;
@@ -1146,6 +1151,8 @@ export interface TestAgentToolParity {
 }
 
 export interface TestAgentDebugInfo {
+    runtimeSessionId?: string;
+    runtimeError?: string;
     agentRevision?: { version: number | null; configHash: string; capturedAt: string };
     systemPrompt: string;
     toolCalls: TestAgentToolCall[];

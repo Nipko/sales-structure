@@ -275,6 +275,8 @@ export interface PersonaConfig {
 }
 
 export interface BehaviorConfig {
+    /** Suggest replies for human review; tools cannot commit effects in this mode. */
+    draftMode?: boolean;
     rules: string[];
     requiredFields: Record<string, RequiredField[]>;
     forbiddenTopics: string[];
@@ -288,6 +290,7 @@ export interface RequiredField {
 }
 
 export interface LLMConfig {
+    kbReranker?: boolean;
     temperature: number;
     maxTokens: number;
     routing: {
@@ -948,6 +951,8 @@ export interface TurnCapability {
 }
 
 export interface TurnContext {
+    channelType?: ChannelType;
+    executionMode?: 'live' | 'draft';
     language: string;
     timezone: string;
     /** Operating country, currency, locale and form of address for this turn. */
@@ -1290,6 +1295,14 @@ export type ProcedureStepType = 'message' | 'ask' | 'tool' | 'condition' | 'hand
 
 export type ProcedureConditionOperator = 'eq' | 'neq' | 'contains' | 'exists' | 'not_exists';
 
+export type ProcedureFieldType = 'string' | 'number' | 'integer' | 'boolean' | 'date' | 'uuid' | 'email' | 'phone' | 'name';
+
+export interface ProcedureFieldSpec {
+    type?: ProcedureFieldType;
+    required?: boolean;
+    choices?: string[];
+}
+
 export interface ProcedureStep {
     /** Stable step id (referenced by next/then/else). */
     id: string;
@@ -1300,10 +1313,17 @@ export interface ProcedureStep {
         /** ask: the field to collect + the question to ask. */
         field?: string;
         question?: string;
+        /** Ask validation. Existing definitions infer common contact fields. */
+        fieldType?: ProcedureFieldType;
+        required?: boolean;
+        choices?: string[];
+        /** Verified purpose of collecting this field, supplied by the author. */
+        explanation?: string;
         /** tool: an AI tool name (same registry as the agent tools) + args + where to store the result. */
         tool?: string;
         args?: Record<string, any>;
         saveAs?: string;
+        slots?: Record<string, ProcedureFieldSpec>;
         /** condition: evaluate a collected field and branch. */
         conditionField?: string;
         operator?: ProcedureConditionOperator;
@@ -1345,5 +1365,8 @@ export interface ProcedureRunState {
     collected: Record<string, any>;
     /** When set, the previous turn asked for this field and we await the answer. */
     awaitingField?: string | null;
+    /** An explicit pause requires a resume turn before collecting or executing. */
+    pausedAt?: string | null;
     startedAt: string;
 }
+export type { KnowledgeGapReport } from './knowledge';

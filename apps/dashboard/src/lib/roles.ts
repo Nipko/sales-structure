@@ -173,6 +173,7 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/settings/media", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
 
     // ── Operational (everyone in the tenant; super_admin via impersonation) ─
+    { prefix: "/admin/operational-notices", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/inbox", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/contacts", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/pipeline", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },

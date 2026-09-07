@@ -11,6 +11,7 @@ import { PAYMENT_REFERENCE_TARGETS } from '../tenant-payments/tenant-payment-ref
 import { WidgetService } from '../widget/widget.service';
 import { WidgetMessageStore } from '../widget/widget-message-store.service';
 import { eraseOperationalContactNotices } from './operational-notice-erasure';
+import { noticeReceiptEvidence } from './operational-notice-review.contracts';
 
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection?describe:describe.skip)('operational notices and canonical waitlists on disposable PostgreSQL',()=>{
@@ -195,10 +196,12 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await target.deliver({tenantId,noticeId:row.id},transport)).toBe('notice:stored');
         const rows=await q("SELECT * FROM messages WHERE direction='outbound'");expect(rows).toHaveLength(1);expect(rows[0].status).toBe('pending');
         expect(send).not.toHaveBeenCalled();expect(relay.publish).toHaveBeenCalledTimes(1);
+        expect(await noticeReceiptEvidence(q,tenantId,(await noticeRows())[0])).toMatchObject({status:'web_stored',source:'widget_message'});
         const history=await store.withSessionMessages(credentials,{history:true},async(_s,items)=>items);expect(history).toHaveLength(1);
         expect(await store.acknowledge(credentials,rows[0].id)).toBe(true);
         expect((await q('SELECT status FROM messages WHERE id=$1::uuid',[rows[0].id]))[0].status).toBe('delivered');
         expect((await noticeRows())[0].state).toBe('stored');
+        expect(await noticeReceiptEvidence(q,tenantId,(await noticeRows())[0])).toMatchObject({status:'web_received',source:'widget_message',messageId:rows[0].id});
     });
     it('does not resend an ambiguous provider attempt and retries only a pre-send failure',async()=>{
         const first=await enroll(0);await enroll(1,true);await education.cancel(schema,first.id);const [row]=await noticeRows();

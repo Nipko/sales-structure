@@ -6,6 +6,8 @@ import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { api } from "@/lib/api";
 import { ActiveObjectsCard } from "@/components/inbox/ActiveObjectsCard";
 import { ToolApprovalsPanel } from "@/components/inbox/ToolApprovalsPanel";
+import Link from 'next/link';
+import { canReviewNotices } from '@/lib/operational-notices';
 import { approvalEventMatches } from "@/lib/tool-approvals";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -258,6 +260,7 @@ export default function InboxPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("inbox");
     const tEmpty = useTranslations("verticalEmptyStates");
+    const tNotices = useTranslations('operationalNotices');
     const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -1295,6 +1298,7 @@ export default function InboxPage() {
             )}>
                 {/* Header */}
                 <div className="px-4 pt-4 pb-3 border-b border-border">
+                    {activeTenantId&&canReviewNotices(user?.role)&&<Link href="/admin/operational-notices" className="block text-sm underline mb-3">{tNotices('openWorkspace')}</Link>}
                     <div className="flex justify-between items-center mb-3">
                         <div className="flex items-center gap-2.5">
                             <h2 className="text-lg font-semibold m-0">{t("heading")}</h2>
@@ -1887,6 +1891,7 @@ export default function InboxPage() {
                         {/* Messages Area */}
                         {activeTenantId && <ToolApprovalsPanel key={`${activeTenantId}:${selectedConv.id}`}
                             tenantId={activeTenantId} conversationId={selectedConv.id} role={user?.role} refreshVersion={toolApprovalRefresh} />}
+                        {activeTenantId&&canReviewNotices(user?.role)&&<Link className="block px-4 py-2 text-sm underline" href={`/admin/operational-notices?conversationId=${encodeURIComponent(selectedConv.id)}`}>{tNotices('openConversation')}</Link>}
                         <div
                             ref={messagesContainerRef}
                             className="inbox-scrollbar flex-1 overflow-auto px-4 md:px-8 py-5 flex flex-col gap-1"

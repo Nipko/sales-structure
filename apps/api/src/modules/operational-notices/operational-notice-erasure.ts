@@ -12,5 +12,10 @@ export async function eraseOperationalContactNotices(query:NoticeQuery,schemaNam
             state=CASE WHEN state IN ('sent','stored') THEN state ELSE 'suppressed' END,
             lease_token=NULL,lease_expires_at=NULL,error_code='notice_contact_erased',updated_at=NOW()
         WHERE contact_id=ANY($1::uuid[]) RETURNING id`,[contactIds]);
+    const [reviews]=await query<any[]>('SELECT to_regclass($1)::text AS name',[`${schemaName}.operational_notice_reviews`]);
+    if(rows.length&&reviews?.name)await query(`UPDATE "${schemaName}".operational_notice_reviews
+        SET reason='notice_contact_erased',human_reference=NULL,evidence='{}'::jsonb,
+            request_hash=repeat('0',64),expected_revision=repeat('0',32)
+        WHERE notice_id=ANY($1::uuid[])`,[rows.map(row=>row.id)]);
     return rows.length;
 }

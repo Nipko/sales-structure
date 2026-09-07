@@ -11,6 +11,7 @@ import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning";
 import type { KnowledgeConflictOverview, KnowledgeConflictReview } from "@/lib/knowledge-conflicts";
 import type { ToolApprovalItem } from "@/lib/tool-approvals";
+import type { OperationalNotice, OperationalNoticeList, NoticeReviewRequest } from './operational-notices';
 import type { DiscardAgentDraftRequest } from '@parallext/shared';
 import type { AgentReleaseDetail, AgentReleaseListItem, AgentReleaseRequest, AgentReleaseReviewRequest } from './agent-release-review';
 
@@ -585,6 +586,12 @@ async function doRefresh(): Promise<string | null> {
 // ============================================
 
 export const api = {
+    getOperationalNotices: (tenantId:string,filters:{state?:string;conversationId?:string;cursor?:string}={}) => {
+        const query=new URLSearchParams(Object.entries(filters).filter((entry):entry is [string,string]=>!!entry[1]));
+        return apiGet<OperationalNoticeList>(`/operational-notices/${tenantId}${query.size?`?${query}`:''}`);
+    },
+    getOperationalNotice: (tenantId:string,noticeId:string) => apiGet<OperationalNotice>(`/operational-notices/${tenantId}/${noticeId}`),
+    reviewOperationalNotice: (tenantId:string,noticeId:string,body:NoticeReviewRequest) => apiPost<{reviewId:string;idempotentReplay:boolean;notice:OperationalNotice}>(`/operational-notices/${tenantId}/${noticeId}/reviews`,body),
     getAgentReleases: (tenantId: string, agentId: string) => apiGet<AgentReleaseListItem[]>(`/agent-releases/${tenantId}/agents/${agentId}`),
     getAgentRelease: (tenantId: string, agentId: string, candidateId: string) => apiGet<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}/${candidateId}`),
     prepareAgentRelease: (tenantId: string, agentId: string, body: AgentReleaseRequest) => apiPost<AgentReleaseDetail>(`/agent-releases/${tenantId}/agents/${agentId}`, body),

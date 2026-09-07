@@ -4997,3 +4997,36 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_publication_heads" (
     FOREIGN KEY(agent_id,event_id) REFERENCES "{{SCHEMA_NAME}}"."agent_publication_events"(agent_id,id)
 );
 -- END AGENT PUBLICATION HISTORY
+
+-- BEGIN OPERATIONAL NOTICE REVIEW
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_key VARCHAR(200) NOT NULL UNIQUE,
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review')),
+    entity_id UUID NOT NULL,
+    contact_id UUID,
+    conversation_id UUID,
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','queued','processing','sent','stored','failed','suppressed','reconciliation_required')),
+    route VARCHAR(30),
+    provider_reference VARCHAR(512),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code VARCHAR(100),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."operational_notice_outbox" ADD COLUMN IF NOT EXISTS review_revision INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_reviews" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), notice_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."operational_notice_outbox"(id) ON DELETE CASCADE,
+    actor_id UUID NOT NULL, actor_role VARCHAR(40) NOT NULL,
+    action VARCHAR(20) NOT NULL CHECK(action IN ('observe','verify','suppress')),
+    idempotency_key UUID NOT NULL, request_hash CHAR(64) NOT NULL, expected_revision CHAR(32) NOT NULL,
+    reason TEXT NOT NULL, human_reference TEXT, prior_state VARCHAR(40) NOT NULL, resulting_state VARCHAR(40) NOT NULL,
+    evidence JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(notice_id,idempotency_key)
+);
+-- END OPERATIONAL NOTICE REVIEW

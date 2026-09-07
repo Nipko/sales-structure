@@ -55,6 +55,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   // Shared / tenant home and daily work
   { id: "tenantHome", pattern: "/admin", titleKey: "nav.items.home", scope: "shared" },
   { id: "inbox", pattern: "/admin/inbox", titleKey: "nav.items.conversations", scope: "tenant" },
+  { id: "operationalNotices", pattern: "/admin/operational-notices", titleKey: "operationalNotices.title", scope: "tenant", parentId: "inbox" },
   { id: "conversations", pattern: "/admin/conversations", titleKey: "nav.items.conversations", scope: "tenant", discoverable: false },
   { id: "contacts", pattern: "/admin/contacts", titleKey: "nav.items.crm", scope: "tenant" },
   { id: "contactDetail", pattern: "/admin/contacts/:leadId", titleKey: "navigation.routes.contactDetail", scope: "tenant", parentId: "contacts", dynamicTitleParam: "leadId" },

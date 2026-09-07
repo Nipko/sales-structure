@@ -31,7 +31,7 @@ describe('PersonaService — agente válido antes de escribir', () => {
 
     function makeService(priorConfig: any = validConfig()) {
         const statements: string[] = [];
-        const prisma = {
+        const prisma: any = {
             $queryRawUnsafe: jest.fn(async (sql: string) => {
                 statements.push(sql);
                 if (sql.includes('SELECT channel_bindings')) {
@@ -43,6 +43,7 @@ describe('PersonaService — agente válido antes de escribir', () => {
             $executeRawUnsafe: jest.fn(async () => 1),
             channelAccount: { findMany: jest.fn(async () => []) },
         };
+        prisma.transactionInTenantSchema = jest.fn(async (_schema: string, work: any) => work((sql: string, params: any[] = []) => prisma.$queryRawUnsafe(sql, ...params)));
         const redis = { del: jest.fn(async () => undefined) };
         const tenantsService = { getSchemaName: jest.fn(async () => 'tenant_test') };
         const eventEmitter = { emit: jest.fn() };

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
@@ -435,6 +435,7 @@ export class PersonaController {
             // la agenda encendida y sin cupos vigentes no podría ni cambiarle
             // el nombre a su agente. El editor de agentes tampoco lo escribe.
             await this.personaService.updateAgent(tenantId, defaultAgent.id, {
+                expectedVersion: defaultAgent.version,
                 name: config.persona.name,
                 configJson: config,
                 ...(selectedChannels ? { channels: selectedChannels } : {}),
@@ -830,6 +831,9 @@ export class PersonaController {
     @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Update an existing agent persona' })
     async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
+        if (!body || !Number.isInteger(body.expectedVersion) || body.expectedVersion < 0) {
+            throw new BadRequestException({ error: 'agent_version_required', message: 'Reload the agent before saving.' });
+        }
         const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
         if (paymentEntitlementError) return paymentEntitlementError;
 

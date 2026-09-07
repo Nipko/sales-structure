@@ -4,7 +4,7 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const AGENT_ID = '22222222-2222-4222-8222-222222222222';
 const SIGNAL_ID = '33333333-3333-4333-8333-333333333333';
 
-function createService() {
+function createService(assessment: any = null, configuration: any = null) {
     const llmRouter = {
         execute: jest.fn().mockResolvedValue({
             content: 'Ayuda',
@@ -40,6 +40,8 @@ function createService() {
         null as any,
         agentQuality as any,
         qualitySignals as any,
+        assessment,
+        configuration,
     );
     return { service, llmRouter, verticals, agentQuality, qualitySignals };
 }
@@ -113,6 +115,29 @@ function chatRequest(overrides: Partial<CopilotChatRequest['context']> = {}, ext
 }
 
 describe('CopilotService authenticated context', () => {
+    it('prepares the default assessed agent proposal with the authenticated actor and never applies it', async () => {
+        const assessment = { getAssessment: jest.fn().mockResolvedValue({ agent: { id: AGENT_ID }, revision: 'r1', mission: {}, tasks: [], requiredTests: [], channels: [], overview: channelBlockedOverview() }) };
+        const configuration = { propose: jest.fn().mockResolvedValue({ id: 'proposal', status: 'proposed' }), apply: jest.fn() };
+        const { service, llmRouter } = createService(assessment, configuration);
+        llmRouter.execute.mockResolvedValueOnce({ content: 'Ya apliqué todos los cambios', toolCalls: [{ id: 'call-1', type: 'function', function: { name: 'propose_agent_configuration', arguments: JSON.stringify({ changes: [{ path: 'persona.greeting', value: '¡Hola!' }] }) } }] } as any);
+        const result = await service.chat(chatRequest({ actorId: SIGNAL_ID }, { message: 'Mejora el saludo' }));
+        expect(assessment.getAssessment).toHaveBeenCalledWith(TENANT_ID, undefined);
+        expect(configuration.propose).toHaveBeenCalledWith(TENANT_ID, AGENT_ID, [{ path: 'persona.greeting', value: '¡Hola!' }], { id: SIGNAL_ID, role: 'tenant_admin' });
+        expect(result.reply).toContain('antes de aplicarla');
+        expect(result.reply).not.toContain('Ya apliqué');
+        expect(result.proposal?.status).toBe('proposed');
+        expect(configuration.apply).not.toHaveBeenCalled();
+        expect(llmRouter.execute.mock.calls[0][0].tools).toEqual([expect.objectContaining({ name: 'propose_agent_configuration' })]);
+    });
+
+    it.each(['tenant_supervisor', 'tenant_agent'])('does not offer configuration proposals to %s', async role => {
+        const assessment = { getAssessment: jest.fn().mockResolvedValue({ agent: { id: AGENT_ID }, revision: 'r1', mission: {}, tasks: [], requiredTests: [], channels: [], overview: channelBlockedOverview() }) };
+        const configuration = { propose: jest.fn() };
+        const { service, llmRouter } = createService(assessment, configuration);
+        await service.chat(chatRequest({ actorId: SIGNAL_ID, userRole: role }, { message: 'Cambia el saludo' }));
+        expect(llmRouter.execute.mock.calls[0][0].tools).toBeUndefined();
+        expect(configuration.propose).not.toHaveBeenCalled();
+    });
     it('boosts an article for the current page using complete route segments', () => {
         const { service } = createService();
         jest.spyOn(service as any, 'loadKb').mockReturnValue([

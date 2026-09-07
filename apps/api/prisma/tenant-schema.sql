@@ -4591,6 +4591,25 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."integration_reconciliations" (
 CREATE INDEX IF NOT EXISTS "idx_integration_reconciliations_provider"
     ON "{{SCHEMA_NAME}}"."integration_reconciliations" ("provider", "checked_at" DESC);
 
+-- Reviewed configuration commands: immutable diff and audit share the agent commit.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_config_proposals" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "agent_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_personas"("id"),
+    "agent_name" TEXT NOT NULL,
+    "requested_by" UUID NOT NULL,
+    "request_key" VARCHAR(80) NOT NULL,
+    "expected_version" INTEGER NOT NULL,
+    "before_hash" VARCHAR(64) NOT NULL,
+    "digest" VARCHAR(64) NOT NULL,
+    "changes" JSONB NOT NULL,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK ("status" IN ('proposed', 'applied', 'expired')),
+    "expires_at" TIMESTAMPTZ NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "applied_at" TIMESTAMPTZ,
+    "applied_by" UUID,
+    "applied_version" INTEGER,
+    UNIQUE ("requested_by", "request_key")
+);
 -- Curated learning is opt-in. Sources are split before excerpts; published
 -- snapshots contain only approved examples and an independent frozen holdout.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_sources" (

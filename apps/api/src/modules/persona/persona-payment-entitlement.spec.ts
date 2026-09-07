@@ -40,7 +40,7 @@ describe('PersonaController customer payment entitlement', () => {
         ['agent update', async (controller: PersonaController) => controller.updateAgent(
             tenantId,
             agentId,
-            { configJson: paymentConfig },
+            { configJson: paymentConfig, expectedVersion: 1 },
         )],
         ['agent duplicate', async (controller: PersonaController) => controller.duplicateAgent(
             tenantId,
@@ -90,7 +90,7 @@ describe('PersonaController customer payment entitlement', () => {
         const { controller, throttleService, personaService } = makeController(false);
         const config = { tools: { payments: { enabled: false } } };
 
-        await controller.updateAgent(tenantId, agentId, { configJson: config });
+        await controller.updateAgent(tenantId, agentId, { configJson: config, expectedVersion: 1 });
 
         expect(throttleService.isFeatureEnabled).not.toHaveBeenCalled();
         expect(personaService.updateAgent).toHaveBeenCalled();

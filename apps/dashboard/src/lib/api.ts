@@ -6,7 +6,7 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
-import type { AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
+import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AppliedAgentConfiguration, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning";
 
@@ -1246,6 +1246,7 @@ export const api = {
     }) =>
         apiPost<{
             reply: string;
+            proposal?: AgentConfigurationProposal;
             actions?: Array<{
                 code: "open_quality_center" | "open_quality_action" | "start_guided_tour";
                 labelKey: "openCenter" | "resolvePriority" | "showMe";
@@ -1255,6 +1256,11 @@ export const api = {
         }>("/copilot/chat", data),
 
     // Conversation copilot (inbox)
+    proposeAgentConfiguration: (tenantId: string, data: { agentId: string; changes: AgentConfigurationChange[]; requestKey: string }) =>
+        apiPost<AgentConfigurationProposal>(`/copilot/configuration/${tenantId}/proposals`, data),
+    applyAgentConfiguration: (tenantId: string, proposalId: string, digest: string) =>
+        apiPost<AppliedAgentConfiguration>(`/copilot/configuration/${tenantId}/proposals/${proposalId}/apply`, { digest }),
+
     getCopilotSuggestions: (conversationId: string) =>
         apiGet(`/copilot/${conversationId}/suggestions`),
     getCopilotSummary: (conversationId: string) =>
@@ -1472,6 +1478,8 @@ export const api = {
         apiGet(`/quality/${tenantId}/flagged?start=${params.start}&end=${params.end}&limit=${params.limit || 50}`),
     listAgentQualityAgents: (tenantId: string) =>
         apiGet<Array<{ id: string; name: string; is_active: boolean; is_default: boolean }>>(`/quality/${tenantId}/agents`),
+    getAgentAssessment: (tenantId: string, agentId?: string) =>
+        apiGet<AgentAssessment>(`/copilot/assessment/${tenantId}${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
     getAgentQualityOverview: (tenantId: string, agentId: string) =>
         apiGet<AgentQualityOverview>(`/quality/${tenantId}/agents/${agentId}/overview`),
     getAgentQualityAttentionSummary: (tenantId: string) =>

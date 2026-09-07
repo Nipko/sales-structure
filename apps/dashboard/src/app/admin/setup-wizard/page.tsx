@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { AgentAssessmentPanel } from "@/components/quality/AgentAssessmentPanel";
 import {
     ChevronRight, ChevronLeft, Check, Sparkles, Loader2,
     Plug, PartyPopper, LogOut, ArrowRight, Clock, Compass, AlertTriangle,
@@ -426,6 +427,7 @@ export default function SetupWizardPage() {
                 </button>
             </div>
 
+            <AgentAssessmentPanel />
             <HelpPanel
                 title={tHelp("setupWizard.title")}
                 description={tHelp("setupWizard.description")}

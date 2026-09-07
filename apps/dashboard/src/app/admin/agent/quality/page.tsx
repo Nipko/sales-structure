@@ -31,10 +31,11 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { AgentAssessmentPanel } from "@/components/quality/AgentAssessmentPanel";
+import type { AgentAssessment } from "@parallext/shared";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
-import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
+import { QUALITY_HEALTH_REFRESH_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { safeQualityHref } from "@/lib/quality-health";
 import { useQualityCodeLabel } from "@/lib/quality-labels";
 
@@ -73,6 +74,7 @@ export default function AgentQualityPage() {
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [agentId, setAgentId] = useState("");
   const [overview, setOverview] = useState<AgentQualityOverview | null>(null);
+  const [assessment, setAssessment] = useState<AgentAssessment | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [loadingOverview, setLoadingOverview] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,16 +124,18 @@ export default function AgentQualityPage() {
 
   const loadOverview = useCallback(async () => {
     const requestId = ++overviewRequest.current;
+    setAssessment(null);
     if (!activeTenantId || !agentId) { setOverview(null); setLoadingOverview(false); return; }
     const requestedAgentId = agentId;
     setOverview(null);
     setLoadingOverview(true); setError(null);
     try {
-      const response = await api.getAgentQualityOverview(activeTenantId, requestedAgentId);
+      const response = await api.getAgentAssessment(activeTenantId, requestedAgentId);
       if (requestId !== overviewRequest.current) return;
-      if (!response?.success || !response.data) throw new Error("unavailable");
-      if (response.data.agent.id !== requestedAgentId) throw new Error("stale-response");
-      setOverview(response.data);
+      if (!response?.success || !response.data?.overview) throw new Error("unavailable");
+      if (response.data.agent?.id !== requestedAgentId) throw new Error("stale-response");
+      setOverview(response.data.overview);
+      setAssessment(response.data);
     } catch {
       if (requestId === overviewRequest.current) {
         setOverview(null);
@@ -143,22 +147,16 @@ export default function AgentQualityPage() {
 
   useEffect(() => { void loadAgents(); }, [loadAgents]);
   useEffect(() => { void loadOverview(); }, [loadOverview]);
-
-  // "Mostrarme dónde": el overlay se ancla al sidebar de escritorio, así que
-  // por debajo de 768 px la acción ni se ofrece desde esta lista.
-  const [wideEnoughForTour, setWideEnoughForTour] = useState(false);
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    const sync = () => setWideEnoughForTour(canRunProductTourAtWidth(window.innerWidth));
-    sync();
-    media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
-  }, []);
+    const refresh = () => { void loadOverview(); };
+    window.addEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh);
+  }, [loadOverview]);
+
   const guidedTourFor = useCallback((code: string): GuidedTourId | null => {
-    if (!wideEnoughForTour) return null;
     const tour = findGuidedTourForQualityCode(code);
     return tour && canRoleRunGuidedTour(tour, role) ? tour.id : null;
-  }, [role, wideEnoughForTour]);
+  }, [role]);
   const startGuidedTour = useCallback((tourId: GuidedTourId) => {
     const detail: GuidedTourStartDetail = { tourId, agentId: agentId || undefined };
     window.dispatchEvent(new CustomEvent<GuidedTourStartDetail>(GUIDED_TOUR_START_EVENT, { detail }));
@@ -176,6 +174,7 @@ export default function AgentQualityPage() {
   }, [overview]);
 
   return <div className="space-y-6 pb-8">
+    {assessment?.agent?.id === agentId && <AgentAssessmentPanel assessment={assessment} />}
     <PageHeader icon={Gauge} title={t("title")} subtitle={t("subtitle")} action={overview ? <button type="button" onClick={() => void refreshOverviewAndAttention()} disabled={loadingOverview} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200"><RefreshCw size={15} className={cn(loadingOverview && "animate-spin")} aria-hidden="true" />{t("actions.refresh")}</button> : undefined} />
 
     <HelpPanel

@@ -13,11 +13,12 @@ import {
   MessageSquare, Instagram, Facebook, Send, X, Globe2, Plug,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { AgentAssessmentPanel } from "@/components/quality/AgentAssessmentPanel";
 import { TabNav } from "@/components/ui/tab-nav";
 import { Badge } from "@/components/ui/badge";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
-import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
+import { AGENT_CONFIGURATION_APPLIED_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 import type { PersonaConfig } from "../_types";
@@ -124,6 +125,8 @@ export default function AgentEditorPage() {
   const tc = useTranslations("common");
   const tt = useTranslations("agent.tabs");
   const th = useTranslations("help");
+  const tConfiguration = useTranslations("agentConfiguration");
+  const tLearning = useTranslations("agentLearning");
   const { activeTenantId } = useTenant();
   const params = useParams();
   const router = useRouter();
@@ -137,6 +140,8 @@ export default function AgentEditorPage() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [externalChange, setExternalChange] = useState(false);
+  const [loadedVersion, setLoadedVersion] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [isDefault, setIsDefault] = useState(false);
   const [isActive, setIsActive] = useState(true);
@@ -157,10 +162,19 @@ export default function AgentEditorPage() {
   });
 
   // ── Load agent data ────────────────────────────────────────
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.tenantId === activeTenantId && detail?.agentId === agentId) setExternalChange(true);
+    };
+    window.addEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
+    return () => window.removeEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
+  }, [activeTenantId, agentId]);
 
   useEffect(() => {
     if (!activeTenantId || !agentId) return;
     setLoading(true);
+    setLoadedVersion(null); setExternalChange(false);
 
     Promise.all([
       api.getAgent(activeTenantId, agentId),
@@ -175,15 +189,18 @@ export default function AgentEditorPage() {
 
         if (agentRes?.success && agentRes.data) {
           const data = agentRes.data;
+          setLoadedVersion(Number.isInteger(data.version) ? data.version : null);
           const configData = data.config_json || {};
           setConfig(deepMerge(structuredClone(defaultConfig), configData));
           setIsDefault(data.is_default ?? false);
           // The `agent_active` quality check reads the COLUMN, not
           // `config_json.isActive`; the hero must show the same truth.
           setIsActive(data.is_active !== false);
-          if (configData._customPrompt) {
-            setCustomPrompt(configData._customPrompt);
+          if ((configData.editorMode ?? configData._mode) === 'prompt') {
+            setCustomPrompt(configData.customPrompt ?? configData._customPrompt ?? '');
             setMode("prompt");
+          } else {
+            setCustomPrompt(''); setMode('guided');
           }
 
           // Normalize the stored assignment against the CURRENT connected accounts so
@@ -383,17 +400,20 @@ export default function AgentEditorPage() {
 
   async function applyActive(next: boolean) {
     if (!activeTenantId || !agentId) return;
+    if (externalChange || loadedVersion === null) { setToast(tConfiguration('editorChanged')); return; }
     setConfirmActive(null);
     setActivePending(true);
     try {
-      const res = await api.updateAgent(activeTenantId, agentId, { isActive: next });
+      const res = await api.updateAgent(activeTenantId, agentId, { isActive: next, expectedVersion: loadedVersion });
       if (res?.success) {
+        setLoadedVersion((res.data as any).version);
         setIsActive(next);
         setConfig((prev) => ({ ...prev, isActive: next }));
         setToast(next ? t("activation.activated") : t("activation.deactivated"));
         window.setTimeout(requestQualityHealthRefresh, 1_500);
         setQualityRefreshKey((current) => current + 1);
       } else {
+        if ((res as any)?.errorCode === 'agent_version_conflict') setExternalChange(true);
         setToast((res as any)?.error || tc("errorSaving"));
       }
     } catch {
@@ -407,6 +427,7 @@ export default function AgentEditorPage() {
 
   async function handleSave() {
     if (!activeTenantId || !agentId) return;
+    if (externalChange || loadedVersion === null) { setToast(tConfiguration('editorChanged')); return; }
     const errors = validateAgent();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -433,9 +454,10 @@ export default function AgentEditorPage() {
       // meant vertical tenants (almost all of them) never saw it.
       const base = { ...config, _personalizedAt: new Date().toISOString() };
       const configJson = mode === "prompt"
-        ? { ...base, _customPrompt: customPrompt, _mode: "prompt" }
-        : { ...base, _customPrompt: undefined, _mode: "wizard" };
+        ? { ...base, customPrompt, editorMode: 'prompt', _customPrompt: customPrompt, _mode: "prompt" }
+        : { ...base, customPrompt: undefined, editorMode: 'guided', _customPrompt: undefined, _mode: "wizard" };
       const payload: any = {
+        expectedVersion: loadedVersion,
         configJson,
         channels: channelsToSave,
         channelBindings: bindingsToSave,
@@ -443,12 +465,15 @@ export default function AgentEditorPage() {
       };
       const res = await api.updateAgent(activeTenantId, agentId, payload);
       if (res?.success) {
+        setLoadedVersion((res.data as any).version);
         setToast(t("savedSuccess"));
         setQualityRefreshKey((current) => current + 1);
         // The API recalculates signals asynchronously after agent.config.updated.
         // Refresh the global card/badge shortly after that reconciliation instead
         // of leaving the previous health snapshot visible for up to five minutes.
         window.setTimeout(requestQualityHealthRefresh, 1_500);
+      } else if ((res as any)?.errorCode === 'agent_version_conflict') {
+        setExternalChange(true); setToast(tConfiguration('editorChanged'));
       } else if ((res as any)?.errorCode === "agent_invalid") {
         // The API enforces the same rules. Its `fields` list is not forwarded by
         // the HTTP wrapper today, so re-derive the per-field messages locally
@@ -520,9 +545,11 @@ export default function AgentEditorPage() {
 
   async function handleSetDefault() {
     if (!activeTenantId) return;
+    if (externalChange || loadedVersion === null) { setToast(tConfiguration('editorChanged')); return; }
     try {
-      const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true });
-      if (res?.success) { setIsDefault(true); setToast(t("defaultUpdated")); }
+      const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true, expectedVersion: loadedVersion });
+      if (res?.success) { setLoadedVersion((res.data as any).version); setIsDefault(true); setToast(t("defaultUpdated")); }
+      else if ((res as any)?.errorCode === 'agent_version_conflict') { setExternalChange(true); setToast(tConfiguration('editorChanged')); }
     } catch { setToast(t("errorUpdatingAgent")); }
     setMenuOpen(false);
   }
@@ -561,6 +588,11 @@ export default function AgentEditorPage() {
 
   return (
     <div className="pb-20">
+      <AgentAssessmentPanel agentId={agentId} />
+      {externalChange && <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        <p>{tConfiguration('editorChanged')}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-2 min-h-10 rounded-lg border border-current px-3 py-2">{tConfiguration('reloadEditor')}</button>
+      </div>}
       <PageHeader
         icon={Bot}
         title={config.persona.name || t("title")}
@@ -576,6 +608,7 @@ export default function AgentEditorPage() {
         }
         action={
           <div className="flex items-center gap-2">
+            <Link href={`/admin/agent/${agentId}/learning`} className="rounded-lg border px-3 py-2 text-sm font-medium">{tLearning('openWorkspace')}</Link>
             <Link
               href={`/admin/agent/${agentId}/test`}
               className="px-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-sm font-medium cursor-pointer flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"

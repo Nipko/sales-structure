@@ -2,6 +2,11 @@ import type { AgentQualitySeverity } from "@parallext/shared";
 import { QUALITY_ASSIST_EVENT } from "@/lib/quality-assistant-contract";
 
 export const QUALITY_HEALTH_REFRESH_EVENT = "parallly:quality-health:refresh" as const;
+export const AGENT_CONFIGURATION_APPLIED_EVENT = "parallly:agent-configuration:applied" as const;
+export function notifyAgentConfigurationApplied(tenantId: string, agentId: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(AGENT_CONFIGURATION_APPLIED_EVENT, { detail: { tenantId, agentId } }));
+}
 
 export interface QualityAssistEventDetail {
   signalId: string;

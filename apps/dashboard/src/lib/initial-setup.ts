@@ -1,4 +1,4 @@
-import type { GuidedTourId } from "@parallext/shared";
+import type { AgentSetupTaskKey, GuidedTourId } from "@parallext/shared";
 
 /**
  * The essential setup checklist — the ONE place that answers "what is still
@@ -35,15 +35,7 @@ export interface InitialSetupStatus {
   setupWizardChannels?: string[];
 }
 
-export type EssentialSetupItemKey =
-  | "channel"
-  | "agent"
-  | "business"
-  | "knowledge"
-  | "catalog"
-  | "team"
-  | "appointments"
-  | "hours";
+export type EssentialSetupItemKey = AgentSetupTaskKey;
 
 export interface EssentialSetupItem {
   key: EssentialSetupItemKey;
@@ -290,6 +282,7 @@ export function buildEssentialSetupItems({
   }
 
   const itemChecks: Record<EssentialSetupItemKey, readonly string[]> = {
+    mission: [], tests: [],
     channel: CHANNEL_CHECKS, agent: AGENT_CHECKS, business: BUSINESS_CHECKS,
     knowledge: KNOWLEDGE_CHECKS, catalog: CATALOG_CHECKS[catalogRoute ?? ""] ?? KNOWLEDGE_CHECKS,
     team: TEAM_CHECKS, hours: HOURS_CHECKS, appointments: ["tool_appointments"],

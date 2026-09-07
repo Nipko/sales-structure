@@ -66,6 +66,9 @@ export class CreateTenantDto {
 
 export class UpdateTenantDto {
     @IsOptional()
+    @IsObject()
+    expectedBusinessHours?: Record<string, unknown> | null;
+    @IsOptional()
     @IsString()
     @MinLength(2)
     @MaxLength(120)

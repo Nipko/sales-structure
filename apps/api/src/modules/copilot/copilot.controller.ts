@@ -10,6 +10,7 @@ import {
     BadRequestException,
     ForbiddenException,
     UnauthorizedException,
+    Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -19,6 +20,8 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { CopilotService, CopilotChatRequest } from './copilot.service';
 import { CopilotChatRateLimitGuard } from './copilot-chat-rate-limit.guard';
+import { AgentAssessmentService } from './agent-assessment.service';
+import { AgentConfigurationService } from './agent-configuration.service';
 
 interface CopilotChatClientRequest {
     message?: unknown;
@@ -45,7 +48,31 @@ const INTERNAL_ADMIN_PAGE_PATTERN = /^\/admin(?:\/[a-zA-Z0-9._~()[\]-]+)*\/?$/;
 export class CopilotController {
     private readonly logger = new Logger(CopilotController.name);
 
-    constructor(private readonly copilotService: CopilotService) {}
+    constructor(private readonly copilotService: CopilotService, private readonly assessment: AgentAssessmentService = null as any,
+        private readonly configuration: AgentConfigurationService = null as any) {}
+
+    @Post('configuration/:tenantId/proposals')
+    @Roles('super_admin', 'tenant_admin')
+    async proposeConfiguration(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
+        if (!body || Object.keys(body).some(key => !['agentId', 'changes', 'requestKey'].includes(key))) throw new BadRequestException('Invalid proposal');
+        return { success: true, data: await this.configuration.propose(tenantId, body.agentId, body.changes,
+            { id: req.user?.sub || req.user?.id, role: req.user?.role }, body.requestKey) };
+    }
+
+    @Post('configuration/:tenantId/proposals/:proposalId/apply')
+    @Roles('super_admin', 'tenant_admin')
+    async applyConfiguration(@Param('tenantId') tenantId: string, @Param('proposalId') proposalId: string, @Body() body: any, @Req() req: any) {
+        if (!body || Object.keys(body).some(key => key !== 'digest')) throw new BadRequestException('Invalid reviewed proposal');
+        return { success: true, data: await this.configuration.apply(tenantId, proposalId, body.digest,
+            { id: req.user?.sub || req.user?.id, role: req.user?.role }) };
+    }
+
+    @Get('assessment/:tenantId')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async getAssessment(@Param('tenantId') tenantId: string, @Query('agentId') agentId?: string) {
+        if (agentId && !UUID_PATTERN.test(agentId)) throw new BadRequestException('agentId must be a UUID');
+        return { success: true, data: await this.assessment.getAssessment(tenantId, agentId) };
+    }
 
     // ─── Platform Copilot Chat (existing) ───────────────────────────────────
 
@@ -104,6 +131,7 @@ export class CopilotController {
                 tenantId,
                 userName,
                 userRole: user.role,
+                actorId: user.sub || user.id,
                 locale,
             },
         };

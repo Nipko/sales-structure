@@ -18,6 +18,7 @@ import {
   isGuidedTourId,
   type GuidedTourId,
   type GuidedTourStartDetail,
+  type AgentConfigurationProposal,
 } from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
@@ -35,6 +36,7 @@ import {
   type QualityAssistantTarget,
 } from "@/lib/quality-assistant-contract";
 import { ParalllyAssistant } from "@/components/ParalllyAssistant";
+import { AgentConfigurationReview } from "@/components/quality/AgentConfigurationReview";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { canRunProductTourAtWidth } from "@/lib/product-tour-contract";
 import {
@@ -108,7 +110,7 @@ function parseChatAction(action: unknown): ChatAction | null {
   }
   return null;
 }
-type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[] };
+type ChatMessage = { role: "user" | "assistant"; content: string; actions?: ChatAction[]; proposal?: AgentConfigurationProposal };
 
 const useIntroLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -149,9 +151,6 @@ function TenantHelpAssistant() {
   const [isSending, setIsSending] = useState(false);
   const [qualityTarget, setQualityTarget] = useState<QualityAssistantTarget>();
   const [qualityDetail, setQualityDetail] = useState<QualityAssistantOpenDetail>();
-  // El recorrido guiado se ancla al sidebar de escritorio; en móvil la acción
-  // degrada a un enlace a la pantalla, que sí sirve para llegar.
-  const [canRunGuidedTour, setCanRunGuidedTour] = useState(false);
   // Señal publicada por `/admin`: nadie más vuelve a pedir `setup-status`.
   const setupCardIsTheGuide = isSetupCardTheActiveGuide(useSyncExternalStore(
     subscribeOnboardingLanding,
@@ -266,13 +265,6 @@ function TenantHelpAssistant() {
     return () => window.removeEventListener(QUALITY_ASSIST_EVENT, handler);
   }, [t]);
 
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    const sync = () => setCanRunGuidedTour(canRunProductTourAtWidth(window.innerWidth));
-    sync();
-    media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
-  }, []);
 
   const startGuidedTour = useCallback((tourId: GuidedTourId) => {
     const detail: GuidedTourStartDetail = {
@@ -318,7 +310,7 @@ function TenantHelpAssistant() {
           .filter((action): action is ChatAction => action !== null)
           .slice(0, 3)
         : undefined;
-      setMessages((current) => [...current, { role: "assistant", content, actions }]);
+      setMessages((current) => [...current, { role: "assistant", content, actions, proposal: response.success ? response.data?.proposal : undefined }]);
     } catch (error) {
       if (requestEpoch !== requestEpochRef.current) return;
       console.error("Error calling copilotChat API:", error);
@@ -501,10 +493,11 @@ function TenantHelpAssistant() {
                 >
                   {message.role === "user" ? message.content : renderFormattedText(message.content)}
                 </div>
+                {message.role === "assistant" && message.proposal && <AgentConfigurationReview key={message.proposal.id} proposal={message.proposal} />}
                 {message.role === "assistant" && message.actions && message.actions.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {message.actions.map((action) => (
-                      action.code === "start_guided_tour" && canRunGuidedTour ? (
+                      action.code === "start_guided_tour" ? (
                         <button
                           key={`${index}-${action.code}-${action.tourId}`}
                           type="button"

@@ -14,6 +14,8 @@ describe('ConversationsService widget containment', () => {
             renewLockToken: jest.fn().mockResolvedValue(true),
             releaseLockToken: jest.fn().mockResolvedValue(true),
             getJson: jest.fn().mockResolvedValue(null),
+            get: jest.fn().mockResolvedValue(null),
+            set: jest.fn().mockResolvedValue(undefined),
             ...overrides.redis,
         };
         const prisma = {
@@ -23,8 +25,10 @@ describe('ConversationsService widget containment', () => {
                     { id: 'old-1', direction: 'inbound', content_text: 'previous question' },
                 ];
                 if (sql.includes('SELECT * FROM conversations')) {
-                    return [{ id: 'conversation-1', status: 'active' }];
+                    return [{ id: 'conversation-1', contact_id: 'contact-1', status: 'active', updated_at: new Date() }];
                 }
+                if (sql.includes('SELECT * FROM contacts')) return [{ id: 'contact-1', name: 'Alice', external_id: 'widget_alice' }];
+                if (sql.includes('SELECT * FROM leads')) return [{ id: 'lead-1' }];
                 return [];
             }),
             tenant: {
@@ -90,6 +94,9 @@ describe('ConversationsService widget containment', () => {
             activeOperationsContext: { populateTurnContext: jest.fn() },
             businessInfoService: { getPrimary: jest.fn().mockResolvedValue(null) },
             logger: { warn: jest.fn(), log: jest.fn(), debug: jest.fn(), error: jest.fn() },
+            eventEmitter: { emit: jest.fn() },
+            tenantSchema: jest.fn().mockResolvedValue('tenant_1'),
+            generateResponse: jest.fn().mockResolvedValue('safe reply'),
         });
         service.loadTenantBusinessHours = jest.fn().mockResolvedValue({
             timezone: 'Europe/Paris',
@@ -108,53 +115,31 @@ describe('ConversationsService widget containment', () => {
             redis: { acquireLockToken: jest.fn().mockRejectedValue(new Error('redis unavailable')) },
         });
 
-        const output = await collect(service.streamWidgetMessage(
+        await expect(collect(service.streamWidgetMessage(
             'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
-        ));
-
-        expect(output).toContain('previous message');
+        ))).rejects.toThrow('conversation_locked');
         expect(throttle.getPlanFeatures).not.toHaveBeenCalled();
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 
-    it('uses recent history, excludes the exact inbound and applies plan/budget routing', async () => {
+    it('delegates to the shared domain coordinator with contact, channel and inbound identity', async () => {
         const { service, prisma, throttle, llmRouter, redis } = makeService();
 
         await expect(collect(service.streamWidgetMessage(
             'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'current question', 'inbound-1',
         ))).resolves.toBe('safe reply');
 
-        const historyCall = prisma.executeInTenantSchema.mock.calls.find(
-            (call: any[]) => String(call[1]).includes('SELECT id, direction, content_text FROM messages'),
+        expect((service as any).generateResponse).toHaveBeenCalledWith(
+            'tenant-1', expect.objectContaining({ id: 'conversation-1' }),
+            expect.objectContaining({ channelType: 'web_widget', channelAccountId: 'widget', content: { type: 'text', text: 'current question' } }),
+            expect.anything(), expect.objectContaining({ id: 'contact-1' }), { id: 'lead-1' },
+            expect.any(Date), expect.objectContaining({ timezone: 'Europe/Paris' }),
+            'inbound-1', '11111111-1111-4111-8111-111111111111',
         );
-        expect(historyCall).toBeDefined();
-        const [, historySql, historyParams] = historyCall!;
-        expect(historySql).toContain('id <> $2::uuid');
-        expect(historySql).toContain('ORDER BY created_at DESC, id DESC LIMIT 20');
-        expect(historyParams).toEqual(['conversation-1', 'inbound-1']);
-
-        const request = llmRouter.executeStream.mock.calls[0][0];
-        expect(request.model).toBeUndefined();
-        expect(request.task).toBe('conversation');
-        expect(request.allowedTiers).toEqual(['tier_3_efficient', 'tier_4_budget']);
-        expect(request.temperature).toBe(0.4);
-        expect(request.maxTokens).toBe(500);
-        expect(request.messages).toEqual([
-            { role: 'user', content: 'previous question' },
-            { role: 'assistant', content: 'previous answer' },
-            { role: 'user', content: 'current question' },
-        ]);
+        expect(llmRouter.executeStream).not.toHaveBeenCalled();
         expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('tenant-1');
         expect(redis.releaseLockToken).toHaveBeenCalledWith('lock:conv:conversation-1', 'lock-token');
-        expect((service as any).promptAssembler.assemble).toHaveBeenCalledWith(
-            expect.anything(),
-            expect.objectContaining({
-                language: 'en',
-                timezone: 'Europe/Paris',
-                businessHoursStatus: 'closed',
-                channelType: 'web_widget',
-            }),
-        );
+        expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('contact_id = $2::uuid AND channel_type = $3');
     });
 
     it('does not call the provider after the monthly quota is exhausted', async () => {
@@ -244,5 +229,34 @@ describe('ConversationsService widget containment', () => {
         expect(incrementAiMessageCount).toHaveBeenNthCalledWith(1, 'tenant-1');
         expect(incrementAiMessageCount).toHaveBeenNthCalledWith(2, 'tenant-1', -1);
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
+    });
+
+    it('reuses the finalized inbound reply without repeating tools or usage', async () => {
+        const { service, redis, throttle } = makeService();
+        const run = () => collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'book', 'inbound-1'));
+        await run();
+        redis.get.mockResolvedValue(JSON.stringify({ conversationId: 'conversation-1', contactId: 'contact-1', text: 'safe reply' }));
+        expect(await run()).toBe('safe reply');
+        expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
+        expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects mismatched tenant scope before reading the conversation', async () => {
+        const { service, prisma } = makeService();
+        (service as any).tenantSchema.mockResolvedValue('tenant_other');
+        await expect(collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1'))).rejects.toThrow('widget_tenant_scope_mismatch');
+        expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('stores draft suggestions without customer delivery or handoff', async () => {
+        const { service, prisma } = makeService();
+        const internal = service as any;
+        const persona = await internal.personaService.resolvePersonaForChannel();
+        persona.config.behavior = { draftMode: true };
+        internal.handoffService.shouldHandoff.mockReturnValue('human_requested');
+        expect(await collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1'))).toBe('');
+        expect(internal.handoffService.executeHandoff).not.toHaveBeenCalled();
+        expect(prisma.executeInTenantSchema.mock.calls.some((call: any[]) => call[1].includes('pendingDraft'))).toBe(true);
+        expect(internal.eventEmitter.emit).toHaveBeenCalledWith('draft.suggested', expect.objectContaining({ text: 'safe reply' }));
     });
 });

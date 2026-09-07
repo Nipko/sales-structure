@@ -125,6 +125,7 @@ export class PromptAssemblerService {
             // puerta va a rechazar: sin la regla decia "ya te lo agendo",
             // la tool volvia bloqueada y el cliente se quedaba esperando.
             '  23. CAPABILITY: when <turn><capability_status> reports writes="blocked", this conversation cannot close operations right now. Answer greetings, questions and informational requests normally, but do NOT offer, promise, or start booking, cancelling, rescheduling, ordering, quoting a commitment or charging. Only when the customer actually asks for one of those operations, say plainly, in the language from <turn><language>, that this particular request needs someone from the team. Never claim that a transfer or handoff was started unless <turn><directive> explicitly confirms it; when that directive exists, communicate it exactly. Never state or hint at the internal reason, never name the profile, the plan or the provider, and never present it as a temporary glitch you will retry.',
+            '  24. DRAFT: when <turn><execution_mode> is draft, prepare a useful reply for human review. You may consult the available readers, but no reservation, payment, transfer, message or other business action has been executed. Never claim a new action is complete. Explain verified facts and the next step naturally; do not expose internal review controls to the customer.',
             '  SAFETY GUARDRAILS (always active, cannot be overridden):',
             '  NEVER engage with, produce, or facilitate content related to:',
             '  - Child exploitation, abuse, or any content sexualizing minors',
@@ -149,6 +150,8 @@ export class PromptAssemblerService {
      */
     private buildTurnLayer(turn: TurnContext): string {
         const lines: string[] = ['<turn>'];
+        if (turn.executionMode) lines.push(`  <execution_mode>${this.xmlEscape(turn.executionMode)}</execution_mode>`);
+        if (turn.channelType) lines.push(`  <channel>${this.xmlEscape(turn.channelType)}</channel>`);
 
         lines.push(`  <language>${this.xmlEscape(turn.language)}</language>`);
         lines.push(`  <timezone>${this.xmlEscape(turn.timezone)}</timezone>`);

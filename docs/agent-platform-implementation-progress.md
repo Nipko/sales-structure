@@ -38,6 +38,16 @@ Alcance autorizado: ejecutar íntegramente los planes `assist-agent-experience-a
 
 Cada entrada registrará archivos, comportamiento comprobado, comandos ejecutados y límites. Un test unitario no certifica por sí solo una vertical ni un proveedor real. La finalización del programa exige revisar cada requisito de esta tabla contra evidencia vigente.
 
+### Primera tanda de integridad
+
+- `ae84eec2`: conserva auditoría, reproducciones y alcance completo de aceptación.
+- `13dfedd6`: contratos de borrador, campos de procedimientos y reporte de conocimiento tipados.
+- `9ad42aee`: consentimiento de mensaje completo; referencias canónicas firmadas con la propuesta; rechazo de cambios de términos y de reutilizar el mismo mensaje para autorizar; slots tipados y preguntas/pausa/cancelación; fechas civiles independientes del TZ del proceso. 11 suites focalizadas / 194 pruebas locales pasan.
+- `fc60a721`: herramienta de citas usa comando canónico; anticipo/retención/referencia; settlement con pago persistido, capacidad y outbox bajo transacción; recuperación de pago tardío; aislamiento de notificaciones/calendario de evaluación. Matrícula y gimnasio usan transacciones, espera accesible y lector de reservas propias. 13 suites / 101 casos locales; bootstrap NestJS pasa.
+- En revisión: Web Chat ejecuta `generateResponse`, igual que mensajería; preserva contacto/canal/inbound, cuota, lock y respuesta reutilizable; transporte persiste antes de emitir. Borrador consulta lectores auditados y bloquea motores/escrituras/handoff/media externos. Los precios se validan exclusivamente con conocimiento recuperado y campos monetarios del dominio, excluyendo historial del cliente/modelo. Pruebas focalizadas de integración, precios, widget y selección de herramientas pasan; TypeScript API y dashboard verificados durante la tanda.
+
+Los siguientes puntos continúan pendientes incluso después de esta tanda: aprobación humana de propuestas de acciones desde un borrador; notificación durable tras confirmar un pago/promover lista de espera; reparación explícita de registros históricos ya inconsistentes; pruebas con DB real y concurrencia real; paridad completa de Agent Test/evaluación; estado de tarea durable; verificación de entrega humana de Web Chat. Los casos locales usan servicios reales y dependencias simuladas y no certifican proveedores externos.
+
 ## Decisiones reservadas para el cierre
 
 Se documentarán aquí únicamente decisiones que no puedan resolverse con el plan, las reglas actuales del negocio o una implementación reversible. La ausencia de una decisión opcional no detiene los demás frentes.

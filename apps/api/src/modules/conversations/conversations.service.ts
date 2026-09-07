@@ -28,6 +28,9 @@ import { outboundDedupeId, providerMessageId } from '../../common/utils/provider
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
+import { DRAFT_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { isAgentTestSafeToolName } from './agent-test-tool-policy';
+import { buildTrustedPriceCorpus } from './trusted-price-context';
 import {
     auditTurnClaim,
     promisesHumanHandoff,
@@ -79,7 +82,6 @@ import { awaitToolWithSafeTimeout } from './tool-timeout-policy';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
     ToolExecutionControlService,
-    classifyExplicitToolConfirmation,
 } from './tool-execution-control.service';
 import { ActiveOperationsContextService } from './active-operations-context.service';
 import { ToolRetrievalService } from './tool-retrieval.service';
@@ -630,6 +632,8 @@ export class ConversationsService {
             return;
         }
 
+        const draftMode = config.behavior?.draftMode === true;
+
         const bizHours = await this.loadTenantBusinessHours(tenantId);
         const isOpen = this.isWithinBusinessHours(config, bizHours);
         const aiOutsideHours = config.hours?.aiOutsideHours ?? true;
@@ -637,6 +641,10 @@ export class ConversationsService {
         if (!isOpen && !aiOutsideHours) {
             this.logger.log(`[Pipeline] Outside business hours & AI off — sending after-hours message`);
             const afterHoursMsg = config.hours?.afterHoursMessageOverride || bizHours?.afterHoursMessage || config.hours?.afterHoursMessage;
+            if (draftMode) {
+                if (afterHoursMsg) await this.persistDraft(tenantId, schemaName, conversation.id, afterHoursMsg, contact?.name);
+                return;
+            }
             await this.sendAfterHoursMessage(tenantId, normalizedMsg, config, afterHoursMsg);
             return;
         }
@@ -690,7 +698,7 @@ export class ConversationsService {
         const apptReplyLang = (conversation.metadata as any)?.detectedLanguage || config.language || 'es';
 
         // 4.2 Check if this is a response to an appointment reminder template (Confirm/Reschedule buttons)
-        if (content?.text) {
+        if (!draftMode && content?.text) {
             const btnText = content.text.toLowerCase().trim();
             const isConfirmBtn = /^(✅\s*)?(confirmar asistencia|confirm attendance|confirmar presen[çc]a|confirmer)/i.test(btnText);
             const isRescheduleBtn = /^(🔄\s*)?(reagendar|reschedule|remarcar|reporter)/i.test(btnText);
@@ -737,7 +745,7 @@ export class ConversationsService {
         }
 
         // 4.3 Check if this is a response to an attendance confirmation
-        if (content?.text) {
+        if (!draftMode && content?.text) {
             const textLower = content.text.toLowerCase().trim();
             // Flag `u` obligatorio: 🔄 es U+1F504, fuera del BMP, así que sin `u`
             // el motor lo mete en la clase como sus DOS mitades sustitutas por
@@ -824,7 +832,7 @@ export class ConversationsService {
         const handoffReason = this.handoffService.shouldHandoff(
             content?.text || '', conversation, config,
         );
-        if (handoffReason) {
+        if (handoffReason && !draftMode) {
             // A configured handoff rule is an agent outcome even though it
             // deliberately avoids an LLM call.
             await this.persistConversationPersonaResolution(
@@ -862,7 +870,7 @@ export class ConversationsService {
         // 5b. Send typing indicator before AI generates response
         try {
             const accessToken = await this.resolveAccessToken(tenantId, channelType, normalizedMsg.channelAccountId);
-            if (accessToken) {
+            if (accessToken && !draftMode) {
                 await this.channelGateway.sendTypingIndicator(
                     channelType as any, normalizedMsg.channelAccountId,
                     normalizedMsg.contactId, accessToken,
@@ -880,6 +888,10 @@ export class ConversationsService {
             this.logger.warn(`[Pipeline] Tenant ${tenantId} exhausted AI message quota for the month. Sending fallback.`);
             const fallback = await this.buildQuotaFallbackMessage(tenantId);
             if (fallback) {
+                if (draftMode) {
+                    await this.persistDraft(tenantId, schemaName, conversation.id, fallback, contact?.name, inboundMessageId);
+                    return;
+                }
                 await this.sendResponse(tenantId, fallback, normalizedMsg, undefined, 'fallback');
                 await this.saveAiMessage(tenantId, conversation.id, fallback, channelType);
             }
@@ -942,18 +954,11 @@ export class ConversationsService {
         // we always respond. Opt-out blocking only applies to proactive outbound
         // (broadcasts, automations, reminders) — not to conversation replies.
         if (response) {
-            const draftMode = (config.behavior as any)?.draftMode === true;
-            if (draftMode && !isErrorFallback(response)) {
+            if (draftMode) {
                 // Draft-for-approval (WS3 #6): a human reviews/edits/sends in the
                 // console instead of the AI replying directly. Store the suggestion
                 // and notify the inbox; the customer gets nothing until approval.
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{pendingDraft}', $2::jsonb), updated_at = NOW() WHERE id = $1::uuid`,
-                    [conversation.id, JSON.stringify({ text: response, createdAt: new Date().toISOString() })],
-                ).catch(e => this.logger.warn(`Draft persist failed: ${e.message}`));
-                this.eventEmitter.emit('draft.suggested', {
-                    tenantId, conversationId: conversation.id, text: response, contactName: contact?.name,
-                });
+                await this.persistDraft(tenantId, schemaName, conversation.id, response, contact?.name, inboundMessageId);
                 this.logger.log(`[Pipeline] Draft mode — reply suggested to console (not sent to customer)`);
             } else {
                 // Deliver long, multi-paragraph replies as 2-3 natural bubbles (more
@@ -976,6 +981,9 @@ export class ConversationsService {
             this.logger.warn(`[Pipeline] No response generated — customer gets no reply`);
             this.recordAgentSignal(tenantId, 'silent_turn');
         }
+
+        // A suggestion has not been delivered and must not trigger sales follow-ups.
+        if (draftMode) return;
 
         // 8. Auto-progress pipeline stage based on conversation signals
         this.pipelineService.autoProgressFromConversation(tenantId, conversation.id, {
@@ -1843,6 +1851,10 @@ export class ConversationsService {
         inboundMessageId?: string,
         resolvedAgentId?: string,
     ): Promise<string> {
+        const draftMode = config.behavior?.draftMode === true;
+        const executionContext = draftMode ? DRAFT_EXECUTION_CONTEXT : undefined;
+        const allowHumanHandoff = !draftMode
+            && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
         let userText = msg.content.text || '';
 
         // Opt-in WhatsApp Flow completion: the adapter sets content.text to the
@@ -1924,7 +1936,7 @@ export class ConversationsService {
         // otherwise the waiting_flow state is wiped and the submitted booking is lost.
         const isNewSession = timeSinceLastMessage > 30 * 60 * 1000 && !flowResponseData; // 30 minutes
 
-        if (isNewSession) {
+        if (isNewSession && !draftMode) {
             this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
             try {
                 // One session, one epoch. Each of these used to expire on its own
@@ -1991,6 +2003,8 @@ export class ConversationsService {
         const turnTrace = new TurnTraceContext({ tenantId, conversationId: conversation.id, messageId: inboundMessageId });
 
         const turnContext: TurnContext = {
+            channelType: msg.channelType,
+            executionMode: draftMode ? 'draft' : 'live',
             language: userLanguage,
             timezone: tz,
             // One resolved operating identity for the whole turn: prompt,
@@ -2374,9 +2388,10 @@ export class ConversationsService {
         const blockedOperation = capability.contract?.writersBlocked
             ? deniedOperationalIntent(userText)
             : null;
-        if (blockedOperation) {
+        if (blockedOperation && !draftMode) {
             const reason = `capability_denied_intent:${blockedOperation}`;
             try {
+                if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                 await this.handoffService.executeHandoff(tenantId, conversation.id, msg, reason);
                 this.analyticsService.trackEvent({
                     tenantId,
@@ -2418,7 +2433,7 @@ export class ConversationsService {
         // skip that fail-safe and leave the model to improvise an unavailable
         // booking flow.
         const bookingAuthority = bookingEngineAuthorityDecision(engineAuthority);
-        if (toolsEnabled
+        if (!draftMode && toolsEnabled
             && !engineProducedText
             && !procedureAwaiting) {
             // Tenant-local "today" — toISOString() would be UTC, which rolls over
@@ -2446,6 +2461,7 @@ export class ConversationsService {
             const intent = await this.intentInterpreter.interpret(
                 userText, bookingState.step, serviceNames, todayISO, upcoming, tenantId,
                 regional?.operatingCountry.value,
+                bookingState.step === 'confirm' && bookingState.serviceName ? [bookingState.serviceName] : [],
             );
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 
@@ -2474,6 +2490,7 @@ export class ConversationsService {
                     tools = [];
                     if (deniedResult.handoff) {
                         try {
+                            if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                             await this.handoffService.executeHandoff(
                                 tenantId,
                                 conversation.id,
@@ -2567,6 +2584,7 @@ export class ConversationsService {
                     if (engineResult.handoff) {
                         if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
                         try {
+                            if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                             await this.handoffService.executeHandoff(
                                 tenantId, conversation.id, msg, engineResult.handoffReason || 'booking_unavailable',
                             );
@@ -2602,7 +2620,7 @@ export class ConversationsService {
         // sin que el contrato se hubiera resuelto todavía. Ahora corre sólo si
         // el contrato autorizó escribir, y recibe la lista publicada para que
         // un paso no pueda invocar una tool que el contrato no dejó pasar.
-        if (!engineProducedText && writesAuthorised) {
+        if (!draftMode && !engineProducedText && writesAuthorised) {
             try {
                 const procResult = await this.procedureEngine.process(
                     schemaName, tenantId, conversation.id, conversation.contact_id || '', userText,
@@ -2612,6 +2630,7 @@ export class ConversationsService {
                         toolsConfig: cfgTools ?? {},
                         channelType: msg.channelType,
                         authority: engineAuthority,
+                        language: userLanguage,
                         commitmentBlocked,
                         deniedTools,
                     },
@@ -2622,11 +2641,13 @@ export class ConversationsService {
                     if (procResult.handoff) {
                         if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
                         try {
+                            if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                             await this.handoffService.executeHandoff(
                                 tenantId, conversation.id, msg, procResult.handoffReason || `Procedimiento: ${procResult.procedureName || ''}`,
                             );
                         } catch (e: any) {
                             this.logger.warn(`[Procedure] handoff failed: ${e.message}`);
+                            engineProducedText = handoffText(userLanguage).unavailable;
                         }
                     }
                     this.logger.log(`[Procedure] handled (proc="${procResult.procedureName}", completed=${!!procResult.completed}, handoff=${!!procResult.handoff})`);
@@ -2652,12 +2673,11 @@ export class ConversationsService {
         // customer was actually shown, and let the LLM voice the outcome. The
         // signed token, the args hash and the ledger status stay in charge.
         let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
-        if (!engineProducedText
-            && conversation.contact_id
-            && classifyExplicitToolConfirmation(userText) === 'confirmed') {
+        if (!draftMode && !engineProducedText
+            && conversation.contact_id) {
             try {
                 const pending = await this.toolExecutionControl.findPendingConfirmation(
-                    schemaName, conversation.id, conversation.contact_id,
+                    schemaName, conversation.id, conversation.contact_id, userText,
                 );
                 if (pending) {
                     this.logger.log(`[Confirm] Customer confirmed — executing pending ${pending.toolName} server-side (ledger ${pending.ledgerId})`);
@@ -2679,6 +2699,14 @@ export class ConversationsService {
                             pending.args, conversation.id, {
                                 authority: engineAuthority,
                                 channelType: msg.channelType,
+                                executionContext,
+                                knowledgeSearch: {
+                                    agentId: resolvedAgentId,
+                                    audience: 'customer',
+                                    similarityThreshold: config.rag?.similarityThreshold ?? 0.35,
+                                    language: userLanguage,
+                                    rerank: config.llm?.kbReranker === true,
+                                },
                                 maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                 jurisdiction: regional?.operatingCountry.value,
                                 commitmentBlocked,
@@ -2892,7 +2920,10 @@ export class ConversationsService {
             for (const name of identityStepUpToolNames()) {
                 if (tools.some(t => t?.name === name)) pinned.add(name);
             }
-            tools = this.toolRetrieval.retrieveRelevantTools(retrievalQuery, tools, 10, pinned);
+            tools = this.toolRetrieval.retrieveRelevantTools(
+                retrievalQuery, tools, 10, pinned,
+                capability.contract?.domainContract?.intents?.map(intent => intent.toolPlan) ?? [],
+            );
             this.logger.log(`[ToolRetrieval] ${before} → ${tools.length} tools (${pinned.size} pinned) for query "${retrievalQuery.slice(0,80)}"`);
         }
 
@@ -2901,6 +2932,7 @@ export class ConversationsService {
         // above re-adds tools from the agent's feature flags, overriding the
         // `tools = []` set in the express phase, so enforce it as the last word.
         if (engineProducedText) tools = [];
+        if (draftMode) tools = tools.filter(tool => isAgentTestSafeToolName(tool?.name ?? tool?.function?.name));
 
         if (bookingState.step && bookingState.step !== 'idle') {
             const selectedService = bookingState.serviceId
@@ -2924,7 +2956,9 @@ export class ConversationsService {
         // the LLM prioritizes the directive over RAG content. But RAG is still
         // available in context so the LLM can enrich pricing/policy answers naturally.
         try {
-            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
+            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext, {
+                agentId: resolvedAgentId, audience: 'customer', jurisdiction: regional?.operatingCountry.value,
+            });
             const ragConfig = config.rag;
             const ragEnabled = ragConfig?.enabled !== false;
             if (hasKnowledge && ragEnabled) {
@@ -2951,6 +2985,9 @@ export class ConversationsService {
                         similarityThreshold: searchThreshold,
                         conversationId: conversation.id,
                         language: userLanguage,
+                        executionContext,
+                        agentId: resolvedAgentId,
+                        audience: 'customer',
                         // Regulated sources are filtered by the tenant's operating
                         // country, not by language. Two countries sharing a
                         // language is exactly how a Colombian norm ended up
@@ -3045,10 +3082,12 @@ export class ConversationsService {
         // the live user turn — otherwise it would be duplicated in the prompt.
         // Reverse back to chronological order (oldest→newest) for the builders below.
         const historyDesc = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT direction, content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 31`,
-            [conversation.id],
+            `SELECT id, direction, content_text FROM messages WHERE conversation_id = $1::uuid
+               AND ($2::uuid IS NULL OR id <> $2::uuid)
+             ORDER BY created_at DESC, id DESC LIMIT 30`,
+            [conversation.id, inboundMessageId || null],
         );
-        let history = (historyDesc || []).slice(1).reverse();
+        let history = (historyDesc || []).reverse();
 
         // The tail of the customer's PREVIOUS conversation, when this one was
         // opened because the old one had been auto-resolved. Prepended so the
@@ -3309,6 +3348,14 @@ export class ConversationsService {
                                 this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, {
                                     authority: llmAuthority,
                                     channelType: msg.channelType,
+                                    executionContext,
+                                    knowledgeSearch: {
+                                        agentId: resolvedAgentId,
+                                        audience: 'customer',
+                                        similarityThreshold: config.rag?.similarityThreshold ?? 0.35,
+                                        language: userLanguage,
+                                        rerank: config.llm?.kbReranker === true,
+                                    },
                                     maxDiscountPercent: (config as any)?.upsell?.maxDiscountPercent,
                                     jurisdiction: regional?.operatingCountry.value,
                                     commitmentBlocked,
@@ -3469,13 +3516,13 @@ export class ConversationsService {
             // whole message thread (history + tool results) — everything the model saw.
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
-                executedToolsThisTurn, userLanguage, priorActions,
+                executedToolsThisTurn, userLanguage, priorActions, turnContext,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.
-            if (config.llm?.memory?.longTerm && conversation.contact_id && (turnContext.messageCount || 0) % 6 === 0) {
+            if (!draftMode && config.llm?.memory?.longTerm && conversation.contact_id && (turnContext.messageCount || 0) % 6 === 0) {
                 this.customerMemory.extractFromConversation(tenantId, schemaName, conversation.id, conversation.contact_id)
                     .catch(() => { /* best-effort */ });
             }
@@ -3487,7 +3534,12 @@ export class ConversationsService {
                 .map(t => (t?.result as any)?.paymentLink)
                 .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u));
             let paymentLinkIndex = 0;
-            for (const url of new Set(paymentLinks)) {
+            for (const url of draftMode ? [] : new Set(paymentLinks)) {
+                if (msg.channelType === 'web_widget') {
+                    // Widget transport delivers the validated final answer only.
+                    if (!finalResponse.includes(url)) finalResponse += `\n${url}`;
+                    continue;
+                }
                 await this.sendPaymentLink(tenantId, msg, url);
                 await this.saveAiMessage(
                     tenantId,
@@ -3500,7 +3552,11 @@ export class ConversationsService {
 
             // Multimodal out (#13): dispatch product images the LLM requested,
             // staggered AFTER the text reply so they land in a natural order.
-            for (let i = 0; i < mediaToSend.length; i++) {
+            for (let i = 0; !draftMode && i < mediaToSend.length; i++) {
+                if (msg.channelType === 'web_widget') {
+                    finalResponse += `\n${mediaToSend[i].url}`;
+                    continue;
+                }
                 await this.sendMedia(
                     tenantId,
                     msg,
@@ -3534,8 +3590,9 @@ export class ConversationsService {
             // datos; recién ahora se pasa a un humano, con el caso creado. El orden
             // importa — al revés (keyword antes de la IA) el humano recibía la
             // conversación sin el siniestro/solicitud registrado.
-            if (postToolHandoff) {
+            if (postToolHandoff && !draftMode) {
                 try {
+                    if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                     this.logger.warn(`[Pipeline] HANDOFF post-intake (${postToolHandoff}) para conversación ${conversation.id}`);
                     this.analyticsService.trackEvent({
                         tenantId, eventType: 'handoff_triggered',
@@ -3547,6 +3604,7 @@ export class ConversationsService {
                     // Nunca romper el turno por la escalada: el cliente ya recibió su
                     // respuesta y el intake quedó guardado.
                     this.logger.error(`[Pipeline] No se pudo escalar tras el intake: ${e?.message}`);
+                    finalResponse = handoffText(userLanguage).unavailable;
                 }
             }
 
@@ -3566,8 +3624,9 @@ export class ConversationsService {
             // Se HONRA la promesa en vez de bloquearla: el cliente ya leyó que lo
             // iban a transferir, así que reescribir el mensaje lo dejaría peor.
             // `isInHandoff` impide re-escalar en cada turno siguiente.
-            if (!postToolHandoff && promisesHumanHandoff(finalResponse)) {
+            if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse)) {
                 try {
+                    if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                     if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
                         this.logger.warn(
                             `[Pipeline] HANDOFF por promesa del agente en conversación ${conversation.id}`,
@@ -3588,6 +3647,7 @@ export class ConversationsService {
                     this.logger.error(
                         `[Pipeline] No se pudo escalar tras la promesa del agente: ${e?.message}`,
                     );
+                    finalResponse = handoffText(userLanguage).unavailable;
                 }
             }
 
@@ -4071,6 +4131,7 @@ export class ConversationsService {
         executedTools?: Array<{ name: string; result: any }>,
         lang?: string,
         priorActions?: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }>,
+        trustedContext?: Partial<TurnContext>,
     ): Promise<string> {
         if (!response || isErrorFallback(response)) return response;
 
@@ -4185,12 +4246,7 @@ export class ConversationsService {
         // El resultado de la tool es la fuente de verdad del importe, asi que va
         // serializado: no depende del formato del directivo ni de que alguien
         // recuerde mantener los dos alineados.
-        const executedToolsCorpus = (executedTools || []).length
-            ? '\n' + JSON.stringify(executedTools)
-            : '';
-        const corpus = systemPrompt + '\n' + (currentMessages || [])
-            .map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n')
-            + executedToolsCorpus;
+        const corpus = buildTrustedPriceCorpus(trustedContext, executedTools);
 
         const check = this.responseValidator.validatePrices(response, corpus);
         if (check.ok) return response;
@@ -4577,10 +4633,10 @@ export class ConversationsService {
         }).catch(() => null);
         const lang = (tenant?.language || 'es').slice(0, 2).toLowerCase();
         const messages: Record<string, string> = {
-            es: 'Gracias por tu mensaje. En breve un agente humano te atenderá.',
-            en: 'Thanks for your message. A human agent will reach out shortly.',
-            pt: 'Obrigado pela sua mensagem. Um atendente humano entrará em contato em breve.',
-            fr: 'Merci pour votre message. Un agent humain vous répondra sous peu.',
+            es: 'Gracias por tu mensaje. La atención automática no está disponible en este momento. Por favor, inténtalo más tarde.',
+            en: 'Thanks for your message. Automated assistance is currently unavailable. Please try again later.',
+            pt: 'Obrigado pela sua mensagem. O atendimento automático está indisponível no momento. Tente novamente mais tarde.',
+            fr: 'Merci pour votre message. L’assistance automatique est indisponible pour le moment. Veuillez réessayer plus tard.',
         };
         return messages[lang] || messages.es;
     }
@@ -4591,114 +4647,20 @@ export class ConversationsService {
         conversationId: string,
         contactId: string,
         text: string,
-        options?: { allowHumanHandoff?: boolean },
+        options?: { allowHumanHandoff?: boolean; inboundMessageId?: string },
     ): Promise<string | null> {
-        const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
-        if (!entitlement.allowed) {
-            this.logger.warn(`[Entitlement] Dropped widget message for tenant ${tenantId}: ${entitlement.error}`);
-            return null;
-        }
-        const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget');
-        const config = personaResolution.config;
-        if (!config) return null;
-
-        // Serialize widget turns per conversation, same mutex as the main pipeline
-        // (token + heartbeat), so two quick widget messages don't process in parallel.
-        const lockKey = `lock:conv:${conversationId}`;
-        let lockToken = await this.redis.acquireLockToken(lockKey, 30);
-        // 2 seconds of patience against turns that routinely take 10-60s: the
-        // widget gave up almost immediately and ran a second turn on top of the
-        // first. Wait for a realistic turn, and if the conversation is still busy
-        // say so instead of answering twice.
-        for (let i = 0; i < 30 && !lockToken; i++) {
-            await new Promise(r => setTimeout(r, 1000));
-            lockToken = await this.redis.acquireLockToken(lockKey, 30);
-        }
-        if (!lockToken) {
-            this.logger.warn(`[Widget] Conversation ${conversationId} still busy after waiting — refusing to run a concurrent turn`);
-            throw new Error(`conversation_locked:${conversationId}`);
-        }
-        let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
-        if (lockToken) {
-            const tk = lockToken;
-            lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
-            lockHeartbeat.unref?.();
-        }
-
-        try {
-
-        const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT direction, content_text FROM messages
-             WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 20`,
-            [conversationId],
-        );
-
-        const conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM conversations WHERE id = $1::uuid LIMIT 1`,
-            [conversationId],
-        );
-
-        if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
-            return null;
-        }
-
-        const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
-        if (handoffReason && options?.allowHumanHandoff === true) {
-            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-            await this.handoffService.executeHandoff(tenantId, conversationId, {
-                tenantId, conversationId, contactId, channelType: 'web_widget',
-                content: { type: 'text', text },
-            } as any, handoffReason);
-            return handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
-        }
-        if (handoffReason) {
-            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-            this.logger.warn(`[Widget] Handoff blocked: no verified human-delivery capability for ${conversationId}`);
-            return widgetHandoffUnavailableText(
-                this.languageDetector.detect(text, config.language || 'es'),
-            );
-        }
-
-        const turnContext = await this.buildWidgetTurnContext(
-            tenantId, schemaName, conversation?.[0], contactId, text, config,
-            (history?.length || 0) + 1,
-        );
-        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
-
-        const chatMessages = (history || []).map((m: any) => ({
-            role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
-            content: m.content_text || '',
-        }));
-        chatMessages.push({ role: 'user' as const, content: text });
-
-        try {
-            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-            const response = await this.llmRouter.execute({
-                model: 'grok-4-1-fast-non-reasoning',
-                messages: chatMessages,
-                systemPrompt,
-                temperature: 0.8,
-                tenantId,
-            });
-            return response.content || null;
-        } catch (err: any) {
-            this.logger.warn(`Widget AI failed: ${err.message}`);
-            return null;
-        }
-        } finally {
-            if (lockHeartbeat) clearInterval(lockHeartbeat);
-            if (lockToken) await this.redis.releaseLockToken(lockKey, lockToken).catch(() => {});
-        }
+        let reply = '';
+        for await (const chunk of this.streamWidgetMessage(
+            tenantId, schemaName, conversationId, contactId, text,
+            options?.inboundMessageId, options,
+        )) reply += chunk;
+        return reply || null;
     }
 
     /**
-     * Streaming variant of processWidgetMessage for the web chat widget (#6 Fase-2).
-     * Same lock/history/persona/handoff logic, but yields the AI reply token-by-token
-     * via the router's executeStream so the widget renders progressively (lower TTFT).
-     * It does NOT persist the outbound message nor emit sockets — the gateway does that
-     * once the stream closes (mirroring how the gateway persists today). On error it
-     * propagates so the gateway can emit widget:stream_error. Messaging channels are
-     * untouched (they stay non-streaming).
+     * The widget uses the same domain turn as messaging. Only a validated final
+     * answer reaches the transport: partial model text can precede tool results
+     * and must never become a customer-visible promise of an uncommitted action.
      */
     async *streamWidgetMessage(
         tenantId: string,
@@ -4710,221 +4672,134 @@ export class ConversationsService {
         options?: { allowHumanHandoff?: boolean },
     ): AsyncGenerator<string, void, unknown> {
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
-        if (!entitlement.allowed) {
-            this.logger.warn(`[Entitlement] Stopped widget stream for tenant ${tenantId}: ${entitlement.error}`);
-            return;
-        }
-        const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget');
+        if (!entitlement.allowed) return;
+        const expectedSchema = await this.tenantSchema(tenantId);
+        if (expectedSchema !== schemaName) throw new Error('widget_tenant_scope_mismatch');
+        const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget', 'widget');
         const config = personaResolution.config;
         if (!config) return;
-
-        const lockKey = `lock:conv:${conversationId}`;
+        const draftMode = config.behavior?.draftMode === true;
+        const lockKey = 'lock:conv:' + conversationId;
         let lockToken: string | null = null;
         try {
             lockToken = await this.redis.acquireLockToken(lockKey, 30);
             for (let i = 0; i < 4 && !lockToken; i++) {
-                await new Promise(r => setTimeout(r, 500));
+                await new Promise(resolve => setTimeout(resolve, 500));
                 lockToken = await this.redis.acquireLockToken(lockKey, 30);
             }
-        } catch (e: any) {
-            this.logger.warn(`[Widget] Conversation lock unavailable: ${e?.message || 'redis_error'}`);
+        } catch (error: any) {
+            this.logger.warn('[Widget] Conversation lock unavailable: ' + error?.message);
         }
-        if (!lockToken) {
-            // Never fail open. The former path continued without ownership after 2s,
-            // allowing concurrent paid turns and out-of-order replies.
-            const lang = (config.language || 'es').slice(0, 2).toLowerCase();
-            const busy: Record<string, string> = {
-                es: 'Estoy procesando tu mensaje anterior. Inténtalo de nuevo en un momento.',
-                en: 'I am still processing your previous message. Please try again in a moment.',
-                pt: 'Ainda estou processando sua mensagem anterior. Tente novamente em instantes.',
-                fr: 'Je traite encore votre message précédent. Réessayez dans un instant.',
-            };
-            yield busy[lang] || busy.es;
-            return;
-        }
-        const tk = lockToken;
-        const lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
-        lockHeartbeat.unref?.();
-
+        if (!lockToken) throw new Error('conversation_locked:' + conversationId);
+        const token = lockToken;
+        const heartbeat = setInterval(() => {
+            this.redis.renewLockToken(lockKey, token, 30).catch(() => {});
+        }, 10_000);
+        heartbeat.unref?.();
         try {
-            const historyDesc = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT id, direction, content_text FROM messages
-                 WHERE conversation_id = $1::uuid
-                   AND ($2::uuid IS NULL OR id <> $2::uuid)
-                 ORDER BY created_at DESC, id DESC LIMIT 20`,
-                [conversationId, inboundMessageId || null],
+            const conversations = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                'SELECT * FROM conversations WHERE id = $1::uuid AND contact_id = $2::uuid AND channel_type = $3 LIMIT 1',
+                [conversationId, contactId, 'web_widget'],
             );
-            const history = (historyDesc || []).reverse();
-            const conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT * FROM conversations WHERE id = $1::uuid LIMIT 1`,
-                [conversationId],
-            );
-
-            if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
-                return;
-            }
-
-            const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
-            if (handoffReason && options?.allowHumanHandoff === true) {
-                await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-                await this.handoffService.executeHandoff(tenantId, conversationId, {
-                    tenantId, conversationId, contactId, channelType: 'web_widget',
-                    content: { type: 'text', text },
-                } as any, handoffReason);
-                yield handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
-                return;
-            }
-            if (handoffReason) {
-                await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-                this.logger.warn(`[Widget] Handoff blocked: no verified human-delivery capability for ${conversationId}`);
-                yield widgetHandoffUnavailableText(
-                    this.languageDetector.detect(text, config.language || 'es'),
-                );
-                return;
-            }
-            // Resolve entitlement, allowed model tiers and cost circuit before any
-            // provider request. Direct model selection bypassed provider health and
-            // plan limits; the task-based router path keeps normal fallback behavior.
-            const planFeatures = await this.throttle.getPlanFeatures(tenantId);
-            if (planFeatures.widget !== true) return;
-            let allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
-            const budgetUsdCents = typeof planFeatures.llmCostBudgetUsdCents === 'number'
-                ? planFeatures.llmCostBudgetUsdCents : -1;
-            if (budgetUsdCents > 0) {
-                const spentUsdCents = await this.throttle.getLlmSpendUsdCents(tenantId);
-                if (spentUsdCents >= budgetUsdCents) {
-                    const economical = allowedTiers.filter(
-                        tier => tier === 'tier_3_efficient' || tier === 'tier_4_budget',
-                    );
-                    allowedTiers = economical.length ? economical : ['tier_4_budget'];
-                    this.logger.warn(`[Widget LLM budget] tenant ${tenantId} over budget; clamped to ${allowedTiers.join(',')}`);
+            const conversation = conversations?.[0];
+            if (!conversation) throw new Error('widget_conversation_scope_mismatch');
+            if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return;
+            const plan = await this.throttle.getPlanFeatures(tenantId);
+            if (plan.widget !== true) return;
+            const replyKey = inboundMessageId ? 'widget:reply:' + tenantId + ':' + inboundMessageId : null;
+            if (replyKey) {
+                const cached = await this.redis.get(replyKey);
+                if (cached) {
+                    const previous = JSON.parse(cached);
+                    if (previous.conversationId === conversationId && previous.contactId === contactId) {
+                        if (previous.text && !draftMode) yield previous.text;
+                        return;
+                    }
                 }
             }
-
-            const turnContext = await this.buildWidgetTurnContext(
-                tenantId, schemaName, conversation?.[0], contactId, text, config,
-                (history?.length || 0) + 1,
+            const contacts = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                'SELECT * FROM contacts WHERE id = $1::uuid LIMIT 1', [contactId],
             );
-            const systemPrompt = this.promptAssembler.assemble(config, turnContext);
-            const chatMessages = (history || []).map((m: any) => ({
-                role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
-                content: m.content_text || '',
-            }));
-            chatMessages.push({ role: 'user' as const, content: text });
-
-            // Atomically reserve this monthly AI message immediately before the
-            // provider. A concurrent conversation that crosses the limit rolls its
-            // reservation back and receives the deterministic fallback.
-            const usage = await this.throttle.getAiMessageUsage(tenantId);
-            if (Number.isFinite(usage.limit) && usage.used >= (usage.limit as number)) {
-                yield await this.buildQuotaFallbackMessage(tenantId);
-                return;
+            const contact = contacts?.[0];
+            if (!contact) throw new Error('widget_contact_scope_mismatch');
+            const leads = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                'SELECT * FROM leads WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 1', [contactId],
+            );
+            const msg = {
+                id: inboundMessageId || randomUUID(), tenantId, conversationId,
+                contactId: contact.external_id || contactId,
+                channelType: 'web_widget', channelAccountId: 'widget', timestamp: new Date(),
+                direction: 'inbound', status: 'delivered',
+                content: { type: 'text', text },
+                metadata: { allowHumanHandoff: options?.allowHumanHandoff === true },
+            } as NormalizedMessage;
+            const language = this.languageDetector.detect(text, config.language || 'es');
+            const handoffReason = this.handoffService.shouldHandoff(text, conversation, config);
+            let reply: string | null = null;
+            if (handoffReason && !draftMode) {
+                await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
+                if (options?.allowHumanHandoff !== true) {
+                    reply = widgetHandoffUnavailableText(language);
+                } else {
+                    try {
+                        await this.handoffService.executeHandoff(tenantId, conversationId, msg, handoffReason);
+                        reply = handoffText(language).queueHead;
+                    } catch {
+                        reply = handoffText(language).unavailable;
+                    }
+                }
+            } else {
+                const businessHours = await this.loadTenantBusinessHours(tenantId);
+                if (!this.isWithinBusinessHours(config, businessHours) && config.hours?.aiOutsideHours === false) {
+                    reply = config.hours?.afterHoursMessageOverride || businessHours?.afterHoursMessage || config.hours?.afterHoursMessage || null;
+                } else {
+                    const usage = await this.throttle.getAiMessageUsage(tenantId);
+                    if (Number.isFinite(usage.limit) && usage.used >= (usage.limit as number)) {
+                        reply = await this.buildQuotaFallbackMessage(tenantId);
+                    } else {
+                        const reserved = await this.throttle.incrementAiMessageCount(tenantId);
+                        if (Number.isFinite(usage.limit) && reserved > (usage.limit as number)) {
+                            await this.throttle.incrementAiMessageCount(tenantId, -1);
+                            reply = await this.buildQuotaFallbackMessage(tenantId);
+                        } else {
+                            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
+                            reply = await this.generateResponse(
+                                tenantId, conversation, msg, config, contact, leads?.[0],
+                                conversation.updated_at || conversation.created_at, businessHours,
+                                inboundMessageId, personaResolution.agentId ?? undefined,
+                            );
+                            if (!reply || isErrorFallback(reply)) {
+                                await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});
+                            }
+                        }
+                    }
+                }
             }
-            const reserved = await this.throttle.incrementAiMessageCount(tenantId);
-            if (Number.isFinite(usage.limit) && reserved > (usage.limit as number)) {
-                await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});
-                yield await this.buildQuotaFallbackMessage(tenantId);
-                return;
+            if (reply && draftMode) {
+                await this.persistDraft(tenantId, schemaName, conversationId, reply, contact.name, inboundMessageId);
             }
-
-            await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-
-            const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
-                ? config.llm.maxTokens : undefined;
-            const personaTemperature = typeof config.llm?.temperature === 'number'
-                ? config.llm.temperature : 0.8;
-            for await (const chunk of this.llmRouter.executeStream({
-                task: 'conversation',
-                messages: chatMessages,
-                systemPrompt,
-                temperature: personaTemperature,
-                maxTokens: personaMaxTokens,
-                allowedTiers,
-                tenantId,
-            })) {
-                yield chunk;
+            if (replyKey && reply && !isErrorFallback(reply)) {
+                await this.redis.set(replyKey, JSON.stringify({
+                    conversationId, contactId, text: draftMode ? null : reply, draft: draftMode,
+                }), 86400);
             }
+            if (reply && !draftMode) yield reply;
         } finally {
-            if (lockHeartbeat) clearInterval(lockHeartbeat);
-            if (lockToken) await this.redis.releaseLockToken(lockKey, lockToken).catch(() => {});
+            clearInterval(heartbeat);
+            await this.redis.releaseLockToken(lockKey, token).catch(() => {});
         }
     }
 
-    private async buildWidgetTurnContext(
-        tenantId: string,
-        schemaName: string,
-        conversation: any,
-        contactId: string,
-        text: string,
-        config: TenantConfig,
-        messageCount: number,
-    ): Promise<TurnContext> {
-        const configuredLanguage = config.language || 'es-CO';
-        const previousLanguage = conversation?.metadata?.detectedLanguage;
-        const language = this.languageDetector.detect(
-            text,
-            previousLanguage || configuredLanguage,
+    /** A persisted suggestion is the only output of a draft turn. */
+    private async persistDraft(
+        tenantId: string, schemaName: string, conversationId: string, text: string,
+        contactName?: string, sourceMessageId?: string,
+    ): Promise<void> {
+        await this.prisma.executeInTenantSchema(schemaName,
+            "UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{pendingDraft}', $2::jsonb), updated_at = NOW() WHERE id = $1::uuid",
+            [conversationId, JSON.stringify({ text, sourceMessageId, effectsExecuted: false, createdAt: new Date().toISOString() })],
         );
-        const businessHours = await this.loadTenantBusinessHours(tenantId);
-        const widgetRegional = await this.regionalProfile?.resolve(tenantId).catch(() => null);
-        const timezone = businessHours?.timezone
-            || config.hours?.timezone
-            || widgetRegional?.timezone.value
-            || 'America/Bogota';
-        const now = new Date();
-        const turnContext: TurnContext & Record<string, any> = {
-            userMessage: text,
-            language,
-            channelType: 'web_widget',
-            messageCount,
-            timezone,
-            now: now.toISOString(),
-            upcomingDays: this.promptAssembler.computeUpcomingDays(now, timezone, 8),
-            businessHoursStatus: this.isWithinBusinessHours(config, businessHours)
-                ? 'open' : 'closed',
-        };
-
-        const contacts = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT id, name, email, phone, first_contact_at, created_at
-             FROM contacts WHERE id = $1::uuid LIMIT 1`,
-            [contactId],
-        ).catch(() => []);
-        const contact = contacts?.[0];
-        if (contact) {
-            turnContext.contact = {
-                name: contact.name,
-                email: contact.email,
-                phone: contact.phone,
-                isKnown: Boolean(contact.name || contact.email || contact.phone),
-                knownSince: contact.first_contact_at || contact.created_at,
-            };
-            await this.activeOperationsContext.populateTurnContext(turnContext, {
-                tenantId,
-                schemaName,
-                contactId,
-                config: config as any,
-                timezone,
-                now,
-            });
-        }
-
-        const businessIdentity = await this.businessInfoService.getPrimary(tenantId).catch(() => null);
-        if (businessIdentity) {
-            turnContext.business = {
-                companyName: businessIdentity.companyName,
-                industry: businessIdentity.industry,
-                about: businessIdentity.about,
-                phone: businessIdentity.phone,
-                email: businessIdentity.email,
-                website: businessIdentity.website,
-                address: businessIdentity.address,
-                city: businessIdentity.city,
-                country: businessIdentity.country,
-                socialLinks: businessIdentity.socialLinks,
-            };
-        }
-        return turnContext;
+        this.eventEmitter.emit('draft.suggested', { tenantId, conversationId, text, contactName });
     }
 
     private mapLlmTierToAllowed(planTier: string | undefined): ModelTier[] {

@@ -315,9 +315,8 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         inboundMessageId?: string,
     ): Promise<void> {
         client.emit('widget:typing', { isTyping: true });
-        const messageId = randomUUID();
+        let messageId = randomUUID();
         let full = '';
-        let started = false; // only emit stream_start once the first chunk actually arrives
 
         try {
             for await (const chunk of this.conversations.streamWidgetMessage(
@@ -330,38 +329,40 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 },
             )) {
                 if (!chunk) continue;
-                if (!started) {
-                    started = true;
-                    client.emit('widget:stream_start', { messageId, role: 'assistant', timestamp: new Date().toISOString() });
-                }
                 full += chunk;
-                client.emit('widget:stream_chunk', { messageId, delta: chunk });
             }
 
             // Nothing streamed (no persona, conversation handled by a human, or empty
             // reply) → stay silent: no bubble, no sound, no persisted message.
-            if (started && full.trim()) {
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
-                     VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true}'::jsonb, NOW())`,
-                    [conversationId, full],
+            if (full.trim()) {
+                // Persist the validated answer before delivery. A reconnect uses
+                // the same inbound ID, cached domain result and outbound row.
+                const externalId = inboundMessageId ? `widget:reply:${inboundMessageId}` : null;
+                const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `INSERT INTO messages (conversation_id, direction, content_text, external_id, metadata, created_at)
+                     VALUES ($1::uuid, 'outbound', $2, $3, '{"channel":"web_widget","ai":true}'::jsonb, NOW())
+                     ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO NOTHING RETURNING id`,
+                    [conversationId, full, externalId],
                 );
+                if (rows?.[0]?.id) messageId = rows[0].id;
+                else if (externalId) {
+                    const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                        `SELECT id, content_text FROM messages WHERE external_id = $1 AND conversation_id = $2::uuid LIMIT 1`,
+                        [externalId, conversationId],
+                    );
+                    if (!existing?.[0]) throw new Error('widget_reply_persistence_failed');
+                    messageId = existing[0].id;
+                    full = existing[0].content_text;
+                }
+                client.emit('widget:stream_start', { messageId, role: 'assistant', timestamp: new Date().toISOString() });
+                client.emit('widget:stream_chunk', { messageId, delta: full });
                 client.emit('widget:stream_end', { messageId, content: full, timestamp: new Date().toISOString() });
                 // Back-compat: cached loaders that only listen for widget:message still render.
                 client.emit('widget:message', { content: full, role: 'assistant', timestamp: new Date().toISOString() });
             }
         } catch (err: any) {
             this.logger.warn(`Widget AI stream failed: ${err.message}`);
-            // Only surface an error if a stream had actually started (otherwise the loader
-            // has no bubble to fail). Persist the partial so history stays coherent.
-            if (started && full.trim()) {
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
-                     VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true,"partial":true}'::jsonb, NOW())`,
-                    [conversationId, full],
-                ).catch(() => {});
-                client.emit('widget:stream_error', { messageId, message: 'Failed to process message', partial: full });
-            }
+            client.emit('widget:error', { code: 'assistant_turn_failed', message: 'Failed to process message' });
         } finally {
             client.emit('widget:typing', { isTyping: false });
         }

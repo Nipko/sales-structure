@@ -1,6 +1,7 @@
 import { localizedPhrase, phrase, type EvalLanguageCode, type LocalizedPhrase } from './eval-phrase';
 import type { EvalActionAssertionSeed, EvalScenarioSeed } from './subtype-eval-pack';
 import type { IntentContract } from './vertical-domain-contract';
+import { repairTaskEvalScenarios } from './repair-task-eval-pack';
 
 type Domain = 'appointments' | 'class_bookings' | 'enrollments';
 const F = (name: string) => `{{fixture.${name}}}`;
@@ -53,6 +54,8 @@ function effects(domain: Domain, cancelled = false, corrected = false): EvalActi
 
 /** Complete fixtures are additive. Unrelated contracts retain their explicit coverage gaps. */
 export function canonicalTaskEvalScenarios(intent: IntentContract, language: EvalLanguageCode): EvalScenarioSeed[] {
+    const repair = repairTaskEvalScenarios(intent, language);
+    if (repair.length) return repair;
     const domain: Domain | undefined = intent.key === 'book_appointment' || intent.key === 'cancel_appointment' ? 'appointments'
         : intent.key === 'book_class' ? 'class_bookings' : intent.key === 'enrol_student' ? 'enrollments' : undefined;
     if (!domain || !intent.commits) return [];

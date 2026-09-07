@@ -4,6 +4,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { REPAIR_ORDER_TOOLS } from './tools/repair-order-tools';
 import { TOOL_POLICY_REGISTRY, isRegisteredStaticTool } from './tool-policy-registry';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { repairOrderTerms } from '../repair-orders/repair-order-terms';
 
 const schemaName = 'tenant_workshop';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -12,13 +13,16 @@ const conversationId = '33333333-3333-4333-8333-333333333333';
 const orderId = '44444444-4444-4444-8444-444444444444';
 
 function createExecutor(repairOrders: any) {
+    repairOrders.getActionTerms ??= jest.fn(async (_schema: string, _id: string, _contact: string, action: 'estimate_decision'|'cancel') => repairOrderTerms({
+        id:orderId,version:1,vehicle_id:'55555555-5555-4555-8555-555555555555',make:'Mazda',model:'3',license_plate:'ABC123',
+        status:'awaiting_approval',estimate_amount_cents:125000,currency:'COP'},action));
     const control = {
         preflight: jest.fn().mockResolvedValue({
             allowed: true,
             idempotencyKey: 'ledger-repair-1',
         }),
-        complete: jest.fn(),
-        fail: jest.fn(),
+        complete: jest.fn().mockResolvedValue(undefined),
+        fail: jest.fn().mockResolvedValue(undefined),
     };
     const stub = () => ({}) as any;
     const executor = new AIToolExecutorService(
@@ -177,7 +181,8 @@ describe('agent workshop runtime', () => {
         );
 
         expect(repairOrders.decideEstimate).toHaveBeenCalledWith(
-            schemaName, orderId, contactId, true, 'agent',
+            schemaName, orderId, contactId, true, 'agent',null,undefined,
+            {expectedVersion:1,expectedTermsHash:expect.any(String)},
         );
         expect(result).toMatchObject({
             success: true,
@@ -202,6 +207,7 @@ describe('agent workshop runtime', () => {
 
         expect(repairOrders.cancelOwned).toHaveBeenCalledWith(
             schemaName, orderId, contactId, 'Ya no lo necesito',
+            {expectedVersion:1,expectedTermsHash:expect.any(String)},
         );
         expect(result).toMatchObject({ success: true, repairOrderId: orderId, status: 'cancelled' });
     });

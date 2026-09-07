@@ -4,6 +4,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Object.freeze({
     create_appointment: 'appointments', cancel_appointment: 'appointments', reschedule_appointment: 'appointments',
     enroll_student: 'enrollments', cancel_enrollment: 'enrollments', book_class: 'class_bookings', cancel_class_booking: 'class_bookings',
+    create_repair_order: 'repair_orders', approve_repair: 'repair_orders', cancel_repair_order: 'repair_orders',
 });
 export const CANONICAL_EVAL_TOOLS = new Set(['check_availability', ...Object.keys(CANONICAL_EVAL_TOOL_FAMILIES)]);
 
@@ -33,7 +34,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TABLES = new Set([
     'customer_profiles', 'contact_identities', 'contacts', 'conversations', 'messages', 'tool_execution_ledger', 'customer_memory_erasure', 'tool_approval_tickets', 'tool_approval_events', 'persona_config', 'agent_personas',
     'pipelines', 'pipeline_stages', 'deals', 'opportunities', 'leads', 'companies', 'campaigns', 'calendar_integrations', 'staff_members', 'operational_locations',
-    'customer_vehicles', 'repair_orders',
+    'customer_vehicles', 'repair_orders', 'repair_order_events',
     'blocked_dates', 'availability_slots', 'service_staff', 'services', 'appointments', 'appointment_blocked_dates', 'appointment_settings', 'appointment_holds',
     'members', 'membership_plans', 'fitness_classes', 'class_bookings', 'class_waitlist',
     'courses', 'course_cohorts', 'enrollments', 'products', 'orders', 'order_items',

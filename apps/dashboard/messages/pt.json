@@ -12464,6 +12464,7 @@
     "saveError": "Não foi possível salvar a alteração.",
     "transitionError": "Não foi possível alterar o estado.",
     "decisionError": "Não foi possível registrar a decisão do cliente.",
+    "decisionReviewRequired": "Não foi possível confirmar o resultado. Revise o estado e o orçamento atualizados antes de repetir a decisão do cliente.",
     "decisionEvidencePrompt": "Informe como e quando o cliente aprovou ou recusou o orçamento (por exemplo: ligação de 25/08 às 10:30):",
     "recordApproval": "Registrar aprovação",
     "recordRejection": "Registrar recusa",

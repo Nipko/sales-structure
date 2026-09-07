@@ -12464,6 +12464,7 @@
     "saveError": "Impossible d’enregistrer la modification.",
     "transitionError": "Impossible de modifier le statut.",
     "decisionError": "Impossible d’enregistrer la décision du client.",
+    "decisionReviewRequired": "Le résultat n’a pas pu être confirmé. Vérifiez l’état et le devis actualisés avant de répéter la décision du client.",
     "decisionEvidencePrompt": "Indiquez comment et quand le client a approuvé ou refusé le devis (par exemple : appel du 25/08 à 10 h 30) :",
     "recordApproval": "Enregistrer l’approbation",
     "recordRejection": "Enregistrer le refus",

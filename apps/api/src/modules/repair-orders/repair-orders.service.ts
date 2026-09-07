@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
+import { RepairOrderTerms, RepairTermsChangedError, repairOrderTerms, repairRequestHash } from './repair-order-terms';
 
 export const REPAIR_ORDER_STATUSES = [
     'intake',
@@ -79,6 +80,7 @@ export interface RepairOrderSummary {
 }
 
 type TenantQuery = <T = any[]>(sql: string, params?: any[]) => Promise<T>;
+export interface RepairDecisionOptions { expectedVersion: number; expectedTermsHash?: string; }
 
 function cleanText(value: unknown, max: number): string | null {
     if (typeof value !== 'string') return null;
@@ -95,7 +97,7 @@ function assertUuid(value: unknown, field: string, optional = false): string | n
 }
 
 function normalizeCurrency(value: unknown): string {
-    const currency = cleanText(value, 3)?.toUpperCase();
+    const currency = typeof value === 'string' ? value.trim().toUpperCase() : null;
     if (!currency) throw new BadRequestException('currency is required');
     if (!/^[A-Z]{3}$/.test(currency)) throw new BadRequestException('currency must be ISO 4217');
     return currency;
@@ -136,6 +138,45 @@ function lineItemTotal(items: readonly RepairLineItem[]): number {
 @Injectable()
 export class RepairOrdersService {
     constructor(private readonly prisma: PrismaService) {}
+
+    private transaction<T>(schema: string, work: (query: TenantQuery) => Promise<T>): Promise<T> {
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            // The erasure owner takes this same lock exclusively. A writer can
+            // never publish customer-derived data across that boundary.
+            await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', [`agent-privacy:${schema}`]);
+            return work(query);
+        });
+    }
+
+    private async assertContactAvailable(query: TenantQuery, contactId: string): Promise<void> {
+        const tables = await query<any[]>("SELECT to_regclass('customer_memory_erasure')::text AS erasure");
+        if (!tables[0]?.erasure) return;
+        // Erasure materializes a tombstone for every contact in the identity
+        // family before unlinking profiles; the stable contact ID is authority.
+        const rows = await query<any[]>('SELECT contact_id FROM customer_memory_erasure WHERE contact_id=$1::uuid', [contactId]);
+        if (rows.length) throw new ConflictException('contact_erased');
+    }
+
+    async getActionTerms(schema: string, id: string, contactId: string, action: RepairOrderTerms['action']): Promise<RepairOrderTerms> {
+        return this.transaction(schema, async query => {
+            await this.assertContactAvailable(query, assertUuid(contactId, 'contactId')!);
+            const row = await this.lockOrder(query, assertUuid(id, 'repairOrderId')!);
+            if (row.contact_id !== contactId) throw new NotFoundException('Repair order not found');
+            if (action === 'estimate_decision' && row.metadata?.repairDecision?.terms && row.approval_status !== 'pending') {
+                return row.metadata.repairDecision.terms;
+            }
+            if (action === 'cancel' && row.status === 'cancelled' && row.metadata?.repairCancellation?.terms) return row.metadata.repairCancellation.terms;
+            if (action === 'cancel' && !['intake','estimating','awaiting_approval','rejected','approved'].includes(row.status)) {
+                throw new ConflictException('Repair order can no longer be cancelled by the customer');
+            }
+            return this.currentTerms(query, row, action);
+        });
+    }
+
+    private async currentTerms(query: TenantQuery, row: any, action: RepairOrderTerms['action']): Promise<RepairOrderTerms> {
+        const vehicles = await query<any[]>('SELECT make,model,vin,license_plate FROM customer_vehicles WHERE id=$1::uuid FOR SHARE', [row.vehicle_id]);
+        return repairOrderTerms({ ...row, ...vehicles[0] }, action);
+    }
 
     async list(schemaName: string, filters: {
         status?: string;
@@ -180,8 +221,9 @@ export class RepairOrdersService {
             )`);
         }
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-        const countRows = await this.prisma.executeInTenantSchema<Array<{ total: number }>>(
-            schemaName,
+        return this.transaction(schemaName, async query => {
+        if (filters.contactId) await this.assertContactAvailable(query, filters.contactId);
+        const countRows = await query<Array<{ total: number }>>(
             `SELECT COUNT(*)::int AS total
                FROM repair_orders ro
                JOIN customer_vehicles cv ON cv.id = ro.vehicle_id
@@ -189,8 +231,7 @@ export class RepairOrdersService {
             params,
         );
         const itemParams = [...params, limit, offset];
-        const items = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
+        const items = await query<any[]>(
             `SELECT ro.*, cv.make, cv.model, cv.year, cv.vin, cv.license_plate,
                     cv.color, cv.mileage_km AS vehicle_mileage_km,
                     c.name AS contact_name, c.phone AS contact_phone,
@@ -205,6 +246,7 @@ export class RepairOrdersService {
             itemParams,
         );
         return { items, total: countRows[0]?.total || 0 };
+        });
     }
 
     async summary(schemaName: string): Promise<RepairOrderSummary> {
@@ -241,8 +283,9 @@ export class RepairOrdersService {
             ? `AND ro.contact_id = $2::uuid`
             : '';
         if (contactId) params.push(assertUuid(contactId, 'contactId'));
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
+        return this.transaction(schemaName, async query => {
+        if (contactId) await this.assertContactAvailable(query, contactId);
+        const rows = await query<any[]>(
             `SELECT ro.*, cv.make, cv.model, cv.year, cv.vin, cv.license_plate,
                     cv.color, cv.mileage_km AS vehicle_mileage_km,
                     c.name AS contact_name, c.phone AS contact_phone,
@@ -255,8 +298,7 @@ export class RepairOrdersService {
             params,
         );
         if (!rows.length) throw new NotFoundException('Repair order not found');
-        const events = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
+        const events = await query<any[]>(
             `SELECT id, event_type, from_status, to_status, actor_id, actor_type, payload, created_at
                FROM repair_order_events
               WHERE repair_order_id = $1::uuid
@@ -265,6 +307,7 @@ export class RepairOrdersService {
             [repairOrderId],
         );
         return { ...rows[0], events };
+        });
     }
 
     async create(
@@ -283,8 +326,17 @@ export class RepairOrdersService {
         const conversationId = assertUuid(input.conversationId, 'conversationId', true);
         const idempotencyKey = cleanText(input.idempotencyKey, 255);
         const actorId = assertUuid(actor.id, 'actorId', true);
+        const requestHash = repairRequestHash({ contactId, customerConcern, reportedSymptoms, appointmentId, opportunityId, conversationId,
+            vehicle: { id: input.vehicle?.id || null, make: cleanText(input.vehicle?.make,120), model: cleanText(input.vehicle?.model,120),
+                vin: cleanText(input.vehicle?.vin,80)?.toUpperCase() || null, licensePlate: cleanText(input.vehicle?.licensePlate,40)?.toUpperCase() || null,
+                year: input.vehicle?.year ?? null, color: cleanText(input.vehicle?.color,80), mileageKm: input.vehicle?.mileageKm ?? null } });
 
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
+            await this.assertContactAvailable(query, contactId);
+            // Serialize before ANY vehicle mutation, including requests with
+            // different keys for the same customer's vehicle.
+            if (idempotencyKey) await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`repair-request:${schemaName}:${idempotencyKey}`]);
+            await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`repair-vehicle:${schemaName}:${contactId}`]);
             // Replay before touching the vehicle. Resolving/updating mileage on
             // an already-completed request would make an idempotent retry have
             // a second business effect.
@@ -300,7 +352,7 @@ export class RepairOrdersService {
                     [idempotencyKey],
                 );
                 if (replay.length) {
-                    if (replay[0].contact_id !== contactId) {
+                    if (replay[0].contact_id !== contactId || replay[0].metadata?.intakeRequestHash !== requestHash) {
                         throw new ConflictException('Repair order idempotency conflict');
                     }
                     return {
@@ -324,6 +376,15 @@ export class RepairOrdersService {
                 [contactId],
             );
             if (!contacts.length) throw new NotFoundException('Contact not found');
+            if (appointmentId) {
+                const owned = await query<any[]>(`SELECT id FROM appointments WHERE id=$1::uuid AND contact_id=$2::uuid
+                    AND status IN ('confirmed','completed') FOR SHARE`, [appointmentId, contactId]);
+                if (owned.length !== 1) throw new BadRequestException('appointment must belong to this contact and be confirmed or completed');
+            }
+            if (conversationId) {
+                const owned = await query<any[]>('SELECT id FROM conversations WHERE id=$1::uuid AND contact_id=$2::uuid FOR SHARE', [conversationId, contactId]);
+                if (owned.length !== 1) throw new BadRequestException('conversation must belong to this contact');
+            }
             const vehicle = await this.resolveVehicle(query, contactId, input.vehicle);
             const resolvedOpportunityId = await resolveNativeEvidenceOpportunity(query, {
                 contactId,
@@ -333,16 +394,16 @@ export class RepairOrdersService {
             const inserted = await query<any[]>(
                 `INSERT INTO repair_orders (
                     contact_id, vehicle_id, appointment_id, opportunity_id, conversation_id,
-                    customer_concern, reported_symptoms, idempotency_key, created_by
+                    customer_concern, reported_symptoms, idempotency_key, created_by, metadata
                  ) VALUES (
                     $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
-                    $6, $7::jsonb, $8, $9::uuid
+                    $6, $7::jsonb, $8, $9::uuid, $10::jsonb
                  )
                  ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
                  RETURNING *`,
                 [
                     contactId, vehicle.id, appointmentId, resolvedOpportunityId, conversationId,
-                    customerConcern, JSON.stringify(reportedSymptoms), idempotencyKey, actorId,
+                    customerConcern, JSON.stringify(reportedSymptoms), idempotencyKey, actorId, JSON.stringify({ intakeRequestHash: requestHash }),
                 ],
             );
             let row = inserted[0];
@@ -352,7 +413,7 @@ export class RepairOrdersService {
                     [idempotencyKey],
                 );
                 row = existing[0];
-                if (!row || row.contact_id !== contactId) {
+                if (!row || row.contact_id !== contactId || row.metadata?.intakeRequestHash !== requestHash) {
                     throw new ConflictException('Repair order idempotency conflict');
                 }
                 return { ...row, vehicle, idempotentReplay: true };
@@ -391,7 +452,7 @@ export class RepairOrdersService {
         }
         const currency = normalizeCurrency(input.currency);
         const notes = cleanText(input.notes, 4_000);
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const current = await this.lockOrder(query, id);
             if (TERMINAL_STATUSES.has(current.status)) throw new ConflictException('Repair order is closed');
             if (current.version !== expectedVersion) throw new ConflictException('Repair order version conflict');
@@ -405,7 +466,7 @@ export class RepairOrdersService {
                         currency = $4,
                         status = 'awaiting_approval',
                         approval_status = 'pending',
-                        metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('estimateNotes', $5::text),
+                        metadata = (COALESCE(metadata, '{}'::jsonb) - 'repairDecision') || jsonb_build_object('estimateNotes', $5::text),
                         version = version + 1,
                         updated_at = NOW()
                   WHERE id = $1::uuid AND version = $6
@@ -430,6 +491,7 @@ export class RepairOrdersService {
         actorType: 'agent' | 'tenant_user' = 'agent',
         actorId?: string | null,
         evidence?: string,
+        options?: RepairDecisionOptions,
     ): Promise<any> {
         const id = assertUuid(repairOrderId, 'repairOrderId')!;
         if (typeof accepted !== 'boolean') {
@@ -444,7 +506,8 @@ export class RepairOrdersService {
         if (actorType === 'tenant_user' && (!actor || !decisionEvidence)) {
             throw new BadRequestException('Staff decisions require actorId and evidence');
         }
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        if (!Number.isInteger(options?.expectedVersion) || options!.expectedVersion < 1) throw new BadRequestException('expectedVersion is required');
+        return this.transaction(schemaName, async (query) => {
             const params = owner ? [id, owner] : [id];
             const rows = await query<any[]>(
                 `SELECT * FROM repair_orders
@@ -454,10 +517,19 @@ export class RepairOrdersService {
             );
             const current = rows[0];
             if (!current) throw new NotFoundException('Repair order not found');
+            await this.assertContactAvailable(query, current.contact_id);
             const target: RepairOrderStatus = accepted ? 'approved' : 'rejected';
-            if (current.status === target && current.approval_status === target) {
+            const previous = current.metadata?.repairDecision;
+            if (previous?.accepted === accepted && previous.terms?.orderVersion === options!.expectedVersion
+                && (!options?.expectedTermsHash || previous.termsHash === options.expectedTermsHash) && current.approval_status === target) {
                 return { ...current, idempotentReplay: true };
             }
+            const terms = await this.currentTerms(query, current, 'estimate_decision');
+            const termsHash = repairRequestHash(terms);
+            if (current.version !== options!.expectedVersion || (options?.expectedTermsHash && options.expectedTermsHash !== termsHash)) {
+                throw new RepairTermsChangedError(terms);
+            }
+            if (actorType === 'agent' && !options?.expectedTermsHash) throw new BadRequestException('repair terms hash is required for agent decisions');
             if (current.status !== 'awaiting_approval' || current.approval_status !== 'pending'
                 || current.estimate_amount_cents === null) {
                 throw new ConflictException('Repair estimate is not awaiting a decision');
@@ -466,17 +538,19 @@ export class RepairOrdersService {
                 `UPDATE repair_orders
                     SET status = $2,
                         approval_status = $2,
+                        metadata = COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('repairDecision',$3::jsonb),
                         version = version + 1,
                         updated_at = NOW()
                   WHERE id = $1::uuid
                   RETURNING *`,
-                [id, target],
+                [id, target, JSON.stringify({ accepted, terms, termsHash })],
             );
             await this.insertEvent(query, id, accepted ? 'estimate_approved' : 'estimate_rejected',
                 current.status, target, actor, actorType, {
                     estimateAmountCents: Number(current.estimate_amount_cents),
                     currency: current.currency,
                     evidence: decisionEvidence,
+                    terms, termsHash,
                 });
             return { ...updated[0], idempotentReplay: false };
         });
@@ -524,31 +598,33 @@ export class RepairOrdersService {
         const inspection = input.inspection && typeof input.inspection === 'object' && !Array.isArray(input.inspection)
             ? input.inspection
             : {};
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const current = await this.lockOrder(query, id);
             if (TERMINAL_STATUSES.has(current.status)) throw new ConflictException('Repair order is closed');
             if (current.version !== expectedVersion) throw new ConflictException('Repair order version conflict');
             if (technicianId) {
                 const staff = await query<Array<{ id: string }>>(
-                    `SELECT id FROM staff_members WHERE id = $1::uuid AND is_active = true LIMIT 1`,
+                    `SELECT id FROM staff_members WHERE id = $1::uuid AND is_active = true LIMIT 1 FOR SHARE`,
                     [technicianId],
                 );
                 if (!staff.length) throw new BadRequestException('assignedTechnicianId must identify active staff');
             }
             const updated = await query<any[]>(
                 `UPDATE repair_orders
-                    SET inspection = CASE WHEN $2::jsonb = '{}'::jsonb THEN inspection ELSE $2::jsonb END,
-                        diagnosis_summary = COALESCE($3, diagnosis_summary),
-                        final_line_items = CASE WHEN $4::jsonb = '[]'::jsonb THEN final_line_items ELSE $4::jsonb END,
-                        final_amount_cents = COALESCE($5, final_amount_cents),
-                        assigned_technician_id = COALESCE($6::uuid, assigned_technician_id),
-                        promised_at = COALESCE($7::timestamptz, promised_at),
+                    SET inspection = CASE WHEN $9::boolean THEN $2::jsonb ELSE inspection END,
+                        diagnosis_summary = CASE WHEN $10::boolean THEN $3::text ELSE diagnosis_summary END,
+                        final_line_items = CASE WHEN $11::boolean THEN $4::jsonb ELSE final_line_items END,
+                        final_amount_cents = CASE WHEN $12::boolean THEN $5::bigint ELSE final_amount_cents END,
+                        assigned_technician_id = CASE WHEN $13::boolean THEN $6::uuid ELSE assigned_technician_id END,
+                        promised_at = CASE WHEN $14::boolean THEN $7::timestamptz ELSE promised_at END,
                         version = version + 1,
                         updated_at = NOW()
                   WHERE id = $1::uuid AND version = $8
                   RETURNING *`,
                 [id, JSON.stringify(inspection), diagnosis, JSON.stringify(finalItems), finalAmount,
-                    technicianId, promisedAt?.toISOString() || null, expectedVersion],
+                    technicianId, promisedAt?.toISOString() || null, expectedVersion,
+                    input.inspection !== undefined,input.diagnosisSummary !== undefined,input.finalLineItems !== undefined,
+                    input.finalAmountCents !== undefined || input.finalLineItems !== undefined,input.assignedTechnicianId !== undefined,input.promisedAt !== undefined],
             );
             if (!updated.length) throw new ConflictException('Repair order version conflict');
             if (mileageKm !== null) {
@@ -566,7 +642,9 @@ export class RepairOrdersService {
                 );
             }
             await this.insertEvent(query, id, 'details_updated', current.status, current.status,
-                actor, 'tenant_user', { inspection, diagnosisSummary: diagnosis, finalAmountCents: finalAmount, mileageKm });
+                actor, 'tenant_user', { inspection, diagnosisSummary: diagnosis, finalAmountCents: finalAmount, mileageKm,
+                    assignedTechnicianId:technicianId,promisedAt:promisedAt?.toISOString() || null,
+                    changedFields:Object.keys(input).filter(key=>key!=='expectedVersion') });
             return updated[0];
         });
     }
@@ -588,7 +666,7 @@ export class RepairOrdersService {
         }
         const actor = assertUuid(actorId, 'actorId', true);
         const reason = cleanText(input.reason, 1_000);
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const current = await this.lockOrder(query, id);
             if (current.version !== expectedVersion) throw new ConflictException('Repair order version conflict');
             if (current.status === target) return { ...current, idempotentReplay: true };
@@ -626,30 +704,38 @@ export class RepairOrdersService {
         repairOrderId: string,
         contactId: string,
         reason?: string,
+        options?: RepairDecisionOptions,
     ): Promise<any> {
         const id = assertUuid(repairOrderId, 'repairOrderId')!;
         const owner = assertUuid(contactId, 'contactId')!;
         const cleanReason = cleanText(reason, 1_000);
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        if (!Number.isInteger(options?.expectedVersion) || options!.expectedVersion < 1) throw new BadRequestException('expectedVersion is required');
+        return this.transaction(schemaName, async (query) => {
             const rows = await query<any[]>(
                 `SELECT * FROM repair_orders WHERE id = $1::uuid AND contact_id = $2::uuid FOR UPDATE`,
                 [id, owner],
             );
             const current = rows[0];
             if (!current) throw new NotFoundException('Repair order not found');
-            if (current.status === 'cancelled') return { ...current, idempotentReplay: true };
+            await this.assertContactAvailable(query, current.contact_id);
+            if (current.status === 'cancelled' && current.metadata?.repairCancellation?.termsHash === options?.expectedTermsHash) return { ...current, idempotentReplay: true };
+            const terms = await this.currentTerms(query, current, 'cancel');
+            if (current.version !== options!.expectedVersion || !options?.expectedTermsHash || repairRequestHash(terms) !== options.expectedTermsHash) {
+                throw new RepairTermsChangedError(terms);
+            }
             if (!['intake', 'estimating', 'awaiting_approval', 'rejected', 'approved'].includes(current.status)) {
                 throw new ConflictException('Repair order can no longer be cancelled by the customer');
             }
             const updated = await query<any[]>(
                 `UPDATE repair_orders
-                    SET status = 'cancelled', version = version + 1, updated_at = NOW()
+                    SET status = 'cancelled', version = version + 1, updated_at = NOW(),
+                        metadata=COALESCE(metadata,'{}'::jsonb)||jsonb_build_object('repairCancellation',$2::jsonb)
                   WHERE id = $1::uuid
                   RETURNING *`,
-                [id],
+                [id, JSON.stringify({terms,termsHash:repairRequestHash(terms)})],
             );
             await this.insertEvent(query, id, 'cancelled_by_customer', current.status, 'cancelled',
-                null, 'agent', { reason: cleanReason });
+                null, 'agent', { reason: cleanReason, terms, termsHash: repairRequestHash(terms) });
             return { ...updated[0], idempotentReplay: false };
         });
     }
@@ -691,12 +777,18 @@ export class RepairOrdersService {
                 AND (($2::text IS NOT NULL AND LOWER(vin) = LOWER($2))
                   OR ($3::text IS NOT NULL AND LOWER(license_plate) = LOWER($3)))
               ORDER BY updated_at DESC
-              LIMIT 1
+              LIMIT 2
               FOR UPDATE`,
             [contactId, vin, licensePlate],
         );
         if (existing.length) {
+            if (existing.length > 1) throw new ConflictException('Vehicle identity is ambiguous');
             const current = existing[0];
+            if ((vin && current.vin && vin !== current.vin.toUpperCase())
+                || (licensePlate && current.license_plate && licensePlate !== current.license_plate.toUpperCase())
+                || current.make.toLowerCase() !== make.toLowerCase() || current.model.toLowerCase() !== model.toLowerCase()) {
+                throw new ConflictException('Vehicle identity conflicts with the registered vehicle');
+            }
             if (mileageKm !== null && current.mileage_km !== null && mileageKm < current.mileage_km) {
                 throw new ConflictException('Vehicle mileage cannot move backwards');
             }
@@ -728,6 +820,7 @@ export class RepairOrdersService {
             [repairOrderId],
         );
         if (!rows.length) throw new NotFoundException('Repair order not found');
+        await this.assertContactAvailable(query, rows[0].contact_id);
         return rows[0];
     }
 

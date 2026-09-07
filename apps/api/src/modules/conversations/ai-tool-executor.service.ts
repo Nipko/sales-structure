@@ -1,4 +1,5 @@
 import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
@@ -359,6 +360,17 @@ export class AIToolExecutorService {
                 args = { ...args, serviceId: terms.serviceId, appointmentTerms: terms, appointmentTermsHash: termsHash };
             }
 
+            if (['approve_repair', 'cancel_repair_order'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                if (!this.repairOrders) return this.repairOrderWiringUnavailable();
+                const terms = await this.repairOrders.getActionTerms(schemaName, String(args.repairOrderId || ''), contactId,
+                    toolName === 'approve_repair' ? 'estimate_decision' : 'cancel');
+                // Only canonical facts enter the signed consent arguments. The
+                // model cannot supply a cheaper estimate or another revision.
+                args = toolName === 'approve_repair'
+                    ? { repairOrderId: terms.repairOrderId, accepted: args.accepted, repairTerms: terms, repairTermsHash: repairRequestHash(terms) }
+                    : { repairOrderId: terms.repairOrderId, reason: args.reason, repairTerms: terms, repairTermsHash: repairRequestHash(terms) };
+            }
             if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
                 if (!this.toolExecutionControl?.proposeDraftAction) return { error: 'draft_action_requires_approval', persisted: false };
                 // Resolve only canonical, read-only terms before recording the
@@ -381,6 +393,9 @@ export class AIToolExecutorService {
                     conversationId, channelType: opts.channelType, toolName, args, mcpApproval,
                     draftMode: true, draftScope: opts.draftScope });
                 if (proposal.allowed) return { error: 'draft_action_requires_approval', persisted: false };
+                if (args.repairTerms && proposal.result.error === 'confirmation_required') {
+                    return { ...proposal.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
+                }
                 if (toolName === 'create_appointment' && proposal.result.error === 'confirmation_required') {
                     return { ...proposal.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
                 }
@@ -489,6 +504,9 @@ export class AIToolExecutorService {
                 draftMode: opts?.executionContext?.mode === 'draft',
             });
             if (!controlDecision.allowed) {
+                if (args.repairTerms && controlDecision.result?.error === 'confirmation_required') {
+                    return { ...controlDecision.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
+                }
                 if (toolName === 'create_appointment' && controlDecision.result?.error === 'confirmation_required' && args.appointmentTerms) {
                     return { ...controlDecision.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
                 }
@@ -980,10 +998,10 @@ export class AIToolExecutorService {
                     return this.getRepairOrder(schemaName, contactId, args.repairOrderId);
 
                 case 'approve_repair':
-                    return this.decideRepairEstimate(schemaName, contactId, args.repairOrderId, args.accepted);
+                    return this.decideRepairEstimate(schemaName, contactId, args.repairOrderId, args.accepted, args.repairTerms, args.repairTermsHash);
 
                 case 'cancel_repair_order':
-                    return this.cancelRepairOrder(schemaName, contactId, args.repairOrderId, args.reason);
+                    return this.cancelRepairOrder(schemaName, contactId, args.repairOrderId, args.reason, args.repairTerms, args.repairTermsHash);
 
                 case 'create_pet_boarding':
                     return this.createPetBoarding(schemaName, contactId, args);
@@ -1029,6 +1047,13 @@ export class AIToolExecutorService {
                 await this.toolExecutionControl
                     .fail(schemaName, controlDecision, 'tool_execution_failed')
                     .catch(() => undefined);
+            }
+            if (['approve_repair', 'cancel_repair_order'].includes(toolName) && error instanceof RepairTermsChangedError) {
+                return repairTermsReviewResult(error.currentTerms);
+            }
+            if (['create_repair_order','approve_repair','cancel_repair_order','get_repair_order','list_my_repair_orders'].includes(toolName)) {
+                const recovery = repairActionErrorResult(error);
+                if (recovery) return recovery;
             }
             // Log the technical detail internally, but return a GENERIC error to the
             // LLM — error.message can carry schema names and raw SQL fragments from
@@ -1105,6 +1130,7 @@ export class AIToolExecutorService {
             repairOrders: result.items.map(order => ({
                 id: order.id,
                 status: order.status,
+                version: order.version,
                 approvalStatus: order.approval_status,
                 customerConcern: order.customer_concern,
                 estimateAmountCents: order.estimate_amount_cents === null
@@ -1139,6 +1165,7 @@ export class AIToolExecutorService {
                 repairOrder: {
                     id: order.id,
                     status: order.status,
+                    version: order.version,
                     approvalStatus: order.approval_status,
                     customerConcern: order.customer_concern,
                     // Technician-authored diagnosis is clearly separated from
@@ -1176,13 +1203,16 @@ export class AIToolExecutorService {
         contactId: string,
         repairOrderId: string,
         accepted: unknown,
+        terms: RepairOrderTerms,
+        termsHash: string,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
         if (typeof accepted !== 'boolean') {
             return { error: 'estimate_decision_required', message: 'Falta indicar si el estimado fue aprobado o rechazado.' };
         }
         const order = await this.repairOrders.decideEstimate(
-            schemaName, repairOrderId, contactId, accepted, 'agent',
+            schemaName, repairOrderId, contactId, accepted, 'agent', null, undefined,
+            { expectedVersion: terms?.orderVersion, expectedTermsHash: termsHash },
         );
         return {
             success: true,
@@ -1202,9 +1232,12 @@ export class AIToolExecutorService {
         contactId: string,
         repairOrderId: string,
         reason?: string,
+        terms?: RepairOrderTerms,
+        termsHash?: string,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
-        const order = await this.repairOrders.cancelOwned(schemaName, repairOrderId, contactId, reason);
+        const order = await this.repairOrders.cancelOwned(schemaName, repairOrderId, contactId, reason,
+            { expectedVersion: terms?.orderVersion as number, expectedTermsHash: termsHash });
         return {
             success: true,
             repairOrderId: order.id,

@@ -573,6 +573,7 @@ function writerAssertions(intent: IntentContract): EvalScenarioSeed['expectedAct
             type: 'no_row',
             family: effect.family,
             table: effect.table,
+            ...(effect.family === 'repair_orders' ? { where: { external_id: null } } : {}),
         });
         return assertions;
     });

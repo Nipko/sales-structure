@@ -12464,6 +12464,7 @@
     "saveError": "The change could not be saved.",
     "transitionError": "The status could not be changed.",
     "decisionError": "The customer's decision could not be recorded.",
+    "decisionReviewRequired": "The result could not be confirmed. Review the refreshed status and estimate before repeating the customer's decision.",
     "decisionEvidencePrompt": "State how and when the customer approved or rejected the estimate (for example: phone call on Aug 25 at 10:30):",
     "recordApproval": "Record approval",
     "recordRejection": "Record rejection",

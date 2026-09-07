@@ -2642,7 +2642,7 @@ export class ToolExecutionControlService {
         const active=this.privacyTransaction.getStore();
         if(active?.schemaName===schemaName)return callback(active.query);
         return this.prisma.transactionInTenantSchema(schemaName,async query=>{
-            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`,[`agent-privacy:${schemaName}`]);
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schemaName}`]);
             return this.privacyTransaction.run({schemaName,query},()=>callback(query));
         });
     }

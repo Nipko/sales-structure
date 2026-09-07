@@ -2639,6 +2639,7 @@ export const api = {
     recordRepairEstimateDecision: (tenantId: string, repairOrderId: string, data: {
         accepted: boolean;
         evidence: string;
+        expectedVersion: number;
     }) => apiPut<RepairOrder>(`/repair-orders/${tenantId}/${repairOrderId}/estimate-decision`, data),
     transitionRepairOrder: (tenantId: string, repairOrderId: string, data: {
         status: RepairOrderStatus;

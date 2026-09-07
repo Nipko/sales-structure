@@ -118,7 +118,7 @@ export class RepairOrdersController {
     async recordEstimateDecision(
         @Param('tenantId') tenantId: string,
         @Param('repairOrderId') repairOrderId: string,
-        @Body() body: { accepted: boolean; evidence: string },
+        @Body() body: { accepted: boolean; evidence: string; expectedVersion: number },
         @CurrentUser() user: any,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -130,6 +130,7 @@ export class RepairOrdersController {
             'tenant_user',
             user?.id || user?.sub,
             body.evidence,
+            { expectedVersion: body.expectedVersion },
         );
         return { success: true, data };
     }

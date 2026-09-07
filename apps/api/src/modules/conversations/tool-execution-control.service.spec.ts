@@ -35,10 +35,14 @@ function createHarness(identityVerified = true) {
         insertInboundBeforeAcquire: false,
         canonicalName: 'Amazon Minimalist',
         erased: false,
+        agentVersion: 3,
+        draftEnabled: true,
     };
 
     const runQuery = async (sql: string, params: any[] = []) => {
         const normalized = sql.replace(/\s+/g, ' ').trim();
+        if (normalized.startsWith('SELECT contact_id FROM conversations')) return [{ contact_id: contactId }];
+        if (normalized.startsWith('SELECT version, is_active, config_json FROM agent_personas')) return [{ version: state.agentVersion, is_active: true, config_json: { behavior: { draftMode: state.draftEnabled } } }];
         if(normalized.startsWith('SELECT pg_advisory_xact_lock'))return [];
         if(normalized.startsWith('SELECT contact_id FROM customer_memory_erasure'))return state.erased?[{contact_id:contactId}]:[];
         if(normalized.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
@@ -1044,5 +1048,69 @@ describe('ToolExecutionControlService', () => {
             allowed: false,
             result: { shouldHandoff: true, controlBlocked: true },
         });
+    });
+});
+
+describe('Draft action consent and human review', () => {
+    const draftScope = { agentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', agentVersion: 3 };
+    const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment',
+        args: { serviceId: 'service-1', date: '2026-10-20', time: '10:00' }, draftMode: true, draftScope };
+
+    it('requires customer consent, then human approval, and never executes from the draft turn', async () => {
+        const { service, state, chatIdentity } = createHarness(false);
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(state.tickets).toHaveLength(0);
+        expect(state.ledger.confirmed_at).toBeNull();
+        expect(chatIdentity.startVerification).not.toHaveBeenCalled();
+        state.latestMessage = state.messages[1];
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'draft_action_requires_approval' } });
+        expect(state.tickets).toHaveLength(1);
+        expect(state.ledger.status).toBe('awaiting_approval');
+        expect(state.ledger.request_payload.draftReview).toEqual(draftScope);
+        expect(state.ticket.approval_source_message_id).toBe(secondMessageId);
+        expect(new Date(state.ticket.expires_at).getTime()).toBeLessThanOrEqual(new Date(state.ledger.confirmation_expires_at).getTime());
+        state.ticket.status = 'approved';
+        expect((await service.proposeDraftAction(request)).allowed).toBe(false);
+        expect(state.ledger.status).not.toBe('executing');
+        const decision = await service.preflight({ ...request, draftMode: false, draftScope: undefined });
+        expect(decision.allowed).toBe(true);
+        await service.complete(schemaName, decision, { success: true, appointmentId: 'stored-appointment' });
+        expect((await service.preflight({ ...request, draftMode: false })).allowed).toBe(false);
+        expect(state.ledgers).toHaveLength(1);
+    });
+
+    it('creates one media proposal without an OTP, command or customer consent requirement', async () => {
+        const { service, state, chatIdentity } = createHarness(false);
+        const mediaRequest = { ...request, toolName: 'send_product_image', args: { productId: 'catalog-item' } };
+        await service.proposeDraftAction(mediaRequest);
+        await service.proposeDraftAction(mediaRequest);
+        expect(state.tickets).toHaveLength(1);
+        expect(state.ledger.confirmed_at).toBeNull();
+        expect(state.ledger.status).toBe('awaiting_approval');
+        expect(chatIdentity.startVerification).not.toHaveBeenCalled();
+    });
+
+    it('refuses a changed revision or erased contact before creating a proposal', async () => {
+        const { service, state } = createHarness();
+        state.agentVersion = 4;
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'draft_revision_changed' } });
+        expect(state.ledgers).toHaveLength(0);
+        state.agentVersion = 3;
+        state.erased = true;
+        expect(await service.proposeDraftAction(request)).toMatchObject({ allowed: false, result: { error: 'contact_erased' } });
+        expect(state.ledgers).toHaveLength(0);
+    });
+
+    it('refuses an approved proposal after revision change or approval expiry', async () => {
+        const { service, state } = createHarness();
+        const mediaRequest = { ...request, toolName: 'send_product_image', args: { productId: 'catalog-item' } };
+        await service.proposeDraftAction(mediaRequest);
+        state.ticket.status = 'approved';
+        state.agentVersion = 4;
+        expect(await service.preflight({ ...mediaRequest, draftMode: false })).toMatchObject({ allowed: false, result: { error: 'draft_revision_changed' } });
+        state.agentVersion = 3;
+        state.ticket.expires_at = new Date(Date.now() - 1).toISOString();
+        expect(await service.preflight({ ...mediaRequest, draftMode: false })).toMatchObject({ allowed: false, result: { error: 'approval_expired' } });
+        expect(state.ledger.status).not.toBe('executing');
     });
 });

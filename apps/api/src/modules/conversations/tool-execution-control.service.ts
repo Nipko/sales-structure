@@ -88,7 +88,14 @@ export interface ToolApprovalListItem {
     resumedAt: string | null;
     resumeResult: Record<string, unknown> | null;
     resumeError: string | null;
+    executionStatus?: string;
+    executionErrorCode?: string | null;
+    kind?: 'draft_action' | 'policy';
+    agentId?: string;
+    agentVersion?: number;
 }
+
+export interface DraftActionScope { agentId: string; agentVersion: number; }
 
 export interface ToolApprovalResumeClaim {
     tenantId: string;
@@ -100,6 +107,7 @@ export interface ToolApprovalResumeClaim {
     conversationId: string;
     channelType?: string;
     args: Record<string, unknown>;
+    draftReview?: DraftActionScope;
 }
 
 export type ToolApprovalResumeClaimResult =
@@ -129,6 +137,10 @@ export interface ToolExecutionControlRequest {
     readOnlyExecution?: boolean;
     /** Trusted execution mode, never a model-supplied argument. */
     draftMode?: boolean;
+    /** Only the operational runtime can supply this reviewed agent revision. */
+    draftScope?: DraftActionScope;
+    /** Server-owned sandbox state; never deserialized from a customer/model argument. */
+    executionState?: { get(key: string): Promise<string | null> };
     authorityEvidence?: {
         kind: 'booking_engine_confirmation';
         source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
@@ -464,10 +476,10 @@ export class ToolExecutionControlService {
                 decided_at: Date | string;
             }>>(
                 `UPDATE tool_approval_tickets
-                    SET status = $2, decided_by = $3::uuid, decided_at = NOW(),
+                    SET status = $2::text, decided_by = $3::uuid, decided_at = NOW(),
                         decision_reason = $4,
-                        resume_state = CASE WHEN $2 = 'approved' THEN 'pending' ELSE 'not_requested' END,
-                        next_resume_at = CASE WHEN $2 = 'approved' THEN NOW() ELSE next_resume_at END,
+                        resume_state = CASE WHEN $2::text = 'approved' THEN 'pending' ELSE 'not_requested' END,
+                        next_resume_at = CASE WHEN $2::text = 'approved' THEN NOW() ELSE next_resume_at END,
                         updated_at = NOW()
                   WHERE id = $1::uuid AND status = 'pending'
                   RETURNING id, status, decided_by, decided_at`,
@@ -521,6 +533,7 @@ export class ToolExecutionControlService {
         tenantId: string;
         status?: ToolApprovalStatus;
         limit?: number;
+        conversationId?: string;
     }): Promise<ToolApprovalListItem[]> {
         if (!UUID_RE.test(input.tenantId)) throw new NotFoundException('Tenant not found');
         const schemaName = await this.prisma.getTenantSchemaName(input.tenantId);
@@ -532,11 +545,17 @@ export class ToolExecutionControlService {
         }
         const limit = Math.max(1, Math.min(100, Number.isInteger(input.limit) ? Number(input.limit) : 50));
         const params: any[] = [];
-        let where = '';
+        const predicates: string[] = [];
         if (input.status) {
             params.push(input.status);
-            where = `WHERE t.status = $1`;
+            predicates.push(`t.status = $${params.length}`);
         }
+        if (input.conversationId) {
+            if (!UUID_RE.test(input.conversationId)) throw new BadRequestException('Invalid conversation scope');
+            params.push(input.conversationId);
+            predicates.push(`t.conversation_id = $${params.length}::uuid`);
+        }
+        const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
         params.push(limit);
         const rows = await this.query<any[]>(
             schemaName,
@@ -544,7 +563,7 @@ export class ToolExecutionControlService {
                     t.requested_at, t.expires_at, t.decided_at, t.decided_by,
                     t.decision_reason, t.resume_state, t.resume_attempts,
                     t.resumed_at, t.resume_result, t.resume_error,
-                    l.request_payload
+                    l.request_payload, l.status AS execution_status, l.last_error_code
                FROM tool_approval_tickets t
                JOIN tool_execution_ledger l ON l.id = t.execution_ledger_id
                ${where}
@@ -570,6 +589,13 @@ export class ToolExecutionControlService {
             resumedAt: row.resumed_at ? new Date(row.resumed_at).toISOString() : null,
             resumeResult: row.resume_result && typeof row.resume_result === 'object' ? row.resume_result : null,
             resumeError: row.resume_error || null,
+            executionStatus: row.execution_status,
+            executionErrorCode: row.last_error_code || null,
+            kind: row.request_payload?.draftReview ? 'draft_action' : 'policy',
+            ...(row.request_payload?.draftReview ? {
+                agentId: row.request_payload.draftReview.agentId,
+                agentVersion: row.request_payload.draftReview.agentVersion,
+            } : {}),
         }));
     }
 
@@ -772,6 +798,7 @@ export class ToolExecutionControlService {
                     conversationId: row.conversation_id,
                     channelType: row.channel_type || undefined,
                     args,
+                    ...(row.request_payload?.draftReview ? { draftReview: row.request_payload.draftReview } : {}),
                 },
             };
         });
@@ -940,6 +967,72 @@ export class ToolExecutionControlService {
         );
     }
 
+    /** Persist only a review proposal. No identity challenge, domain command or transport runs here. */
+    async proposeDraftAction(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
+        const scope = request.draftScope;
+        let policy = getToolPolicy(request.toolName);
+        if (!request.draftMode || !scope || !UUID_RE.test(scope.agentId)
+            || !Number.isInteger(scope.agentVersion) || scope.agentVersion < 1
+            || !UUID_RE.test(request.contactId) || !UUID_RE.test(request.conversationId ?? '')) {
+            return this.block('draft_action_requires_approval', 'La acción requiere una revisión vigente antes de ejecutarse.');
+        }
+        if (request.toolName.startsWith('mcp__')) policy = reviewedMcpPolicy(request.mcpApproval) ?? undefined;
+        if (!policy || policy.effect !== 'write' || policy.assuranceEnforcement === 'missing' || policy.idempotency === 'missing'
+            || policy.confirmation === 'required_missing' || policy.humanApproval === 'required_missing') {
+            return this.block('tool_controls_incomplete', 'Los controles de esta acción no están disponibles.');
+        }
+        await this.ensureControlTables(request.schemaName);
+        try {
+            return await this.transaction(request.schemaName, async query => {
+                await this.assertContactActive(query, request.schemaName, request.contactId);
+                const conversations = await query<any[]>('SELECT contact_id FROM conversations WHERE id=$1::uuid', [request.conversationId]);
+                if (conversations[0]?.contact_id !== request.contactId || !await this.draftRevisionIsCurrent(request.schemaName, scope, true)) {
+                    return this.block('draft_revision_changed', 'La conversación o el agente cambió. Prepara una nueva propuesta.');
+                }
+                const latest = await this.latestInboundMessage(request.schemaName, request.conversationId!);
+                if (!latest) return this.block('idempotency_source_missing', 'No hay un mensaje de origen para esta propuesta.');
+                const canonicalArgs = JSON.stringify(stableValue(request.args));
+                const argsHash = sha256(canonicalArgs);
+                const scopedRequest = { ...request, idempotencyKey: `draft:${scope.agentId}:${scope.agentVersion}:${latest.id}` };
+                let ledger = await this.findContinuableLedger({ ...scopedRequest, idempotencyKey: undefined }, argsHash, latest);
+                if (ledger && (!ledger.request_payload?.draftReview
+                    || ledger.request_payload.draftReview.agentId !== scope.agentId
+                    || ledger.request_payload.draftReview.agentVersion !== scope.agentVersion)) ledger = null;
+                if (!ledger) ledger = await this.createOrLoadLedger(scopedRequest, 'A4',
+                    this.buildIdempotencyKey(scopedRequest, argsHash, latest.id), argsHash, canonicalArgs, latest.id,
+                    policy!.confirmation === 'runtime_enforced');
+                if (!ledger || ledger.args_hash !== argsHash || ledger.contact_id !== request.contactId
+                    || ledger.conversation_id !== request.conversationId || ledger.tool_name !== request.toolName) {
+                    return this.block('idempotency_conflict', 'La propuesta no coincide con la operación registrada.');
+                }
+                const terminal = this.terminalLedgerResult(ledger);
+                if (terminal) return terminal;
+                if (policy!.confirmation === 'runtime_enforced' && !ledger.confirmed_at) {
+                    const confirmation = await this.resolveConfirmation(scopedRequest, ledger, argsHash);
+                    if (!confirmation.allowed) return confirmation;
+                    ledger = confirmation.ledger;
+                }
+                const approval = await this.resolveApproval(scopedRequest, ledger);
+                if (!approval.allowed && approval.result.error !== 'approval_required') return approval;
+                // Even an approved/replayed ticket cannot run from a draft turn.
+                // Only the durable human resume workflow crosses the effect boundary.
+                return this.block('draft_action_requires_approval', 'La acción está pendiente de revisión humana. Todavía no se ha ejecutado.');
+            });
+        } catch (error: any) {
+            if (error.message === 'contact_erased') return this.block('contact_erased', 'Los datos del contacto fueron eliminados.');
+            throw error;
+        }
+    }
+
+    private async draftRevisionIsCurrent(schemaName: string, scope: DraftActionScope, requireDraft = false): Promise<boolean> {
+        if (!scope || !UUID_RE.test(scope.agentId) || !Number.isInteger(scope.agentVersion)) return false;
+        const rows = await this.query<any[]>(schemaName,
+            'SELECT version, is_active, config_json FROM agent_personas WHERE id=$1::uuid', [scope.agentId]);
+        const agent = rows[0];
+        return !!agent && agent.is_active === true && Number(agent.version) === scope.agentVersion
+            && (!requireDraft || agent.config_json?.behavior?.draftMode === true);
+    }
+
     async preflight(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
         const policy=getToolPolicy(request.toolName);
         if(!policy||policy.effect==='read'||request.draftMode||request.readOnlyExecution||!UUID_RE.test(request.contactId))
@@ -1074,7 +1167,11 @@ export class ToolExecutionControlService {
             ledger = confirmation.ledger;
         }
 
-        const needsApproval = policy.humanApproval === 'runtime_enforced'
+        const draftReview = ledger.request_payload?.draftReview;
+        if (draftReview && !await this.draftRevisionIsCurrent(request.schemaName, draftReview)) {
+            return this.block('draft_revision_changed', 'El agente cambió después de revisar esta propuesta. La acción no fue ejecutada.');
+        }
+        const needsApproval = !!draftReview || policy.humanApproval === 'runtime_enforced'
             || (ASSURANCE_LEVEL_MATRIX[policy.assurance].humanApproval === 'writes');
         if (needsApproval) {
             const approval = await this.resolveApproval(request, ledger);
@@ -1103,6 +1200,7 @@ export class ToolExecutionControlService {
                            AND source.direction = 'inbound'
                          WHERE ticket.id = tool_execution_ledger.approval_ticket_id
                            AND ticket.status = 'approved'
+                           AND ticket.expires_at > NOW()
                            AND NOT EXISTS (
                                SELECT 1
                                  FROM messages newer
@@ -1113,6 +1211,12 @@ export class ToolExecutionControlService {
                            )
                     )
                 )
+                AND (NOT (request_payload ? 'draftReview') OR EXISTS (
+                    SELECT 1 FROM agent_personas agent
+                    WHERE agent.id::text = request_payload->'draftReview'->>'agentId'
+                      AND agent.version::text = request_payload->'draftReview'->>'agentVersion'
+                      AND agent.is_active = true
+                ))
               RETURNING *`,
             [ledger.id, executionLeaseToken, EXECUTION_LEASE_SECONDS],
         );
@@ -1482,7 +1586,7 @@ export class ToolExecutionControlService {
                 assurance,
                 needsConfirmation ? 'awaiting_confirmation' : 'ready',
                 sourceMessageId,
-                JSON.stringify({ args: JSON.parse(canonicalArgs) }),
+                JSON.stringify({ args: JSON.parse(canonicalArgs), ...(request.draftScope ? { draftReview: request.draftScope } : {}) }),
                 request.channelType || null,
             ],
         );
@@ -1672,7 +1776,7 @@ export class ToolExecutionControlService {
             }
         }
 
-        const rawState = await this.redis.get(`booking:${conversationId}`).catch(() => null);
+        const rawState = await (request.executionState ?? this.redis).get(`booking:${conversationId}`).catch(() => null);
         if (!rawState) {
             return this.block('booking_confirmation_state_missing', 'La confirmación de reserva ya no está vigente.', true);
         }
@@ -1835,7 +1939,11 @@ export class ToolExecutionControlService {
             ticket = rows[0] || null;
         }
         if (!ticket) {
-            const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS).toISOString();
+            const deadline = ledger.request_payload?.draftReview
+                ? Math.min(Date.now() + CONFIRMATION_TTL_MS, ledger.confirmation_expires_at
+                    ? new Date(ledger.confirmation_expires_at).getTime() : Infinity)
+                : Date.now() + APPROVAL_TTL_MS;
+            const expiresAt = new Date(deadline).toISOString();
             const created = await this.transaction(
                 request.schemaName,
                 async (query) => {
@@ -1904,17 +2012,6 @@ export class ToolExecutionControlService {
         if (ticket.status === 'rejected') {
             return this.block('approval_rejected', 'Una persona autorizada rechazó la acción.');
         }
-        if (ticket.status === 'approved') {
-            const updated = await this.query<ExecutionLedgerRow[]>(
-                request.schemaName,
-                `UPDATE tool_execution_ledger
-                    SET status = 'ready', updated_at = NOW()
-                  WHERE id = $1::uuid AND status = 'awaiting_approval'
-                  RETURNING *`,
-                [ledger.id],
-            );
-            return { allowed: true, ledger: updated[0] || ledger };
-        }
         if (new Date(ticket.expires_at).getTime() <= Date.now() || ticket.status === 'expired') {
             const expiredResult = {
                 error: 'approval_expired',
@@ -1924,7 +2021,7 @@ export class ToolExecutionControlService {
                 await query(
                     `UPDATE tool_approval_tickets
                         SET status = 'expired', resume_state = 'not_requested', updated_at = NOW()
-                      WHERE id = $1::uuid AND status = 'pending'`,
+                      WHERE id = $1::uuid AND status IN ('pending', 'approved')`,
                     [ticket!.id],
                 );
                 await query(
@@ -1942,6 +2039,17 @@ export class ToolExecutionControlService {
                 });
             });
             return this.block('approval_expired', expiredResult.message, true);
+        }
+        if (ticket.status === 'approved') {
+            const updated = await this.query<ExecutionLedgerRow[]>(
+                request.schemaName,
+                `UPDATE tool_execution_ledger
+                    SET status = 'ready', updated_at = NOW()
+                  WHERE id = $1::uuid AND status = 'awaiting_approval'
+                  RETURNING *`,
+                [ledger.id],
+            );
+            return { allowed: true, ledger: updated[0] || ledger };
         }
         return this.block('approval_required', 'La acción requiere aprobación humana antes de ejecutarse.', true);
     }

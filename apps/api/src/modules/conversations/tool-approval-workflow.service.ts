@@ -41,6 +41,7 @@ export class ToolApprovalWorkflowService {
         tenantId: string;
         status?: ToolApprovalStatus;
         limit?: number;
+        conversationId?: string;
     }): Promise<ToolApprovalListItem[]> {
         return this.controls.listApprovalTickets(input);
     }
@@ -198,6 +199,13 @@ export class ToolApprovalWorkflowService {
             }
 
             const vertical = (tenant.settings as any)?.verticalConfig ?? {};
+            if (claim.draftReview && (persona.agentId !== claim.draftReview.agentId
+                || persona.version !== claim.draftReview.agentVersion)) {
+                return this.controls.finishApprovalResume(claim, {
+                    error: 'draft_revision_changed',
+                    message: 'El agente cambió después de revisar la propuesta. La acción no fue ejecutada.',
+                });
+            }
             const capability = await this.capabilityComposer.resolve({
                 tenantId: claim.tenantId,
                 schemaName: claim.schemaName,

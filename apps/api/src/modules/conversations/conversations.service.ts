@@ -79,6 +79,7 @@ import {
     getToolPolicy,
     isBusinessWriteTool,
     isConfirmableWriteTool,
+    isDraftProposableToolName,
     isNonCommittalTool,
     toolBatchRequiresSequentialExecution,
     toolOrigin,
@@ -1877,8 +1878,19 @@ export class ConversationsService {
     ): Promise<string> {
         const draftMode = config.behavior?.draftMode === true;
         const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
+        const draftAgent = draftMode && !session && resolvedAgentId
+            ? (await this.prisma.executeInTenantSchema<any[]>(await this.tenantSchema(tenantId),
+                'SELECT id, version FROM agent_personas WHERE id=$1::uuid AND is_active=true', [resolvedAgentId]))[0]
+            : null;
+        const draftScope = draftAgent && Number.isInteger(Number(draftAgent.version)) && Number(draftAgent.version) >= 1
+            ? { agentId: String(draftAgent.id), agentVersion: Number(draftAgent.version) } : undefined;
         const cache = session?.state || this.redis;
-        const toolExecutor = session ? sessionToolExecutor(this.toolExecutor, session) : this.toolExecutor;
+        const toolExecutor = session ? sessionToolExecutor(this.toolExecutor, session) : draftScope ? new Proxy(this.toolExecutor, {
+            get: (target, key, receiver) => key === 'execute'
+                ? (...args: Parameters<AIToolExecutorService['execute']>) => target.execute(
+                    args[0], args[1], args[2], args[3], args[4], args[5], { ...args[6], draftScope, executionContext: DRAFT_EXECUTION_CONTEXT })
+                : Reflect.get(target, key, receiver),
+        }) : this.toolExecutor;
         const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
         const bookingEngine = session ? this.bookingEngine.forExecution({ redis: cache as RedisService, toolExecutor }) : this.bookingEngine;
         const procedureEngine = session ? this.procedureEngine.forExecution({ redis: cache as RedisService, toolExecutor,
@@ -2956,7 +2968,10 @@ export class ConversationsService {
         // above re-adds tools from the agent's feature flags, overriding the
         // `tools = []` set in the express phase, so enforce it as the last word.
         if (engineProducedText) tools = [];
-        if (draftMode) tools = tools.filter(tool => isAgentTestSafeToolName(tool?.name ?? tool?.function?.name));
+        if (draftMode) tools = tools.filter(tool => {
+            const name = tool?.name ?? tool?.function?.name;
+            return isAgentTestSafeToolName(name) || (!!draftScope && isDraftProposableToolName(name));
+        });
 
         if (bookingState.step && bookingState.step !== 'idle') {
             const selectedService = bookingState.serviceId

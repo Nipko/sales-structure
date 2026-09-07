@@ -255,6 +255,7 @@ export class PaymentOperationService {
         tenantId: string,
         contactId: string,
         args: Record<string, unknown>,
+        executionContext?: ServiceExecutionContext,
     ): Promise<PaymentLinkPreparationResult> {
         const payableReference = this.exactIdentifier(args.payableReference, 180);
         if (!payableReference) {
@@ -266,7 +267,7 @@ export class PaymentOperationService {
                 },
             };
         }
-        if (!await this.isCustomerPaymentsEnabled(tenantId)) {
+        if (!await this.isCustomerPaymentsEnabled(tenantId, executionContext)) {
             return {
                 ok: false,
                 result: {

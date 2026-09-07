@@ -60,7 +60,7 @@ import {
     evalIdentityChallengeResult,
     executeEvalSandboxMutation,
 } from './eval-writer-sandbox';
-import { isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
+import { isDraftProposableToolName, isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
 import {
     ToolExecutionControlService,
     type ToolExecutionControlDecision,
@@ -221,6 +221,7 @@ export class AIToolExecutorService {
             channelType?: string;
             readOnly?: boolean;
             executionContext?: ServiceExecutionContext;
+            draftScope?: { agentId: string; agentVersion: number };
             /** Trusted caller key; it is always rebound to tenant/tool/args. */
             idempotencyKey?: string;
             /** Server-origin evidence; never populated from LLM arguments. */
@@ -280,7 +281,8 @@ export class AIToolExecutorService {
             if (!toolName.startsWith('mcp__') && !isRegisteredStaticTool(toolName)) {
                 return { error: 'unknown_tool', tool: toolName };
             }
-            if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
+            if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)
+                && (!opts.draftScope || !isDraftProposableToolName(toolName))) {
                 return { error: 'draft_action_requires_approval', controlBlocked: true, persisted: false, shouldHandoff: false };
             }
 
@@ -326,6 +328,33 @@ export class AIToolExecutorService {
                     + `origen=${opts?.authority?.source ?? 'ninguno'}: ${authorityDecision.detail}`,
                 );
                 return this.authorityDenied(toolName, authorityDecision);
+            }
+
+            if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
+                if (!this.toolExecutionControl?.proposeDraftAction) return { error: 'draft_action_requires_approval', persisted: false };
+                // Resolve only canonical, read-only terms before recording the
+                // review. Domain preconditions, identity challenges and writers
+                // remain behind the human resume workflow.
+                let payment: PreparedPaymentLink | undefined;
+                if (toolName === 'create_payment_link') {
+                    const prepared = await this.paymentOperations.preparePaymentLink(tenantId, contactId, args, opts.executionContext);
+                    if (!prepared.ok) return prepared.result;
+                    payment = prepared.payable;
+                    args = { paymentIntentId: payment.paymentIntentId, payableReference: payment.canonicalReference,
+                        amountCents: payment.amountCents, currency: payment.currency, description: payment.description, paymentStatus: payment.paymentStatus };
+                }
+                if (toolName === 'record_contact_consent') {
+                    const prepared = await this.prepareContactConsent(tenantId, args, opts.executionContext);
+                    if (!prepared.ok) return prepared.result;
+                    args = { ...prepared.consent };
+                }
+                const proposal = await this.toolExecutionControl.proposeDraftAction({ schemaName, tenantId, contactId,
+                    conversationId, channelType: opts.channelType, toolName, args, mcpApproval,
+                    draftMode: true, draftScope: opts.draftScope });
+                if (proposal.allowed) return { error: 'draft_action_requires_approval', persisted: false };
+                return payment && proposal.result.error === 'confirmation_required'
+                    ? this.paymentOperations.confirmationRequiredResult(payment, proposal.result)
+                    : { ...proposal.result, persisted: false, shouldHandoff: false };
             }
 
             // Persistence-disabled execution is a capability boundary, not a
@@ -2208,6 +2237,7 @@ export class AIToolExecutorService {
     private async prepareContactConsent(
         tenantId: string,
         args: Record<string, any>,
+        executionContext?: ServiceExecutionContext,
     ): Promise<{ ok: true; consent: PreparedContactConsent } | { ok: false; result: Record<string, unknown> }> {
         const policyType = String(args.policyType || '').trim().toLowerCase();
         const scope = String(args.scope || '').trim().toLowerCase();
@@ -2219,7 +2249,7 @@ export class AIToolExecutorService {
             };
         }
         try {
-            const policy = await this.policiesService.getActive(tenantId, policyType as PolicyType);
+            const policy = await this.policiesService.getActive(tenantId, policyType as PolicyType, executionContext);
             if (!policy) {
                 return {
                     ok: false,

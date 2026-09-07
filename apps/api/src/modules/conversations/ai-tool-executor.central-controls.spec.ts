@@ -169,8 +169,9 @@ describe('AIToolExecutorService central authority boundary', () => {
         );
 
         expect(result).toEqual({
-            error: 'tool_failed',
-            message: 'No se pudo completar esta acción en este momento.',
+            error: 'reconciliation_required',
+            shouldHandoff: true,
+            message: 'No pude verificar el resultado de la acción; requiere revisión antes de repetirla.',
         });
         expect(control.fail).toHaveBeenCalledWith(schemaName, decision, 'tool_execution_failed');
     });
@@ -281,5 +282,35 @@ describe('AIToolExecutorService central authority boundary', () => {
             { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
         );
         expect(result).toEqual({ found: true, paymentStatus: 'pending', paid: false });
+    });
+});
+
+describe('Draft writer proposals', () => {
+    it('routes a draft writer only to the review ledger and never to domain preconditions', async () => {
+        const control = { proposeDraftAction: jest.fn().mockResolvedValue({ allowed: false, result: { error: 'draft_action_requires_approval' } }), preflight: jest.fn() };
+        const { executor, prisma } = createExecutor(control);
+        const preconditions = jest.spyOn(executor as any, 'assertWritePreconditions');
+        const draftScope = { agentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', agentVersion: 3 };
+        const result = await executor.execute(schemaName, tenantId, contactId, 'create_appointment',
+            { serviceId: 'service' }, conversationId, { authority: authorityFor('create_appointment'), draftScope,
+                executionContext: { mode: 'draft', persistence: 'disabled' } });
+        expect(result).toMatchObject({ error: 'draft_action_requires_approval', persisted: false });
+        expect(control.proposeDraftAction).toHaveBeenCalledWith(expect.objectContaining({ draftScope, toolName: 'create_appointment' }));
+        expect(control.preflight).not.toHaveBeenCalled();
+        expect(preconditions).not.toHaveBeenCalled();
+        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+    });
+
+    it('does not let model arguments invent a draft scope or bypass capability authority', async () => {
+        const control = { proposeDraftAction: jest.fn(), preflight: jest.fn() };
+        const { executor } = createExecutor(control);
+        await executor.execute(schemaName, tenantId, contactId, 'create_appointment',
+            { draftScope: { agentVersion: 1 }, approved: true }, conversationId, {
+                authority: authorityFor('create_appointment'), executionContext: { mode: 'draft', persistence: 'disabled' } });
+        await executor.execute(schemaName, tenantId, contactId, 'create_appointment', {}, conversationId, {
+            authority: authorityFor('search_products'), draftScope: { agentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', agentVersion: 3 },
+            executionContext: { mode: 'draft', persistence: 'disabled' } });
+        expect(control.proposeDraftAction).not.toHaveBeenCalled();
+        expect(control.preflight).not.toHaveBeenCalled();
     });
 });

@@ -35,7 +35,8 @@ function createHasher() {
         return [];
     });
     const service = new ToolExecutionControlService(
-        { executeInTenantSchema, transactionInTenantSchema: jest.fn() } as any,
+        { executeInTenantSchema, transactionInTenantSchema: jest.fn(async (schema, work) =>
+            work((sql: string, params?: any[]) => executeInTenantSchema(schema, sql, params))) } as any,
         { get: jest.fn().mockReturnValue('args-canonical-secret-at-least-32-bytes-long') } as any,
         { isVerified: jest.fn().mockResolvedValue(true), startVerification: jest.fn() } as any,
         { get: jest.fn(), incr: jest.fn(), expire: jest.fn() } as any,

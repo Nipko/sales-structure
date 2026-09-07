@@ -774,6 +774,15 @@ export function toolBatchRequiresSequentialExecution(names: readonly unknown[]):
     return names.some(toolRequiresSequentialExecution);
 }
 
+/** Writes can be described in a draft only through the separate review ledger. */
+export function isDraftProposableToolName(name: unknown): boolean {
+    if (typeof name === 'string' && name.startsWith('mcp__')) return true;
+    const policy = getToolPolicy(name);
+    return !!policy && policy.effect === 'write' && policy.assuranceEnforcement !== 'missing'
+        && policy.idempotency !== 'missing' && policy.confirmation !== 'required_missing'
+        && policy.humanApproval !== 'required_missing';
+}
+
 export function getMissingToolControls(): Array<{
     name: string;
     missing: Array<'assurance' | 'idempotency' | 'confirmation' | 'human_approval'>;

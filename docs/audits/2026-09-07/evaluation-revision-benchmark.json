@@ -1,0 +1,19 @@
+{
+  "kind": "synthetic_local_signature_benchmark",
+  "timestamp": "2026-09-07T15:14:38.372Z",
+  "methodology": {
+    "tenantTables": 44,
+    "messageTextCharacters": 1024,
+    "documentTextCharacters": 4096,
+    "embeddingDimensions": 1536,
+    "repetitions": 3,
+    "routing": "constant_test_double",
+    "database": "real_PostgreSQL_pgvector_Prisma",
+    "limitations": ["shared_host_load", "synthetic_data", "no_model_provider", "not_a_production_capacity_estimate"]
+  },
+  "samples": [
+    {"messages": 100, "documents": 100, "embeddings": 100, "relationBytes": 1843200, "firstCaptureMs": 136, "captureMs": [46, 45, 45], "assertCurrentMs": [46, 46, 42]},
+    {"messages": 1000, "documents": 500, "embeddings": 1000, "relationBytes": 10592256, "firstCaptureMs": 104, "captureMs": [100, 99, 101], "assertCurrentMs": [99, 100, 102]},
+    {"messages": 5000, "documents": 500, "embeddings": 1000, "relationBytes": 15458304, "firstCaptureMs": 129, "captureMs": [117, 123, 118], "assertCurrentMs": [121, 119, 119]}
+  ]
+}

@@ -1,3 +1,4 @@
+import { QUALITY_RUBRIC_HASH } from './quality-rubric';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
     AgentQualityCheck,
@@ -554,11 +555,13 @@ export class AgentQualityService {
                     `WITH latest_quality AS (
                         SELECT DISTINCT ON (cqs.conversation_id)
                                cqs.conversation_id, cqs.overall_score, cqs.resolution_type,
-                               cqs.resolution_verified, cqs.created_at
+                               CASE WHEN cqs.operational_outcome='verified' THEN true WHEN cqs.operational_outcome='failed' THEN false ELSE NULL END AS resolution_verified, cqs.created_at
                           FROM conversation_quality_scores cqs
                           JOIN conversations c ON c.id = cqs.conversation_id
                          WHERE cqs.agent_id = $1::uuid
                            AND cqs.agent_config_version = $2
+                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
+                           AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
                            AND COALESCE(c.was_handed_off, false) = false
                            AND cqs.created_at >= NOW() - INTERVAL '30 days'
@@ -566,11 +569,11 @@ export class AgentQualityService {
                     )
                     SELECT COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved')::int AS sample_size,
                             AVG(overall_score) FILTER (WHERE resolution_type = 'ai_resolved') AS avg_overall,
-                            COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved')::int AS verified_total,
+                            COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified IS NOT NULL)::int AS verified_total,
                             COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified = true)::int AS verified_success,
                             MIN(created_at) AS attributed_since
                        FROM latest_quality`,
-                    [agentId, agentVersion],
+                    [agentId, agentVersion, QUALITY_RUBRIC_HASH],
                 ),
                 this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
@@ -589,11 +592,13 @@ export class AgentQualityService {
                     `WITH latest_quality AS (
                         SELECT DISTINCT ON (cqs.conversation_id)
                                cqs.conversation_id, cqs.flags, cqs.overall_score,
-                               cqs.resolution_type, cqs.resolution_verified, cqs.created_at
+                               cqs.resolution_type, CASE WHEN cqs.operational_outcome='verified' THEN true WHEN cqs.operational_outcome='failed' THEN false ELSE NULL END AS resolution_verified, cqs.created_at
                           FROM conversation_quality_scores cqs
                           JOIN conversations c ON c.id = cqs.conversation_id
                          WHERE cqs.agent_id = $1::uuid
                            AND cqs.agent_config_version = $2
+                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
+                           AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
                            AND COALESCE(c.was_handed_off, false) = false
                            AND cqs.created_at >= NOW() - INTERVAL '30 days'
@@ -609,7 +614,7 @@ export class AgentQualityService {
                         )
                    ORDER BY created_at DESC
                       LIMIT 200`,
-                    [agentId, agentVersion],
+                    [agentId, agentVersion, QUALITY_RUBRIC_HASH],
                 ),
                 this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
@@ -992,7 +997,8 @@ export class AgentQualityService {
             || recurringKnowledgeGap;
         return {
             status: !facts.available || facts.sampleSize < MINIMUM_PRODUCTION_SAMPLE ? 'insufficient_evidence'
-                : needsAttention ? 'needs_attention' : 'evidenced',
+                : needsAttention ? 'needs_attention'
+                : facts.verifiedResolutionTotal < MINIMUM_PRODUCTION_SAMPLE ? 'insufficient_evidence' : 'evidenced',
             observedScore: enoughEvidence && facts.avgOverall != null ? this.round(facts.avgOverall * 10, 2) : null,
             sampleSize: facts.sampleSize,
             minimumSample: MINIMUM_PRODUCTION_SAMPLE,

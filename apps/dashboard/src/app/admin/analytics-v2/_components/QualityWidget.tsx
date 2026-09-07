@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { ShieldCheck, Star, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -16,7 +16,10 @@ interface QualitySummary {
     avgEmpathy: number;
     distribution: { excellent: number; ok: number; poor: number };
     flagged: number;
-    verifiedResolutionRate: number;
+    verifiedResolutionRate: number | null;
+    operationalKnown: number;
+    operationalUnknown: number;
+    partialTranscripts: number;
 }
 
 interface FlaggedRow {
@@ -43,24 +46,32 @@ export default function QualityWidget({
     const [summary, setSummary] = useState<QualitySummary | null>(null);
     const [flagged, setFlagged] = useState<FlaggedRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [failed, setFailed] = useState(false);
+    const requestId = useRef(0);
 
     const fetchData = useCallback(async () => {
         if (!tenantId) return;
+        const request = ++requestId.current;
         setLoading(true);
+        setFailed(false);
+        setSummary(null);
+        setFlagged([]);
         try {
             const [sRes, fRes]: any[] = await Promise.all([
                 api.getQualitySummary(tenantId, { start: startDate, end: endDate }),
                 api.getQualityFlagged(tenantId, { start: startDate, end: endDate, limit: 50 }),
             ]);
-            if (sRes?.success) setSummary(sRes.data as QualitySummary);
-            if (fRes?.success) setFlagged(fRes.data as FlaggedRow[]);
-        } catch (err) {
-            console.error('Failed to fetch quality data:', err);
+            if (!sRes?.success || !sRes.data || !fRes?.success || !Array.isArray(fRes.data)) throw new Error('quality_unavailable');
+            if (request !== requestId.current) return;
+            setSummary(sRes.data as QualitySummary);
+            setFlagged(fRes.data as FlaggedRow[]);
+        } catch {
+            if (request === requestId.current) setFailed(true);
         }
-        setLoading(false);
+        if (request === requestId.current) setLoading(false);
     }, [tenantId, startDate, endDate]);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => { fetchData(); return () => { requestId.current++; }; }, [fetchData]);
 
     if (loading) {
         return (
@@ -70,9 +81,16 @@ export default function QualityWidget({
         );
     }
 
+    if (failed) return <p role="alert" className="text-sm text-muted-foreground">{t('loadError')} <button type="button" className="underline" onClick={fetchData}>{t('retry')}</button></p>;
     if (!summary || summary.scored === 0) {
         return <p className="text-muted-foreground py-10 text-center">{t('noData')}</p>;
     }
+
+    return <QualityScoreDetails summary={summary} flagged={flagged}/>;
+}
+
+export function QualityScoreDetails({summary,flagged}: {summary:QualitySummary;flagged:FlaggedRow[]}) {
+    const t=useTranslations('quality');
 
     const subScores = [
         { key: 'resolution', value: summary.avgResolution },
@@ -91,12 +109,13 @@ export default function QualityWidget({
         <div className="space-y-6">
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <KPICard label={t('avgOverall')} value={`${summary.avgOverall}/10`} changePercent={0} icon={Star} iconColor="text-yellow-400" />
-                <KPICard label={t('scored')} value={summary.scored} changePercent={0} icon={CheckCircle} iconColor="text-blue-400" />
-                <KPICard label={t('verifiedResolutionRate')} value={`${summary.verifiedResolutionRate}%`} changePercent={0} icon={ShieldCheck} iconColor="text-emerald-400" />
-                <KPICard label={t('flagged')} value={summary.flagged} changePercent={0} icon={AlertTriangle} iconColor="text-amber-400" />
+                <KPICard label={t('avgOverall')} value={`${summary.avgOverall}/10`} icon={Star} iconColor="text-yellow-400" />
+                <KPICard label={t('scored')} value={summary.scored} icon={CheckCircle} iconColor="text-blue-400" />
+                <KPICard label={t('verifiedResolutionRate')} value={summary.verifiedResolutionRate == null ? t('unknownOutcome') : `${summary.verifiedResolutionRate}%`} icon={ShieldCheck} iconColor="text-emerald-400" />
+                <KPICard label={t('flagged')} value={summary.flagged} icon={AlertTriangle} iconColor="text-amber-400" />
             </div>
 
+            <p className="text-sm text-muted-foreground">{t('opinionNotice')} {t('coverageNotice', { known: summary.operationalKnown ?? 0, unknown: summary.operationalUnknown ?? summary.scored, partial: summary.partialTranscripts ?? 0 })}</p>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Sub-scores */}
                 <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
@@ -170,7 +189,7 @@ export default function QualityWidget({
                                         <td className="py-2.5 px-3 text-muted-foreground">{r.resolutionType || '—'}</td>
                                         <td className="py-2.5 px-3 text-center">
                                             {r.resolutionVerified === null ? (
-                                                <span className="text-muted-foreground">—</span>
+                                                <span className="text-muted-foreground">{t('unknownOutcome')}</span>
                                             ) : r.resolutionVerified ? (
                                                 <span className="text-emerald-500">{t('yes')}</span>
                                             ) : (

@@ -1361,6 +1361,11 @@
     "testFailed": "No se pudo enviar la prueba"
   },
   "quality": {
+    "unknownOutcome": "Sin verificar",
+    "loadError": "No se pudo comprobar la evidencia de calidad. Esto no significa que no existan conversaciones evaluadas.",
+    "retry": "Reintentar",
+    "opinionNotice": "Los puntajes son una opinión sobre el texto; no comprueban reservas, pagos ni otros resultados reales.",
+    "coverageNotice": "Resultados comprobados: {known}. Sin verificar: {unknown}. Transcripciones parciales: {partial}.",
     "noData": "Aún no hay conversaciones evaluadas en este período",
     "avgOverall": "Calidad promedio",
     "scored": "Conversaciones evaluadas",
@@ -12063,6 +12068,7 @@
     "switchConfirm": "Sí, activar modo total"
   },
   "managed": {
+    "outcomeUnknown": "Sin evidencia suficiente",
     "title": "Cuentas gestionadas (Done-for-you)",
     "subtitle": "Garantía de resolución por outcome: objetivo vs. tasa verificada real por cuenta.",
     "managedAccounts": "Cuentas gestionadas",

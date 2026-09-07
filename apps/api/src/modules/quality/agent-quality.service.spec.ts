@@ -740,6 +740,15 @@ describe('AgentQualityService', () => {
         }));
     });
 
+    it('does not certify operations from high text-only scores with unknown outcomes', async () => {
+        const overview = await createHarness({
+            quality: { sample_size: 50, avg_overall: 9.8, verified_total: 0, verified_success: 0 },
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(overview.production.status).toBe('insufficient_evidence');
+        expect(overview.production.metrics).toContainEqual(expect.objectContaining({code:'verified_resolution_rate',value:null,denominator:0}));
+        expect(overview.recommendations.some(item=>item.code==='improve_verified_resolution')).toBe(false);
+    });
+
     it('elevates critical production reconciliation evidence to at risk', async () => {
         const overview = await createHarness({
             tools: { total: 20, failures: 1, reconciliations: 1, conversation_ids: ['conv-tool'] },
@@ -812,7 +821,11 @@ describe('AgentQualityService', () => {
         );
         expect(productionCalls).toHaveLength(5);
         for (const call of productionCalls) {
-            expect(call.params).toEqual([AGENT_ID, 2]);
+            expect(call.params.slice(0,2)).toEqual([AGENT_ID, 2]);
+            if (call.query.includes('FROM conversation_quality_scores')) {
+                expect(call.params[2]).toMatch(/^[a-f0-9]{64}$/);
+                expect(call.query).toContain('cqs.rubric_hash = $3');
+            } else expect(call.params).toHaveLength(2);
             expect(call.query).toContain('$1::uuid');
             expect(call.query).toContain('agent_config_version = $2');
             expect(call.query).toContain('agent_attribution_conflicted');

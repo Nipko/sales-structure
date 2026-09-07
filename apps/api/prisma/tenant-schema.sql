@@ -3630,6 +3630,51 @@ CREATE INDEX IF NOT EXISTS idx_cqs_created ON "{{SCHEMA_NAME}}"."conversation_qu
 CREATE INDEX IF NOT EXISTS idx_cqs_agent_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_cqs_agent_version_conversation_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, agent_config_version, conversation_id, created_at DESC) WHERE agent_id IS NOT NULL;
 
+-- ---- Production QA revision, privacy and provenance ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_erasure" (contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS resolution_type VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS was_handed_off BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS agent_persona_id UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS agent_config_version INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS agent_attribution_conflicted BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS qa_revision BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS resolution_verification_source TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS source_revision BIGINT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS source_message_ids UUID[];
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS transcript_hash TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS coverage JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS rubric_hash TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS configuration_snapshot JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS conversational_resolved BOOLEAN;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS conversational_resolution_reason TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversation_quality_scores" ADD COLUMN IF NOT EXISTS operational_outcome TEXT NOT NULL DEFAULT 'unknown';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cqs_revision_rubric ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(conversation_id,source_revision,rubric_hash);
+CREATE OR REPLACE FUNCTION "{{SCHEMA_NAME}}".qa_conversation_revision() RETURNS trigger LANGUAGE plpgsql AS $qa$
+    BEGIN
+      IF ROW(NEW.status,NEW.resolution_type,NEW.was_handed_off,NEW.contact_id,NEW.agent_persona_id,
+             NEW.agent_config_version,NEW.agent_attribution_conflicted,NEW.metadata)
+         IS DISTINCT FROM ROW(OLD.status,OLD.resolution_type,OLD.was_handed_off,OLD.contact_id,OLD.agent_persona_id,
+             OLD.agent_config_version,OLD.agent_attribution_conflicted,OLD.metadata) THEN
+        NEW.qa_revision := OLD.qa_revision + 1;
+      END IF;
+      RETURN NEW;
+    END $qa$;
+CREATE OR REPLACE FUNCTION "{{SCHEMA_NAME}}".qa_message_revision() RETURNS trigger LANGUAGE plpgsql AS $qa$
+    BEGIN
+      IF TG_OP <> 'INSERT' AND OLD.direction IN ('inbound','outbound') THEN
+        EXECUTE format('UPDATE %I.conversations SET qa_revision=qa_revision+1 WHERE id=$1::uuid',TG_TABLE_SCHEMA) USING OLD.conversation_id;
+      END IF;
+      IF TG_OP <> 'DELETE' AND NEW.direction IN ('inbound','outbound')
+         AND (TG_OP='INSERT' OR COALESCE(OLD.direction,'') NOT IN ('inbound','outbound') OR NEW.conversation_id IS DISTINCT FROM OLD.conversation_id) THEN
+        EXECUTE format('UPDATE %I.conversations SET qa_revision=qa_revision+1 WHERE id=$1::uuid',TG_TABLE_SCHEMA) USING NEW.conversation_id;
+      END IF;
+      RETURN NULL;
+    END $qa$;
+CREATE OR REPLACE TRIGGER qa_conversation_revision BEFORE UPDATE ON "{{SCHEMA_NAME}}"."conversations"
+       FOR EACH ROW EXECUTE FUNCTION "{{SCHEMA_NAME}}".qa_conversation_revision();
+CREATE OR REPLACE TRIGGER qa_message_revision AFTER INSERT OR UPDATE OR DELETE ON "{{SCHEMA_NAME}}"."messages"
+       FOR EACH ROW EXECUTE FUNCTION "{{SCHEMA_NAME}}".qa_message_revision();
+
 -- ---- Durable proactive Agent Quality attention ----
 -- Snapshots contain fixed numeric/coded fields only. Signals never persist
 -- transcripts, prompts, judge prose, KB queries or conversation identifiers.
@@ -3655,6 +3700,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_quality_snapshots" (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_quality_snapshots_latest
     ON "{{SCHEMA_NAME}}"."agent_quality_snapshots"(agent_id, agent_config_version, calculated_at DESC);
+
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_quality_snapshots"
+    ADD COLUMN IF NOT EXISTS evidence_policy_version INTEGER NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_quality_signals" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

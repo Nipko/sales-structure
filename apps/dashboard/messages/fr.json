@@ -1361,6 +1361,11 @@
     "testFailed": "Échec de l'envoi du test"
   },
   "quality": {
+    "unknownOutcome": "Non vérifié",
+    "loadError": "Les preuves de qualité n’ont pas pu être vérifiées. Cela ne signifie pas qu’aucune conversation n’a été évaluée.",
+    "retry": "Réessayer",
+    "opinionNotice": "Les notes sont un avis sur le texte ; elles ne vérifient ni réservations, ni paiements, ni autres résultats réels.",
+    "coverageNotice": "Résultats vérifiés : {known}. Non vérifiés : {unknown}. Transcriptions partielles : {partial}.",
     "noData": "Aucune conversation évaluée pour cette période",
     "avgOverall": "Qualité moyenne",
     "scored": "Conversations évaluées",
@@ -12063,6 +12068,7 @@
     "switchConfirm": "Oui, activer le mode total"
   },
   "managed": {
+    "outcomeUnknown": "Preuves insuffisantes",
     "title": "Comptes gérés (Done-for-you)",
     "subtitle": "Garantie de résolution par résultat : objectif vs. taux vérifié réel par compte.",
     "managedAccounts": "Comptes gérés",

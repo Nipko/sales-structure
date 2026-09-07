@@ -1361,6 +1361,11 @@
     "testFailed": "Could not send test"
   },
   "quality": {
+    "unknownOutcome": "Unverified",
+    "loadError": "Quality evidence could not be checked. This does not mean there are no evaluated conversations.",
+    "retry": "Retry",
+    "opinionNotice": "Scores are an opinion about the text; they do not verify bookings, payments or other real outcomes.",
+    "coverageNotice": "Verified outcomes: {known}. Unverified: {unknown}. Partial transcripts: {partial}.",
     "noData": "No conversations evaluated in this period yet",
     "avgOverall": "Average quality",
     "scored": "Conversations evaluated",
@@ -12063,6 +12068,7 @@
     "switchConfirm": "Yes, enable total mode"
   },
   "managed": {
+    "outcomeUnknown": "Insufficient evidence",
     "title": "Managed accounts (Done-for-you)",
     "subtitle": "Outcome-based resolution guarantee: target vs. actual verified rate per account.",
     "managedAccounts": "Managed accounts",

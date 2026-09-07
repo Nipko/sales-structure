@@ -5,7 +5,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export async function eraseWidgetContactSessions(query: ErasureQuery, schema: string, contactIds: string[]): Promise<number> {
     if (!/^tenant_[a-z0-9_]+$/.test(schema) || contactIds.some(id => !UUID.test(id))) throw new Error('widget_erasure_invalid_scope');
     if (!contactIds.length) return 0;
-    await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`agent-privacy:${schema}`]);
+    await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`agent-privacy:${schema}`]);
     const exists = await query<any[]>("SELECT to_regclass('public.widget_sessions')::text AS name");
     if (!exists[0]?.name) return 0;
     const deleted = await query<any[]>(`DELETE FROM public.widget_sessions ws USING public.tenants t

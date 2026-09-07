@@ -26,8 +26,8 @@ export class QualityProcessor extends WorkerHost {
             if (access.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
             return { ok: false, skipped: true, reason: access.error };
         }
-        await this.quality.scoreConversation(job.data.tenantId, job.data.conversationId);
-        return { ok: true };
+        const result = await this.quality.scoreConversation(job.data.tenantId, job.data.conversationId);
+        return { ok: true, ...result };
     }
 
     @OnWorkerEvent('failed')

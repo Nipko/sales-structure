@@ -343,7 +343,10 @@ export class ComplianceService {
         return this.prisma.transactionInTenantSchema(schema, async (query) => {
             // Same first lock as ToolExecutionControl transactions: a request,
             // finalizer or approval notification cannot cross the erasure boundary.
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`,[`agent-privacy:${schema}`]);
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+            // Keep the unified family stable until all tombstones and derived
+            // deletions commit, including first identity INSERTs and merges.
+            await query(`LOCK TABLE contact_identities IN SHARE MODE`);
             const profiles = await query<any[]>(
                 `SELECT DISTINCT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid`, [contactId]);
             const profileIds = profiles.map(p => p.customer_profile_id).filter(Boolean).sort();
@@ -354,14 +357,16 @@ export class ComplianceService {
                 ...profileIds.map(id => `customer-memory:${schema}:profile:${id}`),
                 ...contactIds.map(id => `customer-memory:${schema}:contact:${id}`),
             ].sort();
-            for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [lock]);
+            for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text`, [lock]);
             await query(`INSERT INTO customer_memory_erasure (contact_id)
                 SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
             const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);
-            const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger') AS ledger,
-                to_regclass('tool_approval_tickets') AS tickets,to_regclass('tool_approval_outbox') AS outbox,
-                to_regclass('kb_retrieval_log') AS kb_log,to_regclass('kb_unanswered_queries') AS kb_queries,
-                to_regclass('kb_feedback') AS kb_feedback`);
+            const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger')::text AS ledger,
+                to_regclass('tool_approval_tickets')::text AS tickets,to_regclass('tool_approval_outbox')::text AS outbox,
+                to_regclass('kb_retrieval_log')::text AS kb_log,to_regclass('kb_unanswered_queries')::text AS kb_queries,
+                to_regclass('kb_feedback')::text AS kb_feedback,
+                to_regclass('conversation_quality_scores')::text AS quality_scores,
+                to_regclass('quality_sampling_items')::text AS quality_sampling`);
             if(tables[0]?.ledger)await query(`UPDATE tool_execution_ledger SET request_payload='{}'::jsonb,
                 response_payload='{"error":"contact_erased"}'::jsonb,confirmation_token=NULL,
                 execution_lease_token=NULL,execution_lease_expires_at=NULL,last_error_code='contact_erased',
@@ -385,6 +390,11 @@ export class ComplianceService {
                 WHERE f.conversation_id IN (SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))
                     OR f.message_id IN (SELECT m.id FROM messages m JOIN conversations c ON c.id=m.conversation_id
                         WHERE c.contact_id=ANY($1::uuid[]))`, [contactIds]);
+            if (tables[0]?.quality_scores) await query(`DELETE FROM conversation_quality_scores q USING conversations c
+                WHERE q.conversation_id=c.id AND c.contact_id=ANY($1::uuid[])`, [contactIds]);
+            if (tables[0]?.quality_sampling) await query(`UPDATE quality_sampling_items SET state='erased',
+                contact_id=NULL,conversation_id=NULL,lease_token=NULL,lease_expires_at=NULL,last_error_code=NULL
+                WHERE contact_id=ANY($1::uuid[])`, [contactIds]);
             const facts = await query<any[]>(
                 `DELETE FROM customer_memory_facts
                  WHERE (owner_kind = 'profile' AND owner_id = ANY($1::uuid[]))

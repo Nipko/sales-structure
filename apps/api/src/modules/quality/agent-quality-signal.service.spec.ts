@@ -193,6 +193,18 @@ describe('AgentQualitySignalService', () => {
         expect(signalSection).not.toMatch(/transcript|prompt|conversation_id|judge_text|query_text/i);
     });
 
+    it('ignores legacy certification snapshots and summary cache until recalculated under evidence policy v2', async () => {
+        const { service, redis, sqlCalls, txCalls } = createHarness({tablesCached:false});
+        const legacy={evaluatedAgents:99,status:'healthy'};
+        redis.getJson.mockImplementation(async(key:string)=>key.endsWith(':v1') ? legacy : null);
+        const result=await service.getAttentionSummary(TENANT_ID);
+        expect(result).not.toBe(legacy);
+        expect(redis.getJson).toHaveBeenCalledWith(expect.stringContaining('attention-summary:v2'));
+        expect(sqlCalls.find(call=>call.sql.includes('snapshot.status AS snapshot_status'))?.sql).toContain('aqs.evidence_policy_version = 2');
+        expect(txCalls.some(call=>call.sql.includes('ADD COLUMN IF NOT EXISTS evidence_policy_version'))).toBe(true);
+        expect(txCalls.some(call=>call.sql.includes("s.code='improve_verified_resolution'")&&call.sql.includes('NOT EXISTS'))).toBe(true);
+    });
+
     it('persists coded snapshots/signals, dedupes by stable fingerprint and drops sensitive evidence', async () => {
         const { service, txCalls } = createHarness();
 

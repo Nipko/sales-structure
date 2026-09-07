@@ -104,11 +104,11 @@ export class AgentQualitySignalService {
     ) {}
 
     private tablesCacheKey(schemaName: string): string {
-        return `agent_quality_attention_tables:v1:${schemaName}`;
+        return `agent_quality_attention_tables:v2:${schemaName}`;
     }
 
     private summaryCacheKey(tenantId: string): string {
-        return this.redis.tenantKey(tenantId, 'agent-quality:attention-summary:v1');
+        return this.redis.tenantKey(tenantId, 'agent-quality:attention-summary:v2');
     }
 
     private manualRefreshCooldownKey(tenantId: string): string {
@@ -157,6 +157,7 @@ export class AgentQualitySignalService {
             )`,
             `CREATE INDEX IF NOT EXISTS idx_agent_quality_snapshots_latest
                 ON agent_quality_snapshots(agent_id, agent_config_version, calculated_at DESC)`,
+            `ALTER TABLE agent_quality_snapshots ADD COLUMN IF NOT EXISTS evidence_policy_version INTEGER NOT NULL DEFAULT 1`,
             `CREATE TABLE IF NOT EXISTS agent_quality_signals (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 agent_id UUID NOT NULL,
@@ -183,6 +184,10 @@ export class AgentQualitySignalService {
                 ON agent_quality_signals(state, severity, last_seen_at DESC)`,
             `CREATE INDEX IF NOT EXISTS idx_agent_quality_signals_agent_version
                 ON agent_quality_signals(agent_id, agent_config_version, state)`,
+            `UPDATE agent_quality_signals s SET state='superseded',superseded_at=NOW()
+                WHERE s.code='improve_verified_resolution' AND s.state IN ('open','acknowledged','snoozed')
+                  AND NOT EXISTS (SELECT 1 FROM agent_quality_snapshots a WHERE a.agent_id=s.agent_id
+                    AND a.agent_config_version=s.agent_config_version AND a.evidence_policy_version=2)`,
         ];
 
         await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
@@ -679,6 +684,7 @@ export class AgentQualitySignalService {
             .map((recommendation) => this.safeRecommendation(recommendation))
             .filter((recommendation): recommendation is SafeRecommendation => recommendation !== null);
         const snapshotFingerprint = this.hash(JSON.stringify({
+            evidencePolicyVersion: 2,
             agentId: overview.agent.id,
             version: overview.agent.version,
             status: overview.status,
@@ -714,9 +720,9 @@ export class AgentQualitySignalService {
                     (agent_id, agent_config_version, status, next_milestone,
                      preparation_status, preparation_score, tested_status, tested_score,
                      production_status, production_score, recommendation_count,
-                     critical_count, high_count, fingerprint, trigger)
+                     critical_count, high_count, fingerprint, trigger, evidence_policy_version)
                  VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                         $11, $12, $13, $14, $15)
+                         $11, $12, $13, $14, $15, 2)
                  ON CONFLICT (agent_id, agent_config_version, fingerprint) DO NOTHING`,
                 [
                     overview.agent.id,
@@ -882,6 +888,7 @@ export class AgentQualitySignalService {
                       FROM agent_quality_snapshots aqs
                      WHERE aqs.agent_id = ap.id
                        AND aqs.agent_config_version = COALESCE(ap.version, 1)
+                       AND aqs.evidence_policy_version = 2
                   ORDER BY aqs.calculated_at DESC, aqs.id DESC
                      LIMIT 1
                ) snapshot ON true

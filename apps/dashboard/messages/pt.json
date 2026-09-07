@@ -1361,6 +1361,11 @@
     "testFailed": "Não foi possível enviar o teste"
   },
   "quality": {
+    "unknownOutcome": "Não verificado",
+    "loadError": "Não foi possível verificar a evidência de qualidade. Isso não significa que não existam conversas avaliadas.",
+    "retry": "Tentar novamente",
+    "opinionNotice": "As notas são uma opinião sobre o texto; não comprovam reservas, pagamentos nem outros resultados reais.",
+    "coverageNotice": "Resultados comprovados: {known}. Não verificados: {unknown}. Transcrições parciais: {partial}.",
     "noData": "Ainda não há conversas avaliadas neste período",
     "avgOverall": "Qualidade média",
     "scored": "Conversas avaliadas",
@@ -12063,6 +12068,7 @@
     "switchConfirm": "Sim, ativar modo total"
   },
   "managed": {
+    "outcomeUnknown": "Evidência insuficiente",
     "title": "Contas gerenciadas (Done-for-you)",
     "subtitle": "Garantia de resolução por outcome: meta vs. taxa verificada real por conta.",
     "managedAccounts": "Contas gerenciadas",

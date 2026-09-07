@@ -5,6 +5,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { scoreProductionEvidence } from './quality-production-evidence';
+import { QUALITY_EVIDENCE_DDL } from './quality-evidence-schema';
+import { CURRENT_QUALITY_CTE } from './quality-evidence';
+import { QUALITY_RUBRIC_HASH, RUBRIC_PROMPT } from './quality-rubric';
+export { RUBRIC_PROMPT } from './quality-rubric';
 
 export const QUALITY_QUEUE = 'quality-scoring';
 
@@ -24,31 +29,7 @@ export interface JudgeResult {
     resolutionReason: string;
 }
 
-const RUBRIC_PROMPT = `Eres un evaluador de calidad (QA) de conversaciones de atención al cliente y ventas en Latinoamérica.
-Analiza la transcripción y evalúa la calidad del servicio prestado (sea por IA o por un agente humano).
 
-Devuelve ÚNICAMENTE un JSON con este formato exacto:
-{
-  "overall": 0-10,
-  "resolution": 0-10,
-  "tone": 0-10,
-  "accuracy": 0-10,
-  "empathy": 0-10,
-  "flags": ["problema detectado 1", "problema detectado 2"],
-  "resolved": true,
-  "resolutionReason": "explicación breve de si la necesidad del cliente quedó resuelta"
-}
-
-Criterios (0 = pésimo, 10 = excelente):
-- resolution: ¿se resolvió la necesidad/pregunta del cliente?
-- tone: profesionalismo y calidez del tono.
-- accuracy: ¿la información dada parece correcta y sin contradicciones?
-- empathy: ¿se mostró comprensión hacia el cliente?
-- overall: calificación global ponderada.
-
-En "flags" lista problemas concretos si los hay (ej: "respondió con información no verificada", "no escaló cuando debía", "tono cortante", "ignoró una pregunta"). Si no hay problemas, devuelve [].
-En "resolved" indica true SOLO si la necesidad del cliente quedó genuinamente resuelta en la conversación; false si quedó pendiente, ambigua o se prometió seguimiento sin cerrar.
-Usa español. No incluyas explicaciones fuera del JSON.`;
 
 @Injectable()
 export class QualityService {
@@ -86,9 +67,7 @@ export class QualityService {
     }
 
     async ensureTables(schemaName: string): Promise<void> {
-        // v2 adds prospective agent/config attribution. A deployment may still
-        // have the former v1 key for 24h, so it must not suppress this migration.
-        const cacheKey = `quality_cols:v2:${schemaName}`;
+        const cacheKey = `quality_cols:v3:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -195,125 +174,26 @@ export class QualityService {
             ignoreDupError(err);
         }
 
+        for (const statement of QUALITY_EVIDENCE_DDL) {
+            await this.prisma.executeInTenantSchema(schemaName, statement, []);
+        }
         await this.redis.set(cacheKey, '1', 86400);
     }
 
-    /**
-     * Core QA job: LLM-as-judge scores the whole conversation (T1.6) and, when the
-     * conversation was marked ai_resolved, verifies the resolution (T1.8).
-     */
-    async scoreConversation(tenantId: string, conversationId: string): Promise<void> {
+    /** Scores one immutable conversation revision; text opinions never verify operations. */
+    async scoreConversation(tenantId: string, conversationId: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        if (!schemaName) return;
+        if (!schemaName) return { status: 'unavailable' as const };
         await this.ensureTables(schemaName);
-
-        const convRows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT resolution_type, was_handed_off, agent_persona_id, agent_config_version,
-                    agent_attribution_conflicted
-               FROM conversations WHERE id = $1::uuid`,
-            [conversationId],
-        );
-        const resolutionType: string | null = convRows?.[0]?.resolution_type ?? null;
-        // Transcript-level QA is only attributable when the whole resolved
-        // conversation belongs to one exact AI config and never entered human
-        // handoff. Handoffs remain a separate production metric.
-        const attributionEligible = resolutionType === 'ai_resolved'
-            && convRows?.[0]?.was_handed_off !== true
-            && convRows?.[0]?.agent_attribution_conflicted !== true;
-        const agentId: string | null = attributionEligible
-            ? convRows?.[0]?.agent_persona_id ?? null
-            : null;
-        const agentConfigVersion: number | null = !attributionEligible || convRows?.[0]?.agent_config_version == null
-            ? null
-            : Number(convRows[0].agent_config_version);
-
-        const msgs = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT content_text, direction
-             FROM messages
-             WHERE conversation_id = $1::uuid AND content_text IS NOT NULL
-             ORDER BY created_at ASC
-             LIMIT 40`,
-            [conversationId],
-        );
-
-        if (!msgs || msgs.length < 2) {
-            this.logger.debug(`[QA] Skipping ${conversationId} — too few messages (${msgs?.length || 0})`);
-            return;
+        const result = await scoreProductionEvidence(this.prisma, schemaName, conversationId,
+            QUALITY_RUBRIC_HASH,
+            (transcript) => this.judgeTranscript(tenantId, transcript));
+        if (result.status === 'scored' && result.agentId) {
+            this.eventEmitter.emit('quality.scored', { tenantId, agentId: result.agentId,
+                agentConfigVersion: result.agentConfigVersion, status: result.status,
+                evidenceId: result.evidenceId, sourceRevision: result.sourceRevision });
         }
-
-        const transcript = msgs
-            .map((m: any) => `${m.direction === 'inbound' ? 'Cliente' : 'Agente'}: ${m.content_text}`)
-            .join('\n');
-
-        let judge: JudgeResult;
-        try {
-            judge = await this.judgeTranscript(tenantId, transcript);
-        } catch (err: any) {
-            this.logger.error(`[QA] LLM judge failed for ${conversationId}: ${err.message}`);
-            // BullMQ retries technical judge/provider/parse failures. Returning
-            // here marked the job successful and permanently lost the evidence.
-            throw err;
-        }
-
-        const clamp = (n: any) => Math.max(0, Math.min(10, Math.round((Number(n) || 0) * 10) / 10));
-        const overall = clamp(judge.overall);
-        const resolution = clamp(judge.resolution);
-        const tone = clamp(judge.tone);
-        const accuracy = clamp(judge.accuracy);
-        const empathy = clamp(judge.empathy);
-        const flags = Array.isArray(judge.flags) ? judge.flags.slice(0, 10).map((f) => String(f).slice(0, 240)) : [];
-
-        // Resolution verification only meaningful when the system marked it ai_resolved.
-        const isAiResolved = resolutionType === 'ai_resolved';
-        const resolutionVerified = isAiResolved ? !!judge.resolved : null;
-        const verificationReason = isAiResolved ? String(judge.resolutionReason || '').slice(0, 500) : null;
-
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `INSERT INTO conversation_quality_scores
-                (conversation_id, agent_id, agent_config_version,
-                 overall_score, resolution_score, tone_score, accuracy_score, empathy_score,
-                 flags, resolution_type, resolution_verified, verification_reason, scored_by, rubric_version)
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, 'ai', 'v1')`,
-            [
-                conversationId,
-                agentId,
-                agentConfigVersion,
-                overall,
-                resolution,
-                tone,
-                accuracy,
-                empathy,
-                JSON.stringify(flags),
-                resolutionType,
-                resolutionVerified,
-                verificationReason,
-            ],
-        );
-
-        // T1.8 — write back the verified flag so resolution-rate can report "verified" rate.
-        if (isAiResolved) {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE conversations SET resolution_verified = $2 WHERE id = $1::uuid`,
-                [conversationId, resolutionVerified],
-            );
-        }
-
-        if (agentId) {
-            this.eventEmitter.emit('quality.scored', {
-                tenantId,
-                agentId,
-                agentConfigVersion,
-                status: 'scored',
-            });
-        }
-
-        this.logger.log(
-            `[QA] Scored ${conversationId}: overall=${overall} resType=${resolutionType || '-'} verified=${resolutionVerified}`,
-        );
+        return result;
     }
 
     /** Aggregated QA summary for the dashboard. */
@@ -323,7 +203,7 @@ export class QualityService {
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT
+            `${CURRENT_QUALITY_CTE} SELECT
                 COUNT(*)::int AS scored,
                 COALESCE(AVG(overall_score), 0) AS avg_overall,
                 COALESCE(AVG(resolution_score), 0) AS avg_resolution,
@@ -334,11 +214,13 @@ export class QualityService {
                 COUNT(*) FILTER (WHERE overall_score >= 5 AND overall_score < 8)::int AS ok,
                 COUNT(*) FILTER (WHERE overall_score < 5)::int AS poor,
                 COUNT(*) FILTER (WHERE jsonb_array_length(flags) > 0)::int AS flagged,
-                COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved')::int AS ai_total,
-                COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified = true)::int AS ai_verified
-             FROM conversation_quality_scores
+                COUNT(*) FILTER (WHERE operational_outcome IN ('verified','failed'))::int AS ai_total,
+                COUNT(*) FILTER (WHERE operational_outcome = 'verified')::int AS ai_verified,
+                COUNT(*) FILTER (WHERE operational_outcome = 'unknown')::int AS operational_unknown,
+                COUNT(*) FILTER (WHERE (coverage->>'complete')::boolean = false)::int AS partial_transcripts
+             FROM current_quality
              WHERE created_at >= $1::timestamptz AND created_at <= $2::timestamptz`,
-            [startDate, endDate],
+            [startDate, endDate, QUALITY_RUBRIC_HASH],
         );
 
         const r = rows?.[0] || {};
@@ -358,7 +240,11 @@ export class QualityService {
                 poor: Number(r.poor) || 0,
             },
             flagged: Number(r.flagged) || 0,
-            verifiedResolutionRate: aiTotal > 0 ? Math.round((aiVerified / aiTotal) * 10000) / 100 : 0,
+            verifiedResolutionRate: aiTotal > 0 ? Math.round((aiVerified / aiTotal) * 10000) / 100 : null,
+            operationalKnown: aiTotal,
+            operationalUnknown: Number(r.operational_unknown) || 0,
+            partialTranscripts: Number(r.partial_transcripts) || 0,
+            assessmentKind: 'conversational_opinion' as const,
         };
     }
 
@@ -369,14 +255,15 @@ export class QualityService {
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT conversation_id, overall_score, resolution_score, tone_score, accuracy_score,
-                    empathy_score, flags, resolution_type, resolution_verified, verification_reason, created_at
-             FROM conversation_quality_scores
+            `${CURRENT_QUALITY_CTE} SELECT conversation_id, overall_score, resolution_score, tone_score, accuracy_score,
+                    empathy_score, flags, resolution_type, operational_outcome, coverage,
+                    conversational_resolved, conversational_resolution_reason, created_at
+             FROM current_quality
              WHERE created_at >= $1::timestamptz AND created_at <= $2::timestamptz
                AND (jsonb_array_length(flags) > 0 OR overall_score < 6)
              ORDER BY overall_score ASC, created_at DESC
-             LIMIT $3`,
-            [startDate, endDate, limit],
+             LIMIT $4`,
+            [startDate, endDate, QUALITY_RUBRIC_HASH, limit],
         );
 
         return (rows || []).map((r: any) => ({
@@ -388,8 +275,11 @@ export class QualityService {
             empathy: Number(r.empathy_score) || 0,
             flags: Array.isArray(r.flags) ? r.flags : [],
             resolutionType: r.resolution_type,
-            resolutionVerified: r.resolution_verified,
-            verificationReason: r.verification_reason,
+            resolutionVerified: r.operational_outcome === 'verified' ? true : r.operational_outcome === 'failed' ? false : null,
+            verificationReason: null,
+            conversationalResolved: r.conversational_resolved,
+            conversationalResolutionReason: r.conversational_resolution_reason,
+            coverage: r.coverage,
             createdAt: r.created_at,
         }));
     }
@@ -419,7 +309,7 @@ export class QualityService {
             const parsed = JSON.parse(match ? match[0] : raw);
             const scores = ['overall', 'resolution', 'tone', 'accuracy', 'empathy'] as const;
             for (const field of scores) {
-                if (!Number.isFinite(Number(parsed?.[field]))
+                if (typeof parsed?.[field] !== 'number' || !Number.isFinite(parsed[field])
                     || Number(parsed[field]) < 0
                     || Number(parsed[field]) > 10) {
                     throw new Error(`Invalid QA judge field: ${field}`);
@@ -442,7 +332,7 @@ export class QualityService {
                 resolutionReason: parsed.resolutionReason,
             };
         } catch (error: any) {
-            this.logger.warn(`[QA] Failed to parse judge JSON: ${error?.message || error}`);
+            this.logger.warn('[QA] Failed to parse judge JSON');
             throw new Error('QA judge returned an invalid response');
         }
     }

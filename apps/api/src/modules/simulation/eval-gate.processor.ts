@@ -3,14 +3,15 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { EvalService } from './eval.service';
+import { EvalAutorunStateService } from './eval-autorun-state.service';
 import { EVAL_GATE_QUEUE, EvalGateJob } from './eval-autorun.listener';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
 /**
  * Drains the auto-run eval gate. Each job runs the full τ² gate (golden set × k ×
- * multi-turn LLM-judge) which can take minutes, so concurrency is 1 and we never
- * auto-retry the whole gate (attempts: 1 set on add). Mirrors SimulationProcessor.
+ * multi-turn LLM-judge). Retries reuse the frozen revision and scenario checkpoints.
+ * The durable request survives queue outages and budget deferral.
  */
 @Processor(EVAL_GATE_QUEUE, { concurrency: 1 })
 export class EvalGateProcessor extends WorkerHost {
@@ -19,6 +20,7 @@ export class EvalGateProcessor extends WorkerHost {
     constructor(
         private readonly evals: EvalService,
         private readonly prisma: PrismaService,
+        private readonly state: EvalAutorunStateService,
     ) {
         super();
     }
@@ -29,10 +31,32 @@ export class EvalGateProcessor extends WorkerHost {
             if (access.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
             return { ok: false, skipped: true, reason: access.error };
         }
-        await this.evals.runGateV2(job.data.tenantId, job.data.agentId, {
-            trigger: job.data.trigger || 'persona_edit',
-        });
-        return { ok: true };
+        const { tenantId, agentId } = job.data;
+        // Old queued jobs are upgraded once; new ones identify an immutable request.
+        const revision = job.data.revision || await this.state.request(tenantId, agentId);
+        const request = await this.state.get(tenantId, agentId, revision);
+        if (!request || request.status === 'completed') return { ok: true, skipped: true, reason: 'superseded_or_completed' };
+        if (request.status === 'budget_deferred' && new Date(request.next_attempt_at).getTime() > Date.now()) return { ok: false, deferred: true };
+        try {
+            const scenarios = request.scenarios || (await this.evals.listScenarios(tenantId)).filter(sc => (sc.seedState || 'active') === 'active');
+            await this.state.update(tenantId, agentId, revision, 'running', undefined, scenarios);
+            await this.evals.runGateV2(tenantId, agentId, {
+                trigger: job.data.trigger || 'persona_edit', agentSnapshot: request.agent_snapshot,
+                scenarios, previousResults: request.results || [],
+                beforeModelUnits: async units => {
+                    if (!await this.state.get(tenantId, agentId, revision)) throw new Error('eval_revision_superseded');
+                    await this.state.consumeBudget(tenantId, units);
+                },
+                onScenarioCompleted: results => this.state.update(tenantId, agentId, revision, 'running', undefined, undefined, results),
+            });
+            await this.state.update(tenantId, agentId, revision, 'completed');
+            return { ok: true };
+        } catch (error: any) {
+            const budget = error.message === 'eval_autorun_budget_exhausted';
+            await this.state.update(tenantId, agentId, revision, budget ? 'budget_deferred' : 'failed', String(error.message || error));
+            if (budget) return { ok: false, deferred: true, reason: error.message };
+            throw error;
+        }
     }
 
     @OnWorkerEvent('failed')

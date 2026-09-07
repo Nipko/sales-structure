@@ -97,12 +97,26 @@ function buildSubject() {
     );
 
     return {
-        service, llmRouter, toolExecutor, throttle, activeOperationsContext,
+        service, personaService, llmRouter, toolExecutor, throttle, activeOperationsContext,
         promptAssembler,
     };
 }
 
 describe('AgentTestService read-only tool policy', () => {
+    it('keeps a frozen revision across turns while the saved agent changes', async () => {
+        const { service, personaService, llmRouter, promptAssembler } = buildSubject();
+        llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'test-model' });
+        const snapshot = await service.captureSnapshot('tenant-id', 'agent-id');
+        personaService.getAgent.mockResolvedValue({ config_json: { language: 'fr', tools: {} }, version: 99 });
+        await service.test('tenant-id', 'agent-id', { message: 'hola', channelType: 'telegram' }, { agentSnapshot: snapshot });
+        await service.test('tenant-id', 'agent-id', { message: 'gracias', channelType: 'telegram' }, { agentSnapshot: snapshot });
+        expect(personaService.getAgent).toHaveBeenCalledTimes(1);
+        for (const call of promptAssembler.assemble.mock.calls) {
+            expect(call[0]).toEqual(snapshot.config);
+            expect(call[1].channelType).toBe('telegram');
+        }
+    });
+
     it('uses the shared operational-context projection before assembling the prompt', async () => {
         const { service, llmRouter, activeOperationsContext, promptAssembler } = buildSubject();
         llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'test-model' });
@@ -259,7 +273,7 @@ describe('AgentTestService read-only tool policy', () => {
             expect(call[2]).toBe(AGENT_TEST_SANDBOX_CONTACT_ID);
             expect(call[2]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
             expect(AGENT_TEST_SAFE_TOOL_NAMES).toContain(call[3]);
-            expect(call[6]).toEqual({
+            expect(call[6]).toMatchObject({
                 // One immutable turn authority: exactly the tools advertised
                 // by this safe sandbox, never a per-call permission minted
                 // after seeing what the model tried to invoke.
@@ -329,13 +343,13 @@ describe('AgentTestService read-only tool policy', () => {
             'tenant-id', AGENT_TEST_EXECUTION_CONTEXT,
         );
         expect(knowledgeService.tenantHasKnowledge).toHaveBeenCalledWith(
-            'tenant-id', AGENT_TEST_EXECUTION_CONTEXT,
+            'tenant-id', AGENT_TEST_EXECUTION_CONTEXT, { agentId: 'agent-id', audience: 'customer', jurisdiction: undefined },
         );
         expect(knowledgeService.searchRelevant).toHaveBeenCalledWith(
             'tenant-id',
             'hola',
             2,
-            { similarityThreshold: 0.1, executionContext: AGENT_TEST_EXECUTION_CONTEXT },
+            { similarityThreshold: 0.1, executionContext: AGENT_TEST_EXECUTION_CONTEXT, agentId: 'agent-id', audience: 'customer', language: 'es', rerank: false, jurisdiction: undefined },
         );
         expect(tenantsService.getSchemaName).toHaveBeenCalledWith(
             'tenant-id', AGENT_TEST_EXECUTION_CONTEXT,

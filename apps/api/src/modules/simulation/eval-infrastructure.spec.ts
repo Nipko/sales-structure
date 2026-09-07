@@ -117,6 +117,7 @@ describe('versioned multilingual eval infrastructure', () => {
         expect(params).toEqual([
             '00000000-0000-4000-8000-00000000eba1',
             'eval-sandbox',
+            'web_widget',
         ]);
     });
 

@@ -3690,6 +3690,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."simulation_runs" (
 );
 CREATE INDEX IF NOT EXISTS idx_simruns_created ON "{{SCHEMA_NAME}}"."simulation_runs"(created_at);
 CREATE INDEX IF NOT EXISTS idx_simruns_agent ON "{{SCHEMA_NAME}}"."simulation_runs"(agent_id);
+ALTER TABLE "{{SCHEMA_NAME}}"."simulation_runs" ADD COLUMN IF NOT EXISTS scenario_definitions JSONB;
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_scenarios" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key TEXT UNIQUE NOT NULL,
@@ -3724,6 +3725,19 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_runs" (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_agent ON "{{SCHEMA_NAME}}"."eval_runs" (agent_id);
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS agent_snapshot JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS error TEXT;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_autorun_requests" (
+    agent_id UUID PRIMARY KEY, revision UUID NOT NULL, agent_snapshot JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', error TEXT, scenarios JSONB,
+    results JSONB NOT NULL DEFAULT '[]'::jsonb, requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_autorun_budget" (
+    budget_day DATE PRIMARY KEY, units_used INTEGER NOT NULL DEFAULT 0
+);
 
 -- ---- Google Business Profile reviews ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."gbp_reviews" (

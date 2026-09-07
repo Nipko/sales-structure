@@ -13,12 +13,14 @@ import { EvalService } from './eval.service';
 import { EvalController } from './eval.controller';
 import { EvalAutorunListener, EVAL_GATE_QUEUE } from './eval-autorun.listener';
 import { EvalGateProcessor } from './eval-gate.processor';
+import { EvalAutorunStateService } from './eval-autorun-state.service';
 import { WatchtowerService } from './watchtower.service';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
  *  - AgentTestService (ConversationsModule) to run the full prompt pipeline per
- *    turn without persisting anything, with tools disabled for safety.
+ *    turn against a frozen configuration and audited sandbox tools. External
+ *    effects stay disabled; sandbox fixtures are cleaned under an ownership lease.
  *  - QualityService.judgeTranscript (QualityModule) as the shared LLM-as-judge.
  */
 @Module({
@@ -32,7 +34,7 @@ import { WatchtowerService } from './watchtower.service';
         BullModule.registerQueue({ name: SIMULATION_QUEUE }),
         BullModule.registerQueue({ name: EVAL_GATE_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalGateProcessor, WatchtowerService],
+    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService],
     controllers: [SimulationController, EvalController],
     exports: [SimulationService, EvalService],
 })

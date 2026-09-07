@@ -6,6 +6,7 @@ import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
 import {
     composeSubtypeEvalPack,
+    CONVERSATIONAL_CHANNELS,
     EVAL_LANGUAGES,
     VERTICAL_DOMAIN_CONTRACT_VERSION,
     type AddressForm,
@@ -13,6 +14,15 @@ import {
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
 import { EVAL_SANDBOX_FIXTURE_IDS } from '../conversations/eval-writer-sandbox';
+import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+
+export interface EvalSandboxSession {
+    sandboxContactId: string;
+    sandboxConversationId?: string;
+    assertLease(): Promise<void>;
+    reset(channelType: string): Promise<void>;
+    recordInbound(text: string): Promise<void>;
+}
 
 export type ActionAssertionType = 'row_exists' | 'row_count' | 'no_row';
 
@@ -97,7 +107,7 @@ export const AGENT_EVAL_FAILED_EVENT = 'agent.eval.failed';
 
 /**
  * Evals as a deploy gate (#2). Runs a CURATED golden set of conversations through
- * the real prompt pipeline (AgentTestService, tools disabled — zero side effects)
+ * the prompt pipeline (AgentTestService, audited sandbox tools, no external effects)
  * and scores each with the shared LLM-judge (QualityService). Unlike ad-hoc
  * synthetic simulation, golden scenarios are a FIXED message sequence, so the gate
  * is stable across runs (avoids "Lost in Simulation" score inflation).
@@ -122,6 +132,47 @@ export class EvalService {
         // neutro, que es el default y no el rioplatense.
         @Optional() private readonly regionalProfile?: RegionalProfileService,
     ) {}
+
+    private async withSandboxLease<T>(tenantId: string, callback: (assertLease: () => Promise<void>) => Promise<T>): Promise<T> {
+        const key = `eval-gate-run:${tenantId}`;
+        // Fixed fixture identities require exclusive ownership, including cleanup.
+        const token = await this.redis.acquireLockToken(key, 600);
+        if (!token) throw new Error('gate_already_running');
+        let leaseLost = false;
+        const assertLease = async () => {
+            if (leaseLost || !await this.redis.renewLockToken(key, token, 600)) {
+                leaseLost = true; throw new Error('eval_sandbox_lease_lost');
+            }
+        };
+        const heartbeat = setInterval(() => { void assertLease().catch(() => { leaseLost = true; }); }, 30_000);
+        heartbeat.unref();
+        try { return await callback(assertLease); }
+        finally { clearInterval(heartbeat); await this.redis.releaseLockToken(key, token).catch(() => {}); }
+    }
+
+    async withSandboxSession<T>(tenantId: string, callback: (session: EvalSandboxSession) => Promise<T>): Promise<T> {
+        return this.withSandboxLease(tenantId, async assertLease => {
+            const schema = await this.prisma.getTenantSchemaName(tenantId);
+            await this.ensureTable(schema);
+            await this.ensureSandboxContact(schema);
+            const session: EvalSandboxSession = {
+                sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
+                assertLease,
+                reset: async channelType => {
+                    await assertLease(); await this.cleanupSandbox(schema);
+                    await this.prepareSandboxFixtures(schema);
+                    session.sandboxConversationId = await this.ensureSandboxConversation(schema, channelType);
+                },
+                recordInbound: async text => {
+                    await assertLease();
+                    if (!session.sandboxConversationId) throw new Error('eval_sandbox_not_initialized');
+                    await this.recordSandboxInbound(schema, session.sandboxConversationId, text);
+                },
+            };
+            try { return await callback(session); }
+            finally { await assertLease(); await this.cleanupSandbox(schema); }
+        });
+    }
 
     private async ensureTable(schema: string): Promise<void> {
         if (this.ensured.has(schema)) return;
@@ -168,6 +219,12 @@ export class EvalService {
                  )`);
             await this.prisma.executeInTenantSchema(schema,
                 `CREATE INDEX IF NOT EXISTS idx_eval_runs_agent ON eval_runs (agent_id)`);
+            for (const ddl of [
+                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS agent_snapshot JSONB',
+                "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget'",
+                "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed'",
+                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS error TEXT',
+            ]) await this.prisma.executeInTenantSchema(schema, ddl);
             this.ensured.add(schema);
         } catch (e: any) {
             if (/already exists|duplicate|23505|42P07/i.test(e?.message || '')) this.ensured.add(schema);
@@ -381,58 +438,9 @@ export class EvalService {
         await this.prisma.executeInTenantSchema(schema, `DELETE FROM eval_scenarios WHERE id = $1::uuid`, [id]);
     }
 
-    /** Run the golden set through the agent and gate on the average judge score. */
+    /** The legacy endpoint uses the same safe execution and durable evidence as v2. */
     async runGate(tenantId: string, agentId: string, threshold = DEFAULT_THRESHOLD): Promise<EvalGateResult> {
-        if (!agentId) throw new BadRequestException('agentId is required');
-        try {
-            const scenarios = (await this.listScenarios(tenantId))
-                .filter(scenario => (scenario.seedState || 'active') === 'active');
-            if (!scenarios.length) {
-                const result = { passed: true, avgScore: 0, threshold, total: 0, scenarios: [] };
-                this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
-                return result;
-            }
-
-            const out: EvalGateResult['scenarios'] = [];
-            for (const sc of scenarios) {
-                // A judge/provider error is not evidence that the agent scored
-                // zero. Propagate it so the run fails observably.
-                out.push(await this.runScenario(tenantId, agentId, sc));
-            }
-            const avg = out.length ? out.reduce((s, r) => s + r.score, 0) / out.length : 0;
-            const avgScore = Math.round(avg * 100) / 100;
-            const result = { passed: avgScore >= threshold, avgScore, threshold, total: out.length, scenarios: out };
-            this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
-            return result;
-        } catch (e) {
-            this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed');
-            throw e;
-        }
-    }
-
-    private async runScenario(tenantId: string, agentId: string, sc: any): Promise<EvalGateResult['scenarios'][number]> {
-        const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-        const lines: string[] = [];
-        for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
-            const res = await this.agentTest.test(
-                tenantId, agentId,
-                { message: msg, conversationHistory: [...history] },
-                { disableTools: true },
-            );
-            const reply = res?.reply || '';
-            lines.push(`Cliente: ${msg}`, `Agente: ${reply}`);
-            history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
-        }
-        let transcript = lines.join('\n');
-        if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
-        const judge = await this.quality.judgeTranscript(tenantId, transcript);
-        return {
-            key: sc.key,
-            title: sc.title,
-            score: judge.overall,
-            resolved: !!judge.resolved,
-            flags: judge.flags || [],
-        };
+        return this.runGateV2(tenantId, agentId, { threshold });
     }
 
     /**
@@ -444,51 +452,54 @@ export class EvalService {
     async runGateV2(
         tenantId: string,
         agentId: string,
-        opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string },
+        opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string; channelType?: string; agentSnapshot?: AgentEvaluationSnapshot; scenarios?: any[]; previousResults?: any[]; beforeModelUnits?: (units: number) => Promise<void>; onScenarioCompleted?: (results: any[]) => Promise<void> },
     ): Promise<any> {
         if (!agentId) throw new BadRequestException('agentId is required');
 
-        // Serialize gate runs per tenant: all agents share one sandbox contact, so two
-        // concurrent runs (two agents, or a manual run racing an auto-run) would have
-        // one's cleanupSandbox wipe the other's rows before its verifyActions. Fail-open
-        // on a Redis hiccup (don't block the gate). Lock TTL is a safety net if we crash.
-        const lockKey = `eval-gate-run:${tenantId}`;
-        const gotLock = await this.redis.acquireLock(lockKey, 600).catch(() => true);
-        if (!gotLock) {
-            this.logger.warn(`[Eval] gate run skipped for ${tenantId} — another run in progress`);
-            return { skipped: true, reason: 'gate_already_running' };
-        }
-
-        try {
+        const channelType = opts?.channelType || 'web_widget';
+        if (!(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channelType)) throw new BadRequestException('unsupported_conversational_channel');
+        return this.withSandboxLease(tenantId, async assertLease => {
             const schema = await this.prisma.getTenantSchemaName(tenantId);
             await this.ensureTable(schema);
-            await this.ensureSandboxContact(schema);
-
-            const scenarios = (await this.listScenarios(tenantId))
-                .filter(scenario => (scenario.seedState || 'active') === 'active');
             const threshold = opts?.threshold ?? DEFAULT_THRESHOLD;
             const k = Math.max(1, Math.min(opts?.k ?? 1, MAX_K));
             const passPolicy = opts?.passPolicy ?? 'all';
-
             const out: any[] = [];
-            for (const sc of scenarios) {
-                const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
-                out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions));
+            let snapshot: AgentEvaluationSnapshot | undefined;
+            let activeScenario: any;
+            try {
+                await this.ensureSandboxContact(schema);
+                const scenarios = (opts?.scenarios || await this.listScenarios(tenantId))
+                    .filter(scenario => (scenario.seedState || 'active') === 'active');
+                snapshot = opts?.agentSnapshot || await this.agentTest.captureSnapshot(tenantId, agentId);
+                for (const sc of scenarios) {
+                    const completed = opts?.previousResults?.find(row => row.key === sc.key && !row.error && Number.isFinite(row.score));
+                    if (completed) { out.push(completed); continue; }
+                    activeScenario = sc;
+                    const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
+                    await assertLease();
+                    out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions, snapshot, channelType, assertLease, opts?.beforeModelUnits));
+                    await opts?.onScenarioCompleted?.(out);
+                    activeScenario = undefined;
+                }
+                const avgScore = out.length ? Math.round((out.reduce((sum, row) => sum + row.score, 0) / out.length) * 100) / 100 : 0;
+                const passed = out.length > 0 && out.every(row => row.passed);
+                const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out,
+                    evalActivable: passed && avgScore >= (opts?.activationThreshold ?? threshold),
+                    agentSnapshot: snapshot, channelType, status: 'completed' };
+                await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
+                this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
+                return result;
+            } catch (error: any) {
+                if (activeScenario) out.push({ key: activeScenario.key, title: activeScenario.title,
+                    score: null, passed: false, resolved: false, error: String(error.message || error) });
+                await this.persistRun(schema, agentId, { passed: false, avgScore: null, threshold, k, passPolicy,
+                    total: out.length, scenarios: out, evalActivable: false, agentSnapshot: snapshot, channelType,
+                    status: 'failed', error: String(error.message || error) }, opts?.trigger || 'manual');
+                this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed');
+                throw error;
             }
-
-            const avgScore = out.length ? Math.round((out.reduce((s, r) => s + r.score, 0) / out.length) * 100) / 100 : 0;
-            const passed = out.length > 0 && out.every(r => r.passed);
-            const evalActivable = passed && avgScore >= (opts?.activationThreshold ?? threshold);
-            const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out, evalActivable };
-            await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
-            this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
-            return result;
-        } catch (e) {
-            this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed');
-            throw e;
-        } finally {
-            await this.redis.releaseLock(lockKey).catch(() => {});
-        }
+        });
     }
 
     private emitRunEvent(
@@ -505,11 +516,11 @@ export class EvalService {
     }
 
     /** Run a scenario k times; pass per the policy (all / majority). */
-    private async runPassK(tenantId: string, agentId: string, schema: string, sc: any, k: number, passPolicy: 'all' | 'majority', threshold: number, hasActions: boolean) {
-        const runs: Array<{ score: number; passed: boolean; actionChecks?: any[] }> = [];
-        for (let i = 0; i < k; i++) runs.push(await this.runScenarioWithActions(tenantId, agentId, schema, sc, threshold, hasActions));
+    private async runPassK(tenantId: string, agentId: string, schema: string, sc: any, k: number, passPolicy: 'all' | 'majority', threshold: number, hasActions: boolean, snapshot?: AgentEvaluationSnapshot, channelType = 'web_widget', assertLease?: () => Promise<void>, beforeModelUnits?: (units: number) => Promise<void>) {
+        const runs: Array<{ score: number; passed: boolean; resolved?: boolean; flags?: string[]; actionChecks?: any[] }> = [];
+        for (let i = 0; i < k; i++) runs.push(await this.runScenarioWithActions(tenantId, agentId, schema, sc, threshold, hasActions, snapshot, channelType, assertLease, beforeModelUnits));
         const passes = runs.filter(r => r.passed).length;
-        const required = passPolicy === 'all' ? k : Math.ceil(k / 2);
+        const required = passPolicy === 'all' ? k : Math.floor(k / 2) + 1;
         return {
             key: sc.key,
             title: sc.title,
@@ -517,41 +528,43 @@ export class EvalService {
             passes,
             passed: passes >= required,
             score: Math.round((runs.reduce((s, r) => s + r.score, 0) / k) * 100) / 100,
+            resolved: runs.every(run => run.resolved),
+            flags: Array.from(new Set(runs.flatMap(run => run.flags || []))),
+            runs,
             actionChecks: runs[runs.length - 1]?.actionChecks,
         };
     }
 
     /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
-    private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean) {
+    private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean, snapshot?: AgentEvaluationSnapshot, channelType = 'web_widget', assertLease?: () => Promise<void>, beforeModelUnits?: (units: number) => Promise<void>) {
         let cleanupRequired = false;
         try {
-            if (hasActions) {
-                await this.cleanupSandbox(schema); // start from a clean slate
-                cleanupRequired = true;
-                await this.prepareSandboxFixtures(schema);
-            }
+            await assertLease?.();
+            cleanupRequired = true;
+            await this.cleanupSandbox(schema);
+            await this.prepareSandboxFixtures(schema);
             // A scenario that asserts side-effects runs on a real sandbox
             // conversation: the guard binds writes to one, and reads the customer's
             // latest inbound message to decide whether they confirmed.
-            const sandboxConversationId = hasActions ? await this.ensureSandboxConversation(schema) : undefined;
+            const sandboxConversationId = await this.ensureSandboxConversation(schema, channelType);
             const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
             const lines: string[] = [];
             const observedToolCalls: Array<{ name: string; result: unknown }> = [];
             for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
+                await assertLease?.();
                 if (sandboxConversationId) {
                     await this.recordSandboxInbound(schema, sandboxConversationId, msg);
                 }
+                await beforeModelUnits?.(4); // Upper bound: initial answer plus three tool iterations.
                 const res = await this.agentTest.test(
                     tenantId, agentId,
-                    { message: msg, conversationHistory: [...history] },
-                    hasActions
-                        ? {
+                    { message: msg, conversationHistory: [...history], channelType: channelType as any },
+                    {
                             disableTools: false,
                             evalMode: true,
                             sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
-                            sandboxConversationId,
-                        }
-                        : { disableTools: true },
+                            sandboxConversationId, agentSnapshot: snapshot, beforeToolExecution: assertLease,
+                        },
                 );
                 const reply = res?.reply || '';
                 for (const call of res?.debug?.toolCalls || []) {
@@ -562,6 +575,7 @@ export class EvalService {
             }
             let transcript = lines.join('\n');
             if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
+            await beforeModelUnits?.(1);
             const judge = await this.quality.judgeTranscript(tenantId, transcript);
             const score = judge.overall;
 
@@ -577,12 +591,12 @@ export class EvalService {
                 actionsPassed = v.passed;
                 actionChecks = v.checks;
             }
-            return { score, passed: score >= threshold && actionsPassed, actionChecks };
+            return { score, passed: score >= threshold && actionsPassed, resolved: !!judge.resolved, flags: judge.flags || [], actionChecks };
         } finally {
             // A failed model/provider/judge call is precisely when residue used
             // to survive. Cleanup is unconditional once fixture setup starts;
             // cleanup failures are surfaced instead of turning into a green run.
-            if (cleanupRequired) await this.cleanupSandbox(schema);
+            if (cleanupRequired) { await assertLease?.(); await this.cleanupSandbox(schema); }
         }
     }
 
@@ -864,12 +878,12 @@ export class EvalService {
      * were rejected with `conversation_context_required` and every scenario with
      * expected actions failed for a reason that had nothing to do with the agent.
      */
-    private async ensureSandboxConversation(schema: string): Promise<string | undefined> {
+    private async ensureSandboxConversation(schema: string, channelType = 'web_widget'): Promise<string | undefined> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
             `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage)
-             VALUES ($1::uuid, 'web_widget', $2, 'active', 'greeting')
+             VALUES ($1::uuid, $3, $2, 'active', 'greeting')
              RETURNING id::text`,
-            [EVAL_SANDBOX_CONTACT_ID, EVAL_SANDBOX_CHANNEL_ACCOUNT_ID]);
+            [EVAL_SANDBOX_CONTACT_ID, EVAL_SANDBOX_CHANNEL_ACCOUNT_ID, channelType]);
         const conversationId = rows?.[0]?.id;
         if (!conversationId) throw new Error('eval_sandbox_conversation_not_created');
         return conversationId;
@@ -894,21 +908,19 @@ export class EvalService {
     }
 
     private async persistRun(schema: string, agentId: string, result: any, trigger: string): Promise<void> {
-        try {
-            await this.prisma.executeInTenantSchema(schema,
-                `INSERT INTO eval_runs (agent_id, k, threshold, passed, avg_score, eval_activable, results, trigger, created_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW())`,
-                [agentId, result.k, result.threshold, result.passed, result.avgScore, result.evalActivable, JSON.stringify(result.scenarios), trigger]);
-        } catch (e: any) {
-            this.logger.warn(`[Eval] persist run failed: ${e.message}`);
-        }
+        await this.prisma.executeInTenantSchema(schema,
+            `INSERT INTO eval_runs (agent_id, k, threshold, passed, avg_score, eval_activable, results, trigger, agent_snapshot, channel_type, status, error, created_at)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12, NOW())`,
+            [agentId, result.k, result.threshold, result.passed, result.avgScore, result.evalActivable,
+             JSON.stringify(result.scenarios), trigger, JSON.stringify(result.agentSnapshot || null),
+             result.channelType || 'web_widget', result.status || 'completed', result.error || null]);
     }
 
     /** Recent eval runs (for the dashboard). */
     async listRuns(tenantId: string, agentId?: string): Promise<any[]> {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTable(schema);
-        const cols = `id, agent_id, k, threshold, passed, avg_score, eval_activable, trigger, created_at`;
+        const cols = `id, agent_id, k, threshold, passed, avg_score, eval_activable, trigger, created_at, channel_type, status, error, agent_snapshot`;
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
             agentId
                 ? `SELECT ${cols} FROM eval_runs WHERE agent_id = $1::uuid ORDER BY created_at DESC LIMIT 50`

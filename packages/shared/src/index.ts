@@ -1146,6 +1146,7 @@ export interface TestAgentToolParity {
 }
 
 export interface TestAgentDebugInfo {
+    agentRevision?: { version: number | null; configHash: string; capturedAt: string };
     systemPrompt: string;
     toolCalls: TestAgentToolCall[];
     ragHits: RetrievedKnowledgeItem[];

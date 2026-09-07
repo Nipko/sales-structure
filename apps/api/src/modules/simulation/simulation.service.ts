@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
@@ -8,6 +8,9 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PersonaService } from '../persona/persona.service';
 import { QualityService, JudgeResult } from '../quality/quality.service';
 import { AgentTestService } from '../conversations/agent-test.service';
+import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
+import { AgentEvaluationSnapshot, evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { EvalService, EvalSandboxSession } from './eval.service';
 import { auditTurnClaim } from '../../common/utils/outcome-claim.util';
 
 export const SIMULATION_QUEUE = 'agent-simulation';
@@ -64,7 +67,7 @@ interface ScenarioResult extends ScenarioDef {
 type ScoredScenarioResult = ScenarioResult & { judge: JudgeResult; error?: undefined };
 
 function isScoredScenario(result: ScenarioResult): result is ScoredScenarioResult {
-    return !result.error && result.judge !== null;
+    return !!result && !result.error && Number.isFinite(result.judge?.overall);
 }
 
 const MAX_TURNS = 6; // synthetic: customer/agent exchanges per scenario
@@ -86,13 +89,14 @@ export class SimulationService {
         private readonly agentTest: AgentTestService,
         @InjectQueue(SIMULATION_QUEUE) private readonly queue: Queue<SimulationJob>,
         private readonly eventEmitter: EventEmitter2,
+        @Optional() private readonly evals?: EvalService,
     ) {}
 
     // ---------------------------------------------------------------------
     // Table bootstrap
     // ---------------------------------------------------------------------
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `simulation_cols:${schemaName}`;
+        const cacheKey = `simulation_cols:v2:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -131,6 +135,7 @@ export class SimulationService {
             [],
         );
 
+        await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS scenario_definitions JSONB`);
         await this.redis.set(cacheKey, '1', 86400);
     }
 
@@ -146,31 +151,40 @@ export class SimulationService {
 
         // Resolve agent (must exist in agent_personas).
         const agentId = await this.resolveAgentId(tenantId, input.agentId);
-        const channelType = input.channelType || 'whatsapp';
+        const channelType = input.channelType || 'web_widget';
+        if (!CONVERSATIONAL_CHANNELS.includes(channelType as any)) throw new BadRequestException('Unsupported conversational channel');
+        const agent = await this.personaService.getAgent(tenantId, agentId);
+        if (!agent) throw new BadRequestException('Agent not found');
+        const snapshot = evaluationSnapshot(tenantId, agentId, agent);
         const source = input.scenarioSource === 'replay' ? 'replay' : 'synthetic';
 
         const requestedCount = Math.min(Math.max(Number(input.count) || 50, 1), MAX_COUNT);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO simulation_runs
-                (agent_id, channel_type, scenario_source, vertical, status, scenario_count, baseline_run_id, created_by)
-             VALUES ($1::uuid, $2, $3, $4, 'pending', $5, $6, $7)
+                (agent_id, channel_type, scenario_source, vertical, status, scenario_count, baseline_run_id, created_by, persona_version, persona_snapshot)
+             VALUES ($1::uuid, $2, $3, $4, 'pending', $5, $6::uuid, $7, $8, $9::jsonb)
              RETURNING id`,
-            [agentId, channelType, source, input.vertical || null, requestedCount, input.baselineRunId || null, input.createdBy || null],
+            [agentId, channelType, source, input.vertical || null, requestedCount, input.baselineRunId || null, input.createdBy || null, snapshot.version, JSON.stringify(snapshot.config)],
         );
         const runId: string = rows?.[0]?.id;
 
-        await this.queue.add(
+        try { await this.queue.add(
             'run',
             { tenantId, runId },
             {
                 jobId: `sim-${runId}`,
-                attempts: 1, // long-running multi-LLM job — never auto-retry the whole batch
+                attempts: 3, // Completed scenario checkpoints are reused on retry.
+                backoff: { type: 'exponential', delay: 15_000 },
                 removeOnComplete: true,
                 removeOnFail: 50,
             },
         );
 
+        } catch (error: any) {
+            await this.prisma.executeInTenantSchema(schemaName, `UPDATE simulation_runs SET status = 'failed', error = $2 WHERE id = $1::uuid`, [runId, 'enqueue_failed:' + String(error.message || error).slice(0, 500)]);
+            throw error;
+        }
         this.logger.log(`[Sim] Enqueued run ${runId} (tenant=${tenantId}, agent=${agentId}, source=${source})`);
         return { runId };
     }
@@ -225,20 +239,26 @@ export class SimulationService {
             return;
         }
 
+        if (run.status === 'completed') return;
         try {
             const agentId: string = run.agent_id;
-            const channelType: string = run.channel_type || 'whatsapp';
-            const agent = await this.personaService.getAgent(tenantId, agentId);
+            const channelType: string = run.channel_type || 'web_widget';
+            if (!(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channelType)) throw new Error('unsupported_conversational_channel');
+            const agent = run.persona_snapshot ? { config_json: run.persona_snapshot, version: run.persona_version }
+                : await this.personaService.getAgent(tenantId, agentId);
             if (!agent) throw new Error(`Agent ${agentId} not found`);
             const personaVersion = agent.version ?? null;
-            const personaSnapshot = agent.config_json ?? null;
+            const personaSnapshot = JSON.parse(JSON.stringify(agent.config_json));
+            const snapshot = evaluationSnapshot(tenantId, agentId, agent, run.created_at ? new Date(run.created_at).toISOString() : undefined);
 
             // 1. Build scenario set. (scenario_count holds the requested count until
             // the run completes, when it is overwritten with the actual scenario count.)
             const requestedCount = Math.min(Math.max(Number(run.scenario_count) || 50, 1), MAX_COUNT);
             const baselineRunId: string | null = run.baseline_run_id || null;
             let scenarios: ScenarioDef[];
-            if (baselineRunId) {
+            if (Array.isArray(run.scenario_definitions) && run.scenario_definitions.length) {
+                scenarios = run.scenario_definitions;
+            } else if (baselineRunId) {
                 scenarios = await this.loadScenariosFromRun(schemaName, baselineRunId);
                 if (!scenarios.length) throw new Error('Baseline run has no reusable scenarios');
             } else if (run.scenario_source === 'replay') {
@@ -258,24 +278,33 @@ export class SimulationService {
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `UPDATE simulation_runs
-                 SET status = 'running', scenario_count = $2, persona_version = $3, persona_snapshot = $4::jsonb
+                 SET status = 'running', scenario_count = $2, persona_version = $3, persona_snapshot = $4::jsonb, scenario_definitions = $5::jsonb, error = NULL
                  WHERE id = $1::uuid`,
-                [runId, scenarios.length, personaVersion, JSON.stringify(personaSnapshot)],
+                [runId, scenarios.length, personaVersion, JSON.stringify(personaSnapshot), JSON.stringify(scenarios)],
             );
 
             // 2. Run scenarios with bounded concurrency.
-            const results = await this.runScenariosConcurrently(tenantId, agentId, channelType, scenarios);
+            const checkpoint = async (results: ScenarioResult[]) => {
+                const lastResults = results.filter(Boolean);
+                await this.prisma.executeInTenantSchema(schemaName, 'UPDATE simulation_runs SET results = $2::jsonb WHERE id = $1::uuid', [runId, JSON.stringify(lastResults)]);
+            };
+            const runBatch = (session?: EvalSandboxSession) => this.runScenariosConcurrently(tenantId, agentId, channelType, scenarios, snapshot, session, run.results || [], checkpoint);
+            if (!this.evals) throw new Error('simulation_sandbox_unavailable');
+            const results = await this.evals.withSandboxSession(tenantId, runBatch);
             const scored = results.filter(isScoredScenario);
-            if (!scored.length) throw new Error('Simulation produced no scorable scenarios');
+
 
             // 3. Aggregate + regression diff.
             const summary = await this.buildSummary(schemaName, results, baselineRunId);
+            summary.agentRevision = { version: snapshot.version, configHash: snapshot.configHash, capturedAt: snapshot.capturedAt };
+            summary.channelType = channelType;
+            summary.executionSurface = 'audited_tool_sandbox';
 
             const avgScore = scored.length
                 ? Math.round((scored.reduce((s, r) => s + r.judge.overall, 0) / scored.length) * 100) / 100
                 : 0;
             const resolvedRate = scored.length
-                ? Math.round((scored.filter((r) => r.judge?.resolved).length / scored.length) * 10000) / 100
+                ? Math.round((scored.filter((r) => r.judge?.resolved).length / results.length) * 10000) / 100
                 : 0;
 
             await this.prisma.executeInTenantSchema(
@@ -287,6 +316,8 @@ export class SimulationService {
                 [runId, JSON.stringify(results), JSON.stringify(summary), avgScore, resolvedRate],
             );
 
+            if (!scored.length) throw new Error('Simulation produced no scorable scenarios');
+            if (scored.length !== results.length) throw new Error('Simulation has unscorable scenarios');
             this.logger.log(
                 `[Sim] Run ${runId} completed: ${scored.length}/${results.length} scored, avg=${avgScore}, resolved=${resolvedRate}%`,
             );
@@ -459,6 +490,8 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         agentId: string,
         channelType: string,
         scenarios: ScenarioDef[],
+        snapshot?: AgentEvaluationSnapshot, session?: EvalSandboxSession,
+        previous: ScenarioResult[] = [], checkpoint?: (results: ScenarioResult[]) => Promise<void>,
     ): Promise<ScenarioResult[]> {
         const results: ScenarioResult[] = new Array(scenarios.length);
         let cursor = 0;
@@ -468,22 +501,27 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 const idx = cursor++;
                 if (idx >= scenarios.length) break;
                 try {
-                    results[idx] = await this.runScenario(tenantId, agentId, channelType, scenarios[idx]);
+                    const completed = previous.find(r => r.key === scenarios[idx].key && isScoredScenario(r));
+                    if (completed) { results[idx] = completed; continue; }
+                    await session?.reset(channelType);
+                    results[idx] = await this.runScenario(tenantId, agentId, channelType, scenarios[idx], snapshot, session);
                 } catch (err: any) {
                     const s = scenarios[idx];
                     results[idx] = {
                         ...s,
-                        transcript: [],
-                        turns: 0,
-                        latencyMs: 0,
+                        ...(err.partialScenario || {}),
+                        transcript: err.partialScenario?.transcript || [],
+                        turns: err.partialScenario?.turns || 0,
+                        latencyMs: err.partialScenario?.latencyMs || 0,
                         judge: null,
                         error: String(err.message || err).slice(0, 500),
                     };
                 }
+                await checkpoint?.(results);
             }
         };
 
-        const pool = Array.from({ length: Math.min(SCENARIO_CONCURRENCY, scenarios.length) }, () => worker());
+        const pool = Array.from({ length: Math.min(session ? 1 : SCENARIO_CONCURRENCY, scenarios.length) }, () => worker());
         await Promise.all(pool);
         return results;
     }
@@ -493,6 +531,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         agentId: string,
         channelType: string,
         scenario: ScenarioDef,
+        snapshot?: AgentEvaluationSnapshot, session?: EvalSandboxSession,
     ): Promise<ScenarioResult> {
         const startedAt = Date.now();
         const transcript: Array<{ role: 'customer' | 'agent'; content: string }> = [];
@@ -501,11 +540,12 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         const falseClaims: Array<{ turn: number; reply: string }> = [];
 
         const askAgent = async (customerMsg: string): Promise<string> => {
+            await session?.recordInbound(customerMsg);
             const res = await this.agentTest.test(
                 tenantId,
                 agentId,
-                { message: customerMsg, conversationHistory: [...history] },
-                { disableTools: true },
+                { message: customerMsg, conversationHistory: [...history], channelType: channelType as any },
+                { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, beforeToolExecution: session.assertLease } : {}) },
             );
             const reply = res.reply || '';
             // The judge grades how the agent SOUNDS. This grades whether it told
@@ -526,6 +566,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             return reply;
         };
 
+        try {
         if (scenario.source === 'replay' && scenario.replayMessages?.length) {
             for (const msg of scenario.replayMessages.slice(0, MAX_REPLAY_MESSAGES)) {
                 await askAgent(msg);
@@ -536,7 +577,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 await askAgent(customerMsg);
                 if (turn === MAX_TURNS - 1) break;
                 const next = await this.nextCustomerMessage(tenantId, scenario, transcript);
-                if (!next || /\[FIN\]/i.test(next)) break;
+                if (next === '[FIN]') break;
                 customerMsg = next;
             }
         }
@@ -555,6 +596,11 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             judge,
             falseClaims: falseClaims.length ? falseClaims : undefined,
         };
+        } catch (cause: any) {
+            const error = new Error(String(cause?.message || cause));
+            Object.assign(error, { partialScenario: { transcript, turns: Math.floor(transcript.length / 2), latencyMs: Date.now() - startedAt, falseClaims } });
+            throw error;
+        }
     }
 
     /** The customer simulator LLM produces the next customer message. */
@@ -564,13 +610,13 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         transcript: Array<{ role: 'customer' | 'agent'; content: string }>,
     ): Promise<string> {
         const persona = scenario.personaDescription || 'Un cliente típico de Latinoamérica';
-        const systemPrompt = `Estás simulando ser un CLIENTE real escribiendo por WhatsApp a un negocio en Latinoamérica.
+        const systemPrompt = `Estás simulando ser un CLIENTE real escribiendo por chat a un negocio en Latinoamérica.
 Tu perfil: ${persona}
 Tu objetivo en esta conversación: ${scenario.goal}
 
 Reglas:
 - Responde SIEMPRE como el cliente (nunca como el agente del negocio).
-- Escribe UN solo mensaje corto y natural, en español coloquial, como una persona real por chat.
+- Escribe UN solo mensaje corto y natural, en el idioma ${scenario.language}, como una persona real por chat.
 - Mantente fiel a tu objetivo y reacciona de forma realista a lo que dice el agente.
 - Si tu objetivo ya se cumplió, o si decides que no vas a continuar (te frustras o pierdes interés), responde EXACTAMENTE con el texto [FIN] y nada más.
 - No expliques que eres una simulación. No uses comillas.`;
@@ -594,10 +640,12 @@ Reglas:
                 maxTokens: 200,
                 tenantId,
             });
-            return (res.content || '').trim();
+            const next = (res.content || '').trim();
+            if (!next) throw new Error('empty_customer_message');
+            return next;
         } catch (err: any) {
             this.logger.warn(`[Sim] Customer simulator failed: ${err.message}`);
-            return '[FIN]';
+            throw new Error('customer_simulator_failed:' + String(err.message || err));
         }
     }
 
@@ -638,6 +686,9 @@ Reglas:
             scored: scored.length,
             failed: results.length - scored.length,
             byDifficulty,
+            complete: results.length > 0 && scored.length === results.length,
+            failures: results.filter(r => !isScoredScenario(r)).map(r => ({ key: r.key, title: r.title, error: r.error || 'judge_missing' })),
+            falseClaimCount: results.reduce((sum, r) => sum + (r.falseClaims?.length || 0), 0),
             avgSubScores: {
                 resolution: this.avg(scored, (r) => r.judge.resolution),
                 tone: this.avg(scored, (r) => r.judge.tone),
@@ -666,11 +717,18 @@ Reglas:
                 const before = b.judge.overall;
                 const after = r.judge.overall;
                 const delta = Math.round((after - before) * 100) / 100;
-                if (after <= before - REGRESSION_THRESHOLD) {
+                if ((r.falseClaims?.length || 0) > (b.falseClaims?.length || 0)) {
+                    regressions.push({ key: r.key, title: r.title, before, after, delta, reason: 'new_false_claim' });
+                } else if (after <= before - REGRESSION_THRESHOLD) {
                     regressions.push({ key: r.key, title: r.title, before, after, delta });
                 } else if (after >= before + REGRESSION_THRESHOLD) {
                     improvements.push({ key: r.key, title: r.title, before, after, delta });
                 }
+            }
+            for (const b of baseResults.filter(isScoredScenario)) {
+                const current = results.find(r => r.key === b.key);
+                if (!current || !isScoredScenario(current)) regressions.push({ key: b.key, title: b.title,
+                    before: b.judge.overall, after: null, reason: !current ? 'scenario_missing' : 'scenario_failed', error: current?.error });
             }
             const curAvg = scored.length
                 ? scored.reduce((s, r) => s + r.judge.overall, 0) / scored.length

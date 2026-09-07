@@ -59,6 +59,7 @@ import {
 } from './tool-policy-registry';
 import type { EffectiveCapabilityContract } from '@parallext/shared';
 import { TurnCapabilityComposerService } from './turn-capability-composer.service';
+import { AgentEvaluationSnapshot, evaluationSnapshot, resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 
 /**
  * AgentTestService — runs the bounded prompt/read-only-tool preview for one
@@ -93,6 +94,12 @@ export class AgentTestService {
         private readonly turnCapabilityComposer?: TurnCapabilityComposerService,
     ) {}
 
+    async captureSnapshot(tenantId: string, agentId: string): Promise<AgentEvaluationSnapshot> {
+        const agent = await this.personaService.getAgent(tenantId, agentId, AGENT_TEST_EXECUTION_CONTEXT);
+        if (!agent) throw new NotFoundException('Agent not found');
+        return evaluationSnapshot(tenantId, agentId, agent);
+    }
+
     async test(
         tenantId: string,
         agentId: string,
@@ -109,6 +116,10 @@ export class AgentTestService {
              * the booking it asked for actually happened.
              */
             sandboxConversationId?: string;
+            agentSnapshot?: AgentEvaluationSnapshot;
+            /** Trusted candidate only; never sourced from the public DTO. */
+            learningReleaseId?: string | null;
+            beforeToolExecution?: () => Promise<void>;
         },
     ): Promise<TestAgentResponse> {
         const startedAt = Date.now();
@@ -121,9 +132,8 @@ export class AgentTestService {
 
         // 1. Resolve the agent config (may be a draft the user just saved)
         const executionContext = AGENT_TEST_EXECUTION_CONTEXT;
-        const agent = await this.personaService.getAgent(tenantId, agentId, executionContext);
-        if (!agent) throw new NotFoundException('Agent not found');
-        const config = agent.config_json as TenantConfig;
+        const snapshot = options?.agentSnapshot || await this.captureSnapshot(tenantId, agentId);
+        const config = resolveEvaluationSnapshot(snapshot, tenantId, agentId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
         const testContactId = resolveAgentTestContactId(options?.sandboxContactId);
 
@@ -140,6 +150,7 @@ export class AgentTestService {
 
         const turnContext: TurnContext = {
             language: detectedLanguage,
+            channelType,
             timezone: tz,
             now: now.toISOString(),
             upcomingDays: this.promptAssembler.computeUpcomingDays(now, tz, 8),
@@ -225,16 +236,22 @@ export class AgentTestService {
         try {
             const ragConfig = config.rag;
             if (ragConfig?.enabled !== false) {
-                const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext);
+                const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext, {
+                    agentId, audience: 'customer', jurisdiction: regional?.operatingCountry.value,
+                });
                 if (hasKnowledge) {
                     const topK = ragConfig?.topK ?? 5;
-                    const similarityThreshold = ragConfig?.similarityThreshold ?? 0;
+                    const similarityThreshold = ragConfig?.similarityThreshold ?? 0.35;
                     const results = await this.knowledgeService.searchRelevant(
                         tenantId,
                         req.message,
                         topK,
                         {
                             similarityThreshold,
+                            language: detectedLanguage,
+                            rerank: config.llm?.kbReranker === true,
+                            agentId,
+                            audience: 'customer',
                             executionContext,
                             // Same jurisdiction gate as live: a test that can
                             // read another country's regulated sources proves
@@ -527,6 +544,7 @@ export class AgentTestService {
                         toolCalls: response.toolCalls,
                     });
                     for (const tc of response.toolCalls) {
+                        await options?.beforeToolExecution?.();
                         const args = this.safeJsonParse(tc.function.arguments);
                         const tStart = Date.now();
                         // Do not trust toolCalls merely because the provider returned
@@ -556,6 +574,12 @@ export class AgentTestService {
                                     readOnly: !isAuditedEvalWriter,
                                     executionContext,
                                     channelType,
+                                    jurisdiction: regional?.operatingCountry.value,
+                                    knowledgeSearch: {
+                                        similarityThreshold: config.rag?.similarityThreshold ?? 0.35,
+                                        language: detectedLanguage, rerank: config.llm?.kbReranker === true,
+                                        agentId, audience: 'customer',
+                                    },
                                 },
                             )
                             : agentTestBlockedToolResult(tc.function.name);
@@ -594,6 +618,7 @@ export class AgentTestService {
         return {
             reply: finalResponse,
             debug: {
+                agentRevision: { version: snapshot.version, configHash: snapshot.configHash, capturedAt: snapshot.capturedAt },
                 systemPrompt,
                 toolCalls,
                 ragHits,

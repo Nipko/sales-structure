@@ -17,19 +17,23 @@ describe('agent quality completion events', () => {
     describe('EvalService', () => {
         function makeService() {
             const redis = {
-                acquireLock: jest.fn().mockResolvedValue(true),
-                releaseLock: jest.fn().mockResolvedValue(undefined),
+                acquireLockToken: jest.fn().mockResolvedValue("lease-token"),
+                renewLockToken: jest.fn().mockResolvedValue(true),
+                releaseLockToken: jest.fn().mockResolvedValue(undefined),
             };
             const eventEmitter = { emit: jest.fn() };
             const quality = { judgeTranscript: jest.fn() };
-            const agentTest = { test: jest.fn() };
+            const agentTest = { test: jest.fn(), captureSnapshot: jest.fn().mockResolvedValue({ config: {}, version: 3 }) };
             const service = new EvalService(
                 { getTenantSchemaName: jest.fn().mockResolvedValue('tenant_eval') } as any,
-                quality as any,
                 agentTest as any,
+                quality as any,
                 redis as any,
                 eventEmitter as any,
             );
+            jest.spyOn(service as any, "ensureTable").mockResolvedValue(undefined);
+            jest.spyOn(service as any, "ensureSandboxContact").mockResolvedValue(undefined);
+            jest.spyOn(service as any, "persistRun").mockResolvedValue(undefined);
             return { service, redis, eventEmitter, quality, agentTest };
         }
 
@@ -37,7 +41,7 @@ describe('agent quality completion events', () => {
             const { service, eventEmitter } = makeService();
             jest.spyOn(service, 'listScenarios').mockResolvedValue([]);
 
-            await expect(service.runGate(tenantId, agentId)).resolves.toMatchObject({ passed: true, total: 0 });
+            await expect(service.runGate(tenantId, agentId)).resolves.toMatchObject({ passed: false, total: 0 });
 
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_COMPLETED_EVENT, {
                 tenantId,
@@ -80,7 +84,7 @@ describe('agent quality completion events', () => {
         it('fails a judge error instead of turning it into a zero-score successful eval', async () => {
             const { service, eventEmitter } = makeService();
             jest.spyOn(service, 'listScenarios').mockResolvedValue([{ key: 'judge', title: 'Judge' }] as any);
-            jest.spyOn(service as any, 'runScenario').mockRejectedValue(new Error('judge unavailable'));
+            jest.spyOn(service as any, 'runPassK').mockRejectedValue(new Error('judge unavailable'));
 
             await expect(service.runGate(tenantId, agentId)).rejects.toThrow('judge unavailable');
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_FAILED_EVENT, {
@@ -104,7 +108,7 @@ describe('agent quality completion events', () => {
             const persist = jest.spyOn(service as any, 'persistRun').mockResolvedValue(undefined);
 
             await expect(service.runGateV2(tenantId, agentId)).rejects.toThrow('judge unavailable');
-            expect(persist).not.toHaveBeenCalled();
+            expect(persist).toHaveBeenCalledWith('tenant_eval', agentId, expect.objectContaining({ passed: false, status: 'failed', error: 'judge unavailable' }), 'manual');
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_FAILED_EVENT, {
                 tenantId,
                 agentId,
@@ -142,6 +146,7 @@ describe('agent quality completion events', () => {
                 agentTest as any,
                 {} as any,
                 eventEmitter as any,
+                { withSandboxSession: async (_tenant: string, cb: any) => cb({}) } as any,
             );
             jest.spyOn(service, 'ensureTables').mockResolvedValue(undefined);
             return { service, prisma, eventEmitter, qualityService, agentTest };
@@ -216,7 +221,7 @@ describe('agent quality completion events', () => {
 
             await expect(service.executeRun(tenantId, runId))
                 .rejects.toThrow('Simulation produced no scorable scenarios');
-            expect(buildSummary).not.toHaveBeenCalled();
+            expect(buildSummary).toHaveBeenCalled();
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_SIMULATION_FAILED_EVENT, {
                 tenantId, agentId, runId, status: 'failed',
             });

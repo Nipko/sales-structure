@@ -16,7 +16,7 @@ function build(){
     let sessionIndex=0;
     const session={sandboxContactId:'00000000-0000-4000-8000-00000000eba1',sandboxConversationId:'',assertLease:jest.fn(),
         sandboxNamespace:undefined as any,
-        reset:jest.fn(async()=>{session.sandboxConversationId=`sandbox-${++sessionIndex}`;
+        reset:jest.fn(async()=>{session.sandboxConversationId=`00000000-0000-4000-8000-${String(++sessionIndex).padStart(12,'0')}`;
             session.sandboxNamespace={schemaName:`tenant_eval_11111111_${String(sessionIndex).padStart(24,'0')}`,tenantId,sourceSchema:'tenant_learning',token:`lease-${sessionIndex}`};}),recordInbound:jest.fn()};
     const sandbox={withSandboxSession:jest.fn(async(_tenant,callback)=>callback(session))};
     const agentTest={assertSnapshotCurrent:jest.fn().mockResolvedValue(undefined),captureSnapshot:jest.fn().mockResolvedValue(snapshot),test:jest.fn(async(_t,_a,req,opts)=>{
@@ -96,11 +96,36 @@ describe('Learning A/B uses the full runtime with isolated histories',()=>{
         await expect(service.enqueue(tenantId,agentId,releaseId)).rejects.toThrow('redis down');
         expect(learning.failEvaluation).toHaveBeenCalledWith(tenantId,agentId,releaseId,expect.any(String),'queue_unavailable');
     });
-    it('does not count a successful tool payload as an operation without a database change',async()=>{
+    it('does not count a successful tool payload as an operation without an exact ledger and owned object',async()=>{
         const {service,agentTest,job}=build();
         agentTest.test.mockResolvedValue({reply:'Tu reserva está confirmada',debug:{agentRevision:{configHash:'frozen'},
             toolCalls:[{name:'create_appointment',result:{success:true,appointmentId:'claimed'}}],ragHits:[],model:'test-model'}} as any);
         const evidence=await service.run(job);
-        expect(evidence.results.every((r:any)=>r.criticalFailures.some((f:string)=>f.includes('operation_without_database_change')))).toBe(true);
+        expect(evidence.results.every((r:any)=>r.criticalFailures.some((f:string)=>f.includes('operation_evidence_unverified')))).toBe(true);
+    });
+    it('accepts exact command evidence and unchanged replay evidence in the full A/B comparison',async()=>{
+        const f=build(),orderId='77777777-7777-4777-8777-777777777777',ledgerId='88888888-8888-4888-8888-888888888888';
+        const written=new Set<string>();
+        const result={success:true,order:{id:orderId,status:'pending',currency:'COP',totalAmountCents:'2000',version:1}};
+        f.prisma.executeInTenantSchema.mockImplementation(async(schema:string,sql:string,params:any[]=[])=>{
+            if(sql.includes('to_regclass'))return [{relation:/\.(orders|tool_execution_ledger)$/.test(params[0])?'present':null}];
+            if(sql.includes('COUNT(*)'))return [{count:1,hash:'unchanged-table-diagnostic'}];
+            if(sql.includes('FROM tool_execution_ledger'))return written.has(schema)
+                ?[{id:ledgerId,tool_name:'place_catalog_order',args_hash:'a'.repeat(64),response_payload:result}]:[];
+            return [{hash:'owned-order-digest',data:{id:orderId,status:'pending',currency:'COP',total_amount:'20.00',version:1}}];
+        });
+        f.agentTest.test.mockImplementation(async(_t,_a,_request,options)=>{
+            const replay=written.has(options.sandboxNamespace.schemaName);written.add(options.sandboxNamespace.schemaName);
+            return {reply:'El pedido sigue pendiente.',debug:{agentRevision:{configHash:'frozen'},toolCalls:[{name:'place_catalog_order',result:{...result,...(replay?{idempotentReplay:true}:{})}}],ragHits:[],model:'test-model'}} as any;
+        });
+        const evidence=await f.service.run(f.job);
+        for(const comparison of evidence.results){
+            expect(comparison.criticalFailures).toEqual([]);
+            const traces=comparison.traces as {baseline:{turns:any[]};treatment:{turns:any[]}};
+            for(const replay of [traces.baseline,traces.treatment]){
+                expect(replay.turns.map((turn:any)=>turn.operations[0].effect)).toEqual(['committed','replayed']);
+                expect(replay.turns[1].database.before).toEqual(replay.turns[1].database.after);
+            }
+        }
     });
 });

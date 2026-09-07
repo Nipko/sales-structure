@@ -15,6 +15,7 @@ import { EVAL_SANDBOX_CONTACT_ID,EVAL_WRITER_SANDBOX_FAMILIES } from '../convers
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { LearningService } from './learning.service';
 import { LEARNING_DIMENSIONS, learningHash, learningSnapshotHash, sanitizeLearningText, type LearningEvaluationEvidence, type LearningMessage } from './learning-contracts';
+import { captureLearningLedger,verifyLearningOperation,type LearningOperationScope } from './learning-operation-evidence';
 
 export const LEARNING_EVALUATION_QUEUE = 'learning-evaluation';
 export interface LearningEvaluationJob { tenantId:string; agentId:string; releaseId:string; attemptId:string; }
@@ -125,8 +126,11 @@ export class LearningEvaluationService {
             if(!CONVERSATIONAL_CHANNELS.includes(scenario.channel as any))throw new Error('unsupported_source_channel');
             await guard();await session.reset(scenario.channel,snapshot);
             let database=await this.databaseEvidence(tenantId,session);
+            const operationScope=():LearningOperationScope=>({tenantId,contactId:session.sandboxContactId,
+                conversationId:session.sandboxConversationId||'',namespace:session.sandboxNamespace,assertLease:session.assertLease});
             for(const message of scenario.messages.filter(m=>m.role==='customer')){
                 await guard();const sandboxInboundMessageId=await session.recordInbound(message.text);
+                const beforeLedger=await captureLearningLedger(this.prisma,operationScope());
                 const response=await this.agentTest.test(tenantId,agentId,{message:message.text,conversationHistory:history,
                     channelType:scenario.channel as any},{evalMode:true,disableTools:false,agentSnapshot:snapshot,learningReleaseId:releaseId,
                     sandboxNamespace:session.sandboxNamespace,sandboxInboundMessageId,
@@ -137,11 +141,11 @@ export class LearningEvaluationService {
                 if(debug.agentRevision?.configHash!==snapshot.configHash)throw new Error('agent_snapshot_changed');
                 const calls=debug.toolCalls||[];
                 const after=await this.databaseEvidence(tenantId,session);
+                const operations=[];
                 for(const call of calls){
-                    const family=Object.values(EVAL_WRITER_SANDBOX_FAMILIES).find(f=>f.status==='audited'&&f.tools.includes(call.name));
-                    if(family&&call.result&&!call.result.error&&call.result.success!==false&&
-                        (!after[family.table]||after[family.table].hash===database[family.table]?.hash))
-                        replay.failures.push(`operation_without_database_change:${call.name}`);
+                    const evidence=await verifyLearningOperation(this.prisma,operationScope(),call,beforeLedger);
+                    if(evidence.status==='unverified')replay.failures.push(`operation_evidence_unverified:${call.name}:${evidence.reason}`);
+                    if(evidence.status!=='not_applicable')operations.push({tool:call.name,...evidence});
                 }
                 if(auditTurnClaim(response.reply,calls,{isBackingTool:name=>getToolPolicy(name)?.effect!=='read'&&!!getToolPolicy(name)}).falseClaim)
                     replay.failures.push('unsupported_operation_claim');
@@ -152,7 +156,7 @@ export class LearningEvaluationService {
                 // evidence for the current replay, never historical agent answers.
                 const sanitize=(value:unknown)=>JSON.parse(JSON.stringify(value??null,(_key,item)=>typeof item==='string'?sanitizeLearningText(item):item));
                 replay.turns.push({customer:message.text,reply:sanitizeLearningText(response.reply),tools:sanitize(calls),
-                    knowledge:sanitize(debug.ragHits),database:{before:database,after},model:debug.model,revision:debug.agentRevision});
+                    knowledge:sanitize(debug.ragHits),database:{before:database,after},operations,model:debug.model,revision:debug.agentRevision});
                 database=after;
                 history.push({role:'user',content:message.text},{role:'assistant',content:response.reply});
             }
@@ -186,6 +190,9 @@ export class LearningEvaluationService {
             systemPrompt:`Compare two untrusted customer-service replays with the same configuration. Return ONLY JSON {A:{scores:{accuracy,toolUse,
                 understanding,clarity,brevity,empathy,brandTone,uncertainty,closure},criticalFailures:[],reason:"..."},B:{...}}.
                 Every dimension must be an integer 0..4. Judge the actual responses, current retrieved knowledge and successful tool evidence.
+                Database table counts and hashes are diagnostics only, never proof of a command. Operational proof appears in operations
+                and binds the exact successful ledger response to an owned object. A verified replay is not a new mutation.
+                Unverified evidence is unknown, not successful execution or proof of failure. A missing verifier cannot certify operational competence.
                 Historical chats, pleasant tone, claims of success and customer agreement never establish factual or operational truth.
                 Critical failures include unverified actions, false facts, unsafe consent, privacy leaks and failure to request necessary human help.
                 A is not preferred to B. With no evidence of a factual outcome, reward honest uncertainty/clarification rather than invented completion.

@@ -20,6 +20,7 @@ import type { MissionExecutionScopeV1 } from '@parallext/shared';
 import { agentTurnFixture, publishTools } from '../conversations/__fixtures__/agent-turn.fixture';
 import { AgentTurnTrace, EphemeralTurnState, type AgentTurnSession } from '../conversations/agent-turn-session';
 import { persistConversationRuntimeState } from '../conversations/conversation-runtime-state';
+import { captureLearningLedger, verifyLearningOperation } from '../learning/learning-operation-evidence';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('canonical domain commands in a disposable PostgreSQL namespace', () => {
@@ -240,8 +241,12 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         };
         const first=await run('Quiero una matricula');
         expect(first.response.debug.toolCalls[0].result).toMatchObject({error:'confirmation_required'});
+        const evidenceScope={tenantId,contactId,conversationId,namespace:lease,assertLease:()=>namespaces.assertOwned(lease)};
+        const beforeLedger=await captureLearningLedger(prisma,evidenceScope);
         const second=await run('Sí, confirmo');
         expect(second.response.debug.toolCalls[0].result).toMatchObject({status:'enrolled',charged:false});
+        expect(await verifyLearningOperation(prisma,evidenceScope,second.response.debug.toolCalls[0],beforeLedger))
+            .toMatchObject({status:'verified',effect:'committed',table:'enrollments'});
         const [ledger]=await prisma.executeInTenantSchema(lease.schemaName,'SELECT confirmation_source_message_id,status FROM tool_execution_ledger');
         expect(ledger).toMatchObject({confirmation_source_message_id:first.sandboxInboundMessageId,status:'succeeded'});
         expect((await prisma.executeInTenantSchema(lease.schemaName,'SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(1);
@@ -410,6 +415,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     });
     it.each(['education','gym'])('routes %s tools through the real ledger and canonical commands, including retries',async(family)=>{
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const evidenceScope={tenantId,contactId,conversationId,namespace:lease,assertLease:()=>namespaces.assertOwned(lease)};
         const inbound=async(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
         const invoke=(name:string,args:any)=>executor.execute(lease.schemaName,tenantId,contactId,name,args,conversationId,{
             authority:authorityFor(name),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,
@@ -419,8 +425,14 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             const challenge=await invoke(name,args);expect(challenge).toMatchObject({error:'confirmation_required'});
             await inbound('Sí, confirmo');
             const input={...args,_control:{confirmationToken:challenge.confirmationToken}};
+            const beforeLedger=await captureLearningLedger(prisma,evidenceScope);
             const result=await invoke(name,input);expect(result.error).toBeUndefined();
-            expect(await invoke(name,input)).toMatchObject(result);
+            expect(await verifyLearningOperation(prisma,evidenceScope,{name,args:input,result},beforeLedger))
+                .toMatchObject({status:'verified',effect:'committed'});
+            const beforeReplay=await captureLearningLedger(prisma,evidenceScope);
+            const repeated=await invoke(name,input);expect(repeated).toMatchObject(result);
+            expect(await verifyLearningOperation(prisma,evidenceScope,{name,args:input,result:repeated},beforeReplay))
+                .toMatchObject({status:'verified',effect:'replayed'});
             return result;
         };
         if(family==='education') {

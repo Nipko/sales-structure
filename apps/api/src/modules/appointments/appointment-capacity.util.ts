@@ -1,4 +1,5 @@
 import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
+import { APPOINTMENT_SERVICE_TERMS_COLUMNS } from './appointment-service-terms';
 
 export type AppointmentTenantQuery = <T = unknown>(sql: string, params?: unknown[]) => Promise<T>;
 
@@ -30,6 +31,7 @@ export interface AppointmentCapacityInput {
 }
 
 export interface ActiveAppointmentService {
+    [key: string]: unknown;
     id: string;
     name: string;
     maxConcurrent: number;
@@ -108,8 +110,7 @@ export async function lockAndAssertAppointmentCapacity(
         // consulta que ya decide la capacidad: quien crea la cita necesita saber
         // si nace confirmada o pendiente de pago, y pedirla aparte abriría una
         // ventana entre el bloqueo y la lectura.
-        `SELECT id, name, COALESCE(max_concurrent, 1)::int AS max_concurrent,
-                price, currency, payment_policy, deposit_percent, deposit_amount
+        `SELECT ${APPOINTMENT_SERVICE_TERMS_COLUMNS}, COALESCE(max_concurrent, 1)::int AS max_concurrent
          FROM services
          WHERE id = $1::uuid AND is_active = true
          LIMIT 1
@@ -154,6 +155,7 @@ export async function lockAndAssertAppointmentCapacity(
     }
 
     return {
+        ...services[0],
         id: services[0].id,
         name: services[0].name,
         maxConcurrent,

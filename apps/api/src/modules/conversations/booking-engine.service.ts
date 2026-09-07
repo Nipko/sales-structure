@@ -8,6 +8,7 @@ import type { ToolExecutionAuthority } from '@parallext/shared';
 import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
 import { bookingConfirmationHash } from './booking-confirmation';
+import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
 import { isPauseMessage, isResumeMessage } from '../../common/conversation/intent-normalizer';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 
@@ -47,6 +48,9 @@ export interface BookingTurnContext {
 const MESSAGES: Record<string, Record<string, string | string[]>> = {
     es: {
         bookingPrice: "Precio: {amount} {currency}",
+        bookingDuration: 'Duración reservada: {minutes} minutos',
+        bookingLocation: 'Lugar: {location}',
+        bookingOnline: 'En línea',
         bookingPaymentDue: "Pago para confirmar: {amount} {currency}",
         bookingPending: "La solicitud de cita para {service} el {date} a las {time} quedó registrada y pendiente de confirmación.",
         bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount} {currency}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.",
@@ -99,6 +103,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
     },
     en: {
         bookingPrice: "Price: {amount} {currency}",
+        bookingDuration: 'Reserved duration: {minutes} minutes',
+        bookingLocation: 'Location: {location}',
+        bookingOnline: 'Online',
         bookingPaymentDue: "Payment to confirm: {amount} {currency}",
         bookingPending: "Your appointment request for {service} on {date} at {time} was recorded and is awaiting confirmation.",
         bookingAwaitingPayment: "Your appointment for {service} on {date} at {time} is awaiting payment of {amount} {currency}. The slot is held temporarily; confirmation follows verified payment.",
@@ -132,6 +139,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
     },
     pt: {
         bookingPrice: "Preço: {amount} {currency}",
+        bookingDuration: 'Duração reservada: {minutes} minutos',
+        bookingLocation: 'Local: {location}',
+        bookingOnline: 'Online',
         bookingPaymentDue: "Pagamento para confirmar: {amount} {currency}",
         bookingPending: "A solicitação de agendamento de {service} em {date} às {time} foi registrada e aguarda confirmação.",
         bookingAwaitingPayment: "O agendamento de {service} em {date} às {time} aguarda o pagamento de {amount} {currency}. O horário fica reservado temporariamente; a confirmação ocorre após a aprovação do pagamento.",
@@ -165,6 +175,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
     },
     fr: {
         bookingPrice: "Prix : {amount} {currency}",
+        bookingDuration: 'Durée réservée : {minutes} minutes',
+        bookingLocation: 'Lieu : {location}',
+        bookingOnline: 'En ligne',
         bookingPaymentDue: "Paiement pour confirmer : {amount} {currency}",
         bookingPending: "Votre demande de rendez-vous pour {service} le {date} à {time} est enregistrée et attend une confirmation.",
         bookingAwaitingPayment: "Le rendez-vous pour {service} le {date} à {time} attend le paiement de {amount} {currency}. Le créneau est retenu temporairement ; la confirmation suivra le paiement vérifié.",
@@ -230,7 +243,7 @@ const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_
 
 export interface BookingState {
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
-    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null }>;
+    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null; appointmentTerms?: AppointmentServiceTerms }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -1038,6 +1051,11 @@ export class BookingEngineService {
         const withStaff = state.staffName ? `\n${sl.with}: ${state.staffName}` : '';
         const service = state.services?.find(s => s.id === state.serviceId);
         const priceSummary = service ? '\n' + msg(lang, 'bookingPrice', { amount: String(service.price), currency: service.currency }) : '';
+        const terms = service?.appointmentTerms;
+        const duration = terms?.durationType === 'flexible' ? terms.durationMinutesMax || terms.durationMinutes : terms?.durationMinutes;
+        const durationSummary = duration ? '\n' + msg(lang, 'bookingDuration', { minutes: String(duration) }) : '';
+        const location = terms?.locationType === 'online' ? msg(lang, 'bookingOnline') : terms?.locationAddress;
+        const locationSummary = location ? '\n' + msg(lang, 'bookingLocation', { location }) : '';
         const termsHash = bookingConfirmationHash(state);
         if (!state.confirmationId || state.confirmationHash !== termsHash
             || Date.now() - Date.parse(state.confirmationIssuedAt || '') > 30 * 60 * 1000
@@ -1047,7 +1065,7 @@ export class BookingEngineService {
             state.confirmationIssuedAt = new Date().toISOString();
         }
         const dueSummary = service?.requiresPaymentToConfirm ? '\n' + msg(lang, 'bookingPaymentDue', { amount: String(service.amountDueToConfirm ?? service.price), currency: service.currency }) : '';
-        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}${priceSummary}${dueSummary}`;
+        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}${durationSummary}${locationSummary}${priceSummary}${dueSummary}`;
         return {
             handled: true, state,
             text: msg(lang, 'confirmPrompt', { summary }),
@@ -1085,7 +1103,8 @@ export class BookingEngineService {
         try {
             const startAt = `${state.date}T${state.time}:00`;
             const existing: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT a.id, a.status, a.payment_status, a.amount_due, a.hold_expires_at, s.price, s.currency
+                `SELECT a.id, a.status, a.payment_status, a.amount_due, a.hold_expires_at,
+                        ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency
                  FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
                  WHERE a.contact_id = $1::uuid
                    AND a.service_id = $2::uuid
@@ -1126,6 +1145,16 @@ export class BookingEngineService {
         });
         const executedTools = [{ name: 'create_appointment', result }];
         if (result?.success) return this.bookingOutcome(state, lang, result);
+        if (result?.error === 'appointment_terms_changed' && result.service?.id === state.serviceId) {
+            state.services = [...(state.services || []).filter(service => service.id !== state.serviceId), result.service];
+            state.serviceName = result.service.name;
+            state.confirmationId = undefined;
+            state.confirmationHash = undefined;
+            // The next confirmation summary and persisted state use the new
+            // canonical facts; clear the discovery cache so it cannot revert them.
+            await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
+            return { ...this.collectMissingInfo(state, lang), executedTools };
+        }
         // Same criterion as checkAvailability: on an unrecoverable failure the
         // appointment was NOT created and "try another time" is both a lie and a
         // way to leak the internal error code into the customer's chat.

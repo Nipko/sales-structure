@@ -21,6 +21,7 @@ import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evid
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { appointmentServiceTerms, assertAppointmentServiceTerms, type AppointmentServiceTerms } from './appointment-service-terms';
 import {
     holdStillAliveSql,
     PAYMENT_HOLD_MS,
@@ -269,7 +270,8 @@ export class AppointmentsService {
         customerPhone?: string;
         customerEmail?: string;
         source?: string;
-    }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean; sandboxNamespace?: EvalNamespaceLease } = {}): Promise<Appointment> {
+    }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean; sandboxNamespace?: EvalNamespaceLease;
+        expectedServiceTerms?: AppointmentServiceTerms } = {}): Promise<Appointment> {
         if (execution.sandboxNamespace) {
             await tenantActorDirectory(this.prisma,schemaName,execution.sandboxNamespace);
             data = { ...data, metadata: { ...data.metadata, source: 'eval_gate' } };
@@ -358,6 +360,11 @@ export class AppointmentsService {
                     endAt,
                 });
                 canonicalServiceName = service.name;
+                // The same service row is held FOR SHARE until the INSERT commits.
+                // Owner edits cannot race a customer's previously accepted terms.
+                if (data.source === 'ai' || execution.expectedServiceTerms) {
+                    assertAppointmentServiceTerms(execution.expectedServiceTerms, service);
+                }
                 // Si el servicio exige pago para confirmarse, la cita nace
                 // pendiente y con el turno RETENIDO 20 minutos mientras el
                 // cliente paga. El estado se pasa explícito porque el default
@@ -385,7 +392,7 @@ export class AppointmentsService {
                     [
                         id, contactIdUuid, opportunityId, conversationIdUuid, assignedToUuid, serviceIdUuid,
                         canonicalServiceName, startAt, endAt, data.location || null,
-                        data.notes || null, JSON.stringify(data.metadata || {}),
+                        data.notes || null, JSON.stringify({ ...data.metadata, serviceTerms: appointmentServiceTerms(service) }),
                         data.customerName || null, data.customerPhone || null,
                         data.customerEmail || null, data.source || 'manual',
                         status, amountDue, holdExpiresAt,

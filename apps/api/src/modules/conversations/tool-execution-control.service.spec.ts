@@ -3,6 +3,7 @@ import {
     ToolExecutionControlService,
 } from './tool-execution-control.service';
 import { bindMcpArguments, type McpToolApproval } from '../mcp/mcp-tool-approval';
+import { appointmentServiceTerms, appointmentServiceTermsHash } from '../appointments/appointment-service-terms';
 
 const schemaName = 'tenant_dec_controls';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -854,6 +855,36 @@ describe('ToolExecutionControlService', () => {
         expect(result).toMatchObject({ allowed: true, ledgerId });
         expect(state.ledger.confirmation_token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
         expect(state.ledger.confirmed_by_message_id).toBe(firstMessageId);
+    });
+
+    it('does not reuse a previous acceptance when the canonical service price changes', async () => {
+        const { service, state } = createHarness();
+        const old = appointmentServiceTerms({ id: tenantId, name: 'Consulta', price: 100, currency: 'COP', duration_minutes: 30 });
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment',
+            args: { serviceId: tenantId, date: '2026-08-10', time: '10:00', appointmentTerms: old, appointmentTermsHash: appointmentServiceTermsHash(old) } };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        state.latestMessage = { id: secondMessageId, content_text: 'Sí, confirmo' };
+        const fresh = { ...old, price: 120 };
+        const changed = { ...request, args: { ...request.args, appointmentTerms: fresh, appointmentTermsHash: appointmentServiceTermsHash(fresh) } };
+        expect(await service.preflight(changed)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(await service.preflight(changed)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(state.ledgers.some((row: any) => row.status === 'executing')).toBe(false);
+        state.latestMessage = { id: fourthMessageId, content_text: 'Confirmo' };
+        expect(await service.preflight(changed)).toMatchObject({ allowed: true });
+    });
+
+    it('requires a renewed booking summary for canonical terms changed since the button was shown', async () => {
+        const { service, state } = createHarness();
+        const old = appointmentServiceTerms({ id: tenantId, name: 'Consulta', price: 100, currency: 'COP', duration_minutes: 30 });
+        const args = { serviceId: tenantId, date: '2026-08-10', time: '10:00', customerName: 'Ana', customerEmail: 'ana@example.test',
+            appointmentTerms: { ...old, price: 120 } };
+        state.bookingState = { ...args, confirmationId: 'proposal', step: 'confirm', services: [{ id: tenantId, appointmentTerms: old }] };
+        state.latestMessage = { id: firstMessageId, content_text: 'confirm_yes:proposal' };
+        expect(await service.preflight({ schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args,
+            authorityEvidence: { kind: 'booking_engine_confirmation', source: 'confirm_yes' } })).toMatchObject({
+                allowed: false, result: { error: 'appointment_terms_changed', persisted: false, service: { price: 120 } },
+            });
+        expect(state.ledger.confirmed_at).toBeNull();
     });
 
     it('rejects a stale or mismatched BookingEngine authority claim', async () => {

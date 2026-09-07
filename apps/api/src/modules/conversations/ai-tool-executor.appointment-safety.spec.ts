@@ -1,4 +1,5 @@
 import { AppointmentsService } from '../appointments/appointments.service';
+import { APPOINTMENT_SERVICE_TERMS_COLUMNS } from '../appointments/appointment-service-terms';
 import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
@@ -15,11 +16,22 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         const queuedResults = [...queryResults];
         let insertedAppointment: any | undefined;
         let rescheduling = false;
+        let preparedService: any;
         const rawQuery: jest.Mock<any, any[]> = jest.fn(async (sql: string) => {
+            if (sql.includes(APPOINTMENT_SERVICE_TERMS_COLUMNS) && sql.includes('LIMIT 2')) {
+                // Read-only preparation and the later handler see the same
+                // service row; this additional read does not consume a write result.
+                preparedService = queuedResults[0]?.[0];
+                return preparedService ? [structuredClone(preparedService)] : [];
+            }
             if (sql.includes('SELECT duration_minutes FROM')) rescheduling = true;
             if (rescheduling && sql.includes("config_json->'hours'")) return [{ tz: 'America/Bogota' }];
             if (rescheduling && sql.includes('AS cap FROM')) return [{ cap: 1 }];
-            return queuedResults.shift() ?? [];
+            const result = queuedResults.shift() ?? [];
+            if (preparedService && sql.includes('FROM services') && sql.includes('FOR SHARE')) {
+                return result.map(row => ({ ...preparedService, ...row }));
+            }
+            return result;
         });
         const transactionQuery: jest.Mock<any, [string, unknown[]?]> = jest.fn(async (
             sql: string,
@@ -494,6 +506,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(JSON.parse(insertParams[11])).toEqual({
             isOnline: false,
             meetingUrl: 'https://meet.example/static-room',
+            serviceTerms: expect.objectContaining({ serviceId, price: 0, currency: 'COP', durationMinutes: 30,
+                locationAddress: 'Calle 10 # 20-30', meetingLinkHash: expect.stringMatching(/^[a-f0-9]{64}$/) }),
         });
 
         const outboxCall = harness.transactionQuery.mock.calls.find(([sql]) => (

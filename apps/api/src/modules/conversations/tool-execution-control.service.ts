@@ -16,6 +16,7 @@ import {
     confirmationEffectForPolicy,
 } from '../../common/conversation/intent-normalizer';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { appointmentServiceTermsHash, appointmentTermsReviewResult } from '../appointments/appointment-service-terms';
 import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
 import { reviewedMcpPolicy } from '../mcp/mcp-execution-policy';
 import type { McpToolApproval } from '../mcp/mcp-tool-approval';
@@ -1839,6 +1840,14 @@ export class ToolExecutionControlService {
                 && state.services.some((service: any) => service?.id === request.args.serviceId);
             if (!serviceKnown || !Number.isFinite(startedAt) || Date.now() - startedAt > 3_600_000) {
                 return this.block('booking_flow_evidence_expired', 'La respuesta del formulario no está vigente.', true);
+            }
+        }
+
+        if (request.args.appointmentTerms) {
+            const proposed = state.services?.find((service: any) => service?.id === request.args.serviceId)?.appointmentTerms;
+            if (!appointmentServiceTermsHash(proposed)
+                || appointmentServiceTermsHash(proposed) !== appointmentServiceTermsHash(request.args.appointmentTerms)) {
+                return { allowed: false, result: appointmentTermsReviewResult(request.args.appointmentTerms as any) };
             }
         }
 

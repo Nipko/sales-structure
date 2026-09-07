@@ -289,16 +289,20 @@ describe('Draft writer proposals', () => {
     it('routes a draft writer only to the review ledger and never to domain preconditions', async () => {
         const control = { proposeDraftAction: jest.fn().mockResolvedValue({ allowed: false, result: { error: 'draft_action_requires_approval' } }), preflight: jest.fn() };
         const { executor, prisma } = createExecutor(control);
+        prisma.$queryRawUnsafe.mockResolvedValue([{ id: tenantId, name: 'Service', duration_minutes: 30, price: 100, currency: 'COP' }]);
         const preconditions = jest.spyOn(executor as any, 'assertWritePreconditions');
         const draftScope = { agentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', agentVersion: 3 };
         const result = await executor.execute(schemaName, tenantId, contactId, 'create_appointment',
-            { serviceId: 'service' }, conversationId, { authority: authorityFor('create_appointment'), draftScope,
+            { serviceId: 'service', appointmentTerms: { price: 1 }, appointmentTermsHash: 'forged' }, conversationId, { authority: authorityFor('create_appointment'), draftScope,
                 executionContext: { mode: 'draft', persistence: 'disabled' } });
         expect(result).toMatchObject({ error: 'draft_action_requires_approval', persisted: false });
         expect(control.proposeDraftAction).toHaveBeenCalledWith(expect.objectContaining({ draftScope, toolName: 'create_appointment' }));
+        expect(control.proposeDraftAction.mock.calls[0][0].args).toMatchObject({ serviceId: tenantId, appointmentTerms: { price: 100, currency: 'COP' } });
+        expect(control.proposeDraftAction.mock.calls[0][0].args.appointmentTermsHash).toMatch(/^[a-f0-9]{64}$/);
         expect(control.preflight).not.toHaveBeenCalled();
         expect(preconditions).not.toHaveBeenCalled();
-        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        expect(prisma.$queryRawUnsafe.mock.calls[0][0]).toMatch(/^SELECT /);
     });
 
     it('does not let model arguments invent a draft scope or bypass capability authority', async () => {

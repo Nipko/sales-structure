@@ -5,6 +5,8 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AppointmentsService } from '../appointments/appointments.service';
+import { APPOINTMENT_SERVICE_TERMS_COLUMNS, appointmentPriceSql, appointmentCurrencySql, appointmentServiceTerms, appointmentServiceTermsHash,
+    AppointmentTermsChangedError, appointmentTermsReviewResult, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { FaqsService } from '../faqs/faqs.service';
@@ -341,6 +343,22 @@ export class AIToolExecutorService {
                 return this.authorityDenied(toolName, authorityDecision);
             }
 
+            if (toolName === 'create_appointment' && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                const serviceId = String(args.serviceId || '');
+                const byId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(serviceId);
+                const rows: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT ${APPOINTMENT_SERVICE_TERMS_COLUMNS} FROM "${schemaName}".services
+                     WHERE is_active = true AND ${byId ? 'id = $1::uuid' : 'LOWER(name) = LOWER($1)'} LIMIT 2`, serviceId);
+                if (rows.length !== 1) return { error: rows.length ? 'appointment_service_ambiguous' : 'appointment_service_unavailable', persisted: false };
+                const terms = appointmentServiceTerms(rows[0]);
+                const termsHash = appointmentServiceTermsHash(terms);
+                if (!termsHash) return { error: 'appointment_service_terms_unavailable', persisted: false };
+                // Discard any model-provided terms. The digest binds exact facts
+                // even though the legacy consent canonicalizer folds accents/case.
+                args = { ...args, serviceId: terms.serviceId, appointmentTerms: terms, appointmentTermsHash: termsHash };
+            }
+
             if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
                 if (!this.toolExecutionControl?.proposeDraftAction) return { error: 'draft_action_requires_approval', persisted: false };
                 // Resolve only canonical, read-only terms before recording the
@@ -363,6 +381,9 @@ export class AIToolExecutorService {
                     conversationId, channelType: opts.channelType, toolName, args, mcpApproval,
                     draftMode: true, draftScope: opts.draftScope });
                 if (proposal.allowed) return { error: 'draft_action_requires_approval', persisted: false };
+                if (toolName === 'create_appointment' && proposal.result.error === 'confirmation_required') {
+                    return { ...proposal.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
+                }
                 return payment && proposal.result.error === 'confirmation_required'
                     ? this.paymentOperations.confirmationRequiredResult(payment, proposal.result)
                     : { ...proposal.result, persisted: false, shouldHandoff: false };
@@ -468,6 +489,9 @@ export class AIToolExecutorService {
                 draftMode: opts?.executionContext?.mode === 'draft',
             });
             if (!controlDecision.allowed) {
+                if (toolName === 'create_appointment' && controlDecision.result?.error === 'confirmation_required' && args.appointmentTerms) {
+                    return { ...controlDecision.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
+                }
                 if (preparedPaymentLink
                     && controlDecision.result?.error === 'confirmation_required') {
                     return this.paymentOperations.confirmationRequiredResult(
@@ -2622,7 +2646,7 @@ export class AIToolExecutorService {
     private async listServices(schema: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max,
-                    payment_policy, deposit_percent, deposit_amount
+                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
         );
@@ -2650,6 +2674,7 @@ export class AIToolExecutorService {
                     amountDueToConfirm: policy.dueAmount,
                     paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
                     paymentNote: describePaymentPolicy(policy),
+                    appointmentTerms: appointmentServiceTerms(s),
                 };
             }),
         };
@@ -3106,7 +3131,7 @@ export class AIToolExecutorService {
 
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
-        args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
+        args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string; appointmentTerms?: AppointmentServiceTerms },
         conversationId?: string,
         evalMode?: boolean,
         namespace?: EvalNamespaceLease,
@@ -3241,7 +3266,8 @@ export class AIToolExecutorService {
                 customerPhone: args.customerPhone, customerEmail: args.customerEmail,
                 location: location || undefined, notes: description,
                 metadata: appointmentMetadata, source: 'ai',
-            }, { suppressEffects: evalMode === true, confirmWithoutPayment: true, sandboxNamespace: namespace });
+            }, { suppressEffects: evalMode === true, confirmWithoutPayment: true, sandboxNamespace: namespace,
+                expectedServiceTerms: args.appointmentTerms });
             return {
                 success: true,
                 operationStatus: apt.awaitingPayment ? 'awaiting_payment' : apt.status,
@@ -3258,6 +3284,7 @@ export class AIToolExecutorService {
                 },
             };
         } catch (error) {
+            if (error instanceof AppointmentTermsChangedError) return appointmentTermsReviewResult(error.currentTerms);
             if (error instanceof AppointmentSlotConflictError || error instanceof ConflictException) {
                 return { error: 'That time slot was just taken. Check availability again.', retryable: true };
             }
@@ -3361,7 +3388,8 @@ export class AIToolExecutorService {
 
     private async listCustomerAppointments(schema: string, contactId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT a.id, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, s.price, s.currency,
+            `SELECT a.id, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at,
+                    ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
                     to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time
              FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
              WHERE a.contact_id = $1::uuid AND a.status NOT IN ('cancelled') AND a.start_at >= NOW()
@@ -5730,7 +5758,8 @@ export class AIToolExecutorService {
     private async getAppointmentDetails(schema: string, contactId: string, appointmentId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT a.id, a.contact_id, a.service_name, a.status, a.payment_status, a.amount_due, a.hold_expires_at,
-                    a.customer_name, a.customer_email, a.customer_phone, a.notes, a.metadata, s.price, s.currency,
+                    a.customer_name, a.customer_email, a.customer_phone, a.notes, a.metadata,
+                    ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
                     to_char(a.start_at, 'YYYY-MM-DD') AS local_date,
                     to_char(a.start_at, 'HH24:MI') AS local_time, to_char(a.end_at, 'HH24:MI') AS local_end_time
              FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id

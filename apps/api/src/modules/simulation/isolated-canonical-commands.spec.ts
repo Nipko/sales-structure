@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppointmentsService } from '../appointments/appointments.service';
+import { appointmentServiceTerms, AppointmentTermsChangedError } from '../appointments/appointment-service-terms';
 import { EducationService } from '../education/education.service';
 import { GymsService } from '../gyms/gyms.service';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
@@ -12,6 +13,7 @@ import { ToolApprovalWorkflowService } from '../conversations/tool-approval-work
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from './isolated-eval-namespace';
 import { EvalService } from './eval.service';
+import { PAYMENT_REFERENCE_TARGETS } from '../tenant-payments/tenant-payment-reference';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('canonical domain commands in a disposable PostgreSQL namespace', () => {
@@ -112,6 +114,53 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(result).toMatchObject({status:'pending_payment',awaitingPayment:true,amountDueToConfirm:25,currency:'COP'});
         expect(new Date(result.holdExpiresAt!).getTime()).toBeGreaterThan(Date.now());
         expect(calendar.enqueueWithQuery).not.toHaveBeenCalled();
+    });
+    it('rejects changed service terms inside the actual appointment transaction before inserting', async () => {
+        const [row] = await query(`SELECT * FROM "${lease.schemaName}".services WHERE id=$1::uuid`, [serviceId]);
+        const expected = appointmentServiceTerms(row);
+        await query(`UPDATE "${lease.schemaName}".services SET price=150,payment_policy='deposit',deposit_percent=40 WHERE id=$1::uuid`, [serviceId]);
+        await expect(appointments.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service', source: 'ai',
+            startAt: `${date}T10:00:00`, endAt: `${date}T10:30:00`, metadata: { source: 'eval_gate' } },
+        { expectedServiceTerms: expected, suppressEffects: true })).rejects.toBeInstanceOf(AppointmentTermsChangedError);
+        expect((await query(`SELECT count(*)::int AS n FROM "${lease.schemaName}".appointments`))[0].n).toBe(0);
+        const [fresh] = await query(`SELECT * FROM "${lease.schemaName}".services WHERE id=$1::uuid`, [serviceId]);
+        const created = await appointments.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service', source: 'ai',
+            startAt: `${date}T10:00:00`, endAt: `${date}T10:30:00`, metadata: { source: 'eval_gate' } },
+        { expectedServiceTerms: appointmentServiceTerms(fresh), suppressEffects: true });
+        expect(created).toMatchObject({ status: 'pending_payment', amountDueToConfirm: 60 });
+    });
+    it('holds material service terms against a concurrent owner edit until the appointment commits', async () => {
+        const [row] = await query(`SELECT * FROM "${lease.schemaName}".services WHERE id=$1::uuid`, [serviceId]);
+        const owner = await pool.connect(); const ownerPid = (await owner.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+        let ownerWrite: Promise<any> | undefined; let observedLock = false;
+        const guarded = { ...prisma, transactionInTenantSchema: (schema: string, work: any) => prisma.transactionInTenantSchema(schema, (q: any) => work(async (sql: string, params: any[] = []) => {
+            const rows = await q(sql, params);
+            if (sql.includes('FROM services') && sql.includes('FOR SHARE') && !ownerWrite) {
+                ownerWrite = owner.query(`UPDATE "${lease.schemaName}".services SET price=200 WHERE id=$1::uuid`, [serviceId]);
+                for (let attempt = 0; attempt < 50; attempt++) {
+                    const [wait] = await query('SELECT cardinality(pg_blocking_pids($1::int)) AS n', [ownerPid]);
+                    if (wait.n > 0) { observedLock = true; break; }
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+                expect(observedLock).toBe(true);
+            }
+            return rows;
+        })) };
+        const command = new AppointmentsService(guarded, effects as any, calendar as any, { timezoneForSchema: async () => 'America/Bogota' } as any);
+        try {
+            const created = await command.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service', source: 'ai',
+                startAt: `${date}T10:00:00`, endAt: `${date}T10:30:00`, metadata: { source: 'eval_gate' } },
+            { expectedServiceTerms: appointmentServiceTerms(row), suppressEffects: true, confirmWithoutPayment: true });
+            expect(created.status).toBe('confirmed'); await ownerWrite;
+            expect(Number((await query(`SELECT price FROM "${lease.schemaName}".services WHERE id=$1::uuid`, [serviceId]))[0].price)).toBe(200);
+            const target = PAYMENT_REFERENCE_TARGETS.appointment;
+            const [payable] = await prisma.executeInTenantSchema(lease.schemaName,
+                `SELECT ${target.amountExpression} AS amount, ${target.currencyExpression} AS currency
+                 FROM appointments target ${target.join} WHERE target.id=$1::uuid`, [created.id]);
+            expect(Number(payable.amount)).toBe(100); expect(payable.currency).toBe('COP');
+            expect(created.metadata.serviceTerms.price).toBe(100);
+            expect(observedLock).toBe(true);
+        } finally { if (ownerWrite) await ownerWrite; owner.release(); }
     });
     it('rolls back invalid enrollment ownership and restores a seat exactly once after cancellation',async()=>{
         await expect(education.enrollStudent(lease.schemaName,{cohortId,contactId:randomUUID(),studentName:'Invalid'})).rejects.toThrow();
@@ -250,15 +299,19 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             tenant:{findUnique:async()=>({industry:'beauty',settings:{},operatingCountry:'CO'})}};
         const controls=new ToolExecutionControlService(ownedPrisma,{get:()=> 'isolated-test-secret-length-32-characters'} as any,{} as any,{get:async()=>null,incr:async()=>1,expire:async()=>true} as any);
         const args={serviceId,date,time:'10:00',customerName:'Eval'};
-        const request={schemaName:lease.schemaName,tenantId,contactId,conversationId,toolName:'create_appointment',args,draftMode:true,draftScope:{agentId,agentVersion:1}};
+        const draftExecutor=Object.create(executor) as AIToolExecutorService;
+        (draftExecutor as any).toolExecutionControl=controls;
+        const propose=(input:any)=>draftExecutor.execute(lease.schemaName,tenantId,contactId,'create_appointment',input,conversationId,
+            {authority:authorityFor('create_appointment'),evalMode:true,sandboxNamespace:lease,
+                executionContext:{mode:'draft',persistence:'disabled'},draftScope:{agentId,agentVersion:1}});
         const inbound=async(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
         await inbound('Quiero reservar');
-        const challenge=await controls.proposeDraftAction(request);
-        expect(challenge).toMatchObject({allowed:false,result:{error:'confirmation_required'}});
+        const challenge=await propose(args);
+        expect(challenge).toMatchObject({error:'confirmation_required',service:{price:100}});
         expect((await q('SELECT count(*)::int AS n FROM appointments'))[0].n).toBe(0);
         await inbound('Sí, confirmo');
-        const proposal=await controls.proposeDraftAction({...request,args:{...args,_control:{confirmationToken:(challenge as any).result.confirmationToken}}});
-        expect(proposal).toMatchObject({allowed:false,result:{error:'draft_action_requires_approval'}});
+        const proposal=await propose({...args,_control:{confirmationToken:challenge.confirmationToken}});
+        expect(proposal).toMatchObject({error:'draft_action_requires_approval'});
         const [ticket]=await q('SELECT id,status FROM tool_approval_tickets');
         expect(ticket.status).toBe('pending');expect((await q('SELECT count(*)::int AS n FROM appointments'))[0].n).toBe(0);
         await controls.decideApprovalTicket({tenantId,ticketId:ticket.id,actorId:randomUUID(),decision:'approved'});

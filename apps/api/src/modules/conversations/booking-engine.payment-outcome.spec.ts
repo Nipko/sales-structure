@@ -1,16 +1,29 @@
 import { BookingEngineService, BookingState } from './booking-engine.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { appointmentServiceTerms, appointmentTermsReviewResult } from '../appointments/appointment-service-terms';
 
 function harness(existing: any[] = [], result: any = {}) {
     const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue(existing) };
     const executor = { execute: jest.fn().mockResolvedValue(result) };
-    const engine = new BookingEngineService(prisma as any, {} as any, executor as any);
+    const redis = { del: jest.fn().mockResolvedValue(undefined) };
+    const engine = new BookingEngineService(prisma as any, redis as any, executor as any);
     const state: BookingState = { step: 'confirm', serviceId: 'service', serviceName: 'Consultation', date: '2027-01-01', time: '10:00', customerName: 'Ana', customerEmail: 'ana@example.test',
         services: [{ id: 'service', name: 'Consultation', durationMinutes: 30, price: 100000, currency: 'COP', requiresPaymentToConfirm: true, amountDueToConfirm: 30000 }] };
     (engine as any).collectMissingInfo(state, 'es');
-    return { engine: engine as any, executor, state, prisma };
+    return { engine: engine as any, executor, state, prisma, redis };
 }
 describe('booking engine communicates persisted outcome', () => {
+    it.each(['es', 'en', 'pt', 'fr'])('renews changed terms without discarding collected fields or reusing the old button (%s)', async lang => {
+        const current = appointmentServiceTerms({ id: 'service', name: 'Consulta', price: 150000, currency: 'COP', duration_minutes: 30, payment_policy: 'deposit', deposit_percent: 40 });
+        const h = harness([], appointmentTermsReviewResult(current)); const oldButton = h.state.confirmationId;
+        const outcome = await h.engine.createBooking('tenant_test', 'tenant', 'contact', h.state, lang, 'conversation', authorityFor('create_appointment'), 'confirm_yes');
+        expect(outcome.state).toMatchObject({ step: 'confirm', customerName: 'Ana', customerEmail: 'ana@example.test', date: '2027-01-01', time: '10:00' });
+        expect(outcome.state.confirmationId).not.toBe(oldButton);
+        expect(outcome.text).toContain('150000 COP'); expect(outcome.text).toContain('60000 COP');
+        expect(outcome.text).not.toContain('appointment_terms_changed');
+        expect(h.redis.del).toHaveBeenCalledWith('booking:services:tenant');
+        expect(h.executor.execute).toHaveBeenCalledTimes(1);
+    });
     it.each(['es', 'en', 'pt', 'fr'])('discloses the price and deposit before confirmation in %s', lang => {
         const h = harness(); const proposal = h.engine.collectMissingInfo(h.state, lang);
         expect(proposal.text).toContain('100000 COP');

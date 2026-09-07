@@ -1,6 +1,7 @@
 import { AppointmentsService } from './appointments.service';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
 import { AppointmentNotificationsService } from './appointment-notifications.service';
+import { appointmentServiceTerms, AppointmentTermsChangedError } from './appointment-service-terms';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const contactId = '22222222-2222-4222-8222-222222222222';
@@ -13,7 +14,7 @@ function harness(paymentPolicy = 'deposit', suppressEffects = false) {
         if (sql.includes('FROM services')) return [serviceRow];
         if (sql.includes('COUNT(*)')) return [{ occupied: 0 }];
         if (sql.includes('INSERT INTO appointments')) stored = {
-            id: params[0], serviceName: params[6], status: params[16], amountDue: params[17], holdExpiresAt: params[18]?.toISOString(), paymentStatus: 'pending',
+            id: params[0], serviceName: params[6], status: params[16], amountDue: params[17], holdExpiresAt: params[18]?.toISOString(), paymentStatus: 'pending', metadata: JSON.parse(params[11]),
         };
         return [];
     });
@@ -30,11 +31,32 @@ function harness(paymentPolicy = 'deposit', suppressEffects = false) {
         acquireSlotLock: async () => ({ key: 'lock', token: 'token' }), redis: { releaseLockToken: jest.fn() },
     });
     const createTool = () => executor.createAppointment('tenant_test', id, contactId,
-        { serviceId: id, date: '2027-09-08', time: '10:00', customerName: 'Ana' }, undefined, suppressEffects);
-    return { service, createTool, eventEmitter, calendarOutbox, query, stored: () => stored };
+        { serviceId: id, date: '2027-09-08', time: '10:00', customerName: 'Ana', appointmentTerms: appointmentServiceTerms(serviceRow) }, undefined, suppressEffects);
+    return { service, createTool, eventEmitter, calendarOutbox, query, serviceRow, stored: () => stored };
 }
 
 describe('canonical appointment payment command', () => {
+    it.each([
+        { price: 120000 }, { currency: 'USD' }, { deposit_percent: 50 }, { payment_policy: 'full' },
+        { duration_minutes: 60 }, { location_address: 'New address' }, { name: 'Another service name' },
+    ])('rejects a change of accepted terms under the service lock: %j', async changes => {
+        const h = harness(); const expected = appointmentServiceTerms(h.serviceRow);
+        Object.assign(h.serviceRow, changes);
+        await expect(h.service.create('tenant_test', { ...input, source: 'ai' }, { expectedServiceTerms: expected })).rejects.toBeInstanceOf(AppointmentTermsChangedError);
+        expect(h.stored()).toBeUndefined();
+        expect(h.eventEmitter.emit).not.toHaveBeenCalled();
+        expect(h.calendarOutbox.enqueueWithQuery).not.toHaveBeenCalled();
+    });
+    it('requires terms at the canonical AI entry even when the caller skips the executor', async () => {
+        const h = harness();
+        await expect(h.service.create('tenant_test', { ...input, source: 'ai' })).rejects.toBeInstanceOf(AppointmentTermsChangedError);
+        expect(h.stored()).toBeUndefined();
+    });
+    it('overwrites caller-supplied quote metadata with the locked canonical terms', async () => {
+        const h = harness();
+        const created = await h.service.create('tenant_test', { ...input, metadata: { serviceTerms: { price: 1, currency: 'USD' } } });
+        expect(created.metadata.serviceTerms).toMatchObject({ price: 100000, currency: 'COP', amountDue: 30000 });
+    });
     it.each([false, true])('retains the 30%% deposit and hold through the tool (eval=%s)', async (evalMode) => {
         const h = harness('deposit', evalMode);
         const result = await h.createTool();

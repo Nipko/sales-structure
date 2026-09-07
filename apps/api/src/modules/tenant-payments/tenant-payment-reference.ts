@@ -1,3 +1,5 @@
+import { appointmentPriceSql, appointmentCurrencySql } from '../appointments/appointment-service-terms';
+
 export type TenantPaymentProvider = 'mercadopago' | 'wompi';
 
 export type TenantPaymentStatus =
@@ -60,8 +62,8 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
     // salvo que la cita lleve una seña fijada en `amount_due`.
     appointment: {
         table: 'appointments',
-        amountExpression: 'COALESCE(target.amount_due, service.price)',
-        currencyExpression: 'service.currency',
+        amountExpression: `COALESCE(target.amount_due, ${appointmentPriceSql()})`,
+        currencyExpression: appointmentCurrencySql(),
         join: 'LEFT JOIN services service ON service.id = target.service_id',
         rejectedStatuses: ['cancelled', 'no_show', 'completed', 'expired'],
         description: entityId => `Pago de cita ${entityId.slice(0, 8)}`,
@@ -99,4 +101,3 @@ export function parsePaymentReference(reference: string): {
     if (!target) return null;
     return { kind, entityId, canonicalReference: `${kind}:${entityId}`, target };
 }
-

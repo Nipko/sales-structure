@@ -1,3 +1,4 @@
+import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
 import { APPROVED_EFFECT_DELIVERY } from '../channels/approved-effect-delivery.port';
 import { ToolApprovalEffectsService } from './tool-approval-effects.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -77,6 +78,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
 
 @Module({
     imports: [
+        WidgetDeliveryModule,
         PersonaModule,
         LearningModule,
         EvaluationRevisionModule,

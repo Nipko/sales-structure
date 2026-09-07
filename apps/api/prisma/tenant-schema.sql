@@ -4683,7 +4683,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_approval_effects" (
     ticket_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."tool_approval_tickets"(id) ON DELETE CASCADE,
     kind VARCHAR(30) NOT NULL CHECK (kind IN ('media', 'handoff', 'payment_link')),
     item_index INTEGER NOT NULL CHECK (item_index >= 0),
-    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'queued', 'processing', 'sent', 'completed', 'failed', 'suppressed', 'reconciliation_required')),
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'queued', 'processing', 'sent', 'stored', 'completed', 'failed', 'suppressed', 'reconciliation_required')),
     attempts INTEGER NOT NULL DEFAULT 0,
     lease_token UUID,
     lease_expires_at TIMESTAMPTZ,
@@ -4721,3 +4721,13 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_conflict_status ON "{{SCHEMA_NAME}}"."k
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_conflict_decisions ON "{{SCHEMA_NAME}}"."knowledge_conflict_decisions"(case_id,revision DESC);
 -- END KNOWLEDGE CONFLICT REVIEW
+
+DO $widget_state$ BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended('{{SCHEMA_NAME}}:approval-effect-state-migration',0));
+    IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='"{{SCHEMA_NAME}}".tool_approval_effects'::regclass
+        AND conname='tool_approval_effects_state_check' AND pg_get_constraintdef(oid) LIKE '%stored%') THEN
+        ALTER TABLE "{{SCHEMA_NAME}}".tool_approval_effects DROP CONSTRAINT IF EXISTS tool_approval_effects_state_check;
+        ALTER TABLE "{{SCHEMA_NAME}}".tool_approval_effects ADD CONSTRAINT tool_approval_effects_state_check
+            CHECK(state IN ('pending','queued','processing','sent','stored','completed','failed','suppressed','reconciliation_required'));
+    END IF;
+END $widget_state$;

@@ -1,4 +1,4 @@
-import { APPROVAL_EFFECTS_DDL, APPROVAL_EFFECTS_EVENT, approvedEffectDescriptors, approvalDeliveryState, type ApprovalEffectSummary, type ApprovalDeliveryState } from './tool-approval-effects.contracts';
+import { APPROVAL_EFFECTS_DDL, APPROVAL_EFFECTS_STATE_MIGRATION, APPROVAL_EFFECTS_EVENT, approvedEffectDescriptors, approvalDeliveryState, type ApprovalEffectSummary, type ApprovalDeliveryState } from './tool-approval-effects.contracts';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AsyncLocalStorage } from 'async_hooks';
@@ -2304,6 +2304,7 @@ export class ToolExecutionControlService {
                 )`,
             );
             await this.query(schemaName, APPROVAL_EFFECTS_DDL);
+            for (const statement of APPROVAL_EFFECTS_STATE_MIGRATION) await this.query(schemaName, statement);
             await this.query(
                 schemaName,
                 `ALTER TABLE tool_execution_ledger

@@ -25,7 +25,7 @@ describe('ConversationsService widget containment', () => {
                     { id: 'old-1', direction: 'inbound', content_text: 'previous question' },
                 ];
                 if (sql.includes('SELECT * FROM conversations')) {
-                    return [{ id: 'conversation-1', contact_id: 'contact-1', status: 'active', updated_at: new Date() }];
+                    return [{ id: 'conversation-1', contact_id: 'contact-1', channel_account_id: 'widget', status: 'active', updated_at: new Date() }];
                 }
                 if (sql.includes('SELECT * FROM contacts')) return [{ id: 'contact-1', name: 'Alice', external_id: 'widget_alice' }];
                 if (sql.includes('SELECT * FROM leads')) return [{ id: 'lead-1' }];
@@ -142,6 +142,16 @@ describe('ConversationsService widget containment', () => {
         expect(prisma.executeInTenantSchema.mock.calls[0][1]).toContain('contact_id = $2::uuid AND channel_type = $3');
     });
 
+    it('uses the current widget connection for persona routing and rejects a different conversation account', async () => {
+        const { service, prisma } = makeService();
+        await collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1', { channelAccountId: 'wgt_current' }));
+        expect((service as any).personaService.resolvePersonaForChannel).toHaveBeenCalledWith('tenant-1', 'web_widget', 'wgt_current');
+        expect((service as any).generateResponse.mock.calls[0][2].channelAccountId).toBe('wgt_current');
+        prisma.executeInTenantSchema.mockResolvedValueOnce([{ id: 'conversation-1', contact_id: 'contact-1', channel_account_id: 'wgt_other' }]);
+        await expect(collect(service.streamWidgetMessage('tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-2', { channelAccountId: 'wgt_current' }))).rejects.toThrow('widget_conversation_scope_mismatch');
+        expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
+    });
+
     it('does not call the provider after the monthly quota is exhausted', async () => {
         const { service, prisma, throttle, llmRouter } = makeService({
             throttle: {
@@ -176,7 +186,7 @@ describe('ConversationsService widget containment', () => {
         const executeInTenantSchema = jest.fn(async (_schema: string, sql: string) => {
             if (sql.includes('SELECT id, direction, content_text FROM messages')) return [];
             if (sql.includes('SELECT * FROM conversations')) {
-                return [{ id: 'conversation-1', status: 'with_human' }];
+                return [{ id: 'conversation-1', channel_account_id: 'widget', contact_id: 'contact-1', status: 'with_human' }];
             }
             return [];
         });

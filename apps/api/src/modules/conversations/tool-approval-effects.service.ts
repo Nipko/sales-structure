@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { WidgetMessageStore, type WidgetMessageReference } from '../widget/widget-message-store.service';
+import { widgetHandoffNotice } from '../widget/widget-handoff-messages';
+import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { ChannelType, NormalizedMessage, OutboundMessage } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,14 +10,14 @@ import { ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type Approve
 import { approvedEffectDescriptors, approvalMediaItems } from './tool-approval-effects.contracts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CHANNELS = new Set(['whatsapp', 'instagram', 'messenger', 'telegram']);
+const CHANNELS = new Set(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);
 type Query = <T = any[]>(sql: string, params?: any[]) => Promise<T>;
 
 /** Resumes only delivery, never the approved command. An uncertain external attempt is never resent. */
 @Injectable()
 export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
     constructor(private readonly prisma: PrismaService, private readonly outbound: OutboundQueueService,
-        private readonly handoff: HandoffService) {}
+        private readonly handoff: HandoffService, @Optional() private readonly widgetMessages?: WidgetMessageStore) {}
 
     async schedule(tenantId: string, ticketId: string): Promise<void> {
         if (!UUID.test(ticketId)) throw new Error('approval_effect_invalid_reference');
@@ -39,7 +41,9 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
     async recoverTenant(tenantId: string): Promise<void> {
         const schema = await this.schema(tenantId);
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE tool_approval_effects SET state='reconciliation_required',error_code='delivery_lease_expired',
+            `UPDATE tool_approval_effects e SET state=CASE WHEN e.kind <> 'handoff' AND EXISTS(
+                SELECT 1 FROM tool_approval_tickets t JOIN tool_execution_ledger l ON l.id=t.execution_ledger_id
+                WHERE t.id=e.ticket_id AND l.channel_type='web_widget') THEN 'failed' ELSE 'reconciliation_required' END,error_code='delivery_lease_expired',
                 lease_token=NULL,lease_expires_at=NULL,updated_at=NOW()
              WHERE state='processing' AND (lease_expires_at IS NULL OR lease_expires_at <= NOW())`);
         const tickets = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -65,8 +69,9 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
             if (!row) return 'missing';
             if (row.state === 'processing') {
                 if (new Date(row.lease_expires_at).getTime() <= Date.now()) {
-                    await this.finish(query, reference.effectId, 'reconciliation_required', 'delivery_lease_expired');
-                    return 'reconciliation_required';
+                    const safeLocal=row.channel_type==='web_widget'&&row.kind!=='handoff';
+                    await this.finish(query,reference.effectId,safeLocal?'failed':'reconciliation_required','delivery_lease_expired');
+                    return safeLocal?'retry_local':'reconciliation_required';
                 }
                 return 'processing';
             }
@@ -78,8 +83,10 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
             return 'claimed';
         });
         if (claim === 'processing') throw new Error('approval_effect_in_progress');
+        if (claim === 'retry_local') throw new Error('approval_effect_preflight_failed');
         if (claim !== 'claimed') return `effect:${claim}`;
 
+        let widgetReference: WidgetMessageReference | undefined;
         const outcome = await this.privacyTransaction(schema, async query => {
             let row = (await this.load(query, reference, true))[0];
             if (row?.kind !== 'handoff' && row?.conversation_id) await query('SELECT id FROM conversations WHERE id=$1::uuid FOR UPDATE', [row.conversation_id]);
@@ -87,8 +94,9 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
             row = (await this.load(query, reference, true))[0];
             if (!row || row.state !== 'processing' || row.lease_token !== lease) return { value: 'effect:lease_lost' };
             if (new Date(row.lease_expires_at).getTime() <= Date.now()) {
-                await this.finish(query, reference.effectId, 'reconciliation_required', 'delivery_lease_expired');
-                return { value: 'effect:reconciliation_required' };
+                const safeLocal=row.channel_type==='web_widget'&&row.kind!=='handoff';
+                await this.finish(query, reference.effectId, safeLocal?'failed':'reconciliation_required', 'delivery_lease_expired');
+                return { value: safeLocal?'effect:failed':'effect:reconciliation_required', retry: safeLocal };
             }
             const invalid = this.invalidBinding(row);
             if (invalid) { await this.finish(query, reference.effectId, 'suppressed', invalid); return { value: 'effect:suppressed' }; }
@@ -101,7 +109,22 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
                     throw new ApprovalEffectSuppressed('approval_effect_result_changed');
                 }
                 const outbound = await this.hydrate(query, reference, row);
-                const send = await transport.prepare(outbound);
+                const widget=row.channel_type==='web_widget';
+                let widgetBinding:any;
+                if(widget){
+                    if(!this.widgetMessages)throw new ApprovalEffectSuppressed('widget_delivery_unavailable');
+                    await this.widgetMessages.assertAvailable(reference.tenantId);
+                    widgetBinding=await this.widgetMessages.assertConversation(query,schema,reference.tenantId,row.conversation_id,row.contact_id);
+                }
+                const storeWidget = async (content: OutboundMessage['content']) => {
+                    const message=await this.widgetMessages!.persistWithQuery(query,schema,reference.tenantId,{
+                        conversationId:row.conversation_id,contactId:row.contact_id,content,source:'approval',
+                        dedupeId:`approval:${reference.effectId}`,approvalEffectId:reference.effectId});
+                    await this.finish(query,reference.effectId,'stored');
+                    widgetReference={tenantId:reference.tenantId,conversationId:row.conversation_id,messageId:message.id};
+                    return {value:'effect:stored'};
+                };
+                const send = widget ? null : await transport.prepare(outbound);
                 const stillActive = async () => {
                     const activeLease = await query<any[]>(`SELECT id FROM tool_approval_effects WHERE id=$1::uuid AND lease_token=$2::uuid AND state='processing' AND lease_expires_at>NOW()`, [reference.effectId,lease]);
                     if (!activeLease[0]) throw new Error('approval_effect_lease_lost');
@@ -119,11 +142,13 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
                     };
                     await this.handoff.executeHandoff(reference.tenantId, row.conversation_id, message,
                         `Approved tool: ${row.tool_name}`, { beforeSideEffect: stillActive, awaitNotifications: true });
+                    if(widget)return await storeWidget({type:'text',text:widgetHandoffNotice(widgetBinding?.locale)});
                     await this.finish(query, reference.effectId, 'completed');
                     return { value: 'effect:completed' };
                 }
+                if(widget)return await storeWidget(outbound.content);
                 started = true;
-                const providerId = await send();
+                const providerId = await send!();
                 if (!providerId) throw new Error('approval_effect_provider_no_receipt');
                 await this.finish(query, reference.effectId, 'sent');
                 return { value: `effect:sent:${reference.effectId}` };
@@ -135,6 +160,7 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
                 return { value: `effect:${state}`, retry: state === 'failed' };
             }
         });
+        if (widgetReference) this.widgetMessages!.publish(widgetReference);
         if (outcome.retry) throw new Error('approval_effect_preflight_failed');
         return outcome.value;
     }
@@ -191,7 +217,7 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
 
     private finish(query: Query, id: string, state: string, error?: string) {
         return query(`UPDATE tool_approval_effects SET state=$2::text,error_code=$3,lease_token=NULL,lease_expires_at=NULL,
-            completed_at=CASE WHEN $2::text IN ('sent','completed','suppressed') THEN NOW() ELSE NULL END,
+            completed_at=CASE WHEN $2::text IN ('sent','stored','completed','suppressed') THEN NOW() ELSE NULL END,
             next_attempt_at=NOW()+INTERVAL '60 seconds',updated_at=NOW() WHERE id=$1::uuid`, [id, state, error || null]);
     }
     private privacyTransaction<T>(schema: string, callback: (query: Query) => Promise<T>): Promise<T> {

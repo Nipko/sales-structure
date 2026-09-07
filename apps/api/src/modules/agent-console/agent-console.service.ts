@@ -1,8 +1,11 @@
+import { randomUUID } from 'crypto';
+import { WidgetMessageStore } from '../widget/widget-message-store.service';
 import {
     BadRequestException,
     ConflictException,
     ForbiddenException,
     Injectable,
+    Optional,
     Logger,
     NotFoundException,
 } from '@nestjs/common';
@@ -116,6 +119,7 @@ export class AgentConsoleService {
         private llmRouter: LLMRouterService,
         private eventEmitter: EventEmitter2,
         private aiResolutionService: AiResolutionService,
+        @Optional() private widgetMessages?: WidgetMessageStore,
     ) { }
 
     /**
@@ -374,6 +378,19 @@ export class AgentConsoleService {
         const contentType = isMedia ? (type && type !== 'text' ? type : 'image') : (type || 'text');
         const contentText = isMedia ? (caption || content || '') : content;
         const metadataJson = isMedia ? JSON.stringify({ mediaUrl, ...(caption || content ? { caption: caption || content } : {}), ...(filename ? { filename } : {}) }) : null;
+
+        const deliveryBinding = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            'SELECT channel_type FROM conversations WHERE id=$1::uuid', [conversationId]);
+        if (deliveryBinding[0]?.channel_type === 'web_widget') {
+            if (!this.widgetMessages) throw new Error('widget_delivery_unavailable');
+            await this.aiResolutionService.ensureResolutionColumns(schemaName);
+            const msg = await this.widgetMessages.persist(tenantId, { conversationId, source:'agent', agentId,
+                dedupeId: 'agent:' + randomUUID(),
+                content: isMedia ? {type:contentType as any,mediaUrl:this.absoluteMediaUrl(mediaUrl),caption:contentText,filename}
+                    : {type:'text',text:contentText} });
+            return {id:msg.id,content:msg.content_text||'',type:msg.content_type as any,sender:'agent',timestamp:msg.created_at,
+                metadata:{...msg.metadata,deliveryState:'stored'}};
+        }
 
         // Any human-authored reply makes the transcript mixed. Mark it before
         // persisting the message so quality/outcome scores do not credit a

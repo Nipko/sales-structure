@@ -42,6 +42,8 @@ function createHarness(identityVerified = true) {
 
     const runQuery = async (sql: string, params: any[] = []) => {
         const normalized = sql.replace(/\s+/g, ' ').trim();
+        // The migration is exercised against concurrent PostgreSQL connections by the widget delivery suite.
+        if (normalized.startsWith('DO $widget_state$')) return [];
         if (normalized.startsWith('SELECT contact_id FROM conversations')) return [{ contact_id: contactId }];
         if (normalized.startsWith('SELECT version, is_active, config_json FROM agent_personas')) return [{ version: state.agentVersion, is_active: true, config_json: { behavior: { draftMode: state.draftEnabled } } }];
         if(normalized.startsWith('SELECT pg_advisory_xact_lock'))return [];

@@ -1,8 +1,8 @@
 export type ApprovalEffectKind = 'media' | 'handoff' | 'payment_link';
-export type ApprovalEffectState = 'pending' | 'queued' | 'processing' | 'sent' | 'completed'
+export type ApprovalEffectState = 'pending' | 'queued' | 'processing' | 'sent' | 'stored' | 'completed'
     | 'failed' | 'suppressed' | 'reconciliation_required';
 export interface ApprovalEffectSummary { id: string; kind: ApprovalEffectKind; state: ApprovalEffectState; errorCode?: string; }
-export type ApprovalDeliveryState = Exclude<ApprovalEffectState, 'sent'> | 'not_required';
+export type ApprovalDeliveryState = Exclude<ApprovalEffectState, 'sent' | 'stored'> | 'not_required';
 export interface ApprovalEffectDescriptor { kind: ApprovalEffectKind; itemIndex: number; }
 const MEDIA_TOOLS = new Set(['send_product_image', 'send_property_image', 'send_listing_image', 'send_vehicle_image', 'send_portfolio']);
 export const APPROVAL_EFFECTS_EVENT = 'tool.approval.effects_requested';
@@ -38,7 +38,7 @@ export const APPROVAL_EFFECTS_DDL = `CREATE TABLE IF NOT EXISTS tool_approval_ef
     ticket_id UUID NOT NULL REFERENCES tool_approval_tickets(id) ON DELETE CASCADE,
     kind VARCHAR(30) NOT NULL CHECK (kind IN ('media', 'handoff', 'payment_link')),
     item_index INTEGER NOT NULL CHECK (item_index >= 0),
-    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'queued', 'processing', 'sent', 'completed', 'failed', 'suppressed', 'reconciliation_required')),
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'queued', 'processing', 'sent', 'stored', 'completed', 'failed', 'suppressed', 'reconciliation_required')),
     attempts INTEGER NOT NULL DEFAULT 0,
     lease_token UUID,
     lease_expires_at TIMESTAMPTZ,
@@ -49,3 +49,15 @@ export const APPROVAL_EFFECTS_DDL = `CREATE TABLE IF NOT EXISTS tool_approval_ef
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(ticket_id, kind, item_index)
 )`;
+
+export const APPROVAL_EFFECTS_STATE_MIGRATION = [
+    `DO $widget_state$ BEGIN
+        PERFORM pg_advisory_xact_lock(hashtextextended(current_schema() || ':approval-effect-state-migration',0));
+        IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='tool_approval_effects'::regclass
+            AND conname='tool_approval_effects_state_check' AND pg_get_constraintdef(oid) LIKE '%stored%') THEN
+            ALTER TABLE tool_approval_effects DROP CONSTRAINT IF EXISTS tool_approval_effects_state_check;
+            ALTER TABLE tool_approval_effects ADD CONSTRAINT tool_approval_effects_state_check
+                CHECK (state IN ('pending','queued','processing','sent','stored','completed','failed','suppressed','reconciliation_required'));
+        END IF;
+    END $widget_state$`,
+];

@@ -1,3 +1,4 @@
+import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -20,6 +21,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
     imports: [
+        WidgetDeliveryModule,
         forwardRef(() => ChannelsModule),
         forwardRef(() => WhatsappModule),
         AIModule,

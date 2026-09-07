@@ -4733,13 +4733,14 @@ export class ConversationsService {
         contactId: string,
         text: string,
         inboundMessageId?: string,
-        options?: { allowHumanHandoff?: boolean },
+        options?: { allowHumanHandoff?: boolean; channelAccountId?: string },
     ): AsyncGenerator<string, void, unknown> {
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
         if (!entitlement.allowed) return;
         const expectedSchema = await this.tenantSchema(tenantId);
         if (expectedSchema !== schemaName) throw new Error('widget_tenant_scope_mismatch');
-        const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget', 'widget');
+        const channelAccountId = options?.channelAccountId || 'widget';
+        const personaResolution = await this.personaService.resolvePersonaForChannel(tenantId, 'web_widget', channelAccountId);
         const config = personaResolution.config;
         if (!config) return;
         const draftMode = config.behavior?.draftMode === true;
@@ -4766,7 +4767,8 @@ export class ConversationsService {
                 [conversationId, contactId, 'web_widget'],
             );
             const conversation = conversations?.[0];
-            if (!conversation) throw new Error('widget_conversation_scope_mismatch');
+            if (!conversation || (conversation.channel_account_id !== 'widget' && conversation.channel_account_id !== channelAccountId))
+                throw new Error('widget_conversation_scope_mismatch');
             if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return;
             const plan = await this.throttle.getPlanFeatures(tenantId);
             if (plan.widget !== true) return;
@@ -4792,7 +4794,7 @@ export class ConversationsService {
             const msg = {
                 id: inboundMessageId || randomUUID(), tenantId, conversationId,
                 contactId: contact.external_id || contactId,
-                channelType: 'web_widget', channelAccountId: 'widget', timestamp: new Date(),
+                channelType: 'web_widget', channelAccountId, timestamp: new Date(),
                 direction: 'inbound', status: 'delivered',
                 content: { type: 'text', text },
                 metadata: { allowHumanHandoff: options?.allowHumanHandoff === true },

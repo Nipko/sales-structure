@@ -15,7 +15,7 @@ La aprobación y ejecución del comando conservan su registro original. Al final
 
 Se entregan imágenes de las herramientas locales de producto, propiedad, anuncio, vehículo y portafolio; enlaces que coinciden con una operación de pago canónica exitosa; y handoff solicitado por el resultado del dominio. Marcadores de herramientas MCP o bloqueos técnicos no se convierten en instrucciones locales de entrega.
 
-Los canales de entrega asíncrona incluidos son WhatsApp, Instagram, Messenger y Telegram. `sent` demuestra aceptación del proveedor; no demuestra recepción ni lectura. El efecto `completed` de handoff indica que el comando local terminó. Un fallo posterior a registrar el handoff conserva ese estado de conversación y expone la incertidumbre de la notificación.
+Los canales de entrega asíncrona incluidos son WhatsApp, Instagram, Messenger, Telegram y Web Chat. `sent` demuestra aceptación del proveedor; no demuestra recepción ni lectura. En Web Chat, `stored` indica que el mensaje quedó guardado en el historial, inicialmente con estado `pending`. Sólo un recibo de la sesión autenticada cambia ese mensaje a `delivered`; tampoco demuestra lectura humana. El efecto `completed` de handoff indica que el comando local terminó. Un fallo posterior a registrar el handoff conserva ese estado de conversación y expone la incertidumbre de la notificación.
 
 El envío de plantillas de correo devuelve un booleano que no distingue ausencia de plantilla de un fallo SMTP después de un posible envío. Por ello la ruta durable no intenta un correo alternativo después de `false` o una excepción: registra reconciliación sin duplicar mensajes. Los llamadores anteriores conservan su comportamiento de fallback.
 
@@ -27,6 +27,6 @@ El envío de plantillas de correo devuelve un booleano que no distingue ausencia
 
 ## Límites explícitos
 
-- Web Chat consume la respuesta HTTP del turno y no dispone aquí de transporte asíncrono de aprobación. Sus efectos quedan suprimidos con `approval_effect_channel_unsupported`; no se presenta un envío inexistente.
+- Web Chat comparte transporte persistido para respuestas del asistente, de personas y de efectos aprobados. Su recuperación, aislamiento y pruebas se describen en [web-chat-durable-delivery.md](web-chat-durable-delivery.md).
 - La recepción/lectura del cliente y la reconciliación manual de intentos inciertos requieren recibos o procesos adicionales. No se ofrece reanudación ciega desde el panel.
 - El outbox de notificaciones del settlement de citas queda fuera de esta tanda; este documento no lo declara resuelto.

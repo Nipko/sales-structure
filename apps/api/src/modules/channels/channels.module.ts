@@ -1,3 +1,5 @@
+import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
+import { WidgetChannelAdapter } from './widget.adapter';
 import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ChannelGatewayService } from './channel-gateway.service';
@@ -27,6 +29,7 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 
 @Module({
     imports: [
+        WidgetDeliveryModule,
         BullModule.registerQueue({ name: OUTBOUND_QUEUE }),
         // Plain import: InboundQueueModule is a dependency leaf (queue + a
         // service injecting only globals), so it cannot close a cycle.
@@ -40,6 +43,7 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
     controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController],
     providers: [
         ChannelGatewayService,
+        WidgetChannelAdapter,
         WhatsAppAdapter,
         InstagramAdapter,
         MessengerAdapter,
@@ -66,6 +70,7 @@ export class ChannelsModule implements OnModuleInit {
         private telegramAdapter: TelegramAdapter,
         private smsAdapter: SmsAdapter,
         private emailAdapter: EmailAdapter,
+        private widgetAdapter: WidgetChannelAdapter,
     ) {}
 
     onModuleInit() {
@@ -75,5 +80,6 @@ export class ChannelsModule implements OnModuleInit {
         this.gateway.registerAdapter(this.telegramAdapter);
         this.gateway.registerAdapter(this.smsAdapter);
         this.gateway.registerAdapter(this.emailAdapter);
+        this.gateway.registerAdapter(this.widgetAdapter);
     }
 }

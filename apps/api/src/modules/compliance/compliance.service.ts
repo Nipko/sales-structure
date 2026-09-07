@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LearningService } from '../learning/learning.service';
 import { eraseWidgetContactSessions } from '../widget/widget-session-erasure';
+import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
 
 @Injectable()
 export class ComplianceService {
@@ -361,6 +362,7 @@ export class ComplianceService {
             await query(`INSERT INTO customer_memory_erasure (contact_id)
                 SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
             const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);
+            const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);
             const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger')::text AS ledger,
                 to_regclass('tool_approval_tickets')::text AS tickets,to_regclass('tool_approval_outbox')::text AS outbox,
                 to_regclass('kb_retrieval_log')::text AS kb_log,to_regclass('kb_unanswered_queries')::text AS kb_queries,
@@ -402,7 +404,7 @@ export class ComplianceService {
                     OR source_contact_id = ANY($2::uuid[]) RETURNING id`, [profileIds, contactIds]);
             const merged = await query<any[]>(
                 `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
-            return facts.length + merged.length + widgetSessions;
+            return facts.length + merged.length + widgetSessions + operationalNotices;
         });
     }
 

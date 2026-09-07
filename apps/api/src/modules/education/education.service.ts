@@ -1,3 +1,4 @@
+import { EducationEnrollmentCommands, type EnrollmentCommand } from './education-enrollment-commands';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -176,10 +177,9 @@ export class EducationService {
     async upcomingCohorts(schemaName: string, opts: { subject?: string; level?: string; modality?: string; daysAhead?: number }): Promise<any[]> {
         const days = Math.min(opts.daysAhead || 60, 180);
         const where: string[] = [
-            "co.status = 'open'",
+            "co.status IN ('open','full')",
             "co.starts_at >= CURRENT_DATE",
             "co.starts_at <= CURRENT_DATE + ($1::int * INTERVAL '1 day')",
-            "co.available_seats > 0",
         ];
         const params: any[] = [days];
         let i = 2;
@@ -189,7 +189,7 @@ export class EducationService {
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT co.id as cohort_id, co.starts_at, co.ends_at, co.schedule,
-                    co.available_seats, co.max_capacity, co.modality as cohort_modality,
+                    co.available_seats, co.max_capacity, co.status as cohort_status,
                     c.id as course_id, c.name as course_name, c.subject, c.level,
                     c.price, c.currency, c.modality, c.duration_hours, c.duration_weeks,
                     c.certification
@@ -223,96 +223,24 @@ export class EducationService {
         );
     }
 
-    /** Atomically enroll a student + decrement cohort seats. */
-    async enrollStudent(schemaName: string, data: {
-        cohortId: string;
-        contactId?: string;
-        studentName: string;
-        studentEmail?: string;
-        studentPhone?: string;
-    }): Promise<any> {
-        if (!data.cohortId || !data.studentName) {
-            throw new BadRequestException('cohortId and studentName are required');
-        }
-        const contactId = assertOptionalContactId(data.contactId);
-
-        // Contact ownership, capacity claim and enrollment commit together.
-        // A foreign contact or a failed INSERT cannot consume a cohort seat.
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            await requireTenantContact(query, contactId);
-            const cohortRows = await query<any[]>(
-                `SELECT * FROM course_cohorts WHERE id = $1::uuid FOR UPDATE`,
-                [data.cohortId],
-            );
-            const cohort = cohortRows[0];
-            if (!cohort) throw new BadRequestException('Cohort not found');
-            if (cohort.status !== 'open') {
-                throw new BadRequestException(`Cohort is ${cohort.status}, not open`);
-            }
-            if (cohort.available_seats <= 0) throw new BadRequestException('Cohort is full');
-
-            const claimed = await query<any[]>(
-                `UPDATE course_cohorts SET available_seats = available_seats - 1,
-                    status = CASE WHEN available_seats - 1 <= 0 THEN 'full' ELSE status END
-                 WHERE id = $1::uuid AND available_seats > 0
-                 RETURNING id`,
-                [data.cohortId],
-            );
-            if (!claimed.length) throw new BadRequestException('Cohort is full');
-
-            const enrollRows = await query<any[]>(
-                `INSERT INTO enrollments (
-                    cohort_id, course_id, contact_id, student_name, student_email, student_phone
-                 ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6)
-                 RETURNING *`,
-                [
-                    data.cohortId, cohort.course_id, contactId,
-                    data.studentName, data.studentEmail || null, data.studentPhone || null,
-                ],
-            );
-            return enrollRows[0];
-        });
+    getEnrollmentTerms(schemaName: string, cohortId: string) {
+        return new EducationEnrollmentCommands(this.prisma).getTerms(schemaName,cohortId);
     }
-
-    /** State transition and capacity restoration commit or roll back together. */
-    async cancelEnrollment(schemaName: string, id: string, input: { contactId?: string; reason?: string } = {}): Promise<any> {
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            const [enrollment] = await query<any[]>(
-                `SELECT * FROM enrollments WHERE id = $1::uuid FOR UPDATE`, [id],
-            );
-            if (!enrollment) throw new NotFoundException('Enrollment not found');
-            if (input.contactId && enrollment.contact_id !== input.contactId) {
-                throw new BadRequestException('You can only cancel your own enrollments');
-            }
-            if (enrollment.status === 'dropped') {
-                return { success: true, enrollmentId: id, status: 'dropped', alreadyCancelled: true, seatReleased: !!enrollment.cohort_id };
-            }
-            if (!['enrolled', 'active'].includes(enrollment.status)) {
-                throw new BadRequestException(`Cannot cancel an enrollment in "${enrollment.status}" status.`);
-            }
-            await query(
-                `UPDATE enrollments SET status = 'dropped',
-                    notes = CONCAT_WS(E'\n', NULLIF(notes, ''), $2::text), updated_at = NOW()
-                 WHERE id = $1::uuid`,
-                [id, `[Cancelled]${input.reason ? ` ${input.reason}` : ''}`],
-            );
-            if (enrollment.cohort_id) {
-                const restored = await query<any[]>(
-                    `UPDATE course_cohorts SET available_seats = available_seats + 1,
-                        status = CASE WHEN status = 'full' THEN 'open' ELSE status END
-                     WHERE id = $1::uuid RETURNING id`, [enrollment.cohort_id],
-                );
-                if (!restored.length) throw new BadRequestException('Enrollment cohort is missing');
-            }
-            return { success: true, enrollmentId: id, status: 'dropped', seatReleased: !!enrollment.cohort_id };
-        });
+    enrollStudent(schemaName: string, data: EnrollmentCommand): Promise<any> {
+        return new EducationEnrollmentCommands(this.prisma).enroll(schemaName,data);
     }
-
+    cancelEnrollment(schemaName: string, id: string, input: {contactId?: string; reason?: string} = {}): Promise<any> {
+        return new EducationEnrollmentCommands(this.prisma).cancel(schemaName,id,input);
+    }
     async updateEnrollment(schemaName: string, id: string, data: any): Promise<any> {
         // Dashboard status changes use the same transition as conversational tools.
         if (data.status === 'dropped') {
             return this.cancelEnrollment(schemaName, id, { reason: data.notes });
         }
+        if (data.status && !['active','completed','refunded'].includes(data.status)) {
+            throw new BadRequestException('Use the enrollment command to allocate a seat');
+        }
+        const requiresAllocatedSeat = data.status !== undefined || data.paymentStatus !== undefined || data.amountPaid !== undefined;
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;
@@ -329,9 +257,10 @@ export class EducationService {
         values.push(id);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `UPDATE enrollments SET ${fields.join(', ')} WHERE id = $${i}::uuid RETURNING *`,
+            `UPDATE enrollments SET ${fields.join(', ')} WHERE id = $${i}::uuid ${requiresAllocatedSeat ? "AND status IN ('enrolled','active')" : ''} RETURNING *`,
             values,
         );
+        if (!rows[0] && requiresAllocatedSeat) throw new BadRequestException('Enrollment has no allocated seat or its status changed');
         return rows[0];
     }
 

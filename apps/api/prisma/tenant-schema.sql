@@ -4799,3 +4799,26 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_sampling_items" (
         UNIQUE(run_id,conversation_id));
 CREATE INDEX IF NOT EXISTS idx_quality_sampling_pending ON "{{SCHEMA_NAME}}"."quality_sampling_items"(state,next_attempt_at);
 -- END QUALITY SAMPLING
+
+-- Operational notification intent and delivery evidence
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_key VARCHAR(200) NOT NULL UNIQUE,
+    kind VARCHAR(60) NOT NULL CHECK(kind IN ('appointment.payment_confirmed','appointment.payment_review','gym.waitlist_promoted','education.waitlist_promoted','education.waitlist_review')),
+    entity_id UUID NOT NULL,
+    contact_id UUID,
+    conversation_id UUID,
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','queued','processing','sent','stored','failed','suppressed','reconciliation_required')),
+    route VARCHAR(30),
+    provider_reference VARCHAR(512),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code VARCHAR(100),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_operational_notice_due ON "{{SCHEMA_NAME}}"."operational_notice_outbox"(state,next_attempt_at) WHERE state IN ('pending','queued','failed');

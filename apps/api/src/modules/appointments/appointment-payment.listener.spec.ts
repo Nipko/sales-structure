@@ -26,9 +26,8 @@ function harness(options: { staffTaken?: boolean; occupied?: number; maxConcurre
     };
     const events = { emit: jest.fn() };
     const enqueue = jest.spyOn(CalendarSyncOutboxService, 'enqueueWithTransaction').mockResolvedValue(undefined as any);
-    const notifier = { notifyCustomer: jest.fn().mockResolvedValue(true) };
-    const push = { sendToTenantRole: jest.fn().mockResolvedValue(1) };
-    const listener = new AppointmentPaymentListener(prisma as any, events as any, notifier as any, push as any);
+    const notifier = { recoverTenant: jest.fn().mockResolvedValue(undefined) };
+    const listener = new AppointmentPaymentListener(prisma as any, events as any, notifier as any);
     return { listener, query, events, enqueue, notifier, prisma, state: () => appointment };
 }
 const event = { tenantId, kind: 'appointment', entityId: appointmentId };
@@ -38,14 +37,14 @@ describe('canonical appointment settlement', () => {
         const h = harness(); await h.listener.onPaid(event);
         expect(h.state().status).toBe('confirmed');
         expect(h.prisma.executeInTenantSchema).not.toHaveBeenCalled();
-        expect(h.query.mock.calls[0][0]).toContain('FOR UPDATE');
+        expect(h.query.mock.calls.find(([sql])=>sql.includes('FROM appointments WHERE id'))?.[0]).toContain('FOR UPDATE');
         expect(h.query.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(true);
         expect(h.enqueue).toHaveBeenCalledWith(expect.any(Function), appointmentId, 'upsert');
-        expect(h.notifier.notifyCustomer).toHaveBeenCalledTimes(1);
+        expect(h.notifier.recoverTenant).toHaveBeenCalledTimes(1);
     });
     it('does not repeat confirmation or outbound work when settlement replays', async () => {
         const h = harness(); await h.listener.onPaid(event); await h.listener.onPaid(event);
-        expect(h.enqueue).toHaveBeenCalledTimes(1); expect(h.notifier.notifyCustomer).toHaveBeenCalledTimes(1);
+        expect(h.enqueue).toHaveBeenCalledTimes(1); expect(h.notifier.recoverTenant).toHaveBeenCalledTimes(1);
     });
     it('rejects an unpaid row even if an event claims success', async () => {
         const h = harness({ paymentStatus: 'pending' }); await h.listener.onPaid(event);
@@ -71,9 +70,9 @@ describe('canonical appointment settlement', () => {
     it('rolls back on outbox failure and reconciliation recovers the paid appointment', async () => {
         const h = harness(); h.enqueue.mockRejectedValueOnce(new Error('outbox_failed'));
         await h.listener.onPaid(event);
-        expect(h.state().status).toBe('pending_payment'); expect(h.notifier.notifyCustomer).not.toHaveBeenCalled();
+        expect(h.state().status).toBe('pending_payment'); expect(h.notifier.recoverTenant).not.toHaveBeenCalled();
         await h.listener.reconcilePaidAppointments();
-        expect(h.state().status).toBe('confirmed'); expect(h.notifier.notifyCustomer).toHaveBeenCalledTimes(1);
+        expect(h.state().status).toBe('confirmed'); expect(h.notifier.recoverTenant).toHaveBeenCalledTimes(1);
     });
     it('ignores payments for other domains', async () => {
         const h = harness(); await h.listener.onPaid({ ...event, kind: 'property' });

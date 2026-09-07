@@ -1,3 +1,4 @@
+import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
@@ -371,6 +372,11 @@ export class AIToolExecutorService {
                     ? { repairOrderId: terms.repairOrderId, accepted: args.accepted, repairTerms: terms, repairTermsHash: repairRequestHash(terms) }
                     : { repairOrderId: terms.repairOrderId, reason: args.reason, repairTerms: terms, repairTermsHash: repairRequestHash(terms) };
             }
+            if (toolName === 'enroll_student' && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                const terms = await this.educationService.getEnrollmentTerms(schemaName,String(args.cohortId || ''));
+                args = { ...args, allowWaitlist: args.allowWaitlist === true, enrollmentTerms: terms, enrollmentTermsHash: enrollmentTermsHash(terms) };
+            }
             if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
                 if (!this.toolExecutionControl?.proposeDraftAction) return { error: 'draft_action_requires_approval', persisted: false };
                 // Resolve only canonical, read-only terms before recording the
@@ -398,6 +404,9 @@ export class AIToolExecutorService {
                 }
                 if (toolName === 'create_appointment' && proposal.result.error === 'confirmation_required') {
                     return { ...proposal.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
+                }
+                if (toolName === 'enroll_student' && proposal.result.error === 'confirmation_required') {
+                    return {...proposal.result,...enrollmentTermsReviewResult(args.enrollmentTerms,args.allowWaitlist===true)};
                 }
                 return payment && proposal.result.error === 'confirmation_required'
                     ? this.paymentOperations.confirmationRequiredResult(payment, proposal.result)
@@ -509,6 +518,9 @@ export class AIToolExecutorService {
                 }
                 if (toolName === 'create_appointment' && controlDecision.result?.error === 'confirmation_required' && args.appointmentTerms) {
                     return { ...controlDecision.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
+                }
+                if(toolName==='enroll_student' && controlDecision.result?.error==='confirmation_required' && args.enrollmentTerms){
+                    return {...controlDecision.result,...enrollmentTermsReviewResult(args.enrollmentTerms,args.allowWaitlist===true)};
                 }
                 if (preparedPaymentLink
                     && controlDecision.result?.error === 'confirmation_required') {
@@ -2608,7 +2620,7 @@ export class AIToolExecutorService {
             order: ['cancelled', 'refunded', 'paid'],
             tour: ['cancelled', 'refunded'],
             food: ['cancelled', 'refunded'],
-            enrollment: ['cancelled', 'dropped', 'refunded'],
+            enrollment: ['cancelled', 'dropped', 'refunded', 'waitlisted', 'waitlist_review'],
             property: ['cancelled', 'refunded'],
             appointment: ['cancelled', 'refunded', 'completed', 'no_show', 'expired'],
         };
@@ -4655,7 +4667,7 @@ export class AIToolExecutorService {
                 daysAhead: args.daysAhead,
             });
             if (!cohorts.length) {
-                return { cohorts: [], message: 'No open cohorts in the requested range. Suggest joining the waitlist.' };
+                return { cohorts: [], message: 'No upcoming cohorts in the requested range. Ask for another date or course; do not invent a waitlist cohort.' };
             }
             return {
                 count: cohorts.length,
@@ -4670,6 +4682,7 @@ export class AIToolExecutorService {
                     endsAt: c.ends_at,
                     schedule: c.schedule,
                     availableSeats: c.available_seats,
+                    waitlistAvailable: Number(c.available_seats) <= 0,
                     maxCapacity: c.max_capacity,
                     durationHours: c.duration_hours,
                     durationWeeks: c.duration_weeks,
@@ -4691,6 +4704,8 @@ export class AIToolExecutorService {
                 studentName: args.studentName,
                 studentEmail: args.studentEmail,
                 studentPhone: args.studentPhone,
+                allowWaitlist: args.allowWaitlist === true,
+                enrollmentTerms: args.enrollmentTerms,
             });
             return {
                 enrollmentId: enrollment.id,
@@ -4703,12 +4718,24 @@ export class AIToolExecutorService {
                     enrollment.payment_status,
                     enrollment.status,
                 ),
-                message: 'Enrollment registered. Payment pending to confirm the seat.',
+                waitlisted: enrollment.status === 'waitlisted',
+                charged: false,
+                enrollmentTerms: enrollment.metadata?.enrollmentTerms,
+                message: enrollment.status === 'waitlisted'
+                    ? 'Joined the waitlist. No seat is assigned and no payment is requested. Promotion requires unchanged accepted terms.'
+                    : 'Enrollment registered and seat assigned. Payment status remains separate; no charge was made by this command.',
             };
-        } catch (e: any) {
-            return { error: e.message };
-        }
-    }
+          } catch (e: any) {
+              if(['cohort_full_waitlist_requires_consent','enrollment_terms_changed_requires_confirmation'].includes(e.message)){
+                  try{
+                      const terms=await this.educationService.getEnrollmentTerms(schemaName,args.cohortId);
+                      return {...enrollmentTermsReviewResult(terms,e.message==='cohort_full_waitlist_requires_consent'||args.allowWaitlist===true,e.message),
+                          waitlistAvailable:e.message==='cohort_full_waitlist_requires_consent'};
+                  }catch{/* A missing or changed cohort cannot support a new consent proposal. */}
+              }
+              return { error: e.message };
+          }
+      }
 
     private async getPlacementTestLinkTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
@@ -6088,7 +6115,7 @@ export class AIToolExecutorService {
     private async listMyEnrollments(schema: string, contactId: string): Promise<any> {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT e.id, e.status, e.payment_status, e.created_at,
+                `SELECT e.id, e.status, e.payment_status, e.created_at, e.metadata,
                         c.name AS course_name, c.subject, c.level, c.modality,
                         co.starts_at, co.schedule
                  FROM "${schema}".enrollments e
@@ -6108,8 +6135,10 @@ export class AIToolExecutorService {
                     startsAt: r.starts_at,
                     schedule: r.schedule,
                     status: r.status,
-                    paymentStatus: r.payment_status,
-                    payableReference: this.payableReference('enrollment', r.id, r.payment_status, r.status),
+                      paymentStatus: r.payment_status,
+                      enrollmentTerms:r.metadata?.enrollmentTerms,
+                      paymentTermsRequireReview:!enrollmentTermsHash(r.metadata?.enrollmentTerms),
+                      payableReference:enrollmentTermsHash(r.metadata?.enrollmentTerms)?this.payableReference('enrollment', r.id, r.payment_status, r.status):undefined,
                 })),
             };
         } catch (e: any) {

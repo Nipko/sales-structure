@@ -1,3 +1,4 @@
+import { OPERATIONAL_NOTICE_DELIVERY, type OperationalNoticeDeliveryPort, type OperationalNoticeReference } from '../operational-notices/operational-notice.contracts';
 import { APPROVED_EFFECT_DELIVERY, ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference } from './approved-effect-delivery.port';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
@@ -17,8 +18,9 @@ export const OUTBOUND_QUEUE = 'outbound-messages';
 /** Per-tenant pending-jobs counter key (queue-depth backpressure). */
 export const pendingJobsKey = (tenantId: string) => `outbound:pending:${tenantId}`;
 
-export type OutboundJobData = { outbound: OutboundMessage; approvalEffect?: never }
-    | { outbound?: never; approvalEffect: ApprovedEffectReference };
+export type OutboundJobData = { outbound: OutboundMessage; approvalEffect?: never; operationalNotice?: never }
+    | { outbound?: never; approvalEffect: ApprovedEffectReference; operationalNotice?: never }
+    | { outbound?: never; approvalEffect?: never; operationalNotice: OperationalNoticeReference };
 
 @Processor(OUTBOUND_QUEUE, {
     concurrency: 5,
@@ -35,6 +37,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         private tenantSms: TenantNotificationSmsService,
         private prisma: PrismaService,
         @Optional() @Inject(APPROVED_EFFECT_DELIVERY) private approvalEffects?: ApprovedEffectDeliveryPort,
+        @Optional() @Inject(OPERATIONAL_NOTICE_DELIVERY) private operationalNotices?: OperationalNoticeDeliveryPort,
     ) {
         super();
     }
@@ -55,6 +58,21 @@ export class OutboundQueueProcessor extends WorkerHost {
     }
 
     async process(job: Job<OutboundJobData>, token?: string): Promise<string | null> {
+        if (job.data.operationalNotice) {
+            const reference=job.data.operationalNotice;
+            if (!this.operationalNotices) throw new Error('operational_notice_delivery_unavailable');
+            if (await this.throttle.isOverLimit(reference.tenantId,'outbound')) {
+                await job.moveToDelayed(Date.now()+60000,token); throw new DelayedError();
+            }
+            return this.operationalNotices.deliver(reference,{prepare:async outbound=>{
+                const creds=await this.channelToken.getChannelToken(outbound.tenantId,outbound.channelType,outbound.channelAccountId);
+                return async()=>{
+                    const result=await this.channelGateway.sendMessage(outbound,creds.accessToken);
+                    if(result)await this.throttle.recordUsage(reference.tenantId,'outbound').catch(()=>{});
+                    return result;
+                };
+            }});
+        }
         if (job.data.approvalEffect) {
             const reference = job.data.approvalEffect;
             if (!this.approvalEffects) throw new Error('approval_effect_delivery_unavailable');
@@ -215,6 +233,10 @@ export class OutboundQueueProcessor extends WorkerHost {
 
     @OnWorkerEvent('failed')
     onFailed(job: Job<OutboundJobData>, error: Error) {
+        if (job.data.operationalNotice) {
+            this.logger.error({ msg:'Operational notice job failed', jobId:job.id, ...job.data.operationalNotice, attempt:job.attemptsMade });
+            return;
+        }
         if (job.data.approvalEffect) {
             this.logger.error({ msg: 'Approval effect job failed', jobId: job.id, ...job.data.approvalEffect, attempt: job.attemptsMade });
             return;

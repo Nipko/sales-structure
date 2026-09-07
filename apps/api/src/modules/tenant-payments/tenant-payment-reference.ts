@@ -1,3 +1,4 @@
+import { enrollmentPriceSql, enrollmentCurrencySql } from '../education/enrollment-terms';
 import { appointmentPriceSql, appointmentCurrencySql } from '../appointments/appointment-service-terms';
 
 export type TenantPaymentProvider = 'mercadopago' | 'wompi';
@@ -77,10 +78,10 @@ export const PAYMENT_REFERENCE_TARGETS: Record<string, PaymentReferenceTarget> =
     },
     enrollment: {
         table: 'enrollments',
-        amountExpression: 'course.price',
-        currencyExpression: 'course.currency',
+        amountExpression: enrollmentPriceSql(),
+        currencyExpression: enrollmentCurrencySql(),
         join: 'JOIN courses course ON course.id = target.course_id',
-        rejectedStatuses: ['dropped', 'refunded', 'cancelled'],
+        rejectedStatuses: ['dropped', 'refunded', 'cancelled', 'waitlisted', 'waitlist_review'],
         description: entityId => `Pago de matrícula ${entityId.slice(0, 8)}`,
     },
 };

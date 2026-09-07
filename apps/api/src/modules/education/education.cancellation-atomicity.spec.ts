@@ -4,6 +4,8 @@ function harness() {
     let state = { enrollment: { id: 'enrollment', contact_id: 'contact', status: 'enrolled', cohort_id: 'cohort' }, seats: 0, cohortStatus: 'full' };
     let failCapacity = false;
     const query = jest.fn(async (sql: string) => {
+        if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.includes('FROM courses'))return [];
+        if(sql.includes('SELECT * FROM course_cohorts'))return [{id:'cohort',available_seats:state.seats,status:state.cohortStatus,starts_at:'2099-01-01'}];
         if (sql.includes('SELECT')) return [{ ...state.enrollment }];
         if (sql.includes('UPDATE enrollments')) { state.enrollment.status = 'dropped'; return []; }
         if (sql.includes('UPDATE course_cohorts')) {
@@ -40,7 +42,7 @@ describe('enrollment cancellation transaction', () => {
     it('checks contact ownership before replay or mutation', async () => {
         const h = harness();
         await expect(h.service.cancelEnrollment('tenant_test', 'enrollment', { contactId: 'other' })).rejects.toThrow('own enrollments');
-        expect(h.query).toHaveBeenCalledTimes(1);
+        expect(h.query.mock.calls.some(([sql])=>sql.startsWith('UPDATE'))).toBe(false);
         expect(h.state().enrollment.status).toBe('enrolled');
     });
 });

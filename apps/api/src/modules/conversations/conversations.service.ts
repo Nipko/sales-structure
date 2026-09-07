@@ -1,3 +1,4 @@
+import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { LearningService } from '../learning/learning.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -2779,7 +2780,8 @@ export class ConversationsService {
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
                             pendingOperationHandoff = `intake:${pending.toolName}`;
-                        } else if (!toolResultSucceeded(result) && isBusinessWriteTool(pending.toolName)) {
+                        } else if (!toolResultSucceeded(result) && isBusinessWriteTool(pending.toolName)
+                            && !isCanonicalConsentRecovery(pending.toolName,result)) {
                             // Se escala por RESULTADO, no por declaracion.
                             //
                             // El cliente ya dijo que si: la operacion estaba
@@ -4093,6 +4095,7 @@ export class ConversationsService {
     ): string {
         const L = (lang || 'es').slice(0, 2).toLowerCase();
         const T = EXECUTED_OPERATION_MSG[L] || EXECUTED_OPERATION_MSG.es;
+        if(isCanonicalConsentRecovery(toolName,result))return canonicalConsentRecoveryDirective(result,L);
         const succeeded = !!result && !result.error && result.success !== false;
         if (!succeeded) {
             const reason = String(result?.message || result?.error || 'unknown').slice(0, 200);

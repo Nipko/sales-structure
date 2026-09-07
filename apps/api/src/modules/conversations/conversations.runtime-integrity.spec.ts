@@ -3,6 +3,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { ResponseValidatorService } from './response-validator.service';
 import { attributeKnowledgeResponse } from '../knowledge/knowledge-attribution';
+import { enrollmentTerms,enrollmentTermsReviewResult } from '../education/enrollment-terms';
 
 describe('Shared runtime integrity', () => {
     function fixture(draftMode = false) {
@@ -105,5 +106,17 @@ describe('Shared runtime integrity', () => {
         expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
         expect(service.sendMedia).not.toHaveBeenCalled();
         expect(service.sendPaymentLink).not.toHaveBeenCalled();
+    });
+    it('keeps a changed seat request in consent recovery without escalating or retrying the writer',async()=>{
+        const {service,run,llm}=fixture();
+        const terms=enrollmentTerms({id:'course',name:'Course',price:100,currency:'COP'},{id:'cohort',starts_at:'2099-01-01'});
+        const result={...enrollmentTermsReviewResult(terms,true,'cohort_full_waitlist_requires_consent'),waitlistAvailable:true};
+        service.toolExecutionControl.findPendingConfirmation.mockResolvedValue({toolName:'enroll_student',ledgerId:'pending',args:{cohortId:'cohort'}});
+        service.toolExecutor={execute:jest.fn().mockResolvedValue(result)};
+        llm.mockResolvedValue({content:'El grupo está lleno. ¿Aceptas entrar en la lista de espera con estas condiciones?'});
+        const response=await run('whatsapp','Sí, confirmo');
+        expect(response).toContain('lista de espera');expect(service.toolExecutor.execute).toHaveBeenCalledTimes(1);
+        expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+        expect(llm.mock.calls[0][0].systemPrompt).toContain('La aceptación anterior no autoriza este cambio');
     });
 });

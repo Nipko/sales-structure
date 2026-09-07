@@ -1,3 +1,4 @@
+import { OperationalNoticeModule } from '../operational-notices/operational-notice.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
 import { AppointmentsController } from './appointments.controller';
@@ -14,10 +15,10 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { IdentityModule } from '../identity/identity.module';
 import { AppointmentPaymentListener } from './appointment-payment.listener';
 import { PushModule } from '../push/push.module';
-import { PaymentOutcomeNotifierService } from '../conversations/payment-outcome-notifier.service';
 
 @Module({
     imports: [
+        OperationalNoticeModule,
         forwardRef(() => ChannelsModule),
         EmailTemplatesModule,
         WhatsappModule,
@@ -31,9 +32,6 @@ import { PaymentOutcomeNotifierService } from '../conversations/payment-outcome-
         // Cada vertical sabe qué significa "confirmar" lo suyo; el módulo de
         // cobros no necesita conocer a ninguna.
         AppointmentPaymentListener,
-        // Explícito: al ser @Optional en el listener, no registrarlo no rompe
-        // nada — el cliente simplemente nunca se entera de que su pago entró.
-        PaymentOutcomeNotifierService,
     ],
     exports: [AppointmentsService, ServicesService, CalendarIntegrationService, CalendarSyncOutboxService],
 })

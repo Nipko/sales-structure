@@ -9,6 +9,7 @@ function harness(spots = 1) {
     let failure = '';
     const query = jest.fn(async (sql: string, p: any[] = []) => {
         if (failure && sql.includes(failure)) throw new Error('write_failed');
+        if(sql.includes('pg_advisory_xact_lock')||sql.includes('to_regclass')||sql.startsWith('CREATE ')||sql.startsWith('INSERT INTO operational_notice_outbox'))return [];
         if (sql.startsWith('SELECT * FROM fitness_classes')) return [{ ...state.klass }];
         if (sql.startsWith('SELECT * FROM members')) return state.members[p[0]] ? [{ ...state.members[p[0]] }] : [];
         if (sql.startsWith('SELECT class_id')) return state.bookings.filter((b: any) => b.id === p[0]);

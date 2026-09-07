@@ -267,6 +267,28 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         for(const schema of disposed) expect((await query('SELECT 1 FROM pg_namespace WHERE nspname=$1',[schema]))).toHaveLength(0);
         expect((await query(`SELECT count(*)::int AS n FROM "${source}".contacts`))[0].n).toBe(0);
     });
+    it('requires a later consent for waitlist when the confirmed seat was taken meanwhile',async()=>{
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const inbound=(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
+        const invoke=(args:any)=>executor.execute(lease.schemaName,tenantId,contactId,'enroll_student',args,conversationId,{
+            authority:authorityFor('enroll_student'),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,
+        });
+        const args={cohortId,studentName:'Eval'};
+        await inbound('Quiero matricularme');expect(await invoke(args)).toMatchObject({error:'confirmation_required',allowWaitlist:false,enrollmentTerms:{cohortId}});
+        await education.enrollStudent(lease.schemaName,{cohortId,contactId:otherContact,studentName:'Other'});
+        await inbound('Sí, confirmo');
+        expect(await invoke(args)).toMatchObject({error:'cohort_full_waitlist_requires_consent',requiresConfirmation:true,persisted:false,waitlistAvailable:true});
+        expect((await q('SELECT * FROM enrollments WHERE contact_id=$1::uuid',[contactId]))).toHaveLength(0);
+        const waitlist={...args,allowWaitlist:true};
+        expect(await invoke(waitlist)).toMatchObject({error:'confirmation_required',allowWaitlist:true});
+        expect(await invoke(waitlist)).toMatchObject({error:'confirmation_required'});
+        expect((await q('SELECT * FROM enrollments WHERE contact_id=$1::uuid',[contactId]))).toHaveLength(0);
+        await inbound('Sí, confirmo');const joined=await invoke(waitlist);
+        expect(joined).toMatchObject({status:'waitlisted',charged:false});expect(joined.payableReference).toBeNull();
+        expect(await invoke(waitlist)).toMatchObject(joined);
+        expect((await q('SELECT * FROM enrollments WHERE contact_id=$1::uuid',[contactId]))).toHaveLength(1);
+        expect((await q('SELECT available_seats FROM course_cohorts'))[0].available_seats).toBe(0);
+    });
     it('also provisions and cleans through the production Prisma transaction adapter',async()=>{
         // This constructor does not run Nest's startup/migration hooks. The URL
         // above has already been restricted to the explicit disposable database.

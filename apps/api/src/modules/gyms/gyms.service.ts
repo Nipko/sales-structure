@@ -1,3 +1,4 @@
+import { ensureOperationalNoticeOutbox, enqueueOperationalNotice, operationalContactWasErased } from '../operational-notices/operational-notice-outbox';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -495,6 +496,7 @@ export class GymsService {
      */
     async bookClass(schemaName: string, classId: string, memberId: string): Promise<any> {
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schemaName}`]);
             // Every class transition locks the class before its members/bookings.
             const [klass] = await query<any[]>(
                 'SELECT * FROM fitness_classes WHERE id = $1::uuid FOR UPDATE', [classId],
@@ -508,6 +510,7 @@ export class GymsService {
                 'SELECT * FROM members WHERE id = $1::uuid FOR UPDATE', [memberId],
             );
             if (!member) throw new NotFoundException('Member not found');
+            if (await operationalContactWasErased(query,member.contact_id)) throw new BadRequestException('Contact unavailable');
             const [existing] = await query<any[]>(
                 "SELECT * FROM class_bookings WHERE class_id = $1::uuid AND member_id = $2::uuid AND status IN ('confirmed', 'waitlist', 'attended')",
                 [classId, memberId],
@@ -545,7 +548,9 @@ export class GymsService {
     }
 
     async cancelBooking(schemaName: string, bookingId: string, contactId?: string): Promise<any> {
+        await ensureOperationalNoticeOutbox(this.prisma,schemaName);
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schemaName}`]);
             const [reference] = await query<any[]>('SELECT class_id FROM class_bookings WHERE id = $1::uuid', [bookingId]);
             if (!reference) throw new NotFoundException('Booking not found');
             const [klass] = await query<any[]>('SELECT * FROM fitness_classes WHERE id = $1::uuid FOR UPDATE', [reference.class_id]);
@@ -565,24 +570,29 @@ export class GymsService {
                     [booking.credits_used ?? 1, booking.member_id],
                 );
                 creditsRestored = restored.length ? (booking.credits_used ?? 1) : 0;
-                if (!klass.is_cancelled) await this.promoteFromWaitlist(query, booking.class_id);
+                if (!klass.is_cancelled) await this.promoteFromWaitlist(query, schemaName, booking.class_id);
             }
             return { success: true, bookingId, status: 'cancelled', previousStatus: booking.status, creditsRestored };
         });
     }
 
     /** The caller holds the class lock; a failed promotion rolls back cancellation too. */
-    private async promoteFromWaitlist(query: <T = any[]>(sql: string, params?: any[]) => Promise<T>, classId: string): Promise<void> {
+    private async promoteFromWaitlist(query: <T = any[]>(sql: string, params?: any[]) => Promise<T>, schemaName: string, classId: string): Promise<void> {
         const [next] = await query<any[]>(
             `SELECT b.*, m.class_credits_remaining
              FROM class_bookings b JOIN members m ON m.id = b.member_id
              WHERE b.class_id = $1::uuid AND b.status = 'waitlist' AND m.status = 'active'
                AND (m.class_credits_remaining IS NULL OR m.class_credits_remaining >= b.credits_used)
-             ORDER BY b.booked_at, b.id LIMIT 1 FOR UPDATE OF b, m SKIP LOCKED`, [classId],
+               ORDER BY b.booked_at, b.id LIMIT 1 FOR UPDATE OF b, m`, [classId],
         );
         if (!next) return;
+        if (await operationalContactWasErased(query,next.contact_id)) {
+            await query("UPDATE class_bookings SET status='cancelled',cancelled_at=NOW() WHERE id=$1::uuid",[next.id]);
+            return this.promoteFromWaitlist(query,schemaName,classId);
+        }
         await query("UPDATE class_bookings SET status = 'confirmed' WHERE id = $1::uuid", [next.id]);
         await query('UPDATE fitness_classes SET available_spots = available_spots - 1 WHERE id = $1::uuid', [classId]);
+        await enqueueOperationalNotice(query,schemaName,{kind:'gym.waitlist_promoted',entityId:next.id,contactId:next.contact_id});
         if (next.class_credits_remaining !== null) {
             await query('UPDATE members SET class_credits_remaining = class_credits_remaining - $1 WHERE id = $2::uuid', [next.credits_used ?? 1, next.member_id]);
         }

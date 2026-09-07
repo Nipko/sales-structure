@@ -1,3 +1,4 @@
+import { OperationalNoticeModule } from '../operational-notices/operational-notice.module';
 import { WidgetDeliveryModule } from '../widget/widget-delivery.module';
 import { WidgetChannelAdapter } from './widget.adapter';
 import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
@@ -30,6 +31,7 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 @Module({
     imports: [
         WidgetDeliveryModule,
+        OperationalNoticeModule,
         BullModule.registerQueue({ name: OUTBOUND_QUEUE }),
         // Plain import: InboundQueueModule is a dependency leaf (queue + a
         // service injecting only globals), so it cannot close a cycle.

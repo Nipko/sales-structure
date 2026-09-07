@@ -103,6 +103,16 @@ describe('Knowledge source publication', () => {
 });
 
 describe('Knowledge provenance and availability', () => {
+    it('rejects a metadata update if a concurrent editor changed the audience after its source read', async () => {
+        const { service, prisma } = build();
+        const oldRevision='2026-09-01 10:00:00.123456+00';
+        prisma.executeInTenantSchema.mockImplementation(async (_schema,sql) => sql.includes('AS revision')
+            ? [{is_regulated:false,audience:'customer',agent_ids:[],is_public:false,revision:oldRevision}] as any : []);
+        await expect(service.updateDocumentMeta(tenantId,documentId,{isPublic:true})).rejects.toBeInstanceOf(ConflictException);
+        const update=prisma.executeInTenantSchema.mock.calls.find(([,sql])=>sql.includes('UPDATE knowledge_documents'))!;
+        expect(update[1]).toContain('updated_at = $3::timestamptz RETURNING id');
+        expect(update[2]).toEqual([documentId,true,oldRevision]);
+    });
     it.each([false, true])('preserves provenance after fusion and rerank=%s', async (rerank) => {
         const { service, prisma } = build();
         const row = {

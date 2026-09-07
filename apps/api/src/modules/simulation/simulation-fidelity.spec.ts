@@ -15,6 +15,13 @@ function simulation() {
 }
 
 describe('simulation execution fidelity', () => {
+    it('never grades a runtime failure as a successful customer-service answer', async () => {
+        const { service, agentTest, quality } = simulation();
+        agentTest.test.mockResolvedValue({ reply: 'Disculpa, hubo un problema.', debug: { runtimeError: 'provider unavailable', toolCalls: [] } } as any);
+        const results = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('failed')]);
+        expect(results[0]).toMatchObject({ judge: null, error: 'agent_runtime_failed:provider unavailable' });
+        expect(quality.judgeTranscript).not.toHaveBeenCalled();
+    });
     it('passes the same frozen revision, actual channel and owned tool sandbox through every turn', async () => {
         const { service, agentTest } = simulation();
         const snapshot = evaluationSnapshot('tenant', 'agent', { version: 9, config_json: { language: 'fr' } });

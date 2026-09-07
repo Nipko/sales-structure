@@ -555,7 +555,6 @@ export class EvalService {
                 if (sandboxConversationId) {
                     await this.recordSandboxInbound(schema, sandboxConversationId, msg);
                 }
-                await beforeModelUnits?.(4); // Upper bound: initial answer plus three tool iterations.
                 const res = await this.agentTest.test(
                     tenantId, agentId,
                     { message: msg, conversationHistory: [...history], channelType: channelType as any },
@@ -564,8 +563,10 @@ export class EvalService {
                             evalMode: true,
                             sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
                             sandboxConversationId, agentSnapshot: snapshot, beforeToolExecution: assertLease,
+                            beforeModelExecution: async () => { await assertLease?.(); await beforeModelUnits?.(1); },
                         },
                 );
+                if (res?.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
                 const reply = res?.reply || '';
                 for (const call of res?.debug?.toolCalls || []) {
                     observedToolCalls.push({ name: call.name, result: call.result });

@@ -547,6 +547,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 { message: customerMsg, conversationHistory: [...history], channelType: channelType as any },
                 { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, beforeToolExecution: session.assertLease } : {}) },
             );
+            if (res.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
             const reply = res.reply || '';
             // The judge grades how the agent SOUNDS. This grades whether it told
             // the truth. In production the agent announced "¡Tu reserva está

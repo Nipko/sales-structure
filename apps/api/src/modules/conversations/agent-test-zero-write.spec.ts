@@ -1,3 +1,4 @@
+import { agentTurnFixture } from './__fixtures__/agent-turn.fixture';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
@@ -96,7 +97,7 @@ describe('Agent Test no-business-write execution', () => {
     it('runs real read paths without DDL/cache/events while accounting provider cost and quota', async () => {
         const redis = buildRedis();
         const config = {
-            language: 'es-CO',
+            language: 'es-CO', persona: { name: 'Prueba', role: 'Asistente' }, behavior: {},
             rag: { enabled: true, topK: 3, similarityThreshold: 0 },
             tools: {},
             llm: { temperature: 0 },
@@ -137,10 +138,10 @@ describe('Agent Test no-business-write execution', () => {
                         chunk_index: 0,
                         metadata: {},
                         doc_language: 'es',
-                        distance: 0.1,
+                        distance: 0.1, doc_status: 'active', doc_type: 'reference', doc_scope: {}, doc_version: 1,
                     }];
                 }
-                if (sql.includes('search_tsv')) return [];
+                if (sql.includes('search_tsv') || sql.includes('messages') || sql.includes('to_regclass')) return [];
                 throw new Error(`unexpected tenant query: ${sql}`);
             }),
             getTenantSchemaName: jest.fn().mockResolvedValue(SCHEMA),
@@ -211,21 +212,10 @@ describe('Agent Test no-business-write execution', () => {
             incrementAiMessageCount: jest.fn().mockResolvedValue(1),
         };
 
-        const service = new AgentTestService(
-            persona,
-            router,
-            knowledge,
-            businessInfo,
-            {
-                computeUpcomingDays: jest.fn().mockReturnValue([]),
-                assemble: jest.fn().mockReturnValue('<system>test</system>'),
-            } as any,
-            { detect: jest.fn().mockReturnValue('es') } as any,
-            { execute: jest.fn() } as any,
-            tenants as any,
-            throttle as any,
-            { populateTurnContext: jest.fn().mockResolvedValue({ failures: [] }) } as any,
-        );
+        const { service } = agentTurnFixture({ personaService: persona, llmRouter: router, knowledgeService: knowledge,
+            businessInfoService: businessInfo, tenantsService: tenants, throttle, redis, eventEmitter,
+            prisma: { ...prisma, tenant: { findUnique: jest.fn().mockResolvedValue({ settings: {} }) } },
+        });
 
         const result = await service.test(TENANT_ID, AGENT_ID, { message: '¿Cuál es el horario?' });
         await new Promise(resolve => setImmediate(resolve));

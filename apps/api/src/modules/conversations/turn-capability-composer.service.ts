@@ -1,3 +1,4 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { Injectable, Logger } from '@nestjs/common';
 import {
     CAPABILITY_EXCLUSION_TEXT,
@@ -38,6 +39,7 @@ export interface ComposedTurnCapability {
 }
 
 export interface ComposeTurnCapabilityInput {
+    executionContext?: ServiceExecutionContext;
     tenantId: string;
     schemaName: string;
     config: TenantConfig;
@@ -179,6 +181,7 @@ export class TurnCapabilityComposerService {
                 operatingCountry: input.operatingCountry,
                 jurisdiction: input.jurisdiction,
                 providers,
+                executionContext: input.executionContext,
             });
         } catch (error: any) {
             this.logger.warn(`Capability contract unresolved for ${input.tenantId}: ${error?.message}`);
@@ -219,7 +222,7 @@ export class TurnCapabilityComposerService {
             || (cfgTools as any)?.ecommerce?.canApplyDiscount === true;
         if (needsMoney) {
             try {
-                const paymentCapability = await this.paymentOperations.getRuntimeCapability(input.tenantId);
+                const paymentCapability = await this.paymentOperations.getRuntimeCapability(input.tenantId, input.executionContext);
                 const paymentTools = paymentToolsForRuntime((cfgTools as any).payments, paymentCapability);
                 const discountTools = discountToolsForRuntime({
                     canApplyDiscount: (cfgTools as any)?.ecommerce?.canApplyDiscount,
@@ -256,7 +259,7 @@ export class TurnCapabilityComposerService {
         // MCP discovery is not authority. `listPublishableTools` already keeps
         // only tools whose effect/confirmation policy a person reviewed.
         try {
-            const mcp = await this.mcpClient.listPublishableTools(input.tenantId);
+            const mcp = await this.mcpClient.listPublishableTools(input.tenantId, input.executionContext);
             tools = uniqueTools([...tools, ...mcp.tools]);
             if (mcp.discoveredCount > mcp.approvedCount) {
                 exclusions.push({

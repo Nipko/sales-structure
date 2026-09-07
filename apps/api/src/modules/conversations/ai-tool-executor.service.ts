@@ -293,7 +293,7 @@ export class AIToolExecutorService {
             // cobro: trataba a las dos como comprometedoras y un perfil
             // bloqueado perdía también sus lecturas remotas.
             const mcpApproval = toolName.startsWith('mcp__') && this.mcpClient?.getApproval
-                ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
+                ? await this.mcpClient.getApproval(tenantId, toolName, opts?.executionContext).catch(() => null)
                 : null;
             if (mcpApproval) args = bindMcpArguments(mcpApproval, args, tenantId, contactId);
 
@@ -3214,7 +3214,7 @@ export class AIToolExecutorService {
     private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status
+            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -3252,7 +3252,7 @@ export class AIToolExecutorService {
             return { success: true, alreadyCancelled: true, message: 'Appointment was already cancelled.', alternatives: [] };
         }
 
-        this.eventEmitter.emit('appointment.cancelled', {
+        if (rows[0].metadata?.source !== 'eval_gate') this.eventEmitter.emit('appointment.cancelled', {
             schemaName: schema,
             appointment: {
                 id: rows[0].id,
@@ -5509,7 +5509,7 @@ export class AIToolExecutorService {
     ): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, assigned_to,
-                    google_event_id, outlook_event_id
+                    google_event_id, outlook_event_id, metadata
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -5617,7 +5617,7 @@ export class AIToolExecutorService {
             };
         }
 
-        this.eventEmitter.emit('appointment.rescheduled', {
+        if (apt.metadata?.source !== 'eval_gate') this.eventEmitter.emit('appointment.rescheduled', {
             schemaName: schema,
             appointmentId,
             oldStartAt: apt.start_at,

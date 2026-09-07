@@ -1,3 +1,4 @@
+import { LearningModule } from '../learning/learning.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -72,6 +73,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
 @Module({
     imports: [
         PersonaModule,
+        LearningModule,
         AIModule,
         forwardRef(() => ChannelsModule),
         HandoffModule,

@@ -9,6 +9,7 @@ function build(failMemory = false) {
     const query = jest.fn(async (sql: string, params: any[] = []) => {
         if (sql.includes('SELECT DISTINCT customer_profile_id')) return [{ customer_profile_id: profileId }];
         if (sql.includes('SELECT DISTINCT contact_id')) return [{ contact_id: contactId }, { contact_id: siblingId }];
+        if (sql.includes('UPDATE conversations') && sql.includes('ANY($1::uuid[])')) return [{id:'conversation'}];
         if (sql.includes('INSERT INTO customer_memory_erasure')) state.tombstones = params[0];
         if (sql.includes('DELETE FROM customer_memory_facts')) {
             if (failMemory) throw new Error('memory deletion failed');
@@ -31,7 +32,9 @@ function build(failMemory = false) {
         }),
         auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
-    return { service: new ComplianceService(prisma as any), query, prisma, state };
+    const redis={del:jest.fn().mockResolvedValue(undefined)};
+    const learning={eraseContactSources:jest.fn().mockResolvedValue(2)};
+    return { service: new ComplianceService(prisma as any,redis as any,learning as any), query, prisma, state,redis,learning };
 }
 
 describe('Contact erasure reaches memory derivatives', () => {
@@ -70,5 +73,31 @@ describe('Contact erasure reaches memory derivatives', () => {
         const sqls = query.mock.calls.map(([sql]) => sql);
         expect(sqls.findIndex(sql => sql.startsWith('UPDATE campaign_recipients')))
             .toBeLessThan(sqls.findIndex(sql => sql.startsWith('UPDATE contacts')));
+    });
+
+    it('keeps authoritative tombstones if Redis is unavailable and erases learning for every linked contact',async()=>{
+        const {service,query,redis,learning}=build();redis.del.mockRejectedValue(new Error('cache down'));
+        const result=await service.eraseContactData('tenant_memory',profileId,contactId,'admin');
+        expect(result.completed).toBe(true);
+        const update=query.mock.calls.find(([sql])=>sql.includes('UPDATE conversations')&&sql.includes('ANY($1::uuid[])'))!;
+        expect(update[0]).toContain('"procedureStateManaged":true,"bookingStateManaged":true');
+        expect(update[1]).toEqual([[contactId,siblingId]]);
+        expect(redis.del).toHaveBeenCalledWith('procedure:conversation');
+        expect(redis.del).toHaveBeenCalledWith('booking:conversation');
+        expect(learning.eraseContactSources).toHaveBeenCalledWith('tenant_memory',profileId,[contactId,siblingId]);
+    });
+
+    it('does not mark erasure complete when learning derivative removal fails',async()=>{
+        const {service,learning}=build();learning.eraseContactSources.mockRejectedValue(new Error('learning delete failed'));
+        const result=await service.eraseContactData('tenant_memory',profileId,contactId,'admin');
+        expect(result.completed).toBe(false);
+        expect(result.failedTables).toContain('conversation_and_learning_derivatives');
+    });
+    it('uses the real profile columns and removes derived metadata and channel identity identifiers',async()=>{
+        const {service,query}=build();await service.eraseContactData('tenant_memory',profileId,contactId,'admin');
+        const profile=query.mock.calls.find(([sql])=>sql.includes('UPDATE customer_profiles'))![0];
+        expect(profile).toContain('SET phone =');expect(profile).toContain('email = NULL');
+        expect(profile).toContain("metadata = '{}'::jsonb");expect(profile).not.toContain('primary_phone');
+        expect(query.mock.calls.some(([sql])=>sql.includes('UPDATE contact_identities SET external_id ='))).toBe(true);
     });
 });

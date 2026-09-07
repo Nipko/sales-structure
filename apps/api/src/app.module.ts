@@ -38,6 +38,7 @@ import { QualityModule } from './modules/quality/quality.module';
 import { TraceModule } from './modules/trace/trace.module';
 import { KbHealthModule } from './modules/kb-health/kb-health.module';
 import { SimulationModule } from './modules/simulation/simulation.module';
+import { LearningEvaluationModule } from './modules/learning/learning-evaluation.module';
 import { ProceduresModule } from './modules/procedures/procedures.module';
 import { VerticalIntegrationsModule } from './modules/vertical-integrations/vertical-integrations.module';
 import { McpModule } from './modules/mcp/mcp.module';
@@ -223,6 +224,7 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         TraceModule,
         KbHealthModule,
         SimulationModule,
+        LearningEvaluationModule,
         ProceduresModule,
         VerticalIntegrationsModule,
         McpModule,

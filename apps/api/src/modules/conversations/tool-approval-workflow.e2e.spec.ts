@@ -96,6 +96,7 @@ describe('A4 approval workflow e2e', () => {
                 leaseToken: '77777777-7777-4777-8777-777777777777',
                 payload: { ticketId, toolName: 'apply_discount', contactId, conversationId },
             }))),
+            publishApprovalOutboxEvent: jest.fn(async (_schema:string,event:any,publish:any)=>{await publish(event.payload);return true;}),
             finishApprovalOutboxEvent: jest.fn(async (_schema: string, event: any) => {
                 state.published.push(event.eventType);
             }),

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { createHash } from 'crypto';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 
 export interface CustomerMemory {
     facts: string[];
@@ -111,14 +112,14 @@ export class CustomerMemoryService {
      * (e.g. for the extractor's "previous memory" input). Returns null when nothing
      * is known.
      */
-    async getMemory(schema: string, contactId: string, query?: string, tenantId?: string): Promise<CustomerMemory | null> {
+    async getMemory(schema: string, contactId: string, query?: string, tenantId?: string, executionContext?: ServiceExecutionContext): Promise<CustomerMemory | null> {
         if (!contactId) return null;
         try {
             const erased = await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT contact_id FROM customer_memory_erasure WHERE contact_id = $1::uuid`,
                 [contactId]);
             if (erased.length) return null;
-            const facts = await this.retrieveFacts(schema, contactId, query?.trim() || '', tenantId);
+            const facts = await this.retrieveFacts(schema, contactId, query?.trim() || '', tenantId, executionContext);
             // An empty current snapshot is authoritative. A legacy merged row or
             // summary can contain a retracted fact from another channel/contact.
             return facts.length ? { facts: facts.slice(0, MEMORY_BLOCK_FACTS) } : null;
@@ -128,12 +129,12 @@ export class CustomerMemoryService {
     }
 
     /** Semantic top-K facts for the owner; falls back to most-recent when embeddings are off. */
-    private async retrieveFacts(schema: string, contactId: string, query: string, tenantId?: string): Promise<string[]> {
+    private async retrieveFacts(schema: string, contactId: string, query: string, tenantId?: string, executionContext?: ServiceExecutionContext): Promise<string[]> {
         try {
             const owner = await this.resolveOwner(schema, contactId);
             let emb: number[] | null = null;
             if (query) {
-                try { emb = await this.knowledge.generateEmbedding(query.slice(0, 1000), tenantId); } catch { emb = null; }
+                try { emb = await this.knowledge.generateEmbedding(query.slice(0, 1000), tenantId, executionContext); } catch { emb = null; }
             }
             // Match the resolved owner OR the raw contact — facts saved before identity
             // resolution are keyed by contact and would otherwise be orphaned once the

@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { LearningService } from '../learning/learning.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +29,10 @@ import { outboundDedupeId, providerMessageId } from '../../common/utils/provider
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
+import { AgentTurnSession } from './agent-turn-session';
+import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
+import { restoreBookingMission } from './booking-state-continuity';
+import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { DRAFT_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus } from './trusted-price-context';
@@ -396,6 +401,7 @@ export class ConversationsService {
         private effectiveCapability?: EffectiveCapabilityService,
         private verticalTurnContext?: VerticalTurnContextService,
         private turnCapabilityComposer?: TurnCapabilityComposerService,
+        @Optional() private readonly learning?: LearningService,
     ) {}
 
     /**
@@ -1273,9 +1279,10 @@ export class ConversationsService {
         return { contact, lead, conversation };
     }
 
-    private async loadTenantBusinessHours(tenantId: string): Promise<any | null> {
+    private async loadTenantBusinessHours(tenantId: string, session?: AgentTurnSession): Promise<any | null> {
         const cacheKey = `biz_hours:${tenantId}`;
-        const cached = await this.redis.getJson(cacheKey);
+        const cache = session?.state || this.redis;
+        const cached = await cache.getJson(cacheKey);
         if (cached) return cached;
 
         try {
@@ -1286,7 +1293,7 @@ export class ConversationsService {
             const settings = (tenant?.settings as any) || {};
             const bh = settings.businessHours || null;
             if (bh) {
-                await this.redis.setJson(cacheKey, bh, 300);
+                await cache.setJson(cacheKey, bh, 300);
             }
             return bh;
         } catch (e) {
@@ -1839,6 +1846,21 @@ export class ConversationsService {
      * Orchestrate the LLM call using the Router and Persona System Prompt.
      * Includes smart history truncation to stay within context window limits.
      */
+    /** Shared turn entry for previews and evaluations. Transport remains outside the core. */
+    async executeAgentTurn(message: NormalizedMessage, session: AgentTurnSession): Promise<string> {
+        if (message.tenantId !== session.tenantId || message.channelType !== session.channelType) throw new Error('runtime_session_scope_mismatch');
+        if (session.executionContext.persistence !== 'disabled'
+            || !['agent_test', 'evaluation'].includes(session.executionContext.mode)) throw new Error('runtime_session_requires_readonly_context');
+        const config = resolveEvaluationSnapshot(session.snapshot, session.tenantId, session.agentId);
+        const conversation = { id: session.conversationId, contact_id: session.contactId, stage: 'greeting',
+            metadata: session.metadata, created_at: session.lastMessageAt, updated_at: session.lastMessageAt };
+        const contact = { id: session.contactId };
+        const reply = await this.generateResponse(session.tenantId, conversation, message, config, contact, undefined,
+            session.lastMessageAt, await this.loadTenantBusinessHours(session.tenantId, session), undefined, session.agentId, session);
+        session.lastMessageAt = new Date().toISOString();
+        return reply;
+    }
+
     private async generateResponse(
         tenantId: string,
         conversation: any,
@@ -1850,10 +1872,23 @@ export class ConversationsService {
         bizHours?: any,
         inboundMessageId?: string,
         resolvedAgentId?: string,
+        session?: AgentTurnSession,
     ): Promise<string> {
         const draftMode = config.behavior?.draftMode === true;
-        const executionContext = draftMode ? DRAFT_EXECUTION_CONTEXT : undefined;
-        const allowHumanHandoff = !draftMode
+        const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
+        const cache = session?.state || this.redis;
+        const toolExecutor = session ? sessionToolExecutor(this.toolExecutor, session) : this.toolExecutor;
+        const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
+        const bookingEngine = session ? this.bookingEngine.forExecution({ redis: cache as RedisService, toolExecutor }) : this.bookingEngine;
+        const procedureEngine = session ? this.procedureEngine.forExecution({ redis: cache as RedisService, toolExecutor,
+            persistence: {
+                load: (_schema, id) => cache.getJson(`procedure:${id}`),
+                save: (_schema, id, state) => cache.setJson(`procedure:${id}`, state),
+                clear: (_schema, id) => cache.del(`procedure:${id}`),
+            },
+        }) : this.procedureEngine;
+        const intentInterpreter = session ? new IntentInterpreterService(llmRouter) : this.intentInterpreter;
+        const allowHumanHandoff = !session && !draftMode
             && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
         let userText = msg.content.text || '';
 
@@ -1878,7 +1913,7 @@ export class ConversationsService {
                 userText = mediaResult.text;
                 this.logger.log(`[Pipeline] Media processed (${msg.content.type}): ${userText.substring(0, 100)}...`);
 
-                if (mediaResult.governance.allowDurablePersistence) {
+                if (!session && mediaResult.governance.allowDurablePersistence) {
                     // Persist only when source+derived deletion has a verified
                     // enforcement adapter. Current governance permits ephemeral
                     // processing only, so this remains off by construction.
@@ -1910,9 +1945,9 @@ export class ConversationsService {
         (msg as any).resolvedText = userText;
 
         // 1. Analyze routing factors
-        const complexity = this.llmRouter.analyzeComplexity(userText);
-        const sentiment = this.llmRouter.analyzeSentiment(userText);
-        const stageScore = this.llmRouter.stageToScore(conversation.stage);
+        const complexity = llmRouter.analyzeComplexity(userText);
+        const sentiment = llmRouter.analyzeSentiment(userText);
+        const stageScore = llmRouter.stageToScore(conversation.stage);
 
         this.logger.log(`Routing Factors - Complexity: ${complexity}, Sentiment: ${sentiment}, Stage: ${stageScore}`);
 
@@ -1927,7 +1962,7 @@ export class ConversationsService {
         };
 
         // 2. Resolve schema + new-session detection (must happen before engine/tools)
-        const schemaName = await this.tenantSchema(tenantId);
+        const schemaName = session?.schemaName || await this.tenantSchema(tenantId);
 
         const lastMsgTime = previousMessageAt || conversation.updated_at || conversation.created_at;
         const timeSinceLastMessage = Date.now() - new Date(lastMsgTime).getTime();
@@ -1937,32 +1972,11 @@ export class ConversationsService {
         const isNewSession = timeSinceLastMessage > 30 * 60 * 1000 && !flowResponseData; // 30 minutes
 
         if (isNewSession && !draftMode) {
-            this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
-            try {
-                // One session, one epoch. Each of these used to expire on its own
-                // clock (booking 1h, procedure 1h, affinity 30m, confirmation
-                // 15m), so a customer coming back after 35 minutes met an agent
-                // that had forgotten the booking but was still walking them
-                // through step 4 of a procedure, on a model pinned by a turn that
-                // no longer existed. What ends, ends together.
-                await Promise.all([
-                    this.redis.del(`booking:${conversation.id}`),
-                    this.redis.del(`procedure:${conversation.id}`),
-                    this.redis.del(`llm:affinity:${conversation.id}`),
-                    this.redis.del(`llm:affinity:${conversation.id}:conversation`),
-                    this.redis.del(`llm:affinity:${conversation.id}:tool_calling`),
-                ]);
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' - 'bookingState' - 'bookingStateUpdatedAt' WHERE id = $1::uuid`,
-                    [conversation.id],
-                );
-            } catch {}
-            if (conversation.metadata) {
-                delete (conversation.metadata as any).toolContext;
-                delete (conversation.metadata as any).toolContextUpdatedAt;
-                delete (conversation.metadata as any).bookingState;
-                delete (conversation.metadata as any).bookingStateUpdatedAt;
-            }
+            await Promise.all([
+                cache.del(`llm:affinity:${conversation.id}`),
+                cache.del(`llm:affinity:${conversation.id}:conversation`),
+                cache.del(`llm:affinity:${conversation.id}:tool_calling`),
+            ]).catch(() => {});
         }
 
         // 3. Start building TURN CONTEXT (Layer 3 of prompt assembly).
@@ -1980,17 +1994,18 @@ export class ConversationsService {
         const userLanguage = detectedLanguage;
         (msg as any).detectedLang = detectedLanguage; // expose this turn's language to auto-progress
         // Persist when it changes so the stickiness carries to the next turn.
-        if (detectedLanguage && detectedLanguage !== previousLanguage) {
+        if (!session && detectedLanguage && detectedLanguage !== previousLanguage) {
             this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
                 [conversation.id, JSON.stringify({ detectedLanguage })],
             ).catch(() => { /* non-blocking */ });
         }
+        if (session) session.metadata.detectedLanguage = detectedLanguage;
         // The turn's clock comes from the tenant's OPERATING identity, not from
         // a Colombian literal. `America/Bogota` was the last resort in four
         // separate places, so a Mexican restaurant computed "hoy" and "mañana"
         // in Bogota time and told guests the wrong day.
-        const regional = await this.regionalProfile?.resolve(tenantId).catch(() => null);
+        const regional = await this.regionalProfile?.resolve(tenantId, executionContext).catch(() => null);
         const tz = bizHours?.timezone
             || config.hours?.timezone
             || regional?.timezone.value
@@ -2004,7 +2019,7 @@ export class ConversationsService {
 
         const turnContext: TurnContext = {
             channelType: msg.channelType,
-            executionMode: draftMode ? 'draft' : 'live',
+            executionMode: session?.executionContext.mode || (draftMode ? 'draft' : 'live'),
             language: userLanguage,
             timezone: tz,
             // One resolved operating identity for the whole turn: prompt,
@@ -2038,7 +2053,7 @@ export class ConversationsService {
         // Long-term memory (#1): inject what we know about this customer across
         // conversations, when the agent has it enabled.
         if (config.llm?.memory?.longTerm && conversation.contact_id) {
-            const mem = await this.customerMemory.getMemory(schemaName, conversation.contact_id, userText, tenantId).catch(() => null);
+            const mem = await this.customerMemory.getMemory(schemaName, conversation.contact_id, userText, tenantId, executionContext).catch(() => null);
             if (mem) turnContext.customerMemory = mem;
         }
 
@@ -2067,7 +2082,7 @@ export class ConversationsService {
         // Business identity — the "who we are" data the agent uses to answer
         // questions about the company. Cached in Redis inside BusinessInfoService.
         try {
-            const businessIdentity = await this.businessInfoService.getPrimary(tenantId);
+            const businessIdentity = await this.businessInfoService.getPrimary(tenantId, executionContext);
             if (businessIdentity) {
                 turnContext.business = {
                     companyName: businessIdentity.companyName,
@@ -2089,7 +2104,7 @@ export class ConversationsService {
         // 3.5 Vertical context — inject industry-specific terminology for the LLM
         try {
             const cacheKey = `vertical:${tenantId}`;
-            let verticalConfig = await this.redis.getJson<any>(cacheKey);
+            let verticalConfig = await cache.getJson<any>(cacheKey);
             if (!verticalConfig) {
                 const tenant = await this.prisma.tenant.findUnique({
                     where: { id: tenantId },
@@ -2097,7 +2112,7 @@ export class ConversationsService {
                 });
                 verticalConfig = (tenant?.settings as any)?.verticalConfig;
                 if (verticalConfig) {
-                    await this.redis.setJson(cacheKey, verticalConfig, 600);
+                    await cache.setJson(cacheKey, verticalConfig, 600);
                 }
             }
             // Industria y sub-tipo al prompt. El dueño elige con cuidado entre 4-6
@@ -2174,7 +2189,7 @@ export class ConversationsService {
             // tenant "otro", que es justo el que más necesita describir su negocio,
             // le hablaba a la nada. Los "other:texto" libres son los más valiosos.
             const goalsCacheKey = `bizgoals:${tenantId}`;
-            let bizGoals = await this.redis.getJson<{ goals: string[]; audiences: string[] }>(goalsCacheKey);
+            let bizGoals = await cache.getJson<{ goals: string[]; audiences: string[] }>(goalsCacheKey);
             if (!bizGoals) {
                 const tenantRow = await this.prisma.tenant.findUnique({
                     where: { id: tenantId },
@@ -2187,7 +2202,7 @@ export class ConversationsService {
                     .filter(Boolean)
                     .slice(0, 8);
                 bizGoals = { goals: clean(s.chatReasons), audiences: clean(s.customerTypes) };
-                await this.redis.setJson(goalsCacheKey, bizGoals, 600);
+                await cache.setJson(goalsCacheKey, bizGoals, 600);
             }
             if (bizGoals.goals.length > 0 || bizGoals.audiences.length > 0) {
                 turnContext.verticalContext = {
@@ -2225,6 +2240,7 @@ export class ConversationsService {
                 tenantId,
                 language: userLanguage,
                 toolsConfig: (config.tools ?? (config as any)?.tools) as any,
+                executionContext,
             });
             if (sharedVerticalContext) turnContext.verticalContext = sharedVerticalContext;
         } catch (e: any) {
@@ -2255,7 +2271,7 @@ export class ConversationsService {
         const toolsConfig = config.tools?.appointments ?? (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
-        let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata);
+        let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata, session);
         let engineProducedText: string | null = null;
         // Writes performed OUTSIDE the LLM tool loop (booking engine, server-side
         // confirmation). Without these the output guardrail audits a real booking
@@ -2293,6 +2309,7 @@ export class ConversationsService {
                 channelType: msg.channelType,
                 operatingCountry: turnContext.regional?.operatingCountry,
                 jurisdiction: turnContext.regional?.operatingCountry,
+                executionContext,
             });
         }
         const capability = composedCapability ?? await this.resolveTurnCapability({
@@ -2401,7 +2418,7 @@ export class ConversationsService {
                     data: { reason, deterministic: true },
                 }).catch(() => {});
                 engineProducedText = handoffText(userLanguage).transferring;
-                this.recordAgentSignal(tenantId, 'capability_denied_intent_handoff');
+                this.recordAgentSignal(tenantId, 'capability_denied_intent_handoff', session);
             } catch (error: any) {
                 // Do not start a blocked operation when the queue itself is
                 // unavailable. The model still receives writes=blocked, but we
@@ -2414,8 +2431,8 @@ export class ConversationsService {
         // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
         // message is the ANSWER to that field — give the procedure engine priority
         // so the booking engine doesn't hijack it and leave the procedure hung.
-        const procedureAwaiting = await this.procedureEngine.getState(conversation.id)
-            .then(s => !!s?.awaitingField).catch(() => false);
+        const procedureAwaiting = await procedureEngine.getState(conversation.id, schemaName)
+            .then(s => !!s?.awaitingField && !s?.pausedAt).catch(() => false);
 
         // El motor determinista CREA la cita: escribe por fuera del loop de
         // tools, así que filtrar la lista de tools no lo alcanzaba. Un perfil
@@ -2450,15 +2467,15 @@ export class ConversationsService {
             // Only read the config for WhatsApp booking turns (negligible PK lookup).
             let flowCfg: { enabled: boolean; flowId: string; flowCta: string; flowMode: 'published' | 'draft' } | null = null;
             let flowCapable = false;
-            if (msg.channelType === 'whatsapp') {
+            if (!session && msg.channelType === 'whatsapp') {
                 flowCfg = await this.getBookingFlowsCfg(tenantId);
-                flowCapable = !!flowCfg?.enabled && !!flowCfg?.flowId;
+                flowCapable = !session && !!flowCfg?.enabled && !!flowCfg?.flowId;
             }
 
             // ═══ PHASE 1: INTERPRET — extract structured intent ═══
             const serviceNames = bookingState.services?.map(s => s.name) || [];
             const upcoming = turnContext.upcomingDays || [];
-            const intent = await this.intentInterpreter.interpret(
+            const intent = await intentInterpreter.interpret(
                 userText, bookingState.step, serviceNames, todayISO, upcoming, tenantId,
                 regional?.operatingCountry.value,
                 bookingState.step === 'confirm' && bookingState.serviceName ? [bookingState.serviceName] : [],
@@ -2473,7 +2490,7 @@ export class ConversationsService {
                 // Let the engine's first-line authority guard decide whether
                 // this is an actual booking request or ordinary conversation.
                 // No booking cache/tool/PII step can run before that guard.
-                const deniedResult = await this.bookingEngine.process(
+                const deniedResult = await bookingEngine.process(
                     schemaName, tenantId, conversation.contact_id || '',
                     intent, userText, bookingState, customerProfile, todayISO, userLanguage,
                     {
@@ -2484,7 +2501,7 @@ export class ConversationsService {
                     },
                 );
                 bookingState = deniedResult.state;
-                await this.persistBookingState(schemaName, conversation.id, deniedResult.state);
+                await this.persistBookingState(schemaName, conversation.id, deniedResult.state, session);
                 if (deniedResult.handled) {
                     engineProducedText = deniedResult.text || null;
                     tools = [];
@@ -2507,16 +2524,16 @@ export class ConversationsService {
                 this.logger.log(`[Pipeline] ${intent.intent} (idle): LLM handles with full persona`);
                 // Refresh services from DB and update cache so booking engine gets fresh data next turn
                 try {
-                    const result = await this.toolExecutor.execute(
+                    const result = await toolExecutor.execute(
                         schemaName, tenantId, conversation.contact_id || '', 'list_services', {},
                         conversation.id, { authority: engineAuthority },
                     );
                     bookingState.services = result?.services?.length ? result.services : [];
                     // Update the tenantId-scoped cache so next booking engine call is consistent
                     const svcCacheKey = `booking:services:${tenantId}`;
-                    await this.redis.set(svcCacheKey, JSON.stringify(bookingState.services), 300).catch(() => {});
+                    await cache.set(svcCacheKey, JSON.stringify(bookingState.services), 300).catch(() => {});
                 } catch {}
-                await this.persistBookingState(schemaName, conversation.id, bookingState);
+                await this.persistBookingState(schemaName, conversation.id, bookingState, session);
                 // Skip engine entirely — fall through to LLM
             } else if (this.shouldYieldToVerticalTools(config, userText, bookingState)) {
                 // ═══ YIELD VERTICAL ═══
@@ -2528,10 +2545,10 @@ export class ConversationsService {
                 // hablando (en modo directivo solo viajan los últimos 4 mensajes).
                 // Acá el motor cede el turno a la IA CON sus tools.
                 this.logger.log(`[Pipeline] YIELD vertical: el agente tiene tools propias de reserva/inventario y el texto menciona un objeto de la vertical`);
-                await this.persistBookingState(schemaName, conversation.id, bookingState);
+                await this.persistBookingState(schemaName, conversation.id, bookingState, session);
             } else {
                 // ═══ PHASE 2: DECIDE — deterministic booking engine ═══
-                const engineResult = await this.bookingEngine.process(
+                const engineResult = await bookingEngine.process(
                     schemaName, tenantId, conversation.contact_id || '',
                     intent, userText, bookingState, customerProfile, todayISO, userLanguage,
                     {
@@ -2553,7 +2570,7 @@ export class ConversationsService {
                     // on any send failure the engine resets waiting_flow→idle next turn and
                     // resumes the text flow. Persist + save for history, then short-circuit.
                     if (engineResult.flowMessage && flowCapable && flowCfg) {
-                        await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                        await this.persistBookingState(schemaName, conversation.id, engineResult.state, session);
                         // Correlation id Meta echoes back in nfm_reply. Idempotency is
                         // already covered by webhook dedup + the duplicate-appointment guard,
                         // so we don't persist/validate it (that would be a no-op anti-replay).
@@ -2573,7 +2590,7 @@ export class ConversationsService {
                         engineExecutedTools = [...engineExecutedTools, ...engineResult.executedTools];
                     }
                     tools = []; // NO TOOLS for express phase
-                    await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                    await this.persistBookingState(schemaName, conversation.id, engineResult.state, session);
 
                     // Dead end the booking flow can't solve alone (agenda never
                     // configured, tool failure): the engine only FLAGS it, we run the
@@ -2605,7 +2622,7 @@ export class ConversationsService {
                         }));
                     }
                     this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
-                    await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                    await this.persistBookingState(schemaName, conversation.id, engineResult.state, session);
                 }
             }
         }
@@ -2622,7 +2639,7 @@ export class ConversationsService {
         // un paso no pueda invocar una tool que el contrato no dejó pasar.
         if (!draftMode && !engineProducedText && writesAuthorised) {
             try {
-                const procResult = await this.procedureEngine.process(
+                const procResult = await procedureEngine.process(
                     schemaName, tenantId, conversation.id, conversation.contact_id || '', userText,
                     {
                         industry: turnContext.verticalContext?.industry,
@@ -2694,7 +2711,7 @@ export class ConversationsService {
                     // ya no está publicada, el ejecutor la deniega con motivo
                     // tipado en vez de escribir una fila que hoy nadie autoriza.
                     const result = await this.withTimeout(
-                        this.toolExecutor.execute(
+                        toolExecutor.execute(
                             schemaName, tenantId, conversation.contact_id, pending.toolName,
                             pending.args, conversation.id, {
                                 authority: engineAuthority,
@@ -2731,7 +2748,7 @@ export class ConversationsService {
                             // puede cumplir: va a una persona con el motivo
                             // exacto, no con "falló".
                             pendingOperationHandoff = `denied:${pending.toolName}:${result.error}`;
-                            this.recordAgentSignal(tenantId, 'authority_denied_after_confirmation');
+                            this.recordAgentSignal(tenantId, 'authority_denied_after_confirmation', session);
                             this.logger.warn(
                                 `[Confirm] ${pending.toolName} ya no está autorizada al momento del "sí" `
                                 + `(ledger ${pending.ledgerId}, ${result.error}): ${String(result.reason ?? '')}`,
@@ -2753,7 +2770,7 @@ export class ConversationsService {
                             // no lo toca— y el huesped se quedaba esperando un
                             // pago que no existia, sin que nadie lo rescatara.
                             pendingOperationHandoff = `failed:${pending.toolName}`;
-                            this.recordAgentSignal(tenantId, 'commit_then_failure');
+                            this.recordAgentSignal(tenantId, 'commit_then_failure', session);
                             this.logger.error(
                                 `[Confirm] ${pending.toolName} fallo DESPUES de la confirmacion del cliente ` +
                                 `(ledger ${pending.ledgerId}): ${String(result?.error || result?.message || 'sin motivo')} ` +
@@ -2763,7 +2780,7 @@ export class ConversationsService {
                         engineProducedText = this.buildExecutedOperationDirective(
                             pending.toolName, result, userLanguage,
                         );
-                        this.recordAgentSignal(tenantId, 'pending_confirmation_executed');
+                        this.recordAgentSignal(tenantId, 'pending_confirmation_executed', session);
                         if (toolResultSucceeded(result)) {
                             tools = [];
                         } else {
@@ -2797,7 +2814,7 @@ export class ConversationsService {
                 || cfgTools?.ecommerce?.canApplyDiscount === true;
             if (needsPaymentCapability) {
                 try {
-                    const runtimePayment = await this.paymentOperations.getRuntimeCapability(tenantId);
+                    const runtimePayment = await this.paymentOperations.getRuntimeCapability(tenantId, executionContext);
                     if (cfgTools?.payments?.enabled === true) {
                         tools = [...tools, ...paymentToolsForRuntime(cfgTools.payments, runtimePayment)];
                     }
@@ -2819,7 +2836,7 @@ export class ConversationsService {
                 if (capability.contract?.publishedTools.includes(name)) tools = [...tools, def];
             }
             try {
-                const { tools: mcpTools } = await this.mcpClient.listPublishableTools(tenantId);
+                const { tools: mcpTools } = await this.mcpClient.listPublishableTools(tenantId, executionContext);
                 if (mcpTools.length) tools = [...tools, ...mcpTools];
             } catch (e: any) {
                 this.logger.debug(`[T3.20] MCP tool registration skipped: ${e.message}`);
@@ -2898,6 +2915,12 @@ export class ConversationsService {
         // recortada convertiría "esta tool no era relevante para este mensaje"
         // en "esta tool no está autorizada", y mandaría a una persona una
         // conversación que no lo necesita.
+        if (session) {
+            session.trace.advertisedTools = [...tools];
+            session.trace.capability = capability.contract;
+            tools = tools.filter(tool => sessionCanExecute(session, String(tool.name)));
+            session.trace.executableToolNames = tools.map(tool => String(tool.name));
+        }
         const turnAllowedTools = tools.map(t => String(t?.name)).filter(Boolean);
         const llmAuthority = composedCapability?.authority ?? turnAuthority(turnAllowedTools);
 
@@ -2978,6 +3001,7 @@ export class ConversationsService {
                     conversation.id,
                     tenantId,
                     turnContext.regional?.operatingCountry,
+                    session,
                 );
                 const ragResults = await this.knowledgeService.searchRelevant(
                     tenantId, searchQuery, topK,
@@ -3081,7 +3105,7 @@ export class ConversationsService {
         // inbound message (already saved above), which is re-added separately as
         // the live user turn — otherwise it would be duplicated in the prompt.
         // Reverse back to chronological order (oldest→newest) for the builders below.
-        const historyDesc = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+        const historyDesc = session ? [...session.history].reverse().slice(0, 30).map((row, i) => ({ id: String(i), direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT id, direction, content_text FROM messages WHERE conversation_id = $1::uuid
                AND ($2::uuid IS NULL OR id <> $2::uuid)
              ORDER BY created_at DESC, id DESC LIMIT 30`,
@@ -3144,18 +3168,38 @@ export class ConversationsService {
         // bloque <recent_actions> no se emitio nunca — mientras la regla 18 del
         // contrato le ordenaba al modelo reusar identificadores de ahi. El
         // modelo hacia lo unico que podia: inventarlos.
-        const priorActions: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }> = !isNewSession
-            && Array.isArray((conversation.metadata as any)?.toolContext)
-            ? (conversation.metadata as any).toolContext.slice(-RECENT_ACTIONS_MAX)
+        const priorActions: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }> = Array.isArray((conversation.metadata as any)?.toolContext)
+            ? (conversation.metadata as any).toolContext.slice(-RECENT_ACTIONS_MAX).map((entry: any) => isNewSession ? { ...entry, ok: false, awaiting: true } : entry)
             : [];
         if (priorActions.length) {
             (turnContext as any).recentActions = priorActions;
         }
 
+        const refreshLearningExamples = async (operation?: { toolName: string; status: string }) => {
+        if (this.learning && resolvedAgentId) {
+            try {
+                const examples = await this.learning.getRuntimeExamples(tenantId, resolvedAgentId, {
+                    language: userLanguage, contactId: conversation.contact_id,
+                    releaseId: session?.snapshot.learningReleaseId, executionContext, operation,
+                });
+                if (session?.snapshot.learningReleaseHash && examples.some(example => example.releaseHash !== session.snapshot.learningReleaseHash)) throw new Error('learning_release_revision_mismatch');
+                turnContext.learningExamples = examples;
+            } catch (error: any) {
+                if (session) throw error;
+                this.logger.warn(`[Learning] Style examples unavailable: ${error.message}`);
+            }
+        }
+
+        };
+        const preExecutedStyleOperation = [...preExecutedTools].reverse().find(tool => isBusinessWriteTool(tool.name) && toolResultSucceeded(tool.result));
+        await refreshLearningExamples(preExecutedStyleOperation ? { toolName: preExecutedStyleOperation.name, status: 'succeeded' } : undefined);
+        let lastStyleOperation = preExecutedStyleOperation;
+
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.
-        const { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, bizHours);
+        let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, bizHours);
+        if (session) { session.trace.systemPrompt = systemPrompt; session.trace.turnContext = turnContext; }
 
         // Hoisted (also used inside the tool loop): the agent's reply-token cap, if pinned.
         const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
@@ -3202,7 +3246,7 @@ export class ConversationsService {
             // tool iterations and dispatched after the text reply.
             const mediaToSend: Array<{ url: string; caption?: string }> = [];
 
-            const planFeatures = await this.throttle.getPlanFeatures(tenantId);
+            const planFeatures = await this.throttle.getPlanFeatures(tenantId, executionContext);
             let allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
 
             // LLM cost circuit breaker: once month-to-date LLM spend exceeds the
@@ -3243,11 +3287,18 @@ export class ConversationsService {
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const hasTools = tools.length > 0;
+                const styleOperation = [...executedToolsThisTurn].reverse().find(tool => isBusinessWriteTool(tool.name) && toolResultSucceeded(tool.result));
+                if (styleOperation && styleOperation !== lastStyleOperation) {
+                    await refreshLearningExamples({ toolName: styleOperation.name, status: 'succeeded' });
+                    lastStyleOperation = styleOperation;
+                    ({ systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, bizHours));
+                    if (session) session.trace.systemPrompt = systemPrompt;
+                }
 
                 // Honor the agent's configured temperature/maxTokens (previously
                 // ignored). Tool-calling stays deterministic (0.3) regardless, since
                 // a high temperature degrades tool-argument accuracy.
-                const response = await this.llmRouter.execute({
+                const response = await llmRouter.execute({
                     task: hasTools ? 'tool_calling' : 'conversation',
                     messages: currentMessages,
                     systemPrompt,
@@ -3345,7 +3396,7 @@ export class ConversationsService {
                                 argumentKeys,
                             });
                             result = await this.withTimeout(
-                                this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, {
+                                toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, {
                                     authority: llmAuthority,
                                     channelType: msg.channelType,
                                     executionContext,
@@ -3424,7 +3475,7 @@ export class ConversationsService {
                             // caso, y quien pide una operación denegada sí.
                             postToolHandoff = postToolHandoff
                                 || `denied:${tc.function.name}:${result.error}`;
-                            this.recordAgentSignal(tenantId, 'authority_denied_operation');
+                            this.recordAgentSignal(tenantId, 'authority_denied_operation', session);
                         } else if (result && result.shouldHandoff === true
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
@@ -3489,7 +3540,7 @@ export class ConversationsService {
             if (!finalResponse) {
                 this.logger.warn(`[Pipeline] Tool loop exhausted ${MAX_TOOL_ITERATIONS} iterations without a final answer — forcing a no-tools response`);
                 try {
-                    const closing = await this.llmRouter.execute({
+                    const closing = await llmRouter.execute({
                         task: 'conversation',
                         messages: currentMessages,
                         systemPrompt,
@@ -3516,13 +3567,13 @@ export class ConversationsService {
             // whole message thread (history + tool results) — everything the model saw.
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
-                executedToolsThisTurn, userLanguage, priorActions, turnContext,
+                executedToolsThisTurn, userLanguage, priorActions, turnContext, session,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.
-            if (!draftMode && config.llm?.memory?.longTerm && conversation.contact_id && (turnContext.messageCount || 0) % 6 === 0) {
+            if (!session && !draftMode && config.llm?.memory?.longTerm && conversation.contact_id && (turnContext.messageCount || 0) % 6 === 0) {
                 this.customerMemory.extractFromConversation(tenantId, schemaName, conversation.id, conversation.contact_id)
                     .catch(() => { /* best-effort */ });
             }
@@ -3534,7 +3585,7 @@ export class ConversationsService {
                 .map(t => (t?.result as any)?.paymentLink)
                 .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u));
             let paymentLinkIndex = 0;
-            for (const url of draftMode ? [] : new Set(paymentLinks)) {
+            for (const url of draftMode || session ? [] : new Set(paymentLinks)) {
                 if (msg.channelType === 'web_widget') {
                     // Widget transport delivers the validated final answer only.
                     if (!finalResponse.includes(url)) finalResponse += `\n${url}`;
@@ -3552,7 +3603,7 @@ export class ConversationsService {
 
             // Multimodal out (#13): dispatch product images the LLM requested,
             // staggered AFTER the text reply so they land in a natural order.
-            for (let i = 0; !draftMode && i < mediaToSend.length; i++) {
+            for (let i = 0; !session && !draftMode && i < mediaToSend.length; i++) {
                 if (msg.channelType === 'web_widget') {
                     finalResponse += `\n${mediaToSend[i].url}`;
                     continue;
@@ -3575,7 +3626,7 @@ export class ConversationsService {
             }
 
             // Reset failedAttempts on successful AI response
-            await this.prisma.executeInTenantSchema(schemaName,
+            if (!session) await this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations
                  SET metadata = jsonb_set(
                      COALESCE(metadata, '{}'::jsonb),
@@ -3631,7 +3682,7 @@ export class ConversationsService {
                         this.logger.warn(
                             `[Pipeline] HANDOFF por promesa del agente en conversación ${conversation.id}`,
                         );
-                        this.recordAgentSignal(tenantId, 'handoff_promise_honored');
+                        this.recordAgentSignal(tenantId, 'handoff_promise_honored', session);
                         this.analyticsService.trackEvent({
                             tenantId, eventType: 'handoff_triggered',
                             conversationId: conversation.id,
@@ -3659,7 +3710,7 @@ export class ConversationsService {
             // checked, and — worse — lost the payable reference that
             // `create_property_booking` had returned, which the payment link then
             // had to be invented from.
-            await this.persistToolContext(schemaName, conversation.id, executedToolsThisTurn);
+            await this.persistToolContext(schemaName, conversation.id, executedToolsThisTurn, session);
 
             turnTrace.add('decision', 'final_response', {
                 finalResponseLength: finalResponse?.length || 0,
@@ -3674,10 +3725,11 @@ export class ConversationsService {
                     .map(item => ({ kind: item.kind, href: item.href })),
             });
             // Persist the step-by-step trace, fire-and-forget — tracing never breaks the turn.
-            try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
+            try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
             return finalResponse;
         } catch (e: any) {
+            if (session) session.trace.error = String(e.message || e);
             this.logger.error(`[Pipeline] LLM call FAILED: ${e.message}`, e.stack);
 
             // Something was already done for this customer before the turn broke.
@@ -3689,17 +3741,17 @@ export class ConversationsService {
             );
             if (committed.length) {
                 this.logger.error(`[Pipeline] Turn failed AFTER committing ${committed.map(t => t.name).join(', ')} — telling the customer the truth instead of the generic error`);
-                this.recordAgentSignal(tenantId, 'commit_then_failure');
+                this.recordAgentSignal(tenantId, 'commit_then_failure', session);
                 turnTrace.add('decision', 'error_after_commit', {
                     error: e?.message,
                     committed: committed.map(t => t.name),
                 });
-                try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
+                try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
                 return partialSuccessText(userLanguage);
             }
 
             // Increment failed attempts for handoff threshold
-            await this.prisma.executeInTenantSchema(schemaName,
+            if (!session) await this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations
                  SET metadata = jsonb_set(
                      COALESCE(metadata, '{}'::jsonb),
@@ -3712,7 +3764,7 @@ export class ConversationsService {
 
             // Trace failed turns too — they're the most valuable for debugging/evals.
             turnTrace.add('decision', 'error', { error: e?.message });
-            try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
+            try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
             return errorFallbackText(userLanguage);
         }
@@ -3809,6 +3861,7 @@ export class ConversationsService {
         schemaName: string,
         conversationId: string,
         executed: Array<{ name: string; result: any }>,
+        session?: AgentTurnSession,
     ): Promise<void> {
         if (!executed.length) return;
         try {
@@ -3822,6 +3875,11 @@ export class ConversationsService {
                 awaiting: (t.result as any)?.awaitingPayment === true || undefined,
                 facts: this.describeOperationResult(t.result).slice(0, 400) || undefined,
             }));
+            if (session) {
+                session.metadata.toolContext = [...(session.metadata.toolContext || []), ...entries].slice(-RECENT_ACTIONS_MAX);
+                session.metadata.toolContextUpdatedAt = new Date().toISOString();
+                return;
+            }
             // Se ACUMULA, no se pisa.
             //
             // El `jsonb_set` reemplazaba el arreglo entero, así que
@@ -3875,7 +3933,8 @@ export class ConversationsService {
      * often the server closed a confirmation the model would have dropped.
      * Cheap Redis counters keyed by day, read by the Ops Center.
      */
-    private recordAgentSignal(tenantId: string, signal: string): void {
+    private recordAgentSignal(tenantId: string, signal: string, session?: AgentTurnSession): void {
+        if (session) { session.trace.steps.push({ signal }); return; }
         const day = new Date().toISOString().slice(0, 10);
         const tenantKey = `agent:signal:${signal}:${tenantId}:${day}`;
         // Platform-wide total and the set of tenants that contributed to it.
@@ -3921,6 +3980,7 @@ export class ConversationsService {
         conversationId: string,
         tenantId: string,
         operatingCountry?: string | null,
+        session?: AgentTurnSession,
     ): Promise<string> {
         // Una confirmación no tiene nada que expandir.
         //
@@ -3949,7 +4009,7 @@ export class ConversationsService {
         // which happens later in the pipeline). Skip the current inbound (OFFSET 1).
         let recent = '';
         try {
-            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            const rows = session ? [...session.history].reverse().slice(0, 5).map(row => ({ direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT direction, content_text FROM messages
                  WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 5 OFFSET 1`,
                 [conversationId]);
@@ -3963,7 +4023,7 @@ export class ConversationsService {
         if (!recent) return userText;
 
         try {
-            const resp = await this.llmRouter.execute({
+            const resp = await (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter).execute({
                 task: 'conversation',
                 messages: [{
                     role: 'user',
@@ -4133,7 +4193,9 @@ export class ConversationsService {
         lang?: string,
         priorActions?: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }>,
         trustedContext?: Partial<TurnContext>,
+        session?: AgentTurnSession,
     ): Promise<string> {
+        const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
         if (!response || isErrorFallback(response)) return response;
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)
@@ -4141,19 +4203,19 @@ export class ConversationsService {
         // `isBackingTool` comes from the canonical policy registry rather than a
         // name pattern: the pattern missed place_order, book_class,
         // enroll_student, register_pet and file_claim, so a real sale closed by
-        // any of those was audited as invented. Unknown/MCP tools that succeeded
-        // count as backing — we cannot prove they did nothing, and calling a real
-        // booking a lie is the more expensive mistake.
+        // any of those was audited as invented. MCP can back a completion only
+        // when the trusted execution decision identifies a write. Successful
+        // reads and tools with unknown effects never prove a completed action.
         const isBackingTool = (name: string, result?: any) => (
             name.startsWith('mcp__') ? result?._executionEffect === 'write' : isBusinessWriteTool(name)
         );
         const backing = this.backingEvidence(executedTools, priorActions);
         const claimAudit = auditTurnClaim(response, backing, { isBackingTool });
         if (claimAudit.falseClaim) {
-            this.recordAgentSignal(tenantId, 'claim_unbacked');
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] Response claimed completed action without backing tool execution — corrective retry: "${response.slice(0, 100)}"`);
             try {
-                const correctedClaim = await this.llmRouter.execute({
+                const correctedClaim = await llmRouter.execute({
                     task: 'conversation',
                     messages: [
                         ...currentMessages,
@@ -4203,10 +4265,10 @@ export class ConversationsService {
         // el envío y el otro lo castiga por anunciarlo.
         const backendWillDeliver = (executedTools || []).some(t => !!(t?.result as any)?.paymentLink);
         if (outcomeAlreadyKnown && !backendWillDeliver && promisesLaterDelivery(response)) {
-            this.recordAgentSignal(tenantId, 'deferred_after_execution');
+            this.recordAgentSignal(tenantId, 'deferred_after_execution', session);
             this.logger.warn(`[Guardrail] La operacion ya se ejecuto y la respuesta la difiere — reintento correctivo: "${response.slice(0, 100)}"`);
             try {
-                const corrected = await this.llmRouter.execute({
+                const corrected = await llmRouter.execute({
                     task: 'conversation',
                     messages: [
                         ...currentMessages,
@@ -4227,7 +4289,7 @@ export class ConversationsService {
                     // promesa que nadie cumple—, así que queda la señal para que
                     // el dueño lo vea en Salud del agente.
                     this.logger.warn('[Guardrail] El reintento volvio a diferir una operacion ya ejecutada');
-                    this.recordAgentSignal(tenantId, 'deferred_after_execution_unfixed');
+                    this.recordAgentSignal(tenantId, 'deferred_after_execution_unfixed', session);
                 }
             } catch (e: any) {
                 this.logger.warn(`[Guardrail] Reintento de promesa diferida fallo: ${e.message}`);
@@ -4254,7 +4316,7 @@ export class ConversationsService {
 
         this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — corrective retry`);
         try {
-            const corrected = await this.llmRouter.execute({
+            const corrected = await llmRouter.execute({
                 task: 'conversation',
                 messages: [
                     ...currentMessages,
@@ -4560,55 +4622,29 @@ export class ConversationsService {
         });
     }
 
-    private async persistBookingState(schemaName: string, conversationId: string, state: any): Promise<void> {
-        // Redis first — always succeeds, survives PG failures
-        const redisKey = `booking:${conversationId}`;
-        try {
-            await this.redis.set(redisKey, JSON.stringify(state), 3600); // 1h TTL
-        } catch (e: any) {
-            this.logger.warn(`Redis booking state save failed: ${e.message}`);
+    private async persistBookingState(schemaName: string, conversationId: string, state: any, session?: AgentTurnSession): Promise<void> {
+        const savedAt = new Date().toISOString();
+        const stamped = { ...state, savedAt };
+        const update = { bookingState: stamped, bookingStateUpdatedAt: savedAt, bookingStateManaged: true };
+        if (session) Object.assign(session.metadata, update);
+        else {
+            try {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                    [conversationId, JSON.stringify(update)]);
+            } catch (error: any) { this.logger.warn(`Booking state persistence failed: ${error.message}`); }
         }
-        // PostgreSQL — durable but may fail under shared memory pressure
-        try {
-            const update = { bookingState: state, bookingStateUpdatedAt: new Date().toISOString() };
-            await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                [conversationId, JSON.stringify(update)],
-            );
-        } catch (e: any) {
-            this.logger.warn(`PG booking state save failed (Redis has backup): ${e.message}`);
-        }
+        await (session?.state || this.redis).set(`booking:${conversationId}`, JSON.stringify(stamped), 7 * 86400).catch(() => {});
     }
 
-    /** Load booking state: Redis first (fast), fallback to conversation metadata. */
-    private async loadBookingState(conversationId: string, conversationMetadata: any): Promise<BookingState> {
+    private async loadBookingState(conversationId: string, metadata: any, session?: AgentTurnSession): Promise<BookingState> {
+        if (metadata?.bookingStateManaged === true) return restoreBookingMission(metadata.bookingState, metadata.bookingStateUpdatedAt).state;
+        if (metadata?.bookingState) return restoreBookingMission(metadata.bookingState, metadata.bookingStateUpdatedAt).state;
         try {
-            const redisKey = `booking:${conversationId}`;
-            const cached = await this.redis.get(redisKey);
-            if (cached) {
-                const state = JSON.parse(cached);
-                if (state.step) {
-                    this.logger.log(`[Pipeline] Booking state loaded from Redis: step=${state.step} svc=${state.serviceName || '-'}`);
-                    return state;
-                }
-            }
+            const cached = await (session?.state || this.redis).get(`booking:${conversationId}`);
+            if (cached) { const state = JSON.parse(cached); return restoreBookingMission(state, state.savedAt).state; }
         } catch {}
-        // Fallback to PG metadata — but only if it's FRESH. The PG backup has no
-        // TTL (unlike the 1h Redis key), so without this an abandoned booking could
-        // be restored days later and, with date+time already captured, book a slot
-        // in the past. Mirror the Redis 1h expiry.
-        const state = conversationMetadata?.bookingState;
-        if (state?.step && state.step !== 'idle') {
-            const updatedAt = conversationMetadata?.bookingStateUpdatedAt;
-            const ageMs = updatedAt ? (Date.now() - new Date(updatedAt).getTime()) : Infinity;
-            if (ageMs > 3600_000) {
-                this.logger.log(`[Pipeline] Discarding stale PG booking state (age ${Math.round(ageMs / 60000)}min) — restarting idle`);
-                return { step: 'idle' } as BookingState;
-            }
-            this.logger.log(`[Pipeline] Booking state loaded from PG metadata: step=${state.step}`);
-            return state;
-        }
-        return state || { step: 'idle' };
+        return { step: 'idle' };
     }
 
     private async tenantSchema(tenantId: string): Promise<string> {

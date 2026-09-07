@@ -14,12 +14,12 @@ export class AgentTestController {
     constructor(private readonly service: AgentTestService) {}
 
     /**
-     * Run a single message through the bounded prompt/read-only-tool preview.
+     * Run a single message through the operational turn core with isolated session state.
      * Returns the LLM reply plus complete debug info: assembled prompt,
      * tool calls, RAG hits, token usage, cost, latency.
      *
-     * It intentionally excludes Booking Engine, writers, MCP, vertical provider
-     * integrations and channel delivery. It does not persist business state;
+     * Booking and procedures use their real engines. Writer, provider and channel
+     * delivery boundaries remain blocked. It does not persist business state;
      * real LLM usage is quota- and cost-accounted.
      */
     @Post(':tenantId/:agentId')

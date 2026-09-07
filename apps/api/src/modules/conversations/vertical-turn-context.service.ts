@@ -1,3 +1,4 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { Injectable } from '@nestjs/common';
 import {
     buildDomainContractDraft,
@@ -72,8 +73,9 @@ export class VerticalTurnContextService {
         tenantId: string;
         language: string;
         toolsConfig?: unknown;
+        executionContext?: ServiceExecutionContext;
     }): Promise<VerticalContext | undefined> {
-        const config = await this.verticals.getVerticalConfig(input.tenantId);
+        const config = await this.verticals.getVerticalConfig(input.tenantId, 0, input.executionContext);
         if (!config?.industry) return undefined;
 
         const language = this.languageCode(input.language);

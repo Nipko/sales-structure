@@ -34,10 +34,14 @@ function createHarness(identityVerified = true) {
         bookingState: null,
         insertInboundBeforeAcquire: false,
         canonicalName: 'Amazon Minimalist',
+        erased: false,
     };
 
     const runQuery = async (sql: string, params: any[] = []) => {
         const normalized = sql.replace(/\s+/g, ' ').trim();
+        if(normalized.startsWith('SELECT pg_advisory_xact_lock'))return [];
+        if(normalized.startsWith('SELECT contact_id FROM customer_memory_erasure'))return state.erased?[{contact_id:contactId}]:[];
+        if(normalized.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
         if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE INDEX')
             || normalized.startsWith('ALTER TABLE') || normalized.startsWith('DO $ddl$')) return [];
         if (normalized.startsWith('SELECT name FROM')) return [{ name: state.canonicalName }];
@@ -275,6 +279,12 @@ function createHarness(identityVerified = true) {
 }
 
 describe('ToolExecutionControlService', () => {
+    it('refuses erased contacts before creating requests or sending identity challenges',async()=>{
+        const {service,state,chatIdentity}=createHarness(false);state.erased=true;
+        const decision=await service.preflight({schemaName,tenantId,contactId,conversationId,toolName:'create_appointment',args:{customerEmail:'secret@example.test'}});
+        expect(decision).toMatchObject({allowed:false,result:{error:'contact_erased'}});
+        expect(state.ledgers).toEqual([]);expect(chatIdentity.startVerification).not.toHaveBeenCalled();
+    });
     const mcpReview: McpToolApproval = {
         serverId: 'erp', toolName: 'operation', effect: 'write', definitionHash: 'a'.repeat(64),
         dataClassification: 'contact', contactIdArgument: 'contactId', tenantIdArgument: 'tenantId',
@@ -692,6 +702,9 @@ describe('ToolExecutionControlService', () => {
         let failOutbox = true;
         const query = jest.fn(async (sql: string, params: any[] = []) => {
             const normalized = sql.replace(/\s+/g, ' ').trim();
+            if(normalized.startsWith('SELECT pg_advisory_xact_lock'))return [];
+            if(normalized.startsWith('SELECT contact_id FROM customer_memory_erasure'))return [];
+            if(normalized.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
             if (normalized.startsWith('SELECT t.id AS ticket_id')) {
                 return ticket.status === 'pending' && new Date(ticket.expires_at).getTime() <= Date.now()
                     ? [{

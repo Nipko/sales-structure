@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AsyncLocalStorage } from 'async_hooks';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import {
     ASSURANCE_LEVEL_MATRIX,
@@ -349,6 +350,7 @@ function fromCanonicalBase64Url(value: string): Buffer | null {
 export class ToolExecutionControlService {
     private readonly logger = new Logger(ToolExecutionControlService.name);
     private readonly initializedSchemas = new Map<string, Promise<void>>();
+    private readonly privacyTransaction = new AsyncLocalStorage<{schemaName:string;query:TenantQuery}>();
 
     constructor(
         private readonly prisma: PrismaService,
@@ -384,7 +386,7 @@ export class ToolExecutionControlService {
         await this.ensureControlTables(schemaName);
 
         const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 1000) : null;
-        const decision: any = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        const decision: any = await this.transaction(schemaName, async (query) => {
             const existing = await query<Array<{
                 id: string;
                 execution_ledger_id: string;
@@ -408,6 +410,7 @@ export class ToolExecutionControlService {
             );
             const ticket = existing[0];
             if (!ticket) throw new NotFoundException('Approval ticket not found');
+            await this.assertContactActive(query,schemaName,ticket.contact_id);
 
             const decisionCanStillTriggerExecution = ticket.status === 'pending'
                 || (ticket.status === 'approved'
@@ -582,7 +585,7 @@ export class ToolExecutionControlService {
         await this.ensureControlTables(schemaName);
         const leaseToken = randomUUID();
 
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const params: any[] = [];
             let predicate = `t.status = 'approved'
                 AND (
@@ -633,6 +636,8 @@ export class ToolExecutionControlService {
                 return { state: 'none' as const };
             }
 
+            try { await this.assertContactActive(query,schemaName,row.contact_id); }
+            catch(error:any){if(error.message==='contact_erased')return {state:'completed' as const,result:{error:'contact_erased'}};throw error;}
             if (row.ticket_status !== 'approved') {
                 if (input.ticketId) throw new ConflictException('Approval ticket is not approved');
                 return { state: 'none' as const };
@@ -777,7 +782,9 @@ export class ToolExecutionControlService {
         resultInput: Record<string, unknown>,
     ): Promise<{ state: 'completed' | 'pending' | 'in_progress'; result: Record<string, unknown> }> {
         const result = this.recordPayload(resultInput);
-        return this.prisma.transactionInTenantSchema(claim.schemaName, async (query) => {
+        return this.transaction(claim.schemaName, async (query) => {
+            try { await this.assertContactActive(query,claim.schemaName,claim.contactId); }
+            catch(error:any){if(error.message==='contact_erased')return {state:'completed' as const,result:{error:'contact_erased'}};throw error;}
             const rows = await query<any[]>(
                 `SELECT t.resume_attempts, t.resume_state, t.resume_lease_token,
                         l.status AS ledger_status, l.response_payload
@@ -848,13 +855,15 @@ export class ToolExecutionControlService {
         await this.ensureControlTables(schemaName);
         const leaseToken = randomUUID();
         const boundedLimit = Math.max(1, Math.min(100, Math.floor(limit)));
-        const rows = await this.prisma.transactionInTenantSchema(schemaName, async (query) => query<any[]>(
+        const rows = await this.transaction(schemaName, async (query) => query<any[]>(
             `WITH due AS (
                 SELECT id
                   FROM tool_approval_outbox
-                 WHERE (status IN ('pending', 'failed') AND next_attempt_at <= NOW())
+                 WHERE ((status IN ('pending', 'failed') AND next_attempt_at <= NOW())
                     OR (status = 'processing'
-                        AND (lease_expires_at IS NULL OR lease_expires_at <= NOW()))
+                        AND (lease_expires_at IS NULL OR lease_expires_at <= NOW())))
+                   AND NOT EXISTS(SELECT 1 FROM tool_approval_tickets ticket JOIN customer_memory_erasure erased
+                       ON erased.contact_id=ticket.contact_id WHERE ticket.id=tool_approval_outbox.ticket_id)
                  ORDER BY created_at
                  FOR UPDATE SKIP LOCKED
                  LIMIT $1
@@ -881,6 +890,32 @@ export class ToolExecutionControlService {
         event: ToolApprovalOutboxEvent,
         error?: unknown,
     ): Promise<void> {
+        await this.transaction(schemaName,async query=>{
+            const contacts=await query<any[]>(`SELECT ticket.contact_id FROM tool_approval_outbox o
+                JOIN tool_approval_tickets ticket ON ticket.id=o.ticket_id WHERE o.id=$1::uuid`,[event.id]);
+            if(contacts[0]){
+                try{await this.assertContactActive(query,schemaName,contacts[0].contact_id);}
+                catch(failure:any){if(failure.message==='contact_erased')return;throw failure;}
+            }
+            await this.finishApprovalOutboxEventInternal(schemaName,event,error);
+        });
+    }
+
+    /** Do not deliver an event leased before erasure with its old in-memory payload. */
+    async publishApprovalOutboxEvent(schemaName:string,event:ToolApprovalOutboxEvent,publish:(payload:Record<string,unknown>)=>Promise<void>):Promise<boolean>{
+        return this.transaction(schemaName,async query=>{
+            const rows=await query<any[]>(`SELECT o.payload,ticket.contact_id FROM tool_approval_outbox o
+                JOIN tool_approval_tickets ticket ON ticket.id=o.ticket_id WHERE o.id=$1::uuid
+                AND o.lease_token=$2::uuid AND o.status='processing' FOR UPDATE OF o`,[event.id,event.leaseToken]);
+            if(!rows[0])return false;
+            try{await this.assertContactActive(query,schemaName,rows[0].contact_id);}
+            catch(failure:any){if(failure.message==='contact_erased')return false;throw failure;}
+            await publish(this.recordPayload(rows[0].payload));
+            return true;
+        });
+    }
+
+    private async finishApprovalOutboxEventInternal(schemaName:string,event:ToolApprovalOutboxEvent,error?:unknown):Promise<void>{
         if (!error) {
             await this.query(
                 schemaName,
@@ -906,6 +941,22 @@ export class ToolExecutionControlService {
     }
 
     async preflight(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
+        const policy=getToolPolicy(request.toolName);
+        if(!policy||policy.effect==='read'||request.draftMode||request.readOnlyExecution||!UUID_RE.test(request.contactId))
+            return this.preflightInternal(request);
+        await this.ensureControlTables(request.schemaName);
+        try {
+            return await this.transaction(request.schemaName,async query=>{
+                await this.assertContactActive(query,request.schemaName,request.contactId);
+                return this.preflightInternal(request);
+            });
+        } catch(error:any) {
+            if(error.message==='contact_erased')return this.block('contact_erased','Los datos del contacto fueron eliminados.');
+            throw error;
+        }
+    }
+
+    private async preflightInternal(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
         let policy = getToolPolicy(request.toolName);
         if (!policy) return this.block('unknown_tool', 'La herramienta no está registrada.');
         // This must precede identity challenges, lazy tables and the ledger:
@@ -1085,7 +1136,16 @@ export class ToolExecutionControlService {
         };
     }
 
-    async complete(
+    async complete(schemaName:string,decision:ToolExecutionControlDecision,result:Record<string,unknown>):Promise<void>{
+        if(!decision.allowed||!decision.ledgerId)return;
+        await this.transaction(schemaName,async query=>{
+            const ledger=await this.loadLedger(schemaName,decision.ledgerId!);
+            await this.assertContactActive(query,schemaName,ledger.contact_id);
+            await this.completeInternal(schemaName,decision,result);
+        });
+    }
+
+    private async completeInternal(
         schemaName: string,
         decision: ToolExecutionControlDecision,
         result: Record<string, unknown>,
@@ -1122,7 +1182,18 @@ export class ToolExecutionControlService {
         throw new Error('tool_execution_lease_expired_or_lost');
     }
 
-    async fail(
+    async fail(schemaName:string,decision:ToolExecutionControlDecision|undefined,errorCode:string):Promise<void>{
+        if(!decision?.allowed||!decision.ledgerId)return;
+        try {
+            await this.transaction(schemaName,async query=>{
+                const ledger=await this.loadLedger(schemaName,decision.ledgerId!);
+                await this.assertContactActive(query,schemaName,ledger.contact_id);
+                await this.failInternal(schemaName,decision,errorCode);
+            });
+        } catch(error:any) { if(error.message!=='contact_erased')throw error; }
+    }
+
+    private async failInternal(
         schemaName: string,
         decision: ToolExecutionControlDecision | undefined,
         errorCode: string,
@@ -1201,7 +1272,7 @@ export class ToolExecutionControlService {
      */
     async expirePendingApprovalTickets(schemaName: string): Promise<number> {
         await this.ensureControlTables(schemaName);
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const expired = await query<Array<{
                 ticket_id: string;
                 ledger_id: string;
@@ -1765,7 +1836,7 @@ export class ToolExecutionControlService {
         }
         if (!ticket) {
             const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS).toISOString();
-            const created = await this.prisma.transactionInTenantSchema(
+            const created = await this.transaction(
                 request.schemaName,
                 async (query) => {
                     const locked = await query<ExecutionLedgerRow[]>(
@@ -1849,7 +1920,7 @@ export class ToolExecutionControlService {
                 error: 'approval_expired',
                 message: 'La aprobación humana venció. Solicita una nueva revisión.',
             };
-            await this.prisma.transactionInTenantSchema(request.schemaName, async (query) => {
+            await this.transaction(request.schemaName, async (query) => {
                 await query(
                     `UPDATE tool_approval_tickets
                         SET status = 'expired', resume_state = 'not_requested', updated_at = NOW()
@@ -2015,6 +2086,7 @@ export class ToolExecutionControlService {
         const pending = this.initializedSchemas.get(schemaName);
         if (pending) return pending;
         const initialization = (async () => {
+            await this.query(schemaName,`CREATE TABLE IF NOT EXISTS customer_memory_erasure (contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
             await this.query(
                 schemaName,
                 `CREATE TABLE IF NOT EXISTS tool_execution_ledger (
@@ -2297,7 +2369,7 @@ export class ToolExecutionControlService {
     }
 
     private async expireApprovalIfStale(schemaName: string, ticketId: string): Promise<boolean> {
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        return this.transaction(schemaName, async (query) => {
             const rows = await query<Array<{
                 id: string;
                 execution_ledger_id: string;
@@ -2332,6 +2404,14 @@ export class ToolExecutionControlService {
         eventType: string,
         payload: Record<string, unknown>,
     ): Promise<void> {
+        const context=this.privacyTransaction.getStore();
+        if(context){
+            const contacts=await query<any[]>(`SELECT contact_id FROM tool_approval_tickets WHERE id=$1::uuid`,[ticketId]);
+            if(contacts[0]){
+                try{await this.assertContactActive(query,context.schemaName,contacts[0].contact_id);}
+                catch(error:any){if(error.message==='contact_erased')return;throw error;}
+            }
+        }
         const eventKey = `${eventType}:${ticketId}`;
         await query(
             `INSERT INTO tool_approval_outbox
@@ -2425,7 +2505,28 @@ export class ToolExecutionControlService {
         }
     }
 
+    /** Nested control work shares the transaction that serializes with erasure. */
+    private transaction<T>(schemaName:string,callback:(query:TenantQuery)=>Promise<T>):Promise<T>{
+        const active=this.privacyTransaction.getStore();
+        if(active?.schemaName===schemaName)return callback(active.query);
+        return this.prisma.transactionInTenantSchema(schemaName,async query=>{
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`,[`agent-privacy:${schemaName}`]);
+            return this.privacyTransaction.run({schemaName,query},()=>callback(query));
+        });
+    }
+
+    private async assertContactActive(query:TenantQuery,schemaName:string,contactId:string|null){
+        if(!contactId)throw new Error('contact_erased');
+        // The enclosing shared privacy lock excludes the eraser's exclusive
+        // transaction without serializing unrelated customer operations.
+        const erased=await query<any[]>(`SELECT contact_id FROM customer_memory_erasure WHERE contact_id=$1::uuid`,[contactId]);
+        if(erased.length)throw new Error('contact_erased');
+    }
+
     private query<T = any[]>(schemaName: string, sql: string, params: any[] = []): Promise<T> {
+        const active=this.privacyTransaction.getStore();
+        if(active?.schemaName===schemaName)return active.query<T>(sql,params);
+        if(/^\s*(INSERT|UPDATE|DELETE|WITH)\b/i.test(sql))return this.transaction(schemaName,q=>q<T>(sql,params));
         return this.prisma.executeInTenantSchema<T>(schemaName, sql, params);
     }
 

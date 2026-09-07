@@ -1,11 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
+import { LearningService } from '../learning/learning.service';
 
 @Injectable()
 export class ComplianceService {
     private readonly logger = new Logger(ComplianceService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(private readonly prisma: PrismaService, @Optional() private readonly redis?: RedisService,
+        @Optional() private readonly learning?: LearningService) {}
 
     // ─── Legal Text Versions ──────────────────────────────────────────────────
 
@@ -175,9 +178,8 @@ export class ComplianceService {
 
     /**
      * GDPR Article 17 — Right to Erasure.
-     * Anonymizes all PII for a contact across every tenant table.
-     * Preserves structural records (IDs, timestamps, foreign keys) for
-     * analytics integrity but removes all personally identifiable content.
+     * Redacts supported contact records and transitive agent derivatives.
+     * Preserves structural IDs and reports any incomplete table operation.
      */
     async eraseContactData(
         schemaName: string,
@@ -215,6 +217,25 @@ export class ComplianceService {
             this.logger.warn(`[GDPR Erase] Memory erasure failed: ${err.message}`);
         }
 
+        try {
+            const linked = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT DISTINCT contact_id FROM contact_identities WHERE customer_profile_id IN
+                    (SELECT customer_profile_id FROM contact_identities WHERE contact_id=$1::uuid)`, [contactId]);
+            const contactIds = [...new Set([contactId, ...linked.map(c=>c.contact_id)])];
+            const conversations = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `UPDATE conversations SET metadata='{"procedureStateManaged":true,"bookingStateManaged":true}'::jsonb, updated_at=NOW()
+                 WHERE contact_id=ANY($1::uuid[]) RETURNING id`, [contactIds]);
+            // PostgreSQL markers are authoritative if cache deletion is unavailable.
+            if(this.redis) for(const conversation of conversations) {
+                await Promise.allSettled([this.redis.del(`procedure:${conversation.id}`),this.redis.del(`booking:${conversation.id}`)]);
+            }
+            totalRecords += await this.learning?.eraseContactSources(schemaName, tenantId, contactIds) || 0;
+            erasedTables.push('conversation_state', 'learning_derivatives');
+        } catch (err:any) {
+            failedTables.push('conversation_and_learning_derivatives');
+            this.logger.warn(`[GDPR Erase] Derived state erasure failed: ${err.message}`);
+        }
+
         // Resolve the original phone before the contact row is anonymized.
         await run('campaign_recipients',
             `UPDATE campaign_recipients SET phone = $2
@@ -248,7 +269,7 @@ export class ComplianceService {
 
         // 4. Conversations — clear any PII metadata
         await run('conversations',
-            `UPDATE conversations SET metadata = '{}'::jsonb, updated_at = NOW()
+            `UPDATE conversations SET metadata = '{"procedureStateManaged":true,"bookingStateManaged":true}'::jsonb, updated_at = NOW()
              WHERE contact_id = $1::uuid RETURNING id`,
             [contactId],
         );
@@ -262,11 +283,15 @@ export class ComplianceService {
 
         // 7. Customer profiles — anonymize if exists
         await run('customer_profiles',
-            `UPDATE customer_profiles SET primary_phone = $2, primary_email = NULL, display_name = $2
+            `UPDATE customer_profiles SET phone = $2, email = NULL, display_name = $2, metadata = '{}'::jsonb, updated_at = NOW()
              WHERE id IN (SELECT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid)
              RETURNING id`,
             [contactId, anon],
         );
+
+        await run('contact_identities',
+            `UPDATE contact_identities SET external_id = $2 WHERE contact_id = $1::uuid RETURNING id`,
+            [contactId,anon]);
 
         // 8. Custom attribute values — delete
         await run('custom_attribute_values',
@@ -315,6 +340,9 @@ export class ComplianceService {
             `CREATE TABLE IF NOT EXISTS customer_memory_erasure (
                 contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
         return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            // Same first lock as ToolExecutionControl transactions: a request,
+            // finalizer or approval notification cannot cross the erasure boundary.
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`,[`agent-privacy:${schema}`]);
             const profiles = await query<any[]>(
                 `SELECT DISTINCT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid`, [contactId]);
             const profileIds = profiles.map(p => p.customer_profile_id).filter(Boolean).sort();
@@ -328,6 +356,19 @@ export class ComplianceService {
             for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [lock]);
             await query(`INSERT INTO customer_memory_erasure (contact_id)
                 SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
+            const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger') AS ledger,
+                to_regclass('tool_approval_tickets') AS tickets,to_regclass('tool_approval_outbox') AS outbox`);
+            if(tables[0]?.ledger)await query(`UPDATE tool_execution_ledger SET request_payload='{}'::jsonb,
+                response_payload='{"error":"contact_erased"}'::jsonb,confirmation_token=NULL,
+                execution_lease_token=NULL,execution_lease_expires_at=NULL,last_error_code='contact_erased',
+                status=CASE WHEN status='executing' THEN 'reconciliation_required' WHEN status='succeeded' THEN 'succeeded' ELSE 'rejected' END,
+                updated_at=NOW() WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
+            if(tables[0]?.tickets)await query(`UPDATE tool_approval_tickets SET status='rejected',decision_reason=NULL,
+                resume_state='completed',resume_result='{"error":"contact_erased"}'::jsonb,resume_error='contact_erased',
+                resume_lease_token=NULL,resume_lease_expires_at=NULL,updated_at=NOW() WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
+            if(tables[0]?.outbox)await query(`UPDATE tool_approval_outbox SET payload='{}'::jsonb,status='published',
+                lease_token=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=NOW() WHERE ticket_id IN
+                (SELECT id FROM tool_approval_tickets WHERE contact_id=ANY($1::uuid[]))`,[contactIds]);
             const facts = await query<any[]>(
                 `DELETE FROM customer_memory_facts
                  WHERE (owner_kind = 'profile' AND owner_id = ANY($1::uuid[]))

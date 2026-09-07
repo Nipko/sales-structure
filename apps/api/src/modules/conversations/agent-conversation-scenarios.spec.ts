@@ -46,6 +46,8 @@ function createTenant() {
 
     const runQuery = async (sql: string, params: any[] = []): Promise<any[]> => {
         const q = sql.replace(/\s+/g, ' ').trim();
+        if(q.startsWith('SELECT pg_advisory_xact_lock')||q.startsWith('SELECT contact_id FROM customer_memory_erasure'))return [];
+        if(q.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
 
         if (/^(CREATE|ALTER|DO )/.test(q)) return [];
 

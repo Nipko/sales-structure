@@ -255,15 +255,12 @@ export class ToolApprovalWorkflowService {
     private async dispatchTenantEvents(schemaName: string, tenantId: string): Promise<void> {
         const outbox = await this.controls.claimApprovalOutboxEvents(schemaName, 25);
         for (const event of outbox) {
-            const payload = {
-                ...event.payload,
-                tenantId,
-                eventId: event.id,
-                eventType: event.eventType,
-            };
             try {
-                await this.events.emitAsync(event.eventType, payload);
-                await this.events.emitAsync('tool.approval.notification', payload);
+                await this.controls.publishApprovalOutboxEvent(schemaName,event,async currentPayload=>{
+                    const payload={...currentPayload,tenantId,eventId:event.id,eventType:event.eventType};
+                    await this.events.emitAsync(event.eventType, payload);
+                    await this.events.emitAsync('tool.approval.notification', payload);
+                });
                 await this.controls.finishApprovalOutboxEvent(schemaName, event);
             } catch (error) {
                 await this.controls.finishApprovalOutboxEvent(schemaName, event, error);

@@ -1,0 +1,250 @@
+{
+  "scope": "Local code reproduction; all external effects mocked; no real LLM or database.",
+  "runtimeTimezone": "America/Bogota",
+  "generatedAt": "2026-09-06T03:51:21.903Z",
+  "intentions": [
+    {
+      "text": "Hola quiero cita mañana",
+      "intent": {
+        "intent": "greet",
+        "serviceMentioned": null,
+        "dateMentioned": null,
+        "timeMentioned": null,
+        "isConfirmation": false,
+        "isNegation": false,
+        "nameProvided": null,
+        "emailProvided": null,
+        "questionTopic": null,
+        "language": "es"
+      },
+      "normalized": {
+        "intent": "unclear",
+        "confidence": "low",
+        "normalized": "hola quiero cita manana"
+      },
+      "authorizesTransactional": false
+    },
+    {
+      "text": "Gracias, quiero saber primero el precio",
+      "intent": {
+        "intent": "confirm",
+        "serviceMentioned": null,
+        "dateMentioned": null,
+        "timeMentioned": null,
+        "isConfirmation": true,
+        "isNegation": false,
+        "nameProvided": null,
+        "emailProvided": null,
+        "questionTopic": null,
+        "language": "es"
+      },
+      "normalized": {
+        "intent": "acknowledge",
+        "confidence": "high",
+        "normalized": "gracias quiero saber primero el precio",
+        "matched": "gracias"
+      },
+      "authorizesTransactional": true
+    },
+    {
+      "text": "Gracias, pero qué incluye",
+      "intent": {
+        "intent": "farewell",
+        "serviceMentioned": null,
+        "dateMentioned": null,
+        "timeMentioned": null,
+        "isConfirmation": false,
+        "isNegation": false,
+        "nameProvided": null,
+        "emailProvided": null,
+        "questionTopic": null,
+        "language": "es"
+      },
+      "normalized": {
+        "intent": "unclear",
+        "confidence": "low",
+        "normalized": "gracias pero que incluye",
+        "matched": "gracias"
+      },
+      "authorizesTransactional": false
+    },
+    {
+      "text": "¿Qué servicios no ofrecen?",
+      "intent": {
+        "intent": "cancel",
+        "serviceMentioned": null,
+        "dateMentioned": null,
+        "timeMentioned": null,
+        "isConfirmation": false,
+        "isNegation": true,
+        "nameProvided": null,
+        "emailProvided": null,
+        "questionTopic": null,
+        "language": "es"
+      },
+      "normalized": {
+        "intent": "reject",
+        "confidence": "medium",
+        "normalized": "¿que servicios no ofrecen"
+      },
+      "authorizesTransactional": false
+    },
+    {
+      "text": "Gracias, quiero cambiar la cita al viernes",
+      "intent": {
+        "intent": "confirm",
+        "serviceMentioned": null,
+        "dateMentioned": "2026-09-12",
+        "timeMentioned": null,
+        "isConfirmation": true,
+        "isNegation": false,
+        "nameProvided": null,
+        "emailProvided": null,
+        "questionTopic": null,
+        "language": "es"
+      },
+      "normalized": {
+        "intent": "acknowledge",
+        "confidence": "high",
+        "normalized": "gracias quiero cambiar la cita al viernes",
+        "matched": "gracias"
+      },
+      "authorizesTransactional": true
+    }
+  ],
+  "procedures": [
+    {
+      "text": "¿Por qué necesitan mi correo?",
+      "collected": {
+        "email": "¿Por qué necesitan mi correo?"
+      },
+      "result": {
+        "handled": true,
+        "text": "Datos completos",
+        "completed": true,
+        "procedureName": "Ingreso"
+      }
+    },
+    {
+      "text": "Ya no quiero continuar",
+      "collected": {
+        "email": "Ya no quiero continuar"
+      },
+      "result": {
+        "handled": true,
+        "text": "Datos completos",
+        "completed": true,
+        "procedureName": "Ingreso"
+      }
+    },
+    {
+      "text": "prefiero hacerlo después",
+      "collected": {
+        "email": "prefiero hacerlo después"
+      },
+      "result": {
+        "handled": true,
+        "text": "Datos completos",
+        "completed": true,
+        "procedureName": "Ingreso"
+      }
+    }
+  ],
+  "bookings": [
+    {
+      "text": "Gracias, quiero saber primero el precio",
+      "intent": {
+        "intent": "confirm",
+        "serviceMentioned": null,
+        "dateMentioned": null,
+        "timeMentioned": null,
+        "isConfirmation": true,
+        "isNegation": false,
+        "nameProvided": null,
+        "emailProvided": null,
+        "questionTopic": null,
+        "language": "es"
+      },
+      "attemptedToolsWithFakeExecutor": [
+        {
+          "tool": "create_appointment",
+          "arguments": {
+            "serviceId": "44444444-4444-4444-8444-444444444444",
+            "date": "2026-09-10",
+            "time": "10:00",
+            "customerName": "Audit Example",
+            "customerEmail": "audit@example.test"
+          },
+          "authorityEvidence": {
+            "kind": "booking_engine_confirmation",
+            "source": "text_confirmation"
+          }
+        }
+      ],
+      "centralEvidenceDecisionWithMockedSigningAndLedger": {
+        "allowed": true,
+        "ledger": {
+          "id": "fake-ledger",
+          "status": "ready"
+        }
+      },
+      "resultingStep": "booked",
+      "responseDirective": "¡Cita confirmada!\nServicio: Limpieza dental\nFecha: 2026-09-10 a las 10:00\nNombre: Audit Example\nInvitación enviada a: audit@example.test\n¿Algo más?"
+    },
+    {
+      "text": "¿Qué servicios no ofrecen?",
+      "intent": {
+        "intent": "cancel",
+        "serviceMentioned": null,
+        "dateMentioned": null,
+        "timeMentioned": null,
+        "isConfirmation": false,
+        "isNegation": true,
+        "nameProvided": null,
+        "emailProvided": null,
+        "questionTopic": null,
+        "language": "es"
+      },
+      "attemptedToolsWithFakeExecutor": [],
+      "centralEvidenceDecisionWithMockedSigningAndLedger": null,
+      "resultingStep": "idle",
+      "responseDirective": "¡Sin problema! ¿Hay algo más en lo que pueda ayudarte?"
+    }
+  ],
+  "widget": {
+    "configuredAppointmentsEnabled": true,
+    "output": "Tu cita quedó confirmada para mañana.",
+    "calls": [
+      {
+        "kind": "llm",
+        "task": "conversation",
+        "tools": null
+      }
+    ],
+    "note": "The model is mocked. This establishes no-tools/no-guardrail delivery, not incidence with a real model."
+  },
+  "priceGrounding": [
+    {
+      "corpus": "<catalog>Precio oficial: COP 20000</catalog>\nuser: Me lo dejas en COP 1000?",
+      "response": "El precio es COP 1000.",
+      "validation": {
+        "ok": true,
+        "hallucinatedPrices": []
+      }
+    },
+    {
+      "corpus": "<catalog>Precio oficial: COP 20000</catalog>",
+      "response": "El precio es COP 1000.",
+      "validation": {
+        "ok": false,
+        "hallucinatedPrices": [
+          1000
+        ]
+      }
+    }
+  ],
+  "staticDraftEvidence": {
+    "draftModeOccurrences": 3,
+    "location": "ConversationsService.runTurn checks draftMode after await generateResponse; grep all source for independent validation."
+  }
+}

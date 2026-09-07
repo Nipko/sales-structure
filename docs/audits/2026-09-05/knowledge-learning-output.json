@@ -1,0 +1,129 @@
+{
+  "scope": "Current source; isolated synthetic dependencies; no DB, network or real LLM. Negative audit assertions reproduce gaps.",
+  "generatedAt": "2026-09-06T03:51:20.601Z",
+  "retrieval": {
+    "metadata": {
+      "inputMetadata": {
+        "doc_is_regulated": true,
+        "doc_jurisdiction": "CO",
+        "doc_authority": "Synthetic authority",
+        "doc_valid_from": "2026-01-01",
+        "doc_valid_to": "2026-12-31"
+      },
+      "returnedKeys": [
+        "id",
+        "document_id",
+        "title",
+        "chunk_text",
+        "chunk_index",
+        "metadata",
+        "similarity",
+        "keywordHit",
+        "score"
+      ],
+      "missing": [
+        "doc_is_regulated",
+        "doc_jurisdiction",
+        "doc_authority",
+        "doc_valid_from",
+        "doc_valid_to"
+      ]
+    },
+    "explicitToolRead": {
+      "chunks": [
+        {
+          "id": "44444444-4444-4444-8444-444444444444",
+          "title": "Synthetic regulated reference",
+          "content": "General regulation content",
+          "score": 0.07999999999999996
+        }
+      ],
+      "status": "ok",
+      "source": "tenant_db",
+      "asOf": "2026-09-06T03:51:20.603Z"
+    },
+    "automaticPipelineClassificationAtDefaultThreshold": {
+      "retrieved": 0,
+      "possible": 0
+    }
+  },
+  "gapReportContract": {
+    "apiData": {
+      "unansweredQueries": [
+        {
+          "id": "query-a",
+          "query": "Synthetic query"
+        }
+      ],
+      "lowSatisfactionDocs": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "satisfaction_score": 1
+        }
+      ],
+      "staleDocuments": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "title": "Synthetic stale document"
+        }
+      ],
+      "falsePositiveCounts": [
+        {
+          "document_id": "33333333-3333-4333-8333-333333333333",
+          "false_positive_count": 2
+        }
+      ]
+    },
+    "uiKpisUsingCurrentConsumerExpressions": {
+      "unanswered": 1,
+      "lowSatisfaction": 0,
+      "stale": 0,
+      "falsePositives": 0
+    },
+    "scope": "API/consumer property contract; no browser render."
+  },
+  "memoryCorrection": {
+    "embeddingMode": "Unavailable; documented exact-dedup/recency fallback",
+    "extractorAcceptedReplacement": {
+      "facts": [
+        "Prefiere contacto por correo; dejo de usar telefono."
+      ],
+      "summary": "Synthetic corrected preference."
+    },
+    "subsequentlyRetrievedMemory": {
+      "facts": [
+        "Prefiere contacto por correo; dejo de usar telefono.",
+        "Prefiere contacto por telefono."
+      ],
+      "summary": "Synthetic corrected preference."
+    },
+    "obsoleteFactReintroduced": true
+  },
+  "memoryErasure": {
+    "returnedErasedTables": [
+      "contacts",
+      "leads",
+      "messages",
+      "conversations",
+      "appointments",
+      "campaign_recipients",
+      "customer_profiles",
+      "custom_attribute_values",
+      "consent_records",
+      "deletion_requests"
+    ],
+    "totalStatements": 10,
+    "memoryStatements": 0,
+    "scope": "Real erasure method command coverage; no real customer data or deletion."
+  },
+  "documentUpdateFailure": {
+    "events": [
+      "saved previous text version",
+      "source changed from ready to processing",
+      "deleted current embeddings",
+      "replacement embedding failed",
+      "source marked error"
+    ],
+    "activeReadyVersionRestoredByMethod": false
+  }
+}

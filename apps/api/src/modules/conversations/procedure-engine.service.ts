@@ -4,14 +4,19 @@ import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import {
     decideToolAuthority,
+    normalizeForIntent,
     type ProcedureDefinition, type ProcedureStep, type ProcedureRunState,
     type ToolAuthorityDecision, type ToolExecutionAuthority,
 } from '@parallext/shared';
 import { isNonCommittalTool } from './tool-policy-registry';
 import {
     interpolateProcedureArgs,
+    coerceProcedureSlot,
     type ProcedureSlotSpec,
 } from './procedure-slot-interpolation';
+import { isInformationSeekingMessage, isPauseMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { procedureDialogueMessages } from './procedure-dialogue-messages';
+import { LanguageDetectorService } from './language-detector.service';
 
 export interface ProcedureProcessResult {
     handled: boolean;
@@ -21,6 +26,7 @@ export interface ProcedureProcessResult {
     handoff?: boolean;
     handoffReason?: string;
     procedureName?: string;
+    dialogueAct?: 'question' | 'pause' | 'cancel' | 'resume' | 'invalid';
 }
 
 /**
@@ -38,6 +44,7 @@ export interface ProcedureAgentContext {
     /** The agent's saved tool config, used to compile tool steps. */
     toolsConfig?: unknown;
     channelType?: string;
+    language?: string;
     /**
      * La autoridad de ejecución de ESTE turno.
      *
@@ -223,6 +230,7 @@ export class ProcedureEngineService {
         agent?: ProcedureAgentContext,
     ): Promise<ProcedureProcessResult> {
         let state = await this.getState(conversationId);
+        const resumingProcedure = !!state;
         let procedure: ProcedureDefinition | null = null;
 
         if (state) {
@@ -256,9 +264,72 @@ export class ProcedureEngineService {
         const byId = new Map(procedure.steps.map((s) => [s.id, s]));
         const indexOfId = (id: string | null) => procedure!.steps.findIndex((s) => s.id === id);
 
-        // If we were awaiting an answer, capture it and advance past the ask.
+        const messages = procedureDialogueMessages(new LanguageDetectorService().detect(userText, agent?.language ?? 'es'));
+        const dialogue = normalizeCustomerIntent(userText);
+        if ((resumingProcedure && dialogue.intent === 'cancel') || dialogue.intent === 'opt_out') {
+            await this.clearState(conversationId);
+            return { handled: true, completed: false, dialogueAct: 'cancel', text: messages.cancelled, procedureName: procedure.name };
+        }
+        if (dialogue.intent === 'request_human') {
+            await this.saveState(conversationId, state);
+            return { handled: true, completed: false, handoff: true, handoffReason: 'procedure_customer_request', text: messages.handoff, procedureName: procedure.name };
+        }
+        if (isPauseMessage(userText)) {
+            state.pausedAt = new Date().toISOString();
+            await this.saveState(conversationId, state);
+            return { handled: true, completed: false, dialogueAct: 'pause', text: messages.paused, procedureName: procedure.name };
+        }
+        if (state.pausedAt) {
+            // A later unrelated message cannot silently resume and become a slot.
+            if (!/^(?:continuemos|continuar|continua|sigamos|retomemos|reanudar|resume|continue|let s continue|let's continue|vamos continuar|continuons|reprendre|reprenons)[.!\s]*$/.test(normalizeForIntent(userText))) {
+                await this.saveState(conversationId, state);
+                return { handled: true, completed: false, dialogueAct: 'pause', text: messages.paused, procedureName: procedure.name };
+            }
+            state.pausedAt = null;
+            await this.saveState(conversationId, state);
+            const ask = byId.get(state.currentStepId ?? '');
+            if (state.awaitingField) {
+                return { handled: true, completed: false, dialogueAct: 'resume', text: ask?.config.question, procedureName: procedure.name };
+            }
+        }
+
+        // A question, pause or rejection is a dialogue act, not a field value.
+        // Validate at collection time so a message-only ending cannot certify
+        // bad data just because there is no later tool validator to catch it.
         if (state.awaitingField) {
-            state.collected[state.awaitingField] = userText;
+            const ask = byId.get(state.currentStepId ?? '');
+            if (isInformationSeekingMessage(userText)) {
+                await this.saveState(conversationId, state);
+                return {
+                    handled: true, completed: false, dialogueAct: 'question', procedureName: procedure.name,
+                    text: ask?.config.explanation || messages.question,
+                };
+            }
+            const spec = this.collectionSpec(procedure, ask, state.awaitingField);
+            const bareRejection = dialogue.intent === 'reject' && dialogue.normalized === dialogue.matched;
+            const skipOptional = spec.required === false && spec.type !== 'boolean'
+                && (bareRejection || /^(?:omitir|saltar|skip|pular|ignorer|passer)$/.test(normalizeForIntent(userText)));
+            let value = userText.trim();
+            const prefixes = {
+                email: /^(?:mi (?:correo|email) es|my email is|meu (?:email|e-mail) e|mon (?:email|courriel) est)\s+/i,
+                name: /^(?:me llamo|mi nombre es|my name is|meu nome e|je m'appelle)\s+/i,
+                phone: /^(?:mi (?:telefono|numero) es|my (?:phone|number) is|meu (?:telefone|numero) e|mon numero est)\s+/i,
+            };
+            const prefix = prefixes[spec.type as keyof typeof prefixes];
+            if (prefix) {
+                const match = normalizeForIntent(value).match(prefix);
+                if (match) value = value.slice(match[0].length).trim();
+            }
+            const coercion = coerceProcedureSlot(value, spec.type ?? 'string');
+            const invalidDialogue = spec.type !== 'boolean'
+                && (bareRejection || ['affirm', 'acknowledge', 'continue'].includes(dialogue.intent));
+            const invalidName = spec.type === 'name' && /^(?:no|nao|non|not|quiero|necesito|prefiero|i want|i need|je veux|je ne|quero|preciso)\b/.test(normalizeForIntent(value));
+            if (!skipOptional && (!value || !coercion.ok || invalidDialogue || invalidName
+                || (spec.choices?.length && !spec.choices.includes(String(coercion.value))))) {
+                await this.saveState(conversationId, state);
+                return { handled: true, completed: false, dialogueAct: 'invalid', text: [messages.invalid, ask?.config.question].filter(Boolean).join('\n\n'), procedureName: procedure.name };
+            }
+            if (!skipOptional) state.collected[state.awaitingField] = coercion.value;
             state.awaitingField = null;
             state.currentStepId = this.nextStepId(procedure, state.currentStepId);
         }
@@ -475,6 +546,24 @@ export class ProcedureEngineService {
         const explicitNext = procedure.steps[idx].next;
         if (explicitNext && procedure.steps.some((s) => s.id === explicitNext)) return explicitNext;
         return idx + 1 < procedure.steps.length ? procedure.steps[idx + 1].id : null;
+    }
+
+    private collectionSpec(procedure: ProcedureDefinition, ask: ProcedureStep | undefined, field: string): ProcedureSlotSpec {
+        if (ask?.config.fieldType) return { type: ask.config.fieldType, required: ask.config.required, choices: ask.config.choices };
+        // Preserve types already declared by a downstream tool argument.
+        for (const step of procedure.steps) {
+            for (const [arg, value] of Object.entries(step.config.args ?? {})) {
+                if (typeof value === 'string' && value.replace(/\s/g, '') === `{{${field}}}` && step.config.slots?.[arg]?.type) {
+                    return step.config.slots[arg];
+                }
+            }
+        }
+        const key = field.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+        const attributes = { required: ask?.config.required, choices: ask?.config.choices };
+        if (/(?:^|_)(?:email|e_mail|correo|courriel)(?:$|_)/.test(key)) return { type: 'email', ...attributes };
+        if (/(?:^|_)(?:phone|telefono|telefone|telephone|celular)(?:$|_)/.test(key)) return { type: 'phone', ...attributes };
+        if (/(?:^|_)(?:name|nombre|nome|nom)(?:$|_)/.test(key)) return { type: 'name', ...attributes };
+        return { type: 'string', ...attributes };
     }
 
     private evaluateCondition(step: ProcedureStep, collected: Record<string, any>): boolean {

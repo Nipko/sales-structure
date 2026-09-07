@@ -32,12 +32,14 @@ function createHarness(identityVerified = true) {
         outbox: [],
         bookingState: null,
         insertInboundBeforeAcquire: false,
+        canonicalName: 'Amazon Minimalist',
     };
 
     const runQuery = async (sql: string, params: any[] = []) => {
         const normalized = sql.replace(/\s+/g, ' ').trim();
         if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE INDEX')
             || normalized.startsWith('ALTER TABLE') || normalized.startsWith('DO $ddl$')) return [];
+        if (normalized.startsWith('SELECT name FROM')) return [{ name: state.canonicalName }];
 
         if (normalized.includes("AND status = 'succeeded'")) {
             const found = [...state.ledgers].reverse().find((item: any) => (
@@ -287,11 +289,10 @@ describe('ToolExecutionControlService', () => {
     it('acepta la confirmación como la escribe un cliente real', () => {
         // El allowlist exigía coincidencia EXACTA, así que "sí, confirmo la
         // reserva" caía en unclear y el agente volvía a preguntar — el bucle que
-        // hacía imposible cerrar una reserva. Sólo la APERTURA otorga
-        // consentimiento; nada negado ni matizado pasa.
+        // hacía imposible cerrar una reserva. La frase completa debe confirmar;
+        // un nombre concreto además exige vinculación con la propuesta pendiente.
         for (const value of [
             'Sí, confirmo la reserva',
-            'confirmo la reserva del Amazon Minimalist',
             'dale, confirmo',
             'ok confirmo',
             'yes, confirm the booking',
@@ -300,6 +301,14 @@ describe('ToolExecutionControlService', () => {
         ]) {
             expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');
         }
+    });
+
+    it('requires the exact proposal referent for a named confirmation', () => {
+        const text = 'confirmo la reserva del Amazon Minimalist';
+        expect(classifyExplicitToolConfirmation(text)).toBe('unclear');
+        expect(classifyExplicitToolConfirmation(text, { acceptedReferents: ['Amazon Minimalist'] })).toBe('confirmed');
+        expect(classifyExplicitToolConfirmation(text, { acceptedReferents: ['Amazon Deluxe'] })).toBe('unclear');
+        expect(classifyExplicitToolConfirmation(`${text} a las 5`, { acceptedReferents: ['Amazon Minimalist'] })).toBe('unclear');
     });
 
     it('nunca infiere consentimiento de una negación o de un sí matizado', () => {
@@ -384,6 +393,38 @@ describe('ToolExecutionControlService', () => {
         expect(state.ledger.confirmation_source_message_id).toBe(firstMessageId);
         expect(state.ledger.confirmation_token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
         expect(state.ledger.status).toBe('awaiting_confirmation');
+    });
+
+    it.each(['sí', 'confirmo'])('does not let a retry use %s from the proposal turn as its confirmation', async text => {
+        const { service, state } = createHarness();
+        state.latestMessage = { id: firstMessageId, content_text: text };
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args: { serviceId: 'service-1', date: '2026-08-10', time: '10:00' } };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(state.ledger.confirmed_at).toBeNull();
+    });
+
+    it.each([
+        ['confirmo la reserva del Amazon Minimalist', true],
+        ['confirmo la reserva del Amazon Deluxe', false],
+        ['confirmo la reserva del Amazon Minimalist a las 5', false],
+    ])('binds a named reply to canonical names frozen in the signed proposal: %s', async (reply, expected) => {
+        const { service, state } = createHarness();
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args: { serviceId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', date: '2026-08-10', time: '10:00' } };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        // A later rename cannot make a different name authorize the old terms.
+        state.canonicalName = 'Amazon Deluxe';
+        state.latestMessage = { id: secondMessageId, content_text: reply };
+        expect((await service.preflight(request)).allowed).toBe(expected);
+        expect(state.ledger.status).toBe(expected ? 'executing' : 'awaiting_confirmation');
+    });
+
+    it('does not trust a model-supplied name that conflicts with the canonical object id', async () => {
+        const { service, state } = createHarness();
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment', args: { serviceId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', serviceName: 'Amazon Deluxe', date: '2026-08-10', time: '10:00' } };
+        await service.preflight(request);
+        state.latestMessage = { id: secondMessageId, content_text: 'confirmo la reserva del Amazon Deluxe' };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
     });
 
     it('rejects a non-canonical confirmation token after a later affirmative message', async () => {

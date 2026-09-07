@@ -124,6 +124,8 @@ export interface ToolExecutionControlRequest {
     args: Record<string, unknown>;
     idempotencyKey?: string;
     readOnlyExecution?: boolean;
+    /** Trusted execution mode, never a model-supplied argument. */
+    draftMode?: boolean;
     authorityEvidence?: {
         kind: 'booking_engine_confirmation';
         source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
@@ -161,6 +163,8 @@ interface ConfirmationClaims {
     sourceMessageId: string;
     issuedAt: string;
     expiresAt: string;
+    /** Names/ids frozen when the proposal was issued, covered by the signature. */
+    acceptedReferents?: string[];
 }
 
 /**
@@ -181,12 +185,13 @@ interface ConfirmationClaims {
  */
 export function classifyExplicitToolConfirmation(
     value: unknown,
-    options: { effect?: ConfirmationEffect; country?: string | null } = {},
+    options: { effect?: ConfirmationEffect; country?: string | null; acceptedReferents?: readonly string[] } = {},
 ): ConfirmationDisposition {
     if (typeof value !== 'string') return 'unclear';
     return classifyConfirmation(value, {
         effect: options.effect ?? 'high_impact',
         country: options.country,
+        acceptedReferents: options.acceptedReferents,
         // Every call site reads the message that answers a pending challenge.
         answeringExplicitQuestion: true,
     });
@@ -905,6 +910,13 @@ export class ToolExecutionControlService {
     async preflight(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
         const policy = getToolPolicy(request.toolName);
         if (!policy) return this.block('unknown_tool', 'La herramienta no está registrada.');
+        // This must precede identity challenges, lazy tables and the ledger:
+        // preparing a human-reviewed answer cannot itself send an OTP or act.
+        if (request.draftMode) {
+            return policy.agentTestAllowed
+                ? { allowed: true, policy }
+                : this.block('draft_action_requires_approval', 'La acción requiere revisión humana antes de ejecutarse.');
+        }
         if (request.toolName.startsWith('mcp__')) {
             // The publication side (`conversations.service`) and this guard must
             // read the SAME approval, or one of them is lying: publishing what
@@ -1459,23 +1471,19 @@ export class ToolExecutionControlService {
         // `ya po` and `hágale` are just unknown words, and the customer who
         // answered clearly gets asked again.
         const operatingCountry = await this.resolveOperatingCountry(request.tenantId);
+        const boundClaims = ledger.confirmation_token ? this.verifyConfirmationToken(ledger.confirmation_token) : null;
+        const acceptedReferents = boundClaims?.ledgerId === ledger.id && boundClaims.argsHash === argsHash
+            && boundClaims.tenantId === request.tenantId && boundClaims.contactId === request.contactId
+            && boundClaims.conversationId === conversationId && boundClaims.toolName === request.toolName
+            ? boundClaims.acceptedReferents : undefined;
         const disposition = classifyExplicitToolConfirmation(latest.content_text, {
             effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
             country: operatingCountry,
+            acceptedReferents,
         });
         if (latest.id === ledger.confirmation_source_message_id) {
-            if (disposition === 'confirmed') {
-                const updated = await this.query<ExecutionLedgerRow[]>(
-                    request.schemaName,
-                    `UPDATE tool_execution_ledger
-                        SET confirmed_at = NOW(), confirmed_by_message_id = $2::uuid,
-                            status = 'ready', updated_at = NOW()
-                      WHERE id = $1::uuid AND confirmed_at IS NULL
-                      RETURNING *`,
-                    [ledger.id, latest.id],
-                );
-                return { allowed: true, ledger: updated[0] || ledger };
-            }
+            // A retry in the inbound turn that CAUSED the challenge cannot
+            // answer it, even when that message starts with an explicit yes.
             return this.confirmationRequired(ledger.id);
         }
 
@@ -1595,14 +1603,7 @@ export class ToolExecutionControlService {
         // held to the same evidence: the engine must be parked on `confirm`, the
         // message must classify as an unambiguous confirmation, and every bound
         // field below must still match what the customer was shown.
-        if (evidence.source === 'text_confirmation') {
-            if (classifyExplicitToolConfirmation(latest.content_text, {
-                effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
-                country: await this.resolveOperatingCountry(request.tenantId),
-            }) !== 'confirmed') {
-                return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
-            }
-        } else {
+        if (evidence.source !== 'text_confirmation') {
             const expectedInbound = evidence.source === 'confirm_yes' ? 'confirm_yes' : '__flow_response__';
             if (String(latest.content_text || '').trim().toLowerCase() !== expectedInbound) {
                 return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
@@ -1637,6 +1638,13 @@ export class ToolExecutionControlService {
             ];
             if (boundFields.some(([stored, requested]) => String(stored ?? '') !== String(requested ?? ''))) {
                 return this.block('booking_confirmation_args_mismatch', 'La reserva cambió después de ser confirmada.', true);
+            }
+            if (evidence.source === 'text_confirmation' && classifyExplicitToolConfirmation(latest.content_text, {
+                effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
+                country: await this.resolveOperatingCountry(request.tenantId),
+                acceptedReferents: typeof state.serviceName === 'string' ? [state.serviceName] : [],
+            }) !== 'confirmed') {
+                return this.block('authority_evidence_invalid', 'El mensaje de origen no confirma esta reserva.', true);
             }
         } else {
             const startedAt = Date.parse(String(state.flowStartedAt || ''));
@@ -1687,6 +1695,7 @@ export class ToolExecutionControlService {
             sourceMessageId,
             issuedAt: now.toISOString(),
             expiresAt: expiresAt.toISOString(),
+            acceptedReferents: await this.resolveProposalReferents(request.schemaName, request.args),
         };
         const token = this.signConfirmationToken(claims);
         if (!token) return null;
@@ -1704,6 +1713,38 @@ export class ToolExecutionControlService {
             [ledger.id, token, sourceMessageId, expiresAt.toISOString()],
         );
         return updated[0] || null;
+    }
+
+    /** Resolve once at proposal issuance; later names cannot change consent. */
+    private async resolveProposalReferents(schemaName: string, args: Record<string, unknown>): Promise<string[]> {
+        const references = new Set<string>();
+        const canonicalTables: Record<string, string> = {
+            serviceId: 'services', propertyId: 'properties', productId: 'products',
+        };
+        for (const [key, value] of Object.entries(args)) {
+            if (typeof value !== 'string' || !value.trim() || value.length > 160) continue;
+            // Only identity fields; a price, date or free-form instruction is
+            // never a permitted tail merely because it appears in the payload.
+            const named = /^(service|property|product|room|resource|class|course|plan|vehicle|tour|item|event)(?:Name|Title|Code|Reference)$/.exec(key);
+            const canonicalIdKey = named ? `${named[1]}Id` : '';
+            // When the command names a canonical id, an extra model-supplied
+            // display name cannot introduce a second, mismatching referent.
+            if (named && !(canonicalTables[canonicalIdKey] && args[canonicalIdKey])) {
+                references.add(value.trim());
+            }
+            if (/Id$/.test(key) && UUID_RE.test(value)) references.add(value);
+            const table = canonicalTables[key];
+            if (!table || !UUID_RE.test(value)) continue;
+            try {
+                // `table` is selected exclusively from the fixed allowlist above.
+                const rows = await this.query<Array<{ name: string }>>(schemaName, `SELECT name FROM ${table} WHERE id = $1::uuid LIMIT 1`, [value]);
+                if (typeof rows[0]?.name === 'string' && rows[0].name.trim()) references.add(rows[0].name.trim());
+            } catch {
+                // A name lookup failure cannot grant consent for an unknown
+                // name. The existing concise confirmation remains available.
+            }
+        }
+        return [...references].slice(0, 30);
     }
 
     private async resolveApproval(
@@ -2345,6 +2386,7 @@ export class ToolExecutionControlService {
         schemaName: string,
         conversationId: string,
         contactId: string,
+        customerReply?: string,
     ): Promise<{ ledgerId: string; toolName: string; args: Record<string, unknown> } | null> {
         if (!UUID_RE.test(conversationId) || !UUID_RE.test(contactId)) return null;
         try {
@@ -2364,6 +2406,18 @@ export class ToolExecutionControlService {
             if (!row) return null;
             const args = row.request_payload?.args;
             if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
+            if (customerReply !== undefined) {
+                const claims = row.confirmation_token ? this.verifyConfirmationToken(row.confirmation_token) : null;
+                if (!claims || claims.ledgerId !== row.id || claims.toolName !== row.tool_name
+                    || claims.conversationId !== conversationId || claims.contactId !== contactId
+                    || claims.argsHash !== sha256(JSON.stringify(stableValue(args)))
+                    || Date.parse(claims.expiresAt) <= Date.now()) return null;
+                if (classifyExplicitToolConfirmation(customerReply, {
+                    effect: confirmationEffectForPolicy(getToolPolicy(row.tool_name)),
+                    country: await this.resolveOperatingCountry(claims.tenantId),
+                    acceptedReferents: claims.acceptedReferents,
+                }) !== 'confirmed') return null;
+            }
             return { ledgerId: row.id, toolName: row.tool_name, args: args as Record<string, unknown> };
         } catch (error: any) {
             // A missing control table (tenant that never ran a writer) is normal.

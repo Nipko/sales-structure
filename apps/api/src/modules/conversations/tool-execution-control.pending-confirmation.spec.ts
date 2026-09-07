@@ -1,4 +1,5 @@
 import { ToolExecutionControlService } from './tool-execution-control.service';
+import { createHash } from 'crypto';
 
 /**
  * Reading the operation the conversation is waiting a yes/no for.
@@ -79,5 +80,25 @@ describe('ToolExecutionControlService.findPendingConfirmation', () => {
         const { service, executeInTenantSchema } = createService([pendingRow]);
         expect(await service.findPendingConfirmation(schemaName, 'not-a-uuid', contactId)).toBeNull();
         expect(executeInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['confirmo la reserva del Amazon Minimalist', true],
+        ['confirmo la reserva del Amazon Deluxe', false],
+        ['confirmo la reserva del Amazon Minimalist a las 5', false],
+        ['Gracias, quiero saber primero el precio', false],
+    ])('only resumes server-side execution for the authenticated proposal: %s', async (reply, expected) => {
+        const args = pendingRow.request_payload.args;
+        const sorted = Object.fromEntries(Object.entries(args).sort(([a], [b]) => a.localeCompare(b)));
+        const row = { ...pendingRow, confirmation_token: '' };
+        const { service } = createService([row]);
+        row.confirmation_token = (service as any).signConfirmationToken({
+            version: 1, tenantId: '11111111-1111-4111-8111-111111111111', contactId, conversationId,
+            ledgerId, toolName: pendingRow.tool_name, argsHash: createHash('sha256').update(JSON.stringify(sorted)).digest('hex'),
+            sourceMessageId: '44444444-4444-4444-8444-444444444444', issuedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 60_000).toISOString(), acceptedReferents: ['Amazon Minimalist'],
+        });
+        const result = await service.findPendingConfirmation(schemaName, conversationId, contactId, reply);
+        expect(!!result).toBe(expected);
     });
 });

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
     authorizesEffect,
+    isInformationSeekingMessage,
+    isPauseMessage,
     normalizeCustomerIntent,
 } from '../../common/conversation/intent-normalizer';
 import { LLMRouterService } from '../ai/router/llm-router.service';
@@ -61,10 +63,11 @@ export class IntentInterpreterService {
          * tenant's country on `this` would leak it into the next tenant's turn.
          */
         operatingCountry?: string | null,
+        acceptedReferents?: readonly string[],
     ): Promise<InterpretedIntent> {
         // First try deterministic extraction (fast, no LLM cost)
         const deterministicResult = this.deterministicExtract(
-            userText, currentBookingStep, availableServices, todayDate, upcomingDays, operatingCountry,
+            userText, currentBookingStep, availableServices, todayDate, upcomingDays, operatingCountry, acceptedReferents,
         );
         if (deterministicResult) {
             this.logger.log(`[Interpret] Deterministic: intent=${deterministicResult.intent} service=${deterministicResult.serviceMentioned || '-'} date=${deterministicResult.dateMentioned || '-'}`);
@@ -73,7 +76,7 @@ export class IntentInterpreterService {
 
         // If deterministic can't handle it, use LLM for complex interpretation
         try {
-            return await this.llmInterpret(userText, currentBookingStep, availableServices, todayDate, upcomingDays, tenantId);
+            return await this.llmInterpret(userText, currentBookingStep, availableServices, todayDate, upcomingDays, tenantId, operatingCountry, acceptedReferents);
         } catch (e: any) {
             this.logger.warn(`[Interpret] LLM interpretation failed: ${e.message}`);
             return this.fallbackIntent(userText);
@@ -90,11 +93,13 @@ export class IntentInterpreterService {
         services: string[],
         todayDate: string,
         upcoming: Array<{ date: string; weekday: string; label?: string }>,
-            operatingCountry?: string | null,
+        operatingCountry?: string | null,
+        acceptedReferents?: readonly string[],
     ): InterpretedIntent | null {
         const t = text.toLowerCase().trim();
         const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
         const tNorm = norm(text);
+        const informationSeeking = isInformationSeekingMessage(text);
 
         // Base result
         const base: InterpretedIntent = {
@@ -128,11 +133,12 @@ export class IntentInterpreterService {
         // is how people actually confirm an appointment. The same word still
         // cannot authorise a charge, because that path asks with a stricter
         // effect against this very classifier.
-        const normalizedIntent = normalizeCustomerIntent(t, {
+        const normalizedIntent = normalizeCustomerIntent(text, {
             country: operatingCountry,
-            answeringExplicitQuestion: true,
+            acceptedReferents,
+            answeringExplicitQuestion: step !== 'idle' && step !== 'booked',
         });
-        if (authorizesEffect(normalizedIntent, 'transactional', { answeringExplicitQuestion: true })) {
+        if (authorizesEffect(normalizedIntent, 'transactional', { answeringExplicitQuestion: step !== 'idle' && step !== 'booked' })) {
             base.isConfirmation = true;
             base.intent = 'confirm';
         }
@@ -150,21 +156,26 @@ export class IntentInterpreterService {
             return base;
         }
 
+        if (isPauseMessage(text)) {
+            return { ...base, intent: 'general_question', questionTopic: text };
+        }
+
         // ── Detect greeting (only if short and NOT a confirmation) ──
-        if (!base.isConfirmation && /^(hola|hi|hey|hello|buenos? d[ií]as?|buenas? tardes?|buenas? noches?|buen d[ií]a|oi|olá|bonjour|salut)\b/i.test(t) && t.length < 30) {
+        if (!base.isConfirmation && /^(hola|hi|hey|hello|buenos? d[ií]as?|buenas? tardes?|buenas? noches?|buen d[ií]a|oi|olá|bonjour|salut)[.!¡\s]*$/i.test(t)) {
             base.intent = 'greet';
             return base;
         }
 
         // ── Detect farewell (only if NOT a confirmation) ──
-        if (!base.isConfirmation && /^(gracias|chao|adios|bye|hasta luego|nos vemos|thank|merci|obrigado)\b/i.test(t)) {
+        if (!base.isConfirmation && /^(muchas gracias|gracias|chao|adios|adiós|bye|hasta luego|nos vemos|thanks|thank you|merci|obrigado|obrigada)[.!¡\s]*$/i.test(t)) {
             base.intent = 'farewell';
             return base;
         }
 
         // ── Detect service list request ──
-        if (/\b(servicios|services|que ofrec|que tienen|opciones|catalogo|serviços|que hay)\b/i.test(t)) {
+        if (/\b(servicios|services|que ofrec|que tienen|opciones|catalogo|servicos|que hay)\b/i.test(tNorm)) {
             base.intent = 'ask_services';
+            base.questionTopic = informationSeeking ? text : null;
             return base;
         }
 
@@ -264,8 +275,8 @@ export class IntentInterpreterService {
 
         // ── Detect date ──
         if (/\b(hoy|today|hoje|aujourd)/i.test(t)) base.dateMentioned = todayDate;
-        else if (/\b(mañana|manana|tomorrow|amanhã|demain)\b/i.test(t)) {
-            const d = new Date(todayDate); d.setDate(d.getDate() + 1);
+        else if (/\b(manana|tomorrow|amanha|demain)\b/i.test(tNorm)) {
+            const d = new Date(`${todayDate}T00:00:00.000Z`); d.setUTCDate(d.getUTCDate() + 1);
             base.dateMentioned = d.toISOString().split('T')[0];
         } else {
             // Month names (es/pt/fr/en) — matched accent-insensitively against tNorm.
@@ -286,7 +297,7 @@ export class IntentInterpreterService {
                 if (m) {
                     const day = parseInt(m[1]);
                     if (day < 1 || day > 31) break; // invalid day → ignore
-                    let y = new Date(todayDate).getFullYear();
+                    let y = Number(todayDate.slice(0, 4));
                     let candidate = `${y}-${String(num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     // If the date already passed this year, roll over to next year
                     // ("10 de enero" said in June means next January, not the past).
@@ -295,8 +306,8 @@ export class IntentInterpreterService {
                         candidate = `${y}-${String(num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     }
                     // Validate it's a real calendar date (rejects e.g. "31 de febrero").
-                    const parsed = new Date(`${candidate}T12:00:00`);
-                    if (!isNaN(parsed.getTime()) && parsed.getMonth() + 1 === num && parsed.getDate() === day) {
+                    const parsed = new Date(`${candidate}T00:00:00.000Z`);
+                    if (!isNaN(parsed.getTime()) && parsed.getUTCMonth() + 1 === num && parsed.getUTCDate() === day) {
                         base.dateMentioned = candidate;
                     }
                     break;
@@ -315,7 +326,7 @@ export class IntentInterpreterService {
             };
             for (const [name, num] of Object.entries(days)) {
                 if (tNorm.includes(name)) {
-                    const match = upcoming.find(d => new Date(d.date).getDay() === num);
+                    const match = upcoming.find(d => new Date(`${d.date}T00:00:00.000Z`).getUTCDay() === num);
                     if (match) base.dateMentioned = match.date;
                     break;
                 }
@@ -367,7 +378,7 @@ export class IntentInterpreterService {
 
         // ── Bug #8: Detect name (only when step is ask_name) ──
         // Strengthened to reject: intent words, date/time words, single chars, confirmations.
-        if (step === 'ask_name' && !base.isConfirmation && !base.isNegation) {
+        if (step === 'ask_name' && !base.isConfirmation && !base.isNegation && !informationSeeking) {
             const cleaned = text.replace(/[.,!?¿¡]/g, '').trim();
             const words = cleaned.split(/\s+/);
             // Extended blocklist: greetings, confirmations, dates, times, intents, pronouns
@@ -388,6 +399,15 @@ export class IntentInterpreterService {
             }
         }
 
+
+        if (base.timeMentioned && !this.validTime(base.timeMentioned)) base.timeMentioned = null;
+        if (informationSeeking) {
+            base.isConfirmation = false;
+            base.questionTopic = text;
+            if (base.intent === 'unknown' || step === 'confirm' || step === 'ask_name' || step === 'ask_email') {
+                base.intent = 'general_question';
+            }
+        }
 
         // ── If we detected something useful, return ──
         if (base.intent !== 'unknown' || base.serviceMentioned || base.dateMentioned || base.timeMentioned || base.emailProvided || base.nameProvided) {
@@ -413,6 +433,8 @@ export class IntentInterpreterService {
         todayDate: string,
         upcoming: Array<{ date: string; weekday: string; label?: string }>,
         tenantId?: string,
+        operatingCountry?: string | null,
+        acceptedReferents?: readonly string[],
     ): Promise<InterpretedIntent> {
         const prompt = `Extract the intent from this customer message. Today is ${todayDate}.
 Available services: ${services.join(', ') || 'none loaded'}.
@@ -442,7 +464,7 @@ Respond ONLY with valid JSON matching this schema:
 
         try {
             const cleaned = (response.content || '').replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-            return this.sanitizeLlmIntent(JSON.parse(cleaned), userText, todayDate);
+            return this.sanitizeLlmIntent(JSON.parse(cleaned), userText, todayDate, step, operatingCountry, acceptedReferents);
         } catch {
             this.logger.warn(`[Interpret] Failed to parse LLM JSON: ${response.content}`);
             return this.fallbackIntent(userText);
@@ -454,7 +476,7 @@ Respond ONLY with valid JSON matching this schema:
      * the booking engine / SQL: dateMentioned must be ISO (relative words mapped),
      * timeMentioned must be HH:MM, booleans/strings coerced, unknown intents dropped.
      */
-    private sanitizeLlmIntent(parsed: any, userText: string, todayDate: string): InterpretedIntent {
+    private sanitizeLlmIntent(parsed: any, userText: string, todayDate: string, step = 'idle', operatingCountry?: string | null, acceptedReferents?: readonly string[]): InterpretedIntent {
         const out = this.fallbackIntent(userText);
         if (!parsed || typeof parsed !== 'object') return out;
 
@@ -464,26 +486,47 @@ Respond ONLY with valid JSON matching this schema:
 
         const d = parsed.dateMentioned;
         if (typeof d === 'string') {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(d) && this.validDate(d)) {
                 out.dateMentioned = d;
             } else if (/^(today|hoy|hoje|aujourd)/i.test(d)) {
                 out.dateMentioned = todayDate;
             } else if (/^(tomorrow|mañana|manana|amanh|demain)/i.test(d)) {
-                const x = new Date(`${todayDate}T12:00:00`);
-                x.setDate(x.getDate() + 1);
+                const x = new Date(`${todayDate}T00:00:00.000Z`);
+                x.setUTCDate(x.getUTCDate() + 1);
                 out.dateMentioned = x.toISOString().slice(0, 10);
             }
         }
-        if (typeof parsed.timeMentioned === 'string' && /^\d{1,2}:\d{2}$/.test(parsed.timeMentioned)) {
-            out.timeMentioned = parsed.timeMentioned;
+        if (typeof parsed.timeMentioned === 'string' && this.validTime(parsed.timeMentioned)) {
+            out.timeMentioned = parsed.timeMentioned.padStart(5, '0');
         }
-        out.isConfirmation = parsed.isConfirmation === true;
-        out.isNegation = parsed.isNegation === true;
+        const normalized = normalizeCustomerIntent(userText, { country: operatingCountry, acceptedReferents });
+        out.isConfirmation = authorizesEffect(normalized, 'transactional', { answeringExplicitQuestion: step !== 'idle' && step !== 'booked' });
+        out.isNegation = ['reject', 'cancel', 'opt_out'].includes(normalized.intent);
+        if (out.intent === 'confirm' && !out.isConfirmation) out.intent = 'unknown';
+        if (out.intent === 'cancel' && !out.isNegation) out.intent = 'unknown';
         if (typeof parsed.nameProvided === 'string' && parsed.nameProvided.trim()) out.nameProvided = parsed.nameProvided.trim();
         if (typeof parsed.emailProvided === 'string' && /\S+@\S+\.\S+/.test(parsed.emailProvided)) out.emailProvided = parsed.emailProvided.trim();
         if (typeof parsed.questionTopic === 'string') out.questionTopic = parsed.questionTopic;
-        if (typeof parsed.language === 'string') out.language = parsed.language;
+        if (['es', 'en', 'pt', 'fr'].includes(parsed.language)) out.language = parsed.language;
+        if (isInformationSeekingMessage(userText) || isPauseMessage(userText)) {
+            out.intent = 'general_question';
+            out.questionTopic = userText;
+            out.nameProvided = null;
+            out.isConfirmation = false;
+            out.isNegation = false;
+        }
         return out;
+    }
+
+    private validTime(value: string): boolean {
+        if (!/^\d{1,2}:\d{2}$/.test(value)) return false;
+        const [hour, minute] = value.split(':').map(Number);
+        return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+    }
+
+    private validDate(value: string): boolean {
+        const parsed = new Date(`${value}T00:00:00.000Z`);
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
     }
 
     private fallbackIntent(userText: string): InterpretedIntent {

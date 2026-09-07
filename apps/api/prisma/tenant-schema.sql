@@ -4822,3 +4822,34 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_outbox" (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_operational_notice_due ON "{{SCHEMA_NAME}}"."operational_notice_outbox"(state,next_attempt_at) WHERE state IN ('pending','queued','failed');
+
+-- BEGIN AGENT CONFIGURATION REVISIONS
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_revisions" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL,
+    base_operational_version INTEGER NOT NULL CHECK(base_operational_version >= 0),
+    base_operational_hash VARCHAR(64) NOT NULL,
+    body JSONB NOT NULL,
+    body_hash VARCHAR(64) NOT NULL,
+    created_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(agent_id,id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_configuration_revision_history
+    ON "{{SCHEMA_NAME}}"."agent_configuration_revisions"(agent_id,created_at DESC,id);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_drafts" (
+    agent_id UUID PRIMARY KEY,
+    revision_id UUID NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY(agent_id,revision_id) REFERENCES "{{SCHEMA_NAME}}"."agent_configuration_revisions"(agent_id,id)
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_commands" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    requested_by UUID NOT NULL,
+    request_key VARCHAR(100) NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
+    revision_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_configuration_revisions"(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(requested_by,request_key)
+);
+-- END AGENT CONFIGURATION REVISIONS

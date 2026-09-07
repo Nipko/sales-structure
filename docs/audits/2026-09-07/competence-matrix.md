@@ -4,13 +4,13 @@ Registro generado desde contratos de dominio, herramientas, dependencias y escen
 
 Perfiles canónicos: **76**. Tareas declaradas: **254**. Tareas que comprometen al negocio: **139**.
 
-Tareas sin caso positivo con efecto verificable: **52**. Tareas con alguna herramienta de escritura sin verificador de efecto: **20**.
+Tareas sin caso positivo con efecto verificable: **49**. Tareas con alguna herramienta de escritura sin verificador de efecto: **20**.
 
 La matriz describe cobertura declarada. Los estados por canal e idioma permanecen en «no ejecutado» hasta asociar evidencia de una revisión concreta. No hereda certificación de otro perfil ni convierte un escenario genérico llamado «camino feliz» en prueba de una operación terminada.
 
 La disponibilidad comercial, el permiso de ejecutar una herramienta y la existencia de un verificador de lectura son dimensiones distintas. La prueba de carga de módulos o de componentes tampoco certifica un proveedor externo.
 
-Revisión base del repositorio: `1ea2bf7575ef44e8ec16bc6131a98db0e90a3f69`; incluye los cambios del árbol de trabajo al generar.
+Revisión base del repositorio: `a77a6be83d61df9a55164d60a1d10bc954226ead`; incluye los cambios del árbol de trabajo al generar.
 
 [Detalle de tareas en CSV](competence-matrix.csv). El contrato completo está disponible en `GET /eval/:tenantId/competence-matrix`; el generador también lo exporta con `--json`.
 
@@ -19,7 +19,7 @@ Revisión base del repositorio: `1ea2bf7575ef44e8ec16bc6131a98db0e90a3f69`; incl
 | automotriz/alquiler | 3 | 2 | 2 | — |
 | automotriz/concesionario | 4 | 3 | 1 | — |
 | automotriz/repuestos | 3 | 1 | 1 | — |
-| automotriz/taller | 7 | 5 | 3 | — |
+| automotriz/taller | 7 | 5 | 0 | — |
 | construccion/contratista_general | 1 | 0 | 0 | — |
 | education/capacitacion | 4 | 3 | 0 | — |
 | education/idiomas | 4 | 3 | 0 | — |

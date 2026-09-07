@@ -9,7 +9,9 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { kbmsg } from './knowledge-i18n';
 import type { KnowledgeHit, KnowledgeSearchOptions, KnowledgeSourceMetadata } from './knowledge-contracts';
 import { knowledgeSourceAvailable } from './knowledge-contracts';
-import type { KnowledgeGapReport } from '@parallext/shared';
+import type { KnowledgeGapReport, RetrievedKnowledgeItem } from '@parallext/shared';
+import { attributeKnowledgeResponse, knowledgeDocumentReadiness } from './knowledge-attribution';
+import { KNOWLEDGE_ATTRIBUTION_SCHEMA } from './knowledge-attribution-schema';
 import OpenAI from 'openai';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -32,9 +34,8 @@ const mammoth = require('mammoth');
 const CHUNK_MAX_CHARS = 2000;
 const CHUNK_OVERLAP_CHARS = 200;
 const HAS_KNOWLEDGE_TTL = 300;
-// Effective relevance bar for "was this chunk actually used" analytics — distinct
-// from the (often 0) recall threshold used to build the candidate pool.
-const KB_USE_THRESHOLD = 0.35;
+// Retrieval relevance is not evidence that the generated reply used a source.
+const KB_RELEVANCE_THRESHOLD = 0.35;
 const CRAWL_TIMEOUT_MS = 15_000;
 const CRAWL_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -43,6 +44,7 @@ export class KnowledgeService {
     private readonly logger = new Logger(KnowledgeService.name);
     private openai: OpenAI | null = null;
     private currentKey = '';
+    private attributionSchemas?: Map<string, Promise<void>>;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -429,23 +431,27 @@ export class KnowledgeService {
         };
     }
 
-    // ─── Content Quality Scoring ─────────────────────────────────────────────
+    // ─── Content readiness (not a factual-correctness score) ──────────────────
 
     async getDocumentQualityScores(tenantId: string) {
         const schema = await this.tenantSchema(tenantId);
-
+        await this.ensureAttributionSchema(schema);
+        await this.ensureKbFeedbackTable(schema);
         const docs = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT kd.id, kd.title, kd.chunk_count, kd.status,
                     LENGTH(kd.content_text) AS content_length,
-                    kd.category, kd.source_type,
+                    kd.category, kd.source_type, kd.version, kd.error_message,
+                    kd.is_regulated, kd.authority, kd.jurisdiction, kd.valid_from, kd.valid_to,
+                    kd.satisfaction_score, kd.feedback_count,
+                    (SELECT COUNT(*)::int FROM kb_feedback f WHERE f.document_id=kd.id AND f.is_false_positive=true) AS false_positive_count,
                     COALESCE(stats.retrieval_count, 0)::int AS retrieval_count,
                     COALESCE(stats.avg_score, 0) AS avg_score,
                     COALESCE(stats.used_count, 0)::int AS used_count
              FROM knowledge_documents kd
              LEFT JOIN LATERAL (
-                 SELECT COUNT(*)::int AS retrieval_count,
+                 SELECT COUNT(DISTINCT retrieval_batch_id)::int AS retrieval_count,
                         ROUND(AVG(score)::numeric, 3) AS avg_score,
-                        COUNT(CASE WHEN was_used THEN 1 END)::int AS used_count
+                        COUNT(DISTINCT response_id) FILTER (WHERE attribution_version=1 AND was_used)::int AS used_count
                  FROM kb_retrieval_log
                  WHERE document_id = kd.id
                    AND created_at >= NOW() - INTERVAL '30 days'
@@ -453,40 +459,11 @@ export class KnowledgeService {
              WHERE kd.status != 'deleted'
              ORDER BY kd.created_at DESC`);
 
-        return (docs || []).map((d: any) => {
-            let score = 0;
-            const factors: Record<string, number> = {};
-
-            // Content length (0-25 pts): 500+ chars = full marks
-            const lenPts = Math.min(25, Math.round((d.content_length || 0) / 500 * 25));
-            factors.contentLength = lenPts;
-            score += lenPts;
-
-            // Chunk count (0-20 pts): 3+ chunks = full marks
-            const chunkPts = Math.min(20, (d.chunk_count || 0) * 7);
-            factors.chunkCount = chunkPts;
-            score += chunkPts;
-
-            // Category assigned (0-10 pts)
-            const catPts = d.category ? 10 : 0;
-            factors.categorized = catPts;
-            score += catPts;
-
-            // Retrieval performance (0-25 pts)
-            const retPts = Math.min(25, d.retrieval_count * 5);
-            factors.retrievals = retPts;
-            score += retPts;
-
-            // Avg relevance score (0-20 pts)
-            const relPts = Math.round((Number(d.avg_score) || 0) * 20);
-            factors.relevance = relPts;
-            score += relPts;
-
-            return {
+        return (docs || []).map((d: any) => ({
                 id: d.id,
                 title: d.title,
-                qualityScore: Math.min(100, score),
-                factors,
+                version: Number(d.version || 1),
+                ...knowledgeDocumentReadiness(d),
                 stats: {
                     contentLength: d.content_length || 0,
                     chunkCount: d.chunk_count || 0,
@@ -494,9 +471,11 @@ export class KnowledgeService {
                     avgScore: Number(d.avg_score) || 0,
                     usedCount: d.used_count,
                     hasCategoryFlag: !!d.category,
+                    falsePositiveCount: Number(d.false_positive_count || 0),
+                    feedbackCount: Number(d.feedback_count || 0),
+                    satisfactionScore: d.feedback_count ? Number(d.satisfaction_score) : null,
                 },
-            };
-        });
+        }));
     }
 
     // ─── AI Article Suggestions ──────────────────────────────────────────────
@@ -794,7 +773,7 @@ export class KnowledgeService {
                 }
                 const langBoost = wantLang && (row.doc_language || '').slice(0, 2).toLowerCase() === wantLang ? LANG_BOOST : 0;
                 // `score` stays the vector-similarity-based scale for analytics
-                // continuity (trackRetrieval compares it to KB_USE_THRESHOLD);
+                // continuity (trackRetrieval compares it to KB_RELEVANCE_THRESHOLD);
                 // ordering is by RRF.
                 const score = Math.min(1, Math.max(0, vecSim + keywordBoost + langBoost));
                 return {
@@ -837,11 +816,15 @@ export class KnowledgeService {
             )
             : ranked;
 
-        const enriched = reranked.slice(0, topK).map(({ _rrf, ...rest }) => rest);
+        const retrievalBatchId = crypto.randomUUID();
+        const enriched = reranked.slice(0, topK).map(({ _rrf, ...rest }) => ({
+            ...rest, retrievalId: crypto.randomUUID(), retrievalBatchId,
+        }));
 
-        // Fire-and-forget analytics tracking
+        // Await the best-effort insert so final-response attribution cannot race
+        // a detached retrieval insert. A metrics failure never breaks retrieval.
         if (!persistenceDisabled(options?.executionContext)) {
-            this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId).catch(() => {});
+            await this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId, retrievalBatchId);
         }
 
         return enriched;
@@ -898,77 +881,136 @@ export class KnowledgeService {
 
     // ─── KB Analytics ────────────────────────────────────────────────────────
 
+    private async ensureAttributionSchema(schema: string): Promise<void> {
+        this.attributionSchemas ??= new Map();
+        let pending = this.attributionSchemas.get(schema);
+        if (!pending) {
+            pending = (async () => {
+                for (const sql of KNOWLEDGE_ATTRIBUTION_SCHEMA) await this.prisma.executeInTenantSchema(schema, sql);
+            })().catch(error => { this.attributionSchemas!.delete(schema); throw error; });
+            this.attributionSchemas.set(schema, pending);
+        }
+        await pending;
+    }
+
+    private async analyticsTransaction<T>(schema: string, conversationId: string | undefined,
+        action: (query: <R = any[]>(sql: string, params?: any[]) => Promise<R>) => Promise<T>,
+    ): Promise<{ blocked: boolean; value?: T }> {
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            // Erasure takes the exclusive form of this same lock before redaction.
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`, [`agent-privacy:${schema}`]);
+            if (conversationId) {
+                const contact = await query<any[]>(`SELECT c.id FROM conversations c
+                    WHERE c.id=$1::uuid AND NOT EXISTS
+                    (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)`, [conversationId]);
+                if (!contact.length) return { blocked: true };
+            }
+            return { blocked: false, value: await action(query) };
+        });
+    }
+
     private async trackRetrieval(
         schema: string, tenantId: string, query: string,
-        results: any[], threshold: number, conversationId?: string,
+        results: any[], threshold: number, conversationId?: string, batchId = crypto.randomUUID(),
     ) {
         try {
-            // A retrieval is unanswered when no candidate clears the effective
-            // grounding bar. A wide recall pool below that bar is still a real KB
-            // gap and must not disappear from per-agent quality evidence.
-            const useThreshold = Math.max(threshold, KB_USE_THRESHOLD);
-            const hasUsableResult = results.some((result) => Number(result?.score) >= useThreshold);
-            if (!hasUsableResult) {
-                const queryHash = crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').substring(0, 16);
-                await this.prisma.executeInTenantSchema(schema,
-                    `INSERT INTO kb_unanswered_queries (query, query_hash, occurrences, last_seen_at)
-                     VALUES ($1, $2, 1, NOW())
-                     ON CONFLICT (query_hash) WHERE resolved = false
-                     DO UPDATE SET occurrences = kb_unanswered_queries.occurrences + 1, last_seen_at = NOW()`,
+            await this.ensureAttributionSchema(schema);
+            const relevanceThreshold = Math.max(threshold, KB_RELEVANCE_THRESHOLD);
+            const hasRelevantResult = results.some(result => Number(result?.score) >= relevanceThreshold);
+            const records: Array<{ id: string; document_id: string | null; chunk_id: string | null; score: number | null;
+                relevance_passed: boolean; source_version: number | null; source_title: string | null }> = results.map(result => ({
+                id: result.retrievalId || crypto.randomUUID(), document_id: result.document_id,
+                chunk_id: result.id, score: result.score, relevance_passed: result.score >= relevanceThreshold,
+                source_version: result.doc_version || 1, source_title: String(result.title || '').slice(0, 500),
+            }));
+            if (!hasRelevantResult) records.push({ id: crypto.randomUUID(), document_id: null, chunk_id: null,
+                score: null, relevance_passed: false, source_version: null, source_title: null });
+            await this.analyticsTransaction(schema, conversationId, async execute => {
+                if (!hasRelevantResult) {
+                    const queryHash = crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').substring(0, 16);
+                    await execute(`INSERT INTO kb_unanswered_queries (query, query_hash, occurrences, last_seen_at)
+                        VALUES ($1, $2, 1, NOW()) ON CONFLICT (query_hash) WHERE resolved = false
+                        DO UPDATE SET occurrences = kb_unanswered_queries.occurrences + 1, last_seen_at = NOW()`,
                     [query.substring(0, 500), queryHash]);
-
-                // Preserve a conversation-scoped sentinel as well as the
-                // aggregate unanswered-query row. The Quality Center can then
-                // attribute real retrieval gaps to the exact agent/version
-                // that handled the turn without correlating free-form text or
-                // assigning a tenant-wide aggregate to every agent.
-                await this.prisma.executeInTenantSchema(schema,
-                    `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
-                     VALUES (NULL, NULL, $1, NULL, false, $2::uuid)`,
-                    [query.substring(0, 500), conversationId || null]);
-            }
-
-            // was_used must reflect the EFFECTIVE use bar (a chunk that actually
-            // grounds the answer), not the recall threshold (often 0 to return a
-            // wide pool to the LLM) — otherwise the hit-rate reports ~100%.
-            for (const r of results.slice(0, 10)) {
-                await this.prisma.executeInTenantSchema(schema,
-                    `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
-                     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::uuid)`,
-                    [r.document_id, r.id, query.substring(0, 500), r.score,
-                     r.score >= useThreshold, conversationId || null]);
-            }
+                }
+                // A null-document row preserves the conversation-scoped relevance gap.
+                // Every new row starts with was_used=false, regardless of its score.
+                await execute(`INSERT INTO kb_retrieval_log
+                    (id,document_id,chunk_id,query,score,was_used,conversation_id,retrieval_batch_id,
+                     relevance_passed,attribution_version,source_version,source_title)
+                    SELECT r.id,r.document_id,r.chunk_id,$2,r.score,false,$3::uuid,$4::uuid,
+                        r.relevance_passed,1,r.source_version,r.source_title
+                    FROM jsonb_to_recordset($1::jsonb) AS r(id UUID,document_id UUID,chunk_id UUID,score NUMERIC,
+                        relevance_passed BOOLEAN,source_version INTEGER,source_title TEXT)`,
+                [JSON.stringify(records), query.substring(0, 500), conversationId || null, batchId]);
+            });
         } catch (e: any) {
             this.logger.warn(`[KB Analytics] tracking failed (non-fatal): ${e.message}`);
         }
     }
 
+    /** Call only after the final response has passed all guards and rewrites. This
+     * measures generated replies, not delivery or factual/semantic correctness. */
+    async recordResponseAttribution(tenantId: string, conversationId: string, reply: string,
+        items: RetrievedKnowledgeItem[], executionContext?: ServiceExecutionContext) {
+        const report = attributeKnowledgeResponse(reply, items);
+        if (persistenceDisabled(executionContext)) return { ...report, persistence: 'disabled' as const };
+        if (!report.evidence.length) return { ...report, persistence: 'not_needed' as const };
+        try {
+            const schema = await this.tenantSchema(tenantId);
+            await this.ensureAttributionSchema(schema);
+            const result = await this.analyticsTransaction(schema, conversationId, async query => query<any[]>(
+                `UPDATE kb_retrieval_log l SET presented=true,was_used=e.signal<>'unobserved',
+                    response_signal=e.signal,attribution_granularity=e.granularity,evidence_hash=e."evidenceHash",
+                    response_id=$4::uuid,response_hash=$3,attributed_at=NOW()
+                 FROM jsonb_to_recordset($1::jsonb) AS e("retrievalId" UUID,"documentId" UUID,signal TEXT,granularity TEXT,"evidenceHash" TEXT)
+                 WHERE l.id=e."retrievalId" AND l.document_id=e."documentId" AND l.conversation_id=$2::uuid
+                    AND l.attribution_version=1 AND l.attributed_at IS NULL RETURNING l.id`,
+                [JSON.stringify(report.evidence), conversationId, report.responseHash, crypto.randomUUID()]));
+            return { ...report, persistence: result.blocked ? 'contact_erased' as const :
+                result.value?.length === report.evidence.length ? 'recorded' as const : 'incomplete' as const };
+        } catch (error: any) {
+            this.logger.warn(`[KB Analytics] response attribution failed (non-fatal): ${error.message}`);
+            return { ...report, persistence: 'unavailable' as const };
+        }
+    }
+
     async getAnalytics(tenantId: string, days = 30) {
         const schema = await this.tenantSchema(tenantId);
+        await this.ensureAttributionSchema(schema);
+        days = Math.max(1, Math.min(365, Number.isFinite(days) ? Math.floor(days) : 30));
         const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
         const [topDocs, totalQueries, unanswered, avgScore, dailyVolume] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT kd.id, kd.title, kd.source_type,
-                        COUNT(krl.id)::int AS retrieval_count,
-                        COUNT(CASE WHEN krl.was_used THEN 1 END)::int AS used_count,
+                `SELECT kd.id AS document_id, kd.title AS document_name, kd.source_type,
+                        COUNT(DISTINCT krl.retrieval_batch_id)::int AS retrieval_count,
+                        COUNT(DISTINCT krl.response_id) FILTER (WHERE krl.attribution_version=1 AND krl.was_used)::int AS used_count,
                         ROUND(AVG(krl.score)::numeric, 3) AS avg_score
                  FROM kb_retrieval_log krl
                  JOIN knowledge_documents kd ON kd.id = krl.document_id
-                 WHERE krl.created_at >= $1::timestamp
+                 WHERE krl.created_at >= $1::timestamp AND krl.attribution_version=1
                  GROUP BY kd.id, kd.title, kd.source_type
                  ORDER BY retrieval_count DESC LIMIT 20`,
                 [since]),
 
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT COUNT(DISTINCT query)::int AS total,
-                        COUNT(CASE WHEN was_used THEN 1 END)::int AS hits,
-                        COUNT(*)::int AS total_retrievals
-                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp`,
+                `WITH searches AS (SELECT retrieval_batch_id, BOOL_OR(relevance_passed) AS relevant,
+                        BOOL_OR(document_id IS NOT NULL) AS has_candidates,
+                        BOOL_OR(attributed_at IS NOT NULL) AS assessed, BOOL_OR(was_used) AS observed
+                    FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND attribution_version=1
+                    GROUP BY retrieval_batch_id)
+                 SELECT (SELECT COUNT(DISTINCT query)::int FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND attribution_version=1) AS total,
+                    COUNT(*)::int AS total_retrievals, COUNT(*) FILTER (WHERE relevant)::int AS hits,
+                    COUNT(*) FILTER (WHERE has_candidates)::int AS candidate_searches,
+                    COUNT(*) FILTER (WHERE assessed)::int AS assessed_searches,
+                    COUNT(*) FILTER (WHERE observed)::int AS observed_searches,
+                    (SELECT COUNT(*)::int FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND attribution_version=0) AS legacy_rows
+                 FROM searches`,
                 [since]),
 
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT id, query, occurrences, last_seen_at
+                `SELECT id, query, occurrences, last_seen_at, resolved
                  FROM kb_unanswered_queries
                  WHERE resolved = false AND last_seen_at >= $1::timestamp
                  ORDER BY occurrences DESC LIMIT 20`,
@@ -977,32 +1019,44 @@ export class KnowledgeService {
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ROUND(AVG(score)::numeric, 3) AS avg,
                         ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score)::numeric, 3) AS median
-                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND was_used = true`,
+                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND document_id IS NOT NULL AND attribution_version=1`,
                 [since]),
 
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT DATE(created_at) AS day,
-                        COUNT(*)::int AS queries,
-                        COUNT(CASE WHEN was_used THEN 1 END)::int AS hits
+                `SELECT TO_CHAR(created_at, 'YYYY-MM-DD') AS date,
+                        COUNT(DISTINCT retrieval_batch_id)::int AS queries,
+                        COUNT(DISTINCT retrieval_batch_id) FILTER (WHERE relevance_passed)::int AS hits,
+                        COUNT(DISTINCT response_id) FILTER (WHERE was_used)::int AS observed_responses
                  FROM kb_retrieval_log
-                 WHERE created_at >= $1::timestamp
-                 GROUP BY DATE(created_at)
-                 ORDER BY day DESC LIMIT 30`,
+                 WHERE created_at >= $1::timestamp AND attribution_version=1
+                 GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD')
+                 ORDER BY date DESC LIMIT 365`,
                 [since]),
         ]);
 
-        const total = totalQueries?.[0]?.total || 0;
-        const hits = totalQueries?.[0]?.hits || 0;
-        const hitRate = total > 0 ? Math.round((hits / (totalQueries?.[0]?.total_retrievals || 1)) * 100) : 0;
+        const counts = totalQueries?.[0] || {};
+        const total = Number(counts.total || 0);
+        const searches = Number(counts.total_retrievals || 0);
+        const assessed = Number(counts.assessed_searches || 0);
+        const candidates = Number(counts.candidate_searches || 0);
 
         return {
             period: { days, since },
             overview: {
                 uniqueQueries: total,
-                totalRetrievals: totalQueries?.[0]?.total_retrievals || 0,
-                hitRate,
-                avgScore: avgScore?.[0]?.avg ?? 0,
-                medianScore: avgScore?.[0]?.median ?? 0,
+                totalRetrievals: searches,
+                // All rates are fractions [0,1]. Legacy heuristic rows never enter
+                // response attribution or the per-search denominators.
+                hitRate: searches ? Number(counts.hits || 0) / searches : null,
+                observedRate: assessed ? Number(counts.observed_searches || 0) / assessed : null,
+                attributionCoverage: candidates ? assessed / candidates : null,
+                assessedSearches: assessed,
+                candidateSearches: candidates,
+                observedSearches: Number(counts.observed_searches || 0),
+                legacyRows: Number(counts.legacy_rows || 0),
+                avgScore: avgScore?.[0]?.avg == null ? null : Number(avgScore[0].avg),
+                medianScore: avgScore?.[0]?.median == null ? null : Number(avgScore[0].median),
+                semanticSupport: 'not_evaluated',
             },
             topDocuments: topDocs || [],
             unansweredQueries: unanswered || [],
@@ -1763,37 +1817,49 @@ export class KnowledgeService {
         tenantId: string,
         data: { conversationId?: string; messageId?: string; documentId?: string; query?: string; rating: number; comment?: string; createdBy?: string },
     ) {
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5 ||
+            [data.conversationId, data.messageId, data.documentId].some(id => id != null && !uuid.test(id)) ||
+            (data.query != null && (typeof data.query !== 'string' || data.query.length > 2000)) ||
+            (data.comment != null && (typeof data.comment !== 'string' || data.comment.length > 5000))) {
+            throw new BadRequestException('invalid_knowledge_feedback');
+        }
         const schema = await this.tenantSchema(tenantId);
         await this.ensureKbFeedbackTable(schema);
-
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `INSERT INTO kb_feedback (conversation_id, message_id, document_id, query, rating, comment, created_by)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7) RETURNING *`,
-            [
-                data.conversationId || null,
-                data.messageId || null,
-                data.documentId || null,
-                data.query || null,
-                data.rating,
-                data.comment || null,
-                data.createdBy || null,
-            ]);
-
-        if (data.documentId) {
-            const stats = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*)::int AS cnt
-                 FROM kb_feedback WHERE document_id = $1::uuid`,
-                [data.documentId]);
-
-            if (stats?.[0]) {
-                await this.prisma.executeInTenantSchema(schema,
-                    `UPDATE knowledge_documents SET satisfaction_score = $2, feedback_count = $3, updated_at = NOW()
-                     WHERE id = $1::uuid`,
-                    [data.documentId, stats[0].avg_rating, stats[0].cnt]);
-            }
+        await this.ensureAttributionSchema(schema);
+        // Resolve a message-only reference to its conversation so it receives the
+        // same erasure protection. Repeat the relationship check inside the lock.
+        let conversationId = data.conversationId;
+        if (data.messageId && !conversationId) {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT conversation_id FROM messages WHERE id=$1::uuid`, [data.messageId]);
+            if (!rows[0]) throw new BadRequestException('knowledge_feedback_message_unavailable');
+            conversationId = rows[0].conversation_id;
         }
-
-        return rows?.[0] || { success: true };
+        const result = await this.analyticsTransaction(schema, conversationId, async query => {
+            if (data.messageId) {
+                const messages = await query<any[]>(`SELECT id FROM messages WHERE id=$1::uuid AND conversation_id=$2::uuid`,
+                    [data.messageId, conversationId]);
+                if (!messages.length) throw new BadRequestException('knowledge_feedback_message_mismatch');
+            }
+            if (data.documentId) {
+                const documents = await query<any[]>(`SELECT id FROM knowledge_documents WHERE id=$1::uuid AND status<>'deleted' FOR UPDATE`,
+                    [data.documentId]);
+                if (!documents.length) throw new BadRequestException('knowledge_feedback_document_unavailable');
+            }
+            const rows = await query<any[]>(`INSERT INTO kb_feedback (conversation_id,message_id,document_id,query,rating,comment,created_by)
+                VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7) RETURNING *`,
+            [conversationId || null, data.messageId || null, data.documentId || null, data.query || null,
+                data.rating, data.comment || null, data.createdBy || null]);
+            if (data.documentId) await query(`UPDATE knowledge_documents d SET satisfaction_score=s.avg_rating,feedback_count=s.cnt
+                FROM (SELECT ROUND(AVG(rating)::numeric,2) AS avg_rating,COUNT(*)::int AS cnt FROM kb_feedback WHERE document_id=$1::uuid) s
+                WHERE d.id=$1::uuid`, [data.documentId]);
+            // Feedback is an opinion/correction signal, not new source content:
+            // do not refresh document.updated_at or its factual currency.
+            return rows[0] || { success: true };
+        });
+        if (result.blocked) throw new BadRequestException('knowledge_feedback_conversation_unavailable');
+        return result.value;
     }
 
     async markFalsePositive(tenantId: string, feedbackId: string) {

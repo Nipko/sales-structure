@@ -357,7 +357,9 @@ export class ComplianceService {
             await query(`INSERT INTO customer_memory_erasure (contact_id)
                 SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
             const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger') AS ledger,
-                to_regclass('tool_approval_tickets') AS tickets,to_regclass('tool_approval_outbox') AS outbox`);
+                to_regclass('tool_approval_tickets') AS tickets,to_regclass('tool_approval_outbox') AS outbox,
+                to_regclass('kb_retrieval_log') AS kb_log,to_regclass('kb_unanswered_queries') AS kb_queries,
+                to_regclass('kb_feedback') AS kb_feedback`);
             if(tables[0]?.ledger)await query(`UPDATE tool_execution_ledger SET request_payload='{}'::jsonb,
                 response_payload='{"error":"contact_erased"}'::jsonb,confirmation_token=NULL,
                 execution_lease_token=NULL,execution_lease_expires_at=NULL,last_error_code='contact_erased',
@@ -369,6 +371,18 @@ export class ComplianceService {
             if(tables[0]?.outbox)await query(`UPDATE tool_approval_outbox SET payload='{}'::jsonb,status='published',
                 lease_token=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=NOW() WHERE ticket_id IN
                 (SELECT id FROM tool_approval_tickets WHERE contact_id=ANY($1::uuid[]))`,[contactIds]);
+            // Retrieval and response attribution use the shared privacy lock.
+            // Delete query text/hashes and response-derived hashes while holding
+            // the exclusive lock, so a late response cannot recreate analytics.
+            if (tables[0]?.kb_log && tables[0]?.kb_queries) await query(`DELETE FROM kb_unanswered_queries u
+                USING kb_retrieval_log l,conversations c WHERE l.conversation_id=c.id
+                    AND c.contact_id=ANY($1::uuid[]) AND u.query=l.query`, [contactIds]);
+            if (tables[0]?.kb_log) await query(`DELETE FROM kb_retrieval_log l USING conversations c
+                WHERE l.conversation_id=c.id AND c.contact_id=ANY($1::uuid[])`, [contactIds]);
+            if (tables[0]?.kb_feedback) await query(`UPDATE kb_feedback f SET query=NULL,comment=NULL,message_id=NULL
+                WHERE f.conversation_id IN (SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))
+                    OR f.message_id IN (SELECT m.id FROM messages m JOIN conversations c ON c.id=m.conversation_id
+                        WHERE c.contact_id=ANY($1::uuid[]))`, [contactIds]);
             const facts = await query<any[]>(
                 `DELETE FROM customer_memory_facts
                  WHERE (owner_kind = 'profile' AND owner_id = ANY($1::uuid[]))

@@ -1,4 +1,5 @@
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import type { RetrievedKnowledgeItem } from '@parallext/shared';
 
 /** Shared retrieval contract for automatic context, explicit tools and evaluation. */
 export interface KnowledgeSearchOptions {
@@ -26,6 +27,8 @@ export interface KnowledgeSourceMetadata {
 
 export interface KnowledgeHit {
     id: string;
+    retrievalId?: string;
+    retrievalBatchId?: string;
     document_id: string;
     title: string;
     chunk_text: string;
@@ -44,6 +47,18 @@ export interface KnowledgeHit {
     doc_source_url: string | null;
     doc_audience: 'customer' | 'internal';
     doc_agent_ids: string[];
+}
+
+/** One provenance projection for automatic context, fuzzy context and tools. */
+export function knowledgeHitToContext(hit: KnowledgeHit): RetrievedKnowledgeItem {
+    const date = (value: string | Date | null) => value ? new Date(value).toISOString().slice(0, 10) : undefined;
+    return {
+        source: 'kb_article', id: hit.id, retrievalId: hit.retrievalId, retrievalBatchId: hit.retrievalBatchId,
+        documentId: hit.document_id, version: hit.doc_version, sourceUrl: hit.doc_source_url || undefined,
+        score: hit.score, title: hit.title, content: hit.chunk_text,
+        isRegulated: hit.doc_is_regulated, jurisdiction: hit.doc_jurisdiction || undefined,
+        authority: hit.doc_authority || undefined, validFrom: date(hit.doc_valid_from), validTo: date(hit.doc_valid_to),
+    };
 }
 
 /** Rechecked after vector/keyword fusion so no retrieval path drops source limits. */

@@ -4278,14 +4278,15 @@
       "period": "Derniers {days} jours",
       "overview": {
         "uniqueQueries": "Requêtes uniques",
-        "totalRetrievals": "Récupérations totales",
-        "hitRate": "Taux de réussite",
-        "avgScore": "Score moyen",
-        "medianScore": "Score médian"
+        "totalRetrievals": "Recherches mesurées",
+        "hitRate": "Recherches avec résultats pertinents",
+        "avgScore": "Pertinence moyenne",
+        "medianScore": "Pertinence médiane",
+        "observedRate": "Citation ou concordance littérale"
       },
       "topDocuments": "Documents les plus consultés",
       "retrievalCount": "Requêtes",
-      "usedCount": "Utilisés",
+      "usedCount": "Réponses avec un signal observable",
       "unanswered": "Questions sans réponse",
       "occurrences": "Fois",
       "lastSeen": "Dernière fois",
@@ -4295,8 +4296,11 @@
       "planRequired": "L'analytique KB nécessite le plan Starter ou supérieur.",
       "dailyVolume": "Volume quotidien",
       "queries": "Requêtes",
-      "hits": "Résultats",
-      "loadError": "Erreur lors du chargement des analyses"
+      "hits": "Avec résultats pertinents",
+      "loadError": "Erreur lors du chargement des analyses",
+      "attributionExplanation": "Trouver un document ne prouve pas que la réponse en fait usage. Une citation ou une phrase identique est un signal observable ; elle ne vérifie ni l’exactitude ni le fondement de l’affirmation. L’absence de signal ne prouve pas non plus une absence d’usage.",
+      "attributionDenominator": "{observed} recherches avec un signal dans la réponse finale sur {assessed} évaluées. Des réponses ont été observées pour {assessed} des {candidates} recherches ayant renvoyé des documents. Le texte généré est mesuré, pas sa livraison.",
+      "legacyExcluded": "{count} enregistrements historiques assimilaient pertinence et usage. Ils sont exclus de ces taux et décomptes par recherche."
     },
     "bulk": {
       "button": "Import en masse",
@@ -4313,13 +4317,33 @@
       "successCount": "{count} documents importés avec succès"
     },
     "quality": {
-      "tab": "Qualité",
+      "tab": "État des connaissances",
       "noData": "Aucun document à analyser.",
       "contentLength": "Contenu",
       "chunkCount": "Fragments",
       "categorized": "Catégorie",
       "retrievals": "Requêtes",
-      "relevance": "Pertinence"
+      "relevance": "Pertinence",
+      "explanation": "Disponibilité technique et raisons de révision. La longueur, les consultations et la pertinence ne prouvent pas l’exactitude. Révisez le contenu et testez les scénarios de l’agent avec des preuves indépendantes.",
+      "correctnessUnverified": "Version {version} · Exactitude non vérifiée",
+      "corrections": "Corrections de recherche",
+      "states": {
+        "ready": "Disponible",
+        "review_required": "Révision nécessaire",
+        "unavailable": "Indisponible"
+      },
+      "reasons": {
+        "index_failed": "L’indexation a échoué ; vérifiez le fichier ou la connexion et réessayez.",
+        "index_not_ready": "Le document n’est pas encore prêt pour la recherche.",
+        "no_chunks": "Aucun extrait indexé n’est disponible.",
+        "reindex_failed_previous_version_active": "La mise à jour a échoué. L’agent consulte toujours la version précédente.",
+        "not_yet_valid": "La période de validité n’a pas encore commencé.",
+        "expired": "La validité est terminée ; révisez et actualisez la source.",
+        "invalid_validity": "La période de validité est incorrecte et doit être corrigée.",
+        "regulated_provenance_missing": "Renseignez l’autorité et la juridiction de cette source réglementaire.",
+        "retrieval_corrections": "Des résultats incorrects ont été signalés. Examinez les cas avant de modifier le contenu.",
+        "negative_feedback": "Des avis négatifs existent ; examinez les commentaires et les réponses sans présumer que le document est faux."
+      }
     },
     "suggestions": {
       "title": "Suggestions d'articles (IA)",

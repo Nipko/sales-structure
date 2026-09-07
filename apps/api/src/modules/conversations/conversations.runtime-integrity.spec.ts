@@ -2,6 +2,7 @@ import { ConversationsService } from './conversations.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { ResponseValidatorService } from './response-validator.service';
+import { attributeKnowledgeResponse } from '../knowledge/knowledge-attribution';
 
 describe('Shared runtime integrity', () => {
     function fixture(draftMode = false) {
@@ -33,6 +34,7 @@ describe('Shared runtime integrity', () => {
             knowledgeService: {
                 tenantHasKnowledge: jest.fn().mockResolvedValue(true),
                 searchRelevant: jest.fn().mockResolvedValue([{ id: 'kb-1', title: 'Tarifas', score: 0.95, chunk_text: 'La consulta cuesta COP 20000.' }]),
+                recordResponseAttribution: jest.fn(async (_tenant, _conversation, reply, items) => ({ ...attributeKnowledgeResponse(reply, items), persistence: 'disabled' })),
             },
             rewriteSearchQuery: jest.fn().mockImplementation(async text => text),
             turnCapabilityComposer: { resolve: jest.fn().mockResolvedValue({
@@ -71,6 +73,20 @@ describe('Shared runtime integrity', () => {
         const { run, llm } = fixture();
         llm.mockResolvedValue({ content: 'El precio es COP 1000.' });
         expect(await run()).toContain('No tengo un precio verificado');
+    });
+
+    it('attributes only the final guarded reply, never a rejected answer with a plausible citation', async () => {
+        const { service, run, llm } = fixture();
+        service.knowledgeService.searchRelevant.mockResolvedValue([{ id: 'chunk', document_id: 'document', retrievalId: 'retrieval',
+            title: 'Tarifas', score: 0.95, chunk_text: 'La consulta cuesta COP 20000.', doc_version: 3 }]);
+        llm.mockResolvedValue({ content: 'El precio es COP 1000. [Article: Tarifas]' });
+        const reply = await run();
+        expect(reply).toContain('No tengo un precio verificado');
+        const hook = service.knowledgeService.recordResponseAttribution;
+        expect(hook).toHaveBeenCalledTimes(1);
+        expect(hook.mock.calls[0][2]).toBe(reply);
+        expect(hook.mock.calls[0][3][0]).toMatchObject({ documentId: 'document', retrievalId: 'retrieval', version: 3 });
+        expect((await hook.mock.results[0].value).observedDocuments).toBe(0);
     });
 
     it('blocks an unadvertised draft writer at the real executor and skips deterministic effects', async () => {

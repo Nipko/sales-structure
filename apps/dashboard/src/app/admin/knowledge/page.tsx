@@ -55,9 +55,15 @@ interface KBAnalytics {
     overview: {
         uniqueQueries: number;
         totalRetrievals: number;
-        hitRate: number;
-        avgScore: number;
-        medianScore: number;
+        hitRate: number | null;
+        avgScore: number | null;
+        medianScore: number | null;
+        observedRate: number | null;
+        attributionCoverage: number | null;
+        assessedSearches: number;
+        candidateSearches: number;
+        observedSearches: number;
+        legacyRows: number;
     };
     topDocuments: Array<{ document_id: string; document_name: string; retrieval_count: number; used_count: number }>;
     unansweredQueries: Array<{ id: string; query: string; occurrences: number; last_seen_at: string; resolved: boolean }>;
@@ -136,6 +142,8 @@ export default function KnowledgePage() {
     // Quality scores
     const [qualityScores, setQualityScores] = useState<any[]>([]);
     const [qualityLoading, setQualityLoading] = useState(false);
+    const [qualityError, setQualityError] = useState(false);
+    const [qualityRefresh, setQualityRefresh] = useState(0);
 
     // Gap report
     const [gapReport, setGapReport] = useState<KnowledgeGapReport | null>(null);
@@ -457,15 +465,20 @@ export default function KnowledgePage() {
 
     // Load quality scores
     useEffect(() => {
-        if (!canSeeGlobalAnalytics || tab !== "quality") return;
+        if (!canSeeGlobalAnalytics || tab !== "quality" || !activeTenantId) return;
+        let cancelled = false;
         setQualityLoading(true);
+        setQualityError(false);
+        setQualityScores([]);
         api.fetch("/knowledge/documents/quality")
             .then(res => {
-                if (res?.success && res.data) setQualityScores(res.data);
+                if (!res?.success || !Array.isArray(res.data)) throw new Error('knowledge_diagnostics_unavailable');
+                if (!cancelled) setQualityScores(res.data);
             })
-            .catch(() => {})
-            .finally(() => setQualityLoading(false));
-    }, [tab, canSeeGlobalAnalytics]);
+            .catch(() => { if (!cancelled) setQualityError(true); })
+            .finally(() => { if (!cancelled) setQualityLoading(false); });
+        return () => { cancelled = true; };
+    }, [tab, canSeeGlobalAnalytics, activeTenantId, qualityRefresh]);
 
     // Load gap report
     useEffect(() => {
@@ -979,9 +992,14 @@ export default function KnowledgePage() {
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                                 <KPICard icon={Search} label={t("analytics.overview.uniqueQueries")} value={analytics.overview.uniqueQueries} />
                                 <KPICard icon={Zap} label={t("analytics.overview.totalRetrievals")} value={analytics.overview.totalRetrievals} />
-                                <KPICard icon={Target} label={t("analytics.overview.hitRate")} value={`${(analytics.overview.hitRate * 100).toFixed(1)}%`} />
-                                <KPICard icon={TrendingUp} label={t("analytics.overview.avgScore")} value={`${(analytics.overview.avgScore * 100).toFixed(0)}%`} />
-                                <KPICard icon={Eye} label={t("analytics.overview.medianScore")} value={`${(analytics.overview.medianScore * 100).toFixed(0)}%`} />
+                                <KPICard icon={Target} label={t("analytics.overview.hitRate")} value={analytics.overview.hitRate == null ? '—' : `${(analytics.overview.hitRate * 100).toFixed(1)}%`} />
+                                <KPICard icon={TrendingUp} label={t("analytics.overview.avgScore")} value={analytics.overview.avgScore == null ? '—' : `${(analytics.overview.avgScore * 100).toFixed(0)}%`} />
+                                <KPICard icon={Eye} label={t("analytics.overview.observedRate")} value={analytics.overview.observedRate == null ? '—' : `${(analytics.overview.observedRate * 100).toFixed(1)}%`} />
+                            </div>
+                            <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground space-y-2">
+                                <p>{t("analytics.attributionExplanation")}</p>
+                                <p>{t("analytics.attributionDenominator", { observed: analytics.overview.observedSearches, assessed: analytics.overview.assessedSearches, candidates: analytics.overview.candidateSearches })}</p>
+                                {!!analytics.overview.legacyRows && <p>{t("analytics.legacyExcluded", { count: analytics.overview.legacyRows })}</p>}
                             </div>
 
                             {/* Daily Volume Chart */}
@@ -1125,45 +1143,44 @@ export default function KnowledgePage() {
             {/* Quality Tab */}
             {tab === "quality" && (
                 <div>
+                    <p className="text-sm text-muted-foreground mb-4">{t("quality.explanation")}</p>
                     {qualityLoading && <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>}
-                    {!qualityLoading && qualityScores.length === 0 && (
+                    {qualityError && <div role="alert" className="text-sm text-amber-600 mb-4">
+                        <p>{t("analytics.loadError")}</p>
+                        <button className="mt-2 underline" onClick={() => setQualityRefresh(value => value + 1)}>{tc("retry")}</button>
+                    </div>}
+                    {!qualityLoading && !qualityError && qualityScores.length === 0 && (
                         <div className="text-center py-10 text-muted-foreground">{t("quality.noData")}</div>
                     )}
                     {!qualityLoading && qualityScores.length > 0 && (
                         <div className="flex flex-col gap-3">
-                            {qualityScores.sort((a, b) => b.qualityScore - a.qualityScore).map(doc => (
+                            {qualityScores.map(doc => (
                                 <div key={doc.id} className="p-5 rounded-[14px] border border-border bg-card">
                                     <div className="flex items-center justify-between mb-3">
                                         <span className="text-[15px] font-semibold truncate flex-1 mr-3">{doc.title}</span>
                                         <div className={cn(
-                                            "text-lg font-semibold px-3 py-1 rounded-lg",
-                                            doc.qualityScore >= 70 ? "bg-emerald-500/10 text-emerald-500" :
-                                            doc.qualityScore >= 40 ? "bg-amber-500/10 text-amber-500" :
+                                            "text-sm font-semibold px-3 py-1 rounded-lg",
+                                            doc.readiness === 'ready' ? "bg-emerald-500/10 text-emerald-500" :
+                                            doc.readiness === 'review_required' ? "bg-amber-500/10 text-amber-500" :
                                             "bg-red-500/10 text-red-500"
                                         )}>
-                                            {doc.qualityScore}/100
+                                            {t(`quality.states.${doc.readiness}`)}
                                         </div>
                                     </div>
-                                    <div className="h-2 rounded-full bg-muted overflow-hidden mb-3">
-                                        <div
-                                            className={cn("h-full rounded-full transition-all",
-                                                doc.qualityScore >= 70 ? "bg-emerald-500" :
-                                                doc.qualityScore >= 40 ? "bg-amber-500" : "bg-red-500"
-                                            )}
-                                            style={{ width: `${doc.qualityScore}%` }}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-5 gap-2 text-xs">
+                                    <p className="text-xs text-muted-foreground mb-3">{t("quality.correctnessUnverified", { version: doc.version })}</p>
+                                    {!!doc.reasons?.length && <ul className="text-sm list-disc ml-5 mb-4 space-y-1">
+                                        {doc.reasons.map((reason: string) => <li key={reason}>{t(`quality.reasons.${reason}`)}</li>)}
+                                    </ul>}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                                         {[
-                                            { key: "contentLength", label: t("quality.contentLength"), max: 25 },
-                                            { key: "chunkCount", label: t("quality.chunkCount"), max: 20 },
-                                            { key: "categorized", label: t("quality.categorized"), max: 10 },
-                                            { key: "retrievals", label: t("quality.retrievals"), max: 25 },
-                                            { key: "relevance", label: t("quality.relevance"), max: 20 },
+                                            { key: "chunks", label: t("quality.chunkCount"), value: doc.stats.chunkCount },
+                                            { key: "retrievals", label: t("quality.retrievals"), value: doc.stats.retrievalCount },
+                                            { key: "observed", label: t("analytics.usedCount"), value: doc.stats.usedCount },
+                                            { key: "corrections", label: t("quality.corrections"), value: doc.stats.falsePositiveCount },
                                         ].map(f => (
                                             <div key={f.key} className="text-center">
                                                 <div className="text-muted-foreground mb-1">{f.label}</div>
-                                                <div className="font-semibold">{doc.factors[f.key]}/{f.max}</div>
+                                                <div className="font-semibold">{f.value}</div>
                                             </div>
                                         ))}
                                     </div>
@@ -1386,7 +1403,7 @@ export default function KnowledgePage() {
 
             {/* Crawl URL Modal */}
             {showCrawlModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCrawlModal(false)}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCrawlModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("crawl.title")}</h2>
@@ -1434,7 +1451,7 @@ export default function KnowledgePage() {
 
             {/* Edit Document Modal */}
             {editDoc && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEditDoc(null)}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEditDoc(null)}>
                     <div onClick={e => e.stopPropagation()} className="w-[600px] max-w-[95vw] max-h-[90vh] overflow-y-auto p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("edit.title")}</h2>
@@ -1525,7 +1542,7 @@ export default function KnowledgePage() {
 
             {/* Create Resource Modal (legacy) */}
             {showCreateModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("modal.title")}</h2>
@@ -1556,7 +1573,7 @@ export default function KnowledgePage() {
 
             {/* Bulk Upload Modal */}
             {showBulkModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowBulkModal(false); setBulkResults(null); setBulkFiles([]); }}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowBulkModal(false); setBulkResults(null); setBulkFiles([]); }}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t("bulk.title")}</h2>
@@ -1651,7 +1668,7 @@ export default function KnowledgePage() {
 
             {/* Version History Modal */}
             {versionDoc && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setVersionDoc(null)}>
+                <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setVersionDoc(null)}>
                     <div onClick={e => e.stopPropagation()} className="w-[560px] max-h-[80vh] p-7 rounded-[18px] bg-card border border-border shadow-2xl flex flex-col">
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0 flex items-center gap-2">

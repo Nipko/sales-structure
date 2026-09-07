@@ -13,6 +13,7 @@ import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
 import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
@@ -3030,31 +3031,12 @@ export class ConversationsService {
                     const possible = ragResults.filter((r: any) => r.score >= 0.25 && r.score < similarityThreshold);
 
                     if (retrieved.length > 0) {
-                        turnContext.retrievedKnowledge = retrieved.map((r: any, idx: number) => ({
-                            source: 'kb_article' as const,
-                            id: String(r.id ?? r.document_id ?? idx),
-                            score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
-                            title: r.title,
-                            content: r.chunk_text,
-                            // Carried through so a regulatory answer can be
-                            // attributed and audited, not just asserted.
-                            isRegulated: r.doc_is_regulated === true || undefined,
-                            jurisdiction: r.doc_jurisdiction || undefined,
-                            authority: r.doc_authority || undefined,
-                            validFrom: r.doc_valid_from ? String(r.doc_valid_from).slice(0, 10) : undefined,
-                            validTo: r.doc_valid_to ? String(r.doc_valid_to).slice(0, 10) : undefined,
-                        })) as RetrievedKnowledgeItem[];
+                        turnContext.retrievedKnowledge = retrieved.map(knowledgeHitToContext);
                         this.logger.log(`RAG: Injected ${retrieved.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
                     }
 
                     if (possible.length > 0) {
-                        (turnContext as any).possibleKnowledge = possible.map((r: any, idx: number) => ({
-                            source: 'kb_article' as const,
-                            id: String(r.id ?? r.document_id ?? idx),
-                            score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
-                            title: r.title,
-                            content: r.chunk_text,
-                        })) as RetrievedKnowledgeItem[];
+                        turnContext.possibleKnowledge = possible.map(knowledgeHitToContext);
                         this.logger.log(`RAG (Fuzzy): Injected ${possible.length} possible chunks (score 0.25-${similarityThreshold}) for tenant ${tenantId}`);
                     }
                 }
@@ -3711,6 +3693,25 @@ export class ConversationsService {
             // `create_property_booking` had returned, which the payment link then
             // had to be invented from.
             await this.persistToolContext(schemaName, conversation.id, executedToolsThisTurn, session);
+
+            // Record only the final generated text, after guards and handoff/media
+            // rewrites. Citation/overlap is observable attribution, never entailment.
+            const knowledgeItems: RetrievedKnowledgeItem[] = [
+                ...(turnContext.retrievedKnowledge || []), ...(turnContext.possibleKnowledge || []),
+                ...executedToolsThisTurn.filter(tool => tool.name === 'search_knowledge_base')
+                    .flatMap(tool => Array.isArray(tool.result?.chunks) ? tool.result.chunks : [])
+                    .map(chunk => ({ ...chunk, source: 'kb_article' as const })),
+            ];
+            try {
+                const attribution = await this.knowledgeService.recordResponseAttribution(
+                    tenantId, conversation.id, finalResponse, knowledgeItems, executionContext,
+                );
+                turnContext.knowledgeAttribution = attribution;
+                turnTrace.add('decision', 'knowledge_attribution', attribution);
+            } catch (error: any) {
+                // Diagnostics must not discard a valid response or any committed action.
+                this.logger.warn(`[KB Analytics] final-response hook unavailable: ${error.message}`);
+            }
 
             turnTrace.add('decision', 'final_response', {
                 finalResponseLength: finalResponse?.length || 0,

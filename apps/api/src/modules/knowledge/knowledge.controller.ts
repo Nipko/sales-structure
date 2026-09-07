@@ -145,7 +145,7 @@ export class KnowledgeController {
     @Get('documents/quality')
     @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @ApiOperation({ summary: 'Get quality scores for all documents' })
+    @ApiOperation({ summary: 'Get document technical readiness and unverified feedback/attribution diagnostics' })
     async getQualityScores(@Req() req: any) {
         const tenantId = req.user?.tenantId;
         const data = await this.knowledgeService.getDocumentQualityScores(tenantId);

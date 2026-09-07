@@ -4278,14 +4278,15 @@
       "period": "Last {days} days",
       "overview": {
         "uniqueQueries": "Unique queries",
-        "totalRetrievals": "Total retrievals",
-        "hitRate": "Hit rate",
-        "avgScore": "Avg score",
-        "medianScore": "Median score"
+        "totalRetrievals": "Measured searches",
+        "hitRate": "Searches with relevant matches",
+        "avgScore": "Mean relevance",
+        "medianScore": "Median relevance",
+        "observedRate": "Citation or literal overlap"
       },
       "topDocuments": "Most queried documents",
       "retrievalCount": "Queries",
-      "usedCount": "Used",
+      "usedCount": "Replies with an observable signal",
       "unanswered": "Unanswered questions",
       "occurrences": "Times",
       "lastSeen": "Last seen",
@@ -4295,8 +4296,11 @@
       "planRequired": "KB analytics require Starter plan or higher.",
       "dailyVolume": "Daily volume",
       "queries": "Queries",
-      "hits": "Hits",
-      "loadError": "Error loading analytics"
+      "hits": "With relevant matches",
+      "loadError": "Error loading analytics",
+      "attributionExplanation": "Finding a document does not prove a reply uses it. A citation or matching phrase is an observable signal; it does not verify that a claim is correct or supported. No signal does not prove non-use either.",
+      "attributionDenominator": "{observed} searches with a signal in the final reply out of {assessed} assessed. Replies were observed for {assessed} of {candidates} searches returning documents. This measures generated text, not delivery.",
+      "legacyExcluded": "{count} historical records treated relevance as usage. They are excluded from these rates and per-search counts."
     },
     "bulk": {
       "button": "Bulk import",
@@ -4313,13 +4317,33 @@
       "successCount": "{count} documents imported successfully"
     },
     "quality": {
-      "tab": "Quality",
+      "tab": "Knowledge status",
       "noData": "No documents to analyze.",
       "contentLength": "Content",
       "chunkCount": "Chunks",
       "categorized": "Category",
       "retrievals": "Retrievals",
-      "relevance": "Relevance"
+      "relevance": "Relevance",
+      "explanation": "Technical availability and reasons to review. Length, queries and relevance do not prove accuracy. Review the content and test agent scenarios against independent evidence.",
+      "correctnessUnverified": "Version {version} · Accuracy unverified",
+      "corrections": "Retrieval corrections",
+      "states": {
+        "ready": "Available",
+        "review_required": "Review needed",
+        "unavailable": "Unavailable"
+      },
+      "reasons": {
+        "index_failed": "Indexing failed; review the file or connection and retry.",
+        "index_not_ready": "This document is not ready for retrieval yet.",
+        "no_chunks": "No indexed chunks are available.",
+        "reindex_failed_previous_version_active": "The update failed. The agent still retrieves the previous version.",
+        "not_yet_valid": "The validity period has not started.",
+        "expired": "The validity period ended; review and update the source.",
+        "invalid_validity": "The validity period is invalid and needs correction.",
+        "regulated_provenance_missing": "Complete the authority and jurisdiction for this regulated source.",
+        "retrieval_corrections": "Incorrect retrievals were reported. Review the cases before changing content.",
+        "negative_feedback": "There are negative ratings; review the comments and replies without assuming the document is false."
+      }
     },
     "suggestions": {
       "title": "Article suggestions (AI)",

@@ -4278,14 +4278,15 @@
       "period": "Últimos {days} dias",
       "overview": {
         "uniqueQueries": "Consultas únicas",
-        "totalRetrievals": "Recuperações totais",
-        "hitRate": "Taxa de acerto",
-        "avgScore": "Score médio",
-        "medianScore": "Score mediano"
+        "totalRetrievals": "Buscas medidas",
+        "hitRate": "Buscas com resultados relevantes",
+        "avgScore": "Relevância média",
+        "medianScore": "Relevância mediana",
+        "observedRate": "Citação ou coincidência literal"
       },
       "topDocuments": "Documentos mais consultados",
       "retrievalCount": "Consultas",
-      "usedCount": "Usados",
+      "usedCount": "Respostas com sinal observável",
       "unanswered": "Perguntas sem resposta",
       "occurrences": "Vezes",
       "lastSeen": "Última vez",
@@ -4295,8 +4296,11 @@
       "planRequired": "As análises de KB requerem plano Starter ou superior.",
       "dailyVolume": "Volume diário",
       "queries": "Consultas",
-      "hits": "Acertos",
-      "loadError": "Erro ao carregar analytics"
+      "hits": "Com resultados relevantes",
+      "loadError": "Erro ao carregar analytics",
+      "attributionExplanation": "Encontrar um documento não prova que a resposta o usa. Uma citação ou frase coincidente é um sinal observável; não verifica se a afirmação está correta ou fundamentada. A ausência de sinal também não prova que não foi usado.",
+      "attributionDenominator": "{observed} buscas com sinal na resposta final de {assessed} avaliadas. Foram observadas respostas para {assessed} de {candidates} buscas que retornaram documentos. Mede-se o texto gerado, não a entrega.",
+      "legacyExcluded": "{count} registros históricos tratavam relevância como uso. Eles são excluídos destas taxas e contagens por busca."
     },
     "bulk": {
       "button": "Importação em massa",
@@ -4313,13 +4317,33 @@
       "successCount": "{count} documentos importados com sucesso"
     },
     "quality": {
-      "tab": "Qualidade",
+      "tab": "Estado do conhecimento",
       "noData": "Sem documentos para analisar.",
       "contentLength": "Conteúdo",
       "chunkCount": "Fragmentos",
       "categorized": "Categoria",
       "retrievals": "Consultas",
-      "relevance": "Relevância"
+      "relevance": "Relevância",
+      "explanation": "Disponibilidade técnica e motivos para revisão. Extensão, consultas e relevância não provam exatidão. Revise o conteúdo e teste cenários do agente com evidência independente.",
+      "correctnessUnverified": "Versão {version} · Exatidão não verificada",
+      "corrections": "Correções de recuperação",
+      "states": {
+        "ready": "Disponível",
+        "review_required": "Revisão necessária",
+        "unavailable": "Indisponível"
+      },
+      "reasons": {
+        "index_failed": "A indexação falhou; revise o arquivo ou a conexão e tente novamente.",
+        "index_not_ready": "O documento ainda não está pronto para consultas.",
+        "no_chunks": "Não há trechos indexados disponíveis.",
+        "reindex_failed_previous_version_active": "A atualização falhou. O agente continua consultando a versão anterior.",
+        "not_yet_valid": "O período de validade ainda não começou.",
+        "expired": "A validade terminou; revise e atualize a fonte.",
+        "invalid_validity": "O período de validade é inválido e precisa de correção.",
+        "regulated_provenance_missing": "Preencha a autoridade e a jurisdição desta fonte regulada.",
+        "retrieval_corrections": "Foram relatadas recuperações incorretas. Revise os casos antes de alterar o conteúdo.",
+        "negative_feedback": "Há avaliações negativas; revise os comentários e as respostas sem presumir que o documento seja falso."
+      }
     },
     "suggestions": {
       "title": "Sugestões de artigos (IA)",

@@ -9,6 +9,7 @@ function build(failMemory = false) {
     const query = jest.fn(async (sql: string, params: any[] = []) => {
         if (sql.includes('SELECT DISTINCT customer_profile_id')) return [{ customer_profile_id: profileId }];
         if (sql.includes('SELECT DISTINCT contact_id')) return [{ contact_id: contactId }, { contact_id: siblingId }];
+        if (sql.includes("to_regclass('tool_execution_ledger')")) return [{ kb_log: 'kb_retrieval_log', kb_queries: 'kb_unanswered_queries', kb_feedback: 'kb_feedback' }];
         if (sql.includes('UPDATE conversations') && sql.includes('ANY($1::uuid[])')) return [{id:'conversation'}];
         if (sql.includes('INSERT INTO customer_memory_erasure')) state.tombstones = params[0];
         if (sql.includes('DELETE FROM customer_memory_facts')) {
@@ -99,5 +100,17 @@ describe('Contact erasure reaches memory derivatives', () => {
         expect(profile).toContain('SET phone =');expect(profile).toContain('email = NULL');
         expect(profile).toContain("metadata = '{}'::jsonb");expect(profile).not.toContain('primary_phone');
         expect(query.mock.calls.some(([sql])=>sql.includes('UPDATE contact_identities SET external_id ='))).toBe(true);
+    });
+
+    it('removes KB query and response derivatives for the unified profile under the privacy lock', async () => {
+        const { service, query } = build();
+        await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        const eraseLog = query.mock.calls.find(([sql]) => sql.includes('DELETE FROM kb_retrieval_log'))!;
+        expect(eraseLog[1]).toEqual([[contactId, siblingId]]);
+        expect(eraseLog[0]).toContain('l.conversation_id=c.id');
+        expect(query.mock.calls.some(([sql]) => sql.includes('DELETE FROM kb_unanswered_queries'))).toBe(true);
+        expect(query.mock.calls.some(([sql]) => sql.includes('UPDATE kb_feedback f SET query=NULL,comment=NULL,message_id=NULL'))).toBe(true);
+        expect(query.mock.calls.findIndex(([sql]) => sql.includes('pg_advisory_xact_lock(hashtextextended($1,0))')))
+            .toBeLessThan(query.mock.calls.findIndex(([sql]) => sql.includes('DELETE FROM kb_retrieval_log')));
     });
 });

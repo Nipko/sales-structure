@@ -408,6 +408,22 @@ CREATE INDEX IF NOT EXISTS idx_krl_doc_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_
 CREATE INDEX IF NOT EXISTS idx_krl_created_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("created_at" DESC);
 CREATE INDEX IF NOT EXISTS idx_krl_conversation_created_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("conversation_id", "created_at" DESC) WHERE "conversation_id" IS NOT NULL;
 
+-- Version 0 rows only measured retrieval relevance. Never reinterpret them as response attribution.
+ALTER TABLE "{{SCHEMA_NAME}}"."kb_retrieval_log"
+    ADD COLUMN IF NOT EXISTS "retrieval_batch_id" UUID,
+    ADD COLUMN IF NOT EXISTS "relevance_passed" BOOLEAN,
+    ADD COLUMN IF NOT EXISTS "attribution_version" SMALLINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "source_version" INTEGER,
+    ADD COLUMN IF NOT EXISTS "source_title" TEXT,
+    ADD COLUMN IF NOT EXISTS "presented" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "response_signal" VARCHAR(40) NOT NULL DEFAULT 'unobserved',
+    ADD COLUMN IF NOT EXISTS "attribution_granularity" VARCHAR(10) NOT NULL DEFAULT 'none',
+    ADD COLUMN IF NOT EXISTS "response_id" UUID,
+    ADD COLUMN IF NOT EXISTS "response_hash" CHAR(64),
+    ADD COLUMN IF NOT EXISTS "evidence_hash" CHAR(64),
+    ADD COLUMN IF NOT EXISTS "attributed_at" TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_krl_attribution_batch ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("retrieval_batch_id") WHERE "retrieval_batch_id" IS NOT NULL;
+
 -- ---- KB Unanswered Queries ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_unanswered_queries" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

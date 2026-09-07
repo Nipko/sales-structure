@@ -2555,6 +2555,8 @@ export class AIToolExecutorService {
                     content: r.chunk_text,
                     score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
                     documentId: r.document_id,
+                    retrievalId: r.retrievalId,
+                    retrievalBatchId: r.retrievalBatchId,
                     jurisdiction: r.doc_jurisdiction,
                     authority: r.doc_authority,
                     isRegulated: r.doc_is_regulated,

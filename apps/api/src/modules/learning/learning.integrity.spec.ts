@@ -101,12 +101,14 @@ describe('Learning runtime scope',()=>{
     it('does not expose heldout transcripts or frozen agent snapshots in the public review list',async()=>{
         const {service,query}=build();
         query.mockImplementation(async sql=>sql.includes('s.split,s.channel')?[{split:'train',id:exampleId},{split:'holdout',episode:'secret holdout'}]:
-            sql.includes('baseline_release_id,traffic_percent')?[{id:releaseId,evaluation:{agentSnapshot:{private:'config'},results:[{traces:'heldout'}],passed:true,candidateAverage:90}}]:[]);
+            sql.includes('baseline_release_id,traffic_percent')?[{id:releaseId,total_cases:3,evaluation:{agentSnapshot:{private:'config'},results:[
+                {traces:'heldout',candidateCompleted:true,baselineCompleted:true},
+                {traces:'heldout',candidateCompleted:false,baselineCompleted:true}],passed:true,candidateAverage:90}}]:[]);
         jest.spyOn(service as any,'assertAgent').mockResolvedValue(undefined);
         const result=await service.list(tenant,agent);
         expect(result.examples).toHaveLength(1);
         expect(JSON.stringify(result)).not.toMatch(/heldout|agentSnapshot|traces|private/);
-        expect(result.releases[0].evaluation).toMatchObject({passed:true,candidateAverage:90,completedCases:1});
+        expect(result.releases[0].evaluation).toMatchObject({passed:true,candidateAverage:90,totalCases:3,completedCases:1,failedCases:1});
     });
     it('respects every earlier rollout percentage when falling through a release chain',async()=>{
         const {service,query}=build();const previous=sourceIds[1],stable=sourceIds[2];

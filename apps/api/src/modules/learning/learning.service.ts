@@ -241,6 +241,8 @@ export class LearningService {
                     requiredTool (exact ledger tool name required by operational_pattern, null for other kinds),
                     responsePattern (one excellent concise response in the source language using named placeholders for all variable facts,
                     names, amounts, dates, identity and claims of completed actions), rationale, factsRequired (array of facts the live runtime must verify).
+                    Write rationale, exclusions and factsRequired in the supplied source language (es/en/pt/fr), as well as responsePattern.
+                    Keep kind, score keys and requiredTool machine identifiers unchanged. Never translate tool names.
                     A successful sale, CSAT or polite tone does not prove correctness. Assistant claims do not prove tool success.
                     Evidence is limited to the supplied server ledger; status succeeded may still have pending_payment in response_payload.
                     Unverified factual/action claims, unsafe consent and private data are exclusions, never compensated by tone.

@@ -736,6 +736,12 @@ export type KnowledgeSource = 'faq' | 'policy' | 'kb_article' | 'product' | 'ser
 export interface RetrievedKnowledgeItem {
     source: KnowledgeSource;
     id: string;
+    /** Retrieval identity is internal evidence, never a customer-facing citation. */
+    retrievalId?: string;
+    retrievalBatchId?: string;
+    documentId?: string;
+    version?: number;
+    sourceUrl?: string;
     score?: number;
     title?: string;
     content: string;
@@ -954,6 +960,12 @@ export interface TurnCapability {
 }
 
 export interface TurnContext {
+    /** Final generated-response diagnostics. Citations/overlap are not semantic verification. */
+    knowledgeAttribution?: {
+        version: 1; responseHash: string; presentedDocuments: number; observedDocuments: number;
+        citedDocuments: number; literalOverlapDocuments: number; unknownCitations: number; ambiguousCitations: number;
+        semanticSupport: 'not_evaluated'; persistence: 'disabled' | 'not_needed' | 'contact_erased' | 'recorded' | 'incomplete' | 'unavailable';
+    };
     learningExamples?: Array<{ id: string; releaseId: string; releaseHash: string; situation: string; responsePattern: string; rationale: string; factsRequired: string[]; authority: 'style_only' }>;
     channelType?: ChannelType;
     executionMode?: 'live' | 'draft' | 'agent_test' | 'evaluation';

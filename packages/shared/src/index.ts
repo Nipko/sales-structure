@@ -1390,5 +1390,7 @@ export interface ProcedureRunState {
     startedAt: string;
     updatedAt?: string;
     expiresAt?: string;
+    /** Other explicitly paused tasks. Each frame keeps its own retention clock. */
+    suspendedMissions?: ProcedureRunState[];
 }
 export type { KnowledgeGapReport } from './knowledge';

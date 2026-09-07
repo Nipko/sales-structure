@@ -14,7 +14,7 @@ import {
     coerceProcedureSlot,
     type ProcedureSlotSpec,
 } from './procedure-slot-interpolation';
-import { isInformationSeekingMessage, isPauseMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { LanguageDetectorService } from './language-detector.service';
 
@@ -76,11 +76,19 @@ const STATE_TTL = 3600; // 1h
 const MISSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const ACTIVE_CACHE_TTL = 300; // 5min
 const MAX_STEPS_PER_TURN = 25;
+const MAX_PAUSED_MISSIONS = 4;
+const SELECT_MISSION = /^(?:quiero|necesito|ahora|tambien|retomemos|retomar|continuar con|i want|i need|now|also|resume|continue with|quero|preciso|agora|tambem|retomar|continuar com|je veux|je souhaite|j ai besoin|maintenant|reprendre|reprenons|continuer avec)\b/;
+const CANCEL_CURRENT_COLLECTION = /^(?:(?:por favor|please)\s+)?(?:cancelar|cancela|cancelalo|cancel|annuler|arretez|olvidalo|olvidate|dejemoslo|deixa pra la|ya no quiero(?: continuar)?|no quiero continuar|nao quero continuar|i don't want to continue|i do not want to continue|je ne veux plus continuer|mejor nada|nada de eso)(?:\s+(?:por favor|please))?[.!\s]*$/;
 
 export interface ProcedureStateStore {
     load(schemaName: string, conversationId: string): Promise<ProcedureRunState | null>;
     save(schemaName: string, conversationId: string, state: ProcedureRunState): Promise<void>;
     clear(schemaName: string, conversationId: string): Promise<void>;
+}
+
+export interface ProcedureDefinitionStore {
+    listActive(schemaName: string): Promise<ProcedureDefinition[]>;
+    getById(schemaName: string, id: string): Promise<ProcedureDefinition | null>;
 }
 
 /**
@@ -97,6 +105,7 @@ export interface ProcedureStateStore {
 export class ProcedureEngineService {
     private readonly logger = new Logger(ProcedureEngineService.name);
     private stateStore?: ProcedureStateStore;
+    private definitionStore?: ProcedureDefinitionStore;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -108,16 +117,21 @@ export class ProcedureEngineService {
         return `procedure:${conversationId}`;
     }
 
-    forExecution(ports: { redis?: RedisService; toolExecutor?: AIToolExecutorService; persistence: ProcedureStateStore }): ProcedureEngineService {
+    forExecution(ports: { redis?: RedisService; toolExecutor?: AIToolExecutorService; persistence: ProcedureStateStore; definitions?: ProcedureDefinitionStore }): ProcedureEngineService {
         const engine = new ProcedureEngineService(this.prisma, ports.redis || this.redis, ports.toolExecutor || this.toolExecutor);
         engine.stateStore = ports.persistence;
+        engine.definitionStore = ports.definitions;
         return engine;
     }
 
     async getState(conversationId: string, schemaName?: string): Promise<ProcedureRunState | null> {
         if (this.stateStore) {
             if (!schemaName) throw new Error('procedure_schema_required');
-            return this.stateStore.load(schemaName, conversationId);
+            const state = await this.stateStore.load(schemaName, conversationId);
+            if (state?.expiresAt && (!Number.isFinite(Date.parse(state.expiresAt)) || Date.parse(state.expiresAt) <= Date.now())) {
+                return this.finishCurrentMission(conversationId, state, schemaName);
+            }
+            return state;
         }
         if (!schemaName) return this.redis.getJson<ProcedureRunState>(this.stateKey(conversationId));
         // Read the durable marker before the cache: a completed or erased task
@@ -130,8 +144,7 @@ export class ProcedureEngineService {
             const state = metadata.procedureState;
             if (!state?.procedureId) return null;
             if (!state.expiresAt || Date.parse(state.expiresAt) <= Date.now() || !Number.isFinite(Date.parse(state.expiresAt))) {
-                await this.clearState(conversationId, schemaName);
-                return null;
+                return this.finishCurrentMission(conversationId, state, schemaName);
             }
             return state;
         }
@@ -141,9 +154,9 @@ export class ProcedureEngineService {
         return legacy;
     }
 
-    private async saveState(conversationId: string, state: ProcedureRunState, schemaName?: string): Promise<void> {
+    private async saveState(conversationId: string, state: ProcedureRunState, schemaName?: string, renewRetention = true): Promise<void> {
         state.updatedAt = new Date().toISOString();
-        state.expiresAt = new Date(Date.now() + MISSION_RETENTION_MS).toISOString();
+        if (renewRetention) state.expiresAt = new Date(Date.now() + MISSION_RETENTION_MS).toISOString();
         if (this.stateStore) {
             if (!schemaName) throw new Error('procedure_schema_required');
             await this.stateStore.save(schemaName, conversationId, state);
@@ -169,11 +182,32 @@ export class ProcedureEngineService {
         await this.redis.del(this.stateKey(conversationId)).catch(() => {});
     }
 
+    private retainedMissions(state: ProcedureRunState): ProcedureRunState[] {
+        const seen = new Set([state.procedureId]);
+        return (Array.isArray(state.suspendedMissions) ? state.suspendedMissions : []).filter(frame => {
+            if (!frame || typeof frame !== 'object' || !frame.procedureId || seen.has(frame.procedureId)
+                || !frame.collected || typeof frame.collected !== 'object' || Array.isArray(frame.collected)
+                || !Number.isFinite(Date.parse(frame.expiresAt || '')) || Date.parse(frame.expiresAt!) <= Date.now()) return false;
+            seen.add(frame.procedureId);
+            return true;
+        }).slice(0, MAX_PAUSED_MISSIONS).map(({ suspendedMissions: _nested, ...frame }) => structuredClone(frame));
+    }
+
+    /** Finishing one task never erases another, and never executes the next task implicitly. */
+    private async finishCurrentMission(conversationId: string, state: ProcedureRunState, schemaName: string): Promise<ProcedureRunState | null> {
+        const [next, ...remaining] = this.retainedMissions(state);
+        if (!next) { await this.clearState(conversationId, schemaName); return null; }
+        const restored = { ...next, pausedAt: new Date().toISOString(), suspendedMissions: remaining };
+        await this.saveState(conversationId, restored, schemaName, false);
+        return restored;
+    }
+
     /** Active procedures for a tenant (cached). Empty array if the table is absent. */
     private async loadActiveProcedures(tenantId: string, schemaName: string): Promise<ProcedureDefinition[]> {
+        if (this.definitionStore) return this.definitionStore.listActive(schemaName);
         const cacheKey = `procedures:active:${tenantId}`;
         const cached = await this.redis.getJson<ProcedureDefinition[]>(cacheKey);
-        if (cached) return cached;
+        if (Array.isArray(cached)) return cached;
 
         let procs: ProcedureDefinition[] = [];
         try {
@@ -223,6 +257,7 @@ export class ProcedureEngineService {
     }
 
     private async loadProcedureById(schemaName: string, id: string): Promise<ProcedureDefinition | null> {
+        if (this.definitionStore) return this.definitionStore.getById(schemaName, id);
         try {
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
@@ -288,8 +323,43 @@ export class ProcedureEngineService {
         agent?: ProcedureAgentContext,
     ): Promise<ProcedureProcessResult> {
         let state = await this.getState(conversationId, schemaName);
-        const resumingProcedure = !!state;
+        let resumingProcedure = !!state;
         let procedure: ProcedureDefinition | null = null;
+        let resumeSelectedMission = false;
+        const dialogue = normalizeCustomerIntent(userText);
+
+        // A new explicit task can run while another is paused. Ordinary answers,
+        // questions and a generic "continue" keep the current task selected.
+        if (state?.pausedAt && SELECT_MISSION.test(normalizeForIntent(userText)) && !isResumeMessage(userText)
+            && !['cancel', 'opt_out', 'reject', 'request_human', 'correct'].includes(dialogue.intent)
+            && !isInformationSeekingMessage(userText) && !isPauseMessage(userText)) {
+            const active = (await this.loadActiveProcedures(tenantId, schemaName))
+                .filter(candidate => this.appliesToVertical(candidate, agent));
+            const matches = active.filter(candidate => this.matchTrigger([candidate], userText));
+            if (matches.length > 1) return { handled: true, completed: false, dialogueAct: 'pause',
+                text: procedureDialogueMessages(agent?.language).missionSelection };
+            // Cache is only a discovery hint. Revalidate before selecting or creating state.
+            const target = matches[0] ? await this.loadProcedureById(schemaName, matches[0].id) : null;
+            if (target && (target.status !== 'active' || !this.appliesToVertical(target, agent))) return { handled: false };
+            if (target?.id === state.procedureId) resumeSelectedMission = true;
+            if (target && target.steps.length && target.id !== state.procedureId) {
+                const frames = this.retainedMissions(state);
+                const saved = frames.find(frame => frame.procedureId === target.id && frame.version === target.version);
+                if (!frames.some(frame => frame.procedureId === target.id) && frames.length >= MAX_PAUSED_MISSIONS) {
+                    return { handled: true, completed: false, dialogueAct: 'pause',
+                        text: procedureDialogueMessages(agent?.language).missionLimit };
+                }
+                const { suspendedMissions: _nested, ...current } = state;
+                const suspended = [{ ...current, pausedAt: current.pausedAt || new Date().toISOString() }, ...frames.filter(frame => frame.procedureId !== target.id)];
+                state = saved ? { ...saved, suspendedMissions: suspended } : {
+                    procedureId: target.id, version: target.version, currentStepId: target.steps[0].id,
+                    collected: {}, awaitingField: null, startedAt: new Date().toISOString(), suspendedMissions: suspended,
+                };
+                resumingProcedure = !!saved;
+                resumeSelectedMission = !!saved;
+                await this.saveState(conversationId, state, schemaName);
+            }
+        }
 
         if (state) {
             procedure = await this.loadProcedureById(schemaName, state.procedureId);
@@ -299,7 +369,7 @@ export class ProcedureEngineService {
                 || procedure.status !== 'active'
                 || procedure.version !== state.version
                 || !this.appliesToVertical(procedure, agent)) {
-                await this.clearState(conversationId, schemaName);
+                await this.finishCurrentMission(conversationId, state, schemaName);
                 return { handled: false };
             }
         } else {
@@ -323,9 +393,16 @@ export class ProcedureEngineService {
         const indexOfId = (id: string | null) => procedure!.steps.findIndex((s) => s.id === id);
 
         const messages = procedureDialogueMessages(new LanguageDetectorService().detect(userText, agent?.language ?? 'es'));
-        const dialogue = normalizeCustomerIntent(userText);
         if ((resumingProcedure && dialogue.intent === 'cancel') || dialogue.intent === 'opt_out') {
-            await this.clearState(conversationId, schemaName);
+            if (dialogue.intent === 'cancel' && !CANCEL_CURRENT_COLLECTION.test(normalizeForIntent(userText))) {
+                // Cancelling an order/booking is a domain command, not permission
+                // to discard whichever collection happened to be selected.
+                state.pausedAt ||= new Date().toISOString();
+                await this.saveState(conversationId, state, schemaName, false);
+                return { handled: false, completed: false, dialogueAct: 'pause', procedureName: procedure.name };
+            }
+            if (dialogue.intent === 'opt_out') await this.clearState(conversationId, schemaName);
+            else await this.finishCurrentMission(conversationId, state, schemaName);
             return { handled: true, completed: false, dialogueAct: 'cancel', text: messages.cancelled, procedureName: procedure.name };
         }
         if (dialogue.intent === 'request_human') {
@@ -339,8 +416,8 @@ export class ProcedureEngineService {
         }
         if (state.pausedAt) {
             // A later unrelated message cannot silently resume and become a slot.
-            if (!/^(?:continuemos|continuar|continua|sigamos|retomemos|reanudar|resume|continue|let s continue|let's continue|vamos continuar|continuons|reprendre|reprenons)[.!\s]*$/.test(normalizeForIntent(userText))) {
-                await this.saveState(conversationId, state, schemaName);
+            if (!resumeSelectedMission && !isResumeMessage(userText)) {
+                await this.saveState(conversationId, state, schemaName, false);
                 return { handled: false, completed: false, dialogueAct: 'pause', procedureName: procedure.name };
             }
             state.pausedAt = null;
@@ -423,7 +500,7 @@ export class ProcedureEngineService {
                         `[Procedure] step "${step.id}" names "${toolName}" `
                         + `(${stepAuthority.reason}): ${stepAuthority.detail} — escalando`,
                     );
-                    await this.clearState(conversationId, schemaName);
+                    await this.finishCurrentMission(conversationId, state, schemaName);
                     return {
                         handled: true,
                         completed: false,
@@ -480,7 +557,7 @@ export class ProcedureEngineService {
                     if (result?.error) {
                         const explicitlyRejected = ['action_rejected', 'approval_rejected'].includes(result.error);
                         if (explicitlyRejected) {
-                            await this.clearState(conversationId, schemaName);
+                            await this.finishCurrentMission(conversationId, state, schemaName);
                             return {
                                 handled: true,
                                 completed: true,
@@ -531,7 +608,7 @@ export class ProcedureEngineService {
             }
 
             if (step.type === 'handoff') {
-                await this.clearState(conversationId, schemaName);
+                await this.finishCurrentMission(conversationId, state, schemaName);
                 return {
                     handled: true,
                     text: parts.length ? parts.join('\n\n') : undefined,
@@ -559,7 +636,7 @@ export class ProcedureEngineService {
         }
 
         // Reached the end → procedure complete.
-        await this.clearState(conversationId, schemaName);
+        await this.finishCurrentMission(conversationId, state, schemaName);
         return {
             handled: parts.length > 0,
             text: parts.length ? parts.join('\n\n') : undefined,

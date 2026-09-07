@@ -57,4 +57,23 @@ describe('durable procedure missions', () => {
         expect(store.clear).toHaveBeenCalledWith('schema', 'conversation');
         expect(h.prisma.executeInTenantSchema).not.toHaveBeenCalled();
     });
+
+    it('uses session definitions for discovery and resume without consulting live sources', async () => {
+        const h = fixture();
+        let state: any = null;
+        const definition: any = { id: '55555555-5555-4555-8555-555555555555', name: 'Frozen task', status: 'active', version: 3,
+            trigger: { keywords: ['start'] }, steps: [{ id: 'ask', type: 'ask', config: { field: 'reason', question: 'Frozen question?' } }] };
+        const definitions = { listActive: jest.fn(async () => [definition]), getById: jest.fn(async () => definition) };
+        const persistence = { load: jest.fn(async () => structuredClone(state)), save: jest.fn(async (_schema, _id, next) => { state = structuredClone(next); }), clear: jest.fn(async () => { state = null; }) };
+        const isolated = h.engine.forExecution({ persistence, definitions });
+        expect(await isolated.process('isolated_schema', 'tenant', 'conversation', 'contact', 'start')).toMatchObject({ text: 'Frozen question?' });
+        await isolated.process('isolated_schema', 'tenant', 'conversation', 'contact', 'más tarde');
+        expect(definitions.listActive).toHaveBeenCalledWith('isolated_schema');
+        expect(definitions.getById).toHaveBeenCalledWith('isolated_schema', definition.id);
+        expect(h.prisma.executeInTenantSchema).not.toHaveBeenCalled();
+        expect(h.redis.getJson).not.toHaveBeenCalled();
+        state.expiresAt = '2020-01-01T00:00:00Z';
+        expect(await isolated.getState('conversation', 'isolated_schema')).toBeNull();
+        expect(persistence.clear).toHaveBeenCalled();
+    });
 });

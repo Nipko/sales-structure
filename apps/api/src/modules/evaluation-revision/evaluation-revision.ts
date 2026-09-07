@@ -47,6 +47,7 @@ export const EVALUATION_OUTPUT_TABLES = new Set([
     'agent_quality_snapshots', 'agent_quality_signals', 'analytics_events', 'daily_metrics',
     'kb_retrieval_log', 'kb_unanswered_queries', 'kb_feedback', 'kb_health_issues',
     'knowledge_conflict_scans',
+    'quality_sampling_runs', 'quality_sampling_items',
     'whatsapp_webhook_events', 'whatsapp_message_logs', 'alert_history', 'dashboard_preferences',
     'crm_sync_log', 'integration_outbox', 'integration_webhook_inbox', 'integration_reconciliations',
     'calendar_sync_outbox', 'webhook_deliveries', 'vertical_migration_outbox',

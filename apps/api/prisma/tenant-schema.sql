@@ -4779,3 +4779,23 @@ DO $widget_state$ BEGIN
             CHECK(state IN ('pending','queued','processing','sent','stored','completed','failed','suppressed','reconciliation_required'));
     END IF;
 END $widget_state$;
+
+-- BEGIN QUALITY SAMPLING
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_sampling_runs" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), sample_day DATE NOT NULL UNIQUE,
+        window_start TIMESTAMPTZ NOT NULL, window_end TIMESTAMPTZ NOT NULL,
+        eligible_count BIGINT NOT NULL CHECK (eligible_count >= 0),
+        selected_count INTEGER NOT NULL CHECK (selected_count >= 0),
+        requested_fraction NUMERIC NOT NULL, sample_cap INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_sampling_items" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), run_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."quality_sampling_runs"(id) ON DELETE CASCADE,
+        conversation_id UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE SET NULL,
+        contact_id UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"(id) ON DELETE SET NULL,
+        state VARCHAR(20) NOT NULL DEFAULT 'selected' CHECK (state IN ('selected','queued','failed','erased')),
+        attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        lease_token UUID, lease_expires_at TIMESTAMPTZ, last_error_code VARCHAR(60),
+        queued_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(run_id,conversation_id));
+CREATE INDEX IF NOT EXISTS idx_quality_sampling_pending ON "{{SCHEMA_NAME}}"."quality_sampling_items"(state,next_attempt_at);
+-- END QUALITY SAMPLING

@@ -6,6 +6,7 @@ import { ShieldCheck, Star, AlertTriangle, CheckCircle, Loader2 } from 'lucide-r
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '@/lib/api';
 import KPICard from '@/components/analytics/KPICard';
+import QualitySamplingCard from '@/components/analytics/QualitySamplingCard';
 
 interface QualitySummary {
     scored: number;
@@ -33,7 +34,11 @@ interface FlaggedRow {
 
 const DIST_COLORS = { excellent: '#10b981', ok: '#f59e0b', poor: '#ef4444' };
 
-export default function QualityWidget({
+export default function QualityWidget(props: {tenantId:string;startDate:string;endDate:string}) {
+    return <div className="space-y-6"><QualitySamplingCard tenantId={props.tenantId}/><QualityConversationScores {...props}/></div>;
+}
+
+function QualityConversationScores({
     tenantId,
     startDate,
     endDate,

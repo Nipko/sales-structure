@@ -1481,6 +1481,8 @@ export const api = {
     },
 
     // Quality / QA scoring (T1.6/T1.8)
+    getQualitySampling: (tenantId: string, day: string) =>
+        apiGet(`/quality-sampling/${tenantId}?day=${encodeURIComponent(day)}`),
     getQualitySummary: (tenantId: string, params: { start: string; end: string }) =>
         apiGet(`/quality/${tenantId}?start=${params.start}&end=${params.end}`),
     getQualityFlagged: (tenantId: string, params: { start: string; end: string; limit?: number }) =>

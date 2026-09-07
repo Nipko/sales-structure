@@ -15,6 +15,8 @@ import { EvalAutorunListener, EVAL_GATE_QUEUE } from './eval-autorun.listener';
 import { EvalGateProcessor } from './eval-gate.processor';
 import { EvalAutorunStateService } from './eval-autorun-state.service';
 import { WatchtowerService } from './watchtower.service';
+import { WatchtowerController } from './watchtower.controller';
+import { QUALITY_QUEUE } from '../quality/quality.service';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
@@ -33,9 +35,10 @@ import { WatchtowerService } from './watchtower.service';
         ConversationsModule,
         BullModule.registerQueue({ name: SIMULATION_QUEUE }),
         BullModule.registerQueue({ name: EVAL_GATE_QUEUE }),
+        BullModule.registerQueue({ name: QUALITY_QUEUE }),
     ],
     providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService],
-    controllers: [SimulationController, EvalController],
+    controllers: [SimulationController, EvalController, WatchtowerController],
     exports: [SimulationService, EvalService],
 })
 export class SimulationModule {}

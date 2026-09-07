@@ -13358,6 +13358,23 @@
       "handoffRecorded": "Handoff recorded"
     }
   },
+  "qualitySampling": {
+    "title": "Daily review coverage",
+    "day": "Day (UTC)",
+    "method": "Selects 5% of conversations with customer text whose last activity was the previous day, up to 50 per day. Includes unanswered requests and human handoffs. Small samples are rounded up.",
+    "eligible": "Eligible",
+    "selected": "Selected",
+    "queued": "Reviews requested",
+    "pending": "Awaiting request",
+    "failed": "Request unconfirmed",
+    "erased": "Removed after erasure",
+    "queueEvidence": "These counts establish that conversations were selected and review requests were accepted. Evaluation may still be pending or fail; they do not certify a correct reply or an achieved objective.",
+    "failedHelp": "The request was not confirmed after retries. Check its status again; if this persists, support needs to review it before you request another evaluation.",
+    "notCaptured": "No sample is recorded for this day. Coverage is unknown.",
+    "loading": "Checking coverage…",
+    "unavailable": "We could not verify coverage. It will not be shown as zero.",
+    "retry": "Check again"
+  },
   "knowledgeConflicts": {
     "title": "Conflicts between sources",
     "description": "Compare business information, FAQs, policies and documents. Review differences and their evidence before choosing a source to follow.",

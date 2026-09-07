@@ -13358,6 +13358,23 @@
       "handoffRecorded": "Transfert enregistré"
     }
   },
+  "qualitySampling": {
+    "title": "Couverture de la revue quotidienne",
+    "day": "Jour (UTC)",
+    "method": "Sélectionne 5 % des conversations contenant du texte client dont la dernière activité date de la veille, jusqu’à 50 par jour. Inclut les demandes sans réponse et les transferts à une personne. Les petits échantillons sont arrondis au supérieur.",
+    "eligible": "Éligibles",
+    "selected": "Sélectionnées",
+    "queued": "Revues demandées",
+    "pending": "En attente de demande",
+    "failed": "Demande non confirmée",
+    "erased": "Retirées après effacement",
+    "queueEvidence": "Ces nombres attestent que des conversations ont été sélectionnées et que les demandes de revue ont été acceptées. L’évaluation peut être en attente ou échouer ; ils ne certifient ni une réponse correcte ni un objectif atteint.",
+    "failedHelp": "La demande n’a pas été confirmée après les tentatives. Vérifiez à nouveau son état ; si cela persiste, le support doit l’examiner avant toute nouvelle demande d’évaluation.",
+    "notCaptured": "Aucun échantillon n’est enregistré pour ce jour. La couverture est inconnue.",
+    "loading": "Vérification de la couverture…",
+    "unavailable": "La couverture n’a pas pu être vérifiée. Elle ne sera pas affichée comme nulle.",
+    "retry": "Vérifier à nouveau"
+  },
   "knowledgeConflicts": {
     "title": "Conflits entre sources",
     "description": "Comparez les informations du commerce, FAQ, politiques et documents. Examinez les différences et leurs preuves avant de choisir une source.",

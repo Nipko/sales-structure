@@ -13358,6 +13358,23 @@
       "handoffRecorded": "Transferência registrada"
     }
   },
+  "qualitySampling": {
+    "title": "Cobertura da revisão diária",
+    "day": "Dia (UTC)",
+    "method": "Seleciona 5% das conversas com texto do cliente cuja última atividade foi no dia anterior, até 50 por dia. Inclui solicitações sem resposta e transferências para pessoas. Amostras pequenas são arredondadas para cima.",
+    "eligible": "Elegíveis",
+    "selected": "Selecionadas",
+    "queued": "Revisões solicitadas",
+    "pending": "Aguardando solicitação",
+    "failed": "Solicitação não confirmada",
+    "erased": "Retiradas após exclusão",
+    "queueEvidence": "Estas contagens comprovam que conversas foram selecionadas e solicitações de revisão foram aceitas. A avaliação pode estar pendente ou falhar; não certificam uma resposta correta nem um objetivo cumprido.",
+    "failedHelp": "A solicitação não foi confirmada após as tentativas. Consulte o estado novamente; se persistir, o suporte precisa revisar antes de você solicitar outra avaliação.",
+    "notCaptured": "Não há amostra registrada para este dia. A cobertura é desconhecida.",
+    "loading": "Consultando a cobertura…",
+    "unavailable": "Não foi possível verificar a cobertura. Ela não será exibida como zero.",
+    "retry": "Consultar novamente"
+  },
   "knowledgeConflicts": {
     "title": "Conflitos entre fontes",
     "description": "Compare informações do negócio, perguntas frequentes, políticas e documentos. Revise as diferenças e suas evidências antes de escolher uma fonte.",

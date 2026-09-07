@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { EvalService, EvalScenarioInput } from './eval.service';
+import { buildTaskCompetenceMatrix } from './task-competence-matrix';
 
 /**
  * Eval gate (#2) — a curated golden set run through the agent + LLM-judge, used
@@ -13,6 +14,13 @@ import { EvalService, EvalScenarioInput } from './eval.service';
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class EvalController {
     constructor(private readonly evals: EvalService) {}
+
+    @Get(':tenantId/competence-matrix')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    competenceMatrix(@Query('profileId') profileId?: string) {
+        try { return { success: true, data: buildTaskCompetenceMatrix(profileId) }; }
+        catch { throw new BadRequestException({ error: 'canonical_profile_required' }); }
+    }
 
     @Get(':tenantId/scenarios')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')

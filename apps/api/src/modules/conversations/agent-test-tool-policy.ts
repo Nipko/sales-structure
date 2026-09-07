@@ -58,6 +58,8 @@ export interface EvalWriterSandboxFamily {
     contactColumn?: string;
     /** Why a pending family is not executable yet. */
     pendingReason?: string;
+    /** Read-only effect verification is independent of permission to execute a writer. */
+    verifierAudited?: boolean;
 }
 
 /**
@@ -110,6 +112,11 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
     insurance_claims: Object.freeze({
         status: 'identity_challenge', tools: Object.freeze(['file_claim']),
         table: 'insurance_claims',
+    }),
+    repair_orders: Object.freeze({
+        status: 'pending', tools: Object.freeze(['create_repair_order', 'approve_repair', 'cancel_repair_order']),
+        table: 'repair_orders', contactColumn: 'contact_id', verifierAudited: true,
+        pendingReason: 'canonical_sandbox_not_available',
     }),
 });
 

@@ -15,6 +15,7 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
 import { EVAL_SANDBOX_FIXTURE_IDS } from '../conversations/eval-writer-sandbox';
 import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { verifyExpectedEffects } from './eval-effect-verifier';
 
 export interface EvalSandboxSession {
     sandboxContactId: string;
@@ -95,7 +96,7 @@ export const EVAL_EFFECT_VERIFIERS: Readonly<Record<string, {
     contactColumn: string;
 }>> = Object.freeze(Object.fromEntries(
     Object.entries(EVAL_WRITER_SANDBOX_FAMILIES)
-        .filter(([, family]) => family.status === 'audited' && !!family.contactColumn)
+        .filter(([, family]) => (family.status === 'audited' || family.verifierAudited) && !!family.contactColumn)
         .map(([name, family]) => [name, Object.freeze({
             table: family.table,
             contactColumn: family.contactColumn!,
@@ -608,62 +609,10 @@ export class EvalService {
         contactId: string,
         observedToolCalls: ReadonlyArray<{ name: string; result: unknown }> = [],
     ): Promise<{ passed: boolean; checks: any[] }> {
-        const checks: any[] = [];
-        for (const a of expected || []) {
-            if (a.kind === 'tool_call') {
-                const matches = observedToolCalls.filter(call => call.name === a.tool);
-                const ok = a.type === 'called' ? matches.length > 0 : matches.length === 0;
-                checks.push({
-                    ok,
-                    description: a.description || `${a.type} ${a.tool}`,
-                    detail: `calls=${matches.length}`,
-                });
-                continue;
-            }
-
-            const verifier = a.family
-                ? EVAL_EFFECT_VERIFIERS[a.family]
-                : Object.values(EVAL_EFFECT_VERIFIERS).find(candidate => candidate.table === a.table);
-            if (!verifier || verifier.table !== a.table) {
-                checks.push({
-                    ok: false,
-                    description: a.description || a.table,
-                    detail: `verificador no auditado para familia=${a.family || 'legacy'} tabla=${a.table}`,
-                });
-                continue;
-            }
-            const conds = [`${verifier.contactColumn} = $1::uuid`];
-            const params: any[] = [contactId];
-            for (const [col, raw] of Object.entries(a.where || {})) {
-                if (!/^[a-z_][a-z0-9_]*$/i.test(col)) continue; // safe identifier only (no injection)
-                const m: any = (raw && typeof raw === 'object' && 'op' in (raw as any)) ? raw : { op: 'eq', value: raw };
-                const i = params.length + 1;
-                switch (m.op) {
-                    case 'ilike': conds.push(`${col} ILIKE $${i}`); params.push(m.value); break;
-                    case 'date_eq': conds.push(`DATE(${col}) = $${i}::date`); params.push(m.value); break;
-                    case 'time_eq': conds.push(`to_char(${col}, 'HH24:MI') = $${i}`); params.push(m.value); break;
-                    default: conds.push(`${col} = $${i}`); params.push(m.value);
-                }
-            }
-            // A failing verification query (e.g. a column that doesn't exist) must NOT
-            // silently become cnt=0 — that would turn a `no_row` assertion into a false
-            // pass. Mark the check failed with the error instead.
-            let rows: any[] | null;
-            try {
-                rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-                    `SELECT COUNT(*)::int AS cnt FROM "${schema}".${a.table} WHERE ${conds.join(' AND ')}`, params);
-            } catch (e: any) {
-                checks.push({ ok: false, description: a.description || `${a.type} ${a.table}`, detail: `query error: ${e.message}` });
-                continue;
-            }
-            const cnt = Number(rows?.[0]?.cnt || 0);
-            let ok: boolean;
-            if (a.type === 'no_row') ok = cnt === 0;
-            else if (a.type === 'row_count') ok = cnt === (a.count ?? 1);
-            else ok = cnt >= 1;
-            checks.push({ ok, description: a.description || `${a.type} ${a.table}`, detail: `cnt=${cnt}` });
-        }
-        return { passed: checks.every(c => c.ok), checks };
+        return verifyExpectedEffects({
+            expected, contactId, observedToolCalls, verifiers: EVAL_EFFECT_VERIFIERS,
+            query: (sql, params) => this.prisma.executeInTenantSchema(schema, sql, params),
+        });
     }
 
     private async ensureSandboxContact(schema: string): Promise<void> {

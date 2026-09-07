@@ -1,5 +1,13 @@
 import { isSupervisor } from './roles';
 
+export type ApprovalDeliveryState = 'not_required' | 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'suppressed' | 'reconciliation_required';
+export interface ApprovalDeliveryEffect {
+    id: string;
+    kind: 'media' | 'handoff' | 'payment_link';
+    state: Exclude<ApprovalDeliveryState, 'not_required'> | 'sent';
+    errorCode?: string;
+}
+
 export interface ToolApprovalItem {
     id: string;
     toolName: string;
@@ -22,6 +30,8 @@ export interface ToolApprovalItem {
     agentVersion?: number | null;
     executionStatus?: string | null;
     executionErrorCode?: string | null;
+    deliveryState?: ApprovalDeliveryState;
+    deliveryEffects?: ApprovalDeliveryEffect[];
 }
 export type ToolApprovalAction = 'approved' | 'rejected' | 'resume';
 export type ApprovalExecutionState = 'succeeded' | 'reconciliation' | 'failed' | 'processing' | 'pending' | 'not_started' | 'unverified';

@@ -162,7 +162,10 @@
       "learning_evaluation_in_progress": "Esta comparación ya está en curso.",
       "learning_stable_contact_key_required": "Escribe un alias anónimo y estable para este cliente.",
       "no_complete_learning_episode": "Incluye la consulta del cliente y una respuesta del agente."
-    }
+    },
+    "evidenceUnavailable": "No pudimos verificar los ejemplos. Pulsa Actualizar para volver a consultarlos.",
+    "coverageUnavailable": "No pudimos verificar cuántas conversaciones están reservadas para pruebas. Pulsa Actualizar para reintentar.",
+    "coverageLoading": "Consultando las conversaciones reservadas para pruebas…"
   },
   "sales": {
     "title": "Ventas",
@@ -11262,7 +11265,7 @@
     "sources": {
       "configured": "Misión acordada y guardada. Las capacidades siguen sujetas a sus permisos y requisitos.",
       "template_derived": "Propuesta derivada de la plantilla. Confirma el objetivo y cómo reconocer un buen resultado.",
-      "not_configured": "Primero crea un agente para acordar su misión."
+      "not_configured": "La misión todavía no está definida. Acuerda qué debe lograr el agente."
     },
     "next": "Siguiente paso",
     "details": "Revisar dependencias y pruebas",
@@ -13313,6 +13316,39 @@
       "granted": "Consentimiento otorgado"
     },
     "reviewExpired": "Esta revisión venció. Se necesita una nueva propuesta para continuar.",
-    "validityUnknown": "No se pudo verificar la vigencia. Actualiza el estado antes de decidir."
+    "validityUnknown": "No se pudo verificar la vigencia. Actualiza el estado antes de decidir.",
+    "delivery": {
+      "title": "Envíos y traspasos",
+      "unknown": "Estado sin verificar",
+      "unknownKind": "Seguimiento",
+      "explanation": "El procesamiento del seguimiento se comprueba por separado. La aceptación del proveedor no confirma que el cliente recibió o leyó el mensaje.",
+      "error": "El seguimiento necesita revisión. Actualiza el estado antes de actuar; no repitas la operación original.",
+      "states": {
+        "not_required": "No requiere seguimiento",
+        "pending": "Seguimiento pendiente",
+        "queued": "Seguimiento en cola",
+        "processing": "Procesando seguimiento",
+        "completed": "Seguimiento procesado",
+        "failed": "Seguimiento con error",
+        "suppressed": "Seguimiento detenido",
+        "reconciliation_required": "Seguimiento por conciliar"
+      },
+      "kinds": {
+        "media": "Archivo o imagen",
+        "handoff": "Traspaso al equipo",
+        "payment_link": "Enlace de pago"
+      },
+      "effects": {
+        "pending": "Pendiente",
+        "queued": "En cola",
+        "processing": "En proceso",
+        "sent": "Proveedor aceptó el envío",
+        "completed": "Acción de seguimiento registrada",
+        "failed": "No se pudo procesar",
+        "suppressed": "Detenido por las comprobaciones de seguridad",
+        "reconciliation_required": "Resultado incierto: requiere conciliación"
+      },
+      "handoffRecorded": "Traspaso registrado"
+    }
   }
 }

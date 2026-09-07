@@ -103,6 +103,18 @@ export function ToolApprovalReviewCard({ ticket, role, verified, busy, onAction 
             </p>)}
             {ticket.resumedAt && <p className="mt-1 text-xs text-muted-foreground">{t('resumedAt', { date: date(ticket.resumedAt) })}</p>}
         </div>
+        {(ticket.deliveryState || execution === 'succeeded') && <div className="mt-2 rounded-lg border border-border p-2" role="status">
+            <p className="text-xs font-semibold">{t('delivery.title')}: {t.has(`delivery.states.${ticket.deliveryState}`)
+                ? t(`delivery.states.${ticket.deliveryState}`) : t('delivery.unknown')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('delivery.explanation')}</p>
+            {!!ticket.deliveryEffects?.length && <ul className="mt-2 space-y-2 text-xs">{ticket.deliveryEffects.map(effect => <li key={effect.id}>
+                <span className="font-medium">{t.has(`delivery.kinds.${effect.kind}`) ? t(`delivery.kinds.${effect.kind}`) : t('delivery.unknownKind')}</span>
+                {': '}{effect.kind === 'handoff' && effect.state === 'completed' ? t('delivery.handoffRecorded')
+                    : t.has(`delivery.effects.${effect.state}`) ? t(`delivery.effects.${effect.state}`) : t('delivery.unknown')}
+                {effect.errorCode && <p className="mt-1 text-amber-700 dark:text-amber-300">{t.has(`errors.${effect.errorCode}`)
+                    ? t(`errors.${effect.errorCode}`) : t('delivery.error')}</p>}
+            </li>)}</ul>}
+        </div>}
         {ticket.decidedAt && <p className="mt-2 text-xs text-muted-foreground">{t('decidedAt', { date: date(ticket.decidedAt) })}</p>}
         {ticket.decisionReason && <p className="mt-1 text-xs whitespace-pre-wrap break-words">{t('decisionReason')}: {ticket.decisionReason}</p>}
         {ticket.resumeResult && <details className="mt-2 text-xs">

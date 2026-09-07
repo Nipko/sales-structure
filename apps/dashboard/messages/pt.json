@@ -162,7 +162,10 @@
       "learning_evaluation_in_progress": "Esta comparação já está em andamento.",
       "learning_stable_contact_key_required": "Informe um apelido anônimo e estável para este cliente.",
       "no_complete_learning_episode": "Inclua a pergunta do cliente e uma resposta do agente."
-    }
+    },
+    "evidenceUnavailable": "Não foi possível verificar os exemplos. Selecione Atualizar para consultá-los novamente.",
+    "coverageUnavailable": "Não foi possível verificar quantas conversas estão reservadas para testes. Selecione Atualizar para tentar novamente.",
+    "coverageLoading": "Consultando as conversas reservadas para testes…"
   },
   "sales": {
     "title": "Vendas",
@@ -11262,7 +11265,7 @@
     "sources": {
       "configured": "Missão acordada e salva. As capacidades continuam sujeitas a permissões e requisitos.",
       "template_derived": "Proposta derivada do modelo. Confirme o objetivo e como reconhecer um bom resultado.",
-      "not_configured": "Crie primeiro um agente para definir sua missão."
+      "not_configured": "A missão ainda não foi definida. Combine o que o agente deve alcançar."
     },
     "next": "Próxima etapa",
     "details": "Revisar dependências e testes",
@@ -13313,6 +13316,39 @@
       "granted": "Consentimento concedido"
     },
     "reviewExpired": "Esta revisão venceu. É necessária uma nova proposta para continuar.",
-    "validityUnknown": "Não foi possível verificar a validade. Atualize o estado antes de decidir."
+    "validityUnknown": "Não foi possível verificar a validade. Atualize o estado antes de decidir.",
+    "delivery": {
+      "title": "Envios e transferências",
+      "unknown": "Estado não verificado",
+      "unknownKind": "Acompanhamento",
+      "explanation": "O processamento do acompanhamento é verificado separadamente. A aceitação do provedor não confirma que o cliente recebeu ou leu a mensagem.",
+      "error": "Este acompanhamento precisa de revisão. Atualize o estado antes de agir; não repita a operação original.",
+      "states": {
+        "not_required": "Não requer acompanhamento",
+        "pending": "Acompanhamento pendente",
+        "queued": "Acompanhamento na fila",
+        "processing": "Processando acompanhamento",
+        "completed": "Acompanhamento processado",
+        "failed": "Erro no acompanhamento",
+        "suppressed": "Acompanhamento interrompido",
+        "reconciliation_required": "Acompanhamento exige conciliação"
+      },
+      "kinds": {
+        "media": "Arquivo ou imagem",
+        "handoff": "Transferência à equipe",
+        "payment_link": "Link de pagamento"
+      },
+      "effects": {
+        "pending": "Pendente",
+        "queued": "Na fila",
+        "processing": "Em processamento",
+        "sent": "Provedor aceitou o envio",
+        "completed": "Ação de acompanhamento registrada",
+        "failed": "Não foi possível processar",
+        "suppressed": "Interrompido pelas verificações de segurança",
+        "reconciliation_required": "Resultado incerto: exige conciliação"
+      },
+      "handoffRecorded": "Transferência registrada"
+    }
   }
 }

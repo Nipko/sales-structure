@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ExampleCard, ReleaseCard } from './LearningWorkspace';
+import { ExampleCard, LearningCoverage, LearningReviewAvailability, ReleaseCard } from './LearningWorkspace';
 import type { LearningExample, LearningRelease } from '@/lib/agent-learning';
 
 let mockLocale = 'es';
@@ -26,6 +26,23 @@ const release = (): LearningRelease => ({ id: 'release', status: 'candidate', tr
     example_ids: ['example'], baseline_release_id: null, evaluation: { candidateAverage: 60, baselineAverage: 70, totalCases: 3, completedCases: 2, failedCases: 1 } });
 
 describe('review and publication surfaces', () => {
+    it.each(['es', 'en', 'pt', 'fr'])('keeps failed or loading evidence unknown rather than inventing zero reserved cases in %s', locale => {
+        mockLocale = locale;
+        for (const unavailable of [false, true]) {
+            const coverage = renderToStaticMarkup(createElement(LearningCoverage, { data: null, unavailable }));
+            expect(coverage).toContain(mockMessages[locale][unavailable ? 'coverageUnavailable' : 'coverageLoading']);
+            expect(coverage).not.toContain(mockMessages[locale].moreHoldout);
+            const review = renderToStaticMarkup(createElement(LearningReviewAvailability, { unavailable }));
+            expect(review).toContain(mockMessages[locale][unavailable ? 'evidenceUnavailable' : 'loading']);
+            if (unavailable) expect(review).not.toContain(mockMessages[locale].loading);
+        }
+        const known = renderToStaticMarkup(createElement(LearningCoverage, { data: { examples: [], releases: [], coverage: [] }, unavailable: false }));
+        expect(known).toContain(mockMessages[locale].moreHoldout);
+        expect(known).not.toContain(mockMessages[locale].coverageUnavailable);
+        const recovered = renderToStaticMarkup(createElement(LearningCoverage, { data: { examples: [], releases: [], coverage: [{ split: 'holdout', count: 4 }] }, unavailable: false }));
+        expect(recovered).not.toContain(mockMessages[locale].moreHoldout);
+        expect(recovered).not.toContain(mockMessages[locale].coverageLoading);
+    });
     it.each(['es', 'en', 'pt', 'fr'])('renders review and evaluation in %s with escaped source content', locale => {
         mockLocale = locale;
         const html = renderToStaticMarkup(createElement(ExampleCard, { ...common, example: example(), selected: false, onSelect: jest.fn() }));

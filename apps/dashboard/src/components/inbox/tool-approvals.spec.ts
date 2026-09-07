@@ -62,6 +62,29 @@ describe('Human action review has readable scope and honest execution state', ()
         const html = render(item); expect(html).toContain(mockMessages.es.execution.succeeded);
         expect(html).toContain(mockMessages.es.domainStates.pending_payment); expect(html).not.toContain('<button');
     });
+    it.each(['es', 'en', 'pt', 'fr'])('separates provider acceptance from receipt, and handoff recording, in %s', locale => {
+        mockLocale = locale;
+        const item = ticket({ status: 'approved', executionStatus: 'succeeded', resumeState: 'completed', deliveryState: 'completed',
+            deliveryEffects: [{ id: 'technical-effect-id', kind: 'media', state: 'sent' }, { id: 'handoff-id', kind: 'handoff', state: 'completed' }] });
+        const html = render(item);
+        for (const text of [mockMessages[locale].delivery.states.completed, mockMessages[locale].delivery.effects.sent,
+            mockMessages[locale].delivery.handoffRecorded, mockMessages[locale].delivery.explanation]) expect(html).toContain(text);
+        expect(html).not.toContain('technical-effect-id'); expect(html).not.toContain('<button');
+    });
+    it.each(['pending', 'queued', 'processing', 'failed', 'suppressed', 'reconciliation_required'] as const)(
+        'a delivery state of %s does not allow repeating a successful operation', deliveryState => {
+            const item = ticket({ status: 'approved', executionStatus: 'succeeded', resumeState: 'failed', deliveryState,
+                deliveryEffects: [{ id: 'effect', kind: 'payment_link', state: deliveryState, errorCode: 'private_provider_error' }] });
+            const html = render(item);
+            expect(html).toContain(mockMessages.es.delivery.states[deliveryState]);
+            expect(html).toContain(mockMessages.es.delivery.error); expect(html).not.toContain('private_provider_error');
+            expect(approvalActions(item, 'tenant_admin').resume).toBe(false); expect(html).not.toContain('<button');
+        });
+    it('does not invent delivery success for legacy tickets without delivery evidence', () => {
+        const html = render(ticket({ status: 'approved', executionStatus: 'succeeded', resumeState: 'completed' }));
+        expect(html).toContain(mockMessages.es.delivery.unknown);
+        expect(html).not.toContain(mockMessages.es.delivery.states.completed);
+    });
     it.each(['succeeded','executing','reconciliation_required'])('never offers a duplicate resume for ledger state %s', executionStatus => {
         const item = ticket({ status: 'approved', resumeState: 'failed', executionStatus });
         expect(approvalActions(item, 'tenant_admin').resume).toBe(false);

@@ -162,7 +162,10 @@
       "learning_evaluation_in_progress": "This comparison is already running.",
       "learning_stable_contact_key_required": "Enter an anonymous, stable alias for this customer.",
       "no_complete_learning_episode": "Include the customer's question and an agent response."
-    }
+    },
+    "evidenceUnavailable": "We could not verify the examples. Select Refresh to check them again.",
+    "coverageUnavailable": "We could not verify how many conversations are reserved for tests. Select Refresh to try again.",
+    "coverageLoading": "Checking conversations reserved for tests…"
   },
   "sales": {
     "title": "Sales",
@@ -11262,7 +11265,7 @@
     "sources": {
       "configured": "Mission agreed and saved. Capabilities still depend on permissions and prerequisites.",
       "template_derived": "Proposal derived from the template. Confirm the objective and what a successful result looks like.",
-      "not_configured": "Create an agent first to agree its mission."
+      "not_configured": "The mission is not defined yet. Agree on what the agent should achieve."
     },
     "next": "Next step",
     "details": "Review dependencies and tests",
@@ -13313,6 +13316,39 @@
       "granted": "Consent granted"
     },
     "reviewExpired": "This review expired. A new proposal is needed to continue.",
-    "validityUnknown": "Validity could not be verified. Refresh the status before deciding."
+    "validityUnknown": "Validity could not be verified. Refresh the status before deciding.",
+    "delivery": {
+      "title": "Deliveries and handoffs",
+      "unknown": "Status unverified",
+      "unknownKind": "Follow-up",
+      "explanation": "Follow-up processing is checked separately. Provider acceptance does not confirm that the customer received or read the message.",
+      "error": "This follow-up needs review. Refresh its status before acting; do not repeat the original operation.",
+      "states": {
+        "not_required": "No follow-up required",
+        "pending": "Follow-up pending",
+        "queued": "Follow-up queued",
+        "processing": "Processing follow-up",
+        "completed": "Follow-up processed",
+        "failed": "Follow-up error",
+        "suppressed": "Follow-up stopped",
+        "reconciliation_required": "Follow-up requires reconciliation"
+      },
+      "kinds": {
+        "media": "File or image",
+        "handoff": "Team handoff",
+        "payment_link": "Payment link"
+      },
+      "effects": {
+        "pending": "Pending",
+        "queued": "Queued",
+        "processing": "Processing",
+        "sent": "Provider accepted the send",
+        "completed": "Follow-up action recorded",
+        "failed": "Could not be processed",
+        "suppressed": "Stopped by safety checks",
+        "reconciliation_required": "Uncertain result: reconciliation required"
+      },
+      "handoffRecorded": "Handoff recorded"
+    }
   }
 }

@@ -162,7 +162,10 @@
       "learning_evaluation_in_progress": "Cette comparaison est déjà en cours.",
       "learning_stable_contact_key_required": "Saisissez un alias anonyme et stable pour ce client.",
       "no_complete_learning_episode": "Incluez la question du client et une réponse de l’agent."
-    }
+    },
+    "evidenceUnavailable": "Impossible de vérifier les exemples. Sélectionnez Actualiser pour les consulter à nouveau.",
+    "coverageUnavailable": "Impossible de vérifier combien de conversations sont réservées aux tests. Sélectionnez Actualiser pour réessayer.",
+    "coverageLoading": "Vérification des conversations réservées aux tests…"
   },
   "sales": {
     "title": "Ventes",
@@ -11262,7 +11265,7 @@
     "sources": {
       "configured": "Mission définie et enregistrée. Les capacités restent soumises aux autorisations et prérequis.",
       "template_derived": "Proposition issue du modèle. Confirmez l’objectif et les critères de réussite.",
-      "not_configured": "Créez d’abord un agent pour définir sa mission."
+      "not_configured": "La mission n’est pas encore définie. Convenez de ce que l’agent doit accomplir."
     },
     "next": "Prochaine étape",
     "details": "Vérifier les dépendances et tests",
@@ -13313,6 +13316,39 @@
       "granted": "Consentement accordé"
     },
     "reviewExpired": "Cette révision a expiré. Une nouvelle proposition est nécessaire pour continuer.",
-    "validityUnknown": "La validité n’a pas pu être vérifiée. Actualisez le statut avant de décider."
+    "validityUnknown": "La validité n’a pas pu être vérifiée. Actualisez le statut avant de décider.",
+    "delivery": {
+      "title": "Envois et transferts",
+      "unknown": "État non vérifié",
+      "unknownKind": "Suivi",
+      "explanation": "Le traitement du suivi est vérifié séparément. L’acceptation du fournisseur ne confirme pas que le client a reçu ou lu le message.",
+      "error": "Ce suivi nécessite une vérification. Actualisez son état avant d’agir ; ne répétez pas l’opération initiale.",
+      "states": {
+        "not_required": "Aucun suivi nécessaire",
+        "pending": "Suivi en attente",
+        "queued": "Suivi en file d’attente",
+        "processing": "Traitement du suivi",
+        "completed": "Suivi traité",
+        "failed": "Erreur de suivi",
+        "suppressed": "Suivi arrêté",
+        "reconciliation_required": "Suivi à rapprocher"
+      },
+      "kinds": {
+        "media": "Fichier ou image",
+        "handoff": "Transfert à l’équipe",
+        "payment_link": "Lien de paiement"
+      },
+      "effects": {
+        "pending": "En attente",
+        "queued": "En file d’attente",
+        "processing": "En cours",
+        "sent": "Envoi accepté par le fournisseur",
+        "completed": "Action de suivi enregistrée",
+        "failed": "Traitement impossible",
+        "suppressed": "Arrêté par les vérifications de sécurité",
+        "reconciliation_required": "Résultat incertain : rapprochement nécessaire"
+      },
+      "handoffRecorded": "Transfert enregistré"
+    }
   }
 }

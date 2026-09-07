@@ -19,6 +19,19 @@ function Label({ text, children }: { text: string; children: ReactNode }) {
     return <label className="block space-y-1.5 text-sm font-medium"><span>{text}</span>{children}</label>;
 }
 
+export function LearningReviewAvailability({ unavailable }: { unavailable: boolean }) {
+    const t = useTranslations('agentLearning');
+    return <p role="status">{t(unavailable ? 'evidenceUnavailable' : 'loading')}</p>;
+}
+
+export function LearningCoverage({ data, unavailable }: { data: LearningWorkspaceData | null; unavailable: boolean }) {
+    const t = useTranslations('agentLearning');
+    if (!data) return <p role="status" className="text-sm">{t(unavailable ? 'coverageUnavailable' : 'coverageLoading')}</p>;
+    const heldout = data.coverage.find(item => item.split === 'holdout')?.count ?? 0;
+    return <><p className="text-sm">{t('reserved', { count: heldout })}</p>
+        {heldout < 3 && <p className="text-sm text-amber-700 dark:text-amber-300">{t('moreHoldout')}</p>}</>;
+}
+
 export function LearningWorkspace({ tenantId, agentId }: { tenantId: string; agentId: string }) {
     const t = useTranslations("agentLearning");
     const locale = useLocale().slice(0, 2);
@@ -151,7 +164,7 @@ export function LearningWorkspace({ tenantId, agentId }: { tenantId: string; age
 
         <section className="space-y-4" aria-labelledby="learning-review">
             <div><h2 id="learning-review" className="text-lg font-semibold">{t("reviewTitle")}</h2><p className="text-sm text-neutral-500">{t("reviewHelp")}</p></div>
-            {!data ? <p>{t("loading")}</p> : !data.examples.length ? <p className={panel}>{t("noExamples")}</p> : data.examples.map(example =>
+            {!data ? <LearningReviewAvailability unavailable={Boolean(error)} /> : !data.examples.length ? <p className={panel}>{t("noExamples")}</p> : data.examples.map(example =>
                 <ExampleCard key={`${example.id}:${example.revision}:${example.status}`} example={example} tenantId={tenantId} agentId={agentId} busy={busy} run={run} uploadOriginal={uploadOriginals[example.source_id]}
                     selected={selected.includes(example.id)} onSelect={checked => setSelected(current => checked ? [...new Set([...current, example.id])] : current.filter(id => id !== example.id))} />)}
         </section>
@@ -159,9 +172,8 @@ export function LearningWorkspace({ tenantId, agentId }: { tenantId: string; age
         <section className={panel} aria-labelledby="learning-compare">
             <h2 id="learning-compare" className="text-lg font-semibold">{t("compareTitle")}</h2>
             <p className="text-sm text-neutral-500">{t("compareHelp")}</p>
-            <p className="text-sm">{t("reserved", { count: heldout })}</p>
-            <button className={primary} disabled={busy || !selected.length || heldout < 3} onClick={() => run(() => api.createLearningRelease(tenantId, agentId, selected), "candidateCreated").then(ok => { if (ok) setSelected([]); })}>{t("createCandidate", { count: selected.length })}</button>
-            {heldout < 3 && <p className="text-sm text-amber-700 dark:text-amber-300">{t("moreHoldout")}</p>}
+            <LearningCoverage data={data} unavailable={Boolean(error)} />
+            <button className={primary} disabled={!data || busy || !selected.length || heldout < 3} onClick={() => run(() => api.createLearningRelease(tenantId, agentId, selected), "candidateCreated").then(ok => { if (ok) setSelected([]); })}>{t("createCandidate", { count: selected.length })}</button>
             {data?.releases.map((release, index) => <ReleaseCard key={release.id} release={release} number={data.releases.length - index} busy={busy} run={run} tenantId={tenantId} agentId={agentId} />)}
         </section>
     </div>;

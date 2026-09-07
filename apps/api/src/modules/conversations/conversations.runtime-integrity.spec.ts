@@ -64,7 +64,7 @@ describe('Shared runtime integrity', () => {
         const run = (channelType = 'whatsapp', text = '¿Me lo dejas en COP 1000?') => service.generateResponse(
             '11111111-1111-4111-8111-111111111111', conversation,
             { channelType, channelAccountId: channelType === 'web_widget' ? 'widget' : 'wa', content: { type: 'text', text }, metadata: {} },
-            config, { id: conversation.contact_id, name: 'Alice' }, {}, conversation.updated_at, {}, '44444444-4444-4444-8444-444444444444', 'agent',
+            config, { id: conversation.contact_id, name: 'Alice' }, {}, conversation.updated_at, {}, '44444444-4444-4444-8444-444444444444', 'agent', undefined, 3,
         );
         return { service, run, llm, domainCreate, config, query };
     }
@@ -125,5 +125,13 @@ describe('Shared runtime integrity', () => {
         expect(response).toContain('lista de espera');expect(service.toolExecutor.execute).toHaveBeenCalledTimes(1);
         expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
         expect(llm.mock.calls[0][0].systemPrompt).toContain('La aceptación anterior no autoriza este cambio');
+    });
+    it('does not propose effects under a new version using instructions loaded before publication',async()=>{
+        const {run,llm,query,domainCreate}=fixture(true);
+        query.mockResolvedValueOnce([{id:'agent',version:4}] as any);
+        await run();
+        expect(query.mock.calls[0][1]).toContain('SELECT id, version FROM agent_personas');
+        expect(llm.mock.calls[0][0].tools.map((tool:any)=>tool.name)).toEqual(['search_products']);
+        expect(domainCreate).not.toHaveBeenCalled();
     });
 });

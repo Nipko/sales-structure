@@ -202,6 +202,9 @@ export class ToolApprovalWorkflowService {
                 );
             }
 
+            if(!persona.config)return this.controls.finishApprovalResume(claim,{
+                error:'approval_agent_unavailable',message:'El agente ya no está activo. La acción no fue ejecutada.',
+            });
             const vertical = (tenant.settings as any)?.verticalConfig ?? {};
             if (claim.draftReview && (persona.agentId !== claim.draftReview.agentId
                 || persona.version !== claim.draftReview.agentVersion)) {

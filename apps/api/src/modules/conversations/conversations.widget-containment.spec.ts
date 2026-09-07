@@ -134,7 +134,7 @@ describe('ConversationsService widget containment', () => {
             expect.objectContaining({ channelType: 'web_widget', channelAccountId: 'widget', content: { type: 'text', text: 'current question' } }),
             expect.anything(), expect.objectContaining({ id: 'contact-1' }), { id: 'lead-1' },
             expect.any(Date), expect.objectContaining({ timezone: 'Europe/Paris' }),
-            'inbound-1', '11111111-1111-4111-8111-111111111111',
+            'inbound-1', '11111111-1111-4111-8111-111111111111', undefined, 3,
         );
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
         expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('tenant-1');

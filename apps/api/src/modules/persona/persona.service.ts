@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AgentConfigurationRevisionStore } from './agent-configuration-revision';
+import { readServingPersona } from './serving-persona';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
@@ -31,7 +32,7 @@ import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver'
 
 /** Exact durable agent/configuration selected for one live channel turn. */
 export interface PersonaResolution {
-    config: TenantConfig;
+    config: TenantConfig | null;
     agentId: string | null;
     version: number | null;
 }
@@ -706,95 +707,22 @@ export class PersonaService {
 
     /**
      * Get the persona assigned to a specific channel.
-     * Falls back to default persona, then to auto-generated default.
+     * Routing and version come from the same current database snapshot.
+     * Disabled durable agents never fall back to a cached or generated persona.
      */
     async resolvePersonaForChannel(
         tenantId: string,
         channelType: string,
         accountId?: string,
     ): Promise<PersonaResolution> {
-        // Resolution metadata has a separate cache contract. Reusing the former
-        // config-only values would make attribution depend on cache state.
-        const cacheKey = accountId
-            ? `persona-resolution:${tenantId}:channel:${channelType}:acct:${accountId}`
-            : `persona-resolution:${tenantId}:channel:${channelType}`;
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
         await this.ensureConversationAttributionColumns(tenantId, schemaName);
-
-        const cached = await this.redis.getJson<PersonaResolution>(cacheKey);
-        if (cached) return cached;
-
-        let resolution: PersonaResolution | null = null;
-
-        // 0. Exact connection binding wins ("${channelType}:${accountId}").
-        if (accountId) {
-            try {
-                const binding = `${channelType}:${accountId}`;
-                const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
-                     WHERE is_active = true AND $1 = ANY(channel_bindings)
-                     ORDER BY updated_at DESC LIMIT 1`,
-                    binding,
-                ) as any[];
-                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
-            } catch (e: any) {
-                this.logger.warn(`agent_personas binding lookup failed for ${tenantId}/${channelType}:${accountId}: ${e.message}`);
-            }
-        }
-
-        // 1. Fallback: agent assigned to this channel TYPE.
-        if (!resolution) {
-            try {
-                const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
-                     WHERE is_active = true AND $1 = ANY(channels)
-                     ORDER BY updated_at DESC LIMIT 1`,
-                    channelType,
-                ) as any[];
-                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
-            } catch (e: any) {
-                this.logger.warn(`agent_personas lookup failed for ${tenantId}/${channelType}: ${e.message}`);
-            }
-        }
-
-        // 2. Fallback to default agent
-        if (!resolution) {
-            try {
-                const rows = await this.prisma.$queryRawUnsafe(
-                    `SELECT id, config_json, version FROM "${schemaName}".agent_personas
-                     WHERE is_active = true AND is_default = true LIMIT 1`,
-                ) as any[];
-                if (rows.length > 0) resolution = this.toPersonaResolution(rows[0]);
-            } catch {}
-        }
-
-        // 3. Fallback to legacy persona_config
-        if (!resolution) {
-            const legacyConfig = await this.getActivePersona(tenantId);
-            resolution = {
-                config: legacyConfig || this.buildDefaultPersona(tenantId),
-                agentId: null,
-                version: null,
-            };
-        }
-
-        await this.redis.setJson(cacheKey, resolution, 600);
-        return resolution;
+        return readServingPersona((sql,params)=>this.prisma.executeInTenantSchema(schemaName,sql,params),channelType,accountId);
     }
-
     /** Backward-compatible config-only API for non-attributing callers. */
-    async getPersonaForChannel(tenantId: string, channelType: string, accountId?: string): Promise<TenantConfig> {
+    async getPersonaForChannel(tenantId: string, channelType: string, accountId?: string): Promise<TenantConfig | null> {
         return (await this.resolvePersonaForChannel(tenantId, channelType, accountId)).config;
-    }
-
-    private toPersonaResolution(row: any): PersonaResolution {
-        const parsedVersion = row?.version == null ? Number.NaN : Number(row.version);
-        return {
-            config: row.config_json as TenantConfig,
-            agentId: row.id ? String(row.id) : null,
-            version: Number.isInteger(parsedVersion) ? parsedVersion : null,
-        };
     }
 
     /**

@@ -642,6 +642,9 @@ export class ConversationsService {
         this.logger.log(`[Pipeline] Persona loaded: ${config?.persona?.name || 'default'} (mode: ${(config as any)?._mode || 'wizard'})`);
 
         if (!config) {
+            // A disabled/unpublished agent must not discard the customer's
+            // message. Keep the inbound available in the human inbox.
+            await this.saveMessage(tenantId, conversation.id, normalizedMsg);
             this.recordAgentSignal(tenantId, 'silent_turn');
             this.logger.error(`No active persona found for tenant ${tenantId}`);
             return;
@@ -1891,7 +1894,8 @@ export class ConversationsService {
             ? (await this.prisma.executeInTenantSchema<any[]>(await this.tenantSchema(tenantId),
                 'SELECT id, version FROM agent_personas WHERE id=$1::uuid AND is_active=true', [resolvedAgentId]))[0]
             : null;
-        const draftScope = draftAgent && Number.isInteger(Number(draftAgent.version)) && Number(draftAgent.version) >= 1
+        const draftScope = draftAgent && Number(draftAgent.version)===resolvedAgentVersion
+            && Number.isInteger(Number(draftAgent.version)) && Number(draftAgent.version) >= 1
             ? { agentId: String(draftAgent.id), agentVersion: Number(draftAgent.version) } : undefined;
         const cache = session?.state || this.redis;
         let missionScope: MissionExecutionScopeV1 | undefined;

@@ -292,7 +292,7 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
 
         const existing = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, title, file_type, version, updated_at, is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids, is_public
+            `SELECT id, title, file_type, version, updated_at, updated_at::text AS revision, is_regulated, jurisdiction, authority, valid_from, valid_to, audience, agent_ids, is_public
              FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
         if (!existing?.[0]) throw new BadRequestException({ error: 'document_not_found' });
         const source = this.validateSourceMetadata({
@@ -348,9 +348,9 @@ export class KnowledgeService {
 
             await this.prisma.transactionInTenantSchema(schema, async (query) => {
                 const locked = await query<any[]>(
-                    `SELECT version, updated_at FROM knowledge_documents WHERE id = $1::uuid FOR UPDATE`, [documentId]);
-                if (!locked[0] || (locked[0].version || 1) !== currentVersion ||
-                    new Date(locked[0].updated_at).getTime() !== new Date(existing[0].updated_at).getTime()) {
+                    `SELECT version, updated_at, updated_at::text AS revision FROM knowledge_documents WHERE id = $1::uuid FOR UPDATE`, [documentId]);
+                if (!locked[0] || typeof existing[0].revision !== 'string' || typeof locked[0].revision !== 'string' || (locked[0].version || 1) !== currentVersion ||
+                    locked[0].revision !== existing[0].revision) {
                     throw new ConflictException({ error: 'document_changed_during_indexing' });
                 }
                 await query(
@@ -394,7 +394,7 @@ export class KnowledgeService {
                 await this.prisma.executeInTenantSchema(schema,
                     `UPDATE knowledge_documents SET error_message = $2
                      WHERE id = $1::uuid AND COALESCE(version, 1) = $3 AND updated_at = $4::timestamptz`,
-                    [documentId, String(error.message).slice(0, 1000), currentVersion, existing[0].updated_at]).catch(() => {});
+                    [documentId, String(error.message).slice(0, 1000), currentVersion, existing[0].revision]).catch(() => {});
             }
             throw error;
         }

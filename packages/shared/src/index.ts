@@ -1027,6 +1027,7 @@ export interface TurnContext {
      *  a rolling summary, injected so the agent doesn't "forget" between sessions. */
     customerMemory?: {
         facts?: string[];
+        conflicts?: Array<{key:string;observations:string[]}>;
         summary?: string;
     };
     /** Number of messages in the current conversation (used for anti-repetition) */

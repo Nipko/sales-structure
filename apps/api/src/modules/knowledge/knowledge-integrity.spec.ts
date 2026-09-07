@@ -11,7 +11,7 @@ afterAll(() => jest.useRealTimers());
 
 function build() {
     const state = {
-        doc: { id: documentId, title: 'Policy', file_type: 'text/plain', content_text: 'Old policy', version: 1, updated_at: stamp, status: 'ready', is_regulated: false },
+        doc: { id: documentId, title: 'Policy', file_type: 'text/plain', content_text: 'Old policy', version: 1, updated_at: stamp, revision:'2026-09-01 00:00:00+00', status: 'ready', is_regulated: false },
         chunks: ['Old policy'], history: [] as string[], writes: [] as string[], failInsert: false,
     };
     const query = jest.fn(async (sql: string, params: any[] = []) => {

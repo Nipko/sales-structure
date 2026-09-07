@@ -88,6 +88,24 @@ describe('versioned multilingual eval infrastructure', () => {
         expect(namespaces.dispose).toHaveBeenCalledWith(lease);
     });
 
+    it.each([false, true])('keeps all gate fixture writes in its owned namespace when the provider fails=%s', async (fail) => {
+        const { service, prisma, namespaces, lease } = buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([{ id: '11111111-1111-4111-8111-111111111111' }]);
+        const agentTest = { captureSnapshot: jest.fn().mockResolvedValue({ config: {}, capturedAt: '2026-09-07T12:00:00Z' }),
+            assertSnapshotCurrent: jest.fn(), test: jest.fn() };
+        if (fail) agentTest.test.mockRejectedValue(new Error('provider unavailable'));
+        else agentTest.test.mockResolvedValue({ reply: 'Hello', debug: { toolCalls: [] } });
+        (service as any).agentTest = agentTest;
+        (service as any).quality = { judgeTranscript: jest.fn().mockResolvedValue({ overall: 9, resolved: true, flags: [] }) };
+        const run = service.runGateV2('tenant-id', 'agent', { scenarios: [{ key: 'greeting', messages: ['hello'] }] });
+        if (fail) await expect(run).rejects.toThrow('provider unavailable');
+        else await expect(run).resolves.toMatchObject({ status: 'completed', total: 1 });
+        const inserts = prisma.executeInTenantSchema.mock.calls.filter(call => /INSERT INTO/i.test(String(call[1])));
+        expect(inserts.some(call => call[0] === lease.schemaName && /INSERT INTO contacts/i.test(String(call[1])))).toBe(true);
+        expect(inserts.filter(call => call[0] === 'tenant_schema').every(call => /INSERT INTO eval_runs/i.test(String(call[1])))).toBe(true);
+        expect(namespaces.dispose).toHaveBeenCalledWith(lease);
+    });
+
     it('creates the sandbox conversation with the required channel account identity', async () => {
         const { service, prisma } = buildService();
         prisma.executeInTenantSchema.mockResolvedValue([

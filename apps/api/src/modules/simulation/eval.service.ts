@@ -489,7 +489,6 @@ export class EvalService {
             let snapshot: AgentEvaluationSnapshot | undefined;
             let activeScenario: any;
             try {
-                await this.ensureSandboxContact(schema);
                 const scenarios = (opts?.scenarios || await this.listScenarios(tenantId))
                     .filter(scenario => (scenario.seedState || 'active') === 'active');
                 snapshot = opts?.agentSnapshot || await this.agentTest.captureSnapshot(tenantId, agentId);

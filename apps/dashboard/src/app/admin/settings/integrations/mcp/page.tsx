@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { McpToolReviewPanel } from "@/components/McpToolReviewPanel";
 import { Plug2, Loader2, Plus, Trash2, CheckCircle2, Server, Copy, Power } from "lucide-react";
 
 interface McpServer { id: string; name: string; url: string; authHeader?: string; enabled: boolean }
@@ -154,6 +155,7 @@ export default function McpSettingsPage() {
                     </>
                 )}
             </div>
+            {activeTenantId && <McpToolReviewPanel key={activeTenantId} tenantId={activeTenantId} />}
         </div>
     );
 }

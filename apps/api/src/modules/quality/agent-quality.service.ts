@@ -56,6 +56,8 @@ type TenantContext = {
     settings: Record<string, any>;
     /** False when the connected-accounts read failed: absence is unknown, not zero. */
     channelLookupAvailable: boolean;
+    channelSourceAvailability?: { accounts: boolean; widgets: boolean };
+    humanLookupAvailable?: boolean;
     industry: string | null;
     updatedAt: Date | string | null;
     activeChannelTypes: Set<string>;
@@ -76,7 +78,8 @@ type CredentialHealth = ChannelCredentialHealth;
  */
 export interface TenantChannelSnapshot {
     generatedAt: string;
-    total: number;
+    availability: 'known' | 'partial' | 'unavailable';
+    total: number | null;
     channels: Array<{ type: string; accounts: number; health: ChannelCredentialHealth }>;
 }
 
@@ -87,6 +90,7 @@ type CredentialHealthRow = {
 };
 
 type ReadinessFacts = {
+    unavailableSources?: string[];
     company: any | null;
     companyUpdatedAt: Date | string | null;
     knowledgeChunks: number;
@@ -249,7 +253,8 @@ export class AgentQualityService {
                    FROM public.widget_configs
                   WHERE tenant_id = $1::uuid AND is_active = true`,
                 tenantId,
-            ).catch(() => [] as any[]),
+            ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
+                .catch(() => ({ available: false, rows: [] as any[] })),
             this.prisma.$queryRawUnsafe(
                 `SELECT COUNT(*)::int AS count
                    FROM users
@@ -257,7 +262,8 @@ export class AgentQualityService {
                     AND is_active = true
                     AND role IN ('tenant_admin', 'tenant_supervisor', 'tenant_agent')`,
                 tenantId,
-            ).catch(() => [{ count: 0 }]),
+            ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
+                .catch(() => ({ available: false, rows: [] as any[] })),
             this.prisma.whatsappCredential.findMany({
                 where: { tenantId, credentialType: { in: Object.values(CREDENTIAL_TYPE_BY_CHANNEL) } },
                 orderBy: { createdAt: 'desc' },
@@ -289,9 +295,9 @@ export class AgentQualityService {
         const channelLookup = channels as { available: boolean; rows: any[] };
         const channelRows = [
             ...(Array.isArray(channelLookup?.rows) ? channelLookup.rows : []),
-            ...(Array.isArray(widgets) ? widgets as any[] : []),
+            ...widgets.rows,
         ];
-        const humanRows = Array.isArray(humans) ? humans as any[] : [];
+        const humanRows = humans.rows;
         const healthByAssignment = new Map<string, CredentialHealth>();
         const latestByType = new Map<string, any>();
         for (const credential of credentialLookup.rows) {
@@ -345,7 +351,9 @@ export class AgentQualityService {
             settings: (tenant?.settings as Record<string, any>) || {},
             industry: tenant?.industry || null,
             updatedAt: tenant?.updatedAt || null,
-            channelLookupAvailable: channelLookup?.available !== false,
+            channelLookupAvailable: channelLookup.available && widgets.available,
+            channelSourceAvailability: { accounts: channelLookup.available, widgets: widgets.available },
+            humanLookupAvailable: humans.available,
             activeChannelTypes: new Set(channelRows.map((row) => String(row.channel_type))),
             activeAccountBindings: new Set(channelRows.map((row) => `${row.channel_type}:${row.account_id}`)),
             activeHumanCount: Number(humanRows[0]?.count) || 0,
@@ -370,28 +378,36 @@ export class AgentQualityService {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) throw new NotFoundException('Tenant not found');
         const context = await this.loadTenantContext(tenantId, schemaName);
+        const sources = context.channelSourceAvailability;
+        const availability = context.channelLookupAvailable ? 'known'
+            : sources?.accounts || sources?.widgets ? 'partial' : 'unavailable';
         return {
             generatedAt: new Date().toISOString(),
-            total: context.activeAccountCount,
+            availability,
+            total: availability === 'known' ? context.activeAccountCount : null,
             channels: context.channelTypeSummary.map(({ type, accounts, health }) => ({ type, accounts, health })),
         };
     }
 
     private async loadReadinessFacts(schemaName: string): Promise<ReadinessFacts> {
-        const safe = <T>(query: string, params: any[] = [], fallback: T): Promise<T> =>
+        const unavailableSources: string[] = [];
+        const safe = <T>(source: string, query: string, params: any[] = [], fallback: T): Promise<T> =>
             this.prisma.executeInTenantSchema<T>(schemaName, query, params).catch((error: any) => {
+                unavailableSources.push(source);
                 this.logger.debug(`[Agent quality] Optional readiness probe skipped: ${error?.message || error}`);
                 return fallback;
             });
 
         const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows] = await Promise.all([
             safe<any[]>(
+                'company',
                 `SELECT name, industry, about, phone, email, website, address, city, country, updated_at
                    FROM companies
                ORDER BY is_primary DESC, updated_at DESC
                   LIMIT 1`, [], [],
             ),
             safe<any[]>(
+                'knowledge',
                 `SELECT COUNT(ke.id)::int AS count,
                         MAX(GREATEST(kd.updated_at, ke.created_at)) AS updated_at
                    FROM knowledge_embeddings ke
@@ -399,11 +415,13 @@ export class AgentQualityService {
                   WHERE kd.status = 'ready' AND btrim(ke.chunk_text) <> ''`, [], [{ count: 0, updated_at: null }],
             ),
             safe<any[]>(
+                'faqs',
                 `SELECT COUNT(*)::int AS count, MAX(updated_at) AS updated_at
                    FROM faqs
                   WHERE is_published = true AND btrim(question) <> '' AND btrim(answer) <> ''`, [], [{ count: 0, updated_at: null }],
             ),
             safe<any[]>(
+                'policies',
                 `SELECT COUNT(*)::int AS count, MAX(updated_at) AS updated_at
                    FROM policies
                   WHERE is_active = true
@@ -412,14 +430,16 @@ export class AgentQualityService {
                     AND btrim(content) <> ''`, [], [{ count: 0, updated_at: null }],
             ),
             safe<any[]>(
+                'appointments',
                 `SELECT
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true AND btrim(name) <> '' AND duration_minutes > 0) AS services,
                     (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots`, [], [{ services: 0, slots: 0 }],
             ),
-            safe<any[]>(`SELECT COUNT(*)::int AS count FROM products WHERE is_available = true AND btrim(name) <> ''`, [], [{ count: 0 }]),
-            safe<any[]>(`SELECT COUNT(*)::int AS count FROM orders`, [], [{ count: 0 }]),
-            safe<any[]>(`SELECT COUNT(*)::int AS count FROM commercial_offers WHERE active = true`, [], [{ count: 0 }]),
+            safe<any[]>('products', `SELECT COUNT(*)::int AS count FROM products WHERE is_available = true AND btrim(name) <> ''`, [], [{ count: 0 }]),
+            safe<any[]>('orders', `SELECT COUNT(*)::int AS count FROM orders`, [], [{ count: 0 }]),
+            safe<any[]>('offers', `SELECT COUNT(*)::int AS count FROM commercial_offers WHERE active = true`, [], [{ count: 0 }]),
             safe<any[]>(
+                'verticalCatalogs',
                 `SELECT
                     (SELECT COUNT(*)::int FROM properties WHERE is_active = true) AS properties,
                     (SELECT COUNT(*)::int FROM tour_packages WHERE is_active = true) AS tours,
@@ -440,6 +460,7 @@ export class AgentQualityService {
         const company = companies[0] || null;
         const vertical = verticalRows[0] || {};
         return {
+            unavailableSources,
             company,
             companyUpdatedAt: company?.updated_at || null,
             knowledgeChunks: Number(knowledge[0]?.count) || 0,
@@ -729,7 +750,24 @@ export class AgentQualityService {
         const staleBindings = assignmentHealth.filter(({ stale }) => stale).length;
 
         const checks: AgentQualityCheck[] = [];
-        const add = (check: CheckInput) => checks.push(check);
+        const dependencies: Record<string, string[]> = {
+            business_identity: ['company'], business_contact: ['company'],
+            rag_knowledge: ['knowledge'], tool_faqs: ['faqs'], tool_policies: ['policies'],
+            tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
+            tool_orders: ['orders'], tool_offers: ['offers'],
+        };
+        const add = (check: CheckInput) => {
+            const required = dependencies[check.code] ?? (check.code.startsWith('tool_') && check.evidence && 'records' in check.evidence ? ['verticalCatalogs'] : []);
+            const unavailable = required.filter(source => facts.unavailableSources?.includes(source));
+            if (check.code === 'human_handoff_route' && tenant.humanLookupAvailable === false) unavailable.push('humans');
+            if (['channel_connection', 'channel_coverage'].includes(check.code) && tenant.channelLookupAvailable === false) unavailable.push('channels');
+            if (check.code === 'knowledge_coverage' && Number(check.evidence?.availableSources ?? 0) === 0) {
+                unavailable.push(...(facts.unavailableSources ?? []).filter(source => ['knowledge', 'faqs', 'policies', 'products', 'appointments', 'verticalCatalogs'].includes(source)));
+            }
+            checks.push(unavailable.length && check.status !== 'not_applicable'
+                ? { ...check, status: 'unknown', evidence: { sourceAvailability: 'unavailable', unavailableSources: [...new Set(unavailable)].join(',') } }
+                : check);
+        };
         const text = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
         const list = (value: unknown) => Array.isArray(value) && value.some((item) => text(item));
         const status = (ok: boolean, missing: 'warning' | 'fail' = 'fail') => ok ? 'pass' as const : missing;

@@ -35,6 +35,7 @@ type HarnessOptions = {
     tenantSettings?: Record<string, any>;
     tenantUpdatedAt?: string;
     channelRows?: any[];
+    failedQueries?: string[];
     widgetRows?: any[];
     whatsappCredential?: Record<string, any> | null;
     credentialRows?: Record<string, any>[];
@@ -101,6 +102,7 @@ function createHarness(options: HarnessOptions = {}) {
     const calls: Array<{ query: string; params: any[] }> = [];
     const executeInTenantSchema = jest.fn(async (_schema: string, query: string, params: any[] = []) => {
         calls.push({ query, params });
+        if (options.failedQueries?.some(part => query.includes(part))) throw new Error('Source unavailable');
         if (query.includes('SELECT id, name, is_default, is_active')) {
             return options.listRows ?? [{ id: AGENT_ID, name: 'Luna', is_default: true, is_active: true }];
         }
@@ -183,6 +185,7 @@ function createHarness(options: HarnessOptions = {}) {
                     }]))),
         },
         $queryRawUnsafe: jest.fn(async (query: string) => {
+            if (options.failedQueries?.some(part => query.includes(part))) throw new Error('Source unavailable');
             if (query.includes('FROM channel_accounts')) return options.channelRows ?? [{ channel_type: 'whatsapp', account_id: 'wa-1' }];
             if (query.includes('widget_configs')) return options.widgetRows ?? [];
             if (query.includes('FROM users')) return [{ count: options.activeHumans ?? 1 }];
@@ -199,6 +202,26 @@ function check(overview: AgentQualityOverview, code: string) {
 describe('AgentQualityService', () => {
     beforeAll(() => jest.useFakeTimers().setSystemTime(NOW));
     afterAll(() => jest.useRealTimers());
+
+    it('keeps unavailable readiness evidence distinct from verified missing configuration', async () => {
+        const { service } = createHarness({ failedQueries: ['FROM companies', 'FROM knowledge_embeddings', 'FROM users', 'FROM channel_accounts'], legacyWhatsAppRows: [] });
+        const result = await service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['business_identity', 'rag_knowledge', 'human_handoff_route', 'channel_connection']) {
+            expect(check(result, code)).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+            expect(Object.values(check(result, code).evidence!)).not.toContain(0);
+        }
+        expect(check(result, 'knowledge_coverage').status).toBe('unknown');
+        expect(check(result, 'persona_identity').status).toBe('pass');
+    });
+
+    it('preserves observed channel accounts without presenting a partial snapshot as a total', async () => {
+        const { service } = createHarness({ failedQueries: ['widget_configs'] });
+        await expect(service.getTenantChannelSnapshot(TENANT_ID)).resolves.toMatchObject({
+            availability: 'partial', total: null, channels: [expect.objectContaining({ type: 'whatsapp', accounts: 1 })],
+        });
+        const { service: unavailable } = createHarness({ failedQueries: ['widget_configs', 'FROM channel_accounts', 'FROM whatsapp_channels'] });
+        await expect(unavailable.getTenantChannelSnapshot(TENANT_ID)).resolves.toMatchObject({ availability: 'unavailable', total: null });
+    });
 
     it('returns only the minimal tenant-scoped agent selector', async () => {
         const { service, calls } = createHarness({

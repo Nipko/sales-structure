@@ -24,6 +24,7 @@ const CHANNEL_ROUTES: Partial<Record<CertifiedSetupChannel, string>> = {
   instagram: "/admin/channels/instagram",
   messenger: "/admin/channels/messenger",
   telegram: "/admin/channels/telegram",
+  web_chat: "/admin/settings/integrations/web-chat",
 };
 
 export interface InitialSetupStatus {
@@ -41,6 +42,7 @@ export type EssentialSetupItemKey =
   | "knowledge"
   | "catalog"
   | "team"
+  | "appointments"
   | "hours";
 
 export interface EssentialSetupItem {
@@ -49,6 +51,9 @@ export interface EssentialSetupItem {
   done: boolean;
   /** The tour "Mostrarme dónde" runs for this item. `null` = no tour covers it. */
   tourId: GuidedTourId | null;
+  channelType?: CertifiedSetupChannel;
+  /** An unavailable check is not a verified missing setting. */
+  verification?: "unavailable";
 }
 
 export type QualityCheckStatus = "pass" | "warning" | "fail" | "unknown" | "not_applicable";
@@ -143,6 +148,7 @@ interface BuildEssentialSetupItemsInput {
   activeChannels: readonly string[];
   checks: QualityCheckStatuses;
   canAccess: (href: string) => boolean;
+  agentId?: string | null;
 }
 
 function canonicalChannel(channel: string): string {
@@ -174,11 +180,20 @@ function usesAppointments(checks: QualityCheckStatuses): boolean {
   return appointments !== undefined && appointments !== "not_applicable";
 }
 
-const AGENT_CHECKS = ["persona_identity", "fallback_message", "behavior_rules", "handoff_triggers"] as const;
+const AGENT_CHECKS = ["agent_active", "persona_identity", "custom_prompt", "fallback_message", "behavior_rules", "handoff_triggers"] as const;
 const BUSINESS_CHECKS = ["business_identity"] as const;
 const KNOWLEDGE_CHECKS = ["knowledge_coverage"] as const;
 const TEAM_CHECKS = ["human_handoff_route"] as const;
-const HOURS_CHECKS = ["business_hours", "tool_appointments"] as const;
+const HOURS_CHECKS = ["business_hours", "after_hours_behavior"] as const;
+const CHANNEL_CHECKS = ["channel_assignment", "channel_connection", "channel_coverage", "operational_channel_scope"] as const;
+const CATALOG_CHECKS: Record<string, string[]> = {
+  "/admin/menu": ["tool_restaurants"], "/admin/properties": ["tool_properties"],
+  "/admin/tours": ["tool_tours"], "/admin/treatment-plans": ["tool_treatments"],
+  "/admin/listings": ["tool_real_estate"], "/admin/pets": ["tool_pets"],
+  "/admin/memberships": ["tool_gyms"], "/admin/courses": ["tool_education"],
+  "/admin/insurance": ["tool_insurance"], "/admin/service-requests": ["tool_home_services"],
+  "/admin/inventory": ["tool_catalog", "tool_ecommerce"],
+};
 
 export function buildEssentialSetupItems({
   status,
@@ -186,6 +201,7 @@ export function buildEssentialSetupItems({
   activeChannels,
   checks,
   canAccess,
+  agentId,
 }: BuildEssentialSetupItemsInput): EssentialSetupItem[] {
   const items: EssentialSetupItem[] = [];
 
@@ -199,11 +215,13 @@ export function buildEssentialSetupItems({
     const target = preferred || certifiedAvailable[0];
     const route = CHANNEL_ROUTES[target] || "/admin/channels";
     const connected = new Set(activeChannels.map(canonicalChannel));
+    const needsAssignment = agentId && checks.channel_assignment === "fail" && connected.size > 0;
     items.push({
       key: "channel",
-      href: canAccess(route) ? route : "/admin/channels",
-      done: certifiedAvailable.some((channel) => connected.has(channel)),
-      tourId: target === "whatsapp" ? "first_channel_whatsapp" : "connect_channel",
+      href: needsAssignment ? `/admin/agent/${agentId}?tab=persona&focus=channels` : canAccess(route) ? route : "/admin/channels",
+      done: certifiedAvailable.some((channel) => connected.has(channel)) && groupSettled(checks, CHANNEL_CHECKS),
+      tourId: needsAssignment ? "assign_agent_channel" : target === "whatsapp" ? "first_channel_whatsapp" : "connect_channel",
+      channelType: target,
     });
   }
 
@@ -211,7 +229,7 @@ export function buildEssentialSetupItems({
   if (canAccess("/admin/agent")) {
     items.push({
       key: "agent",
-      href: "/admin/agent",
+      href: agentId ? `/admin/agent/${agentId}` : "/admin/agent",
       done: groupSettled(checks, AGENT_CHECKS),
       tourId: "agent_handoff_rules",
     });
@@ -234,14 +252,14 @@ export function buildEssentialSetupItems({
     items.push({
       key: "catalog",
       href: catalogRoute,
-      done: status.hasVerticalCatalog === true || groupSettled(checks, KNOWLEDGE_CHECKS),
+      done: status.hasVerticalCatalog === true && groupSettled(checks, CATALOG_CHECKS[catalogRoute] ?? KNOWLEDGE_CHECKS),
       tourId: null,
     });
   } else if (!catalogRoute && canAccess("/admin/knowledge")) {
     items.push({
       key: "knowledge",
       href: "/admin/knowledge",
-      done: groupSettled(checks, KNOWLEDGE_CHECKS) || status.hasKnowledge === true,
+      done: groupSettled(checks, KNOWLEDGE_CHECKS),
       tourId: "knowledge_base",
     });
   }
@@ -265,6 +283,19 @@ export function buildEssentialSetupItems({
       done: groupSettled(checks, HOURS_CHECKS),
       tourId: "business_hours",
     });
+  }
+
+  if (usesAppointments(checks) && canAccess("/admin/appointments")) {
+    items.push({ key: "appointments", href: "/admin/appointments", done: groupSettled(checks, ["tool_appointments"]), tourId: "appointments_setup" });
+  }
+
+  const itemChecks: Record<EssentialSetupItemKey, readonly string[]> = {
+    channel: CHANNEL_CHECKS, agent: AGENT_CHECKS, business: BUSINESS_CHECKS,
+    knowledge: KNOWLEDGE_CHECKS, catalog: CATALOG_CHECKS[catalogRoute ?? ""] ?? KNOWLEDGE_CHECKS,
+    team: TEAM_CHECKS, hours: HOURS_CHECKS, appointments: ["tool_appointments"],
+  };
+  for (const item of items) {
+    if (itemChecks[item.key].some(code => checks[code] === "unknown")) item.verification = "unavailable";
   }
 
   return items;

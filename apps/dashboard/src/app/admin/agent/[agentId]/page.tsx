@@ -239,6 +239,10 @@ export default function AgentEditorPage() {
       api.getAvailability(activeTenantId).catch(() => null),
     ]).then(([svcRes, availRes]: any[]) => {
       if (cancelled) return;
+      if (!svcRes?.success || !availRes?.success) {
+        setApptReadiness({ services: 0, slots: 0, loaded: false });
+        return;
+      }
       let services = 0;
       if (Array.isArray(svcRes?.data)) services = svcRes.data.length;
       else if (svcRes?.data?.services && Array.isArray(svcRes.data.services)) services = svcRes.data.services.length;

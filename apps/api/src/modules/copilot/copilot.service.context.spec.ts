@@ -23,6 +23,7 @@ function createService() {
         getOverview: jest.fn(),
         getTenantChannelSnapshot: jest.fn().mockResolvedValue({
             generatedAt: '2026-09-04T12:00:00.000Z',
+            availability: 'known',
             total: 1,
             channels: [{ type: 'whatsapp', accounts: 1, health: 'ok' }],
         }),
@@ -340,7 +341,7 @@ describe('CopilotService authenticated context', () => {
             const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
             expect(prompt).toContain('CANALES CONECTADOS');
             expect(prompt).toContain('"type":"whatsapp"');
-            expect(prompt).toContain('NUNCA afirmes que no hay canales conectados');
+            expect(prompt).toContain('Solo availability=known y total=0');
         },
     );
 
@@ -354,7 +355,7 @@ describe('CopilotService authenticated context', () => {
         expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('CANALES CONECTADOS');
     });
 
-    it('omits the channel block when the snapshot provider is not deployed yet', async () => {
+    it('states verification is unavailable when the snapshot provider is not deployed yet', async () => {
         const { service, llmRouter, agentQuality } = createService();
         jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
         jest.spyOn(service as any, 'buildPlanContext').mockResolvedValue('');
@@ -362,7 +363,7 @@ describe('CopilotService authenticated context', () => {
 
         await service.chat(chatRequest());
 
-        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).not.toContain('CANALES CONECTADOS');
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('no se pudo verificar');
     });
 
     // ─── Guided tours from a quality signal ─────────────────────────────────

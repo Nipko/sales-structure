@@ -10973,6 +10973,7 @@
     "bannerAgent": "Review {agent} first.",
     "navBadge": "{count, plural, one {# open critical or high action} other {# open critical or high actions}}",
     "setup": {
+      "verificationUnavailable": "Awaiting verification. Retry when the lookup is available.",
       "title": "Getting started",
       "description": "Only essential steps available for your plan, role, and industry. This guide disappears when completed.",
       "progress": "{completed}/{total} essentials",
@@ -10982,19 +10983,22 @@
       "continue": "Continue",
       "items": {
         "agent": "Review your agent",
-        "channel": "Connect WhatsApp",
+        "channel": "Connect and assign a channel",
         "knowledge": "Load what the agent must know",
         "catalog": "Load your catalog",
         "business": "Tell us what your business does",
         "team": "Invite someone to receive the chats",
-        "hours": "Confirm your hours"
+        "hours": "Confirm your hours",
+        "appointments": "Set up services and availability"
       },
       "showMe": "Show me where"
     },
     "focus": {
+      "verificationUnavailable": "We could not verify the current status. Retry before deciding what is missing.",
+      "verifiedResolved": "We verified that this configuration is complete.",
       "title": "Agent health action",
       "from": "for {agent}",
-      "signalGone": "This action is no longer open: someone resolved it or snoozed it.",
+      "signalGone": "This action is no longer available or has changed. Check the updated agent assessment.",
       "close": "Close",
       "showMe": "Show me where",
       "noneValue": "none",
@@ -11487,6 +11491,17 @@
     }
   },
   "mcp": {
+    "review": {
+      "title": "Tools available to the agent", "description": "Review each connected tool before allowing the agent to use it.",
+      "refresh": "Refresh tools", "empty": "No tools were found in active connections.", "loadError": "We could not load the tools. Refresh to try again.", "saveError": "The review could not be saved. Check the connection, fields and confirmations.",
+      "authorized": "Reviewed and available", "reviewRequired": "Review required before use", "inspect": "Review", "contract": "View tool fields", "effect": "What it can do", "data": "What data it accesses",
+      "effects": {"read": "Look up information", "write": "Create or change records", "payment": "Perform a payment operation", "notification": "Send a notification", "irreversible": "Make an irreversible change"},
+      "scopes": {"public": "Public business information", "contact": "Data belonging to the current customer", "sensitive": "Sensitive data: identity verification required"},
+      "scopeHelp": "The connection must enforce these filters. Parallly fills in identity from the conversation; the agent cannot choose another customer.",
+      "contactIdArgument": "Field identifying the customer", "tenantIdArgument": "Field identifying the business", "dedicated": "Connection dedicated to this business", "none": "No customer field",
+      "confirmation": "Ask the customer to confirm before execution", "human": "A person must approve each execution", "changes": "Changes to the connection or tool fields invalidate the review. Uncertain results are reviewed before repeating the action.",
+      "approve": "Save review and enable", "revoke": "Revoke authorization", "close": "Close"
+    },
     "title": "MCP (Model Context Protocol)",
     "subtitle": "Open standard for action connectors. Connect external MCP servers and expose your tools without lock-in.",
     "exposeTitle": "Your MCP server",
@@ -11922,6 +11937,7 @@
     "deleteError": "Error deleting entry"
   },
   "productTour": {
+    "finishFormFirst": "Save or close the form you are editing before continuing. We will keep this step.",
     "agent": {
       "title": "Your AI agent",
       "content": "Your agent lives here: personality, knowledge (FAQs) and procedures — what most shapes how it replies."
@@ -12405,6 +12421,10 @@
   "guidedTours": {
     "connect_channel": {
       "steps": {
+        "channel": {
+          "title": "Set up your channel",
+          "content": "Open the selected channel settings, complete its connection and assign it to the agent that should respond."
+        },
         "menu": {
           "title": "Channels",
           "content": "This is where you connect WhatsApp, Instagram, Messenger, Telegram and the site chat. Open it to see which ones are connected."

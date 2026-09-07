@@ -211,7 +211,7 @@ export default function FaqsPage() {
             )}
 
             {canEditKnowledge && editorOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setEditorOpen(false)}>
+                <div data-tour-form="faq" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setEditorOpen(false)}>
                     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-6" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">

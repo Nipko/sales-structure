@@ -10973,6 +10973,7 @@
     "bannerAgent": "Examinez d'abord {agent}.",
     "navBadge": "{count, plural, one {# action critique ou haute ouverte} other {# actions critiques ou hautes ouvertes}}",
     "setup": {
+      "verificationUnavailable": "Vérification en attente. Réessayez lorsque la consultation sera disponible.",
       "title": "Mise en route",
       "description": "Uniquement les étapes essentielles disponibles pour votre forfait, rôle et secteur. Ce guide disparaît une fois terminé.",
       "progress": "{completed}/{total} essentielles",
@@ -10982,19 +10983,22 @@
       "continue": "Continuer",
       "items": {
         "agent": "Vérifier votre agent",
-        "channel": "Connecter WhatsApp",
+        "channel": "Connecter et attribuer un canal",
         "knowledge": "Charger ce que l'agent doit savoir",
         "catalog": "Charger votre catalogue",
         "business": "Nous dire ce que fait votre entreprise",
         "team": "Inviter une personne qui recevra les conversations",
-        "hours": "Confirmer vos horaires"
+        "hours": "Confirmer vos horaires",
+        "appointments": "Configurer les services et disponibilités"
       },
       "showMe": "Montrez-moi où"
     },
     "focus": {
+      "verificationUnavailable": "Nous ne pouvons pas vérifier le statut actuel. Réessayez avant de décider ce qui manque.",
+      "verifiedResolved": "Nous avons vérifié que cette configuration est complète.",
       "title": "Action de santé de l'agent",
       "from": "pour {agent}",
-      "signalGone": "Cette action n'est plus ouverte : quelqu'un l'a résolue ou reportée.",
+      "signalGone": "Cette action a changé ou n’est plus disponible. Consultez l’évaluation actualisée de l’agent.",
       "close": "Fermer",
       "showMe": "Montrez-moi où",
       "noneValue": "aucun",
@@ -11487,6 +11491,17 @@
     }
   },
   "mcp": {
+    "review": {
+      "title": "Outils disponibles pour l’agent", "description": "Examinez chaque outil connecté avant d’autoriser l’agent à l’utiliser.",
+      "refresh": "Actualiser les outils", "empty": "Aucun outil trouvé dans les connexions actives.", "loadError": "Impossible de charger les outils. Actualisez pour réessayer.", "saveError": "Impossible d’enregistrer la révision. Vérifiez la connexion, les champs et les confirmations.",
+      "authorized": "Examiné et disponible", "reviewRequired": "Examen requis avant utilisation", "inspect": "Examiner", "contract": "Voir les champs de l’outil", "effect": "Ce qu’il peut faire", "data": "Données consultées",
+      "effects": {"read": "Consulter des informations", "write": "Créer ou modifier des enregistrements", "payment": "Effectuer une opération de paiement", "notification": "Envoyer une notification", "irreversible": "Effectuer une modification irréversible"},
+      "scopes": {"public": "Informations publiques de l’entreprise", "contact": "Données du client en conversation", "sensitive": "Données sensibles : vérification d’identité requise"},
+      "scopeHelp": "La connexion doit respecter ces filtres. Parallly renseigne l’identité depuis la conversation ; l’agent ne peut pas choisir un autre client.",
+      "contactIdArgument": "Champ identifiant le client", "tenantIdArgument": "Champ identifiant l’entreprise", "dedicated": "Connexion réservée à cette entreprise", "none": "Aucun champ client",
+      "confirmation": "Demander la confirmation du client avant l’exécution", "human": "Une personne doit approuver chaque exécution", "changes": "Toute modification de la connexion ou des champs invalide la révision. Les résultats incertains sont examinés avant de répéter l’action.",
+      "approve": "Enregistrer et activer", "revoke": "Retirer l’autorisation", "close": "Fermer"
+    },
     "title": "MCP (Model Context Protocol)",
     "subtitle": "Standard ouvert pour les connecteurs d'actions. Connectez des serveurs MCP externes et exposez vos outils sans lock-in.",
     "exposeTitle": "Votre serveur MCP",
@@ -11922,6 +11937,7 @@
     "deleteError": "Erreur lors de la suppression"
   },
   "productTour": {
+    "finishFormFirst": "Enregistrez ou fermez le formulaire en cours avant de continuer. Cette étape sera conservée.",
     "agent": {
       "title": "Votre agent IA",
       "content": "Votre agent est ici : personnalité, connaissances (FAQ) et procédures — ce qui influence le plus ses réponses."
@@ -12405,6 +12421,10 @@
   "guidedTours": {
     "connect_channel": {
       "steps": {
+        "channel": {
+          "title": "Configurez votre canal",
+          "content": "Ouvrez les paramètres du canal choisi, terminez sa connexion et attribuez-le à l’agent qui doit répondre."
+        },
         "menu": {
           "title": "Canaux",
           "content": "C'est ici que vous connectez WhatsApp, Instagram, Messenger, Telegram et le chat du site. Entrez pour voir lesquels sont connectés."

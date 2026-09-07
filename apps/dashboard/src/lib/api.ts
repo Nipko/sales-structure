@@ -1545,6 +1545,7 @@ export const api = {
     deleteMcpServer: (tenantId: string, id: string) => apiDelete(`/mcp/${tenantId}/servers/${id}`),
     testMcpServer: (tenantId: string, id: string) => apiPost(`/mcp/${tenantId}/servers/${id}/test`, {}),
     getMcpServerTools: (tenantId: string) => apiGet(`/mcp/${tenantId}/tools`),
+    setMcpToolApproval: (tenantId: string, body: any) => apiPut(`/mcp/${tenantId}/tool-approvals`, body),
 
     // CRM B2B (T3.21) — organizations, forecast, rotting
     listOrganizations: (tenantId: string, search?: string) =>
@@ -2690,6 +2691,7 @@ export const api = {
 // pasos y recibiera un error sin saber dónde estaba el problema.
 export interface ApiFieldError { path: string; constraint?: string; message?: string }
 export interface ApiEnvelope<T> {
+    httpStatus?: number;
     success: boolean;
     data?: T;
     error?: string;
@@ -2714,7 +2716,7 @@ async function apiGet<T = any>(endpoint: string): Promise<ApiEnvelope<T>> {
     try {
         const res = await authFetch(endpoint);
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
+        if (!res.ok) return { success: false, httpStatus: res.status, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };

@@ -181,6 +181,8 @@ export interface GuidedTourStartDetail {
     /** Optional quality context so the runner can keep the focus banner in sync. */
     signalId?: string;
     agentId?: string;
+    channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_chat';
+    verticalCatalogRoute?: string;
 }
 
 /**

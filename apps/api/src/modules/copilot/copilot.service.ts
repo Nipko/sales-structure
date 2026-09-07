@@ -41,7 +41,8 @@ export type CopilotChatAction =
  */
 interface TenantChannelSnapshot {
     generatedAt: string;
-    total: number;
+    availability: 'known' | 'partial' | 'unavailable';
+    total: number | null;
     channels: { type: string; accounts: number; health: string }[];
 }
 
@@ -561,7 +562,8 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
     private async buildChannelContext(tenantId: string, userRole: string): Promise<string> {
         if (!CopilotService.TENANT_CONTEXT_ROLES.includes(userRole)) return '';
         const provider = this.agentQuality as unknown as Partial<TenantChannelSnapshotProvider> | null;
-        if (typeof provider?.getTenantChannelSnapshot !== 'function') return '';
+        const unavailable = '## CANALES CONECTADOS\nLa consulta de conexiones no está disponible. No afirmes que no hay canales, ni infieras su cantidad o estado. Explica que no se pudo verificar y ofrece reintentar.';
+        if (typeof provider?.getTenantChannelSnapshot !== 'function') return unavailable;
         try {
             const snapshot = await provider.getTenantChannelSnapshot(tenantId);
             const rawChannels = Array.isArray(snapshot?.channels) ? snapshot.channels : [];
@@ -573,15 +575,16 @@ REGLA VERTICAL: orienta la respuesta hacia esta industria y subtipo. Solo presen
                 }))
                 .filter((channel) => !!channel.type)
                 .slice(0, 20);
-            const total = Number.isFinite(Number(snapshot?.total))
-                ? Math.max(0, Math.trunc(Number(snapshot.total)))
-                : channels.length;
+            const availability = ['known', 'partial', 'unavailable'].includes(snapshot?.availability)
+                ? snapshot.availability : 'unavailable';
+            const total = availability === 'known' && typeof snapshot?.total === 'number' && Number.isFinite(snapshot.total)
+                ? Math.max(0, Math.trunc(snapshot.total)) : null;
             return `## CANALES CONECTADOS (autoritativo, derivado del tenant autenticado)
-${JSON.stringify({ total, channels })}
-REGLA DE CANALES: esta lista es la ÚNICA fuente sobre qué canales están conectados. Si no está vacía, NUNCA afirmes que no hay canales conectados; nombra los tipos conectados. Una señal de calidad sobre canales significa que UNA asignación del agente no está conectada, que un vínculo por cuenta quedó obsoleto o que una credencial requiere reautorizar; no significa que el negocio no tenga canales. Si la lista está vacía, indícalo y guía a Administración → Canales.`;
+${JSON.stringify({ availability, total, channels })}
+REGLA DE CANALES: esta lista es la ÚNICA fuente sobre qué canales están conectados. Solo availability=known y total=0 acreditan que no hay conexiones. Con partial o unavailable no declares ausentes los canales no observados ni inventes un total: explica que la verificación está incompleta y ofrece reintentar. Si hay canales observados, nombra esos tipos. Una señal de calidad puede referirse a una asignación, un vínculo obsoleto o una credencial; no significa que el negocio no tenga canales.`;
         } catch (error: any) {
             this.logger.warn(`buildChannelContext failed: ${error?.message || error}`);
-            return '';
+            return unavailable;
         }
     }
 

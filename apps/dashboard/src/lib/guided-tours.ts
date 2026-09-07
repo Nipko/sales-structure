@@ -34,6 +34,7 @@ export function sidebarTourSelector(labelKey: string): string {
 }
 
 export interface GuidedTourContext {
+  channelType?: string | null;
   /** Focused agent, when the tour was launched from a quality signal or the agent list. */
   agentId?: string | null;
   /** Vertical catalogue route for tenants whose knowledge lives in a catalogue. */
@@ -49,6 +50,9 @@ export interface GuidedTourStepDefinition {
   key: string;
   side?: Step["side"];
   icon?: string;
+  /** Safe UI preparation only; never submit, save or dismiss a form. */
+  prepareSelector?: string;
+  optional?: boolean;
 }
 
 type StepFactory = (context: GuidedTourContext) => GuidedTourStepDefinition[];
@@ -60,31 +64,34 @@ const agentRoute = (context: GuidedTourContext): AdminRoute =>
 
 const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
   // ── Part I: repairing what Agent health flags ───────────────────────────
-  connect_channel: () => [
+  connect_channel: (context) => [
     { selector: sidebarTourSelector("channels"), route: "/admin/channels", key: "menu", icon: "🔌", side: "right" },
     { selector: guidedTourSelector("channel-cards"), key: "cards", icon: "🧩", side: "top" },
-    { selector: guidedTourSelector("channel-card-whatsapp"), key: "whatsapp", icon: "💬", side: "top" },
-    { selector: guidedTourSelector("whatsapp-status"), route: "/admin/channels/whatsapp", key: "status", icon: "✅", side: "bottom" },
+    ...(context.channelType && ["whatsapp", "instagram", "messenger", "telegram"].includes(context.channelType)
+      ? [{ selector: guidedTourSelector(`channel-card-${context.channelType}`), key: "channel", icon: "💬", side: "top" as const }] : []),
+    ...(context.channelType === "web_chat" ? [{ selector: guidedTourSelector("web-chat-setup"), route: "/admin/settings/integrations/web-chat" as AdminRoute, key: "channel", icon: "💬" }] : []),
   ],
   assign_agent_channel: (context) => [
-    { selector: sidebarTourSelector("aiAgent"), route: "/admin/agent", key: "menu", icon: "🤖", side: "right" },
-    { selector: guidedTourSelector("agent-list"), key: "list", icon: "📋", side: "top" },
-    { selector: guidedTourSelector("agent-channels"), route: agentRoute(context), key: "channels", icon: "🔗", side: "top" },
+    ...(!context.agentId ? [
+      { selector: sidebarTourSelector("aiAgent"), route: "/admin/agent" as AdminRoute, key: "menu", icon: "🤖", side: "right" as const },
+      { selector: guidedTourSelector("agent-list"), key: "list", icon: "📋", side: "top" as const },
+    ] : []),
+    { selector: guidedTourSelector("agent-channels"), route: agentRoute(context), key: "channels", icon: "🔗", side: "top", prepareSelector: '[data-tab-id="persona"]' },
     { selector: guidedTourSelector("agent-save"), key: "save", icon: "💾", side: "top" },
   ],
   agent_handoff_rules: (context) => [
-    { selector: guidedTourSelector("agent-name"), route: agentRoute(context), key: "name", icon: "🪪", side: "bottom" },
-    { selector: guidedTourSelector("agent-greeting"), key: "greeting", icon: "👋", side: "bottom" },
-    { selector: guidedTourSelector("agent-fallback"), key: "fallback", icon: "🛟", side: "bottom" },
-    { selector: guidedTourSelector("agent-rules"), key: "rules", icon: "📏", side: "top" },
-    { selector: guidedTourSelector("agent-handoff-triggers"), key: "handoff", icon: "🙋", side: "top" },
+    { selector: guidedTourSelector("agent-name"), route: agentRoute(context), key: "name", icon: "🪪", side: "bottom", prepareSelector: '[data-tab-id="persona"]' },
+    { selector: guidedTourSelector("agent-greeting"), key: "greeting", icon: "👋", side: "bottom", prepareSelector: '[data-tab-id="persona"]' },
+    { selector: guidedTourSelector("agent-fallback"), key: "fallback", icon: "🛟", side: "bottom", prepareSelector: '[data-tab-id="persona"]' },
+    { selector: guidedTourSelector("agent-rules"), key: "rules", icon: "📏", side: "top", prepareSelector: '[data-tab-id="instructions"]' },
+    { selector: guidedTourSelector("agent-handoff-triggers"), key: "handoff", icon: "🙋", side: "top", prepareSelector: '[data-tab-id="instructions"]' },
     { selector: guidedTourSelector("agent-save"), key: "save", icon: "💾", side: "top" },
   ],
   human_handoff_route: () => [
     { selector: sidebarTourSelector("users"), route: "/admin/users", key: "menu", icon: "👥", side: "right" },
-    { selector: guidedTourSelector("users-invite"), key: "invite", icon: "✉️", side: "bottom" },
-    { selector: guidedTourSelector("users-role"), key: "role", icon: "🎭", side: "top" },
     { selector: guidedTourSelector("users-list"), key: "pending", icon: "⏳", side: "top" },
+    { selector: guidedTourSelector("users-invite"), key: "invite", icon: "✉️", side: "bottom" },
+    { selector: guidedTourSelector("users-role"), key: "role", icon: "🎭", side: "top", prepareSelector: guidedTourSelector("users-invite") },
   ],
   business_identity: () => [
     { selector: guidedTourSelector("business-name"), route: "/admin/settings/business-info", key: "name", icon: "🏪", side: "bottom" },
@@ -94,15 +101,15 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
   ],
   knowledge_base: () => [
     { selector: guidedTourSelector("knowledge-tabs"), route: "/admin/knowledge", key: "tabs", icon: "📚", side: "bottom" },
+    { selector: guidedTourSelector("knowledge-add"), key: "documents", icon: "📄", side: "bottom" },
     { selector: guidedTourSelector("faq-new"), route: "/admin/knowledge/faqs", key: "newFaq", icon: "➕", side: "bottom" },
-    { selector: guidedTourSelector("faq-fields"), key: "fields", icon: "❓", side: "top" },
+    { selector: guidedTourSelector("faq-fields"), key: "fields", icon: "❓", side: "top", prepareSelector: guidedTourSelector("faq-new") },
     { selector: guidedTourSelector("faq-published"), key: "published", icon: "📣", side: "top" },
-    { selector: guidedTourSelector("knowledge-add"), route: "/admin/knowledge", key: "documents", icon: "📄", side: "bottom" },
   ],
   appointments_setup: () => [
     { selector: guidedTourSelector("appointments-tabs"), route: "/admin/appointments", key: "tabs", icon: "🗓️", side: "bottom" },
-    { selector: guidedTourSelector("appointments-new-service"), key: "service", icon: "✂️", side: "top" },
-    { selector: guidedTourSelector("appointments-schedule"), key: "schedule", icon: "⏰", side: "top" },
+    { selector: guidedTourSelector("appointments-new-service"), key: "service", icon: "✂️", side: "top", prepareSelector: '[data-tab-id="services"]' },
+    { selector: guidedTourSelector("appointments-schedule"), key: "schedule", icon: "⏰", side: "top", prepareSelector: '[data-tab-id="config"]' },
   ],
   business_hours: () => [
     { selector: guidedTourSelector("hours-247"), route: "/admin/settings/business-hours", key: "always", icon: "🌙", side: "bottom" },
@@ -269,7 +276,9 @@ export function planGuidedTourRun(
   const routes = resolveGuidedTourStepRoutes(tourId, context);
   const stepIndexes = definitions.reduce<number[]>((kept, definition, index) => {
     const judgeable = inPlace || routes[index] === currentRoute;
-    if (!judgeable || isPresent(definition.selector)) kept.push(index);
+    const optional = definition.optional || !definition.selector.startsWith("#tour-target-") || tourId === "first_channel_whatsapp" || tourId === "help_system";
+    if (inPlace && routes[index] !== currentRoute && !isPresent(definition.selector)) return kept;
+    if (!judgeable || !optional || isPresent(definition.selector)) kept.push(index);
     return kept;
   }, []);
   return { tourId, stepIndexes, inPlace };
@@ -322,6 +331,9 @@ export function buildGuidedTourSteps(
       showControls: true,
       pointerPadding: 8,
       pointerRadius: 12,
+      prepareSelector: definition.prepareSelector,
+      tourRoute: applied?.inPlace ? undefined : allRoutes[kept[index]],
+      optional: definition.optional || tourId === "first_channel_whatsapp" || tourId === "help_system",
       ...(nextRoute ? { nextRoute } : {}),
       ...(previousRoute ? { prevRoute: previousRoute } : {}),
     } as Step;

@@ -7,6 +7,7 @@ import {
 const allowAll = () => true;
 
 const READY: QualityCheckStatuses = {
+  channel_assignment: "pass", channel_connection: "pass", channel_coverage: "pass",
   persona_identity: "pass",
   fallback_message: "pass",
   behavior_rules: "pass",
@@ -43,7 +44,7 @@ describe("buildEssentialSetupItems", () => {
     });
 
     expect(items).toEqual([
-      { key: "channel", href: "/admin/channels/whatsapp", done: true, tourId: "first_channel_whatsapp" },
+      { key: "channel", href: "/admin/channels/whatsapp", done: true, tourId: "first_channel_whatsapp", channelType: "whatsapp" },
       { key: "agent", href: "/admin/agent", done: true, tourId: "agent_handoff_rules" },
       { key: "business", href: "/admin/settings/business-info", done: true, tourId: "business_identity" },
       { key: "knowledge", href: "/admin/knowledge", done: true, tourId: "knowledge_base" },
@@ -94,7 +95,9 @@ describe("buildEssentialSetupItems", () => {
       canAccess: allowAll,
     });
     expect(withAppointments.find((item) => item.key === "hours"))
-      .toEqual({ key: "hours", href: "/admin/settings/business-hours", done: false, tourId: "business_hours" });
+      .toEqual({ key: "hours", href: "/admin/settings/business-hours", done: true, tourId: "business_hours" });
+    expect(withAppointments.find((item) => item.key === "appointments"))
+      .toEqual({ key: "appointments", href: "/admin/appointments", done: false, tourId: "appointments_setup" });
   });
 
   it("never marks a group done from checks that were never evaluated", () => {
@@ -123,6 +126,7 @@ describe("buildEssentialSetupItems", () => {
       href: "/admin/channels/instagram",
       done: true,
       tourId: "connect_channel",
+      channelType: "instagram",
     });
   });
 
@@ -152,6 +156,18 @@ describe("buildEssentialSetupItems", () => {
     expect(items).toEqual([
       { key: "knowledge", href: "/admin/knowledge", done: true, tourId: "knowledge_base" },
     ]);
+  });
+
+  it.each(["fail", "unknown"] as const)("never overrides %s evidence with stale setup booleans", (status) => {
+    const build = (catalog: boolean) => buildEssentialSetupItems({
+      status: { hasKnowledge: true, hasVerticalCatalog: true, ...(catalog ? { verticalCatalogRoute: "/admin/menu" } : {}) },
+      planChannels: ["whatsapp"], activeChannels: ["whatsapp"],
+      checks: { ...READY, channel_connection: status, knowledge_coverage: status, tool_restaurants: status }, canAccess: allowAll,
+    });
+    expect(build(false).find(item => item.key === "channel")?.done).toBe(false);
+    expect(build(false).find(item => item.key === "knowledge")?.done).toBe(false);
+    expect(build(true).find(item => item.key === "catalog")?.done).toBe(false);
+    if (status === "unknown") expect(build(false).find(item => item.key === "channel")?.verification).toBe("unavailable");
   });
 });
 

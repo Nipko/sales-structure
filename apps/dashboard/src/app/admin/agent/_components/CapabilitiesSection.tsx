@@ -72,6 +72,7 @@ function paymentRailStatus(cfg: TenantPaymentsConfig | null): PaymentRailStatus 
 }
 
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
+  const tSetup = useTranslations("qualityHealth.setup");
   const t = useTranslations("agent.capabilities");
   const { features, loading: planLoading } = usePlanLimits();
   const tools = config.tools || { appointments: { enabled: false, canBook: true, canCancel: true } };
@@ -275,6 +276,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </button>
         </div>
 
+        {!apptReadiness.loaded && <p className="mt-3 text-xs text-neutral-500" role="status">{tSetup("verificationUnavailable")}</p>}
         {apptReadiness.loaded && (
           <div className="flex gap-3 mt-3 text-xs">
             <span className={cn("flex items-center gap-1", apptReadiness.services > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-400")}>

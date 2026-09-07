@@ -75,7 +75,7 @@ describe('OffboardingService purge saga', () => {
         const service = new OffboardingService(
             prisma, redis, events as any, media as any, billing as any,
             queue, queue, queue, queue, queue, queue,
-            queue, queue, queue, queue, queue, queue,
+            queue, queue, queue, queue, queue, queue, queue,
         );
         const releaseFence = jest.fn().mockImplementation(async () => { order.push('queue-release'); });
         jest.spyOn(service as any, 'capturePurgeExternalPlan')
@@ -350,7 +350,7 @@ describe('OffboardingService purge saga', () => {
             getState: jest.fn().mockResolvedValue('active'),
             remove: jest.fn(),
         };
-        const queues = Array.from({ length: 12 }, (_, index) => ({
+        const queues = Array.from({ length: 13 }, (_, index) => ({
             pause: jest.fn().mockResolvedValue(undefined),
             resume: jest.fn().mockResolvedValue(undefined),
             getJobs: jest.fn().mockResolvedValue(index === 0 ? [activeJob] : []),
@@ -361,7 +361,7 @@ describe('OffboardingService purge saga', () => {
             queues[0] as any, queues[1] as any, queues[2] as any,
             queues[3] as any, queues[4] as any, queues[5] as any,
             queues[6] as any, queues[7] as any, queues[8] as any,
-            queues[9] as any, queues[10] as any, queues[11] as any,
+            queues[9] as any, queues[10] as any, queues[11] as any, queues[12] as any,
         );
 
         await expect((service as any).fenceQueuesForPurge(tenantId))
@@ -374,7 +374,7 @@ describe('OffboardingService purge saga', () => {
     });
 
     it('rescans all tenant-touching queues before resume', async () => {
-        const queues = Array.from({ length: 12 }, () => ({
+        const queues = Array.from({ length: 13 }, () => ({
             pause: jest.fn().mockResolvedValue(undefined),
             resume: jest.fn().mockResolvedValue(undefined),
             getJobs: jest.fn().mockResolvedValue([]),
@@ -385,7 +385,7 @@ describe('OffboardingService purge saga', () => {
             queues[0] as any, queues[1] as any, queues[2] as any,
             queues[3] as any, queues[4] as any, queues[5] as any,
             queues[6] as any, queues[7] as any, queues[8] as any,
-            queues[9] as any, queues[10] as any, queues[11] as any,
+            queues[9] as any, queues[10] as any, queues[11] as any, queues[12] as any,
         );
 
         const release = await (service as any).fenceQueuesForPurge(tenantId);
@@ -406,7 +406,7 @@ describe('OffboardingService purge saga', () => {
         const service = new OffboardingService(
             prisma as any, {} as any, {} as any, {} as any, {} as any,
             queue, queue, queue, queue, queue, queue,
-            queue, queue, queue, queue, queue, queue,
+            queue, queue, queue, queue, queue, queue, queue,
         );
 
         await expect((service as any).jobBelongsToTenant(
@@ -445,7 +445,7 @@ describe('OffboardingService purge saga', () => {
         const service = new OffboardingService(
             prisma as any, {} as any, {} as any, {} as any, {} as any,
             queue, queue, queue, queue, queue, queue,
-            queue, queue, queue, queue, queue, queue,
+            queue, queue, queue, queue, queue, queue, queue,
         );
 
         await expect((service as any).capturePurgeExternalPlan(
@@ -472,7 +472,7 @@ describe('OffboardingService purge saga', () => {
         const service = new OffboardingService(
             {} as any, redis as any, {} as any, {} as any, {} as any,
             queue, queue, queue, queue, queue, queue,
-            queue, queue, queue, queue, queue, queue,
+            queue, queue, queue, queue, queue, queue, queue,
         );
 
         await (service as any).cleanupPurgeRedis(
@@ -508,7 +508,7 @@ describe('OffboardingService purge saga', () => {
         const service = new OffboardingService(
             {} as any, {} as any, {} as any, {} as any, {} as any,
             queue, queue, queue, queue, queue, queue,
-            queue, queue, queue, queue, queue, queue,
+            queue, queue, queue, queue, queue, queue, queue,
         );
 
         const request = (service as any).fetchWithDeadline('https://example.test', {}, 25);

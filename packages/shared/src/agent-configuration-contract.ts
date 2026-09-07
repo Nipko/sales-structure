@@ -1,4 +1,5 @@
 import type { AgentMissionV1, AgentAssessment } from './agent-assessment-contract';
+import type { SavedAgentDraft } from './agent-draft-contract';
 import { VERTICAL_TOOL_GROUPS } from './vertical-capability-manifest';
 
 export const AGENT_CONFIG_TOOL_FAMILIES = [...VERTICAL_TOOL_GROUPS, 'knowledge', 'policies', 'orders', 'crm', 'offers', 'ecommerce', 'payments'] as const;
@@ -43,14 +44,20 @@ export interface AgentConfigurationProposal {
     agentId: string;
     agentName: string;
     expectedVersion: number;
+    targetScope: 'agent_draft' | 'account';
+    expectedDraftRevision: string | null;
     digest: string;
     status: 'proposed' | 'applied' | 'expired';
     expiresAt: string;
     changes: Array<AgentConfigurationChange & { before: unknown }>;
     appliedVersion?: number;
+    appliedDraftRevision?: string;
 }
 export interface AppliedAgentConfiguration {
     proposal: AgentConfigurationProposal;
     assessment: AgentAssessment | null;
     verification: 'verified' | 'unavailable';
+    /** Operational assessment must never be presented as evidence for the edited draft. */
+    assessmentScope: 'operational';
+    draft?: SavedAgentDraft;
 }

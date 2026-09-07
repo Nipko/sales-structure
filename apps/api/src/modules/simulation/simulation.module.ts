@@ -17,6 +17,10 @@ import { EvalAutorunStateService } from './eval-autorun-state.service';
 import { WatchtowerService } from './watchtower.service';
 import { WatchtowerController } from './watchtower.controller';
 import { QUALITY_QUEUE } from '../quality/quality.service';
+import { AGENT_RELEASE_QUEUE } from './agent-release-contract';
+import { AgentReleaseService } from './agent-release.service';
+import { AgentReleaseController } from './agent-release.controller';
+import { AgentReleaseProcessor } from './agent-release.processor';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
@@ -36,9 +40,10 @@ import { QUALITY_QUEUE } from '../quality/quality.service';
         BullModule.registerQueue({ name: SIMULATION_QUEUE }),
         BullModule.registerQueue({ name: EVAL_GATE_QUEUE }),
         BullModule.registerQueue({ name: QUALITY_QUEUE }),
+        BullModule.registerQueue({ name: AGENT_RELEASE_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService],
-    controllers: [SimulationController, EvalController, WatchtowerController],
+    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService,AgentReleaseService,AgentReleaseProcessor],
+    controllers: [SimulationController, EvalController, WatchtowerController,AgentReleaseController],
     exports: [SimulationService, EvalService],
 })
 export class SimulationModule {}

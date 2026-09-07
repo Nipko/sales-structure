@@ -6,11 +6,12 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
-import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AppliedAgentConfiguration, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
+import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AppliedAgentConfiguration, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning";
 import type { KnowledgeConflictOverview, KnowledgeConflictReview } from "@/lib/knowledge-conflicts";
 import type { ToolApprovalItem } from "@/lib/tool-approvals";
+import type { DiscardAgentDraftRequest } from '@parallext/shared';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -855,6 +856,9 @@ export const api = {
     disconnectChannelAccount: (channelType: string, accountId: string) =>
         apiDelete(`/channels/${channelType}/account/${encodeURIComponent(accountId)}`),
     getAgent: (tenantId: string, agentId: string) => apiGet(`/persona/${tenantId}/agents/${agentId}`),
+    getAgentConfiguration: (tenantId: string, agentId: string) => apiGet<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration`),
+    saveAgentDraft: (tenantId: string, agentId: string, data: SaveAgentDraftRequest) => apiPut<SavedAgentDraft>(`/persona/${tenantId}/agents/${agentId}/configuration/draft`, data),
+    discardAgentDraft: (tenantId: string, agentId: string, data: DiscardAgentDraftRequest) => apiPost<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration/draft/discard`, data),
     createAgent: (tenantId: string, data: any) => apiPost(`/persona/${tenantId}/agents`, data),
     updateAgent: (tenantId: string, agentId: string, data: any) => apiPut(`/persona/${tenantId}/agents/${agentId}`, data),
     deleteAgent: (tenantId: string, agentId: string) => apiDelete(`/persona/${tenantId}/agents/${agentId}`),

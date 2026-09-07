@@ -13,14 +13,16 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
     proposal: AgentConfigurationProposal; onApplied?: (result: AppliedAgentConfiguration) => void;
 }) {
     const t = useTranslations('agentConfiguration');
+    const tDraft = useTranslations('agentDraft');
     const { activeTenantId } = useTenant();
     const { role } = useRole();
     const [result, setResult] = useState<AppliedAgentConfiguration | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(false);
     const current = result?.proposal ?? proposal;
-    const applied = current.status === 'applied';
-    const expired = current.status === 'expired' || (!applied && Date.parse(current.expiresAt) <= Date.now());
+    const scoped = ['agent_draft', 'account'].includes(current.targetScope);
+    const applied = scoped && current.status === 'applied';
+    const expired = !scoped || current.status === 'expired' || (!applied && Date.parse(current.expiresAt) <= Date.now());
     const canApply = ['tenant_admin', 'super_admin'].includes(role ?? '');
     const renderValue = (value: unknown) => {
         if (value === null || value === undefined || value === '') return <span className="italic text-neutral-500">{t('empty')}</span>;
@@ -57,6 +59,7 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
         <h3 className="font-semibold">{t('reviewTitle')}</h3>
         <p className="mt-1 font-medium">{proposal.agentName}</p>
         <p className="mt-1 text-xs text-neutral-500">{t('version', { version: proposal.expectedVersion })}</p>
+        <p className="mt-2 text-xs">{tDraft(proposal.targetScope === 'account' ? 'accountReview' : 'proposalDraftReview')}</p>
         {proposal.changes.map(change => <div key={change.path} className="mt-3 border-t pt-3">
             <h4 className="font-medium">{t(`fields.${change.path.replace(/\./g, '_')}`)}</h4>
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
@@ -65,10 +68,12 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
             </div>
         </div>)}
         {error && <p role="alert" className="mt-3 text-red-600 dark:text-red-400">{t('applyError')}</p>}
-        {applied && <p role="status" className="mt-3 text-emerald-700 dark:text-emerald-400">{t('applied')}</p>}
+        {applied && <p role="status" className="mt-3 text-emerald-700 dark:text-emerald-400">{proposal.targetScope === 'account' ? t('applied') : tDraft('saved')}</p>}
+        {result?.draft?.workspace.evaluationRevisionId && <a href={`/admin/agent/${proposal.agentId}/test?configurationRevisionId=${encodeURIComponent(result.draft.workspace.evaluationRevisionId)}`}
+            className="mt-3 inline-flex min-h-10 items-center rounded-lg border px-3 py-2">{tDraft('testDraft')}</a>}
         {result?.verification === 'unavailable' && <p role="status" className="mt-2 text-amber-700 dark:text-amber-400">{t('verificationPending')}</p>}
         {expired && <p role="status" className="mt-3 text-amber-700 dark:text-amber-400">{t('expired')}</p>}
         {canApply && !expired && (!applied || result?.verification === 'unavailable') && <button type="button" disabled={busy} onClick={() => void apply()}
-            className="mt-3 min-h-10 rounded-lg bg-indigo-600 px-3 py-2 font-medium text-white disabled:opacity-50">{busy ? t('applying') : applied ? t('retryVerification') : t('apply')}</button>}
+            className="mt-3 min-h-10 rounded-lg bg-indigo-600 px-3 py-2 font-medium text-white disabled:opacity-50">{busy ? t('applying') : applied ? t('retryVerification') : proposal.targetScope === 'account' ? t('apply') : tDraft('save')}</button>}
     </section>;
 }

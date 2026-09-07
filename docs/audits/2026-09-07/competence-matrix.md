@@ -2,15 +2,15 @@
 
 Registro generado desde contratos de dominio, herramientas, dependencias y escenarios del código. No contiene datos de clientes.
 
-Perfiles canónicos: **76**. Tareas declaradas: **254**. Tareas que comprometen al negocio: **139**.
+Perfiles canónicos: **76**. Tareas declaradas: **268**. Tareas que comprometen al negocio: **146**.
 
-Tareas sin caso positivo con efecto verificable: **49**. Tareas con alguna herramienta de escritura sin verificador de efecto: **20**.
+Tareas sin caso positivo con efecto verificable: **42**. Tareas con alguna herramienta de escritura sin verificador de efecto: **20**.
 
 La matriz describe cobertura declarada. Los estados por canal e idioma permanecen en «no ejecutado» hasta asociar evidencia de una revisión concreta. No hereda certificación de otro perfil ni convierte un escenario genérico llamado «camino feliz» en prueba de una operación terminada.
 
 La disponibilidad comercial, el permiso de ejecutar una herramienta y la existencia de un verificador de lectura son dimensiones distintas. La prueba de carga de módulos o de componentes tampoco certifica un proveedor externo.
 
-Revisión base del repositorio: `a77a6be83d61df9a55164d60a1d10bc954226ead`; incluye los cambios del árbol de trabajo al generar.
+Revisión base del repositorio: `3b3927f3ebe4c27039c9e521b5a8dea798e50e6c`; incluye los cambios del árbol de trabajo al generar.
 
 [Detalle de tareas en CSV](competence-matrix.csv). El contrato completo está disponible en `GET /eval/:tenantId/competence-matrix`; el generador también lo exporta con `--json`.
 
@@ -18,7 +18,7 @@ Revisión base del repositorio: `a77a6be83d61df9a55164d60a1d10bc954226ead`; incl
 |---|---:|---:|---:|---|
 | automotriz/alquiler | 3 | 2 | 2 | — |
 | automotriz/concesionario | 4 | 3 | 1 | — |
-| automotriz/repuestos | 3 | 1 | 1 | — |
+| automotriz/repuestos | 5 | 2 | 0 | — |
 | automotriz/taller | 7 | 5 | 0 | — |
 | construccion/contratista_general | 1 | 0 | 0 | — |
 | education/capacitacion | 4 | 3 | 0 | — |
@@ -46,7 +46,7 @@ Revisión base del repositorio: `a77a6be83d61df9a55164d60a1d10bc954226ead`; incl
 | moda_belleza/estetica | 4 | 2 | 0 | — |
 | moda_belleza/salon_belleza | 3 | 2 | 0 | — |
 | moda_belleza/spa | 4 | 2 | 0 | — |
-| otro/__none__ | 3 | 1 | 1 | — |
+| otro/__none__ | 5 | 2 | 0 | — |
 | pet_services/adiestramiento | 6 | 3 | 1 | — |
 | pet_services/guarderia | 5 | 2 | 2 | — |
 | pet_services/hotel | 5 | 2 | 2 | — |
@@ -56,13 +56,13 @@ Revisión base del repositorio: `a77a6be83d61df9a55164d60a1d10bc954226ead`; incl
 | restaurantes/casual_dining | 5 | 3 | 1 | — |
 | restaurantes/comida_rapida | 3 | 1 | 1 | — |
 | restaurantes/dark_kitchen | 3 | 1 | 1 | — |
-| retail/electronica | 3 | 1 | 1 | — |
-| retail/hogar | 5 | 3 | 1 | — |
+| retail/electronica | 5 | 2 | 0 | — |
+| retail/hogar | 7 | 4 | 0 | — |
 | retail/marketplace | 1 | 0 | 0 | — |
-| retail/moda | 3 | 1 | 1 | — |
+| retail/moda | 5 | 2 | 0 | — |
 | salud/dental | 4 | 2 | 0 | — |
 | salud/dermatologia | 4 | 2 | 0 | — |
-| salud/farmacia | 3 | 1 | 1 | — |
+| salud/farmacia | 5 | 2 | 0 | — |
 | salud/medica_general | 3 | 2 | 0 | — |
 | salud/psicologia | 4 | 2 | 0 | — |
 | seguros/aseguradora | 3 | 2 | 2 | — |
@@ -82,7 +82,7 @@ Revisión base del repositorio: `a77a6be83d61df9a55164d60a1d10bc954226ead`; incl
 | servicios_profesionales/consultores | 4 | 2 | 0 | — |
 | servicios_profesionales/contadores | 4 | 2 | 0 | — |
 | technology/desarrollo | 3 | 2 | 0 | — |
-| technology/hardware | 3 | 1 | 1 | — |
+| technology/hardware | 5 | 2 | 0 | — |
 | technology/saas | 3 | 2 | 0 | — |
 | technology/soporte_ti_msp | 1 | 0 | 0 | — |
 | turismo/agencia_viajes | 2 | 1 | 1 | — |

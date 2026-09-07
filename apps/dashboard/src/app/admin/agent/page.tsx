@@ -205,15 +205,7 @@ export default function AgentListPage() {
 
   async function handleSetDefault(agentId: string) {
     if (!activeTenantId) return;
-    try {
-      const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true, expectedVersion: agents.find(agent => agent.id === agentId)?.version });
-      if (res?.success) {
-        setToast({ message: t("defaultUpdated"), type: "success" });
-        loadData();
-      } else { setToast({ message: t("errorUpdatingAgent"), type: "error" }); }
-    } catch {
-      setToast({ message: t("errorUpdatingAgent"), type: "error" });
-    }
+    router.push(`/admin/agent/${agentId}?draftDefault=1`);
     setMenuOpen(null);
   }
 

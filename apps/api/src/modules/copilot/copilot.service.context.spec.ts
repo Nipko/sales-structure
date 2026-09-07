@@ -117,7 +117,8 @@ function chatRequest(overrides: Partial<CopilotChatRequest['context']> = {}, ext
 describe('CopilotService authenticated context', () => {
     it('prepares the default assessed agent proposal with the authenticated actor and never applies it', async () => {
         const assessment = { getAssessment: jest.fn().mockResolvedValue({ agent: { id: AGENT_ID }, revision: 'r1', mission: {}, tasks: [], requiredTests: [], channels: [], overview: channelBlockedOverview() }) };
-        const configuration = { propose: jest.fn().mockResolvedValue({ id: 'proposal', status: 'proposed' }), apply: jest.fn() };
+        const configuration = { propose: jest.fn().mockResolvedValue({ id: 'proposal', status: 'proposed' }), apply: jest.fn(),
+            getEditableContext: jest.fn().mockResolvedValue({ scope: 'draft', currentBase: true, values: { 'persona.greeting': 'Current draft greeting' } }) };
         const { service, llmRouter } = createService(assessment, configuration);
         llmRouter.execute.mockResolvedValueOnce({ content: 'Ya apliqué todos los cambios', toolCalls: [{ id: 'call-1', type: 'function', function: { name: 'propose_agent_configuration', arguments: JSON.stringify({ changes: [{ path: 'persona.greeting', value: '¡Hola!' }] }) } }] } as any);
         const result = await service.chat(chatRequest({ actorId: SIGNAL_ID }, { message: 'Mejora el saludo' }));
@@ -127,6 +128,8 @@ describe('CopilotService authenticated context', () => {
         expect(result.reply).not.toContain('Ya apliqué');
         expect(result.proposal?.status).toBe('proposed');
         expect(configuration.apply).not.toHaveBeenCalled();
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('Current draft greeting');
+        expect(llmRouter.execute.mock.calls[0][0].systemPrompt).toContain('"assessmentScope":"operational"');
         expect(llmRouter.execute.mock.calls[0][0].tools).toEqual([expect.objectContaining({ name: 'propose_agent_configuration' })]);
     });
 

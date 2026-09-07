@@ -4665,6 +4665,10 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_config_proposals" (
     "request_key" VARCHAR(80) NOT NULL,
     "expected_version" INTEGER NOT NULL,
     "before_hash" VARCHAR(64) NOT NULL,
+    "target_scope" TEXT NOT NULL DEFAULT 'legacy_operational',
+    "expected_draft_revision" UUID,
+    "base_operational_hash" TEXT,
+    "applied_draft_revision" UUID,
     "digest" VARCHAR(64) NOT NULL,
     "changes" JSONB NOT NULL,
     "status" VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK ("status" IN ('proposed', 'applied', 'expired')),
@@ -4852,6 +4856,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_commands" (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(requested_by,request_key)
 );
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_draft_discards" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL,revision_id UUID NOT NULL,requested_by UUID NOT NULL,
+    request_key VARCHAR(100) NOT NULL,request_hash VARCHAR(64) NOT NULL,
+    operational_version INTEGER NOT NULL,operational_hash VARCHAR(64) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(requested_by,request_key)
+);
 -- END AGENT CONFIGURATION REVISIONS
 
 -- BEGIN QUALITY REGRESSION AND MISSION EVIDENCE
@@ -4938,3 +4949,31 @@ ALTER TABLE "{{SCHEMA_NAME}}"."stock_movements"
     ADD COLUMN IF NOT EXISTS "order_item_id" UUID;
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_catalog_stock_movement ON "{{SCHEMA_NAME}}"."stock_movements"("order_item_id","type") WHERE "order_item_id" IS NOT NULL;
 -- END CATALOG ORDER INTEGRITY
+
+-- BEGIN AGENT RELEASE CANDIDATES
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_release_candidates" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_id UUID NOT NULL,configuration_revision_id UUID NOT NULL,
+    agent_snapshot JSONB,scenarios JSONB NOT NULL DEFAULT '[]'::jsonb,scenario_hash VARCHAR(64) NOT NULL,
+    channels TEXT[] NOT NULL,regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[],
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','evaluating','evaluated','approved','rejected','invalidated')),
+    version INTEGER NOT NULL DEFAULT 1,requested_by UUID NOT NULL,request_key VARCHAR(100) NOT NULL,request_hash VARCHAR(64) NOT NULL,
+    error TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(requested_by,request_key),UNIQUE(id,agent_id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_release_candidates_agent ON "{{SCHEMA_NAME}}"."agent_release_candidates"(agent_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_release_evaluations" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),candidate_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_release_candidates"(id) ON DELETE CASCADE,
+    channel_type TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','running','completed','failed','budget_deferred','invalidated')),
+    results JSONB NOT NULL DEFAULT '[]'::jsonb,evidence JSONB,run_id UUID,error TEXT,
+    lease_token UUID,lease_until TIMESTAMPTZ,attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(candidate_id,channel_type)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_release_evaluations_pending ON "{{SCHEMA_NAME}}"."agent_release_evaluations"(status,next_attempt_at);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_release_reviews" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),candidate_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_release_candidates"(id) ON DELETE CASCADE,
+    reviewer_id UUID NOT NULL,request_key VARCHAR(100) NOT NULL,request_hash VARCHAR(64) NOT NULL,
+    evidence_hash VARCHAR(64) NOT NULL,decision TEXT NOT NULL CHECK(decision IN ('approve','reject')),
+    checks JSONB NOT NULL,sample_hashes TEXT[] NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(reviewer_id,request_key)
+);
+-- END AGENT RELEASE CANDIDATES

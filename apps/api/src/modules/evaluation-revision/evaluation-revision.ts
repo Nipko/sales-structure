@@ -43,6 +43,7 @@ export function assertRevisionIntegrity(manifest?: EvaluationRevisionManifest): 
 /** Output/telemetry tables do not feed the agent. Everything else is included by default, including new catalogs. */
 export const EVALUATION_OUTPUT_TABLES = new Set([
     'simulation_runs', 'eval_runs', 'eval_autorun_requests', 'eval_autorun_budget', 'eval_scenarios',
+    'agent_release_candidates', 'agent_release_evaluations', 'agent_release_reviews',
     'agent_config_proposals', 'conversation_traces', 'turn_traces', 'conversation_quality_scores',
     'agent_quality_snapshots', 'agent_quality_signals', 'analytics_events', 'daily_metrics',
     'kb_retrieval_log', 'kb_unanswered_queries', 'kb_feedback', 'kb_health_issues',

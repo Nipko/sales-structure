@@ -51,6 +51,7 @@ export class OffboardingService {
         @InjectQueue('quality-scoring') private qualityQueue: Queue,
         @InjectQueue('agent-simulation') private simulationQueue: Queue,
         @InjectQueue('eval-gate') private evalGateQueue: Queue,
+        @InjectQueue('agent-release-evaluation') private releaseEvaluationQueue: Queue,
     ) {}
 
     private tenantQueues(): Array<{ queue: Queue; name: string }> {
@@ -67,6 +68,7 @@ export class OffboardingService {
             { queue: this.qualityQueue, name: 'quality-scoring' },
             { queue: this.simulationQueue, name: 'agent-simulation' },
             { queue: this.evalGateQueue, name: 'eval-gate' },
+            { queue: this.releaseEvaluationQueue, name: 'agent-release-evaluation' },
         ];
     }
 

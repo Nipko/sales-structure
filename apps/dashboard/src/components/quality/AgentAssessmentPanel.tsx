@@ -18,6 +18,7 @@ export function AgentAssessmentPanel({ agentId, assessment: provided }: { agentI
 
 function AgentAssessmentContent({ agentId, assessment: provided }: { agentId?: string; assessment?: AgentAssessment | null }) {
     const t = useTranslations('agentAssessment');
+    const tDraft = useTranslations('agentDraft');
     const tSetup = useTranslations('qualityHealth.setup');
     const tQuality = useTranslations('agentQuality');
     const { activeTenantId } = useTenant();
@@ -47,6 +48,7 @@ function AgentAssessmentContent({ agentId, assessment: provided }: { agentId?: s
     const next = assessment.tasks.find(task => !['pass', 'not_applicable'].includes(task.status) && canAccess(task.href));
     return <section className="my-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/5" aria-label={t('title')}>
         <h2 className="font-semibold">{t('title')}</h2>
+        <p className="mt-1 text-xs text-neutral-500">{tDraft('assessmentOperational')}</p>
         {assessment.mission.definition && <p className="mt-2 text-sm">{assessment.mission.definition.objective}</p>}
         <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t(`sources.${assessment.mission.source}`)}</p>
         <AgentMissionEditor key={assessment.agent?.id ?? 'no-agent'} assessment={assessment} />

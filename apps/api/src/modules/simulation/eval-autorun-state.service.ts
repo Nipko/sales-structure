@@ -25,6 +25,9 @@ export class EvalAutorunStateService {
         return schema;
     }
 
+    /** Initialize evaluation bookkeeping before taking a dependency snapshot. */
+    async prepare(tenantId:string):Promise<void>{await this.schema(tenantId);}
+
     async request(tenantId: string, agentId: string): Promise<string> {
         const schema = await this.schema(tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,

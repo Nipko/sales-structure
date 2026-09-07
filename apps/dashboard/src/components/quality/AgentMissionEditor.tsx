@@ -10,6 +10,7 @@ import { AgentConfigurationReview } from './AgentConfigurationReview';
 
 export function AgentMissionEditor({ assessment }: { assessment: AgentAssessment }) {
     const t = useTranslations('agentConfiguration');
+    const tDraft = useTranslations('agentDraft');
     const { activeTenantId } = useTenant();
     const { role } = useRole();
     const [editing, setEditing] = useState(false);
@@ -21,13 +22,22 @@ export function AgentMissionEditor({ assessment }: { assessment: AgentAssessment
     const [request, setRequest] = useState<{ key: string; value: string } | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(false);
+    const [draftSource, setDraftSource] = useState<'draft' | 'operational' | 'suggested'>('operational');
     if (!assessment.agent || !['tenant_admin', 'super_admin'].includes(role ?? '')) return null;
-    const start = () => {
-        const mission = assessment.mission.definition;
+    const start = async () => {
+        if (!activeTenantId || !assessment.agent || busy) return;
+        setBusy(true); setError(false);
+        const result = await api.getAgentConfiguration(activeTenantId, assessment.agent.id).catch(() => null);
+        if (!result?.success || !result.data || (result.data.draft && !result.data.draft.currentBase)) { setError(true); setBusy(false); return; }
+        const body = result.data.draft?.body ?? result.data.operational.body;
+        const actual = isAgentMissionV1(body.configJson.mission) ? body.configJson.mission : null;
+        const mission = actual ?? assessment.mission.definition;
+        setDraftSource(actual ? result.data.draft ? 'draft' : 'operational' : 'suggested');
         setObjective(mission?.objective ?? ''); setCriteria(mission?.successCriteria.join('\n') ?? '');
         setHandoff(mission?.handoffConditions.join('\n') ?? '');
         setIntents((mission?.intentKeys ?? []).filter(key => assessment.mission.availableIntentKeys.includes(key)));
         setProposal(null); setRequest(null); setError(false); setEditing(true);
+        setBusy(false);
     };
     const submit = async (event: FormEvent) => {
         event.preventDefault();
@@ -44,10 +54,12 @@ export function AgentMissionEditor({ assessment }: { assessment: AgentAssessment
             setProposal(response.data);
         } catch { setError(true); } finally { setBusy(false); }
     };
-    if (!editing) return <button type="button" onClick={start} className="mt-3 min-h-10 rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium">{t('editMission')}</button>;
+    if (!editing) return <div><button type="button" disabled={busy} onClick={() => void start()} className="mt-3 min-h-10 rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium">{t('editMission')}</button>
+        {error && <p role="alert" className="mt-2 text-sm text-red-600">{tDraft('loadUnavailable')}</p>}</div>;
     return <div className="mt-4 rounded-xl border bg-white p-4 dark:bg-neutral-900">
         <form onSubmit={submit} data-tour-form="agent-mission" className="space-y-3">
             <p className="text-sm text-neutral-600 dark:text-neutral-400">{t('missionHelp')}</p>
+            <p className="text-xs text-neutral-500">{tDraft(draftSource === 'draft' ? 'proposalSourceDraft' : draftSource === 'operational' ? 'proposalSourceOperational' : 'proposalSourceSuggested')}</p>
             <label className="block text-sm font-medium">{t('objective')}<textarea required maxLength={2000} disabled={busy || Boolean(proposal)} value={objective} onChange={event => setObjective(event.target.value)} className="mt-1 block min-h-20 w-full rounded-lg border bg-transparent p-2" /></label>
             <fieldset disabled={busy || Boolean(proposal)}><legend className="text-sm font-medium">{t('intents')}</legend>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">{assessment.mission.availableIntentKeys.map(key => <label key={key} className="flex items-start gap-2 text-sm">

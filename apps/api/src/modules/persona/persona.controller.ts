@@ -428,29 +428,7 @@ export class PersonaController {
             : (body.customizations.is247 === false ? 'business_hours' : '24_7');
         const selectedChannels = Array.isArray(body.selectedChannels) ? body.selectedChannels : undefined;
         if (defaultAgent) {
-            // Deliberadamente NO se escribe `persona_config` (el respaldo
-            // legado): con un agente por defecto vivo nadie lo lee —la
-            // resolución es canal → agente por defecto → legado— y su gate de
-            // agenda es más estricto que el del editor, así que un tenant con
-            // la agenda encendida y sin cupos vigentes no podría ni cambiarle
-            // el nombre a su agente. El editor de agentes tampoco lo escribe.
-            await this.personaService.updateAgent(tenantId, defaultAgent.id, {
-                expectedVersion: defaultAgent.version,
-                name: config.persona.name,
-                configJson: config,
-                ...(selectedChannels ? { channels: selectedChannels } : {}),
-                ...(scheduleMode ? { scheduleMode } : {}),
-                // El asistente persiste el paso del agente antes de que la
-                // persona haya visto los demás: se valida lo que ya escribió,
-                // no lo que todavía no le preguntamos.
-                // El asistente sólo edita nombre y saludo: no muestra reglas ni
-                // motivos de escalamiento, así que no puede exigirlos. Un agente
-                // heredado al que le falte uno quedaba sin poder terminar la
-                // puesta en marcha, sin ninguna pantalla donde arreglarlo. El
-                // contrato completo lo hace cumplir el editor del agente, que sí
-                // tiene esos campos, y el Centro de calidad, que lleva hasta ellos.
-                partialDraft: true,
-            });
+            throw new BadRequestException({ error: 'agent_draft_contract_required' });
         } else {
             // Agente NUEVO: acá sí hay que decidir dónde atiende. Los cinco
             // tipos solo se siembran cuando el tenant no tiene ningún otro
@@ -753,20 +731,7 @@ export class PersonaController {
         @Body() body: any,
         @Req() req: any,
     ) {
-        const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body);
-        if (paymentEntitlementError) return paymentEntitlementError;
-
-        if (body.editorMode === 'prompt' && body.customPrompt) {
-            const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
-            if (!enabled) {
-                return { success: false, message: 'El prompt personalizado no está disponible en tu plan actual.' };
-            }
-        }
-        const createdBy = req.user?.sub || req.user?.id || 'unknown';
-        const yamlContent = yaml.dump(body, { lineWidth: -1 });
-        const config = await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
-        this.logger.log(`Persona config saved for tenant ${tenantId} by ${createdBy}`);
-        return { success: true, data: config };
+        throw new BadRequestException({ error: 'agent_draft_contract_required' });
     }
 
     // ── Multi-Agent CRUD ──────────────────────────────────────
@@ -834,6 +799,8 @@ export class PersonaController {
         if (!body || !Number.isInteger(body.expectedVersion) || body.expectedVersion < 0) {
             throw new BadRequestException({ error: 'agent_version_required', message: 'Reload the agent before saving.' });
         }
+        if (body.isActive !== false || Object.keys(body).some(key => !['isActive', 'expectedVersion'].includes(key)))
+            throw new BadRequestException({ error: 'agent_draft_contract_required' });
         const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
         if (paymentEntitlementError) return paymentEntitlementError;
 

@@ -12,12 +12,15 @@ import {
 import {
     GUIDED_TOUR_START_EVENT,
     type GuidedTourStartDetail,
+    type AgentConfigurationWorkspace,
 } from "@parallext/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { readSetupStatusFacts, type SetupStatusDefaultAgent } from "@/lib/onboarding-guide";
 import AnimatedLogo from "@/components/AnimatedLogo";
+import { AgentDraftStatus } from '@/components/quality/AgentDraftStatus';
+import { prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
 import { HelpPanel } from "@/components/ui/help-panel";
 import WhatsAppConnectPanel from "../channels/whatsapp/WhatsAppConnectPanel";
 import SecondaryChannels from "./_components/SecondaryChannels";
@@ -113,6 +116,7 @@ export default function SetupWizardPage() {
     const t = useTranslations("setupWizard");
     const tHelp = useTranslations("help");
     const tCommon = useTranslations("common");
+    const tDraft = useTranslations('agentDraft');
     const { user } = useAuth();
     const router = useRouter();
     const tenantId = user?.tenantId;
@@ -133,6 +137,11 @@ export default function SetupWizardPage() {
     /** Tipos de canal ya conectados SEGÚN EL SERVIDOR (no según esta sesión). */
     const [connectedTypes, setConnectedTypes] = useState<string[]>([]);
     const [deferred, setDeferred] = useState(false);
+    const [workspace, setWorkspace] = useState<AgentConfigurationWorkspace | null>(null);
+    const workspaceRef = useRef<AgentConfigurationWorkspace | null>(null);
+    const hasAgentRef = useRef(false);
+    const saveAttempt = useRef<DraftSaveAttempt | null>(null);
+    const editRevision = useRef(0);
 
     // El agente ya persiste solo; el borrador local guarda el paso Y lo tipeado,
     // para que un refresh antes de que el campo pierda el foco no se lleve el
@@ -158,7 +167,7 @@ export default function SetupWizardPage() {
         Promise.all([
             api.getSetupStatus(tenantId).catch(() => null),
             api.getPersonaTemplates(tenantId).catch(() => null),
-        ]).then(([statusRes, templatesRes]) => {
+        ]).then(async ([statusRes, templatesRes]) => {
             if (cancelled) return;
             const facts = readSetupStatusFacts(statusRes);
             const templates: any[] = (templatesRes as any)?.success ? ((templatesRes as any).data || []) : [];
@@ -175,15 +184,22 @@ export default function SetupWizardPage() {
             setTemplateId(ownTemplateId ?? fallbackTemplateId);
 
             const agent: SetupStatusDefaultAgent | null = facts?.defaultAgent ?? null;
+            hasAgentRef.current = facts?.hasAgent !== false;
+            const configuration = agent?.id ? await api.getAgentConfiguration(tenantId, agent.id).catch(() => null) : null;
+            if (cancelled) return;
+            const current = configuration?.success ? configuration.data ?? null : null;
+            workspaceRef.current = current; setWorkspace(current);
+            if (hasAgentRef.current && !current) setError(tDraft('loadUnavailable'));
+            const editable = current?.draft?.body ?? current?.operational.body;
             const templateConfig = ownTemplateId
                 ? (templates.find((tmpl) => tmpl.id === ownTemplateId)?.config
                     ?? templates.find((tmpl) => tmpl.id === ownTemplateId)?.config_json)
                 : null;
 
-            const name = agent?.name
+            const name = editable?.name || agent?.name
                 || (typeof templateConfig?.persona?.name === "string" ? templateConfig.persona.name : "");
             // El saludo del agente ya viene sustituido; el de la plantilla, no.
-            const hello = agent?.greeting
+            const hello = editable?.configJson.persona?.greeting || agent?.greeting
                 || fillTemplateText(
                     typeof templateConfig?.persona?.greeting === "string" ? templateConfig.persona.greeting : "",
                     companyName,
@@ -206,11 +222,12 @@ export default function SetupWizardPage() {
                 if (draft && typeof draft.step === "number") {
                     setStep(Math.min(LAST_STEP, Math.max(0, draft.step)) as StepIndex);
                 }
-                if (typeof draft?.agentName === "string" && draft.agentName.trim() && draft.agentName !== name) {
+                const matchingBase = draft?.operationalVersion === current?.operational.version && draft?.revisionId === (current?.draft?.id ?? null);
+                if (matchingBase && typeof draft?.agentName === "string" && draft.agentName.trim() && draft.agentName !== name) {
                     setAgentName(draft.agentName);
                     dirtyRef.current = true;
                 }
-                if (typeof draft?.greeting === "string" && draft.greeting.trim() && draft.greeting !== hello) {
+                if (matchingBase && typeof draft?.greeting === "string" && draft.greeting.trim() && draft.greeting !== hello) {
                     setGreeting(draft.greeting);
                     dirtyRef.current = true;
                 }
@@ -220,14 +237,15 @@ export default function SetupWizardPage() {
         }).catch(() => { if (!cancelled) setLoading(false); });
 
         return () => { cancelled = true; };
-    }, [companyName, draftKey, tenantId]);
+    }, [companyName, draftKey, tenantId, tDraft]);
 
     useEffect(() => {
         if (!draftKey || loading) return;
         try {
-            localStorage.setItem(draftKey, JSON.stringify({ step, agentName, greeting }));
+            localStorage.setItem(draftKey, JSON.stringify({ step, agentName, greeting,
+                operationalVersion: workspace?.operational.version, revisionId: workspace?.draft?.id ?? null }));
         } catch { /* noop */ }
-    }, [agentName, draftKey, greeting, loading, step]);
+    }, [agentName, draftKey, greeting, loading, step, workspace]);
 
     interface WizardProgress {
         markCompleted?: boolean;
@@ -281,7 +299,22 @@ export default function SetupWizardPage() {
     }), [postWizard]);
 
     /** Guarda lo que la persona escribió. Solo se llama si hubo edición real. */
-    const saveAgentEdits = useCallback((options: WizardProgress = {}) => postWizard({
+    const saveAgentEdits = useCallback(async (options: WizardProgress = {}): Promise<boolean> => {
+        const current = workspaceRef.current;
+        if (current && tenantId) {
+            try {
+                const body = structuredClone(current.draft?.body ?? current.operational.body);
+                body.name = agentName.trim(); body.configJson.persona = { ...body.configJson.persona, name: body.name, greeting: greeting.trim() };
+                saveAttempt.current = prepareDraftSave(current, body, saveAttempt.current);
+                const result = await api.saveAgentDraft(tenantId, current.agentId, saveAttempt.current.request);
+                if (!result.success || !result.data) { setError(tDraft('saveFailed')); return false; }
+                workspaceRef.current = result.data.workspace; setWorkspace(result.data.workspace); saveAttempt.current = null;
+                if (result.data.savedRevision.id !== result.data.workspace.draft?.id) { setError(tDraft('baseChanged')); return false; }
+                return advanceStage(options);
+            } catch { setError(tDraft('saveFailed')); return false; }
+        }
+        if (hasAgentRef.current) { setError(tDraft('loadUnavailable')); return false; }
+        return postWizard({
         // Sin plantilla propia no se manda ninguna: el servidor personaliza
         // sobre la configuración que el agente ya tiene.
         ...(templateId ? { templateId } : {}),
@@ -295,27 +328,31 @@ export default function SetupWizardPage() {
         markCompleted: options.markCompleted === true,
         stage: options.stage,
         channelConnectSkippedAt: options.channelConnectSkippedAt,
-    }), [agentName, greeting, postWizard, templateId]);
+        });
+    }, [agentName, greeting, postWizard, templateId, tenantId, advanceStage, tDraft]);
 
     /** Guarda si hay algo que guardar; si no, solo avanza la etapa. */
     const saveOrAdvance = useCallback(async (options: WizardProgress = {}): Promise<boolean> => {
         const dirty = dirtyRef.current;
+        const revision = editRevision.current;
         const ok = dirty ? await saveAgentEdits(options) : await advanceStage(options);
         // Sucio hasta que se confirme el guardado: un fallo no puede hacer
         // desaparecer lo tipeado del próximo intento.
-        if (ok && dirty) dirtyRef.current = false;
+        if (ok && dirty && revision === editRevision.current) dirtyRef.current = false;
         return ok;
     }, [advanceStage, saveAgentEdits]);
 
     const autosave = useCallback(async (): Promise<boolean> => {
+        if (savingRef.current) return false;
         if (!dirtyRef.current) return true;
+        const revision = editRevision.current;
         setSaving(true);
         savingRef.current = true;
         const ok = await saveAgentEdits({ stage: "agent_reviewed" });
         savingRef.current = false;
         setSaving(false);
         if (ok) {
-            dirtyRef.current = false;
+            if (revision === editRevision.current) dirtyRef.current = false;
             setSavedAt(Date.now());
         }
         return ok;
@@ -427,6 +464,7 @@ export default function SetupWizardPage() {
                 </button>
             </div>
 
+            {workspace && <AgentDraftStatus workspace={workspace} tenantId={tenantId} />}
             <AgentAssessmentPanel />
             <HelpPanel
                 title={tHelp("setupWizard.title")}
@@ -495,7 +533,7 @@ export default function SetupWizardPage() {
                                         id="setup-agent-name"
                                         type="text"
                                         value={agentName}
-                                        onChange={(e) => { dirtyRef.current = true; setAgentName(e.target.value); }}
+                                        onChange={(e) => { dirtyRef.current = true; editRevision.current++; setAgentName(e.target.value); }}
                                         onBlur={() => void autosave()}
                                         className="w-full rounded-xl border border-neutral-300 bg-neutral-50 px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5"
                                     />
@@ -509,7 +547,7 @@ export default function SetupWizardPage() {
                                         id="setup-agent-greeting"
                                         value={greeting}
                                         rows={3}
-                                        onChange={(e) => { dirtyRef.current = true; setGreeting(e.target.value); }}
+                                        onChange={(e) => { dirtyRef.current = true; editRevision.current++; setGreeting(e.target.value); }}
                                         onBlur={() => void autosave()}
                                         className="w-full resize-none rounded-xl border border-neutral-300 bg-neutral-50 px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5"
                                     />
@@ -518,8 +556,8 @@ export default function SetupWizardPage() {
                                 <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
                                     {saving
                                         ? <span className="inline-flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> {t("agentStep.saving")}</span>
-                                        : savedAt
-                                            ? <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><Check size={12} /> {t("agentStep.saved")}</span>
+                                        : savedAt && !dirtyRef.current
+                                            ? <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><Check size={12} /> {tDraft('saved')}</span>
                                             : <span>{t("agentStep.autosaveHint")}</span>}
                                 </div>
 
@@ -538,7 +576,8 @@ export default function SetupWizardPage() {
                                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                         {t("test.title")}
                                     </p>
-                                    <AgentTestChat tenantId={tenantId} />
+                                    <AgentTestChat tenantId={tenantId} agentId={workspace?.agentId ?? null} configurationRevisionId={workspace?.evaluationRevisionId ?? undefined}
+                                        blocked={!workspace || Boolean(workspace.draft && !workspace.draft.currentBase) || dirtyRef.current || saving} />
                                 </div>
                             )}
                         </div>

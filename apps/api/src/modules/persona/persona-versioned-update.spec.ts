@@ -40,7 +40,7 @@ describe('agent editor optimistic concurrency', () => {
     it('allows only one of two editors that loaded the same version to save', async () => {
         const h = harness();
         const results = await Promise.allSettled([
-            h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: true }),
+            h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: false }),
             h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: false }),
         ]);
         expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
@@ -50,16 +50,16 @@ describe('agent editor optimistic concurrency', () => {
         expect(h.sql[0]).toContain('public.tenants');
         expect(h.sql[1]).toContain('FOR UPDATE');
     });
-    it('rejects a stale editor before changing another agent assignment or default', async () => {
+    it('rejects a stale deactivation before changing any agent', async () => {
         const h = harness();
-        await expect(h.service.updateAgent(TENANT, AGENT, { expectedVersion: 7, isDefault: true, channels: ['whatsapp'], channelBindings: ['telegram:1'] })).rejects.toBeInstanceOf(ConflictException);
+        await expect(h.service.updateAgent(TENANT, AGENT, { expectedVersion: 7, isActive: false })).rejects.toBeInstanceOf(ConflictException);
         expect(h.other()).toMatchObject({ is_default: true, channels: ['whatsapp'], channel_bindings: ['telegram:1'], version: 3 });
         expect(h.sql.some(sql => sql.startsWith('UPDATE'))).toBe(false);
         expect(h.events.emit).not.toHaveBeenCalled();
     });
-    it('rolls back transferred assignments and defaults when the final agent write fails', async () => {
+    it('rolls back deactivation when the final agent write fails', async () => {
         const h = harness(true);
-        await expect(h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isDefault: true, channels: ['whatsapp'], channelBindings: ['telegram:1'] })).rejects.toThrow('write failed');
+        await expect(h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: false })).rejects.toThrow('write failed');
         expect(h.other()).toMatchObject({ is_default: true, channels: ['whatsapp'], channel_bindings: ['telegram:1'], version: 3 });
         expect(h.current().version).toBe(8);
         expect(h.events.emit).not.toHaveBeenCalled();
@@ -71,4 +71,10 @@ describe('agent editor optimistic concurrency', () => {
         await expect(controller.updateAgent(TENANT, AGENT, { isActive: true })).rejects.toBeInstanceOf(BadRequestException);
         expect(updateAgent).not.toHaveBeenCalled();
     });
+    it.each([{ isActive: true }, { configJson: { persona: { name: 'Changed' } } }, { isDefault: true }, { channels: ['whatsapp'] }, { partialDraft: true }])(
+        'cannot bypass draft publication with the legacy update payload %j', async payload => {
+            const h = harness();
+            await expect(h.service.updateAgent(TENANT, AGENT, { ...payload, expectedVersion: 8 })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
+            expect(h.sql).toEqual([]); expect(h.current().version).toBe(8);
+        });
 });

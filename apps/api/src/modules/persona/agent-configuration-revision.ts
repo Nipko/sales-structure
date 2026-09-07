@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { DiscardAgentDraftRequest } from '@parallext/shared';
 
 export type RevisionQuery = <T = any[]>(sql:string,params?:any[])=>Promise<T>;
 export interface AgentConfigurationBody {
@@ -10,7 +11,7 @@ export interface AgentConfigurationBody {
 }
 export interface ConfigurationRevisionActor {id:string;role:string}
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const TABLES=['agent_configuration_revisions','agent_configuration_drafts','agent_configuration_commands'];
+const TABLES=['agent_configuration_revisions','agent_configuration_drafts','agent_configuration_commands','agent_configuration_draft_discards'];
 const fail=(error:string):never=>{throw new ConflictException({error});};
 export function operationalConfigurationBody(agent:any):AgentConfigurationBody {
     return {name:agent.name,configJson:agent.config_json,channels:agent.channels||[],channelBindings:agent.channel_bindings||[],
@@ -52,8 +53,8 @@ export class AgentConfigurationRevisionStore {
     /** Read-only callers must not create tables. A missing draft is distinct from a failed read. */
     async readWithQuery(query:RevisionQuery,agentId:string):Promise<any|null> {
         if(!UUID.test(agentId))throw new BadRequestException({error:'agent_configuration_scope_invalid'});
-        const tables=await query<any[]>(`SELECT to_regclass('agent_configuration_drafts')::text AS drafts,
-            to_regclass('agent_configuration_revisions')::text AS revisions`);
+        const tables=await query<any[]>(`SELECT to_regclass(format('%I.agent_configuration_drafts',current_schema()))::text AS drafts,
+            to_regclass(format('%I.agent_configuration_revisions',current_schema()))::text AS revisions`);
         if(!tables[0]?.drafts&&!tables[0]?.revisions)return null;
         if(!tables[0]?.drafts||!tables[0]?.revisions)return fail('agent_configuration_store_incomplete');
         const rows=await query<any[]>(`SELECT r.* FROM agent_configuration_drafts d
@@ -114,5 +115,29 @@ export class AgentConfigurationRevisionStore {
         await query(`INSERT INTO agent_configuration_commands(requested_by,request_key,request_hash,revision_id)
             VALUES($1::uuid,$2,$3,$4::uuid)`,[input.actor.id,input.requestKey,requestHash,revision.id]);
         return {...revision,idempotentReplay:false};
+    }
+    /** Explicitly remove the editable pointer. Immutable revisions and receipts remain available for audit. */
+    async discardWithQuery(query: RevisionQuery, input: DiscardAgentDraftRequest & { tenantId: string; agentId: string; actor: ConfigurationRevisionActor }): Promise<void> {
+        this.authorize(input.agentId, input.actor);
+        if (!UUID.test(input.tenantId) || !UUID.test(input.expectedDraftRevision) || !/^[a-f0-9]{64}$/.test(input.expectedOperationalHash)
+            || !Number.isInteger(input.expectedOperationalVersion) || input.expectedOperationalVersion < 0
+            || typeof input.requestKey !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(input.requestKey)) throw new BadRequestException({ error: 'agent_configuration_revision_request_invalid' });
+        const requestHash = revisionHash({ agentId: input.agentId, expectedDraftRevision: input.expectedDraftRevision,
+            expectedOperationalVersion: input.expectedOperationalVersion, expectedOperationalHash: input.expectedOperationalHash });
+        const tenants = await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=current_schema() FOR UPDATE', [input.tenantId]);
+        if (!tenants[0]) throw new NotFoundException({ error: 'tenant_not_found' });
+        const operational = (await query<any[]>('SELECT * FROM agent_personas WHERE id=$1::uuid FOR UPDATE', [input.agentId]))[0];
+        if (!operational) throw new NotFoundException({ error: 'agent_not_found' });
+        const replay = (await query<any[]>('SELECT request_hash FROM agent_configuration_draft_discards WHERE requested_by=$1::uuid AND request_key=$2', [input.actor.id, input.requestKey]))[0];
+        if (replay) { if (replay.request_hash !== requestHash) fail('agent_configuration_request_conflict'); return; }
+        if (Number(operational.version) !== input.expectedOperationalVersion || operationalConfigurationHash(operational) !== input.expectedOperationalHash)
+            fail('agent_operational_configuration_changed');
+        const draft = await this.readWithQuery(query, input.agentId);
+        if (!draft || draft.id !== input.expectedDraftRevision) fail('agent_draft_revision_changed');
+        const removed = await query<any[]>('DELETE FROM agent_configuration_drafts WHERE agent_id=$1::uuid AND revision_id=$2::uuid RETURNING revision_id', [input.agentId, input.expectedDraftRevision]);
+        if (!removed[0]) fail('agent_draft_revision_changed');
+        await query(`INSERT INTO agent_configuration_draft_discards(agent_id,revision_id,requested_by,request_key,request_hash,operational_version,operational_hash)
+            VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7)`, [input.agentId, input.expectedDraftRevision, input.actor.id, input.requestKey,
+            requestHash, input.expectedOperationalVersion, input.expectedOperationalHash]);
     }
 }

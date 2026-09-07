@@ -9,6 +9,9 @@ import { TurnCapabilityComposerService } from '../conversations/turn-capability-
 import { staticToolsForAgentConfig, TOOL_SUBPERMISSION_RULES } from '../conversations/agent-tool-registry';
 import { PAYMENT_CREATE_TOOLS, PAYMENT_STATUS_TOOLS } from '../conversations/tools/payment-tools';
 import { TenantsService } from '../tenants/tenants.service';
+import { AgentDraftService } from '../persona/agent-draft.service';
+import { AgentConfigurationRevisionStore } from '../persona/agent-configuration-revision';
+import { ensureDraftProposalSchema } from './agent-configuration-proposal-schema';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function canonical(value: unknown): string {
@@ -43,7 +46,8 @@ export class AgentConfigurationService {
     constructor(private readonly prisma: PrismaService, private readonly persona: PersonaService,
         private readonly assessment: AgentAssessmentService, private readonly events: EventEmitter2,
         private readonly capabilities: TurnCapabilityComposerService = null as any,
-        private readonly tenants: TenantsService = null as any) {}
+        private readonly tenants: TenantsService = null as any,
+        private readonly drafts: AgentDraftService = null as any) {}
 
     private authorize(actor: { id: string; role: string }, agentId?: string): void {
         if (!['tenant_admin', 'super_admin'].includes(actor.role)) throw new ForbiddenException('Agent configuration requires an administrator');
@@ -52,11 +56,13 @@ export class AgentConfigurationService {
     private async schema(tenantId: string): Promise<string> {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         if (!schema) throw new NotFoundException('Tenant not found');
-        await this.prisma.ensureCanonicalTables(schema, ['agent_config_proposals']);
+        await ensureDraftProposalSchema(this.prisma, schema);
         return schema;
     }
     private validate(changes: unknown, profile: { industry: string; subType: string | null }): AgentConfigurationChange[] {
         if (!Array.isArray(changes) || changes.length < 1 || changes.length > 10) throw new BadRequestException('Invalid configuration changes');
+        if (changes.some(change => change?.path === 'account.businessHours') && changes.length !== 1)
+            throw new BadRequestException({ error: 'configuration_account_separate_review' });
         const seen = new Set();
         for (const change of changes) {
             if (!change || typeof change !== 'object' || Object.keys(change).some(key => !['path', 'value'].includes(key))
@@ -110,6 +116,14 @@ export class AgentConfigurationService {
             }
         }
     }
+    /** Only reviewed command paths enter Assist context; never return credentials or arbitrary tool configuration. */
+    async getEditableContext(tenantId: string, agentId: string, actor: { id: string; role: string }) {
+        const workspace = await this.drafts.read(tenantId, agentId, actor);
+        const body = workspace.draft?.body ?? workspace.operational.body;
+        return { scope: workspace.draft ? 'draft' : 'operational', operationalVersion: workspace.operational.version,
+            draftRevision: workspace.draft?.id ?? null, currentBase: workspace.draft?.currentBase ?? true,
+            values: Object.fromEntries(AGENT_CONFIGURATION_PATHS.filter(path => !path.startsWith('account.')).map(path => [path, readPath(body.configJson, path)])) };
+    }
     async propose(tenantId: string, agentId: string, changes: unknown, actor: { id: string; role: string }, requestKey: string = randomUUID()): Promise<AgentConfigurationProposal> {
         this.authorize(actor, agentId);
         if (typeof agentId !== 'string' || !UUID.test(agentId)) throw new BadRequestException('Invalid agent scope');
@@ -121,27 +135,36 @@ export class AgentConfigurationService {
             if (existing[0].agent_id !== agentId || hash(requested) !== hash(changes)) throw new ConflictException('Idempotency key belongs to a different proposal');
             return this.publicProposal(existing[0]);
         }
-        const [rows, tenant] = await Promise.all([
-            this.prisma.executeInTenantSchema<any[]>(schema, 'SELECT id, name, version, config_json, channels, channel_bindings FROM agent_personas WHERE id = $1::uuid', [agentId]),
+        const [workspace, tenant] = await Promise.all([
+            this.drafts.read(tenantId, agentId, actor),
             this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { industry: true, settings: true } }),
         ]);
-        const agent = rows[0];
-        if (!agent) throw new NotFoundException('Agent not found');
         const settings = tenant?.settings as any;
         const profile = { industry: settings?.verticalConfig?.industry ?? tenant?.industry ?? 'otro', subType: settings?.verticalConfig?.subType ?? settings?.subType ?? null };
         const valid = this.validate(changes, profile);
-        const next = applyChanges(agent.config_json, valid);
+        const targetScope = valid[0].path === 'account.businessHours' ? 'account' : 'agent_draft';
+        if (targetScope === 'agent_draft' && workspace.draft && !workspace.draft.currentBase)
+            throw new ConflictException({ error: 'agent_operational_configuration_changed' });
+        const body = targetScope === 'agent_draft' ? workspace.draft?.body ?? workspace.operational.body : workspace.operational.body;
+        const agent = { id: agentId, channels: body.channels, channel_bindings: body.channelBindings, config_json: body.configJson };
+        const next = applyChanges(body.configJson, valid);
         this.persona.assertAgentConfigValid(next, { partial: true });
         await this.validateCapabilities(tenantId, schema, agent, next, valid, profile);
-        const diff = valid.map(change => ({ ...change, before: change.path === 'account.businessHours' ? settings?.businessHours ?? null : readPath(agent.config_json, change.path) }));
+        const diff = valid.map(change => ({ ...change, before: change.path === 'account.businessHours' ? settings?.businessHours ?? null : readPath(body.configJson, change.path) }));
         if (diff.every(change => canonical(change.before) === canonical(change.value))) throw new BadRequestException('Configuration already has these values');
-        const agentName = String(agent.name ?? agent.config_json?.persona?.name ?? '').slice(0, 200);
-        const digest = hash({ agentId, agentName, expectedVersion: agent.version, changes: diff });
+        const agentName = body.name;
+        const expectedDraftRevision = targetScope === 'agent_draft' ? workspace.draft?.id ?? null : null;
+        const beforeHash = hash(body);
+        const digest = this.proposalDigest({ agent_id: agentId, agent_name: agentName, expected_version: workspace.operational.version,
+            target_scope: targetScope, expected_draft_revision: expectedDraftRevision, base_operational_hash: workspace.operational.hash,
+            before_hash: beforeHash, changes: diff });
         const result = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `INSERT INTO agent_config_proposals (agent_id, requested_by, request_key, expected_version, before_hash, digest, changes, expires_at, agent_name)
-             VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7::jsonb,NOW()+interval '30 minutes',$8)
+            `INSERT INTO agent_config_proposals (agent_id, requested_by, request_key, expected_version, before_hash, digest, changes, expires_at, agent_name,
+                target_scope,expected_draft_revision,base_operational_hash)
+             VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7::jsonb,NOW()+interval '30 minutes',$8,$9,$10::uuid,$11)
              ON CONFLICT (requested_by, request_key) DO NOTHING RETURNING *`,
-            [agentId, actor.id, requestKey, agent.version, hash(agent.config_json), digest, JSON.stringify(diff), agentName]);
+            [agentId, actor.id, requestKey, workspace.operational.version, beforeHash, digest, JSON.stringify(diff), agentName,
+                targetScope, expectedDraftRevision, workspace.operational.hash]);
         if (result[0]) return this.publicProposal(result[0]);
         const prior = await this.prisma.executeInTenantSchema<any[]>(schema, 'SELECT * FROM agent_config_proposals WHERE requested_by = $1::uuid AND request_key = $2', [actor.id, requestKey]);
         if (!prior[0] || prior[0].digest !== digest) throw new ConflictException('Idempotency key belongs to a different proposal');
@@ -151,18 +174,29 @@ export class AgentConfigurationService {
         this.authorize(actor);
         if (!UUID.test(proposalId) || !/^[a-f0-9]{64}$/.test(digest)) throw new BadRequestException('An exact reviewed proposal is required');
         const schema = await this.schema(tenantId);
+        await new AgentConfigurationRevisionStore(this.prisma).ensure(schema);
         const result = await this.prisma.transactionInTenantSchema(schema, async query => {
             const proposals = await query<any[]>('SELECT * FROM agent_config_proposals WHERE id = $1::uuid FOR UPDATE', [proposalId]);
             const proposal = proposals[0];
             if (!proposal) throw new NotFoundException('Proposal not found');
             if (proposal.digest !== digest) throw new ConflictException('Proposal content changed');
-            if (hash({ agentId: proposal.agent_id, agentName: proposal.agent_name, expectedVersion: proposal.expected_version, changes: proposal.changes }) !== digest) throw new ConflictException('Proposal integrity mismatch');
-            if (proposal.status === 'applied') return proposal;
+            if (!['agent_draft', 'account'].includes(proposal.target_scope)) throw new ConflictException({ error: 'configuration_legacy_proposal_expired' });
+            if (this.proposalDigest(proposal) !== digest) throw new ConflictException('Proposal integrity mismatch');
+            if (proposal.status === 'applied') {
+                const draft = proposal.target_scope === 'agent_draft'
+                    ? await this.drafts.readSavedWithQuery(query, tenantId, proposal.agent_id, proposal.applied_draft_revision, true) : undefined;
+                return { proposal, draft, replay: true };
+            }
             if (proposal.status !== 'proposed' || new Date(proposal.expires_at).getTime() <= Date.now()) throw new ConflictException('Proposal expired; request a new review');
             const tenants = await query<any[]>('SELECT industry, settings FROM public.tenants WHERE id = $1::uuid FOR UPDATE', [tenantId]);
-            const agents = await query<any[]>('SELECT id, version, config_json, channels, channel_bindings FROM agent_personas WHERE id = $1::uuid FOR UPDATE', [proposal.agent_id]);
-            const agent = agents[0];
-            if (!agent || agent.version !== proposal.expected_version || hash(agent.config_json) !== proposal.before_hash) throw new ConflictException('Agent changed; review a new proposal');
+            const workspace = await this.drafts.readWithQuery(query, tenantId, proposal.agent_id);
+            const isDraft = proposal.target_scope === 'agent_draft';
+            const body = isDraft ? workspace.draft?.body ?? workspace.operational.body : workspace.operational.body;
+            if (workspace.operational.version !== proposal.expected_version || workspace.operational.hash !== proposal.base_operational_hash
+                || hash(body) !== proposal.before_hash || (isDraft && (workspace.draft?.id ?? null) !== proposal.expected_draft_revision)
+                || (isDraft && workspace.draft && !workspace.draft.currentBase))
+                throw new ConflictException({ error: 'configuration_proposal_source_changed' });
+            const agent = { id: proposal.agent_id, config_json: body.configJson, channels: body.channels, channel_bindings: body.channelBindings };
             const settings = tenants[0]?.settings ?? {};
             const profile = { industry: settings.verticalConfig?.industry ?? tenants[0]?.industry ?? 'otro', subType: settings.verticalConfig?.subType ?? settings.subType ?? null };
             this.validate(proposal.changes.map(({ path, value }: AgentConfigurationChange) => ({ path, value })), profile);
@@ -170,34 +204,50 @@ export class AgentConfigurationService {
             this.persona.assertAgentConfigValid(next, { partial: true });
             await this.validateCapabilities(tenantId, schema, agent, next, proposal.changes, profile);
             const hours = proposal.changes.find((change: AgentConfigurationChange) => change.path === 'account.businessHours');
-            if (hours) {
+            let draft: AppliedAgentConfiguration['draft'];
+            let appliedVersion: number = workspace.operational.version;
+            if (hours && !isDraft) {
                 if (hash(settings.businessHours ?? null) !== hash(hours.before)) throw new ConflictException('Business hours changed; review a new proposal');
                 await query(`UPDATE public.tenants SET settings=jsonb_set(COALESCE(settings,'{}'::jsonb),'{businessHours}',$2::jsonb,true), updated_at=NOW() WHERE id=$1::uuid RETURNING id`, [tenantId, JSON.stringify(hours.value)]);
                 // Tenant hours affect every agent and invalidate their older behavioral evidence.
-                await query('UPDATE agent_personas SET version=COALESCE(version,0)+1, updated_at=NOW() WHERE id<>$1::uuid RETURNING id', [agent.id]);
+                const updated = await query<any[]>('UPDATE agent_personas SET version=COALESCE(version,0)+1, updated_at=NOW() RETURNING id,version');
+                appliedVersion = Number(updated.find(row => row.id === agent.id)?.version);
+                if (!Number.isInteger(appliedVersion)) throw new ConflictException({ error: 'configuration_proposal_source_changed' });
+            } else if (isDraft && !hours) {
+                draft = await this.drafts.saveWithQuery(query, schema, tenantId, agent.id, {
+                    expectedOperationalVersion: proposal.expected_version, expectedDraftRevision: proposal.expected_draft_revision,
+                    requestKey: `assist_${proposal.id}`, body: { ...body, configJson: next, name: next.persona.name },
+                }, actor);
+            } else {
+                throw new ConflictException({ error: 'configuration_proposal_scope_invalid' });
             }
-            const updated = await query<any[]>(`UPDATE agent_personas SET config_json=$2::jsonb, name=$3, version=COALESCE(version,0)+1, updated_at=NOW()
-                WHERE id=$1::uuid AND version=$4 RETURNING version`, [agent.id, JSON.stringify(next), next.persona.name, proposal.expected_version]);
-            if (!updated[0]) throw new ConflictException('Agent changed; review a new proposal');
-            const applied = await query<any[]>(`UPDATE agent_config_proposals SET status='applied', applied_at=NOW(), applied_by=$2::uuid, applied_version=$3
-                WHERE id=$1::uuid RETURNING *`, [proposal.id, actor.id, updated[0].version]);
-            return applied[0];
+            const applied = await query<any[]>(`UPDATE agent_config_proposals SET status='applied', applied_at=NOW(), applied_by=$2::uuid, applied_version=$3,applied_draft_revision=$4::uuid
+                WHERE id=$1::uuid RETURNING *`, [proposal.id, actor.id, appliedVersion, draft?.savedRevision.id ?? null]);
+            return { proposal: applied[0], draft, replay: false };
         });
         // Repeatable finalization repairs a cache failure after a committed update.
         let verified = true;
         try {
-            await this.persona.invalidatePersonaResolutionCaches(tenantId);
-            if (result.changes.some((change: AgentConfigurationChange) => change.path === 'account.businessHours')) {
+            if (result.proposal.target_scope === 'account') {
+                await this.persona.invalidatePersonaResolutionCaches(tenantId);
                 await this.tenants.finalizeConfigurationUpdate(tenantId, { businessHours: true });
+                if (!result.replay) this.events.emit('agent.version.updated', { tenantId, agentId: result.proposal.agent_id, changed: 'assist_account_hours', proposalId });
             }
-            this.events.emit('agent.version.updated', { tenantId, agentId: result.agent_id, changed: 'assist_configuration', proposalId });
         } catch { verified = false; }
-        const assessment = await this.assessment.getAssessment(tenantId, result.agent_id).catch(() => null);
-        return { proposal: this.publicProposal(result), assessment, verification: verified && assessment ? 'verified' : 'unavailable' };
+        const assessment = await this.assessment.getAssessment(tenantId, result.proposal.agent_id).catch(() => null);
+        return { proposal: this.publicProposal(result.proposal), assessment, assessmentScope: 'operational', draft: result.draft,
+            verification: verified && (result.draft || assessment) ? 'verified' : 'unavailable' };
+    }
+    private proposalDigest(row: any): string {
+        return hash({ agentId: row.agent_id, agentName: row.agent_name, expectedVersion: row.expected_version, targetScope: row.target_scope,
+            expectedDraftRevision: row.expected_draft_revision ?? null, baseOperationalHash: row.base_operational_hash,
+            beforeHash: row.before_hash, changes: row.changes });
     }
     private publicProposal(row: any): AgentConfigurationProposal {
         return { id: row.id, agentId: row.agent_id, agentName: row.agent_name, expectedVersion: row.expected_version, digest: row.digest,
-            status: row.status === 'proposed' && new Date(row.expires_at).getTime() <= Date.now() ? 'expired' : row.status,
-            expiresAt: new Date(row.expires_at).toISOString(), changes: row.changes, ...(row.applied_version ? { appliedVersion: row.applied_version } : {}) };
+            targetScope: row.target_scope === 'account' ? 'account' : 'agent_draft', expectedDraftRevision: row.expected_draft_revision ?? null,
+            status: !['agent_draft', 'account'].includes(row.target_scope) || (row.status === 'proposed' && new Date(row.expires_at).getTime() <= Date.now()) ? 'expired' : row.status,
+            expiresAt: new Date(row.expires_at).toISOString(), changes: row.changes, ...(row.applied_version ? { appliedVersion: row.applied_version } : {}),
+            ...(row.applied_draft_revision ? { appliedDraftRevision: row.applied_draft_revision } : {}) };
     }
 }

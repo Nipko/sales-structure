@@ -9,6 +9,7 @@ import type { VerticalDefinitions } from "./vertical-catalog";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AppliedAgentConfiguration, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning";
+import type { ToolApprovalItem } from "@/lib/tool-approvals";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -697,6 +698,13 @@ export const api = {
 
     getConversation: (tenantId: string, id: string) =>
         apiGet(`/agent-console/conversation/${tenantId}/${id}`),
+
+    getToolApprovals: (tenantId: string, conversationId: string) =>
+        apiGet<ToolApprovalItem[]>(`/tool-approvals/${tenantId}?conversationId=${encodeURIComponent(conversationId)}&limit=100`),
+    decideToolApproval: (tenantId: string, ticketId: string, decision: 'approved' | 'rejected', reason?: string) =>
+        apiPost(`/tool-approvals/${tenantId}/${ticketId}/decision`, { decision, reason }),
+    resumeToolApproval: (tenantId: string, ticketId: string) =>
+        apiPost(`/tool-approvals/${tenantId}/${ticketId}/resume`, {}),
 
     sendMessage: (tenantId: string, id: string, content: string) =>
         apiPost(`/agent-console/conversation/${tenantId}/${id}/message`, { content }),

@@ -5,6 +5,8 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { api } from "@/lib/api";
 import { ActiveObjectsCard } from "@/components/inbox/ActiveObjectsCard";
+import { ToolApprovalsPanel } from "@/components/inbox/ToolApprovalsPanel";
+import { approvalEventMatches } from "@/lib/tool-approvals";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
@@ -300,6 +302,7 @@ export default function InboxPage() {
     const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
     // Draft-for-approval (WS3 #6): AI-generated replies awaiting a human send, keyed by conversation.
     const [draftsByConv, setDraftsByConv] = useState<Record<string, string>>({});
+    const [toolApprovalRefresh, setToolApprovalRefresh] = useState(0);
 
     // --- Copilot Rewrite / Summarize State ---
     const [rewriting, setRewriting] = useState(false);
@@ -712,6 +715,7 @@ export default function InboxPage() {
         // are per socket, so re-join after every automatic reconnect.
         agentSocket.on('connect', () => {
             agentSocket.emit('agent:join', { agentId: actorId, tenantId: activeTenantId });
+            setToolApprovalRefresh(value => value + 1);
         });
 
         inboxSocket.on('newMessage', (payload: any) => {
@@ -878,6 +882,12 @@ export default function InboxPage() {
         agentSocket.on('inbox:escalation', (payload: any) => {
             console.log('Received inbox:escalation', payload);
             loadInbox({ silent: true });
+        });
+
+        agentSocket.on('inbox:tool_approval', (payload: unknown) => {
+            if (approvalEventMatches(payload, activeTenantId, selectedConvIdRef.current || '')) {
+                setToolApprovalRefresh(value => value + 1);
+            }
         });
 
         // --- Collision Detection: listen for viewers updates ---
@@ -1875,6 +1885,8 @@ export default function InboxPage() {
                         )}
 
                         {/* Messages Area */}
+                        {activeTenantId && <ToolApprovalsPanel key={`${activeTenantId}:${selectedConv.id}`}
+                            tenantId={activeTenantId} conversationId={selectedConv.id} role={user?.role} refreshVersion={toolApprovalRefresh} />}
                         <div
                             ref={messagesContainerRef}
                             className="inbox-scrollbar flex-1 overflow-auto px-4 md:px-8 py-5 flex flex-col gap-1"

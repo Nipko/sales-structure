@@ -1,3 +1,5 @@
+import { ToolApprovalEffectsService } from './tool-approval-effects.service';
+import { APPROVAL_EFFECTS_EVENT } from './tool-approval-effects.contracts';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
@@ -35,6 +37,7 @@ export class ToolApprovalWorkflowService {
         private readonly cronLock: CronLockService,
         @Optional() private readonly capabilityComposer?: TurnCapabilityComposerService,
         @Optional() private readonly personaService?: PersonaService,
+        @Optional() private readonly approvalEffects?: ToolApprovalEffectsService,
     ) {}
 
     listApprovals(input: {
@@ -113,6 +116,7 @@ export class ToolApprovalWorkflowService {
                     if (claimed.state !== 'claimed') break;
                     await this.executeClaim(claimed.claim);
                 }
+                await this.approvalEffects?.recoverTenant(tenant.id);
                 await this.dispatchTenantEvents(tenant.schemaName, tenant.id);
             } catch (error: any) {
                 this.logger.warn(`Approval recovery failed for tenant ${tenant.id}: ${error.message}`);
@@ -265,6 +269,10 @@ export class ToolApprovalWorkflowService {
         for (const event of outbox) {
             try {
                 await this.controls.publishApprovalOutboxEvent(schemaName,event,async currentPayload=>{
+                    if (event.eventType === APPROVAL_EFFECTS_EVENT) {
+                        if (!this.approvalEffects) throw new Error('approval_effect_delivery_unavailable');
+                        await this.approvalEffects.schedule(tenantId, String(currentPayload.ticketId || ''));
+                    }
                     const payload={...currentPayload,tenantId,eventId:event.id,eventType:event.eventType};
                     await this.events.emitAsync(event.eventType, payload);
                     await this.events.emitAsync('tool.approval.notification', payload);

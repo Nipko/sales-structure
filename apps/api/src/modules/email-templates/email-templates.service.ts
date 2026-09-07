@@ -1106,7 +1106,7 @@ export class EmailTemplatesService {
         to: string,
         variables: Record<string, string>,
         lang: string = 'es',
-        options: { attachments?: EmailAttachment[] } = {},
+        options: { attachments?: EmailAttachment[]; beforeSend?: () => Promise<void> } = {},
     ): Promise<boolean> {
         await this.refreshManagedDefaults(schemaName, slug);
 
@@ -1184,6 +1184,7 @@ export class EmailTemplatesService {
         const subject = this.renderVariables(template.subject, mergedVars);
         const html = this.renderVariables(template.bodyHtml, mergedVars);
 
+        await options.beforeSend?.();
         return this.emailService.send({
             to,
             subject,

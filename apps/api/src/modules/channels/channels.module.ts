@@ -31,12 +31,8 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         // Plain import: InboundQueueModule is a dependency leaf (queue + a
         // service injecting only globals), so it cannot close a cycle.
         InboundQueueModule,
-        // No provider here injects from ConversationsModule any more (webhooks
-        // hand off via InboundQueueModule). The edge stays because removing it
-        // reorders module resolution and leaves an AppointmentsModule import
-        // undefined at boot — a latent CJS circular-import that this forwardRef
-        // masks. Verified with `npm run test:bootstrap`, which is the only thing
-        // that catches it; tsc passes either way.
+        // The outbound worker resolves approved effect references through a leaf
+        // delivery port exported by ConversationsModule. Keep this cycle deferred.
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
         SmsCreditsModule,

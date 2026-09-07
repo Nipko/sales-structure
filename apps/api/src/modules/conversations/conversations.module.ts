@@ -1,3 +1,5 @@
+import { APPROVED_EFFECT_DELIVERY } from '../channels/approved-effect-delivery.port';
+import { ToolApprovalEffectsService } from './tool-approval-effects.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
 import { LearningModule } from '../learning/learning.module';
@@ -132,6 +134,8 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         VerticalTurnContextService,
         TurnCapabilityComposerService,
         ToolApprovalWorkflowService,
+        ToolApprovalEffectsService,
+        { provide: APPROVED_EFFECT_DELIVERY, useExisting: ToolApprovalEffectsService },
         PaymentOperationService,
         {
             provide: PAYMENT_OPERATION_PROVIDER,
@@ -154,6 +158,6 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         ChatIdentityService,
     ],
     controllers: [ConversationsController, AgentTestController, ToolApprovalController],
-    exports: [IsolatedEvalNamespace, ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService],
+    exports: [APPROVED_EFFECT_DELIVERY,IsolatedEvalNamespace, ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService],
 })
 export class ConversationsModule {}

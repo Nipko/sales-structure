@@ -1,5 +1,6 @@
+import { APPROVED_EFFECT_DELIVERY, ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference } from './approved-effect-delivery.port';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job, DelayedError } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { ChannelGatewayService } from './channel-gateway.service';
@@ -16,9 +17,8 @@ export const OUTBOUND_QUEUE = 'outbound-messages';
 /** Per-tenant pending-jobs counter key (queue-depth backpressure). */
 export const pendingJobsKey = (tenantId: string) => `outbound:pending:${tenantId}`;
 
-export interface OutboundJobData {
-    outbound: OutboundMessage;
-}
+export type OutboundJobData = { outbound: OutboundMessage; approvalEffect?: never }
+    | { outbound?: never; approvalEffect: ApprovedEffectReference };
 
 @Processor(OUTBOUND_QUEUE, {
     concurrency: 5,
@@ -34,6 +34,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         private redis: RedisService,
         private tenantSms: TenantNotificationSmsService,
         private prisma: PrismaService,
+        @Optional() @Inject(APPROVED_EFFECT_DELIVERY) private approvalEffects?: ApprovedEffectDeliveryPort,
     ) {
         super();
     }
@@ -54,6 +55,28 @@ export class OutboundQueueProcessor extends WorkerHost {
     }
 
     async process(job: Job<OutboundJobData>, token?: string): Promise<string | null> {
+        if (job.data.approvalEffect) {
+            const reference = job.data.approvalEffect;
+            if (!this.approvalEffects) throw new Error('approval_effect_delivery_unavailable');
+            if (await this.throttle.isOverLimit(reference.tenantId, 'outbound')) {
+                await job.moveToDelayed(Date.now() + 60_000, token);
+                throw new DelayedError();
+            }
+            return this.approvalEffects.deliver(reference, { prepare: async outbound => {
+                const entitlement = await resolveTenantSubscriptionAccess(this.prisma, reference.tenantId, 'write');
+                if (!entitlement.allowed) {
+                    if (entitlement.restrictionLevel === 'unavailable') throw new Error('subscription_entitlement_unavailable');
+                    throw new ApprovalEffectSuppressed('approval_effect_subscription_restricted');
+                }
+                if (outbound.metadata?.approvalEffectKind === 'handoff') return async () => null;
+                const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType, outbound.channelAccountId);
+                return async () => {
+                    const result = await this.channelGateway.sendMessage(outbound, creds.accessToken);
+                    if (result) await this.throttle.recordUsage(reference.tenantId, 'outbound').catch(() => {});
+                    return result;
+                };
+            } });
+        }
         const { outbound } = job.data;
         const startTime = Date.now();
 
@@ -187,11 +210,15 @@ export class OutboundQueueProcessor extends WorkerHost {
 
     @OnWorkerEvent('completed')
     onCompleted(job: Job<OutboundJobData>) {
-        this.decrPending(job.data.outbound.tenantId).catch(() => {});
+        if (job.data.outbound) this.decrPending(job.data.outbound.tenantId).catch(() => {});
     }
 
     @OnWorkerEvent('failed')
     onFailed(job: Job<OutboundJobData>, error: Error) {
+        if (job.data.approvalEffect) {
+            this.logger.error({ msg: 'Approval effect job failed', jobId: job.id, ...job.data.approvalEffect, attempt: job.attemptsMade });
+            return;
+        }
         const { outbound } = job.data;
         this.decrPending(outbound.tenantId).catch(() => {});
         this.logger.error({

@@ -1,3 +1,4 @@
+import { APPROVAL_EFFECTS_DDL, APPROVAL_EFFECTS_EVENT, approvedEffectDescriptors, approvalDeliveryState, type ApprovalEffectSummary, type ApprovalDeliveryState } from './tool-approval-effects.contracts';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AsyncLocalStorage } from 'async_hooks';
@@ -88,6 +89,8 @@ export interface ToolApprovalListItem {
     resumedAt: string | null;
     resumeResult: Record<string, unknown> | null;
     resumeError: string | null;
+    deliveryState?: ApprovalDeliveryState;
+    deliveryEffects?: ApprovalEffectSummary[];
     executionStatus?: string;
     executionErrorCode?: string | null;
     kind?: 'draft_action' | 'policy';
@@ -563,7 +566,9 @@ export class ToolExecutionControlService {
                     t.requested_at, t.expires_at, t.decided_at, t.decided_by,
                     t.decision_reason, t.resume_state, t.resume_attempts,
                     t.resumed_at, t.resume_result, t.resume_error,
-                    l.request_payload, l.status AS execution_status, l.last_error_code
+                    l.request_payload, l.status AS execution_status, l.last_error_code,
+                    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'kind',e.kind,'state',e.state,'errorCode',e.error_code) ORDER BY e.kind,e.item_index)
+                        FROM tool_approval_effects e WHERE e.ticket_id=t.id),'[]'::jsonb) AS delivery_effects
                FROM tool_approval_tickets t
                JOIN tool_execution_ledger l ON l.id = t.execution_ledger_id
                ${where}
@@ -589,6 +594,8 @@ export class ToolExecutionControlService {
             resumedAt: row.resumed_at ? new Date(row.resumed_at).toISOString() : null,
             resumeResult: row.resume_result && typeof row.resume_result === 'object' ? row.resume_result : null,
             resumeError: row.resume_error || null,
+            deliveryEffects: row.delivery_effects || [],
+            deliveryState: approvalDeliveryState(row.delivery_effects || []),
             executionStatus: row.execution_status,
             executionErrorCode: row.last_error_code || null,
             kind: row.request_payload?.draftReview ? 'draft_action' : 'policy',
@@ -814,7 +821,7 @@ export class ToolExecutionControlService {
             catch(error:any){if(error.message==='contact_erased')return {state:'completed' as const,result:{error:'contact_erased'}};throw error;}
             const rows = await query<any[]>(
                 `SELECT t.resume_attempts, t.resume_state, t.resume_lease_token,
-                        l.status AS ledger_status, l.response_payload
+                        l.status AS ledger_status, l.response_payload, l.tool_name
                    FROM tool_approval_tickets t
                    JOIN tool_execution_ledger l ON l.id = t.execution_ledger_id
                   WHERE t.id = $1::uuid
@@ -846,6 +853,12 @@ export class ToolExecutionControlService {
                     conversationId: claim.conversationId,
                     ledgerStatus: row.ledger_status,
                 });
+                const effects = approvedEffectDescriptors(row.tool_name, row.ledger_status, this.recordPayload(row.response_payload));
+                for (const effect of effects) {
+                    await query(`INSERT INTO tool_approval_effects(ticket_id,kind,item_index) VALUES($1::uuid,$2,$3)
+                        ON CONFLICT(ticket_id,kind,item_index) DO NOTHING`, [claim.ticketId,effect.kind,effect.itemIndex]);
+                }
+                if (effects.length) await this.insertApprovalOutboxWithQuery(query, claim.ticketId, APPROVAL_EFFECTS_EVENT, { ticketId: claim.ticketId });
                 return { state: 'completed' as const, result: committedResult };
             }
 
@@ -2281,6 +2294,7 @@ export class ToolExecutionControlService {
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )`,
             );
+            await this.query(schemaName, APPROVAL_EFFECTS_DDL);
             await this.query(
                 schemaName,
                 `ALTER TABLE tool_execution_ledger

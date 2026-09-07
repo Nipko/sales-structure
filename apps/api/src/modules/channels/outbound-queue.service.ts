@@ -1,3 +1,4 @@
+import type { ApprovedEffectReference } from './approved-effect-delivery.port';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -17,6 +18,20 @@ export class OutboundQueueService {
         private throttle: TenantThrottleService,
         private redis: RedisService,
     ) {}
+
+    /** References only. Failure must keep its deterministic identity, never fall back to an unkeyed send. */
+    async enqueueApprovedEffect(reference: ApprovedEffectReference): Promise<void> {
+        const jobId = sanitizeJobId(`approval-effect-${reference.ticketId}-${reference.effectId}`);
+        const existing = await this.outboundQueue.getJob(jobId);
+        if (existing) {
+            if (await existing.getState() === 'failed') await existing.retry();
+            return;
+        }
+        await this.outboundQueue.add('approved-effect', { approvalEffect: {
+            tenantId: reference.tenantId, ticketId: reference.ticketId, effectId: reference.effectId,
+        } }, { jobId, priority: await this.throttle.getPriority(reference.tenantId), attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 }, removeOnComplete: { age: 86400 }, removeOnFail: { age: 86400 } });
+    }
 
     /**
      * Enqueue an outbound message with retry policy and plan-based priority.

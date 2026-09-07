@@ -4675,3 +4675,21 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_releases" (
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 
 CREATE INDEX IF NOT EXISTS idx_learning_releases_active ON "{{SCHEMA_NAME}}"."learning_releases"(agent_id, status, created_at DESC);
+
+-- Durable approved-command delivery stores references and outcomes only.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_approval_effects" (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    ticket_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."tool_approval_tickets"(id) ON DELETE CASCADE,
+    kind VARCHAR(30) NOT NULL CHECK (kind IN ('media', 'handoff', 'payment_link')),
+    item_index INTEGER NOT NULL CHECK (item_index >= 0),
+    state VARCHAR(40) NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'queued', 'processing', 'sent', 'completed', 'failed', 'suppressed', 'reconciliation_required')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code VARCHAR(100),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(ticket_id, kind, item_index)
+);

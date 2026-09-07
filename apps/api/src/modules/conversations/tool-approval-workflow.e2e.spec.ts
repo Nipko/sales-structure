@@ -12,6 +12,23 @@ const conversationId = '55555555-5555-4555-8555-555555555555';
 const schemaName = 'tenant_approval_e2e';
 
 describe('A4 approval workflow e2e', () => {
+    it('dispatches durable effect references and leaves an enqueue failure recoverable without repeating the command', async () => {
+        const event = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',eventType:'tool.approval.effects_requested',payload:{ticketId},leaseToken:actorId };
+        const controls:any={claimApprovalOutboxEvents:async()=>[event],
+            publishApprovalOutboxEvent:async(_schema:any,_event:any,publish:any)=>publish(event.payload),
+            finishApprovalOutboxEvent:jest.fn()};
+        const effects:any={schedule:jest.fn().mockRejectedValueOnce(new Error('queue down')).mockResolvedValue(undefined)};
+        const executor:any={execute:jest.fn()};const events=new EventEmitter2();const notifications=jest.fn();events.on('tool.approval.notification',notifications);
+        const workflow=new ToolApprovalWorkflowService({} as any,controls,executor,events,{} as any,undefined,undefined,effects);
+        await (workflow as any).dispatchTenantEvents(schemaName,tenantId);
+        expect(controls.finishApprovalOutboxEvent).toHaveBeenLastCalledWith(schemaName,event,expect.any(Error));
+        expect(notifications).not.toHaveBeenCalled();
+        await (workflow as any).dispatchTenantEvents(schemaName,tenantId);
+        expect(effects.schedule).toHaveBeenCalledTimes(2);
+        expect(effects.schedule).toHaveBeenLastCalledWith(tenantId,ticketId);
+        expect(executor.execute).not.toHaveBeenCalled();
+        expect(notifications).toHaveBeenCalledWith({ticketId,tenantId,eventId:event.id,eventType:event.eventType});
+    });
     it('registers the controller and durable workflow in ConversationsModule DI', () => {
         const providers = Reflect.getMetadata(MODULE_METADATA.PROVIDERS, ConversationsModule) || [];
         const controllers = Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, ConversationsModule) || [];

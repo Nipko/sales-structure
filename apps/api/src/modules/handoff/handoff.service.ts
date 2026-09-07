@@ -183,11 +183,18 @@ export class HandoffService {
      * Execute handoff: mark conversation, emit event for agent console notification,
      * assign to available agent if possible.
      */
+    async prepareDelivery(tenantId: string): Promise<void> {
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureStructuredHandoffColumns(schema);
+        await this.aiResolutionService.ensureResolutionColumns(schema);
+    }
+
     async executeHandoff(
         tenantId: string,
         conversationId: string,
         message: NormalizedMessage,
         reason: string,
+        delivery?: { beforeSideEffect?: () => Promise<void>; awaitNotifications?: boolean },
     ): Promise<HandoffResult> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureStructuredHandoffColumns(schemaName);
@@ -197,6 +204,7 @@ export class HandoffService {
         // conversation's detected language instead.
         const lang = await this.getTenantLanguage(tenantId);
 
+        await delivery?.beforeSideEffect?.();
         // 1. Build a bounded, evidence-linked summary. The legacy string is
         // retained for existing inbox/email consumers.
         const recentMessages = await this.prisma.executeInTenantSchema<HandoffMessageEvidence[]>(schemaName,
@@ -218,6 +226,7 @@ export class HandoffService {
         const summary = formatLegacyHandoffSummary(structuredSummary);
         const handoffTriggeredAt = structuredSummary.generatedAt;
 
+        await delivery?.beforeSideEffect?.();
         // 2. Update conversation status to waiting_human
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE conversations
@@ -269,7 +278,7 @@ export class HandoffService {
         const contact = contactInfo?.[0] || {};
 
         // 5. Try to auto-assign to an available agent (skill-based routing)
-        const autoAssignment = await this.tryAutoAssign(tenantId, schemaName, conversationId, reason);
+        const autoAssignment = await this.tryAutoAssign(tenantId, schemaName, conversationId, reason, delivery);
         const assignedTo = autoAssignment?.agentId || null;
 
         // 6. Get assigned agent name for notifications
@@ -303,7 +312,8 @@ export class HandoffService {
         );
 
         // 8. Emit event with full context for notifications
-        this.eventEmitter.emit('handoff.escalated', {
+        await delivery?.beforeSideEffect?.();
+        const handoffEvent = {
             tenantId,
             conversationId,
             reason,
@@ -317,15 +327,18 @@ export class HandoffService {
             contactPhone: contact.contact_phone || '',
             lastMessage: (contact.last_message || '').substring(0, 100),
             handoffTriggeredAt,
-        } as HandoffEscalatedEvent);
+        } as HandoffEscalatedEvent;
+        if (delivery?.awaitNotifications) await this.eventEmitter.emitAsync('handoff.escalated', handoffEvent);
+        else this.eventEmitter.emit('handoff.escalated', handoffEvent);
 
-        // 9. Send email to assigned agent via template (fire-and-forget)
+        // 9. Await notification work before the durable caller releases its privacy fence.
         if (assignedAgentEmail) {
             const contactName = contact.contact_name || i18n.contactFallback;
             const contactPhone = contact.contact_phone || 'N/A';
             const lastMessage = (contact.last_message || '').substring(0, 200);
 
             try {
+                await delivery?.beforeSideEffect?.();
                 const sent = await this.emailTemplates.renderAndSend(schemaName, 'handoff_notification', assignedAgentEmail, {
                     agent_name: assignedAgentName || i18n.agentFallback,
                     contact_name: contactName,
@@ -333,15 +346,18 @@ export class HandoffService {
                     reason,
                     last_message: lastMessage,
                     inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
-                }, lang);
-                if (!sent) throw new Error('Template not found or inactive');
+                }, lang, { beforeSend: delivery?.beforeSideEffect });
+                if (!sent) throw new Error('Handoff notification not acknowledged');
             } catch (e: any) {
-                // Fallback to direct email if template is not yet seeded
-                this.emailService.send({
+                if (delivery) throw e;
+                // Legacy callers retain fallback. Durable delivery cannot infer a safe resend from a boolean result.
+                await this.emailService.send({
                     to: assignedAgentEmail,
                     subject: i18n.assignedSubject(contactName),
                     html: i18n.assignedHtml({ contactName, contactPhone, reason, lastMessage }),
-                }).catch(fe => this.logger.warn(`Handoff fallback email failed: ${fe.message}`));
+                }).catch(fe => {
+                    this.logger.warn(`Handoff fallback email failed: ${fe.message}`);
+                });
             }
         } else {
             // Unassigned case: fetch tenant's billingEmail or fallback to active tenant_admin email
@@ -374,21 +390,25 @@ export class HandoffService {
                 const lastMessage = (contact.last_message || '').substring(0, 200);
 
                 try {
+                    await delivery?.beforeSideEffect?.();
                     const sent = await this.emailTemplates.renderAndSend(schemaName, 'handoff_notification_unassigned', fallbackEmail, {
                         contact_name: contactName,
                         contact_phone: contactPhone,
                         reason,
                         last_message: lastMessage,
                         inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
-                    }, lang);
-                    if (!sent) throw new Error('Template not found or inactive');
+                    }, lang, { beforeSend: delivery?.beforeSideEffect });
+                    if (!sent) throw new Error('Handoff notification not acknowledged');
                 } catch (e: any) {
-                    // Fallback to direct email
-                    this.emailService.send({
+                    if (delivery) throw e;
+                    // Durable delivery treats a failed template send as uncertain; it must not send a second email.
+                    await this.emailService.send({
                         to: fallbackEmail,
                         subject: i18n.unassignedSubject(),
                         html: i18n.unassignedHtml({ contactName, contactPhone, reason, lastMessage }),
-                    }).catch(fe => this.logger.warn(`Handoff fallback unassigned email failed: ${fe.message}`));
+                    }).catch(fe => {
+                        this.logger.warn(`Handoff fallback unassigned email failed: ${fe.message}`);
+                    });
                 }
             }
         }
@@ -559,6 +579,7 @@ export class HandoffService {
         schemaName: string,
         conversationId: string,
         reason?: string,
+        delivery?: { beforeSideEffect?: () => Promise<void>; awaitNotifications?: boolean },
     ): Promise<AutoAssignment | null> {
         try {
             // 1. Get contact_id from the conversation
@@ -683,7 +704,7 @@ export class HandoffService {
                         } as AutoAssignment;
                     },
                 );
-                this.emitConversationAssigned({
+                await this.emitConversationAssigned({
                     tenantId,
                     schemaName,
                     conversationId,
@@ -692,7 +713,7 @@ export class HandoffService {
                     ...(assignment.phone ? { phone: assignment.phone } : {}),
                     assignmentSource: 'auto',
                     assignedAt,
-                });
+                }, delivery);
                 this.logger.log(`[AutoAssign] Automatically assigned conversation ${conversationId} to agent "${agent.name}" (Active Count=${agent.active_count}, Matching Skills=${agent.matching_skills_count})`);
                 return assignment;
             }
@@ -702,9 +723,12 @@ export class HandoffService {
         return null;
     }
 
-    private emitConversationAssigned(event: ConversationAssignedEvent): void {
+    private async emitConversationAssigned(event: ConversationAssignedEvent,
+        delivery?: { beforeSideEffect?: () => Promise<void>; awaitNotifications?: boolean }): Promise<void> {
         try {
-            this.eventEmitter.emit('conversation.assigned', event);
+            await delivery?.beforeSideEffect?.();
+            if (delivery?.awaitNotifications) await this.eventEmitter.emitAsync('conversation.assigned', event);
+            else this.eventEmitter.emit('conversation.assigned', event);
         } catch (error: any) {
             // The assignment transaction already committed. A listener failure
             // must not make callers retry and create a second assignment row.

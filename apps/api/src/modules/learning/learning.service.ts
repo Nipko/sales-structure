@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
@@ -18,7 +19,8 @@ export class LearningService {
     private readonly logger = new Logger(LearningService.name);
     private readonly initialized = new Map<string, Promise<void>>();
 
-    constructor(private readonly prisma: PrismaService, private readonly knowledge: KnowledgeService, private readonly llm: LLMRouterService) {}
+    constructor(private readonly prisma: PrismaService, private readonly knowledge: KnowledgeService, private readonly llm: LLMRouterService,
+        @Optional() private readonly revisions?: EvaluationRevisionService) {}
 
     private async schema(tenantId: string) {
         if (!UUID.test(tenantId)) throw new BadRequestException({ error: 'invalid_tenant' });
@@ -432,20 +434,10 @@ export class LearningService {
         if(!claimed.length)throw new ConflictException({error:'learning_evaluation_in_progress'});
     }
 
-    /** Hash authoritative dependencies, excluding usage counters and sandbox fixtures. */
+    /** The same complete dependency manifest used by tests, gates and simulations. */
     async dependencyHash(tenantId:string):Promise<string>{
-        const schema=await this.schema(tenantId);
-        const signatures:unknown[]=[];
-        for(const table of ['knowledge_documents','faqs','policies','companies','products','services','procedures']){
-            const exists=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT to_regclass($1) AS relation`,[`${schema}.${table}`]);
-            if(!exists[0]?.relation){signatures.push([table,null]);continue;}
-            // Table names come exclusively from the constant list above.
-            const signature=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT md5(COALESCE(string_agg(
-                (to_jsonb(t)-ARRAY['updated_at','query_frequency','last_accessed_at','access_count','views','view_count'])::text,
-                ',' ORDER BY id::text),'')) AS hash FROM ${table} t WHERE id::text NOT LIKE '00000000-0000-4000-8000-00000000%'`);
-            signatures.push([table,signature[0]?.hash]);
-        }
-        return learningSnapshotHash(signatures);
+        if(!this.revisions) throw new Error('evaluation_revision_service_unavailable');
+        return (await this.revisions.capture(tenantId)).revision;
     }
 
     async evaluationRun(tenantId:string,agentId:string,releaseId:string,attemptId:string){
@@ -548,7 +540,7 @@ export class LearningService {
     }
 
     async getPublishedReleaseSnapshot(tenantId:string,agentId:string,contactId?:string):Promise<{releaseId:string;releaseHash:string}|null>{
-        const schema=await this.schema(tenantId);
+        const schema=await this.prisma.getTenantSchemaName(tenantId);
         let rows:any[];
         try{
             rows=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT id FROM learning_releases
@@ -575,7 +567,7 @@ export class LearningService {
         if(preview&&!(options.executionContext?.persistence==='disabled'&&['agent_test','evaluation'].includes(options.executionContext.mode))) {
             throw new ForbiddenException({error:'learning_candidate_requires_evaluation'});
         }
-        const schema=await this.schema(tenantId);
+        const schema=preview ? await this.prisma.getTenantSchemaName(tenantId) : await this.schema(tenantId);
         try{
             let release:any;
             if(preview){release=await this.loadRelease(schema,agentId,options.releaseId!);if(release.status==='retired')return [];}

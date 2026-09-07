@@ -1,13 +1,14 @@
 import { SimulationService } from './simulation.service';
 import { EvalService } from './eval.service';
 import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 const scenario = (key: string) => ({ key, title: key, source: 'replay', language: 'fr', goal: 'support', openingMessage: 'bonjour', replayMessages: ['bonjour', 'oui'] });
 const judge = { overall: 8, resolved: true, tone: 8, accuracy: 8, empathy: 8, resolution: 8, flags: [] };
 
 function simulation() {
     const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([]) };
-    const agentTest = { test: jest.fn().mockResolvedValue({ reply: 'Comment puis-je vous aider?', debug: { toolCalls: [] } }) };
+    const agentTest = { assertSnapshotCurrent: jest.fn().mockResolvedValue(undefined), test: jest.fn().mockResolvedValue({ reply: 'Comment puis-je vous aider?', debug: { toolCalls: [] } }) };
     const llm = { execute: jest.fn() };
     const quality = { judgeTranscript: jest.fn().mockResolvedValue(judge) };
     const service = new SimulationService(prisma as any, {} as any, llm as any, {} as any, quality as any, agentTest as any, {} as any, { emit: jest.fn() } as any);
@@ -15,6 +16,21 @@ function simulation() {
 }
 
 describe('simulation execution fidelity', () => {
+    it('migrates the full revision column even when the previous deployment cached the v2 schema',async()=>{
+        const f=simulation();
+        const redis={get:jest.fn(async(key:string)=>key==='simulation_cols:v2:tenant_test'?'1':null),set:jest.fn()};
+        (f.service as any).redis=redis;
+        await f.service.ensureTables('tenant_test');
+        expect(f.prisma.executeInTenantSchema.mock.calls.some((call:any[])=>call[1].includes('ADD COLUMN IF NOT EXISTS evaluation_snapshot JSONB'))).toBe(true);
+        expect(redis.set).toHaveBeenCalledWith('simulation_cols:v3:tenant_test','1',86400);
+    });
+    it('reruns a previous result when its customer script changed under the same scenario key',async()=>{
+        const f=simulation();const old=scenario('same');const changed={...old,replayMessages:['Nouvelle demande']};
+        const previous={...old,scenarioHash:revisionHash(old),transcript:[],turns:1,latencyMs:1,judge};
+        const results=await (f.service as any).runScenariosConcurrently('tenant','agent','telegram',[changed],undefined,undefined,[previous]);
+        expect(f.agentTest.test).toHaveBeenCalledTimes(1);
+        expect(results[0]).not.toBe(previous);expect(results[0].scenarioHash).toBe(revisionHash(changed));
+    });
     it('never grades a runtime failure as a successful customer-service answer', async () => {
         const { service, agentTest, quality } = simulation();
         agentTest.test.mockResolvedValue({ reply: 'Disculpa, hubo un problema.', debug: { runtimeError: 'provider unavailable', toolCalls: [] } } as any);
@@ -39,7 +55,7 @@ describe('simulation execution fidelity', () => {
         const { service, agentTest, llm } = simulation();
         llm.execute.mockRejectedValue(new Error('provider timeout'));
         const synthetic = { ...scenario('broken'), source: 'synthetic' };
-        const good = { ...scenario('done'), transcript: [], turns: 1, latencyMs: 1, judge };
+        const good = { ...scenario('done'), scenarioHash: revisionHash(scenario('done')), transcript: [], turns: 1, latencyMs: 1, judge };
         const reset = jest.fn(); const checkpoint = jest.fn();
         const result = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('done'), synthetic], undefined, { reset, recordInbound: jest.fn() }, [good], checkpoint);
         expect(result[0]).toBe(good);

@@ -1165,7 +1165,8 @@ export interface TestAgentToolParity {
 export interface TestAgentDebugInfo {
     runtimeSessionId?: string;
     runtimeError?: string;
-    agentRevision?: { version: number | null; configHash: string; capturedAt: string };
+    agentRevision?: { version: number | null; configHash: string; capturedAt: string;
+        dependencyRevision?: string; strategy?: 'guarded_live_dependencies'; limitations?: string[] };
     systemPrompt: string;
     toolCalls: TestAgentToolCall[];
     ragHits: RetrievedKnowledgeItem[];

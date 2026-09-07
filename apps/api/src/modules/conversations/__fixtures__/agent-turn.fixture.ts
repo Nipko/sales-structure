@@ -7,6 +7,7 @@ import { ResponseValidatorService } from '../response-validator.service';
 import { LanguageDetectorService } from '../language-detector.service';
 import { LLMRouterService } from '../../ai/router/llm-router.service';
 import { authorityFor } from './tool-authority.fixture';
+import { assertRevisionIntegrity, sealRevision } from '../../evaluation-revision/evaluation-revision';
 
 /** Real orchestration/engines/guards; only I/O boundaries are substitutes. */
 export function agentTurnFixture(overrides: Record<string, any> = {}) {
@@ -38,6 +39,10 @@ export function agentTurnFixture(overrides: Record<string, any> = {}) {
         status: { status: 'ok', profileId: 'retail/moda' }, tools: [], authority: authorityFor(),
         deniedTools: [], commitmentBlocked: null }) };
     const deps: any = { prisma, redis, personaService, llmRouter, throttle, toolExecutor, turnCapabilityComposer,
+        revisions: { capture: jest.fn(async (tenantId: string) => sealRevision(tenantId,[{key:'fixture',state:'present',hash:'fixture'}],[])),
+            assertCurrent: jest.fn(async manifest => assertRevisionIntegrity(manifest)), captureProcedures: jest.fn().mockResolvedValue([]) },
+        mcp: { listPublishableTools: jest.fn().mockResolvedValue({tools:[],discoveredCount:0,approvedCount:0}) },
+        integrations: { getAllHealth: jest.fn().mockResolvedValue({}) },
         tenantsService: { getSchemaName: jest.fn().mockResolvedValue('tenant_test') },
         knowledgeService: { tenantHasKnowledge: jest.fn().mockResolvedValue(false), searchRelevant: jest.fn().mockResolvedValue([]) },
         businessInfoService: { getPrimary: jest.fn().mockResolvedValue(null) },
@@ -55,7 +60,8 @@ export function agentTurnFixture(overrides: Record<string, any> = {}) {
     deps.procedureEngine = overrides.procedureEngine || new ProcedureEngineService(deps.prisma, deps.redis, deps.toolExecutor);
     deps.promptAssembler = overrides.promptAssembler || new PromptAssemblerService(deps.personaService);
     const runtime = Object.assign(Object.create(ConversationsService.prototype), deps) as ConversationsService;
-    const service = new AgentTestService(deps.personaService, deps.tenantsService, deps.throttle, runtime, deps.learning);
+    const service = new AgentTestService(deps.personaService, deps.tenantsService, deps.throttle, runtime, deps.learning, undefined,
+        deps.revisions, deps.mcp, deps.integrations);
     return { ...deps, runtime, service, contract };
 }
 

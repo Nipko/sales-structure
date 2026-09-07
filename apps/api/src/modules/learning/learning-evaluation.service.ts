@@ -78,6 +78,7 @@ export class LearningEvaluationService {
         const results:LearningEvaluationEvidence['results']=[...(run.results||[])];
         const assertCurrent=async()=>{
             await this.learning.evaluationRun(tenantId,agentId,releaseId,attemptId);
+            await this.agentTest.assertSnapshotCurrent(agentSnapshot);
             if(await this.learning.dependencyHash(tenantId)!==run.dependencyHash)throw new ConflictException('learning_dependencies_changed');
         };
         await assertCurrent();
@@ -98,6 +99,7 @@ export class LearningEvaluationService {
                         // Rotate A/B labels deterministically to avoid a position preference.
                         const candidateFirst=parseInt(learningHash(scenario.sourceId).slice(0,2),16)%2===0;
                         judgment=await this.judge(tenantId,scenario.language,agentSnapshot,candidateFirst?treatment:baseline,candidateFirst?baseline:treatment);
+                        await guard();
                         const score=(key:'A'|'B')=>LEARNING_DIMENSIONS.reduce((sum,dimension)=>sum+judgment[key].scores[dimension],0)/LEARNING_DIMENSIONS.length*25;
                         candidateScore=score(candidateFirst?'A':'B');baselineScore=score(candidateFirst?'B':'A');
                         criticalFailures.push(...judgment.A.criticalFailures.map((f:string)=>`${candidateFirst?'candidate':'baseline'}:${f}`),

@@ -132,7 +132,7 @@ export class RegionalProfileService {
     async resolve(tenantId: string, executionContext?: ServiceExecutionContext): Promise<TenantRegionalProfileV1> {
         const cacheKey = `regional:${tenantId}`;
         try {
-            const cached = await this.redis.getJson<TenantRegionalProfileV1>(cacheKey);
+            const cached = persistenceDisabled(executionContext) ? null : await this.redis.getJson<TenantRegionalProfileV1>(cacheKey);
             if (cached) return cached;
         } catch { /* A cache miss is not a failure. */ }
 

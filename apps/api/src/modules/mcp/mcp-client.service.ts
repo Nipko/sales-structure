@@ -200,9 +200,9 @@ export class McpClientService {
 
     // ── Discovery + invocation ───────────────────────────────
     /** Aggregate tools across enabled servers (cached). Returns ToolDefinitions + resolution map. */
-    async listRemoteTools(tenantId: string, executionContext?: ServiceExecutionContext): Promise<DiscoveredTools> {
+    async listRemoteTools(tenantId: string, executionContext?: ServiceExecutionContext, options?: { strict?: boolean }): Promise<DiscoveredTools> {
         const cacheKey = `mcp:tools:${tenantId}`;
-        const cached = await this.redis.getJson<DiscoveredTools>(cacheKey);
+        const cached = persistenceDisabled(executionContext) || options?.strict ? null : await this.redis.getJson<DiscoveredTools>(cacheKey);
         if (cached) return cached;
 
         const servers = (await this.listServers(tenantId, executionContext)).filter((s) => s.enabled);
@@ -218,6 +218,7 @@ export class McpClientService {
                     map[registered] = { serverId: server.id, realName: rt.name };
                 }
             } catch (e: any) {
+                if (options?.strict) throw new Error('evaluation_mcp_discovery_unavailable');
                 this.logger.warn(`[MCP] tools/list failed for ${server.name}: ${e.message}`);
             }
         }
@@ -236,8 +237,8 @@ export class McpClientService {
      * an explicit, reviewed approval are published — which for a tenant that has
      * approved nothing means an empty list, and the agent never mentions them.
      */
-    async listPublishableTools(tenantId: string, executionContext?: ServiceExecutionContext): Promise<PublishableMcpTools> {
-        const { tools, map } = await this.listRemoteTools(tenantId, executionContext);
+    async listPublishableTools(tenantId: string, executionContext?: ServiceExecutionContext, options?: { strict?: boolean }): Promise<PublishableMcpTools> {
+        const { tools, map } = await this.listRemoteTools(tenantId, executionContext, options);
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },

@@ -19,7 +19,7 @@ function build(){
         reset:jest.fn(async()=>{session.sandboxConversationId=`sandbox-${++sessionIndex}`;
             session.sandboxNamespace={schemaName:`isolated-${sessionIndex}`,token:`lease-${sessionIndex}`};}),recordInbound:jest.fn()};
     const sandbox={withSandboxSession:jest.fn(async(_tenant,callback)=>callback(session))};
-    const agentTest={captureSnapshot:jest.fn().mockResolvedValue(snapshot),test:jest.fn(async(_t,_a,req,opts)=>{
+    const agentTest={assertSnapshotCurrent:jest.fn().mockResolvedValue(undefined),captureSnapshot:jest.fn().mockResolvedValue(snapshot),test:jest.fn(async(_t,_a,req,opts)=>{
         await opts.beforeModelExecution();
         return {reply:'Te ayudo. ¿Cuál es tu consulta?',debug:{agentRevision:{configHash:'frozen'},toolCalls:[],ragHits:[],model:'test-model'}};
     })};
@@ -34,6 +34,16 @@ function build(){
 }
 
 describe('Learning A/B uses the full runtime with isolated histories',()=>{
+    it('refuses to publish judge evidence when dependencies drift during the comparison call',async()=>{
+        const f=build();
+        f.llm.execute.mockImplementation(async()=>{
+            f.agentTest.assertSnapshotCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.policies'));
+            return {content:JSON.stringify({A:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,4])),criticalFailures:[]},
+                B:{scores:Object.fromEntries(LEARNING_DIMENSIONS.map(d=>[d,3])),criticalFailures:[]}})};
+        });
+        await expect(f.service.run(f.job)).rejects.toThrow('evaluation_dependencies_changed');
+        expect(f.learning.recordEvaluation).not.toHaveBeenCalled();
+    });
     it('replays every customer turn with tools enabled, independent sessions and the same frozen agent',async()=>{
         const {service,agentTest,session,snapshot,job,llm}=build();
         const evidence=await service.run(job);

@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from 'crypto';
 import type { PrismaService } from '../prisma/prisma.service';
 
-export const CANONICAL_EVAL_TOOLS = new Set(['check_availability', 'create_appointment', 'cancel_appointment', 'reschedule_appointment', 'enroll_student', 'cancel_enrollment', 'book_class', 'cancel_class_booking']);
+export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Object.freeze({
+    create_appointment: 'appointments', cancel_appointment: 'appointments', reschedule_appointment: 'appointments',
+    enroll_student: 'enrollments', cancel_enrollment: 'enrollments', book_class: 'class_bookings', cancel_class_booking: 'class_bookings',
+});
+export const CANONICAL_EVAL_TOOLS = new Set(['check_availability', ...Object.keys(CANONICAL_EVAL_TOOL_FAMILIES)]);
 
 export function isolatedEvalNamespaceForPrisma(prisma: PrismaService): IsolatedEvalNamespace {
     return new IsolatedEvalNamespace({ transaction: work => prisma.$transaction(async tx => work(async (sql, params = []) => {

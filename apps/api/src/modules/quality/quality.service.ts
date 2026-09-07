@@ -400,11 +400,12 @@ export class QualityService {
      * graded with the exact same rubric as production conversations (T1.6).
      * The transcript should use "Cliente:" / "Agente:" line prefixes.
      */
-    async judgeTranscript(tenantId: string, transcript: string): Promise<JudgeResult> {
+    async judgeTranscript(tenantId: string, transcript: string, executionContext?: import('../../common/types/execution-context').ServiceExecutionContext): Promise<JudgeResult> {
         const response = await this.llmRouter.execute({
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: transcript }],
             systemPrompt: RUBRIC_PROMPT,
+            executionContext,
             temperature: 0.2,
             maxTokens: 500,
             tenantId,

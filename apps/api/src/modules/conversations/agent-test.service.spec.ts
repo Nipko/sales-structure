@@ -92,12 +92,68 @@ describe('AgentTestService delegates to the operational core', () => {
         release(); await second;
         await expect(f.service.test('tenant', 'agent', { message: 'hola', runtimeSessionId: '11111111-1111-4111-8111-111111111111' })).rejects.toThrow('agent_test_session_expired');
     });
-    it('reuses the captured configuration after an editor save until the operator resets the session', async () => {
+    it('reuses an unchanged validated revision without rereading the persona cache', async () => {
         const f = agentTurnFixture(); const first = await f.service.test('tenant', 'agent', { message: 'hola' });
-        f.personaService.getAgent.mockResolvedValue({ version: 2, config_json: { language: 'fr' } });
         const second = await f.service.test('tenant', 'agent', { message: 'gracias', runtimeSessionId: first.debug.runtimeSessionId });
         expect(second.debug.agentRevision).toEqual(first.debug.agentRevision);
         expect(f.personaService.getAgent).toHaveBeenCalledTimes(1);
+    });
+    it('blocks reuse after KB/FAQ/catalog drift even when the saved persona is identical', async () => {
+        const f=agentTurnFixture();const first=await f.service.test('tenant','agent',{message:'hola'});
+        f.revisions.assertCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.knowledge_embeddings'));
+        f.llmRouter.execute.mockClear();
+        await expect(f.service.test('tenant','agent',{message:'otra duda',runtimeSessionId:first.debug.runtimeSessionId})).rejects.toThrow('knowledge_embeddings');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('rejects a model result if dependencies changed during its invocation, accounting the spent call',async()=>{
+        const f=agentTurnFixture();const snapshot=await f.service.captureSnapshot('tenant','agent');
+        f.llmRouter.execute.mockImplementation(async()=>{
+            f.revisions.assertCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.policies'));
+            return {content:'This stale answer must not be released',model:'test'};
+        });
+        await expect(f.service.test('tenant','agent',{message:'hola'},{agentSnapshot:snapshot})).rejects.toThrow('tenant.policies');
+        expect(f.throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+    });
+    it('does not feed a tool result from changed dependencies into another model invocation',async()=>{
+        const f=agentTurnFixture();publishTools(f,['search_products']);
+        const snapshot=await f.service.captureSnapshot('tenant','agent');
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:'read',function:{name:'search_products',arguments:'{}'}}]});
+        f.toolExecutor.execute.mockImplementation(async()=>{
+            f.revisions.assertCurrent.mockRejectedValue(new Error('evaluation_dependencies_changed:tenant.products'));
+            return {items:[{price:999}]};
+        });
+        await expect(f.service.test('tenant','agent',{message:'camisa'},{agentSnapshot:snapshot})).rejects.toThrow('tenant.products');
+        expect(f.llmRouter.execute).toHaveBeenCalledTimes(1);
+    });
+    it('rejects a legacy config-only snapshot and tampered frozen MCP/procedure data before using the core',async()=>{
+        const f=agentTurnFixture();const snapshot=await f.service.captureSnapshot('tenant','agent');
+        const legacy={...snapshot};delete legacy.manifest;
+        await expect(f.service.test('tenant','agent',{message:'hola'},{agentSnapshot:legacy})).rejects.toThrow('manifest_required');
+        snapshot.procedures=[{id:'changed'} as any];
+        await expect(f.service.test('tenant','agent',{message:'hola'},{agentSnapshot:snapshot})).rejects.toThrow('procedure_integrity');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('supplies frozen procedure definitions even when the isolated namespace has no procedure table',async()=>{
+        const f=agentTurnFixture();
+        const procedure={id:'procedure-1',name:'Welcome',status:'active',version:2,trigger:{keywords:['consulta']},steps:[]};
+        f.revisions.captureProcedures.mockResolvedValue([procedure]);
+        const snapshot=await f.service.captureSnapshot('tenant','agent');
+        const fork=jest.spyOn(f.procedureEngine,'forExecution');
+        await f.service.test('tenant','agent',{message:'hola'},{agentSnapshot:snapshot});
+        const definitions=(fork.mock.calls[0][0] as {definitions:import('./procedure-engine.service').ProcedureDefinitionStore}).definitions;
+        await expect(definitions.listActive('tenant_isolated')).resolves.toEqual([procedure]);
+        await expect(definitions.getById('tenant_isolated','procedure-1')).resolves.toEqual(procedure);
+        f.revisions.captureProcedures.mockResolvedValue([{...procedure,name:'New live name'}]);
+        await expect(definitions.getById('tenant_isolated','procedure-1')).resolves.toEqual(procedure);
+    });
+    it('preserves composite integrity across durable JSONB serialization without retaining provider secrets',async()=>{
+        const f=agentTurnFixture();f.integrations.getAllHealth.mockResolvedValue({mindbody:{connected:true,lastError:'private-token',credentials:'secret'}});
+        f.revisions.captureProcedures.mockResolvedValue([{id:'procedure',name:'Hello',status:'active',trigger:{keywords:[]},steps:[],version:1,vertical:undefined}]);
+        const captured=await f.service.captureSnapshot('tenant','agent');
+        const restored=JSON.parse(JSON.stringify(captured));
+        await expect(f.service.assertSnapshotCurrent(restored)).resolves.toBeUndefined();
+        expect(JSON.stringify(restored)).not.toContain('private-token');expect(JSON.stringify(restored)).not.toContain('credentials');
+        expect(restored.manifest.revision).toBe(captured.manifest!.revision);
     });
     it('validates the server namespace and threads it through the actual session tool boundary', async () => {
         const f=agentTurnFixture();publishTools(f,['create_appointment','check_availability','create_payment_link']);

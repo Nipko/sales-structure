@@ -48,6 +48,7 @@ export interface AgentTurnSession {
     lastMessageAt: string;
     beforeToolExecution?: () => Promise<void>;
     beforeModelExecution?: () => Promise<void>;
+    afterDependencyRead?: () => Promise<void>;
     disableTools?: boolean;
     busy?: boolean;
     trace: AgentTurnTrace;
@@ -95,14 +96,19 @@ export class AgentTurnSessionStore {
         if (existing?.busy) throw new Error('agent_test_session_busy');
         if (existing && (existing.tenantId !== input.tenantId || existing.agentId !== input.agentId
             || existing.channelType !== input.channelType || existing.mode !== input.mode || existing.contactId !== input.contactId || existing.schemaName !== input.schemaName || existing.sandboxNamespace?.token !== input.sandboxNamespace?.token)) throw new Error('agent_test_session_scope_mismatch');
-        if (existing && (existing.snapshot.configHash !== input.snapshot.configHash || existing.snapshot.learningReleaseId !== input.snapshot.learningReleaseId)) throw new Error('agent_test_session_revision_changed');
+        if (existing && (existing.snapshot.configHash !== input.snapshot.configHash || existing.snapshot.learningReleaseId !== input.snapshot.learningReleaseId
+            || existing.snapshot.learningReleaseHash !== input.snapshot.learningReleaseHash || existing.snapshot.manifest?.revision !== input.snapshot.manifest?.revision
+            || existing.snapshot.mcpToolsHash !== input.snapshot.mcpToolsHash || existing.snapshot.proceduresHash !== input.snapshot.proceduresHash
+            || existing.snapshot.runtimeInputsHash !== input.snapshot.runtimeInputsHash
+            || existing.snapshot.capturedAt !== input.snapshot.capturedAt)) throw new Error('agent_test_session_revision_changed');
         if (!existing && this.sessions.size >= 1000) this.sessions.delete(this.sessions.keys().next().value!);
-        const session: AgentTurnSession = existing || { ...input, id, state: new EphemeralTurnState(), metadata: {},
+        const session: AgentTurnSession = existing || { ...input, snapshot: structuredClone(input.snapshot), id, state: new EphemeralTurnState(), metadata: {},
             lastMessageAt: new Date().toISOString(), trace: new AgentTurnTrace() };
         session.disableTools = input.disableTools;
         session.history = input.history;
         session.beforeToolExecution = input.beforeToolExecution;
         session.beforeModelExecution = input.beforeModelExecution;
+        session.afterDependencyRead = input.afterDependencyRead;
         session.trace = new AgentTurnTrace();
         this.sessions.set(id, { session, expires: Date.now() + 3600_000 });
         return session;

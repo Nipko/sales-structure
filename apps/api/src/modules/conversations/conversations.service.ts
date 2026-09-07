@@ -1894,6 +1894,10 @@ export class ConversationsService {
         const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
         const bookingEngine = session ? this.bookingEngine.forExecution({ redis: cache as RedisService, toolExecutor }) : this.bookingEngine;
         const procedureEngine = session ? this.procedureEngine.forExecution({ redis: cache as RedisService, toolExecutor,
+            definitions: {
+                listActive: async () => structuredClone((session.snapshot.procedures || []).filter(procedure => procedure.status === 'active')),
+                getById: async (_schema, id) => structuredClone(session.snapshot.procedures?.find(procedure => procedure.id === id) || null),
+            },
             persistence: {
                 load: (_schema, id) => cache.getJson(`procedure:${id}`),
                 save: (_schema, id, state) => cache.setJson(`procedure:${id}`, state),
@@ -2323,6 +2327,11 @@ export class ConversationsService {
                 operatingCountry: turnContext.regional?.operatingCountry,
                 jurisdiction: turnContext.regional?.operatingCountry,
                 executionContext,
+                evaluationInputs: session?.snapshot.runtimeInputs ? {
+                    providerHealth: session.snapshot.runtimeInputs.providerHealth,
+                    mcp: { tools: session.snapshot.mcpTools || [], discoveredCount: session.snapshot.runtimeInputs.mcpDiscoveredCount,
+                        approvedCount: session.snapshot.runtimeInputs.mcpApprovedCount },
+                } : undefined,
             });
         }
         const capability = composedCapability ?? await this.resolveTurnCapability({
@@ -2849,7 +2858,9 @@ export class ConversationsService {
                 if (capability.contract?.publishedTools.includes(name)) tools = [...tools, def];
             }
             try {
-                const { tools: mcpTools } = await this.mcpClient.listPublishableTools(tenantId, executionContext);
+                const { tools: mcpTools } = session
+                    ? { tools: session.snapshot.mcpTools || [] }
+                    : await this.mcpClient.listPublishableTools(tenantId, executionContext);
                 if (mcpTools.length) tools = [...tools, ...mcpTools];
             } catch (e: any) {
                 this.logger.debug(`[T3.20] MCP tool registration skipped: ${e.message}`);
@@ -3243,7 +3254,7 @@ export class ConversationsService {
             // tool iterations and dispatched after the text reply.
             const mediaToSend: Array<{ url: string; caption?: string }> = [];
 
-            const planFeatures = await this.throttle.getPlanFeatures(tenantId, executionContext);
+            const planFeatures = session?.snapshot.runtimeInputs?.planFeatures ?? await this.throttle.getPlanFeatures(tenantId, executionContext);
             let allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
 
             // LLM cost circuit breaker: once month-to-date LLM spend exceeds the
@@ -3257,7 +3268,7 @@ export class ConversationsService {
             // budget, replying on a weaker model beats not replying.
             let budgetConstrained = false;
             if (llmBudgetUsdCents > 0) {
-                const spentUsdCents = await this.throttle.getLlmSpendUsdCents(tenantId);
+                const spentUsdCents = session?.snapshot.runtimeInputs?.llmSpendUsdCents ?? await this.throttle.getLlmSpendUsdCents(tenantId);
                 if (spentUsdCents >= llmBudgetUsdCents) {
                     const clamped = allowedTiers.filter(t => t === 'tier_3_efficient' || t === 'tier_4_budget');
                     allowedTiers = clamped.length ? clamped : ['tier_4_budget'];

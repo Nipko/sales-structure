@@ -3,6 +3,7 @@ import { ToolApprovalEffectsService } from './tool-approval-effects.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
 import { LearningModule } from '../learning/learning.module';
+import { EvaluationRevisionModule } from '../evaluation-revision/evaluation-revision.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -78,6 +79,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
     imports: [
         PersonaModule,
         LearningModule,
+        EvaluationRevisionModule,
         AIModule,
         forwardRef(() => ChannelsModule),
         HandoffModule,

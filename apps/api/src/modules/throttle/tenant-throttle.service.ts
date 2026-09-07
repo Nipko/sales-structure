@@ -161,7 +161,7 @@ export class TenantThrottleService {
      */
     async getPlanFeatures(tenantId: string, executionContext?: ServiceExecutionContext): Promise<Record<string, any>> {
         const cacheKey = `plan_features:${tenantId}`;
-        const cached = await this.redis.getJson(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.getJson(cacheKey);
         if (cached) {
             const overrides = await this.getQuotaOverrides(tenantId);
             return this.applyOverrides(cached as Record<string, any>, overrides);
@@ -442,7 +442,7 @@ export class TenantThrottleService {
      */
     async getTenantPlan(tenantId: string, executionContext?: ServiceExecutionContext): Promise<string> {
         const cacheKey = `tenant_plan:${tenantId}`;
-        const cached = await this.redis.get(cacheKey);
+        const cached = persistenceDisabled(executionContext) ? null : await this.redis.get(cacheKey);
         if (cached) return cached;
 
         try {
@@ -453,7 +453,8 @@ export class TenantThrottleService {
             const plan = tenant?.plan || DEFAULT_PLAN;
             if (!persistenceDisabled(executionContext)) await this.redis.set(cacheKey, plan, PLAN_CACHE_TTL);
             return plan;
-        } catch {
+        } catch (error) {
+            if (persistenceDisabled(executionContext)) throw error;
             return DEFAULT_PLAN;
         }
     }

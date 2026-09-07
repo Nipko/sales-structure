@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ModelTier, RoutingFactors, RoutingDecision } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
@@ -125,6 +126,14 @@ export class LLMRouterService {
         const provider = this.providers.find(p => p.providerName === name);
         if (!provider) throw new Error(`Provider ${name} not found`);
         return provider;
+    }
+
+    /** The exact routing policy/configuration used by readonly evaluations; exposes no prices or credentials. */
+    async evaluationRoutingSignature(): Promise<string> {
+        const configured = await Promise.all(['openai','anthropic','google','xai','deepseek'].map(async name =>
+            [name, await this.llmKeys.isConfigured(name)]));
+        return createHash('sha256').update(JSON.stringify({registry:MODEL_REGISTRY, chains:FALLBACK_CHAINS,
+            leadTiers:[...TOOL_CALLING_LEAD_TIERS], configured, providers:this.providers.map(provider => provider.providerName).sort()})).digest('hex');
     }
 
     private breakerOpenKey(provider: string): string {

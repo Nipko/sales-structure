@@ -1,4 +1,6 @@
 import { bindCanonicalEvalFixtures } from './eval-canonical-fixtures';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -10,7 +12,7 @@ import { PersonaService } from '../persona/persona.service';
 import { QualityService, JudgeResult } from '../quality/quality.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
-import { AgentEvaluationSnapshot, evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { EvalService, EvalSandboxSession } from './eval.service';
 import { auditTurnClaim } from '../../common/utils/outcome-claim.util';
 
@@ -97,7 +99,7 @@ export class SimulationService {
     // Table bootstrap
     // ---------------------------------------------------------------------
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `simulation_cols:v2:${schemaName}`;
+        const cacheKey = `simulation_cols:v3:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -137,6 +139,7 @@ export class SimulationService {
         );
 
         await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS scenario_definitions JSONB`);
+        await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS evaluation_snapshot JSONB`);
         await this.redis.set(cacheKey, '1', 86400);
     }
 
@@ -156,17 +159,17 @@ export class SimulationService {
         if (!CONVERSATIONAL_CHANNELS.includes(channelType as any)) throw new BadRequestException('Unsupported conversational channel');
         const agent = await this.personaService.getAgent(tenantId, agentId);
         if (!agent) throw new BadRequestException('Agent not found');
-        const snapshot = evaluationSnapshot(tenantId, agentId, agent);
+        const snapshot = await this.agentTest.captureSnapshot(tenantId, agentId);
         const source = input.scenarioSource === 'replay' ? 'replay' : 'synthetic';
 
         const requestedCount = Math.min(Math.max(Number(input.count) || 50, 1), MAX_COUNT);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO simulation_runs
-                (agent_id, channel_type, scenario_source, vertical, status, scenario_count, baseline_run_id, created_by, persona_version, persona_snapshot)
-             VALUES ($1::uuid, $2, $3, $4, 'pending', $5, $6::uuid, $7, $8, $9::jsonb)
+                (agent_id, channel_type, scenario_source, vertical, status, scenario_count, baseline_run_id, created_by, persona_version, persona_snapshot, evaluation_snapshot)
+             VALUES ($1::uuid, $2, $3, $4, 'pending', $5, $6::uuid, $7, $8, $9::jsonb, $10::jsonb)
              RETURNING id`,
-            [agentId, channelType, source, input.vertical || null, requestedCount, input.baselineRunId || null, input.createdBy || null, snapshot.version, JSON.stringify(snapshot.config)],
+            [agentId, channelType, source, input.vertical || null, requestedCount, input.baselineRunId || null, input.createdBy || null, snapshot.version, JSON.stringify(snapshot.config), JSON.stringify(snapshot)],
         );
         const runId: string = rows?.[0]?.id;
 
@@ -245,12 +248,10 @@ export class SimulationService {
             const agentId: string = run.agent_id;
             const channelType: string = run.channel_type || 'web_widget';
             if (!(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channelType)) throw new Error('unsupported_conversational_channel');
-            const agent = run.persona_snapshot ? { config_json: run.persona_snapshot, version: run.persona_version }
-                : await this.personaService.getAgent(tenantId, agentId);
-            if (!agent) throw new Error(`Agent ${agentId} not found`);
-            const personaVersion = agent.version ?? null;
-            const personaSnapshot = JSON.parse(JSON.stringify(agent.config_json));
-            const snapshot = evaluationSnapshot(tenantId, agentId, agent, run.created_at ? new Date(run.created_at).toISOString() : undefined);
+            const snapshot: AgentEvaluationSnapshot = run.evaluation_snapshot;
+            await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+            const personaVersion = snapshot.version;
+            const personaSnapshot = structuredClone(snapshot.config);
 
             // 1. Build scenario set. (scenario_count holds the requested count until
             // the run completes, when it is overwritten with the actual scenario count.)
@@ -270,11 +271,12 @@ export class SimulationService {
             } else {
                 scenarios = await this.generateSyntheticScenarios(
                     tenantId,
-                    run.vertical || (personaSnapshot?.business?.industry as string) || null,
+                    run.vertical || personaSnapshot.industry || null,
                     requestedCount || 50,
                 );
             }
             if (!scenarios.length) throw new Error('Simulation produced no scenarios');
+            await this.agentTest.assertSnapshotCurrent(snapshot);
 
             await this.prisma.executeInTenantSchema(
                 schemaName,
@@ -296,8 +298,11 @@ export class SimulationService {
 
 
             // 3. Aggregate + regression diff.
+            await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
             const summary = await this.buildSummary(schemaName, results, baselineRunId);
-            summary.agentRevision = { version: snapshot.version, configHash: snapshot.configHash, capturedAt: snapshot.capturedAt };
+            summary.agentRevision = { version: snapshot.version, configHash: snapshot.configHash, capturedAt: snapshot.capturedAt,
+                dependencyRevision: snapshot.manifest!.revision, strategy: snapshot.manifest!.strategy, limitations: snapshot.manifest!.limitations };
+            summary.scenarioSetHash = revisionHash(scenarios);
             summary.channelType = channelType;
             summary.executionSurface = 'audited_tool_sandbox';
 
@@ -438,6 +443,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 // valores por defecto la simulación no podía terminar NUNCA.
                 maxTokens: Math.min(8000, 800 + n * 160),
                 tenantId,
+                executionContext: AGENT_TEST_EXECUTION_CONTEXT,
             });
             raw = res.content || '';
         } catch (err: any) {
@@ -502,10 +508,12 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 const idx = cursor++;
                 if (idx >= scenarios.length) break;
                 try {
-                    const completed = previous.find(r => r.key === scenarios[idx].key && isScoredScenario(r));
+                    const scenarioHash = revisionHash(scenarios[idx]);
+                    const completed = previous.find(r => r.key === scenarios[idx].key && (r as any).scenarioHash === scenarioHash && isScoredScenario(r));
                     if (completed) { results[idx] = completed; continue; }
                     await session?.reset(channelType, snapshot);
                     results[idx] = await this.runScenario(tenantId, agentId, channelType, session?.fixtures ? bindCanonicalEvalFixtures(scenarios[idx],session.fixtures) : scenarios[idx], snapshot, session);
+                    Object.assign(results[idx], {scenarioHash});
                 } catch (err: any) {
                     const s = scenarios[idx];
                     results[idx] = {
@@ -578,7 +586,9 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             for (let turn = 0; turn < MAX_TURNS; turn++) {
                 await askAgent(customerMsg);
                 if (turn === MAX_TURNS - 1) break;
+                await this.agentTest.assertSnapshotCurrent(snapshot);
                 const next = await this.nextCustomerMessage(tenantId, scenario, transcript);
+                await this.agentTest.assertSnapshotCurrent(snapshot);
                 if (next === '[FIN]') break;
                 customerMsg = next;
             }
@@ -588,7 +598,9 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             .map((t) => `${t.role === 'customer' ? 'Cliente' : 'Agente'}: ${t.content}`)
             .join('\n');
 
-        const judge = await this.qualityService.judgeTranscript(tenantId, transcriptText);
+        await this.agentTest.assertSnapshotCurrent(snapshot);
+        const judge = await this.qualityService.judgeTranscript(tenantId, transcriptText, AGENT_TEST_EXECUTION_CONTEXT);
+        await this.agentTest.assertSnapshotCurrent(snapshot);
 
         return {
             ...scenario,
@@ -641,6 +653,7 @@ Reglas:
                 temperature: 0.6,
                 maxTokens: 200,
                 tenantId,
+                executionContext: AGENT_TEST_EXECUTION_CONTEXT,
             });
             const next = (res.content || '').trim();
             if (!next) throw new Error('empty_customer_message');

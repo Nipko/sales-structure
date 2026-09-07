@@ -1,13 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { AgentTestService } from '../conversations/agent-test.service';
 
 /** PostgreSQL is the request authority; BullMQ is a recoverable delivery mechanism. */
 @Injectable()
 export class EvalAutorunStateService {
     private readonly ensured = new Set<string>();
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(private readonly prisma: PrismaService, @Optional() private readonly agentTest?: AgentTestService) {}
 
     private async schema(tenantId: string): Promise<string> {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
@@ -28,7 +28,8 @@ export class EvalAutorunStateService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
             'SELECT config_json, version FROM agent_personas WHERE id = $1::uuid', [agentId]);
         if (!rows?.[0]) throw new Error('agent_not_found');
-        const snapshot = evaluationSnapshot(tenantId, agentId, rows[0]);
+        if (!this.agentTest) throw new Error('evaluation_revision_service_unavailable');
+        const snapshot = await this.agentTest.captureSnapshot(tenantId, agentId);
         const revision = randomUUID();
         await this.prisma.executeInTenantSchema(schema, `INSERT INTO eval_autorun_requests (agent_id, revision, agent_snapshot, next_attempt_at)
             VALUES ($1::uuid, $2::uuid, $3::jsonb, NOW() + INTERVAL '30 seconds')

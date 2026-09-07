@@ -31,6 +31,7 @@ export function sessionToolExecutor(executor: AIToolExecutorService, session: Ag
                 executionState: session.state,
                 channelType: session.channelType,
             });
+            await session.afterDependencyRead?.();
             } catch (error: any) {
                 session.trace.error = String(error?.message || error);
                 session.trace.toolCalls.push({ name, args: (args || {}) as Record<string, unknown>,
@@ -55,6 +56,7 @@ export function sessionLlmRouter(router: LLMRouterService, session: AgentTurnSes
             session.trace.providerCalls++;
             const response = await router.execute({ ...request, executionContext: session.executionContext });
             session.trace.provider(response);
+            await session.afterDependencyRead?.();
             return response;
         } catch (error: any) {
             session.trace.error = String(error?.message || error);

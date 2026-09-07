@@ -39,6 +39,8 @@ export interface ComposedTurnCapability {
 }
 
 export interface ComposeTurnCapabilityInput {
+    /** Server-only evaluation adapter: already captured and integrity-checked, never a public DTO field. */
+    evaluationInputs?: { providerHealth: Record<string, any>; mcp: { tools: ToolDefinition[]; discoveredCount: number; approvedCount: number } };
     executionContext?: ServiceExecutionContext;
     tenantId: string;
     schemaName: string;
@@ -123,7 +125,7 @@ export class TurnCapabilityComposerService {
         let providers: Readonly<Record<string, ProviderHealthInput>> | undefined;
 
         try {
-            const health = await this.verticalIntegrations.getAllHealth(input.tenantId);
+            const health = input.evaluationInputs?.providerHealth ?? await this.verticalIntegrations.getAllHealth(input.tenantId);
             providers = Object.fromEntries(Object.entries(health).map(([name, value]: [string, any]) => [
                 name,
                 {
@@ -259,7 +261,7 @@ export class TurnCapabilityComposerService {
         // MCP discovery is not authority. `listPublishableTools` already keeps
         // only tools whose effect/confirmation policy a person reviewed.
         try {
-            const mcp = await this.mcpClient.listPublishableTools(input.tenantId, input.executionContext);
+            const mcp = input.evaluationInputs?.mcp ?? await this.mcpClient.listPublishableTools(input.tenantId, input.executionContext);
             tools = uniqueTools([...tools, ...mcp.tools]);
             if (mcp.discoveredCount > mcp.approvedCount) {
                 exclusions.push({

@@ -1,4 +1,6 @@
 import { prepareCanonicalEvalFixtures, bindCanonicalEvalFixtures, type CanonicalEvalFixtures } from './eval-canonical-fixtures';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { IsolatedEvalNamespace, type EvalNamespaceLease } from './isolated-eval-namespace';
 import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -491,8 +493,9 @@ export class EvalService {
                 const scenarios = (opts?.scenarios || await this.listScenarios(tenantId))
                     .filter(scenario => (scenario.seedState || 'active') === 'active');
                 snapshot = opts?.agentSnapshot || await this.agentTest.captureSnapshot(tenantId, agentId);
+                await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
                 for (const sc of scenarios) {
-                    const completed = opts?.previousResults?.find(row => row.key === sc.key && !row.error && Number.isFinite(row.score));
+                    const completed = opts?.previousResults?.find(row => row.key === sc.key && row.scenarioHash === revisionHash(sc) && !row.error && Number.isFinite(row.score));
                     if (completed) { out.push(completed); continue; }
                     activeScenario = sc;
                     const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
@@ -501,11 +504,12 @@ export class EvalService {
                     await opts?.onScenarioCompleted?.(out);
                     activeScenario = undefined;
                 }
+                await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
                 const avgScore = out.length ? Math.round((out.reduce((sum, row) => sum + row.score, 0) / out.length) * 100) / 100 : 0;
                 const passed = out.length > 0 && out.every(row => row.passed);
                 const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out,
                     evalActivable: passed && avgScore >= (opts?.activationThreshold ?? threshold),
-                    agentSnapshot: snapshot, channelType, status: 'completed' };
+                    agentSnapshot: snapshot, scenarioSetHash: revisionHash(scenarios), channelType, status: 'completed' };
                 await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
                 this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
                 return result;
@@ -542,6 +546,7 @@ export class EvalService {
         const required = passPolicy === 'all' ? k : Math.floor(k / 2) + 1;
         return {
             key: sc.key,
+            scenarioHash: revisionHash(sc),
             title: sc.title,
             k,
             passes,
@@ -591,7 +596,9 @@ export class EvalService {
             let transcript = lines.join('\n');
             if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
             await beforeModelUnits?.(1);
-            const judge = await this.quality.judgeTranscript(tenantId, transcript);
+            await this.agentTest.assertSnapshotCurrent(snapshot);
+            const judge = await this.quality.judgeTranscript(tenantId, transcript, AGENT_TEST_EXECUTION_CONTEXT);
+            await this.agentTest.assertSnapshotCurrent(snapshot);
             const score = judge.overall;
 
             let actionsPassed = true;

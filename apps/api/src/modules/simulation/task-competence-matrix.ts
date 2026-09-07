@@ -1,9 +1,25 @@
 import { buildDomainContractDraft, composeSubtypeEvalPack, CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES,
     listCanonicalSubtypeExperienceProfileIds, listSubtypeExperienceProfileIds, resolveSubtypeExperienceProfile,
     VERTICAL_DOMAIN_CONTRACT_VERSION } from '@parallext/shared';
+import type { EvalScenarioSeed } from '@parallext/shared';
 import { TOOL_POLICY_REGISTRY } from '../conversations/tool-policy-registry';
 import { CORE_PREREQUISITES } from '../conversations/tool-task-dependencies';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
+import { CANONICAL_EVAL_TOOL_FAMILIES } from './isolated-eval-namespace';
+
+/** Setup effects cannot establish that the task's own committing operation succeeded. */
+export function hasPositiveTaskAssertion(toolPlan: readonly string[], scenario: Pick<EvalScenarioSeed, 'expectedActions'>): boolean {
+    const actions = scenario.expectedActions || [];
+    return toolPlan.some(tool => {
+        const policy = TOOL_POLICY_REGISTRY[tool];
+        if (!policy || !(policy.effect === 'write' || policy.commitsBusiness)) return false;
+        if (!actions.some(action => action.kind === 'tool_call' && action.type === 'called' && action.tool === tool)
+            || actions.some(action => action.kind === 'tool_call' && action.type === 'not_called' && action.tool === tool)) return false;
+        const family = Object.entries(EVAL_WRITER_SANDBOX_FAMILIES).find(([name, entry]) => entry.tools.includes(tool) || CANONICAL_EVAL_TOOL_FAMILIES[tool] === name);
+        return !!family && actions.some(action => action.kind === 'db_effect' && action.family === family[0] && action.table === family[1].table
+            && (action.type === 'row_exists' || (action.type === 'row_count' && (action.count ?? 1) > 0)));
+    });
+}
 
 /** Declared coverage, deliberately separate from a tenant's execution results or certification. */
 export function buildTaskCompetenceMatrix(profileId?: string) {
@@ -25,7 +41,7 @@ export function buildTaskCompetenceMatrix(profileId?: string) {
             tasks: domain.intents.map(intent => {
                 const tools = [...new Set([...intent.toolPlan, ...intent.toolPlan.flatMap(name => CORE_PREREQUISITES[name] || [])])].map(name => {
                     const policy = TOOL_POLICY_REGISTRY[name];
-                    const familyEntry = Object.entries(EVAL_WRITER_SANDBOX_FAMILIES).find(([, family]) => family.tools.includes(name));
+                    const familyEntry = Object.entries(EVAL_WRITER_SANDBOX_FAMILIES).find(([key, family]) => family.tools.includes(name) || CANONICAL_EVAL_TOOL_FAMILIES[name] === key);
                     const family = familyEntry?.[1];
                     return { name, registered: !!policy, prerequisite: !intent.toolPlan.includes(name),
                         effect: policy?.effect ?? 'unknown', commitsBusiness: policy?.commitsBusiness ?? false,
@@ -39,8 +55,7 @@ export function buildTaskCompetenceMatrix(profileId?: string) {
                 });
                 const scenarios = packs.map(pack => {
                     const matching = pack.scenarios.filter(scenario => scenario.key.startsWith(`intent_${intent.key}_`));
-                    const positive = matching.filter(scenario => scenario.expectedActions?.some(action => action.kind === 'db_effect' &&
-                        (action.type === 'row_exists' || (action.type === 'row_count' && (action.count ?? 1) > 0))));
+                    const positive = matching.filter(scenario => hasPositiveTaskAssertion(intent.toolPlan, scenario));
                     const negative = matching.filter(scenario => scenario.expectedActions?.some(action =>
                         action.kind === 'tool_call' ? action.type === 'not_called' : action.type === 'no_row'));
                     return { language: pack.language, cases: matching.map(scenario => scenario.storageKey || scenario.key),

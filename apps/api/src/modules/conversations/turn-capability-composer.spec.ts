@@ -77,6 +77,17 @@ const config = (industry: string, tools: Record<string, unknown>, extra: Record<
 } as any);
 
 describe('TurnCapabilityComposerService', () => {
+    it('uses the captured MCP and provider definitions without live discovery during an evaluation',async()=>{
+        const f=build();
+        f.mcp.listPublishableTools.mockRejectedValue(new Error('live discovery forbidden'));
+        f.verticalIntegrations.getAllHealth.mockRejectedValue(new Error('live health forbidden'));
+        const tool={name:'mcp__reviewed_lookup',description:'Captured schema',parameters:{type:'object',properties:{}},reviewedEffect:'read'};
+        const result=await f.service.resolve({tenantId,schemaName,config:config('retail',{}),industry:'retail',subType:'moda',
+            evaluationInputs:{providerHealth:{},mcp:{tools:[tool],discoveredCount:1,approvedCount:1}}});
+        expect(f.mcp.listPublishableTools).not.toHaveBeenCalled();
+        expect(f.verticalIntegrations.getAllHealth).not.toHaveBeenCalled();
+        expect(result.tools).toEqual(expect.arrayContaining([tool]));
+    });
     it('keeps horizontal/core families while the subtype ceiling rejects an unrelated vertical', async () => {
         const { service } = build();
 

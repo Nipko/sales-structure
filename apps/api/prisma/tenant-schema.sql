@@ -3707,6 +3707,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."simulation_runs" (
 CREATE INDEX IF NOT EXISTS idx_simruns_created ON "{{SCHEMA_NAME}}"."simulation_runs"(created_at);
 CREATE INDEX IF NOT EXISTS idx_simruns_agent ON "{{SCHEMA_NAME}}"."simulation_runs"(agent_id);
 ALTER TABLE "{{SCHEMA_NAME}}"."simulation_runs" ADD COLUMN IF NOT EXISTS scenario_definitions JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."simulation_runs" ADD COLUMN IF NOT EXISTS evaluation_snapshot JSONB;
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_scenarios" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key TEXT UNIQUE NOT NULL,

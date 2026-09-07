@@ -23,7 +23,7 @@ describe('agent quality completion events', () => {
             };
             const eventEmitter = { emit: jest.fn() };
             const quality = { judgeTranscript: jest.fn() };
-            const agentTest = { test: jest.fn(), captureSnapshot: jest.fn().mockResolvedValue({ config: {}, version: 3 }) };
+            const agentTest = { test: jest.fn(), assertSnapshotCurrent: jest.fn(), captureSnapshot: jest.fn().mockResolvedValue({ config: {}, version: 3 }) };
             const service = new EvalService(
                 { getTenantSchemaName: jest.fn().mockResolvedValue('tenant_eval') } as any,
                 agentTest as any,
@@ -131,12 +131,16 @@ describe('agent quality completion events', () => {
                         scenario_count: 1,
                         baseline_run_id: null,
                         vertical: null,
+                        evaluation_snapshot: agent ? { version:agent.version, config:agent.config_json, configHash:'config', capturedAt:'2026-09-07T00:00:00Z',
+                            manifest:{revision:'dependencies',strategy:'guarded_live_dependencies',limitations:[]} } : undefined,
                     }])
                     .mockResolvedValue(undefined),
             };
             const eventEmitter = { emit: jest.fn() };
             const qualityService = { judgeTranscript: jest.fn() };
-            const agentTest = { test: jest.fn() };
+            const agentTest = { test: jest.fn(), assertSnapshotCurrent: jest.fn(async (snapshot: any) => {
+                if (!snapshot && !agent) throw new Error('evaluation_revision_manifest_required');
+            }) };
             const service = new SimulationService(
                 prisma as any,
                 {} as any,
@@ -180,7 +184,7 @@ describe('agent quality completion events', () => {
         it('emits failure and rejects so the worker cannot mark a broken run successful', async () => {
             const { service, eventEmitter } = makeService(null);
 
-            await expect(service.executeRun(tenantId, runId)).rejects.toThrow(`Agent ${agentId} not found`);
+            await expect(service.executeRun(tenantId, runId)).rejects.toThrow('evaluation_revision_manifest_required');
 
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_SIMULATION_FAILED_EVENT, {
                 tenantId,

@@ -2,6 +2,7 @@ import {
     classifyExplicitToolConfirmation,
     ToolExecutionControlService,
 } from './tool-execution-control.service';
+import { bindMcpArguments, type McpToolApproval } from '../mcp/mcp-tool-approval';
 
 const schemaName = 'tenant_dec_controls';
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -274,6 +275,45 @@ function createHarness(identityVerified = true) {
 }
 
 describe('ToolExecutionControlService', () => {
+    const mcpReview: McpToolApproval = {
+        serverId: 'erp', toolName: 'operation', effect: 'write', definitionHash: 'a'.repeat(64),
+        dataClassification: 'contact', contactIdArgument: 'contactId', tenantIdArgument: 'tenantId',
+        requiresConfirmation: true, requiresHumanApproval: false,
+        approvedBy: 'owner', approvedAt: '2026-09-06T00:00:00Z',
+    };
+
+    it('executes a reviewed MCP writer only after signed confirmation, with a replayable ledger', async () => {
+        const { service, state } = createHarness();
+        const args = bindMcpArguments(mcpReview, { contactId: 'foreign', tenantId: 'foreign' }, tenantId, contactId);
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'mcp__erp__operation', args, mcpApproval: mcpReview };
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        expect(args).toMatchObject({ contactId, tenantId });
+        state.latestMessage = state.messages[1];
+        const decision = await service.preflight(request);
+        expect(decision).toMatchObject({ allowed: true, policy: { origin: 'mcp', effect: 'write', idempotency: 'central_ledger' } });
+        await service.complete(schemaName, decision, { result: 'created', _executionEffect: 'write' });
+        expect(state.ledger.status).toBe('succeeded');
+        expect(await service.preflight(request)).toMatchObject({ allowed: false, result: { result: 'created' } });
+    });
+
+    it('a reviewed public read runs without a ledger, but a requested human gate is preserved', async () => {
+        const { service, state } = createHarness();
+        const review = { ...mcpReview, effect: 'read' as const, dataClassification: 'public' as const, requiresConfirmation: false };
+        const request = { schemaName, tenantId, contactId, conversationId, toolName: 'mcp__erp__operation', args: {}, mcpApproval: review };
+        expect(await service.preflight(request)).toMatchObject({ allowed: true, policy: { effect: 'read' } });
+        expect(state.ledgers).toHaveLength(0);
+        expect(await service.preflight({ ...request, mcpApproval: { ...review, requiresHumanApproval: true } })).toMatchObject({
+            allowed: false, result: { error: 'approval_required' },
+        });
+    });
+
+    it('old or malformed MCP reviews remain inoperative', async () => {
+        const { service } = createHarness();
+        expect(await service.preflight({ schemaName, tenantId, contactId, conversationId, toolName: 'mcp__erp__operation', args: {},
+            mcpApproval: { ...mcpReview, definitionHash: undefined },
+        })).toMatchObject({ allowed: false, result: { error: 'opaque_tool_not_approved' } });
+    });
+
     it('accepts only explicit bounded confirmations in supported languages', () => {
         for (const value of ['sí', 'I confirm', 'pode fazer', 'je confirme']) {
             expect(classifyExplicitToolConfirmation(value)).toBe('confirmed');

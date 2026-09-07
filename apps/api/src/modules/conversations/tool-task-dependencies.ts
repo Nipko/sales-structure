@@ -2,7 +2,7 @@ import type { ToolDefinition } from '@parallext/shared';
 import { isBusinessWriteTool } from './tool-policy-registry';
 
 /** Core lifecycles also apply when they are not a vertical's primary mission. */
-const CORE_PREREQUISITES: Readonly<Record<string, readonly string[]>> = {
+export const CORE_PREREQUISITES: Readonly<Record<string, readonly string[]>> = {
     create_appointment: ['list_services', 'check_availability'],
     cancel_appointment: ['list_customer_appointments', 'get_appointment_details'],
     reschedule_appointment: ['list_customer_appointments', 'get_appointment_details', 'check_availability'],
@@ -14,7 +14,7 @@ const CORE_PREREQUISITES: Readonly<Record<string, readonly string[]>> = {
     cancel_enrollment: ['list_my_enrollments'],
     create_property_booking: ['list_properties', 'check_property_availability'],
     cancel_property_booking: ['list_my_property_bookings'],
-    create_tour_booking: ['list_tours', 'check_tour_availability'],
+    create_tour_booking: ['search_packages', 'get_package_details', 'check_package_availability'],
     cancel_tour_booking: ['list_my_tour_bookings'],
     place_order: ['get_menu'],
     cancel_order: ['list_my_orders', 'check_order_status'],

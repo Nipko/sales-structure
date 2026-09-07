@@ -3685,7 +3685,7 @@ export class ConversationsService {
             // omission here: the booking exists, the payment link was issued, and
             // the customer — told nothing happened — asks for it again.
             const committed = executedToolsThisTurn.filter(
-                t => (isBusinessWriteTool(t.name) || t.name.startsWith('mcp__')) && toolResultSucceeded(t.result),
+                t => (t.name.startsWith('mcp__') ? t.result?._executionEffect === 'write' : isBusinessWriteTool(t.name)) && toolResultSucceeded(t.result),
             );
             if (committed.length) {
                 this.logger.error(`[Pipeline] Turn failed AFTER committing ${committed.map(t => t.name).join(', ')} — telling the customer the truth instead of the generic error`);
@@ -3815,6 +3815,7 @@ export class ConversationsService {
             const entries = executed.slice(-RECENT_ACTIONS_MAX).map(t => ({
                 tool: t.name,
                 ok: toolResultSucceeded(t.result),
+                executionEffect: t.name.startsWith('mcp__') ? t.result?._executionEffect : undefined,
                 // Sobrevive al turno porque el guardrail lo necesita: una
                 // operacion escrita pero impaga no respalda un "confirmada",
                 // ni ahora ni dentro de tres turnos.
@@ -4110,13 +4111,13 @@ export class ConversationsService {
      */
     private backingEvidence(
         executed?: Array<{ name: string; result: any }>,
-        prior?: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }>,
+        prior?: Array<{ tool?: string; ok?: boolean; awaiting?: boolean; executionEffect?: string }>,
     ): Array<{ name: string; result: any }> {
         const fromPrior = (prior || [])
             .filter(a => a?.ok === true && typeof a.tool === 'string')
             .map(a => ({
                 name: a.tool as string,
-                result: { success: true, awaitingPayment: a.awaiting === true },
+                result: { success: true, awaitingPayment: a.awaiting === true, _executionEffect: a.executionEffect },
             }));
         return [...(executed || []), ...fromPrior];
     }
@@ -4143,8 +4144,8 @@ export class ConversationsService {
         // any of those was audited as invented. Unknown/MCP tools that succeeded
         // count as backing — we cannot prove they did nothing, and calling a real
         // booking a lie is the more expensive mistake.
-        const isBackingTool = (name: string) => (
-            isBusinessWriteTool(name) || name.startsWith('mcp__')
+        const isBackingTool = (name: string, result?: any) => (
+            name.startsWith('mcp__') ? result?._executionEffect === 'write' : isBusinessWriteTool(name)
         );
         const backing = this.backingEvidence(executedTools, priorActions);
         const claimAudit = auditTurnClaim(response, backing, { isBackingTool });
@@ -4195,7 +4196,7 @@ export class ConversationsService {
         //
         // Sólo se controla en ese caso: fuera de él, "dame un momento" es una
         // frase legítima y el auditor de reclamos la excluye a propósito.
-        const outcomeAlreadyKnown = (executedTools || []).some(t => isBackingTool(t?.name));
+        const outcomeAlreadyKnown = (executedTools || []).some(t => isBackingTool(t?.name, t?.result));
         // Excepción: si el backend va a mandar el enlace en una burbuja aparte,
         // "el enlace va enseguida" es CIERTO y no hay que reescribirlo. Sin esta
         // salvedad los dos arreglos se pisan: uno le pide al modelo que anuncie

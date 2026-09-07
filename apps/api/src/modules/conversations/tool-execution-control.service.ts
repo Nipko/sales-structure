@@ -15,6 +15,8 @@ import {
 } from '../../common/conversation/intent-normalizer';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
+import { reviewedMcpPolicy } from '../mcp/mcp-execution-policy';
+import type { McpToolApproval } from '../mcp/mcp-tool-approval';
 
 /**
  * A pending confirmation lives as long as the conversation session does.
@@ -135,11 +137,7 @@ export interface ToolExecutionControlRequest {
      * absent the guard resolves it itself; either way an unapproved remote tool
      * is refused.
      */
-    mcpApproval?: {
-        effect: string;
-        requiresConfirmation: boolean;
-        requiresHumanApproval: boolean;
-    } | null;
+    mcpApproval?: McpToolApproval | null;
 }
 
 export type ToolExecutionControlDecision =
@@ -908,7 +906,7 @@ export class ToolExecutionControlService {
     }
 
     async preflight(request: ToolExecutionControlRequest): Promise<ToolExecutionControlDecision> {
-        const policy = getToolPolicy(request.toolName);
+        let policy = getToolPolicy(request.toolName);
         if (!policy) return this.block('unknown_tool', 'La herramienta no está registrada.');
         // This must precede identity challenges, lazy tables and the ledger:
         // preparing a human-reviewed answer cannot itself send an OTP or act.
@@ -924,21 +922,15 @@ export class ToolExecutionControlService {
             // published would let a Procedure or a stale prompt smuggle a remote
             // call past review. Absent an approval, this stays blocked.
             // Fail closed: no approval resolved by the caller means no approval.
-            const approval = request.mcpApproval ?? null;
-            if (!approval) {
+            const reviewed = reviewedMcpPolicy(request.mcpApproval);
+            if (!reviewed) {
                 return this.block(
                     'opaque_tool_not_approved',
                     'La herramienta externa no tiene controles revisados y no puede ejecutarse.',
                     true,
                 );
             }
-            if (approval.effect !== 'read' && !approval.requiresConfirmation) {
-                return this.block(
-                    'opaque_tool_not_approved',
-                    'La herramienta externa no tiene política de confirmación y no puede ejecutarse.',
-                    true,
-                );
-            }
+            policy = reviewed;
         }
         if (policy.assuranceEnforcement === 'missing'
             || policy.idempotency === 'missing'

@@ -76,6 +76,9 @@ describe('MCP: descubrir no es autorizar', () => {
         toolName: 'lookup',
         approvedBy: 'owner@negocio.com',
         approvedAt: '2026-08-20T00:00:00.000Z',
+        definitionHash: 'a'.repeat(64),
+        dataClassification: 'contact',
+        contactIdArgument: 'contactId',
     };
 
     it('un tenant sin aprobaciones no publica nada', () => {

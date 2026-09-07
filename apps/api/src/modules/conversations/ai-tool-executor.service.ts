@@ -29,6 +29,7 @@ import { TasksService } from '../crm/services/tasks/tasks.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
+import { bindMcpArguments } from '../mcp/mcp-tool-approval';
 import {
     TOOL_READ_ERROR_CODES,
     decideToolAuthority,
@@ -294,6 +295,7 @@ export class AIToolExecutorService {
             const mcpApproval = toolName.startsWith('mcp__') && this.mcpClient?.getApproval
                 ? await this.mcpClient.getApproval(tenantId, toolName).catch(() => null)
                 : null;
+            if (mcpApproval) args = bindMcpArguments(mcpApproval, args, tenantId, contactId);
 
             // ═══ LA PUERTA COMÚN, AHORA DEFAULT-DENY ═══
             //
@@ -456,6 +458,7 @@ export class AIToolExecutorService {
             // correctly refuses to preserve the discriminated-union narrowing
             // inside that later closure.
             const executionIdempotencyKey = controlDecision.idempotencyKey;
+            const executionPolicy = controlDecision.policy;
 
             const executeHandler = async (): Promise<any> => {
 
@@ -476,7 +479,8 @@ export class AIToolExecutorService {
 
             // External MCP tools (T3.20) — namespaced mcp__{server}__{tool}.
             if (toolName.startsWith('mcp__')) {
-                return this.mcpClient.callRemoteTool(tenantId, toolName, args);
+                const remote = await this.mcpClient.callRemoteTool(tenantId, toolName, args);
+                return { ...remote, _executionEffect: executionPolicy.commitsBusiness ? 'write' : 'read' };
             }
 
             switch (toolName) {
@@ -965,7 +969,11 @@ export class AIToolExecutorService {
             // LLM — error.message can carry schema names and raw SQL fragments from
             // the DB driver that could otherwise be surfaced to the customer.
             this.logger.error(`[Tool] ${toolName} failed: ${error.message}`);
-            return { error: 'tool_failed', message: 'No se pudo completar esta acción en este momento.' };
+            const uncertain = controlDecision?.allowed && !!controlDecision.ledgerId
+                && controlDecision.policy.externalEffect !== 'none';
+            return uncertain
+                ? { error: 'reconciliation_required', shouldHandoff: true, message: 'No pude verificar el resultado de la acción; requiere revisión antes de repetirla.' }
+                : { error: 'tool_failed', message: 'No se pudo completar esta acción en este momento.' };
         }
     }
 

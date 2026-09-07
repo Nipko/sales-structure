@@ -61,7 +61,7 @@ export function claimsCompletedAction(reply: unknown): boolean {
 export function toolResultSucceeded(result: unknown): boolean {
     if (!result || typeof result !== 'object') return false;
     const row = result as Record<string, unknown>;
-    if (row.error) return false;
+    if (row.error || row.isError === true) return false;
     if (row.success === false) return false;
     return true;
 }
@@ -98,7 +98,7 @@ export interface TurnClaimAuditOptions {
      * the API pass the tool-policy registry so the audit tracks the real writer
      * set instead of a name heuristic.
      */
-    isBackingTool?: (name: string) => boolean;
+    isBackingTool?: (name: string, result?: unknown) => boolean;
 }
 
 /**
@@ -122,7 +122,7 @@ export function auditTurnClaim(
     const isBacking = options.isBackingTool || ((name: string) => BACKING_TOOL_NAME.test(name));
     const backed = (toolCalls || []).some((call) => (
         typeof call?.name === 'string'
-        && isBacking(call.name)
+        && isBacking(call.name, call.result)
         && toolResultSucceeded(call.result)
         // Escrita pero NO confirmada: el dueño exige pago y el cupo sigue a la
         // venta. La operación existe —por eso `toolResultSucceeded` es true— y

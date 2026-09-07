@@ -17,6 +17,8 @@
  * must say exactly that.
  */
 import type { ToolEffectDeclaration } from './mcp-approval.types';
+import { createHash } from 'crypto';
+import type { ToolDefinition } from '@parallext/shared';
 
 export interface McpToolApproval {
     /** Server id as stored in `tenant.settings.mcpServers[].id`. */
@@ -34,11 +36,59 @@ export interface McpToolApproval {
     approvedAt: string;
     /** Free-text justification kept with the record. */
     notes?: string;
+    /** A review is bound to a server endpoint and the discovered input contract. */
+    definitionHash?: string;
+    dataClassification?: 'public' | 'contact' | 'sensitive';
+    /** The remote service must enforce this authenticated contact filter. */
+    contactIdArgument?: string;
+    /** Omit only for credentials/endpoint dedicated to this tenant. */
+    tenantIdArgument?: string;
 }
 
 /** Registered (prefixed) name for a remote tool. */
 export function mcpRegisteredName(serverId: string, toolName: string): string {
-    return `mcp__${serverId}__${toolName}`;
+    const name = `mcp__${serverId}__${toolName}`;
+    return name.length <= 64 ? name : `${name.slice(0, 47)}_${createHash('sha256').update(name).digest('hex').slice(0, 16)}`;
+}
+
+const EFFECTS = new Set(['read', 'write', 'payment', 'notification', 'irreversible']);
+const ARGUMENT = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const ordered = (value: any): any => Array.isArray(value) ? value.map(ordered)
+    : value && typeof value === 'object'
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, ordered(value[key])])) : value;
+
+export function mcpDefinitionHash(tool: ToolDefinition, endpoint: string, credential?: string): string {
+    return createHash('sha256').update(JSON.stringify(ordered({
+        endpoint, name: tool.name, description: tool.description, parameters: tool.parameters,
+        ...(credential ? { credentialDigest: createHash('sha256').update(credential).digest('hex') } : {}),
+    }))).digest('hex');
+}
+
+export function mcpApprovalRevision(approval: McpToolApproval): string {
+    return createHash('sha256').update(JSON.stringify(ordered(approval))).digest('hex');
+}
+
+export function hasExecutableMcpReview(approval: McpToolApproval | null | undefined): approval is McpToolApproval {
+    if (!approval || !EFFECTS.has(approval.effect) || !/^[a-f0-9]{64}$/.test(approval.definitionHash || '')) return false;
+    if (!['public', 'contact', 'sensitive'].includes(approval.dataClassification || '')) return false;
+    if (approval.effect !== 'read' && !approval.requiresConfirmation) return false;
+    if (approval.effect === 'irreversible' && !approval.requiresHumanApproval) return false;
+    if ((approval.effect !== 'read' || approval.dataClassification !== 'public')
+        && !ARGUMENT.test(approval.contactIdArgument || '')) return false;
+    return !approval.tenantIdArgument || (ARGUMENT.test(approval.tenantIdArgument)
+        && approval.tenantIdArgument !== approval.contactIdArgument);
+}
+
+/** Scope and review identity are backend inputs and part of the signed proposal. */
+export function bindMcpArguments(approval: McpToolApproval, args: Record<string, unknown>, tenantId: string, contactId: string) {
+    const bound = { ...args };
+    delete bound._control;
+    delete bound.confirmationToken;
+    delete bound.approvalTicketId;
+    if (approval.contactIdArgument) bound[approval.contactIdArgument] = contactId;
+    if (approval.tenantIdArgument) bound[approval.tenantIdArgument] = tenantId;
+    bound._mcpReview = mcpApprovalRevision(approval);
+    return bound;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -53,7 +103,7 @@ export function readMcpApprovals(settings: unknown): McpToolApproval[] {
         entry
         && isNonEmptyString(entry.serverId)
         && isNonEmptyString(entry.toolName)
-        && isNonEmptyString(entry.effect)
+        && EFFECTS.has(entry.effect)
         && isNonEmptyString(entry.approvedBy)
         && isNonEmptyString(entry.approvedAt)
         && typeof entry.requiresConfirmation === 'boolean'
@@ -73,7 +123,7 @@ export function readMcpApprovals(settings: unknown): McpToolApproval[] {
 export function approvedMcpToolNames(settings: unknown): Set<string> {
     const approved = new Set<string>();
     for (const entry of readMcpApprovals(settings)) {
-        if (entry.effect !== 'read' && !entry.requiresConfirmation) continue;
+        if (!hasExecutableMcpReview(entry)) continue;
         approved.add(mcpRegisteredName(entry.serverId, entry.toolName));
     }
     return approved;

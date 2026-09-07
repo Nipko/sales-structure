@@ -5,6 +5,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { McpClientService } from './mcp-client.service';
 import { TENANT_SECRET_MASK } from '../../common/crypto/tenant-secret-crypto.service';
+import { mcpRegisteredName } from './mcp-tool-approval';
 
 /**
  * Dashboard config for external MCP servers the agent consumes (T3.20).
@@ -55,19 +56,24 @@ export class McpController {
     @Get(':tenantId/tools')
     @Roles('super_admin', 'tenant_admin')
     async tools(@Param('tenantId') tenantId: string) {
-        const [{ tools }, approvals] = await Promise.all([
+        const [{ tools, map }, approvals, publishable] = await Promise.all([
             this.mcpClient.listRemoteTools(tenantId),
             this.mcpClient.listApprovals(tenantId),
+            this.mcpClient.listPublishableTools(tenantId),
         ]);
         const byName = new Map(
-            approvals.map((approval) => [`mcp__${approval.serverId}__${approval.toolName}`, approval]),
+            approvals.map((approval) => [mcpRegisteredName(approval.serverId, approval.toolName), approval]),
         );
         const data = tools.map((t) => {
             const approval = byName.get(String(t.name));
-            const authorized = !!approval && (approval.effect === 'read' || approval.requiresConfirmation);
+            const authorized = publishable.tools.some(tool => tool.name === t.name);
             return {
                 name: t.name,
                 description: t.description,
+                serverId: map[t.name]?.serverId,
+                toolName: map[t.name]?.realName,
+                parameters: t.parameters,
+                review: approval || null,
                 authorizedForAgent: authorized,
                 effect: approval?.effect ?? null,
                 requiresConfirmation: approval?.requiresConfirmation ?? null,

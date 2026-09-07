@@ -20,6 +20,8 @@ type Turn = {
 };
 
 type DebugInfo = {
+    runtimeSessionId?: string;
+    runtimeError?: string;
     systemPrompt: string;
     toolCalls: Array<{ name: string; args: Record<string, unknown>; result: unknown; durationMs: number }>;
     ragHits: Array<{ source: string; id: string; score?: number; title?: string; content: string }>;
@@ -72,6 +74,16 @@ export default function TestAgentPage() {
     const [channelType, setChannelType] = useState<ConversationalChannelType>("web_widget");
     const [debugTab, setDebugTab] = useState<DebugTab>("prompt");
     const [selectedDebug, setSelectedDebug] = useState<DebugInfo | null>(null);
+    const runtimeSessionId = useRef<string | undefined>(undefined);
+    const requestScope = useRef(0);
+    useEffect(() => {
+        requestScope.current++;
+        runtimeSessionId.current = undefined;
+        setTurns([]);
+        setSelectedDebug(null);
+        setError("");
+        setSending(false);
+    }, [activeTenantId, agentId]);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -80,6 +92,7 @@ export default function TestAgentPage() {
 
     const send = async () => {
         if (!activeTenantId || !input.trim() || sending) return;
+        const scope = requestScope.current;
         const userMsg = input.trim();
         setInput("");
         setError("");
@@ -92,21 +105,27 @@ export default function TestAgentPage() {
                 message: userMsg,
                 channelType,
                 conversationHistory: history,
+                runtimeSessionId: runtimeSessionId.current,
             });
+            if (scope !== requestScope.current) return;
             if (result.success && result.data) {
                 const debug = result.data.debug as DebugInfo;
                 setTurns(prev => [...prev, { role: "assistant", content: result.data.reply, debug }]);
+                runtimeSessionId.current = debug.runtimeSessionId;
+                if (debug.runtimeError) setError(t("errors.runtimeFailed"));
                 setSelectedDebug(debug);
             } else {
                 setError(result.error || t("errors.sendFailed"));
             }
         } catch (e: any) {
+            if (scope !== requestScope.current) return;
             setError(e.message || t("errors.connection"));
         }
         setSending(false);
     };
 
     const reset = () => {
+        runtimeSessionId.current = undefined;
         setTurns([]);
         setSelectedDebug(null);
         setError("");
@@ -151,6 +170,7 @@ export default function TestAgentPage() {
                         </select>
                     </label>
                     <button
+                        disabled={sending}
                         onClick={reset}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                     >

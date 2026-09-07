@@ -15,6 +15,7 @@ module.exports = {
         target: "ES2022",
         module: "commonjs",
         moduleResolution: "node",
+        jsx: "react-jsx",
         esModuleInterop: true,
         skipLibCheck: true,
         strict: true,

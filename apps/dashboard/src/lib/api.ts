@@ -8,6 +8,7 @@
 import type { VerticalDefinitions } from "./vertical-catalog";
 import type { AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
+import type { LearningImport, LearningWorkspaceData } from "@/lib/agent-learning";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -855,6 +856,19 @@ export const api = {
     getPlanFeatures: (tenantId: string) => apiGet(`/persona/${tenantId}/plan-features`),
 
     // --- Agent Availability ---
+    getAgentLearning: (tenantId: string, agentId: string) => apiGet<LearningWorkspaceData>(`/learning/${tenantId}/${agentId}`),
+    importAgentLearning: (tenantId: string, agentId: string, input: LearningImport) => apiPost(`/learning/${tenantId}/${agentId}/import`, input),
+    importInboxLearning: (tenantId: string, agentId: string, conversationId: string) => apiPost(`/learning/${tenantId}/${agentId}/inbox`, { conversationId }),
+    getLearningOriginal: (tenantId: string, agentId: string, sourceId: string) => apiGet(`/learning/${tenantId}/${agentId}/sources/${sourceId}/original`),
+    analyzeLearningExample: (tenantId: string, agentId: string, exampleId: string) => apiPost(`/learning/${tenantId}/${agentId}/examples/${exampleId}/analyze`, {}),
+    reviewLearningExample: (tenantId: string, agentId: string, exampleId: string, input: { decision: "approved" | "rejected"; revision: number; note: string; privacyChecked: boolean; correctnessChecked: boolean }) => apiPost(`/learning/${tenantId}/${agentId}/examples/${exampleId}/review`, input),
+    reviseLearningExample: (tenantId: string, agentId: string, exampleId: string, revision: number, responsePattern: string) => apiPut(`/learning/${tenantId}/${agentId}/examples/${exampleId}/revision`, { revision, responsePattern }),
+    createLearningRelease: (tenantId: string, agentId: string, exampleIds: string[]) => apiPost(`/learning/${tenantId}/${agentId}/releases`, { exampleIds }),
+    evaluateLearningRelease: (tenantId: string, agentId: string, releaseId: string) => apiPost(`/learning/${tenantId}/${agentId}/releases/${releaseId}/evaluate`, {}),
+    publishLearningRelease: (tenantId: string, agentId: string, releaseId: string, trafficPercent: number) => apiPost(`/learning/${tenantId}/${agentId}/releases/${releaseId}/publish`, { trafficPercent }),
+    rollbackLearningRelease: (tenantId: string, agentId: string, releaseId: string) => apiPost(`/learning/${tenantId}/${agentId}/releases/${releaseId}/rollback`, {}),
+    withdrawLearningSource: (tenantId: string, agentId: string, sourceId: string) => apiDelete(`/learning/${tenantId}/${agentId}/sources/${sourceId}`),
+
     updateAgentStatus: (userId: string, status: string) =>
         apiPut(`/agent-console/status/${userId}`, { status }),
     getAgentsWithStatus: (tenantId: string) =>
@@ -2116,6 +2130,7 @@ export const api = {
 
     // ─── Test Agent (dry-run with debug info) ───
     testAgent: (tenantId: string, agentId: string, data: {
+        runtimeSessionId?: string;
         message: string;
         channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
         conversationHistory?: Array<{ role: string; content: string }>;

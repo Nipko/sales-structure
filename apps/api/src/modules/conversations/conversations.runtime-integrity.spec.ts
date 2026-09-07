@@ -15,20 +15,25 @@ describe('Shared runtime integrity', () => {
         const authority = { source: 'turn_contract', allowedTools: ['search_products', 'create_appointment'], deniedTools: [], commitmentBlocked: null, resolvedAt: new Date().toISOString() };
         const tools = authority.allowedTools.map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } }));
         const llm = jest.fn().mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
-        const query = jest.fn(async (_schema: string, sql: string) => {
+        let metadata: any = {};
+        const query = jest.fn(async (_schema: string, sql: string, params: any[] = []) => {
+            if (sql.startsWith('SELECT metadata FROM conversations')) return [{ metadata: structuredClone(metadata) }];
+            if (sql.startsWith('UPDATE conversations SET metadata=') && params[2]) {
+                metadata = { ...metadata, ...JSON.parse(params[2]) }; return [{ id: params[0] }];
+            }
             if (sql.includes('FROM messages')) return [];
             return [];
         });
         Object.assign(service, {
             logger: { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
-            prisma: { executeInTenantSchema: query, tenant: { findUnique: jest.fn().mockResolvedValue({ settings: {} }) } },
-            redis: { getJson: jest.fn().mockResolvedValue(null), setJson: jest.fn(), del: jest.fn(), set: jest.fn(), incr: jest.fn().mockResolvedValue(1), expire: jest.fn(), sadd: jest.fn(), rpush: jest.fn() },
+            prisma: { executeInTenantSchema: query, transactionInTenantSchema: (schema: string, work: any) => work((sql: string, params?: any[]) => query(schema, sql, params)), tenant: { findUnique: jest.fn().mockResolvedValue({ settings: {} }) } },
+            redis: { getJson: jest.fn().mockResolvedValue(null), setJson: jest.fn().mockResolvedValue(undefined), del: jest.fn().mockResolvedValue(undefined), set: jest.fn().mockResolvedValue(undefined), incr: jest.fn().mockResolvedValue(1), expire: jest.fn(), sadd: jest.fn(), rpush: jest.fn() },
             llmRouter: { analyzeComplexity: () => 0, analyzeSentiment: () => 0, stageToScore: () => 0, execute: llm },
             languageDetector: { detect: () => 'es' },
             tenantSchema: jest.fn().mockResolvedValue('tenant_test'),
             isWithinBusinessHours: jest.fn().mockReturnValue(true),
             loadBookingState: jest.fn().mockResolvedValue({ step: 'idle' }),
-            procedureEngine: { getState: jest.fn().mockResolvedValue(null), process: jest.fn().mockResolvedValue({ handled: false }) },
+            procedureEngine: { getState: jest.fn().mockResolvedValue(null), process: jest.fn().mockResolvedValue({ handled: false }), missionCandidates: jest.fn().mockResolvedValue([]) },
             bookingEngine: { process: jest.fn().mockResolvedValue({ handled: false, state: { step: 'idle' } }) },
             activeOperationsContext: { populateTurnContext: jest.fn() },
             businessInfoService: { getPrimary: jest.fn().mockResolvedValue(null) },
@@ -52,6 +57,8 @@ describe('Shared runtime integrity', () => {
             eventEmitter: { emit: jest.fn() },
             sendMedia: jest.fn(), sendPaymentLink: jest.fn(), sendFlow: jest.fn(),
         });
+        service.bookingEngine.forExecution = () => service.bookingEngine;
+        service.procedureEngine.forExecution = () => service.procedureEngine;
         const config: any = { language: 'es', industry: 'salud', behavior: { draftMode }, llm: {}, tools: { appointments: { enabled: false } } };
         const conversation = { id: '33333333-3333-4333-8333-333333333333', contact_id: '22222222-2222-4222-8222-222222222222', updated_at: new Date(), metadata: {} };
         const run = (channelType = 'whatsapp', text = '¿Me lo dejas en COP 1000?') => service.generateResponse(

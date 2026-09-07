@@ -32,7 +32,7 @@ export interface EvalSandboxSession {
     fixtures?: CanonicalEvalFixtures;
     assertLease(): Promise<void>;
     reset(channelType: string, snapshot?: AgentEvaluationSnapshot): Promise<void>;
-    recordInbound(text: string): Promise<void>;
+    recordInbound(text: string): Promise<string>;
 }
 
 export type ActionAssertionType = 'row_exists' | 'row_count' | 'no_row';
@@ -90,6 +90,11 @@ export interface EvalGateResult {
 
 const DEFAULT_THRESHOLD = 7;     // overall (0-10) the suite must average to pass
 const MAX_SCENARIO_MESSAGES = 8;
+function assertScenarioMessages(messages:unknown):asserts messages is string[] {
+    if(!Array.isArray(messages)||!messages.length||messages.length>MAX_SCENARIO_MESSAGES
+        ||messages.some(message=>typeof message!=='string'||!message.trim()))
+        throw new BadRequestException({error:'eval_scenario_messages_invalid',maxMessages:MAX_SCENARIO_MESSAGES});
+}
 const MAX_K = 5;
 // Reserved fixture identity lives only in a unique owned evaluation namespace.
 // Production tenant tables are never prepared, mutated or swept by these runs.
@@ -194,7 +199,7 @@ export class EvalService {
             recordInbound: async text => {
                 await session.assertLease();
                 if (!session.sandboxConversationId || !session.sandboxNamespace) throw new Error('eval_sandbox_not_initialized');
-                await this.recordSandboxInbound(session.sandboxNamespace.schemaName, session.sandboxConversationId, text);
+                return this.recordSandboxInbound(session.sandboxNamespace.schemaName, session.sandboxConversationId, text);
             },
         };
         try { return await callback(session); }
@@ -453,6 +458,7 @@ export class EvalService {
         if (!def?.key || !def?.title || !Array.isArray(def.messages) || !def.messages.length) {
             throw new BadRequestException('key, title and a non-empty messages[] are required');
         }
+        assertScenarioMessages(def.messages);
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTable(schema);
         await this.prisma.executeInTenantSchema(schema,
@@ -470,7 +476,7 @@ export class EvalService {
              def.locale || def.language || 'es', def.profileId || null,
              def.contractVersion || null, def.seedOrigin || 'custom', def.managedSeedKey || null,
              def.seedState || 'active',
-             JSON.stringify(def.messages.slice(0, MAX_SCENARIO_MESSAGES)), def.criteria || null,
+             JSON.stringify(def.messages), def.criteria || null,
              JSON.stringify(Array.isArray(def.expectedActions) ? def.expectedActions : [])]);
     }
 
@@ -500,13 +506,14 @@ export class EvalService {
     async runGateV2(
         tenantId: string,
         agentId: string,
-        opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string; channelType?: string; agentSnapshot?: AgentEvaluationSnapshot; scenarios?: any[]; previousResults?: any[]; beforeModelUnits?: (units: number) => Promise<void>; onScenarioCompleted?: (results: any[]) => Promise<void> },
+        opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string; channelType?: string; agentSnapshot?: AgentEvaluationSnapshot; scenarios?: any[]; previousResults?: any[]; assertExecutionAuthority?:()=>Promise<void>; beforeModelUnits?: (units: number) => Promise<void>; onScenarioCompleted?: (results: any[]) => Promise<void> },
     ): Promise<any> {
         if (!agentId) throw new BadRequestException('agentId is required');
 
         const channelType = opts?.channelType || 'web_widget';
         if (!(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channelType)) throw new BadRequestException('unsupported_conversational_channel');
-        return this.withSandboxLease(tenantId, async assertLease => {
+        return this.withSandboxLease(tenantId, async assertSandboxLease => {
+            const assertLease=async()=>{await assertSandboxLease();await opts?.assertExecutionAuthority?.();};
             const schema = await this.prisma.getTenantSchemaName(tenantId);
             await this.ensureTable(schema);
             const threshold = opts?.threshold ?? DEFAULT_THRESHOLD;
@@ -611,6 +618,7 @@ export class EvalService {
 
     /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
     private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean, snapshot?: AgentEvaluationSnapshot, channelType = 'web_widget', assertLease?: () => Promise<void>, beforeModelUnits?: (units: number) => Promise<void>) {
+        assertScenarioMessages(sc.messages);
         const reviewedSource=sc;
         return this.withOwnedSandboxSession(tenantId, schema, assertLease || (async () => {}), async session => {
             await session.reset(channelType, snapshot);
@@ -620,10 +628,10 @@ export class EvalService {
             const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
             const lines: string[] = [];
             const observedToolCalls: Array<{ name: string; result: unknown }> = [];
-            for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
+            for (const msg of sc.messages) {
                 await assertLease?.();
                 const res = await withReviewedRegressionScenarios(this.prisma,schema,[reviewedSource],agentId,channelType,async()=>{
-                    if (sandboxConversationId) await session.recordInbound(msg);
+                    const sandboxInboundMessageId = await session.recordInbound(msg);
                     return this.agentTest.test(
                     tenantId, agentId,
                     { message: msg, conversationHistory: [...history], channelType: channelType as any },
@@ -631,7 +639,7 @@ export class EvalService {
                             disableTools: false,
                             evalMode: true,
                             sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
-                            sandboxConversationId, sandboxNamespace: session.sandboxNamespace, agentSnapshot: snapshot, beforeToolExecution: session.assertLease,
+                            sandboxConversationId, sandboxInboundMessageId, sandboxNamespace: session.sandboxNamespace, agentSnapshot: snapshot, beforeToolExecution: session.assertLease,
                             beforeModelExecution: async () => { await session.assertLease(); await beforeModelUnits?.(1); },
                         },
                     );
@@ -665,7 +673,11 @@ export class EvalService {
                 actionsPassed = v.passed;
                 actionChecks = v.checks;
             }
-            return { score, passed: score >= threshold && actionsPassed, resolved: !!judge.resolved, flags: judge.flags || [], actionChecks };
+            // Human release review must inspect the actual replies, not a judge's
+            // aggregate score. Bound storage and disclose any shortened sample.
+            const transcriptTruncated=history.some(row=>row.content.length>8_000);
+            return { score, passed: score >= threshold && actionsPassed, resolved: !!judge.resolved, flags: judge.flags || [], actionChecks,
+                transcript:history.map(row=>({...row,content:row.content.slice(0,8_000)})),transcriptTruncated };
         });
     }
 
@@ -724,11 +736,13 @@ export class EvalService {
         schema: string,
         conversationId: string,
         text: string,
-    ): Promise<void> {
-        await this.prisma.executeInTenantSchema(schema,
+    ): Promise<string> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
             `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, created_at)
-             VALUES ($1::uuid, 'inbound', 'text', $2, 'delivered', NOW())`,
+             VALUES ($1::uuid, 'inbound', 'text', $2, 'delivered', clock_timestamp()) RETURNING id`,
             [conversationId, text]);
+        if (!rows[0]?.id) throw new Error('eval_sandbox_inbound_required');
+        return rows[0].id;
     }
 
     private async persistRun(schema: string, agentId: string, result: any, trigger: string): Promise<void> {

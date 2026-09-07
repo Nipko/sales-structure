@@ -4,6 +4,19 @@ import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixtur
 import { EVAL_SANDBOX_CONTACT_ID, AGENT_TEST_SANDBOX_CONTACT_ID } from './agent-test-tool-policy';
 
 describe('AgentTestService delegates to the operational core', () => {
+    it('binds a public draft selection to its preview session and rejects switching revisions mid-conversation',async()=>{
+        const f=agentTurnFixture(),live=await f.personaService.getAgent(),id='11111111-1111-4111-8111-111111111111';
+        Object.assign(f.personaService,{readConfigurationRevision:jest.fn().mockResolvedValue({id,body_hash:'a'.repeat(64),
+            body:{configJson:{...live.config_json,language:'fr'},channels:['web_widget'],channelBindings:[],scheduleMode:'24_7',isActive:true,isDefault:false}})});
+        const first=await f.service.test('tenant','agent',{message:'Bonjour',configurationRevisionId:id});
+        expect(first.debug.agentRevision?.configurationRevisionId).toBe(id);
+        const calls=f.llmRouter.execute.mock.calls.length;
+        await expect(f.service.test('tenant','agent',{message:'Continue',runtimeSessionId:first.debug.runtimeSessionId,
+            configurationRevisionId:'22222222-2222-4222-8222-222222222222'})).rejects.toThrow('session_configuration_revision_changed');
+        expect(f.llmRouter.execute).toHaveBeenCalledTimes(calls);
+        const next=await f.service.test('tenant','agent',{message:'Merci',runtimeSessionId:first.debug.runtimeSessionId});
+        expect(next.debug.agentRevision?.configurationRevisionId).toBe(id);
+    });
     it('evaluates the selected canonical draft without replacing the operational persona',async()=>{
         const f=agentTurnFixture(),live=await f.personaService.getAgent();
         const draftConfig=structuredClone(live.config_json);draftConfig.persona={...draftConfig.persona,name:'Candidate Alex'};
@@ -188,7 +201,7 @@ describe('AgentTestService delegates to the operational core', () => {
         const namespace={schemaName:'tenant_eval_11111111_111111111111111111111111',sourceSchema:'tenant_test',tenantId:'tenant',token:'opaque',tables:[],expiresAt:new Date(Date.now()+3600000).toISOString()};
         const namespaces={assertOwned:jest.fn().mockResolvedValue(undefined)};
         (f.service as any).namespaces=namespaces;f.tenantsService.getSchemaName.mockResolvedValue('tenant_test');
-        const options={evalMode:true,sandboxContactId:EVAL_SANDBOX_CONTACT_ID,sandboxConversationId:'11111111-1111-4111-8111-111111111111',sandboxNamespace:namespace};
+        const options={evalMode:true,sandboxContactId:EVAL_SANDBOX_CONTACT_ID,sandboxConversationId:'11111111-1111-4111-8111-111111111111',sandboxNamespace:namespace,sandboxInboundMessageId:'22222222-2222-4222-8222-222222222222'};
         f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:'write',function:{name:'create_appointment',arguments:'{}'}}]});
         await f.service.test('tenant','agent',{message:'hola'},options);
         expect(namespaces.assertOwned).toHaveBeenCalledWith(namespace);

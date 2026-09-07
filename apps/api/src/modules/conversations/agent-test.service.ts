@@ -24,6 +24,8 @@ export interface AgentTestExecutionOptions {
     sandboxContactId?: string;
     sandboxConversationId?: string;
     sandboxNamespace?: EvalNamespaceLease;
+    /** ID returned by the isolated inbound recorder; never accepted in the public DTO. */
+    sandboxInboundMessageId?: string;
     agentSnapshot?: AgentEvaluationSnapshot;
     learningReleaseId?: string | null;
     beforeToolExecution?: () => Promise<void>;
@@ -96,7 +98,12 @@ export class AgentTestService {
         const startedAt = Date.now();
         if (!await this.throttle.hasAiMessageQuota(tenantId)) throw new HttpException('ai_message_quota_exceeded', HttpStatus.TOO_MANY_REQUESTS);
         const channelType = req.channelType && CONVERSATIONAL_CHANNELS.includes(req.channelType) ? req.channelType : 'web_widget';
-        const snapshot = structuredClone(options?.agentSnapshot || (req.runtimeSessionId ? this.sessions.getSnapshot(req.runtimeSessionId, tenantId, agentId) : await this.captureSnapshot(tenantId, agentId)));
+        const snapshot = structuredClone(options?.agentSnapshot || (req.runtimeSessionId
+            ? this.sessions.getSnapshot(req.runtimeSessionId, tenantId, agentId)
+            : await this.captureSnapshot(tenantId, agentId,req.configurationRevisionId!==undefined
+                ?{configurationRevisionId:req.configurationRevisionId}:undefined)));
+        if(req.configurationRevisionId!==undefined&&snapshot.configurationRevisionId!==req.configurationRevisionId)
+            throw new Error('agent_test_session_configuration_revision_changed');
         resolveEvaluationSnapshot(snapshot,tenantId,agentId);
         await this.assertSnapshotCurrent(snapshot);
         if (options?.learningReleaseId !== undefined) {
@@ -108,6 +115,8 @@ export class AgentTestService {
         if (options?.evalMode && (contactId !== EVAL_SANDBOX_CONTACT_ID || !options.sandboxConversationId)) throw new Error('eval_sandbox_identity_required');
         const sourceSchema = await this.tenantsService.getSchemaName(tenantId, AGENT_TEST_EXECUTION_CONTEXT);
         const namespace = options?.sandboxNamespace;
+        if (namespace && !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(options?.sandboxInboundMessageId || '')) throw new Error('eval_sandbox_inbound_required');
+        if (options?.sandboxInboundMessageId && !namespace) throw new Error('eval_namespace_scope_mismatch');
         if (namespace && (!options?.evalMode || namespace.tenantId !== tenantId || namespace.sourceSchema !== sourceSchema)) throw new Error('eval_namespace_scope_mismatch');
         if (namespace) {
             if (!this.namespaces) throw new Error('canonical_sandbox_not_available');
@@ -130,7 +139,7 @@ export class AgentTestService {
         });
         session.busy = true;
         try {
-            const message = { id: randomUUID(), channelAccountId: 'agent-test', conversationId: session.conversationId, direction: 'inbound', status: 'pending', tenantId, channelType, contactId, content: { type: 'text', text: req.message },
+            const message = { id: options?.sandboxInboundMessageId || randomUUID(), channelAccountId: 'agent-test', conversationId: session.conversationId, direction: 'inbound', status: 'pending', tenantId, channelType, contactId, content: { type: 'text', text: req.message },
                 timestamp: new Date(), metadata: { allowHumanHandoff: false } } as NormalizedMessage;
             const reply = await this.runtime.executeAgentTurn(message, session);
             await assertNamespace();
@@ -144,6 +153,7 @@ export class AgentTestService {
             return { reply, debug: {
                 runtimeSessionId: session.id, runtimeError: trace.error,
                 agentRevision: { version: snapshot.version, configHash: snapshot.configHash, capturedAt: snapshot.capturedAt,
+                    configurationRevisionId:snapshot.configurationRevisionId,
                     dependencyRevision: snapshot.manifest!.revision, strategy: snapshot.manifest!.strategy,
                     limitations: [...snapshot.manifest!.limitations] },
                 systemPrompt: trace.systemPrompt, toolCalls: trace.toolCalls,

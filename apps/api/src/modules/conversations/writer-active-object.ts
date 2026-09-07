@@ -25,6 +25,7 @@ export const WRITER_ACTIVE_OBJECTS: Readonly<Record<string, WriterObjectDefiniti
     cancel_appointment: object('appointment', ['appointmentId', 'id'], ['appointmentId']),
     reschedule_appointment: object('appointment', ['appointmentId', 'id'], ['appointmentId']),
     place_catalog_order: object('order', ['orderId', 'order.id', 'id']),
+    cancel_catalog_order: object('order', ['order.id'], ['orderId']),
     place_order: object('food_order', ['orderId', 'order.id', 'id']),
     cancel_order: object('food_order', ['orderId', 'id'], ['orderId']),
     create_property_booking: object('property_booking', ['bookingId', 'booking.id', 'id']),

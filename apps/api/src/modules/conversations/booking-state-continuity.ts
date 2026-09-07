@@ -22,6 +22,7 @@ export function restoreBookingMission(
     // A completed appointment remains discoverable through the domain readers.
     if (saved.step === 'booked') return { state: { step: 'idle' }, requiresRevalidation: false };
     const state: BookingState = {
+        missionId: saved.missionId,
         step: saved.serviceId ? 'ask_date' : 'show_services',
         serviceId: saved.serviceId, serviceName: saved.serviceName,
         customerName: saved.customerName, customerEmail: saved.customerEmail,

@@ -5,10 +5,12 @@ import type { EvalNamespaceQuery } from './isolated-eval-namespace';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
 import { wallClockToUtc } from '../appointments/appointment-ics.util';
 import { REPAIR_EVAL_IDS, prepareRepairEvalFixtures } from '../repair-orders/repair-order-eval-fixtures';
+import { CATALOG_EVAL_IDS, prepareCatalogEvalFixtures } from '../orders/catalog-order-eval-fixtures';
 
 export const CANONICAL_EVAL_FIXTURE_IDS = Object.freeze({
     ...EVAL_SANDBOX_FIXTURE_IDS,
     ...REPAIR_EVAL_IDS,
+    ...CATALOG_EVAL_IDS,
     staffUser: '00000000-0000-4000-8000-00000000b010',
     unavailableClass: '00000000-0000-4000-8000-00000000b011',
     unavailableCohort: '00000000-0000-4000-8000-00000000b012',
@@ -154,5 +156,6 @@ export async function prepareCanonicalEvalFixtures(query: EvalNamespaceQuery, sc
     await seed(`INSERT INTO ${table('pets')} (id,contact_id,name,species,is_active,metadata) VALUES ($1::uuid,$2::uuid,'[EVAL] Sandbox Pet','dog',true,$3::jsonb)`, [f.pet, EVAL_SANDBOX_CONTACT_ID, marker]);
     await seed(`INSERT INTO ${table('insurance_policies')} (id,policy_number,contact_id,policyholder_name,monthly_premium,currency,starts_at,ends_at,status,metadata) VALUES ($1::uuid,'EVAL-SANDBOX-POLICY',$2::uuid,'Eval Policyholder',10,'COP',CURRENT_DATE,$3::date,'active',$4::jsonb)`, [f.insurancePolicy, EVAL_SANDBOX_CONTACT_ID, fixture.endDate, marker]);
     await prepareRepairEvalFixtures(query, schema);
+    await prepareCatalogEvalFixtures(query, schema, f.product);
     return fixture;
 }

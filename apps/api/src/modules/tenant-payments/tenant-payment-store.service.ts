@@ -232,6 +232,22 @@ export class TenantPaymentStoreService {
     }): Promise<{ intent: TenantPaymentIntent; created: boolean }> {
         const schemaName = await this.ensureForTenant(input.tenantId);
         return this.prisma.transactionInTenantSchema(schemaName, async query => {
+            const target = parsePaymentReference(input.canonicalReference);
+            if (target?.target.table === 'orders') {
+                // The catalogue cancellation command takes the same privacy and order
+                // locks. A link cannot be reserved after cancellation wins the race.
+                await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', [`agent-privacy:${schemaName}`]);
+                const erasure = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schemaName}.customer_memory_erasure`]);
+                if (erasure[0]?.name && (await query<any[]>('SELECT contact_id FROM customer_memory_erasure WHERE contact_id=$1::uuid',[input.contactId])).length) throw new ServiceUnavailableException('contact_erased');
+                const orders = await query<any[]>('SELECT contact_id,status,payment_status,total_amount,currency FROM orders WHERE id=$1::uuid FOR UPDATE',[target.entityId]);
+                const order = orders[0];
+                if (!order || String(order.contact_id).toLowerCase() !== input.contactId.toLowerCase()
+                    || !['pending','confirmed'].includes(order.status)
+                    || !['pending','failed'].includes(order.payment_status)
+                    || Math.round(Number(order.total_amount)*100) !== input.amountCents || order.currency !== input.currency) {
+                    throw new ServiceUnavailableException('catalog_payable_changed');
+                }
+            }
             const inserted = await query<IntentRow[]>(
                 `INSERT INTO tenant_payment_intents
                     (provider, idempotency_key, canonical_reference, contact_id,

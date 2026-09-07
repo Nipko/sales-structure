@@ -1126,6 +1126,8 @@ export interface VerticalContext {
 // ---- Test Agent Types ----
 export interface TestAgentRequest {
     runtimeSessionId?: string;
+    /** Select a current, server-stored configuration draft; never accepts raw configuration. */
+    configurationRevisionId?: string;
     message: string;
     /** Resolve the exact live capability contract for this certified channel. */
     channelType?: ConversationalChannelType;
@@ -1168,7 +1170,7 @@ export interface TestAgentToolParity {
 export interface TestAgentDebugInfo {
     runtimeSessionId?: string;
     runtimeError?: string;
-    agentRevision?: { version: number | null; configHash: string; capturedAt: string;
+    agentRevision?: { version: number | null; configHash: string; capturedAt: string; configurationRevisionId?: string;
         dependencyRevision?: string; strategy?: 'guarded_live_dependencies'; limitations?: string[] };
     systemPrompt: string;
     toolCalls: TestAgentToolCall[];
@@ -1399,3 +1401,4 @@ export interface ProcedureRunState {
     suspendedMissions?: ProcedureRunState[];
 }
 export type { KnowledgeGapReport } from './knowledge';
+export type { ConversationMissionRefV1, ConversationMissionFocusV1, MissionExpectedReplyV1, MissionExecutionScopeV1 } from './conversation-mission';

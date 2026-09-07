@@ -1,3 +1,4 @@
+import { runtimeStateTransactions } from './__fixtures__/runtime-state.fixture';
 import type { ProcedureDefinition, ProcedureRunState } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
@@ -19,7 +20,7 @@ function fixture() {
     const prisma: any = { executeInTenantSchema: jest.fn(async (_schema, sql, params) => {
         if (sql.startsWith('SELECT metadata')) return [{ metadata: structuredClone(metadata) }];
         if (sql.startsWith('UPDATE conversations')) {
-            if (params[1]) metadata = { ...metadata, ...JSON.parse(params[1]) };
+            if (params[1]) { for (const key of params[2] || []) delete metadata[key]; metadata = { ...metadata, ...JSON.parse(params[1]) }; }
             else { delete metadata.procedureState; metadata.procedureStateManaged = true; }
             return [{ id: params[0] }];
         }
@@ -35,6 +36,7 @@ function fixture() {
     const redis: any = { getJson: jest.fn(async key => structuredClone(cache.get(key) ?? null)),
         setJson: jest.fn(async (key, value) => { cache.set(key, structuredClone(value)); }), del: jest.fn(async key => { cache.delete(key); }) };
     const executor: any = { execute: jest.fn(async () => ({ success: true, status: 'processing' })) };
+    runtimeStateTransactions(prisma);
     const newEngine = () => new ProcedureEngineService(prisma, redis, executor);
     let engine = newEngine();
     return {

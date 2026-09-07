@@ -53,7 +53,11 @@ import { VerticalIntegrationsService } from '../vertical-integrations/vertical-i
 import { McpClientService } from '../mcp/mcp-client.service';
 import { AttributionService } from '../attribution/attribution.service';
 import { identityStepUpToolNames, identityStepUpToolsFor } from './identity-step-up-registration';
-import { BookingEngineService, type BookingState } from './booking-engine.service';
+import { BookingEngineService, invalidateBookingProposal, type BookingState } from './booking-engine.service';
+import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionToolAllowed, toolMissionDomain, type MissionCandidate, type MissionFocusDecision } from './mission-focus';
+import { MissionFocusStore } from './mission-focus-store';
+import { persistConversationRuntimeState } from './conversation-runtime-state';
+import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -1890,15 +1894,33 @@ export class ConversationsService {
         const draftScope = draftAgent && Number.isInteger(Number(draftAgent.version)) && Number(draftAgent.version) >= 1
             ? { agentId: String(draftAgent.id), agentVersion: Number(draftAgent.version) } : undefined;
         const cache = session?.state || this.redis;
-        const toolExecutor = session ? sessionToolExecutor(this.toolExecutor, session) : draftScope ? new Proxy(this.toolExecutor, {
+        let missionScope: MissionExecutionScopeV1 | undefined;
+        let missionAllowsTool: ((name: string, owner: MissionExecutionScopeV1['executionOwner']) => Promise<boolean>) | undefined;
+        let onMissionToolResult: ((name: string, result: any) => Promise<void>) | undefined;
+        const baseToolExecutor = session ? sessionToolExecutor(this.toolExecutor, session) : draftScope ? new Proxy(this.toolExecutor, {
             get: (target, key, receiver) => key === 'execute'
                 ? (...args: Parameters<AIToolExecutorService['execute']>) => target.execute(
                     args[0], args[1], args[2], args[3], args[4], args[5], { ...args[6], draftScope, executionContext: DRAFT_EXECUTION_CONTEXT })
                 : Reflect.get(target, key, receiver),
         }) : this.toolExecutor;
+        const missionExecutor = (owner: MissionExecutionScopeV1['executionOwner']) => new Proxy(baseToolExecutor, {
+            get: (target, key, receiver) => key === 'execute' ? async (...args: Parameters<AIToolExecutorService['execute']>) => {
+                if (missionAllowsTool && !await missionAllowsTool(args[3], owner)) {
+                    const result = { error: 'mission_selection_required', controlBlocked: true, persisted: false, shouldHandoff: false,
+                        message: missionDialogue(session?.snapshot.config.language || config.language || 'es', 'clarify') };
+                    session?.trace.toolCalls.push({ name: args[3], args: args[4] || {}, result, durationMs: 0 });
+                    return result;
+                }
+                const result = await target.execute(args[0], args[1], args[2], args[3], args[4], args[5],
+                    { ...args[6], ...(missionScope ? { missionScope: { ...missionScope, executionOwner: owner } } : {}) });
+                await onMissionToolResult?.(args[3], result);
+                return result;
+            } : Reflect.get(target, key, receiver),
+        });
+        const toolExecutor = missionExecutor('tool');
         const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
-        const bookingEngine = session ? this.bookingEngine.forExecution({ redis: cache as RedisService, toolExecutor }) : this.bookingEngine;
-        const procedureEngine = session ? this.procedureEngine.forExecution({ redis: cache as RedisService, toolExecutor,
+        const bookingEngine = this.bookingEngine.forExecution({ redis: cache as RedisService, toolExecutor: missionExecutor('booking') });
+        const procedureEngine = session ? this.procedureEngine.forExecution({ redis: cache as RedisService, toolExecutor: missionExecutor('procedure'),
             definitions: {
                 listActive: async () => structuredClone((session.snapshot.procedures || []).filter(procedure => procedure.status === 'active')),
                 getById: async (_schema, id) => structuredClone(session.snapshot.procedures?.find(procedure => procedure.id === id) || null),
@@ -1908,7 +1930,7 @@ export class ConversationsService {
                 save: (_schema, id, state) => cache.setJson(`procedure:${id}`, state),
                 clear: (_schema, id) => cache.del(`procedure:${id}`),
             },
-        }) : this.procedureEngine;
+        }) : this.procedureEngine.forExecution({ toolExecutor: missionExecutor('procedure') });
         const intentInterpreter = session ? new IntentInterpreterService(llmRouter) : this.intentInterpreter;
         const allowHumanHandoff = !session && !draftMode
             && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
@@ -2038,7 +2060,6 @@ export class ConversationsService {
         // Step-by-step turn trace (WS5 #1) — accumulated in memory, persisted
         // fire-and-forget at the end. Never affects the turn's behaviour or latency.
         const turnTrace = new TurnTraceContext({ tenantId, conversationId: conversation.id, messageId: inboundMessageId });
-
         const missionRecorder=!session&&inboundMessageId?new MissionTurnRecorder(this.prisma,schemaName,{
             conversationId:conversation.id,messageId:inboundMessageId,agentId:resolvedAgentId,agentVersion:resolvedAgentVersion,
             configHash:missionConfigurationHash(config),language:userLanguage,channel:msg.channelType,executionMode:draftMode?'draft':'live',
@@ -2466,9 +2487,97 @@ export class ConversationsService {
             }
         }
 
-        // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
-        // message is the ANSWER to that field — give the procedure engine priority
-        // so the booking engine doesn't hijack it and leave the procedure hung.
+        // One server-owned focus arbitrates all engines before any slot or
+        // consent can consume this inbound. Evaluation persists only its session.
+        let missionFocus: ConversationMissionFocusV1 | undefined;
+        let missionDecision: MissionFocusDecision | undefined;
+        let missionStore: MissionFocusStore | undefined;
+        const missionMessageId = inboundMessageId || msg.id || randomUUID();
+        const updateMissionScope = () => {
+            if (!missionFocus) return;
+            missionScope = { version: 1, missionId: missionFocus.selected?.id || `unselected:${conversation.id}`,
+                revision: missionFocus.revision, inboundMessageId: missionMessageId,
+                kind: missionFocus.selected?.kind || 'tool', executionOwner: 'tool', domain: missionFocus.selected?.domain,
+                toolName: missionFocus.selected?.toolName,
+                writeBlocked: missionDecision?.route === 'clarify' || missionDecision?.action === 'pause' || missionDecision?.action === 'replay'
+                    || missionFocus.lastConsumed?.messageId === missionMessageId && missionFocus.lastConsumed.missionId !== missionFocus.selected?.id,
+                expectedReply: missionFocus.expectedReply ? structuredClone(missionFocus.expectedReply) : null };
+        };
+        const saveMission = async () => {
+            if (!missionStore || !missionFocus) return;
+            await missionStore.save(missionFocus);
+            updateMissionScope();
+        };
+        if (!draftMode && conversation.contact_id) {
+            missionStore = new MissionFocusStore(this.prisma, schemaName, conversation.id, conversation.contact_id, session);
+            missionFocus = await missionStore.load();
+            const candidates: MissionCandidate[] = await procedureEngine.missionCandidates(schemaName, tenantId, conversation.id, {
+                industry: turnContext.verticalContext?.industry, subType: turnContext.verticalContext?.subType,
+            });
+            if (!['idle', 'booked'].includes(bookingState.step)) {
+                bookingState.missionId ||= randomUUID();
+                candidates.push({ ref: { id: bookingState.missionId, kind: 'booking', domain: 'appointment' },
+                    aliases: [...toolMissionAliases({ id: bookingState.missionId, kind: 'booking', domain: 'appointment' }),
+                        ...(bookingState.serviceName ? [bookingState.serviceName] : [])], paused: !!bookingState.pausedAt, saved: true });
+            }
+            missionDecision = arbitrateMissionFocus({ state: missionFocus, candidates, text: userText, messageId: missionMessageId });
+            missionFocus = missionDecision.state;
+            const bookingProposalActive = !['idle', 'booked'].includes(bookingState.step);
+            if (missionDecision.pauseBooking) bookingState.pausedAt ||= new Date().toISOString();
+            if (missionDecision.invalidateConfirmation && bookingProposalActive) invalidateBookingProposal(bookingState);
+            if (missionDecision.pauseBooking || missionDecision.invalidateConfirmation && bookingProposalActive) await this.persistBookingState(schemaName, conversation.id, bookingState, session);
+            if (missionDecision.pauseProcedure) await procedureEngine.pauseMission(schemaName, conversation.id);
+            if (missionDecision.route === 'clarify' || missionDecision.action === 'pause' || missionDecision.action === 'replay') {
+                engineProducedText = missionDialogue(userLanguage, missionDecision.action === 'replay' ? 'replay' : missionDecision.action === 'pause' ? 'paused' : 'clarify');
+                tools = [];
+            }
+            await saveMission();
+            missionAllowsTool = async (name, owner) => {
+                const policy = getToolPolicy(name);
+                if (policy && !policy.commitsBusiness || !missionFocus) return true;
+                // Only the executor has the reviewed MCP policy. It applies the
+                // same owner/writeBlocked check after resolving that policy.
+                if (name.startsWith('mcp__')) return true;
+                if (missionDecision?.route === 'clarify' || missionDecision?.action === 'pause' || missionDecision?.action === 'replay') return false;
+                if (missionFocus.lastConsumed?.messageId === missionMessageId
+                    && missionFocus.lastConsumed.missionId !== missionScope?.missionId) return false;
+                if (owner === 'tool' && missionFocus.selected?.kind === 'tool'
+                    && !missionFocus.selected.toolName && !missionFocus.selected.domain) {
+                    missionFocus.selected.toolName = name;
+                    missionFocus.selected.domain = toolMissionDomain(name);
+                    await saveMission();
+                }
+                // Discovery can start an unclaimed task; no named task or pending
+                // reply can be inherited by a different execution port.
+                if (owner !== 'tool' && missionFocus.selected?.kind === 'tool'
+                    && !missionFocus.selected.reference && !missionFocus.selected.domain && !missionFocus.expectedReply) {
+                    missionFocus.selected.kind = owner;
+                    if (owner === 'booking') missionFocus.selected.domain = 'appointment';
+                    missionFocus.revision += 1;
+                    await saveMission();
+                }
+                return !!missionScope && missionToolAllowed({ ...missionScope, executionOwner: owner }, name);
+            };
+            onMissionToolResult = async (name, result) => {
+                if (!missionFocus) return;
+                if (result?.error === 'confirmation_required' && typeof result.confirmationId === 'string') {
+                    missionFocus.selected ||= { id: randomUUID(), kind: 'tool' };
+                    if (missionFocus.selected.kind === 'tool') Object.assign(missionFocus.selected, {
+                        reference: result.confirmationId, toolName: name, domain: toolMissionDomain(name),
+                    });
+                    missionFocus.expectedReply = { missionId: missionFocus.selected.id, proposalId: result.confirmationId,
+                        ledgerId: result.confirmationId, sourceMessageId: missionMessageId, kind: 'confirmation' };
+                    await saveMission();
+                } else if ((isBusinessWriteTool(name) || result?._executionEffect === 'write') && toolResultSucceeded(result)) {
+                    if (missionFocus.selected?.kind === 'tool' && !missionFocus.selected.toolName) missionFocus.selected.toolName = name;
+                    missionFocus.lastConsumed = { messageId: missionMessageId, missionId: missionScope!.missionId, revision: missionFocus.revision };
+                    missionFocus.expectedReply = null;
+                    await saveMission();
+                }
+            };
+            turnTrace.add('turn_context', 'mission_owner_selected', { route: missionDecision.route, action: missionDecision.action,
+                missionId: missionFocus.selected?.id, revision: missionFocus.revision });
+        }
         const procedureAwaiting = await procedureEngine.getState(conversation.id, schemaName)
             .then(s => !!s?.awaitingField && !s?.pausedAt).catch(() => false);
 
@@ -2490,6 +2599,7 @@ export class ConversationsService {
         const bookingAuthority = bookingEngineAuthorityDecision(engineAuthority);
         if (!draftMode && toolsEnabled
             && !engineProducedText
+            && (!missionDecision || missionDecision.route === 'booking' || missionDecision.route === 'tools' && !missionFocus?.selected?.domain)
             && !procedureAwaiting) {
             // Tenant-local "today" — toISOString() would be UTC, which rolls over
             // to tomorrow during the evening across all of LatAm (UTC-3…-6) and
@@ -2538,12 +2648,14 @@ export class ConversationsService {
                         flowCapable: false,
                         flowData: undefined,
                         conversationId: conversation.id,
+                        missionScope,
+                        resumeSelected: missionDecision?.action === 'resume',
+                        startSelected: missionDecision?.action === 'select' && missionDecision.route === 'booking',
                     },
                 );
                 bookingState = deniedResult.state;
                 turnTrace.add('booking','authority_result',{state:bookingState.step,handled:deniedResult.handled,handoff:deniedResult.handoff});
                 await observeMission({kind:'booking',state:bookingState.step,handled:deniedResult.handled,handoff:deniedResult.handoff,instanceKey:bookingState.missionId});
-
                 await this.persistBookingState(schemaName, conversation.id, deniedResult.state, session);
                 if (deniedResult.handled) {
                     engineProducedText = deniedResult.text || null;
@@ -2599,13 +2711,30 @@ export class ConversationsService {
                         flowCapable,
                         flowData: flowResponseData,
                         conversationId: conversation.id,
+                        missionScope,
+                        flowResponseToken: (msg.content as any)?.interactiveReply?.flowToken,
+                        resumeSelected: missionDecision?.action === 'resume',
+                        startSelected: missionDecision?.action === 'select' && missionDecision.route === 'booking',
                     },
                 );
 
                 bookingState = engineResult.state;
+                if (missionFocus && engineResult.handled) {
+                    missionFocus.selected = { id: bookingState.missionId || missionScope!.missionId, kind: 'booking', domain: 'appointment' };
+                    if (bookingState.step === 'confirm' && bookingState.confirmationId) missionFocus.expectedReply = {
+                        missionId: missionFocus.selected.id, proposalId: bookingState.confirmationId, sourceMessageId: missionMessageId, kind: 'confirmation',
+                    };
+                    else if (bookingState.step === 'waiting_flow' && bookingState.flowToken) missionFocus.expectedReply = {
+                        missionId: missionFocus.selected.id, proposalId: bookingState.flowToken, sourceMessageId: missionMessageId, kind: 'flow',
+                    };
+                    else if (!['idle', 'booked'].includes(bookingState.step)) missionFocus.expectedReply = {
+                        missionId: missionFocus.selected.id, proposalId: randomUUID(), sourceMessageId: missionMessageId, kind: 'slot', slot: bookingState.step,
+                    };
+                    else { missionFocus.selected = null; missionFocus.expectedReply = null; }
+                    await saveMission();
+                }
                 turnTrace.add('booking','state_result',{state:bookingState.step,handled:engineResult.handled,handoff:engineResult.handoff});
                 await observeMission({kind:'booking',state:bookingState.step,handled:engineResult.handled,handoff:engineResult.handoff,instanceKey:bookingState.missionId});
-
                 this.logger.log(`[Pipeline] Booking state: ${bookingState.step} | service: ${bookingState.serviceName || '-'} | date: ${bookingState.date || '-'} | time: ${bookingState.time || '-'}`);
 
                 if (engineResult.handled) {
@@ -2617,10 +2746,9 @@ export class ConversationsService {
                     // resumes the text flow. Persist + save for history, then short-circuit.
                     if (engineResult.flowMessage && flowCapable && flowCfg) {
                         await this.persistBookingState(schemaName, conversation.id, engineResult.state, session);
-                        // Correlation id Meta echoes back in nfm_reply. Idempotency is
-                        // already covered by webhook dedup + the duplicate-appointment guard,
-                        // so we don't persist/validate it (that would be a no-op anti-replay).
-                        const flowToken = randomUUID();
+                        // The submitted form belongs to this exact mission and
+                        // revision; an older form cannot populate another task.
+                        const flowToken = engineResult.state.flowToken!;
                         await this.sendFlow(tenantId, msg, engineResult.flowMessage, flowCfg, flowToken);
                         await this.saveAiMessage(tenantId, conversation.id, engineResult.flowMessage.body, msg.channelType);
                         this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
@@ -2684,7 +2812,8 @@ export class ConversationsService {
         // sin que el contrato se hubiera resuelto todavía. Ahora corre sólo si
         // el contrato autorizó escribir, y recibe la lista publicada para que
         // un paso no pueda invocar una tool que el contrato no dejó pasar.
-        if (!draftMode && !engineProducedText && writesAuthorised) {
+        if (!draftMode && !engineProducedText && writesAuthorised
+            && (!missionDecision || missionDecision.route === 'procedure' || missionDecision.route === 'tools' && !missionFocus?.selected?.domain)) {
             try {
                 const procResult = await procedureEngine.process(
                     schemaName, tenantId, conversation.id, conversation.contact_id || '', userText,
@@ -2697,8 +2826,25 @@ export class ConversationsService {
                         language: userLanguage,
                         commitmentBlocked,
                         deniedTools,
+                        selectedProcedureId: missionDecision?.selectedProcedureId,
+                        selectedMissionId: missionFocus?.selected?.kind === 'procedure' ? missionFocus.selected.id : undefined,
                     },
                 );
+                // Completion may restore a different paused mission. Attribute this
+                // turn to the procedure actually processed, never the restored one.
+                engineExecutedTools.push(...(procResult.executedTools || []));
+                const procedureAfter = await procedureEngine.getState(conversation.id, schemaName);
+                if (missionFocus && (procResult.handled || procResult.completed)) {
+                    if (procResult.completed) { missionFocus.selected = null; missionFocus.expectedReply = null; }
+                    else if (procResult.missionId) {
+                        missionFocus.selected = { id: procResult.missionId, kind: 'procedure', reference: procResult.procedureId };
+                        if (procedureAfter?.awaitingField && !procedureAfter.pausedAt) missionFocus.expectedReply = {
+                            missionId: procResult.missionId, proposalId: randomUUID(), sourceMessageId: missionMessageId,
+                            kind: 'slot', slot: procedureAfter.awaitingField,
+                        };
+                    }
+                    await saveMission();
+                }
                 const observedProcedure={procedureId:procResult.procedureId,
                     version:procResult.procedureVersion,startedAt:procResult.procedureStartedAt};
                 turnTrace.add('procedure','state_result',{handled:procResult.handled,completed:procResult.completed,
@@ -2747,9 +2893,9 @@ export class ConversationsService {
         if (!draftMode && !engineProducedText
             && conversation.contact_id) {
             try {
-                const pending = await this.toolExecutionControl.findPendingConfirmation(
-                    schemaName, conversation.id, conversation.contact_id, userText,
-                );
+                const pending = missionDecision?.action === 'resume' && missionFocus?.selected?.kind === 'tool' && missionFocus.selected.reference
+                    ? await this.toolExecutionControl.pendingMissionForReview(schemaName, conversation.id, conversation.contact_id, missionFocus.selected.reference)
+                    : await this.toolExecutionControl.findPendingConfirmation(schemaName, conversation.id, conversation.contact_id, userText, missionScope);
                 if (pending) {
                     this.logger.log(`[Confirm] Customer confirmed — executing pending ${pending.toolName} server-side (ledger ${pending.ledgerId})`);
                     // ═══ EL "SÍ" SE EJECUTA CONTRA EL CONTRATO DE HOY ═══
@@ -3465,7 +3611,6 @@ export class ConversationsService {
                         executedToolsThisTurn.push({ name: tc.function.name, result });
                         await observeMission({kind:'tool',tool:tc.function.name,toolStatus:toolResultSucceeded(result)?'succeeded'
                             :result?.error?'failed':result?.pendingConsent||result?.requiresConfirmation||result?.requiresApproval?'pending':'unknown'});
-
                         turnTrace.add('tool_result', tc.function.name, {
                             ok: !(result && result.error),
                             error: result?.error,
@@ -4695,11 +4840,7 @@ export class ConversationsService {
         const update = { bookingState: stamped, bookingStateUpdatedAt: savedAt, bookingStateManaged: true };
         if (session) Object.assign(session.metadata, update);
         else {
-            try {
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                    [conversationId, JSON.stringify(update)]);
-            } catch (error: any) { this.logger.warn(`Booking state persistence failed: ${error.message}`); }
+            await persistConversationRuntimeState(this.prisma, schemaName, conversationId, update);
         }
         await (session?.state || this.redis).set(`booking:${conversationId}`, JSON.stringify(stamped), 7 * 86400).catch(() => {});
     }

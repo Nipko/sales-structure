@@ -1007,8 +1007,14 @@ export const api = {
     createOrder(tenantId: string, data: any) {
         return apiPost(`/orders/${tenantId}`, data);
     },
-    updateOrderStatus(tenantId: string, orderId: string, status: string) {
-        return apiPut(`/orders/${tenantId}/${orderId}/status`, { status });
+    quoteOrder(tenantId:string,data:any){
+        return apiPost<any>(`/orders/quote/${tenantId}`,data);
+    },
+    recordOrderStockEvidence(tenantId:string,orderId:string,data:{expectedVersion:number;source:string;reason:string;lines:{lineId:string;stockDeducted:number}[]}){
+        return apiPost(`/orders/${tenantId}/${orderId}/stock-evidence`,data);
+    },
+    updateOrderStatus(tenantId: string, orderId: string, status: string,expectedVersion:number) {
+        return apiPut(`/orders/${tenantId}/${orderId}/status`, { status,expectedVersion });
     },
 
     // --- Broadcast ---
@@ -2161,6 +2167,7 @@ export const api = {
     // ─── Test Agent (dry-run with debug info) ───
     testAgent: (tenantId: string, agentId: string, data: {
         runtimeSessionId?: string;
+        configurationRevisionId?: string;
         message: string;
         channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
         conversationHistory?: Array<{ role: string; content: string }>;

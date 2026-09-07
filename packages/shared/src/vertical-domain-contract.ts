@@ -330,6 +330,17 @@ const INTENTS_BY_TOOL_GROUP: Readonly<Record<string, readonly IntentContract[]>>
             states: Object.freeze(['collecting', 'confirming', 'ordered', 'handed_off']),
             commits: true,
         }),
+        Object.freeze<IntentContract>({
+            key:'track_catalog_order',description:'El cliente consulta sus pedidos y su estado real de pago.',slots:Object.freeze([]),
+            toolPlan:Object.freeze(['list_my_catalog_orders','get_catalog_order']),confirmation:'none',fallback:'handoff',
+            states:Object.freeze(['listed','empty','handed_off']),commits:false,
+        }),
+        Object.freeze<IntentContract>({
+            key:'cancel_catalog_order',description:'El cliente solicita cancelar su pedido impago con revisión del estado vigente.',
+            slots:Object.freeze([Object.freeze<SlotSchema>({key:'orderId',type:'reference',required:true,sensitivity:'personal',source:'tool',persistence:'turn'})]),
+            toolPlan:Object.freeze(['list_my_catalog_orders','get_catalog_order','cancel_catalog_order']),confirmation:'explicit',fallback:'handoff',
+            states:Object.freeze(['reviewing','confirming','cancelled','handed_off']),commits:true,
+        }),
     ]),
     // ═══ LOS QUINCE GRUPOS QUE NO DECLARABAN NINGUNA INTENCIÓN ═══
     //

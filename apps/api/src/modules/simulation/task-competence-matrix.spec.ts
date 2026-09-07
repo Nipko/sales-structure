@@ -28,7 +28,7 @@ describe('profile-specific competence coverage', () => {
         expect(booking.gaps).toContain('profile_execution_evidence_missing');
         const otherTasks = buildTaskCompetenceMatrix().profiles.flatMap(item => item.tasks);
         expect(otherTasks.filter(task => task.tools.some(tool => tool.name === 'place_catalog_order'))
-            .every(task => task.gaps.includes('positive_task_case_missing'))).toBe(true);
+            .every(task => !task.gaps.includes('positive_task_case_missing') && task.gaps.includes('profile_execution_evidence_missing'))).toBe(true);
     });
     it('shows workshop verification while its writer is still unavailable in preview', () => {
         const matrix = buildTaskCompetenceMatrix();

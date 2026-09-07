@@ -1,6 +1,8 @@
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
+import { educationToolError } from './education-tool-error';
 import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
+import { catalogHash, catalogActionError, catalogTermsReviewResult } from '../orders/catalog-order-contract';
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
@@ -225,6 +227,7 @@ export class AIToolExecutorService {
             evalMode?: boolean;
             sandboxNamespace?: EvalNamespaceLease;
             executionState?: { get(key: string): Promise<string | null> };
+            missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
             channelType?: string;
             readOnly?: boolean;
             executionContext?: ServiceExecutionContext;
@@ -235,6 +238,7 @@ export class AIToolExecutorService {
             authorityEvidence?: {
                 kind: 'booking_engine_confirmation';
                 source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
+                flowToken?: string;
             };
             /**
              * Tenant discount ceiling (`upsell.maxDiscountPercent`). Comes from
@@ -279,6 +283,7 @@ export class AIToolExecutorService {
         this.logger.log(`[Tool] Executing: ${toolName}`);
 
         let controlDecision: ToolExecutionControlDecision | undefined;
+        let catalogCommitted = false;
         let preparedPaymentLink: PreparedPaymentLink | undefined;
         let preparedContactConsent: PreparedContactConsent | undefined;
         try {
@@ -361,6 +366,16 @@ export class AIToolExecutorService {
                 args = { ...args, serviceId: terms.serviceId, appointmentTerms: terms, appointmentTermsHash: termsHash };
             }
 
+            if (['place_catalog_order','cancel_catalog_order'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
+                || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
+                const commands = this.catalogCommands();
+                const terms = toolName === 'place_catalog_order'
+                    ? await commands.quote(schemaName,{contactId,conversationId,items:args.items,notes:args.notes})
+                    : await commands.cancellationTerms(schemaName,String(args.orderId || ''),contactId);
+                args = toolName === 'place_catalog_order'
+                    ? {items:args.items,notes:args.notes,catalogTerms:terms,catalogTermsHash:catalogHash(terms)}
+                    : {orderId:args.orderId,reason:args.reason,catalogTerms:terms,catalogTermsHash:catalogHash(terms)};
+            }
             if (['approve_repair', 'cancel_repair_order'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
                 || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
                 if (!this.repairOrders) return this.repairOrderWiringUnavailable();
@@ -402,6 +417,7 @@ export class AIToolExecutorService {
                 if (args.repairTerms && proposal.result.error === 'confirmation_required') {
                     return { ...proposal.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
                 }
+                if(args.catalogTerms && proposal.result.error==='confirmation_required') return {...proposal.result,...catalogTermsReviewResult(args.catalogTerms)};
                 if (toolName === 'create_appointment' && proposal.result.error === 'confirmation_required') {
                     return { ...proposal.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
                 }
@@ -510,12 +526,14 @@ export class AIToolExecutorService {
                 readOnlyExecution: persistenceDisabled(opts?.executionContext) && !evalWriterAllowed,
                 authorityEvidence: opts?.authorityEvidence,
                 executionState: opts?.executionState,
+                missionScope: opts?.missionScope,
                 draftMode: opts?.executionContext?.mode === 'draft',
             });
             if (!controlDecision.allowed) {
                 if (args.repairTerms && controlDecision.result?.error === 'confirmation_required') {
                     return { ...controlDecision.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
                 }
+                if(args.catalogTerms && controlDecision.result?.error==='confirmation_required') return {...controlDecision.result,...catalogTermsReviewResult(args.catalogTerms)};
                 if (toolName === 'create_appointment' && controlDecision.result?.error === 'confirmation_required' && args.appointmentTerms) {
                     return { ...controlDecision.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
                 }
@@ -637,7 +655,14 @@ export class AIToolExecutorService {
                     return this.scheduleTestDrive(tenantId, args);
 
                 case 'place_catalog_order':
-                    return this.placeCatalogOrder(tenantId, schemaName, contactId, conversationId, args);
+                    return this.placeCatalogOrder(schemaName, contactId, conversationId, args, executionIdempotencyKey);
+                case 'list_my_catalog_orders':
+                    return { success:true, orders:await this.catalogCommands().listOwned(schemaName,contactId,args.limit) };
+                case 'get_catalog_order':
+                    return { success:true, order:await this.catalogCommands().getOwned(schemaName,String(args.orderId||''),contactId) };
+                case 'cancel_catalog_order':
+                    return { success:true, order:await this.catalogCommands().cancel(schemaName,String(args.orderId||''),contactId,
+                        {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason}),refundPerformed:false };
 
                 case 'search_faqs':
                     return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext);
@@ -1045,6 +1070,7 @@ export class AIToolExecutorService {
             };
 
             const result = attachWriterActiveObject(toolName, await executeHandler(), args);
+            if(['place_catalog_order','cancel_catalog_order'].includes(toolName) && result && typeof result==='object' && 'success' in result && result.success===true) catalogCommitted=true;
             if (this.toolExecutionControl && controlDecision) {
                 // A handler result is not acknowledged until the central ledger
                 // commits it. A commit failure therefore fails closed.
@@ -1059,6 +1085,12 @@ export class AIToolExecutorService {
                 await this.toolExecutionControl
                     .fail(schemaName, controlDecision, 'tool_execution_failed')
                     .catch(() => undefined);
+            }
+            if(catalogCommitted) return {error:'reconciliation_required',persisted:true,retryable:false,shouldHandoff:true,
+                message:'The order operation committed but its acknowledgement could not be verified. Do not create another order or claim a refund. Re-read the owned order through the normal privacy and ownership checks.'};
+            if(['place_catalog_order','cancel_catalog_order','get_catalog_order','list_my_catalog_orders'].includes(toolName)) {
+                this.logger.warn(`[Tool] ${toolName} failed: ${error.message}`);
+                return catalogActionError(error);
             }
             if (['approve_repair', 'cancel_repair_order'].includes(toolName) && error instanceof RepairTermsChangedError) {
                 return repairTermsReviewResult(error.currentTerms);
@@ -1623,97 +1655,16 @@ export class AIToolExecutorService {
      * El bloqueo vive en el writer y no en el prompt: una instrucción de texto
      * la puede pisar un prompt personalizado, y esto no.
      */
-    private async placeCatalogOrder(
-        tenantId: string,
-        schema: string,
-        contactId: string,
-        conversationId: string | undefined,
-        args: any,
-    ): Promise<any> {
-        const UUID_RE = AIToolExecutorService.UUID_PATTERN;
-        if (!this.ordersService) {
-            return { error: 'orders_unavailable', message: 'La toma de pedidos no está disponible.' };
-        }
-        const rawItems = Array.isArray(args?.items) ? args.items : [];
-        if (!rawItems.length) return { error: 'items_required', message: 'Falta qué productos quiere el cliente.' };
-        if (rawItems.length > 50) return { error: 'too_many_items' };
+    private catalogCommands() {
+        if(!this.ordersService) throw new Error('catalog_service_unavailable');
+        return this.ordersService.catalogCommands();
+    }
 
-        const items: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; currency?: string }> = [];
-        for (const raw of rawItems) {
-            const productId = String(raw?.productId || '');
-            const quantity = Math.floor(Number(raw?.quantity));
-            if (!UUID_RE.test(productId)) return { error: 'product_not_found', productId };
-            if (!Number.isFinite(quantity) || quantity < 1) return { error: 'invalid_quantity', productId };
-            // `is_active` never existed on this table: the column is
-            // `is_available`. Every call threw before reaching OrdersService, so
-            // eight catalog-selling profiles could search and price a product and
-            // never record a single order.
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, price, currency, stock, is_available, requires_prescription
-                   FROM "${schema}".products
-                  WHERE id = $1::uuid LIMIT 1`,
-                productId,
-            );
-            const product = rows?.[0];
-            if (!product) return { error: 'product_not_found', productId };
-            if (product.is_available === false) {
-                return { error: 'product_unavailable', productId, productName: product.name };
-            }
-            if (product.requires_prescription === true) {
-                // Se nombra el producto para que el agente pueda decir CUÁL es
-                // el que necesita fórmula, en vez de un "no se pudo" que el
-                // cliente lee como que el negocio no lo tiene.
-                return {
-                    error: 'prescription_required',
-                    productId,
-                    productName: product.name,
-                    message: `${product.name} es de venta bajo fórmula médica: no puedo tomar ese pedido por chat. Te paso con una persona del equipo para validar la receta.`,
-                };
-            }
-            // Stock NULL means the tenant does not track units for this product.
-            // Only an explicit number can be short.
-            if (product.stock !== null && product.stock !== undefined && Number(product.stock) < quantity) {
-                return {
-                    error: 'insufficient_stock',
-                    productId,
-                    productName: product.name,
-                    available: Number(product.stock),
-                    requested: quantity,
-                };
-            }
-            items.push({
-                productId,
-                productName: product.name,
-                quantity,
-                unitPrice: Number(product.price || 0),
-                currency: product.currency || undefined,
-            });
-        }
-
-        try {
-            const order = await this.ordersService.createOrder(tenantId, {
-                contactId: UUID_RE.test(contactId) ? contactId : null,
-                conversationId: conversationId && UUID_RE.test(conversationId) ? conversationId : null,
-                status: 'pending',
-                notes: args?.notes ? String(args.notes).slice(0, 1000) : undefined,
-                items,
-            });
-            const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-            return {
-                success: true,
-                order: {
-                    id: order?.id,
-                    status: 'pending',
-                    itemCount: items.length,
-                    total,
-                    currency: items[0]?.currency,
-                    payableReference: this.payableReference('order', String(order?.id), 'pending', 'pending'),
-                },
-            };
-        } catch (e: any) {
-            this.logger.warn(`[Tool] place_catalog_order failed: ${e.message}`);
-            return { error: 'order_failed', message: e?.message || 'No se pudo registrar el pedido.' };
-        }
+    private async placeCatalogOrder(schema: string,contactId: string,conversationId: string | undefined,args: any,idempotencyKey?: string): Promise<any> {
+        const order=await this.catalogCommands().create(schema,{contactId,conversationId,items:args.items,notes:args.notes,idempotencyKey},
+            {source:'agent',expectedTermsHash:args.catalogTermsHash});
+        return {success:true,order:{...order,total:order.totalAmount,itemCount:order.items.length,
+            payableReference:this.payableReference('order',order.id,order.paymentStatus,order.status)}};
     }
 
     private async getVehicleDetails(schema: string, vehicleId: string): Promise<any> {
@@ -4733,7 +4684,7 @@ export class AIToolExecutorService {
                           waitlistAvailable:e.message==='cohort_full_waitlist_requires_consent'};
                   }catch{/* A missing or changed cohort cannot support a new consent proposal. */}
               }
-              return { error: e.message };
+              return educationToolError(e);
           }
       }
 
@@ -6108,7 +6059,7 @@ export class AIToolExecutorService {
         try {
             return await this.educationService.cancelEnrollment(schema, enrollmentId, { contactId, reason });
         } catch (e: any) {
-            return { error: e.message };
+            return educationToolError(e);
         }
     }
 

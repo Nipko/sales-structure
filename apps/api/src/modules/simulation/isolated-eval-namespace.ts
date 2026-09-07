@@ -5,6 +5,7 @@ export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Ob
     create_appointment: 'appointments', cancel_appointment: 'appointments', reschedule_appointment: 'appointments',
     enroll_student: 'enrollments', cancel_enrollment: 'enrollments', book_class: 'class_bookings', cancel_class_booking: 'class_bookings',
     create_repair_order: 'repair_orders', approve_repair: 'repair_orders', cancel_repair_order: 'repair_orders',
+    place_catalog_order:'catalog_orders',cancel_catalog_order:'catalog_orders',
 });
 export const CANONICAL_EVAL_TOOLS = new Set(['check_availability', ...Object.keys(CANONICAL_EVAL_TOOL_FAMILIES)]);
 
@@ -37,7 +38,7 @@ const TABLES = new Set([
     'customer_vehicles', 'repair_orders', 'repair_order_events',
     'blocked_dates', 'availability_slots', 'service_staff', 'services', 'appointments', 'appointment_blocked_dates', 'appointment_settings', 'appointment_holds',
     'members', 'membership_plans', 'fitness_classes', 'class_bookings', 'class_waitlist',
-    'courses', 'course_cohorts', 'enrollments', 'products', 'orders', 'order_items',
+    'courses', 'course_cohorts', 'enrollments', 'products', 'orders', 'order_items','stock_movements',
     'properties', 'property_bookings', 'tour_packages', 'tour_inventory', 'tour_bookings',
     'menu_items', 'food_orders', 'food_order_items', 'service_requests', 'photo_sessions',
     'resource_rentals', 'vehicles', 'pets', 'insurance_policies', 'insurance_claims',

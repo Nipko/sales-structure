@@ -4923,3 +4923,18 @@ ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS release_evide
 ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS release_readiness JSONB;
 ALTER TABLE "{{SCHEMA_NAME}}"."eval_autorun_requests" ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[];
 -- END QUALITY REGRESSION AND MISSION EVIDENCE
+
+-- BEGIN CATALOG ORDER INTEGRITY
+ALTER TABLE "{{SCHEMA_NAME}}"."orders"
+    ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS "idempotency_key" VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS "request_hash" CHAR(64),
+    ADD COLUMN IF NOT EXISTS "catalog_terms" JSONB;
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_catalog_order_request ON "{{SCHEMA_NAME}}"."orders"("idempotency_key") WHERE "idempotency_key" IS NOT NULL;
+-- NULL is legacy/unknown; zero proves that this line did not deduct inventory.
+ALTER TABLE "{{SCHEMA_NAME}}"."order_items" ADD COLUMN IF NOT EXISTS "stock_deducted" INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."stock_movements"
+    ADD COLUMN IF NOT EXISTS "order_id" UUID,
+    ADD COLUMN IF NOT EXISTS "order_item_id" UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_catalog_stock_movement ON "{{SCHEMA_NAME}}"."stock_movements"("order_item_id","type") WHERE "order_item_id" IS NOT NULL;
+-- END CATALOG ORDER INTEGRITY

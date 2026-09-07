@@ -1,6 +1,5 @@
 import {
     BadRequestException,
-    ConflictException,
     ForbiddenException,
     Injectable,
     Logger,
@@ -8,21 +7,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { requireTenantContact } from '../../common/utils/tenant-contact.util';
-import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
-
-function normalizeOrderCurrencyCode(value: unknown, fallback = 'COP'): string {
-    const candidate = typeof value === 'string' && value.trim()
-        ? value.trim().toUpperCase()
-        : fallback;
-    if (!/^[A-Z]{3}$/.test(candidate)) {
-        throw new BadRequestException('currency must be a three-letter uppercase code');
-    }
-    return candidate;
-}
-
-const ORDER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const INITIAL_ORDER_STATUSES = new Set(['pending', 'confirmed', 'paid']);
+import { CatalogOrderCommands } from './catalog-order-commands';
+import { catalogOrderDocument } from './catalog-order-document';
+import { CatalogCreateInput } from './catalog-order-contract';
+import { catalogHash } from './catalog-order-contract';
 
 // ============================================
 // Types
@@ -35,6 +23,7 @@ export interface OrderItem {
     quantity: number;
     unitPrice: number;
     totalPrice: number;
+    stockDeducted:number|null;
 }
 
 export interface Order {
@@ -42,6 +31,8 @@ export interface Order {
     contactId: string;
     contactName: string;
     status: 'pending' | 'confirmed' | 'paid' | 'cancelled';
+    version: number;
+    paymentStatus: string;
     totalAmount: number;
     currency: string;
     paymentMethod: string;
@@ -58,6 +49,7 @@ export interface OrdersOverview {
     orderCount: number;
     pendingCount: number;
     orders: Order[];
+    financialSummaries?: { currency:string; providerPaid:number; manuallyMarkedPaid:number; pending:number }[];
 }
 
 export interface OrderContact {
@@ -93,7 +85,7 @@ export class OrdersService {
      */
     async getOverview(tenantId: string, includeFinancials = true): Promise<OrdersOverview> {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return this.buildEmptyOverview(includeFinancials);
+        if (!schema) throw new NotFoundException('Tenant schema not found');
 
         try {
             await this.ensureOrdersTables(schema);
@@ -141,9 +133,16 @@ export class OrdersService {
                 : 0;
             const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'confirmed').length;
 
+            const financialSummaries = includeFinancials ? [...new Set(orders.map(order=>order.currency))].map(currency=>{
+                const group=orders.filter(order=>order.currency===currency);
+                return {currency,providerPaid:group.filter(order=>order.paymentStatus==='paid').reduce((sum,order)=>sum+order.totalAmount,0),
+                    manuallyMarkedPaid:group.filter(order=>order.status==='paid').reduce((sum,order)=>sum+order.totalAmount,0),
+                    pending:group.filter(order=>['pending','confirmed'].includes(order.status)&&['pending','failed'].includes(order.paymentStatus)).reduce((sum,order)=>sum+order.totalAmount,0)};
+            }) : [];
             return {
-                totalRevenue,
-                pendingRevenue,
+                totalRevenue:financialSummaries.length>1?0:totalRevenue,
+                pendingRevenue:financialSummaries.length>1?0:pendingRevenue,
+                financialSummaries,
                 financialsVisible: includeFinancials,
                 orderCount: orders.length,
                 pendingCount,
@@ -151,7 +150,7 @@ export class OrdersService {
             };
         } catch (error) {
             this.logger.error(`Error getting orders overview: ${error}`);
-            return this.buildEmptyOverview(includeFinancials);
+            throw error;
         }
     }
 
@@ -213,240 +212,41 @@ export class OrdersService {
     /**
      * Create real order decrementing stock accordingly
      */
-    async createOrder(tenantId: string, data: {
-        contactId?: string | null;
-        conversationId?: string | null;
-        opportunityId?: string | null;
-        status?: 'pending' | 'confirmed' | 'paid';
-        paymentMethod?: string;
-        notes?: string;
-        currency?: string;
-        items: { productId: string; productName: string; quantity: number; unitPrice: number; currency?: string }[];
-    }): Promise<{ id: string }> {
+    async createOrder(tenantId: string, data: CatalogCreateInput,actorId?:string): Promise<any> {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) throw new Error('Tenant schema not found');
-
+        if (!schema) throw new NotFoundException('Tenant schema not found');
         await this.ensureOrdersTables(schema);
-        if (!data || typeof data !== 'object') {
-            throw new BadRequestException('Order payload is required');
-        }
-        if (data.contactId != null
-            && (typeof data.contactId !== 'string' || !ORDER_UUID_PATTERN.test(data.contactId))) {
-            throw new BadRequestException('contactId must be a valid UUID when provided');
-        }
-        const initialStatus = String(data.status || 'pending').trim().toLowerCase();
-        if (!INITIAL_ORDER_STATUSES.has(initialStatus)) {
-            throw new BadRequestException('Initial order status must be pending, confirmed or paid');
-        }
-        if (!Array.isArray(data.items) || data.items.length < 1 || data.items.length > 100) {
-            throw new BadRequestException('Order must have between 1 and 100 items');
-        }
-        const requested = new Map<string, number>();
-        for (const item of data.items) {
-            if (!ORDER_UUID_PATTERN.test(String(item.productId || ''))) {
-                throw new BadRequestException('Each productId must be a valid UUID');
-            }
-            if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10_000) {
-                throw new BadRequestException('Each quantity must be a positive integer');
-            }
-            if (requested.has(item.productId)) {
-                throw new BadRequestException('Duplicate productId in order');
-            }
-            requested.set(item.productId, item.quantity);
-        }
-        const productIds = [...requested.keys()];
-
-        // One tenant-scoped transaction owns the catalog snapshots, header,
-        // lines and stock movements. Names, prices and currency come from the
-        // locked catalog, so a client cannot lower a price or invent stock.
-        return this.prisma.transactionInTenantSchema(schema, async (query) => {
-            const canonicalContactId = await requireTenantContact(query, data.contactId || null);
-            const opportunityId = await resolveNativeEvidenceOpportunity(query, {
-                contactId: canonicalContactId,
-                conversationId: data.conversationId,
-                trustedOpportunityId: data.opportunityId,
-            });
-            const products = await query<any[]>(
-                `SELECT id, name, price, currency, stock, is_available
-                   FROM products
-                  WHERE id = ANY($1::uuid[])
-                  FOR UPDATE`,
-                [productIds],
-            );
-            if (products.length !== productIds.length) {
-                throw new NotFoundException('One or more products do not exist');
-            }
-            const byId = new Map(products.map((product: any) => [product.id, product]));
-            const currencies = new Set<string>();
-            let totalAmount = 0;
-            for (const [productId, quantity] of requested) {
-                const product = byId.get(productId);
-                if (!product || product.is_available === false) {
-                    throw new ConflictException('One or more products are unavailable');
-                }
-                // A NULL stock means the tenant does not track units for this
-                // product — a pharmacy's OTC shelf, a made-to-order item, a
-                // service sold from the catalog. Treating NULL as zero made
-                // every such order fail with "insufficient stock", which is the
-                // same dead end as having no writer at all. Only an explicit
-                // number can be short.
-                if (product.stock !== null && product.stock !== undefined) {
-                    const stock = Number(product.stock);
-                    if (!Number.isInteger(stock) || stock < quantity) {
-                        throw new ConflictException(`Insufficient stock for ${product.name || productId}`);
-                    }
-                }
-                const price = Number(product.price);
-                if (!Number.isFinite(price) || price < 0) {
-                    throw new ConflictException('A catalog product has an invalid price');
-                }
-                currencies.add(normalizeOrderCurrencyCode(product.currency));
-                totalAmount += price * quantity;
-            }
-            if (currencies.size !== 1) {
-                throw new BadRequestException('All order items must use the same currency');
-            }
-            const currency = [...currencies][0];
-            if (data.currency && normalizeOrderCurrencyCode(data.currency) !== currency) {
-                throw new BadRequestException('Order currency does not match the catalog');
-            }
-
-            const orderRows = await query<any[]>(
-                `INSERT INTO orders (
-                    id, contact_id, opportunity_id, conversation_id, status, total_amount, currency, notes,
-                    metadata, created_at, updated_at
-                 ) VALUES (
-                    gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7,
-                    $8::jsonb, NOW(), NOW()
-                 ) RETURNING id`,
-                [
-                    canonicalContactId,
-                    opportunityId,
-                    data.conversationId || null,
-                    initialStatus,
-                    totalAmount,
-                    currency,
-                    data.notes || '',
-                    JSON.stringify({ payment_method: data.paymentMethod || 'cash' }),
-                ],
-            );
-            const orderId = orderRows?.[0]?.id;
-            if (!orderId) throw new Error('Failed to create order');
-
-            for (const [productId, quantity] of requested) {
-                const product = byId.get(productId);
-                const unitPrice = Number(product.price);
-                const tracksStock = product.stock !== null && product.stock !== undefined;
-                await query(
-                    `INSERT INTO order_items (
-                        id, order_id, product_id, product_name,
-                        quantity, unit_price, total_price
-                     ) VALUES (
-                        gen_random_uuid(), $1::uuid, $2::uuid, $3, $4, $5, $6
-                     )`,
-                    [orderId, productId, product.name, quantity, unitPrice, unitPrice * quantity],
-                );
-                // Untracked products have no units to move: decrementing would
-                // turn NULL into NULL and the guard below would read that as a
-                // stock conflict on a product that never had stock.
-                if (!tracksStock) continue;
-                const previousStock = Number(product.stock);
-                const newStock = previousStock - quantity;
-                const updated = await query<any[]>(
-                    `UPDATE products
-                        SET stock = stock - $2, updated_at = NOW()
-                      WHERE id = $1::uuid AND stock >= $2
-                    RETURNING stock`,
-                    [productId, quantity],
-                );
-                if (!updated.length) throw new ConflictException(`Insufficient stock for ${product.name}`);
-                await query(
-                    `INSERT INTO stock_movements (
-                        id, product_id, type, quantity, previous_stock,
-                        new_stock, reason, created_at
-                     ) VALUES (
-                        gen_random_uuid(), $1::uuid, 'out', $2, $3, $4, $5, NOW()
-                     )`,
-                    [productId, quantity, previousStock, newStock, `Orden ${orderId.slice(0, 8)}`],
-                );
-            }
-            return { id: orderId };
-        });
+        return new CatalogOrderCommands(this.prisma).create(schema, data, { source: 'tenant_user',expectedTermsHash:data.expectedTermsHash,actorId });
     }
 
-    /**
-     * Update order status
-     */
-    async updateOrderStatus(
-        tenantId: string,
-        orderId: string,
-        status: string,
-        actorRole?: string,
-    ): Promise<void> {
+    async quoteOrder(tenantId:string,data:CatalogCreateInput):Promise<any>{
+        const schema=await this.getTenantSchema(tenantId);
+        if(!schema) throw new NotFoundException('Tenant schema not found');
+        await this.ensureOrdersTables(schema);
+        const terms=await this.catalogCommands().quote(schema,data,'tenant_user');
+        return {terms,termsHash:catalogHash(terms)};
+    }
+
+    /** Server-only scoped command port used by production and the owned evaluation namespace. */
+    catalogCommands(): CatalogOrderCommands { return new CatalogOrderCommands(this.prisma); }
+
+    async recordStockEvidence(tenantId:string,orderId:string,input:any,actor:{id:string;role:string}):Promise<any>{
+        if(!this.canCancelOrder(actor.role))throw new ForbiddenException('catalog_stock_review_role_required');
+        const schema=await this.getTenantSchema(tenantId);if(!schema)throw new NotFoundException('Tenant schema not found');
+        await this.ensureOrdersTables(schema);
+        return this.catalogCommands().recordStockEvidence(schema,orderId,input,actor.id);
+    }
+
+    async updateOrderStatus(tenantId: string, orderId: string, status: string, actorRole?: string, expectedVersion?: number,actorId?:string): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) throw new Error('Tenant schema not found');
+        if (!schema) throw new NotFoundException('Tenant schema not found');
+        await this.ensureOrdersTables(schema);
         const next = String(status || '').trim().toLowerCase();
-        const allowed: Record<string, string[]> = {
-            pending: ['confirmed', 'cancelled'],
-            confirmed: ['paid', 'cancelled'],
-        };
-        if (!['confirmed', 'paid', 'cancelled'].includes(next)) {
-            throw new BadRequestException('Invalid order status');
-        }
-        if (next === 'cancelled' && !this.canCancelOrder(actorRole)) {
-            throw new ForbiddenException('Only tenant administrators and supervisors can cancel orders');
-        }
-
-        await this.prisma.transactionInTenantSchema(schema, async (query) => {
-            const orders = await query<any[]>(
-                `SELECT id, status FROM orders WHERE id = $1::uuid FOR UPDATE`,
-                [orderId],
-            );
-            const order = orders[0];
-            if (!order) throw new NotFoundException('Order not found');
-            const current = String(order.status || '').toLowerCase();
-            if (!allowed[current]?.includes(next)) {
-                throw new ConflictException(`Order cannot transition from ${current} to ${next}`);
-            }
-
-            if (next === 'cancelled') {
-                const items = await query<any[]>(
-                    `SELECT product_id, product_name, quantity
-                       FROM order_items
-                      WHERE order_id = $1::uuid
-                      FOR UPDATE`,
-                    [orderId],
-                );
-                for (const item of items) {
-                    const locked = await query<any[]>(
-                        `SELECT stock FROM products WHERE id = $1::uuid FOR UPDATE`,
-                        [item.product_id],
-                    );
-                    if (!locked.length) continue;
-                    const previousStock = Number(locked[0].stock || 0);
-                    const quantity = Number(item.quantity || 0);
-                    const newStock = previousStock + quantity;
-                    await query(
-                        `UPDATE products SET stock = $2, updated_at = NOW() WHERE id = $1::uuid`,
-                        [item.product_id, newStock],
-                    );
-                    await query(
-                        `INSERT INTO stock_movements (
-                            id, product_id, type, quantity, previous_stock,
-                            new_stock, reason, created_at
-                         ) VALUES (
-                            gen_random_uuid(), $1::uuid, 'in', $2, $3, $4, $5, NOW()
-                         )`,
-                        [item.product_id, quantity, previousStock, newStock, `Cancelación orden ${orderId.slice(0, 8)}`],
-                    );
-                }
-            }
-
-            await query(
-                `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                [next, orderId],
-            );
-        });
+        const commands = this.catalogCommands();
+        if (next === 'cancelled') {
+            if (!this.canCancelOrder(actorRole)) throw new ForbiddenException('Only tenant administrators and supervisors can cancel orders');
+            await commands.cancel(schema, orderId, null, { source: 'tenant_user', expectedVersion,actorId });
+        } else await commands.advance(schema, orderId, next, expectedVersion);
     }
 
     /**
@@ -458,8 +258,10 @@ export class OrdersService {
             contactId: o.contact_id,
             contactName: o.contact_name || 'Consumidor Final',
             status: o.status,
+            version:o.version,
+            paymentStatus:o.payment_status || 'unknown',
             totalAmount: parseFloat(o.total_amount) || 0,
-            currency: o.currency || 'COP',
+            currency: o.currency || '',
             paymentMethod: o.metadata?.payment_method || 'cash',
             notes: o.notes || '',
             createdAt: o.created_at?.toISOString?.() || new Date().toISOString(),
@@ -471,6 +273,7 @@ export class OrdersService {
                 quantity: parseInt(i.quantity) || 0,
                 unitPrice: parseFloat(i.unit_price) || 0,
                 totalPrice: parseFloat(i.total_price) || 0,
+                stockDeducted:i.stock_deducted??null,
             }))
         };
     }
@@ -483,7 +286,7 @@ export class OrdersService {
      * Schema runtime setups
      */
     private async ensureOrdersTables(schema: string): Promise<void> {
-        const cacheKey = `orders:tables:v2:${schema}`;
+        const cacheKey = `orders:tables:v3:${schema}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -496,7 +299,7 @@ export class OrdersService {
             // VARCHAR(3) contra VARCHAR(10). Un tenant creado por este camino
             // tenía una tabla distinta de la que el resto del código supone, y
             // el fallo aparece en ese tenant y en ninguno más.
-            await this.prisma.ensureCanonicalTables(schema, ['orders', 'order_items']);
+            await this.prisma.ensureCanonicalTables(schema, ['orders', 'order_items', 'stock_movements']);
 
             // Índice propio de este módulo: no está en el canónico y es
             // aditivo, así que se mantiene acá.
@@ -530,23 +333,12 @@ export class OrdersService {
         return null;
     }
 
-    private buildEmptyOverview(financialsVisible = true): OrdersOverview {
-        return {
-            totalRevenue: 0,
-            pendingRevenue: 0,
-            financialsVisible,
-            orderCount: 0,
-            pendingCount: 0,
-            orders: [],
-        };
-    }
-
     /**
      * Generate HTML Document for Order (Invoice / Quote)
      */
-    async getInvoiceHtml(tenantId: string, orderId: string): Promise<string> {
+    async getInvoiceHtml(tenantId: string, orderId: string,language = 'es'): Promise<string> {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return '<html><body><h1>Tenant not found</h1></body></html>';
+        if (!schema) throw new NotFoundException('catalog_tenant_not_found');
 
         const orderRes = await this.prisma.executeInTenantSchema<any[]>(
             schema,
@@ -554,7 +346,7 @@ export class OrdersService {
              FROM orders o LEFT JOIN contacts c ON o.contact_id = c.id
              WHERE o.id = $1::uuid LIMIT 1`, [orderId]
         );
-        if (!orderRes || orderRes.length === 0) return '<html><body><h1>No se encontró la orden</h1></body></html>';
+        if (!orderRes || orderRes.length === 0) throw new NotFoundException('catalog_order_not_found');
         const orderRow = orderRes[0];
 
         const itemsRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -562,115 +354,9 @@ export class OrdersService {
         ) || [];
 
         const tenantRes = await this.prisma.$queryRaw<any[]>`SELECT name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1`;
-        const tenantRow = tenantRes?.[0] || { name: 'Negocio Local' };
+        const tenantRow = tenantRes?.[0];
+        if(!tenantRow) throw new NotFoundException('catalog_tenant_not_found');
 
-        const isPaid = orderRow.status === 'paid';
-        const docTitle = isPaid ? 'FACTURA / RECIBO DE PAGO' : 'COTIZACIÓN / ORDEN PENDIENTE';
-        const color = isPaid ? '#2ecc71' : '#6c5ce7';
-
-        const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(parseFloat(n as any));
-        const dateStr = new Date(orderRow.created_at).toLocaleDateString("es-CO", { day: '2-digit', month: 'long', year: 'numeric' });
-
-        return `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>${docTitle} - ${orderRow.id.split('-')[0]}</title>
-    <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; color: #333; }
-        .container { max-width: 800px; margin: 40px auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
-        .business-name { font-size: 24px; font-weight: bold; color: #2d3436; margin: 0; }
-        .doc-title { font-size: 20px; font-weight: bold; color: ${color}; margin: 0; text-align: right; text-transform: uppercase; }
-        .doc-meta { font-size: 14px; color: #636e72; text-align: right; margin-top: 8px; }
-        
-        .info-section { display: flex; justify-content: space-between; margin-bottom: 30px; }
-        .info-box { width: 48%; }
-        .info-box h3 { margin: 0 0 10px 0; font-size: 14px; color: #b2bec3; text-transform: uppercase; }
-        .info-box p { margin: 0 0 5px 0; font-size: 15px; font-weight: 500; }
-        
-        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-        th { text-align: left; padding: 12px; background: #f8f9fa; color: #2d3436; font-size: 14px; border-bottom: 2px solid #eee; }
-        td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
-        
-        .totals { width: 300px; margin-left: auto; border-top: 2px solid ${color}; padding-top: 15px; }
-        .total-row { display: flex; justify-content: space-between; font-size: 15px; margin-bottom: 10px; }
-        .total-row.grand-total { font-size: 20px; font-weight: bold; color: ${color}; }
-        
-        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #aaa; text-align: center; }
-        
-        @media print {
-            body { background: white; margin: 0; }
-            .container { box-shadow: none; margin: 0; padding: 0; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div>
-                <h1 class="business-name">${tenantRow.name}</h1>
-            </div>
-            <div>
-                <h2 class="doc-title">${docTitle}</h2>
-                <div class="doc-meta">No. ${orderRow.id.split('-')[0].toUpperCase()}</div>
-                <div class="doc-meta">Fecha: ${dateStr}</div>
-            </div>
-        </div>
-
-        <div class="info-section">
-            <div class="info-box">
-                <h3>Facturar / Cotizar a</h3>
-                <p>${orderRow.contact_name || 'Cliente / Consumidor Final'}</p>
-            </div>
-            <div class="info-box" style="text-align: right;">
-                <h3>Estado</h3>
-                <p style="color: ${color};">${isPaid ? 'Pagado' : (orderRow.status === 'confirmed' ? 'Confirmada (Crédito)' : 'Pendiente')}</p>
-                <p style="font-size: 13px; color: #636e72;">Medio: ${orderRow.metadata?.payment_method || 'N/A'}</p>
-            </div>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>Descripción del Producto / Servicio</th>
-                    <th class="text-center">Cant.</th>
-                    <th class="text-right">V. Unitario</th>
-                    <th class="text-right">Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${itemsRows.map(i => `
-                <tr>
-                    <td>${i.product_name}</td>
-                    <td class="text-center">${i.quantity}</td>
-                    <td class="text-right">${formatCurrency(i.unit_price)}</td>
-                    <td class="text-right">${formatCurrency(i.total_price)}</td>
-                </tr>
-                `).join('')}
-            </tbody>
-        </table>
-
-        <div class="totals">
-            <div class="total-row grand-total">
-                <span>TOTAL</span>
-                <span>${formatCurrency(orderRow.total_amount)}</span>
-            </div>
-        </div>
-
-        <div style="margin-top: 30px;">
-            <p style="font-size: 13px; color: #636e72;"><strong>Notas:</strong> ${orderRow.notes || 'Ninguna'}</p>
-        </div>
-
-        <div class="footer">
-            Este documento ${isPaid ? 'es un comprobante de pago electrónico' : 'es una cotización sin validez fiscal hasta su cancelación'}.
-            <br>Generado por Parallext Cloud.
-        </div>
-    </div>
-</body>
-</html>`;
+        return catalogOrderDocument(tenantRow.name,orderRow,itemsRows,language);
     }
 }

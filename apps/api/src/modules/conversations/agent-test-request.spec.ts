@@ -31,6 +31,7 @@ describe('Agent Test runtime request contract', () => {
                 message: 'Hola',
                 channelType: 'whatsapp',
                 runtimeSessionId: '11111111-1111-4111-8111-111111111111',
+                configurationRevisionId: '22222222-2222-4222-8222-222222222222',
                 conversationHistory: [{ role: 'user', content: 'Anterior' }],
                 options: { disableTools: true },
             },
@@ -41,6 +42,7 @@ describe('Agent Test runtime request contract', () => {
         expect(request.body).toMatchObject({
             message: 'Hola',
             channelType: 'whatsapp',
+            configurationRevisionId: '22222222-2222-4222-8222-222222222222',
             options: { disableTools: true },
         });
     });
@@ -58,6 +60,9 @@ describe('Agent Test runtime request contract', () => {
     it.each([
         ['blank message', { message: '   ' }],
         ['invalid session id', { message: 'Hola', runtimeSessionId: 'other-session' }],
+        ['invalid configuration revision', {message:'Hola',configurationRevisionId:'my-draft'}],
+        ['null configuration revision', {message:'Hola',configurationRevisionId:null}],
+        ['configuration object in place of revision', {message:'Hola',configurationRevisionId:{config:{}}}],
         ['oversized message', { message: 'x'.repeat(AGENT_TEST_MESSAGE_MAX_CHARS + 1) }],
         ['invalid role', { message: 'Hola', conversationHistory: [{ role: 'system', content: 'x' }] }],
         ['null history', { message: 'Hola', conversationHistory: null }],

@@ -67,7 +67,7 @@ const ISO_WITH_ZONE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z
 const STATUS_MAP: Readonly<Record<ActiveObjectStatusClass, ReadonlySet<string>>> = {
     pending: new Set([
         'pending', 'received', 'requested', 'new', 'draft', 'created',
-        'waitlist', 'enrolled', 'scheduled',
+        'waitlist', 'waitlisted', 'waitlist_review', 'enrolled', 'scheduled',
         'estimating', 'awaiting_approval',
     ]),
     active: new Set([

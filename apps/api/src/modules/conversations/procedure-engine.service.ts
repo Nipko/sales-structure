@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
@@ -17,6 +18,8 @@ import {
 import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { LanguageDetectorService } from './language-detector.service';
+import { persistConversationRuntimeState } from './conversation-runtime-state';
+import { containsMissionDirective, isDirectedCorrection, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection, type MissionCandidate } from './mission-focus';
 
 export interface ProcedureProcessResult {
     handled: boolean;
@@ -31,6 +34,7 @@ export interface ProcedureProcessResult {
     procedureStartedAt?: string;
     currentStepId?: string | null;
     missionId?: string;
+    executedTools?: Array<{ name: string; result: any }>;
     dialogueAct?: 'question' | 'pause' | 'cancel' | 'resume' | 'invalid' | 'correction';
 }
 
@@ -75,6 +79,9 @@ export interface ProcedureAgentContext {
 
     /** Lo que el dueño apagó a mano. Se propaga al ejecutor. */
     deniedTools?: readonly string[];
+    /** Explicit selection made by the shared, server-owned focus arbiter. */
+    selectedProcedureId?: string;
+    selectedMissionId?: string;
 }
 
 const STATE_TTL = 3600; // 1h
@@ -122,7 +129,7 @@ export class ProcedureEngineService {
         return `procedure:${conversationId}`;
     }
 
-    forExecution(ports: { redis?: RedisService; toolExecutor?: AIToolExecutorService; persistence: ProcedureStateStore; definitions?: ProcedureDefinitionStore }): ProcedureEngineService {
+    forExecution(ports: { redis?: RedisService; toolExecutor?: AIToolExecutorService; persistence?: ProcedureStateStore; definitions?: ProcedureDefinitionStore }): ProcedureEngineService {
         const engine = new ProcedureEngineService(this.prisma, ports.redis || this.redis, ports.toolExecutor || this.toolExecutor);
         engine.stateStore = ports.persistence;
         engine.definitionStore = ports.definitions;
@@ -168,10 +175,7 @@ export class ProcedureEngineService {
             return;
         }
         if (schemaName) {
-            const saved = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid RETURNING id`,
-                [conversationId, JSON.stringify({ procedureStateManaged: true, procedureState: state })]);
-            if (!saved[0]) throw new Error('procedure_conversation_missing');
+            await persistConversationRuntimeState(this.prisma, schemaName, conversationId, { procedureStateManaged: true, procedureState: state });
         }
         await this.redis.setJson(this.stateKey(conversationId), state, STATE_TTL).catch(() => {});
     }
@@ -182,8 +186,7 @@ export class ProcedureEngineService {
             await this.stateStore.clear(schemaName, conversationId);
             return;
         }
-        if (schemaName) await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET metadata = (COALESCE(metadata, '{}'::jsonb) - 'procedureState') || '{"procedureStateManaged":true}'::jsonb WHERE id = $1::uuid`, [conversationId]);
+        if (schemaName) await persistConversationRuntimeState(this.prisma, schemaName, conversationId, { procedureStateManaged: true }, ['procedureState']);
         await this.redis.del(this.stateKey(conversationId)).catch(() => {});
     }
 
@@ -327,20 +330,67 @@ export class ProcedureEngineService {
         userText: string,
         agent?: ProcedureAgentContext,
     ): Promise<ProcedureProcessResult> {
+        let processed: ProcedureRunState | null = null;
+        const executedTools: Array<{ name: string; result: any }> = [];
+        const result = await this.processMission(schemaName, tenantId, conversationId, contactId, userText, agent,
+            state => { processed = state; }, executedTools);
+        const identity = processed as ProcedureRunState | null;
+        return identity ? { ...result, executedTools, procedureId: identity.procedureId, procedureVersion: identity.version,
+            procedureStartedAt: identity.startedAt, currentStepId: identity.currentStepId,
+            missionId: identity.missionId || `procedure:${identity.procedureId}:${identity.startedAt}` } : { ...result, executedTools };
+    }
+
+    async missionCandidates(schemaName: string, tenantId: string, conversationId: string, agent?: ProcedureAgentContext): Promise<MissionCandidate[]> {
+        const state = await this.getState(conversationId, schemaName);
+        const frames = state ? [state, ...this.retainedMissions(state)] : [];
+        const definitions = (await this.loadActiveProcedures(tenantId, schemaName)).filter(definition => this.appliesToVertical(definition, agent));
+        return definitions.map(definition => {
+            const saved = frames.find(frame => frame.procedureId === definition.id);
+            return { ref: { id: saved ? saved.missionId || `procedure:${definition.id}:${saved.startedAt}` : randomUUID(),
+                kind: 'procedure', reference: definition.id }, aliases: [definition.name, ...(definition.trigger?.keywords || [])],
+                saved: !!saved, paused: !!saved?.pausedAt };
+        });
+    }
+
+    async pauseMission(schemaName: string, conversationId: string): Promise<void> {
+        const state = await this.getState(conversationId, schemaName);
+        if (!state || state.pausedAt) return;
+        state.pausedAt = new Date().toISOString();
+        await this.saveState(conversationId, state, schemaName, false);
+    }
+
+    private async processMission(schemaName: string, tenantId: string, conversationId: string, contactId: string,
+        userText: string, agent: ProcedureAgentContext | undefined, capture: (state: ProcedureRunState) => void, executedTools: Array<{ name: string; result: any }>): Promise<ProcedureProcessResult> {
         let state = await this.getState(conversationId, schemaName);
+        if (state) capture(state);
         let resumingProcedure = !!state;
         let procedure: ProcedureDefinition | null = null;
         let resumeSelectedMission = false;
         const dialogue = normalizeCustomerIntent(userText);
 
+        // Control language anywhere in an answer is not a free-text slot.
+        if (state && !isDirectedCorrection(userText) && containsMissionDirective(userText)
+            && !['cancel', 'request_human'].includes(dialogue.intent) && !isInformationSeekingMessage(userText)) {
+            const active = (await this.loadActiveProcedures(tenantId, schemaName)).filter(candidate => this.appliesToVertical(candidate, agent));
+            const matches = active.filter(candidate => this.matchTrigger([candidate], userText));
+            if (matches.length > 1 || mentionedMissionDomains(userText).length > 1) return {
+                handled: true, completed: false, dialogueAct: 'pause', text: missionDialogue(agent?.language || 'es', 'clarify'),
+            };
+            if (!state.pausedAt && (matches[0]?.id !== state.procedureId || agent?.selectedProcedureId)) {
+                state.pausedAt = new Date().toISOString();
+                await this.saveState(conversationId, state, schemaName, false);
+            }
+            if (!matches.length && !agent?.selectedProcedureId) return { handled: false, completed: false, dialogueAct: 'pause' };
+        }
+
         // A new explicit task can run while another is paused. Ordinary answers,
         // questions and a generic "continue" keep the current task selected.
-        if (state?.pausedAt && SELECT_MISSION.test(normalizeForIntent(userText)) && !isResumeMessage(userText)
+        if (state?.pausedAt && (agent?.selectedProcedureId || SELECT_MISSION.test(normalizeForIntent(userText))) && (!isResumeMessage(userText) || agent?.selectedProcedureId)
             && !['cancel', 'opt_out', 'reject', 'request_human', 'correct'].includes(dialogue.intent)
             && !isInformationSeekingMessage(userText) && !isPauseMessage(userText)) {
             const active = (await this.loadActiveProcedures(tenantId, schemaName))
                 .filter(candidate => this.appliesToVertical(candidate, agent));
-            const matches = active.filter(candidate => this.matchTrigger([candidate], userText));
+            const matches = active.filter(candidate => agent?.selectedProcedureId ? candidate.id === agent.selectedProcedureId : this.matchTrigger([candidate], userText));
             if (matches.length > 1) return { handled: true, completed: false, dialogueAct: 'pause',
                 text: procedureDialogueMessages(agent?.language).missionSelection };
             // Cache is only a discovery hint. Revalidate before selecting or creating state.
@@ -357,11 +407,13 @@ export class ProcedureEngineService {
                 const { suspendedMissions: _nested, ...current } = state;
                 const suspended = [{ ...current, pausedAt: current.pausedAt || new Date().toISOString() }, ...frames.filter(frame => frame.procedureId !== target.id)];
                 state = saved ? { ...saved, suspendedMissions: suspended } : {
+                    missionId: agent?.selectedMissionId || randomUUID(),
                     procedureId: target.id, version: target.version, currentStepId: target.steps[0].id,
                     collected: {}, awaitingField: null, startedAt: new Date().toISOString(), suspendedMissions: suspended,
                 };
                 resumingProcedure = !!saved;
                 resumeSelectedMission = !!saved;
+                capture(state);
                 await this.saveState(conversationId, state, schemaName);
             }
         }
@@ -384,6 +436,7 @@ export class ProcedureEngineService {
             if (!matched || !matched.steps.length) return { handled: false };
             procedure = matched;
             state = {
+                missionId: agent?.selectedMissionId || randomUUID(),
                 procedureId: procedure.id,
                 version: procedure.version,
                 currentStepId: procedure.steps[0].id,
@@ -392,6 +445,7 @@ export class ProcedureEngineService {
                 startedAt: new Date().toISOString(),
             };
             this.logger.log(`[Procedure] Started "${procedure.name}" for conversation ${conversationId}`);
+            capture(state);
         }
 
         const byId = new Map(procedure.steps.map((s) => [s.id, s]));
@@ -431,6 +485,35 @@ export class ProcedureEngineService {
             if (state.awaitingField) {
                 return { handled: true, completed: false, dialogueAct: 'resume', text: ask?.config.question, procedureName: procedure.name };
             }
+        }
+
+        if (isDirectedCorrection(userText)) {
+            const asks = procedure.steps.filter(step => step.type === 'ask' && step.config.field);
+            const correction = parseDirectedSlotCorrection(userText, asks.map(step => ({ field: step.config.field!,
+                type: this.collectionSpec(procedure!, step, step.config.field!).type || 'string' })));
+            const target = correction ? asks.find(step => step.config.field === correction.field) : undefined;
+            const targetIndex = target ? indexOfId(target.id) : -1;
+            const currentIndex = indexOfId(state.currentStepId);
+            const crossesCommittedStep = targetIndex >= 0 && procedure.steps.slice(targetIndex + 1, currentIndex)
+                .some(step => step.type === 'tool' && !isNonCommittalTool(String(step.config.tool || '')));
+            const spec = target ? this.collectionSpec(procedure, target, correction!.field) : undefined;
+            const value = correction && spec ? coerceProcedureSlot(correction.value, spec.type || 'string') : null;
+            if (!correction || !target || targetIndex > currentIndex || crossesCommittedStep || !value?.ok
+                || (spec?.choices?.length && !spec.choices.includes(String(value.value)))) {
+                return { handled: true, completed: false, dialogueAct: 'invalid', text: missionDialogue(agent?.language || 'es', 'invalidCorrection') };
+            }
+            state.collected[correction.field] = value.value;
+            // Derived answers are collected again. Never rewind across a command.
+            for (const step of procedure.steps.slice(targetIndex + 1)) {
+                if (step.type === 'ask' && step.config.field) delete state.collected[step.config.field];
+                if (step.config.saveAs) delete state.collected[step.config.saveAs];
+            }
+            state.currentStepId = this.nextStepId(procedure, target.id);
+            const next = byId.get(state.currentStepId || '');
+            state.awaitingField = next?.type === 'ask' ? next.config.field || `field_${next.id}` : null;
+            await this.saveState(conversationId, state, schemaName);
+            return { handled: true, completed: false, dialogueAct: 'correction',
+                text: [missionDialogue(agent?.language || 'es', 'correction'), next?.type === 'ask' ? next.config.question : ''].filter(Boolean).join('\n\n') };
         }
 
         // A question, pause or rejection is a dialogue act, not a field value.
@@ -559,6 +642,7 @@ export class ProcedureEngineService {
                             deniedTools: agent?.deniedTools,
                         },
                     );
+                    executedTools.push({ name: toolName, result });
                     if (result?.error) {
                         const explicitlyRejected = ['action_rejected', 'approval_rejected'].includes(result.error);
                         if (explicitlyRejected) {

@@ -173,7 +173,10 @@ const TOOL_POLICY_ENTRIES = [
     entry('send_product_image', mediaWrite()),
     // Retail's closing step: the catalog could be searched and priced but never
     // sold from, so the agent announced orders that did not exist.
-    entry('place_catalog_order', contactWrite({ downstreamEffects: ['notification'] })),
+    entry('place_catalog_order', contactWrite()),
+    entry('list_my_catalog_orders', contactRead({ agentTestAllowed: true })),
+    entry('get_catalog_order', contactRead({ agentTestAllowed: true, ownership:'resource_owner' })),
+    entry('cancel_catalog_order', contactWrite({ ownership:'resource_owner', idempotency:'state_guarded' })),
     entry('list_active_offers', publicRead({ agentTestAllowed: true })),
     entry('search_faqs', publicRead({
         effect: 'conditional_write',

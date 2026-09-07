@@ -4,13 +4,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { InterpretedIntent } from './intent-interpreter.service';
-import type { ToolExecutionAuthority } from '@parallext/shared';
+import type { ToolExecutionAuthority, MissionExecutionScopeV1 } from '@parallext/shared';
 import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
 import { bookingConfirmationHash } from './booking-confirmation';
 import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
 import { isPauseMessage, isResumeMessage } from '../../common/conversation/intent-normalizer';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
+import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
+import { coerceProcedureSlot } from './procedure-slot-interpolation';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -31,6 +33,10 @@ export interface BookingTurnContext {
     flowCapable?: boolean;
     flowData?: Record<string, unknown>;
     conversationId?: string;
+    missionScope?: MissionExecutionScopeV1;
+    flowResponseToken?: string;
+    resumeSelected?: boolean;
+    startSelected?: boolean;
 }
 
 
@@ -266,6 +272,8 @@ export interface BookingState {
     payableReference?: string | null;
     /** ISO timestamp set when a WhatsApp Flow was sent; used to expire stale Flows (>1h). */
     flowStartedAt?: string;
+    flowToken?: string;
+    flowRevision?: number;
     /** Backend timestamp; a conversational pause does not discard the mission. */
     savedAt?: string;
     pausedAt?: string | null;
@@ -273,6 +281,17 @@ export interface BookingState {
     confirmationId?: string;
     confirmationHash?: string;
     confirmationIssuedAt?: string;
+}
+
+/** Revoking a proposal does not erase collected customer/service preferences. */
+export function invalidateBookingProposal(state: BookingState): void {
+    state.confirmationId = undefined;
+    state.confirmationHash = undefined;
+    state.confirmationIssuedAt = undefined;
+    state.flowToken = undefined;
+    state.flowRevision = undefined;
+    state.flowStartedAt = undefined;
+    if (state.step === 'waiting_flow') state.step = state.serviceId ? 'ask_date' : 'show_services';
 }
 
 export interface EngineResult {
@@ -363,16 +382,56 @@ export class BookingEngineService {
         // la exige.
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
-        state.missionId ||= randomUUID();
+        if (turn.startSelected && state.step === 'idle' && (!intent.intent || intent.intent === 'unknown')) intent = { ...intent, intent: 'ask_availability' };
+        state.missionId ||= turn.missionScope?.missionId || randomUUID();
         const L = language; // shorthand for msg() calls
+        const domains = mentionedMissionDomains(rawText);
+        const active = !['idle', 'booked'].includes(state.step);
+        if (active && containsMissionDirective(rawText) && domains.length > 1) {
+            return { handled: true, state, text: missionDialogue(L, 'clarify') };
+        }
+        if (active && intent.intent === 'cancel' && !isCollectionCancellation(rawText)
+            || active && containsMissionDirective(rawText) && !isDirectedCorrection(rawText)
+                && domains.length > 0 && !domains.includes('appointment')) {
+            state.pausedAt ||= new Date().toISOString();
+            invalidateBookingProposal(state);
+            return { handled: false, state };
+        }
         if (!['idle', 'booked'].includes(state.step) && isPauseMessage(rawText)) {
             state.pausedAt = new Date().toISOString();
+            invalidateBookingProposal(state);
             return { handled: true, state, text: procedureDialogueMessages(L).paused };
         }
         if (state.pausedAt) {
-            if (!isResumeMessage(rawText) && intent.intent !== 'cancel') return { handled: false, state };
+            const namedResume = isNamedMissionResume(rawText) && domains.length === 1 && domains[0] === 'appointment';
+            if (!turn.resumeSelected && !namedResume && !isResumeMessage(rawText) && intent.intent !== 'cancel') return { handled: false, state };
             state.pausedAt = null;
-            if (isResumeMessage(rawText)) return this.repromptCurrentStep(state, L);
+            if (turn.resumeSelected || namedResume || isResumeMessage(rawText)) {
+                invalidateBookingProposal(state);
+                return this.repromptCurrentStep(state, L);
+            }
+        }
+        if (active && isDirectedCorrection(rawText)) {
+            const correction = parseDirectedSlotCorrection(rawText, [
+                { field: 'customerName', type: 'name' }, { field: 'customerEmail', type: 'email' },
+                { field: 'customerPhone', type: 'phone' }, { field: 'date', type: 'date' }, { field: 'time', type: 'time' },
+            ]);
+            const type = correction?.field === 'customerName' ? 'name' : correction?.field === 'customerEmail' ? 'email'
+                : correction?.field === 'customerPhone' ? 'phone' : 'string';
+            const value = correction ? coerceProcedureSlot(correction.value, type) : null;
+            const temporalValid = correction?.field === 'date' ? /^\d{4}-\d{2}-\d{2}$/.test(correction.value) && correction.value >= todayDate
+                : correction?.field === 'time' ? /^([01]\d|2[0-3]):[0-5]\d$/.test(correction.value) : true;
+            if (!correction || !value?.ok || !temporalValid) return { handled: true, state, text: missionDialogue(L, 'invalidCorrection') };
+            (state as any)[correction.field] = value.value;
+            invalidateBookingProposal(state);
+            if (correction.field === 'date') { state.time = undefined; state.slots = undefined; state.staffId = undefined; state.staffName = undefined; }
+            if (correction.field === 'date' || correction.field === 'time') {
+                // Revalidate availability on a later selection turn, never book
+                // merely because this correction contains a previously valid time.
+                state.step = 'ask_date';
+                return { handled: true, state, text: missionDialogue(L, 'correction') };
+            }
+            return { ...this.repromptCurrentStep(state, L), handled: true };
         }
 
         // Defense in depth: the orchestrator checks this before entering the
@@ -456,7 +515,12 @@ export class BookingEngineService {
         if (state.step === 'waiting_flow') {
             const expired = !!state.flowStartedAt
                 && (Date.now() - Date.parse(state.flowStartedAt)) > 3_600_000;
-            if (rawText === '__flow_response__' && flowData && !expired) {
+            const validFlowBinding = !!state.flowToken && turn.flowResponseToken === state.flowToken
+                && (!turn.missionScope || state.missionId === turn.missionScope.missionId && state.flowRevision === turn.missionScope.revision);
+            if (rawText === '__flow_response__' && state.flowToken && !expired && !validFlowBinding) {
+                return { handled: true, state, text: missionDialogue(L, 'clarify') };
+            }
+            if (rawText === '__flow_response__' && flowData && !expired && validFlowBinding) {
                 const pick = (...keys: string[]): string => {
                     for (const k of keys) {
                         const v = (flowData as any)[k];
@@ -567,6 +631,8 @@ export class BookingEngineService {
             if (wantsBooking) {
                 state.step = 'waiting_flow';
                 state.flowStartedAt = new Date().toISOString();
+                state.flowToken = randomUUID();
+                state.flowRevision = turn.missionScope?.revision ?? 0;
                 return {
                     handled: true,
                     state,
@@ -1142,6 +1208,7 @@ export class BookingEngineService {
                 authorityEvidence: {
                     kind: 'booking_engine_confirmation' as const,
                     source: confirmationSource,
+                    flowToken: confirmationSource === 'flow_response' ? state.flowToken : undefined,
                 },
             } : {}),
         });

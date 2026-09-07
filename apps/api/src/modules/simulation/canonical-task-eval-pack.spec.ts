@@ -4,10 +4,11 @@ import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-
 import { buildTaskCompetenceMatrix } from './task-competence-matrix';
 
 const supported = new Set(['book_appointment', 'cancel_appointment', 'book_class', 'enrol_student']);
+const separatelyVerified = new Set(['open_repair_order','track_repair_order','approve_repair_estimate','cancel_repair_order','place_catalog_order','track_catalog_order','cancel_catalog_order']);
 const fixture = resolveCanonicalEvalFixtures({ capturedAt: '2026-09-07T15:00:00Z', config: { hours: { timezone: 'America/Bogota', schedule: {} } } } as AgentEvaluationSnapshot);
 
 describe('complete canonical task evaluation packs', () => {
-    it('derives complete cases only from the three declared task families in all canonical profiles and languages', () => {
+    it('derives complete cases only from declared task families in all canonical profiles and languages', () => {
         let tasks = 0;
         for (const id of listCanonicalSubtypeExperienceProfileIds()) {
             const [industry, subtype] = id.split('/');
@@ -16,6 +17,13 @@ describe('complete canonical task evaluation packs', () => {
                 const pack = composeSubtypeEvalPack({ industry, subtype, language });
                 for (const intent of domain.intents) {
                     const cases = pack.filter(scenario => scenario.key.startsWith(`intent_${intent.key}_canonical_`));
+                    // Workshop and catalog have distinct owned-object and price assertions,
+                    // verified by their dedicated pack suites; they do not request booking email.
+                    if(separatelyVerified.has(intent.key)) {
+                        expect(cases.length).toBeGreaterThan(0);
+                        for(const scenario of cases) expect(JSON.stringify(bindCanonicalEvalFixtures(scenario,fixture))).not.toMatch(/\{\{fixture\.|2099/);
+                        continue;
+                    }
                     if (!supported.has(intent.key) || !intent.commits) { expect(cases).toEqual([]); continue; }
                     tasks++;
                     expect(cases.length).toBeGreaterThanOrEqual(3);

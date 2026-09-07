@@ -1,3 +1,4 @@
+import { catalogItems, catalogTerms } from '../orders/catalog-order-contract';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { resolveVerticalCapabilityManifest } from '@parallext/shared';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
@@ -24,9 +25,11 @@ describe('pharmacy prescription boundary', () => {
             $executeRawUnsafe: jest.fn(),
             executeInTenantSchema: jest.fn().mockResolvedValue([]),
         };
-        const ordersService = { createOrder: jest.fn().mockResolvedValue({ id: 'order-1' }) };
+        const commands={quote:jest.fn(async(_schema:string,data:any)=>catalogTerms(await prisma.$queryRawUnsafe(),catalogItems(data.items),'','agent')),
+            create:jest.fn().mockResolvedValue({id:'55555555-5555-4555-8555-555555555555',items:[{}],totalAmount:16000,paymentStatus:'pending',status:'pending'})};
+        const ordersService = {catalogCommands:()=>commands,createOrder:commands.create};
         const toolExecutionControl = {
-            preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
+            preflight: jest.fn().mockResolvedValue({ allowed: true, idempotencyKey:'pharmacy-call', policy: { externalEffect: 'none' } }),
             complete: jest.fn().mockResolvedValue(undefined),
             fail: jest.fn().mockResolvedValue(undefined),
         };
@@ -74,9 +77,9 @@ describe('pharmacy prescription boundary', () => {
             { authority: authorityFor('place_catalog_order') },
         );
 
-        expect(result.error).toBe('prescription_required');
+        expect(result.error).toBe('catalog_prescription_review_required');
         expect(result.productName).toBe('Amoxicilina 500mg');
-        expect(result.message).toContain('Amoxicilina 500mg');
+        expect(result.shouldHandoff).toBe(true);
         // Nada se escribió: el pedido no existe a medias.
         expect(harness.ordersService.createOrder).not.toHaveBeenCalled();
     });
@@ -89,8 +92,7 @@ describe('pharmacy prescription boundary', () => {
     it('refuses the whole order when one line needs a prescription', async () => {
         const harness = createHarness();
         harness.prisma.$queryRawUnsafe
-            .mockResolvedValueOnce([productRow()])
-            .mockResolvedValueOnce([productRow({ id: rx, name: 'Amoxicilina 500mg', requires_prescription: true })]);
+            .mockResolvedValue([productRow(),productRow({ id: rx, name: 'Amoxicilina 500mg', requires_prescription: true })]);
 
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
@@ -98,7 +100,7 @@ describe('pharmacy prescription boundary', () => {
             { authority: authorityFor('place_catalog_order') },
         );
 
-        expect(result.error).toBe('prescription_required');
+        expect(result.error).toBe('catalog_prescription_review_required');
         expect(harness.ordersService.createOrder).not.toHaveBeenCalled();
     });
 

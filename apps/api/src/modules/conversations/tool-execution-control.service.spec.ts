@@ -324,6 +324,25 @@ describe('ToolExecutionControlService', () => {
         });
     });
 
+    it('uses the reviewed MCP effect when enforcing mission ownership',async()=>{
+        const {service,state}=createHarness();
+        const missionScope={version:1 as const,kind:'booking' as const,executionOwner:'tool' as const,missionId:'booking',domain:'appointment',revision:1,inboundMessageId:firstMessageId,expectedReply:null};
+        const request={schemaName,tenantId,contactId,conversationId,toolName:'mcp__erp__operation',args:{},missionScope};
+        expect(await service.preflight({...request,mcpApproval:mcpReview})).toMatchObject({allowed:false,result:{error:'mission_selection_required'}});
+        expect(await service.preflight({...request,mcpApproval:{...mcpReview,effect:'read',dataClassification:'public',requiresConfirmation:false}})).toMatchObject({allowed:true,policy:{effect:'read'}});
+        expect(state.ledgers).toHaveLength(0);
+    });
+
+    it('keeps conditional knowledge reads usable while business commands await mission selection',async()=>{
+        const {service,state}=createHarness();
+        const missionScope={version:1 as const,kind:'procedure' as const,executionOwner:'tool' as const,missionId:'procedure',revision:1,inboundMessageId:firstMessageId,expectedReply:null,writeBlocked:true};
+        for(const toolName of ['search_faqs','search_knowledge_base','get_policy']) {
+            expect(await service.preflight({schemaName,tenantId,contactId,conversationId,toolName,args:{},missionScope,readOnlyExecution:true})).toMatchObject({allowed:true});
+        }
+        expect(await service.preflight({schemaName,tenantId,contactId,conversationId,toolName:'enroll_student',args:{},missionScope})).toMatchObject({allowed:false,result:{error:'mission_selection_required'}});
+        expect(state.ledgers).toHaveLength(0);
+    });
+
     it('old or malformed MCP reviews remain inoperative', async () => {
         const { service } = createHarness();
         expect(await service.preflight({ schemaName, tenantId, contactId, conversationId, toolName: 'mcp__erp__operation', args: {},

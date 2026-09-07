@@ -553,6 +553,7 @@ const EVAL_WRITER_EFFECTS: Readonly<Record<string, {
     approve_repair: { family: 'repair_orders', table: 'repair_orders' },
     cancel_repair_order: { family: 'repair_orders', table: 'repair_orders' },
     place_catalog_order: { family: 'catalog_orders', table: 'orders' },
+    cancel_catalog_order: { family: 'catalog_orders', table: 'orders' },
     // A claim has no contact_id column and identity step-up must never be
     // bypassed by the sandbox. Its executable eval contract is the negative
     // tool assertion.
@@ -568,7 +569,9 @@ function writerAssertions(intent: IntentContract): EvalScenarioSeed['expectedAct
             type: 'not_called',
             tool,
         }];
-        if (effect.table) assertions.push({
+        // Catalog fixtures include existing owned orders. Complete task cases below
+        // assert their exact state; a generic missing-data probe forbids the writer.
+        if (effect.table && effect.family !== 'catalog_orders') assertions.push({
             kind: 'db_effect',
             type: 'no_row',
             family: effect.family,

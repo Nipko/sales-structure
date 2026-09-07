@@ -1,3 +1,4 @@
+import { runtimeStateTransactions } from './__fixtures__/runtime-state.fixture';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
@@ -11,7 +12,7 @@ describe('durable procedure missions', () => {
         const prisma: any = { executeInTenantSchema: jest.fn(async (_schema, sql, params) => {
             if (sql.startsWith('SELECT metadata')) return [{ metadata: structuredClone(metadata) }];
             if (sql.startsWith('UPDATE conversations')) {
-                if (params[1]) metadata = { ...metadata, ...JSON.parse(params[1]) };
+                if (params[1]) { for (const key of params[2] || []) delete metadata[key]; metadata = { ...metadata, ...JSON.parse(params[1]) }; }
                 else { delete metadata.procedureState; metadata.procedureStateManaged = true; }
                 return [{ id: params[0] }];
             }
@@ -22,6 +23,7 @@ describe('durable procedure missions', () => {
             expect(metadata.procedureState.currentStepId).toBe('act');
             return { success: true };
         }) };
+    runtimeStateTransactions(prisma);
         const engine = new ProcedureEngineService(prisma, redis, executor);
         (engine as any).loadActiveProcedures = jest.fn(async () => [definition]);
         return { engine, prisma, redis, executor, metadata: () => metadata, dropCache: () => { cached = null; }, restart: () => new ProcedureEngineService(prisma, redis, executor) };

@@ -549,12 +549,12 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         const falseClaims: Array<{ turn: number; reply: string }> = [];
 
         const askAgent = async (customerMsg: string): Promise<string> => {
-            await session?.recordInbound(customerMsg);
+            const sandboxInboundMessageId=await session?.recordInbound(customerMsg);
             const res = await this.agentTest.test(
                 tenantId,
                 agentId,
                 { message: customerMsg, conversationHistory: [...history], channelType: channelType as any },
-                { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, sandboxNamespace: session.sandboxNamespace, beforeToolExecution: session.assertLease } : {}) },
+                { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, sandboxNamespace: session.sandboxNamespace, sandboxInboundMessageId, beforeToolExecution: session.assertLease } : {}) },
             );
             if (res.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
             const reply = res.reply || '';

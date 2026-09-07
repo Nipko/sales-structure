@@ -64,6 +64,10 @@ export class AgentTestRequestOptionsDto {
 export class AgentTestRequestDto implements TestAgentRequest {
     @ValidateIf((_object, value) => value !== undefined)
     @IsUUID()
+    configurationRevisionId?: string;
+
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsUUID()
     runtimeSessionId?: string;
 
     @IsString()

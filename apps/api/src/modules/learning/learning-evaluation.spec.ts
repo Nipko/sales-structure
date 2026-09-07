@@ -17,7 +17,7 @@ function build(){
     const session={sandboxContactId:'00000000-0000-4000-8000-00000000eba1',sandboxConversationId:'',assertLease:jest.fn(),
         sandboxNamespace:undefined as any,
         reset:jest.fn(async()=>{session.sandboxConversationId=`sandbox-${++sessionIndex}`;
-            session.sandboxNamespace={schemaName:`isolated-${sessionIndex}`,token:`lease-${sessionIndex}`};}),recordInbound:jest.fn()};
+            session.sandboxNamespace={schemaName:`tenant_eval_11111111_${String(sessionIndex).padStart(24,'0')}`,tenantId,sourceSchema:'tenant_learning',token:`lease-${sessionIndex}`};}),recordInbound:jest.fn()};
     const sandbox={withSandboxSession:jest.fn(async(_tenant,callback)=>callback(session))};
     const agentTest={assertSnapshotCurrent:jest.fn().mockResolvedValue(undefined),captureSnapshot:jest.fn().mockResolvedValue(snapshot),test:jest.fn(async(_t,_a,req,opts)=>{
         await opts.beforeModelExecution();

@@ -11,7 +11,7 @@ import { AgentTestService } from '../conversations/agent-test.service';
 import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { EvalService, type EvalSandboxSession } from '../simulation/eval.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
+import { EVAL_SANDBOX_CONTACT_ID,EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { LearningService } from './learning.service';
 import { LEARNING_DIMENSIONS, learningHash, learningSnapshotHash, sanitizeLearningText, type LearningEvaluationEvidence, type LearningMessage } from './learning-contracts';
@@ -124,19 +124,19 @@ export class LearningEvaluationService {
         try{
             if(!CONVERSATIONAL_CHANNELS.includes(scenario.channel as any))throw new Error('unsupported_source_channel');
             await guard();await session.reset(scenario.channel,snapshot);
-            let database=await this.databaseEvidence(tenantId,session.sandboxContactId);
+            let database=await this.databaseEvidence(tenantId,session);
             for(const message of scenario.messages.filter(m=>m.role==='customer')){
-                await guard();await session.recordInbound(message.text);
+                await guard();const sandboxInboundMessageId=await session.recordInbound(message.text);
                 const response=await this.agentTest.test(tenantId,agentId,{message:message.text,conversationHistory:history,
                     channelType:scenario.channel as any},{evalMode:true,disableTools:false,agentSnapshot:snapshot,learningReleaseId:releaseId,
-                    sandboxNamespace:session.sandboxNamespace,
+                    sandboxNamespace:session.sandboxNamespace,sandboxInboundMessageId,
                     sandboxContactId:session.sandboxContactId,sandboxConversationId:session.sandboxConversationId,
                     beforeToolExecution:guard,beforeModelExecution:guard});
                 const debug=response.debug as any;
                 if(debug.runtimeError||!response.reply?.trim())throw new Error('runtime_incomplete');
                 if(debug.agentRevision?.configHash!==snapshot.configHash)throw new Error('agent_snapshot_changed');
                 const calls=debug.toolCalls||[];
-                const after=await this.databaseEvidence(tenantId,session.sandboxContactId);
+                const after=await this.databaseEvidence(tenantId,session);
                 for(const call of calls){
                     const family=Object.values(EVAL_WRITER_SANDBOX_FAMILIES).find(f=>f.status==='audited'&&f.tools.includes(call.name));
                     if(family&&call.result&&!call.result.error&&call.result.success!==false&&
@@ -161,11 +161,15 @@ export class LearningEvaluationService {
         return replay;
     }
 
-    private async databaseEvidence(tenantId:string,contactId:string){
-        const schema=await this.prisma.getTenantSchemaName(tenantId);
+    private async databaseEvidence(tenantId:string,session:EvalSandboxSession){
+        const namespace=session.sandboxNamespace,contactId=session.sandboxContactId;
+        if(!namespace||namespace.tenantId!==tenantId||!/^tenant_eval_[a-f0-9]{8}_[a-f0-9]{24}$/.test(namespace.schemaName)
+            ||namespace.schemaName===namespace.sourceSchema||contactId!==EVAL_SANDBOX_CONTACT_ID)throw new Error('learning_evidence_namespace_required');
+        await session.assertLease();
+        const schema=namespace.schemaName;
         const state:Record<string,{hash:string;count:number}>={};
         for(const family of Object.values(EVAL_WRITER_SANDBOX_FAMILIES).filter(f=>f.status==='audited'&&f.contactColumn)){
-            const exists=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT to_regclass($1) AS relation`,[`${schema}.${family.table}`]);
+            const exists=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT to_regclass($1)::text AS relation`,[`${schema}.${family.table}`]);
             if(!exists[0]?.relation)continue;
             // Both identifiers belong to the static audited sandbox registry.
             const rows=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT COUNT(*)::int AS count,
@@ -173,6 +177,7 @@ export class LearningEvaluationService {
                 FROM ${family.table} t WHERE ${family.contactColumn}=$1::uuid`,[contactId]);
             state[family.table]=rows[0];
         }
+        await session.assertLease();
         return state;
     }
 

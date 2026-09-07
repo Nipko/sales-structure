@@ -14,6 +14,12 @@ import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-conte
 import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from './isolated-eval-namespace';
 import { EvalService } from './eval.service';
 import { PAYMENT_REFERENCE_TARGETS } from '../tenant-payments/tenant-payment-reference';
+import { MissionFocusStore } from '../conversations/mission-focus-store';
+import { arbitrateMissionFocus } from '../conversations/mission-focus';
+import type { MissionExecutionScopeV1 } from '@parallext/shared';
+import { agentTurnFixture, publishTools } from '../conversations/__fixtures__/agent-turn.fixture';
+import { AgentTurnTrace, EphemeralTurnState, type AgentTurnSession } from '../conversations/agent-turn-session';
+import { persistConversationRuntimeState } from '../conversations/conversation-runtime-state';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('canonical domain commands in a disposable PostgreSQL namespace', () => {
@@ -25,11 +31,11 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     let conversationId: string;
     const effects = { emit: jest.fn(() => { throw new Error('outbound_domain_event_forbidden'); }) };
     const calendar = { enqueueWithQuery: jest.fn(() => { throw new Error('calendar_outbox_forbidden'); }) };
-    const tables = ['customer_profiles','contact_identities','contacts','conversations','messages','persona_config','agent_personas','courses','campaigns','companies','leads','opportunities',
+    const tables = ['customer_memory_erasure','customer_profiles','contact_identities','contacts','conversations','messages','persona_config','agent_personas','courses','campaigns','companies','leads','opportunities',
         'pipelines','pipeline_stages','deals','services','service_staff','calendar_integrations','appointments','availability_slots','blocked_dates',
         'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments',
         'properties','property_bookings','tour_packages','tour_inventory','tour_bookings','menu_items','food_orders','food_order_items',
-        'products','orders','order_items','vehicles','pets','insurance_policies','insurance_claims',
+        'products','orders','order_items','stock_movements','vehicles','pets','insurance_policies','insurance_claims',
         'staff_members','customer_vehicles','repair_orders','repair_order_events'];
     const date = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0,10);
     const query = async (sql: string, params: any[] = []) => (await pool.query(sql, params)).rows;
@@ -102,6 +108,160 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     });
     const create = (time='10:00') => appointments.create(lease.schemaName,{contactId,conversationId,serviceId,serviceName:'Service',
         startAt:`${date}T${time}:00`,endAt:`${date}T${time.slice(0,2)}:30:00`,metadata:{source:'eval_gate'},customerName:'Eval'}, {suppressEffects:true,confirmWithoutPayment:true});
+    it.each([
+        ['es', 'Quiero matricularme', 'Ahora quiero agendar una cita', 'Sí, confirmo'],
+        ['en', 'I want to enroll', 'Now I want to book an appointment', 'Yes, I confirm'],
+        ['pt', 'Quero me inscrever', 'Agora quero agendar uma consulta', 'Sim, confirmo'],
+        ['fr', 'Je veux une inscription', 'Maintenant je veux prendre rendez-vous', 'Oui, je confirme'],
+    ])('%s binds consent to the active mission and requires a later answer after resume', async (_language, request, switchTask, yes) => {
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const inbound=async(text:string)=>(await q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp()) RETURNING id",[conversationId,text]))[0].id;
+        const scope: MissionExecutionScopeV1 = { version:1, kind:'tool', executionOwner:'tool', missionId:randomUUID(), revision:1, inboundMessageId:await inbound(request), expectedReply:null };
+        const invoke=()=>executor.execute(lease.schemaName,tenantId,contactId,'enroll_student',{cohortId,studentName:'Eval'},conversationId,{
+            authority:authorityFor('enroll_student'),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,missionScope:structuredClone(scope),
+        });
+        const challenge=await invoke();expect(challenge.error).toBe('confirmation_required');
+        const store=new MissionFocusStore(prisma,lease.schemaName,conversationId,contactId);
+        const state=await store.load();state.revision=scope.revision;state.selected={id:scope.missionId,kind:'tool',domain:'education',toolName:'enroll_student',reference:challenge.confirmationId};
+        state.expectedReply={missionId:scope.missionId,proposalId:challenge.confirmationId,ledgerId:challenge.confirmationId,sourceMessageId:scope.inboundMessageId,kind:'confirmation'};
+        await store.save(state);
+        const switched=arbitrateMissionFocus({state,candidates:[],text:switchTask,messageId:await inbound(switchTask)}).state;
+        await store.save(switched);
+        // Reconstruct the store to prove PG, rather than process memory, owns focus.
+        const restored=await new MissionFocusStore(prisma,lease.schemaName,conversationId,contactId).load();
+        expect(restored.expectedReply).toBeNull();expect(restored.pausedTools).toHaveLength(1);
+        scope.missionId=restored.selected!.id;scope.revision=restored.revision;scope.expectedReply=null;scope.kind='booking';scope.domain='appointment';
+        scope.inboundMessageId=await inbound(yes);
+        expect((await invoke()).error).toBe('mission_selection_required');
+        expect((await invoke()).error).toBe('mission_selection_required');
+        expect((await q('SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(0);
+        const resumed=arbitrateMissionFocus({state:restored,candidates:[],text:'retomar la matricula',messageId:await inbound('retomar la matricula')}).state;
+        await store.save(resumed);scope.missionId=resumed.selected!.id;scope.revision=resumed.revision;scope.kind='tool';scope.domain='education';
+        scope.inboundMessageId=(await q("SELECT id FROM messages ORDER BY created_at DESC LIMIT 1"))[0].id;
+        const fresh=await invoke();expect(fresh.error).toBe('confirmation_required');
+        scope.expectedReply={missionId:scope.missionId,proposalId:fresh.confirmationId,ledgerId:fresh.confirmationId,sourceMessageId:scope.inboundMessageId,kind:'confirmation'};
+        expect((await invoke()).error).toBe('confirmation_required');
+        scope.inboundMessageId=await inbound(yes);
+        expect((await invoke()).error).toBeUndefined();
+        expect((await invoke()).error).toBeUndefined();
+        expect((await q('SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(1);
+        expect((await query(`SELECT count(*)::int AS n FROM "${source}".enrollments`))[0].n).toBe(0);
+    });
+
+    it.each([
+        ['es','Quiero matricularme en un curso','Sí, confirmo'], ['en','I want to enroll in a course','Yes, I confirm'],
+        ['pt','Quero uma inscricao no curso','Sim, confirmo'], ['fr','Je veux une inscription au cours','Oui, je confirme'],
+    ])('%s runs the real core and cannot use one inbound for education and gym or replay it',async(language,request,yes)=>{
+        const f=agentTurnFixture({toolExecutor:executor});
+        f.personaService.getAgent.mockResolvedValue({version:1,config_json:{language,industry:'retail',tools:{},rag:{enabled:false},llm:{}}});
+        publishTools(f,['enroll_student','book_class']);
+        const snapshot=await f.service.captureSnapshot(tenantId,'agent');
+        const session:AgentTurnSession={id:randomUUID(),tenantId,agentId:'agent',channelType:'telegram',contactId,conversationId,schemaName:lease.schemaName,
+            snapshot,sandboxNamespace:lease,mode:'sandbox',executionContext:AGENT_TEST_EXECUTION_CONTEXT,state:new EphemeralTurnState(),metadata:{},history:[],lastMessageAt:new Date().toISOString(),trace:new AgentTurnTrace()};
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const writer=(name:string,args:any)=>({id:randomUUID(),function:{name,arguments:JSON.stringify(args)}});
+        const run=async(text:string,replayId?:string)=>{
+            const id=replayId||(await q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp()) RETURNING id",[conversationId,text]))[0].id;
+            session.trace=new AgentTurnTrace();
+            await f.runtime.executeAgentTurn({id,tenantId,channelType:'telegram',contactId,content:{type:'text',text},timestamp:new Date()} as any,session);
+            expect(session.trace.error).toBeUndefined();return id;
+        };
+        const calls=[writer('enroll_student',{cohortId,studentName:'Eval'}),writer('book_class',{classId})];
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:calls});
+        await run(request);
+        expect(session.trace.toolCalls).toEqual(expect.arrayContaining([expect.objectContaining({name:'book_class',result:expect.objectContaining({error:'mission_selection_required'})})]));
+        expect(session.metadata.missionFocus.expectedReply).toMatchObject({kind:'confirmation'});
+        expect((await q('SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(0);
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:calls});
+        const yesId=await run(yes);
+        expect((await q('SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(1);
+        expect((await q('SELECT count(*)::int AS n FROM class_bookings'))[0].n).toBe(0);
+        expect(session.metadata.missionFocus.lastConsumed.messageId).toBe(yesId);
+        const before=structuredClone(session.metadata.missionFocus);
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[writer('book_class',{classId})]});
+        await run(yes,yesId);
+        expect(session.metadata.missionFocus.selected).toEqual(before.selected);
+        expect(session.metadata.missionFocus.lastConsumed).toEqual(before.lastConsumed);
+        expect((await q('SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(1);
+        expect((await q('SELECT count(*)::int AS n FROM class_bookings'))[0].n).toBe(0);
+        expect((await query(`SELECT count(*)::int AS n FROM "${source}".enrollments`))[0].n).toBe(0);
+    });
+
+    it.each([
+        ['es','Quiero una matricula','Sí, confirmo'],['en','I want an enrollment','Yes, I confirm'],
+        ['pt','Quero uma inscricao','Sim, confirmo'],['fr','Je veux une inscription','Oui, je confirme'],
+    ])('%s completes the selected procedure through its own command port and preserves execution evidence',async(language,request,yes)=>{
+        const f=agentTurnFixture({toolExecutor:executor}),procedureId=randomUUID();
+        f.personaService.getAgent.mockResolvedValue({version:1,config_json:{language,industry:'retail',tools:{},rag:{enabled:false},llm:{}}});
+        f.revisions.captureProcedures.mockResolvedValue([{id:procedureId,name:'Enrollment',version:1,status:'active',trigger:{keywords:['matricula','enrollment','inscricao','inscription']},steps:[
+            {id:'email',type:'ask',config:{field:'email',fieldType:'email',question:'Email?'}},
+            {id:'create',type:'tool',config:{tool:'enroll_student',args:{cohortId,studentName:'Eval',studentEmail:'{{ email }}'},saveAs:'enrollment'}},
+        ]}]);
+        publishTools(f,['enroll_student','book_class']);
+        const snapshot=await f.service.captureSnapshot(tenantId,'agent');
+        const session:AgentTurnSession={id:randomUUID(),tenantId,agentId:'agent',channelType:'telegram',contactId,conversationId,schemaName:lease.schemaName,
+            snapshot,sandboxNamespace:lease,mode:'sandbox',executionContext:AGENT_TEST_EXECUTION_CONTEXT,state:new EphemeralTurnState(),metadata:{},history:[],lastMessageAt:new Date().toISOString(),trace:new AgentTurnTrace()};
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const turn=async(text:string)=>{
+            const id=(await q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp()) RETURNING id",[conversationId,text]))[0].id;
+            session.trace=new AgentTurnTrace();
+            await f.runtime.executeAgentTurn({id,tenantId,channelType:'telegram',contactId,content:{type:'text',text},timestamp:new Date()} as any,session);
+            expect(session.trace.error).toBeUndefined();return id;
+        };
+        await turn(request);await turn('customer@example.test');
+        expect(session.metadata.missionFocus).toMatchObject({selected:{kind:'procedure',reference:procedureId},expectedReply:{kind:'confirmation'}});
+        expect((await q('SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(0);
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:randomUUID(),function:{name:'book_class',arguments:JSON.stringify({classId})}}]});
+        const yesId=await turn(yes);
+        expect((await q('SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(1);
+        expect((await q('SELECT count(*)::int AS n FROM class_bookings'))[0].n).toBe(0);
+        expect(session.metadata.missionFocus.lastConsumed.messageId).toBe(yesId);
+        expect(await session.state.getJson(`procedure:${conversationId}`)).toBeNull();
+        expect(session.trace.toolCalls).toEqual(expect.arrayContaining([expect.objectContaining({name:'enroll_student',result:expect.objectContaining({status:'enrolled',charged:false})})]));
+        expect((session.trace.turnContext as any)?.recentActions).toEqual(expect.arrayContaining([expect.objectContaining({tool:'enroll_student'})]));
+    });
+
+    it('uses the persisted inbound ID through Eval recorder, AgentTest adapter and real command ledger',async()=>{
+        const f=agentTurnFixture({toolExecutor:executor});
+        f.tenantsService.getSchemaName.mockResolvedValue(source);
+        (f.service as any).namespaces=namespaces;
+        publishTools(f,['enroll_student']);
+        const snapshot=await f.service.captureSnapshot(tenantId,'agent');
+        const recorder=Object.assign(Object.create(EvalService.prototype),{prisma});
+        const options={evalMode:true,sandboxNamespace:lease,sandboxContactId:contactId,sandboxConversationId:conversationId,agentSnapshot:snapshot};
+        await expect(f.service.test(tenantId,'agent',{message:'Quiero una matricula'},options)).rejects.toThrow('eval_sandbox_inbound_required');
+        let sessionId:string|undefined;
+        const run=async(message:string)=>{
+            const sandboxInboundMessageId=await recorder.recordSandboxInbound(lease.schemaName,conversationId,message);
+            f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:randomUUID(),function:{name:'enroll_student',arguments:JSON.stringify({cohortId,studentName:'Eval'})}}]});
+            const response=await f.service.test(tenantId,'agent',{message,channelType:'telegram',runtimeSessionId:sessionId},{...options,sandboxInboundMessageId});
+            sessionId=response.debug.runtimeSessionId;expect(response.debug.runtimeError).toBeUndefined();
+            return {response,sandboxInboundMessageId};
+        };
+        const first=await run('Quiero una matricula');
+        expect(first.response.debug.toolCalls[0].result).toMatchObject({error:'confirmation_required'});
+        const second=await run('Sí, confirmo');
+        expect(second.response.debug.toolCalls[0].result).toMatchObject({status:'enrolled',charged:false});
+        const [ledger]=await prisma.executeInTenantSchema(lease.schemaName,'SELECT confirmation_source_message_id,status FROM tool_execution_ledger');
+        expect(ledger).toMatchObject({confirmation_source_message_id:first.sandboxInboundMessageId,status:'succeeded'});
+        expect((await prisma.executeInTenantSchema(lease.schemaName,'SELECT count(*)::int AS n FROM enrollments'))[0].n).toBe(1);
+    });
+
+    it('rejects competing focus saves and does not resurrect erased mission state',async()=>{
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        // The same canonical tombstone used by command controls, present in the isolated namespace.
+        const store=new MissionFocusStore(prisma,lease.schemaName,conversationId,contactId);
+        const first=await store.load(),second=await store.load();first.selected={id:randomUUID(),kind:'booking'};second.selected={id:randomUUID(),kind:'procedure'};
+        await store.save(first);await expect(store.save(second)).rejects.toThrow('mission_focus_conflict');
+        await q('INSERT INTO customer_memory_erasure(contact_id,erased_at) VALUES($1::uuid,NOW()) ON CONFLICT(contact_id) DO UPDATE SET erased_at=NOW()',[contactId]);
+        const prior=await store.load();await expect(store.save(prior)).rejects.toThrow('contact_erased');
+        expect((await store.load()).writeVersion).toBe(first.writeVersion);
+        await expect(persistConversationRuntimeState(prisma,lease.schemaName,conversationId,{bookingState:{customerEmail:'erased@example.test'}})).rejects.toThrow('contact_erased');
+        await expect(persistConversationRuntimeState(prisma,lease.schemaName,conversationId,{procedureState:{collected:{email:'erased@example.test'}}})).rejects.toThrow('contact_erased');
+        const metadata=(await q('SELECT metadata FROM conversations WHERE id=$1::uuid',[conversationId]))[0].metadata;
+        expect(metadata.bookingState).toBeUndefined();expect(metadata.procedureState).toBeUndefined();
+    });
+
     it('uses real capacity transactions: concurrent appointments admit one and leave live rows untouched', async () => {
         const outcomes=await Promise.allSettled([create(),create()]);
         expect(outcomes.filter(r=>r.status==='fulfilled')).toHaveLength(1);
@@ -189,6 +349,33 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(result.error).toBeTruthy();
         expect((await query(`SELECT count(*)::int AS n FROM "${source}".appointments`))[0].n).toBe(0);
     });
+    it('binds Flow execution to its current mission, revision and server booking port',async()=>{
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const staff=randomUUID(),missionId=randomUUID(),flowToken=randomUUID();
+        await q("INSERT INTO __eval_ref_users(id,tenant_id,is_active,first_name,last_name) VALUES($1::uuid,$2::uuid,true,'Eval','Staff')",[staff,tenantId]);
+        await q("INSERT INTO availability_slots(user_id,day_of_week,start_time,end_time) VALUES($1::uuid,$2,'09:00','17:00')",[staff,new Date(`${date}T12:00Z`).getUTCDay()]);
+        const id=(await q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text','__flow_response__','delivered',clock_timestamp()) RETURNING id",[conversationId]))[0].id;
+        const [service]=await q('SELECT * FROM services WHERE id=$1::uuid',[serviceId]);
+        const terms=appointmentServiceTerms(service),state=new EphemeralTurnState();
+        await state.setJson(`booking:${conversationId}`,{step:'waiting_flow',missionId,flowToken,flowRevision:3,flowStartedAt:new Date().toISOString(),
+            services:[{id:serviceId,appointmentTerms:terms}]});
+        const scope:MissionExecutionScopeV1={version:1,kind:'booking',executionOwner:'booking',missionId,revision:3,inboundMessageId:id,
+            expectedReply:{kind:'flow',missionId,proposalId:flowToken,sourceMessageId:randomUUID()}};
+        const invoke=(token:string=flowToken,missionScope=scope)=>executor.execute(lease.schemaName,tenantId,contactId,'create_appointment',
+            {serviceId,staffId:staff,date,time:'10:00',customerName:'Eval',appointmentTerms:terms},conversationId,{
+                authority:authorityFor('create_appointment'),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,
+                executionState:state,missionScope,authorityEvidence:{kind:'booking_engine_confirmation',source:'flow_response',flowToken:token},
+            });
+        expect((await invoke(flowToken,{...scope,executionOwner:'tool'})).error).toBe('mission_selection_required');
+        expect((await invoke('old-form')).error).toBe('booking_flow_evidence_expired');
+        expect((await invoke(flowToken,{...scope,revision:4})).error).toBe('booking_flow_evidence_expired');
+        expect((await q('SELECT count(*)::int AS n FROM appointments'))[0].n).toBe(0);
+        const created=await invoke();expect(created.error).toBeUndefined();
+        expect((await invoke()).error).toBeUndefined();
+        expect((await q('SELECT count(*)::int AS n FROM appointments'))[0].n).toBe(1);
+        expect((await query(`SELECT count(*)::int AS n FROM "${source}".appointments`))[0].n).toBe(0);
+    });
+
     it('executes real confirmation, appointment creation, reschedule and cancellation with a local staff directory',async()=>{
         const staff=randomUUID();
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);

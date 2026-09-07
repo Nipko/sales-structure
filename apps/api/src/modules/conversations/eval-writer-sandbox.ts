@@ -286,24 +286,6 @@ export async function executeEvalSandboxMutation(
                 ? { success: true, boarding: { id, status: 'reserved' }, evalSandbox: true }
                 : { success: true, rental: { id, status: 'reserved' }, evalSandbox: true };
         }
-        case 'place_catalog_order': {
-            const items = Array.isArray(args.items) && args.items.length
-                ? args.items.slice(0, 50).map((item: any) => ({
-                    productId: uuid(item?.productId, EVAL_SANDBOX_FIXTURE_IDS.product),
-                    quantity: positiveInt(item?.quantity),
-                }))
-                : [{ productId: EVAL_SANDBOX_FIXTURE_IDS.product, quantity: 1 }];
-            rows = await db.$queryRawUnsafe(
-                `INSERT INTO "${schema}".orders
-                    (contact_id, conversation_id, items, total_amount, currency, status,
-                     payment_status, notes, metadata)
-                 VALUES ($1::uuid, $2::uuid, $3::jsonb, 0, 'COP', 'pending', 'pending', $4, $5::jsonb)
-                 RETURNING id::text`,
-                contactId, conversation, JSON.stringify(items),
-                args.notes ? text(args.notes, '', 1000) : null, metadata,
-            );
-            return { success: true, orderId: firstRowId(rows), status: 'pending', evalSandbox: true };
-        }
         default:
             return { error: 'eval_writer_not_audited', tool: toolName, persisted: false };
     }

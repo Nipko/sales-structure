@@ -108,8 +108,8 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
         table: 'resource_rentals', contactColumn: 'contact_id',
     }),
     catalog_orders: Object.freeze({
-        status: 'audited', tools: Object.freeze(['place_catalog_order']),
-        table: 'orders', contactColumn: 'contact_id',
+        status: 'audited', tools: Object.freeze(['place_catalog_order','cancel_catalog_order']),
+        table: 'orders', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited:true,
     }),
     insurance_claims: Object.freeze({
         status: 'identity_challenge', tools: Object.freeze(['file_claim']),

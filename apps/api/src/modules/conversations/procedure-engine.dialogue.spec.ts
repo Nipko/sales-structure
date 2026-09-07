@@ -1,3 +1,4 @@
+import { runtimeStateTransactions } from './__fixtures__/runtime-state.fixture';
 import type { ProcedureDefinition, ProcedureFieldType, ProcedureRunState, ProcedureStep } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
@@ -20,6 +21,7 @@ function harness(config: ProcedureStep['config'] = { field: 'email', question: '
     };
     const prisma = { executeInTenantSchema: jest.fn(async () => [definition]) };
     const executor = { execute: jest.fn().mockResolvedValue({ found: true }) };
+    runtimeStateTransactions(prisma);
     const engine = new ProcedureEngineService(prisma as any, redis as any, executor as any);
     return {
         engine, executor, redis, definition, state: () => state,

@@ -1,3 +1,4 @@
+import { missionToolAllowed } from './mission-focus';
 import { APPROVAL_EFFECTS_DDL, APPROVAL_EFFECTS_STATE_MIGRATION, APPROVAL_EFFECTS_EVENT, approvedEffectDescriptors, approvalDeliveryState, type ApprovalEffectSummary, type ApprovalDeliveryState } from './tool-approval-effects.contracts';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -145,9 +146,11 @@ export interface ToolExecutionControlRequest {
     draftScope?: DraftActionScope;
     /** Server-owned sandbox state; never deserialized from a customer/model argument. */
     executionState?: { get(key: string): Promise<string | null> };
+    missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
     authorityEvidence?: {
         kind: 'booking_engine_confirmation';
         source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
+        flowToken?: string;
     };
     /**
      * Reviewed approval for an external MCP tool, resolved by the caller. When
@@ -180,6 +183,7 @@ interface ConfirmationClaims {
     expiresAt: string;
     /** Names/ids frozen when the proposal was issued, covered by the signature. */
     acceptedReferents?: string[];
+    mission?: { id: string; revision: number };
 }
 
 /**
@@ -1090,6 +1094,9 @@ export class ToolExecutionControlService {
             }
             policy = reviewed;
         }
+        if (policy.commitsBusiness && request.missionScope && !missionToolAllowed(request.missionScope, request.toolName)) {
+            return this.block('mission_selection_required', 'La acción pertenece a otra gestión. Selecciona la gestión y revisa su propuesta actual.');
+        }
         if (policy.assuranceEnforcement === 'missing'
             || policy.idempotency === 'missing'
             || policy.confirmation === 'required_missing'
@@ -1653,6 +1660,22 @@ export class ToolExecutionControlService {
         // answered clearly gets asked again.
         const operatingCountry = await this.resolveOperatingCountry(request.tenantId);
         const boundClaims = ledger.confirmation_token ? this.verifyConfirmationToken(ledger.confirmation_token) : null;
+        if (request.missionScope || boundClaims?.mission) {
+            const scope = request.missionScope;
+            const expected = scope?.expectedReply;
+            const sameMission = scope?.version === 1 && boundClaims?.mission?.id === scope.missionId
+                && boundClaims.mission.revision === scope.revision;
+            const answersThisProposal = expected?.kind === 'confirmation' && expected.missionId === scope?.missionId
+                && expected.ledgerId === ledger.id && expected.sourceMessageId !== latest.id
+                && scope?.inboundMessageId === latest.id;
+            if (!sameMission || !answersThisProposal) {
+                // Focus changes cannot resurrect an older yes. A new challenge
+                // is issued from THIS inbound, which cannot answer itself.
+                if (!scope) return this.block('confirmation_mission_missing', 'Retoma esta gestión y revisa su propuesta antes de confirmar.');
+                const reissued = await this.issueConfirmationToken({ ...request, conversationId }, ledger, argsHash, latest.id);
+                return this.confirmationRequired((reissued || ledger).id);
+            }
+        }
         const acceptedReferents = boundClaims?.ledgerId === ledger.id && boundClaims.argsHash === argsHash
             && boundClaims.tenantId === request.tenantId && boundClaims.contactId === request.contactId
             && boundClaims.conversationId === conversationId && boundClaims.toolName === request.toolName
@@ -1798,6 +1821,16 @@ export class ToolExecutionControlService {
         try { state = JSON.parse(String(rawState)); } catch {
             return this.block('booking_confirmation_state_invalid', 'El estado de confirmación no es válido.', true);
         }
+        if (request.missionScope) {
+            const scope = request.missionScope;
+            const expected = scope.expectedReply;
+            if (scope.version !== 1 || scope.inboundMessageId !== latest.id || state.missionId !== scope.missionId
+                || expected?.missionId !== scope.missionId || expected.sourceMessageId === latest.id
+                || (evidence.source === 'flow_response' ? expected.kind !== 'flow' || expected.proposalId !== state.flowToken
+                    : expected.kind !== 'confirmation' || expected.proposalId !== state.confirmationId)) {
+                return this.block('booking_confirmation_mission_mismatch', 'Retoma esta gestión y revisa la propuesta actual antes de confirmar.');
+            }
+        }
         if (evidence.source === 'confirm_yes'
             && (!state.confirmationId || String(latest.content_text || '').trim() !== `confirm_yes:${state.confirmationId}`)) {
             return this.block('booking_confirmation_proposal_mismatch', 'El botón corresponde a una propuesta anterior. Revisa la reserva actual antes de confirmar.');
@@ -1838,7 +1871,9 @@ export class ToolExecutionControlService {
             const startedAt = Date.parse(String(state.flowStartedAt || ''));
             const serviceKnown = Array.isArray(state.services)
                 && state.services.some((service: any) => service?.id === request.args.serviceId);
-            if (!serviceKnown || !Number.isFinite(startedAt) || Date.now() - startedAt > 3_600_000) {
+            if (!serviceKnown || !Number.isFinite(startedAt) || Date.now() - startedAt > 3_600_000
+                || !state.flowToken || evidence.flowToken !== state.flowToken
+                || request.missionScope && state.flowRevision !== request.missionScope.revision) {
                 return this.block('booking_flow_evidence_expired', 'La respuesta del formulario no está vigente.', true);
             }
         }
@@ -1892,6 +1927,7 @@ export class ToolExecutionControlService {
             issuedAt: now.toISOString(),
             expiresAt: expiresAt.toISOString(),
             acceptedReferents: await this.resolveProposalReferents(request.schemaName, request.args),
+            ...(request.missionScope ? { mission: { id: request.missionScope.missionId, revision: request.missionScope.revision } } : {}),
         };
         const token = this.signConfirmationToken(claims);
         if (!token) return null;
@@ -2593,11 +2629,22 @@ export class ToolExecutionControlService {
         }
     }
 
+    /** Named resume displays a fresh proposal; it never confirms the old one. */
+    async pendingMissionForReview(schemaName: string, conversationId: string, contactId: string, ledgerId: string): Promise<{ ledgerId: string; toolName: string; args: Record<string, unknown> } | null> {
+        if (![conversationId, contactId, ledgerId].every(id => UUID_RE.test(id))) return null;
+        const rows = await this.query<ExecutionLedgerRow[]>(schemaName,
+            `SELECT * FROM tool_execution_ledger WHERE id=$3::uuid AND conversation_id=$1::uuid AND contact_id=$2::uuid
+              AND status='awaiting_confirmation' LIMIT 1`, [conversationId, contactId, ledgerId]);
+        const row = rows[0]; const args = row?.request_payload?.args;
+        return args && typeof args === 'object' && !Array.isArray(args) ? { ledgerId: row.id, toolName: row.tool_name, args: args as Record<string, unknown> } : null;
+    }
+
     async findPendingConfirmation(
         schemaName: string,
         conversationId: string,
         contactId: string,
         customerReply?: string,
+        missionScope?: import('@parallext/shared').MissionExecutionScopeV1,
     ): Promise<{ ledgerId: string; toolName: string; args: Record<string, unknown> } | null> {
         if (!UUID_RE.test(conversationId) || !UUID_RE.test(contactId)) return null;
         try {
@@ -2619,6 +2666,11 @@ export class ToolExecutionControlService {
             if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
             if (customerReply !== undefined) {
                 const claims = row.confirmation_token ? this.verifyConfirmationToken(row.confirmation_token) : null;
+                if (missionScope || claims?.mission) {
+                    if (!missionScope || claims?.mission?.id !== missionScope.missionId || claims.mission.revision !== missionScope.revision
+                        || missionScope.expectedReply?.kind !== 'confirmation' || missionScope.expectedReply.ledgerId !== row.id
+                        || missionScope.expectedReply.missionId !== missionScope.missionId) return null;
+                }
                 if (!claims || claims.ledgerId !== row.id || claims.toolName !== row.tool_name
                     || claims.conversationId !== conversationId || claims.contactId !== contactId
                     || claims.argsHash !== sha256(JSON.stringify(stableValue(args)))

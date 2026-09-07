@@ -2,7 +2,10 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
-import { holdStillAliveSql, PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
+import { PENDING_PAYMENT_STATUS } from '../../common/utils/payment-policy.util';
+import { Cron } from '@nestjs/schedule';
+import { CronLockService } from '../redis/cron-lock.service';
+import { lockAndAssertAppointmentCapacity, AppointmentSlotConflictError, AppointmentServiceUnavailableError } from './appointment-capacity.util';
 import { PushService } from '../push/push.service';
 import {
     paymentConfirmedText,
@@ -31,7 +34,29 @@ export class AppointmentPaymentListener {
         // malo; perder la confirmación del pago sería mucho peor.
         @Optional() private readonly notifier?: PaymentOutcomeNotifierService,
         @Optional() private readonly push?: PushService,
+        @Optional() private readonly cronLock?: CronLockService,
     ) {}
+
+    /** Recover a paid row if its event handler failed after payment settlement. */
+    @Cron('*/5 * * * *')
+    async reconcilePaidAppointmentsCron(): Promise<void> {
+        if (!this.cronLock) return;
+        await this.cronLock.runExclusive('appointments.reconcilePaid', 240, () => this.reconcilePaidAppointments());
+    }
+
+    async reconcilePaidAppointments(): Promise<void> {
+        const tenants = await this.prisma.tenant.findMany({ where: { isActive: true }, select: { id: true, schemaName: true } });
+        for (const tenant of tenants) {
+            try {
+                const rows = await this.prisma.executeInTenantSchema<any[]>(tenant.schemaName,
+                    `SELECT id FROM appointments WHERE payment_status = 'paid'
+                     AND status IN ('pending_payment', 'expired') ORDER BY updated_at LIMIT 100`);
+                for (const row of rows) await this.onPaid({ tenantId: tenant.id, kind: 'appointment', entityId: row.id });
+            } catch (error: any) {
+                this.logger.warn(`Paid appointment reconciliation failed for ${tenant.id}: ${error.message}`);
+            }
+        }
+    }
 
     @OnEvent('tenant_payment.succeeded')
     async onPaid(event: { tenantId?: string; kind?: string; entityId?: string }): Promise<void> {
@@ -41,44 +66,40 @@ export class AppointmentPaymentListener {
             const schemaName = await this.prisma.getTenantSchemaName(event.tenantId);
             if (!schemaName) return;
 
-            const rows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, service_id, assigned_to, start_at, end_at, status, contact_id, conversation_id
-                   FROM appointments WHERE id = $1::uuid`,
-                [event.entityId],
-            );
-            const appointment = rows?.[0];
-            if (!appointment) {
-                this.logger.warn(`[Pago] la cita ${event.entityId} no existe en ${schemaName}`);
-                return;
-            }
-            // Idempotente: el webhook puede llegar varias veces.
-            if (appointment.status !== PENDING_PAYMENT_STATUS) return;
+            let appointment: any;
+            let unavailable = false;
+            const confirmed = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                [appointment] = await query<any[]>(
+                    `SELECT id, service_id, assigned_to,
+                            to_char(start_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS start_at,
+                            to_char(end_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS end_at, status, payment_status,
+                            contact_id, conversation_id, metadata FROM appointments WHERE id = $1::uuid FOR UPDATE`,
+                    [event.entityId],
+                );
+                // Only settlement recorded on this tenant-owned row can confirm it.
+                if (!appointment || !['pending_payment', 'expired'].includes(appointment.status)
+                    || appointment.payment_status !== 'paid' || appointment.metadata?.source === 'eval_gate') return false;
+                try {
+                    await lockAndAssertAppointmentCapacity(query, {
+                        schemaName, serviceId: appointment.service_id, staffUserId: appointment.assigned_to,
+                        startAt: appointment.start_at, endAt: appointment.end_at, excludeAppointmentId: appointment.id,
+                    });
+                } catch (error) {
+                    if (!(error instanceof AppointmentSlotConflictError) && !(error instanceof AppointmentServiceUnavailableError)) throw error;
+                    unavailable = !appointment.metadata?.paymentConfirmationIssue;
+                    await query(`UPDATE appointments SET metadata = COALESCE(metadata, '{}'::jsonb)
+                        || jsonb_build_object('paymentConfirmationIssue', 'availability_requires_review'), updated_at = NOW()
+                        WHERE id = $1::uuid`, [appointment.id]);
+                    return false;
+                }
+                await query(`UPDATE appointments SET status = 'confirmed', hold_expires_at = NULL,
+                    metadata = COALESCE(metadata, '{}'::jsonb) - 'paymentConfirmationIssue', updated_at = NOW()
+                    WHERE id = $1::uuid`, [appointment.id]);
+                await CalendarSyncOutboxService.enqueueWithTransaction(query, appointment.id, 'upsert');
+                return true;
+            });
 
-            // Revalida contra el mismo criterio que usa la capacidad: staff
-            // ocupado o servicio sin cupo concurrente en esa franja.
-            const taken = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT 1 FROM appointments a
-                  WHERE a.id <> $1::uuid
-                    AND a.status NOT IN ('cancelled') AND ${holdStillAliveSql('a')}
-                    AND a.start_at < $3::timestamp AND a.end_at > $2::timestamp
-                    AND (
-                        ($4::uuid IS NOT NULL AND a.assigned_to = $4::uuid)
-                        OR a.service_id = $5::uuid
-                    )
-                  GROUP BY a.service_id
-                 HAVING COUNT(*) >= (
-                        SELECT COALESCE(MAX(s.max_concurrent), 1) FROM services s WHERE s.id = $5::uuid
-                 )
-                  LIMIT 1`,
-                [
-                    appointment.id, appointment.start_at, appointment.end_at,
-                    appointment.assigned_to, appointment.service_id,
-                ],
-            );
-
-            if (taken?.length) {
+            if (unavailable) {
                 this.logger.error(
                     `[Pago] la cita ${appointment.id} se pagó pero el horario ya se ocupó ` +
                     `(${appointment.start_at}) — requiere intervención`,
@@ -100,19 +121,6 @@ export class AppointmentPaymentListener {
                 return;
             }
 
-            // Confirmar y encolar al calendario van juntos: una cita confirmada
-            // que no llegó a la agenda del profesional es un turno que nadie ve.
-            const confirmed = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-                const updated = await query<any[]>(
-                    `UPDATE appointments SET status = 'confirmed', updated_at = NOW()
-                      WHERE id = $1::uuid AND status = $2
-                      RETURNING id`,
-                    [appointment.id, PENDING_PAYMENT_STATUS],
-                );
-                if (!updated?.[0]) return false;
-                await CalendarSyncOutboxService.enqueueWithTransaction(query, appointment.id, 'upsert');
-                return true;
-            });
             if (!confirmed) return;
 
             this.logger.log(`[Pago] cita ${appointment.id} confirmada tras acreditarse el pago`);

@@ -274,7 +274,45 @@ export class EducationService {
         });
     }
 
+    /** State transition and capacity restoration commit or roll back together. */
+    async cancelEnrollment(schemaName: string, id: string, input: { contactId?: string; reason?: string } = {}): Promise<any> {
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const [enrollment] = await query<any[]>(
+                `SELECT * FROM enrollments WHERE id = $1::uuid FOR UPDATE`, [id],
+            );
+            if (!enrollment) throw new NotFoundException('Enrollment not found');
+            if (input.contactId && enrollment.contact_id !== input.contactId) {
+                throw new BadRequestException('You can only cancel your own enrollments');
+            }
+            if (enrollment.status === 'dropped') {
+                return { success: true, enrollmentId: id, status: 'dropped', alreadyCancelled: true, seatReleased: !!enrollment.cohort_id };
+            }
+            if (!['enrolled', 'active'].includes(enrollment.status)) {
+                throw new BadRequestException(`Cannot cancel an enrollment in "${enrollment.status}" status.`);
+            }
+            await query(
+                `UPDATE enrollments SET status = 'dropped',
+                    notes = CONCAT_WS(E'\n', NULLIF(notes, ''), $2), updated_at = NOW()
+                 WHERE id = $1::uuid`,
+                [id, `[Cancelled]${input.reason ? ` ${input.reason}` : ''}`],
+            );
+            if (enrollment.cohort_id) {
+                const restored = await query<any[]>(
+                    `UPDATE course_cohorts SET available_seats = available_seats + 1,
+                        status = CASE WHEN status = 'full' THEN 'open' ELSE status END
+                     WHERE id = $1::uuid RETURNING id`, [enrollment.cohort_id],
+                );
+                if (!restored.length) throw new BadRequestException('Enrollment cohort is missing');
+            }
+            return { success: true, enrollmentId: id, status: 'dropped', seatReleased: !!enrollment.cohort_id };
+        });
+    }
+
     async updateEnrollment(schemaName: string, id: string, data: any): Promise<any> {
+        // Dashboard status changes use the same transition as conversational tools.
+        if (data.status === 'dropped') {
+            return this.cancelEnrollment(schemaName, id, { reason: data.notes });
+        }
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;

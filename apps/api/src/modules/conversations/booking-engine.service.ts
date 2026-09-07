@@ -4,6 +4,7 @@ import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { InterpretedIntent } from './intent-interpreter.service';
 import type { ToolExecutionAuthority } from '@parallext/shared';
+import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
 
 /**
@@ -41,6 +42,10 @@ export interface BookingTurnContext {
 /** Booking engine messages in 4 languages */
 const MESSAGES: Record<string, Record<string, string | string[]>> = {
     es: {
+        bookingPrice: "Precio: {amount} {currency}",
+        bookingPaymentDue: "Pago para confirmar: {amount} {currency}",
+        bookingPending: "La solicitud de cita para {service} el {date} a las {time} quedó registrada y pendiente de confirmación.",
+        bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount} {currency}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.",
         serviceSelected: [
             '{service} seleccionado. ¿Qué fecha te queda bien?',
             '¡Excelente elección! Reservaremos {service}. ¿Qué día te gustaría agendar?',
@@ -71,7 +76,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: '¿Confirmar cita?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
-        booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}\nInvitación enviada a: {email}\n¿Algo más?',
+        booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}\n¿Algo más?',
         bookingError: 'Error al crear la cita: {error}. ¿Probamos otro horario?',
         askDate: [
             '¿Qué fecha te gustaría para {service}?',
@@ -89,6 +94,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Agendar',
     },
     en: {
+        bookingPrice: "Price: {amount} {currency}",
+        bookingPaymentDue: "Payment to confirm: {amount} {currency}",
+        bookingPending: "Your appointment request for {service} on {date} at {time} was recorded and is awaiting confirmation.",
+        bookingAwaitingPayment: "Your appointment for {service} on {date} at {time} is awaiting payment of {amount} {currency}. The slot is held temporarily; confirmation follows verified payment.",
         serviceSelected: '{service} selected. What date works for you?',
         switchedService: 'Switched to {service}. What date works for you?',
         cancelled: 'No problem! Is there anything else I can help you with?',
@@ -105,7 +114,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirm booking?\n\n{summary}',
         btnConfirm: 'Confirm',
         btnCancel: 'Cancel',
-        booked: 'Appointment confirmed!\nService: {service}\nDate: {date} at {time}\nName: {name}\nCalendar invite sent to: {email}\nAnything else?',
+        booked: 'Appointment confirmed!\nService: {service}\nDate: {date} at {time}\nName: {name}\nAnything else?',
         bookingError: 'Issue creating appointment: {error}. Try another time?',
         askDate: 'What date would you like for {service}?',
         whichTime: 'Which time? {slots}',
@@ -118,6 +127,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Book',
     },
     pt: {
+        bookingPrice: "Preço: {amount} {currency}",
+        bookingPaymentDue: "Pagamento para confirmar: {amount} {currency}",
+        bookingPending: "A solicitação de agendamento de {service} em {date} às {time} foi registrada e aguarda confirmação.",
+        bookingAwaitingPayment: "O agendamento de {service} em {date} às {time} aguarda o pagamento de {amount} {currency}. O horário fica reservado temporariamente; a confirmação ocorre após a aprovação do pagamento.",
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
         switchedService: 'Mudamos para {service}. Qual data funciona para você?',
         cancelled: 'Sem problema! Posso ajudar com mais alguma coisa?',
@@ -134,7 +147,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirmar agendamento?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
-        booked: 'Agendamento confirmado!\nServiço: {service}\nData: {date} às {time}\nNome: {name}\nConvite enviado para: {email}\nMais alguma coisa?',
+        booked: 'Agendamento confirmado!\nServiço: {service}\nData: {date} às {time}\nNome: {name}\nMais alguma coisa?',
         bookingError: 'Erro ao criar agendamento: {error}. Tentar outro horário?',
         askDate: 'Qual data gostaria para {service}?',
         whichTime: 'Qual horário? {slots}',
@@ -147,6 +160,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Agendar',
     },
     fr: {
+        bookingPrice: "Prix : {amount} {currency}",
+        bookingPaymentDue: "Paiement pour confirmer : {amount} {currency}",
+        bookingPending: "Votre demande de rendez-vous pour {service} le {date} à {time} est enregistrée et attend une confirmation.",
+        bookingAwaitingPayment: "Le rendez-vous pour {service} le {date} à {time} attend le paiement de {amount} {currency}. Le créneau est retenu temporairement ; la confirmation suivra le paiement vérifié.",
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
         switchedService: 'Changé pour {service}. Quelle date vous convient ?',
         cancelled: 'Pas de problème ! Puis-je vous aider avec autre chose ?',
@@ -163,7 +180,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirmer le rendez-vous ?\n\n{summary}',
         btnConfirm: 'Confirmer',
         btnCancel: 'Annuler',
-        booked: 'Rendez-vous confirmé !\nService : {service}\nDate : {date} à {time}\nNom : {name}\nInvitation envoyée à : {email}\nAutre chose ?',
+        booked: 'Rendez-vous confirmé !\nService : {service}\nDate : {date} à {time}\nNom : {name}\nAutre chose ?',
         bookingError: 'Erreur lors de la création : {error}. Essayer un autre horaire ?',
         askDate: 'Quelle date souhaitez-vous pour {service} ?',
         whichTime: 'Quel horaire ? {slots}',
@@ -209,7 +226,7 @@ const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_
 
 export interface BookingState {
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
-    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string }>;
+    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -226,6 +243,9 @@ export interface BookingState {
     customerName?: string;
     customerEmail?: string;
     customerPhone?: string;
+    appointmentId?: string;
+    appointmentStatus?: string;
+    payableReference?: string | null;
     /** ISO timestamp set when a WhatsApp Flow was sent; used to expire stale Flows (>1h). */
     flowStartedAt?: string;
 }
@@ -987,7 +1007,10 @@ export class BookingEngineService {
         // a la Dra. X y no a la Dra. Y, ese es el momento de decirlo — y de que
         // el cliente pueda corregirlo antes de que la cita exista.
         const withStaff = state.staffName ? `\n${sl.with}: ${state.staffName}` : '';
-        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}`;
+        const service = state.services?.find(s => s.id === state.serviceId);
+        const priceSummary = service ? '\n' + msg(lang, 'bookingPrice', { amount: String(service.price), currency: service.currency }) : '';
+        const dueSummary = service?.requiresPaymentToConfirm ? '\n' + msg(lang, 'bookingPaymentDue', { amount: String(service.amountDueToConfirm ?? service.price), currency: service.currency }) : '';
+        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}${priceSummary}${dueSummary}`;
         return {
             handled: true, state,
             text: msg(lang, 'confirmPrompt', { summary }),
@@ -1014,32 +1037,30 @@ export class BookingEngineService {
     ): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
 
-        // Bug #5: Normalize startAt to ISO 8601 to avoid timezone-sensitive timestamp comparison.
-        // Using AT TIME ZONE ensures the DB compares in tenant-local time regardless of server TZ.
+        // Appointment columns store tenant-local wall-clock timestamps. A replay
+        // must preserve that clock and exclude payment holds that have expired.
         try {
             const startAt = `${state.date}T${state.time}:00`;
             const existing: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id FROM "${schema}".appointments
-                 WHERE contact_id = $1::uuid
-                   AND service_id = $2::uuid
-                   AND start_at = $3::timestamptz
-                   AND status NOT IN ('cancelled') LIMIT 1`,
+                `SELECT a.id, a.status, a.payment_status, a.amount_due, a.hold_expires_at, s.price, s.currency
+                 FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+                 WHERE a.contact_id = $1::uuid
+                   AND a.service_id = $2::uuid
+                   AND a.start_at = $3::timestamp
+                   AND a.status NOT IN ('cancelled', 'completed', 'no_show') AND ${holdStillAliveSql('a')} LIMIT 1`,
                 contactId, state.serviceId, startAt,
             );
             if (existing?.length) {
                 this.logger.warn(`[Decide] Duplicate booking prevented — appointment ${existing[0].id} already exists`);
-                state.step = 'booked';
-                return {
-                    handled: true, state,
-                    text: msg(lang, 'booked', { service: state.serviceName || '', date: state.date || '', time: state.time || '', name: state.customerName || '', email: state.customerEmail || '' }),
-                    // The appointment exists — saying so is the truth, not a claim
-                    // without backing. Reported as an idempotent replay so the
-                    // output guardrail does not rewrite it into "still pending".
-                    executedTools: [{
-                        name: 'create_appointment',
-                        result: { success: true, idempotentReplay: true, appointmentId: existing[0].id },
-                    }],
-                };
+                const apt = existing[0];
+                const awaitingPayment = apt.status === 'pending_payment';
+                return this.bookingOutcome(state, lang, {
+                    success: true, idempotentReplay: true, appointmentId: apt.id,
+                    appointment: { id: apt.id, status: apt.status, awaitingPayment,
+                        amountDueToConfirm: apt.amount_due ?? apt.price, currency: apt.currency,
+                        holdExpiresAt: apt.hold_expires_at,
+                        payableReference: awaitingPayment ? `appointment:${apt.id}` : null },
+                });
             }
         } catch (err) {
             this.logger.warn(`[Decide] Duplicate check failed (non-blocking): ${(err as any).message}`);
@@ -1061,13 +1082,7 @@ export class BookingEngineService {
             } : {}),
         });
         const executedTools = [{ name: 'create_appointment', result }];
-        if (result?.success) {
-            state.step = 'booked';
-            return {
-                handled: true, state, executedTools,
-                text: msg(lang, 'booked', { service: state.serviceName || '', date: state.date || '', time: state.time || '', name: state.customerName || '', email: state.customerEmail || '' }),
-            };
-        }
+        if (result?.success) return this.bookingOutcome(state, lang, result);
         // Same criterion as checkAvailability: on an unrecoverable failure the
         // appointment was NOT created and "try another time" is both a lie and a
         // way to leak the internal error code into the customer's chat.
@@ -1076,6 +1091,24 @@ export class BookingEngineService {
             return { ...this.escalateToHuman(state, lang, 'bookingFailedHandoff', `booking_failed:${fatal}`), executedTools };
         }
         return { handled: true, state, executedTools, text: msg(lang, 'bookingError', { error: result?.error || 'Unknown' }) };
+    }
+
+    private bookingOutcome(state: BookingState, lang: string, result: any): EngineResult {
+        const appointment = result.appointment || {};
+        const pendingPayment = appointment.awaitingPayment === true || appointment.status === 'pending_payment';
+        state.step = 'booked'; // Collection is complete; resource status is stored separately.
+        state.appointmentId = appointment.id || result.appointmentId;
+        state.appointmentStatus = appointment.status || 'pending';
+        state.payableReference = appointment.payableReference || null;
+        return {
+            handled: true, state, executedTools: [{ name: 'create_appointment', result }],
+            text: msg(lang, pendingPayment ? 'bookingAwaitingPayment'
+                : appointment.status === 'confirmed' ? 'booked' : 'bookingPending', {
+                service: state.serviceName || '', date: state.date || '', time: state.time || '',
+                name: state.customerName || '', email: state.customerEmail || '',
+                amount: String(appointment.amountDueToConfirm ?? ''), currency: appointment.currency || '',
+            }),
+        };
     }
 
     // ── Re-prompt current step (mid-flow protection) ──

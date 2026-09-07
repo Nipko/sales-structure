@@ -388,6 +388,7 @@ const TOOL_POLICY_ENTRIES = [
     entry('get_membership_plans', publicRead({ agentTestAllowed: true })),
     entry('get_class_schedule', publicRead({ agentTestAllowed: true })),
     entry('get_my_membership', sensitiveRead({ agentTestAllowed: true })),
+    entry('get_my_class_bookings', sensitiveRead({ agentTestAllowed: true })),
     entry('book_class', contactWrite({ idempotency: 'state_guarded' })),
     entry('freeze_membership', contactWrite({ ownership: 'resource_owner', idempotency: 'state_guarded' })),
     entry('cancel_class_booking', contactWrite({ ownership: 'resource_owner', idempotency: 'state_guarded' })),
@@ -574,7 +575,7 @@ const VERTICAL_ORIGIN_TOOLS: ReadonlySet<string> = new Set([
     'get_menu', 'get_promotions', 'place_order', 'cancel_order',
     'check_order_status', 'list_my_orders',
     // gyms
-    'get_membership_plans', 'get_class_schedule', 'get_my_membership',
+    'get_membership_plans', 'get_class_schedule', 'get_my_membership', 'get_my_class_bookings',
     'book_class', 'freeze_membership', 'cancel_class_booking',
     // education
     'get_courses', 'get_course_schedule', 'enroll_student',

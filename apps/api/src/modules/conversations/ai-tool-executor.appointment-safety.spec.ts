@@ -1,3 +1,5 @@
+import { AppointmentsService } from '../appointments/appointments.service';
+import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
@@ -57,15 +59,16 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             if (sql.includes('INSERT INTO appointments') && result?.[0]) {
                 insertedAppointment = {
                     ...result[0],
-                    service_id: params[3],
-                    service_name: params[4],
-                    assigned_to: params[5],
-                    start_at: params[6],
-                    end_at: params[7],
-                    customer_email: params[10],
-                    location: params[11],
-                    notes: params[12],
-                    metadata: JSON.parse(String(params[13] || '{}')),
+                    id: params[0],
+                    service_id: params[5],
+                    service_name: params[6],
+                    assigned_to: params[4],
+                    start_at: params[7],
+                    end_at: params[8],
+                    customer_email: params[14],
+                    location: params[9],
+                    notes: params[10],
+                    metadata: JSON.parse(String(params[11] || '{}')),
                 };
             }
             return result;
@@ -120,6 +123,15 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             {} as any,
             {} as any,
         );
+        const appointments = new AppointmentsService(prisma as any, eventEmitter as any,
+            { enqueueWithQuery: (query: any, id: string, action: any) => CalendarSyncOutboxService.enqueueWithTransaction(query, id, action) } as any,
+            { timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any);
+        jest.spyOn(appointments as any, 'resolveTimezoneForSchema').mockResolvedValue('America/Bogota');
+        jest.spyOn(appointments, 'getById').mockImplementation(async () => ({
+            id: insertedAppointment?.id, serviceName: insertedAppointment?.service_name,
+            status: insertedAppointment?.status, metadata: insertedAppointment?.metadata,
+        } as any));
+        (executor as any).appointmentsService = appointments;
         return {
             executor,
             prisma,
@@ -457,19 +469,19 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
 
         expect(result).toMatchObject({
             success: true,
-            appointment: { id: appointmentId, meetingUrl: 'https://meet.example/static-room' },
+            appointment: { id: expect.any(String), meetingUrl: 'https://meet.example/static-room' },
         });
         const insertCall = harness.transactionQuery.mock.calls.find(([sql]) => (
             sql.includes('INSERT INTO appointments')
         ));
         expect(insertCall).toBeDefined();
         const insertParams = insertCall![1] as any[];
-        expect(insertParams[11]).toBe('Calle 10 # 20-30');
-        expect(insertParams[12]).toBe(
+        expect(insertParams[9]).toBe('Calle 10 # 20-30');
+        expect(insertParams[10]).toBe(
             'Customer: Cliente\nEmail: cliente@example.com\nPhone: +573001112233\n\n'
             + 'Service: Consulta (N/A)\nDuration: 30 min\n\nNotes: Traer documentos',
         );
-        expect(JSON.parse(insertParams[13])).toEqual({
+        expect(JSON.parse(insertParams[11])).toEqual({
             isOnline: false,
             meetingUrl: 'https://meet.example/static-room',
         });
@@ -479,7 +491,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         ));
         expect(outboxCall).toBeDefined();
         expect(JSON.parse(String((outboxCall![1] as any[])[7]))).toEqual({
-            appointmentId,
+            appointmentId: result.appointment.id,
             integrationId: calendarIntegrationId,
             ownerUserId: calendarOwnerId,
             provider: 'google',
@@ -488,7 +500,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             startAt: '2026-08-12T11:00:00',
             endAt: '2026-08-12T11:30:00',
             location: 'Calle 10 # 20-30',
-            description: insertParams[12],
+            description: insertParams[10],
             attendeeEmail: 'cliente@example.com',
             isOnline: false,
         });

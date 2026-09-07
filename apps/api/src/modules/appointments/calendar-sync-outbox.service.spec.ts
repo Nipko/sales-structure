@@ -19,6 +19,13 @@ describe('CalendarSyncOutboxService', () => {
 
     beforeEach(() => jest.clearAllMocks());
 
+    it.each(['pending_payment', 'expired'])('does not publish %s appointments to calendars through any caller', async status => {
+        const query = jest.fn().mockResolvedValue([{ id: APPOINTMENT_ID, status }]);
+        await expect(service.enqueueWithQuery(query, APPOINTMENT_ID, 'upsert')).resolves.toBeNull();
+        expect(query).toHaveBeenCalledTimes(1);
+        expect(calendars.createEventForIntegration).not.toHaveBeenCalled();
+    });
+
     it('maps the assigned public user through a distinct staff profile before selecting its calendar', async () => {
         const query = jest.fn()
             .mockResolvedValueOnce([{

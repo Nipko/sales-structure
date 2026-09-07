@@ -468,23 +468,24 @@ export class GymsService {
     }
 
     async cancelClass(schemaName: string, id: string, reason?: string): Promise<any> {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE fitness_classes SET
-                is_cancelled = true,
-                cancellation_reason = $1,
-                updated_at = NOW()
-             WHERE id = $2::uuid RETURNING *`,
-            [reason || 'cancelled by staff', id],
-        );
-        // Also cancel all confirmed bookings for the class
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE class_bookings SET status = 'cancelled', cancelled_at = NOW()
-             WHERE class_id = $1::uuid AND status = 'confirmed'`,
-            [id],
-        );
-        return rows[0];
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const [klass] = await query<any[]>('SELECT * FROM fitness_classes WHERE id = $1::uuid FOR UPDATE', [id]);
+            if (!klass) throw new NotFoundException('Class not found');
+            if (klass.is_cancelled) return klass;
+            const bookings = await query<any[]>("SELECT * FROM class_bookings WHERE class_id = $1::uuid AND status IN ('confirmed', 'waitlist') ORDER BY member_id FOR UPDATE", [id]);
+            for (const booking of bookings) {
+                if (booking.status === 'confirmed') {
+                    await query('UPDATE members SET class_credits_remaining = class_credits_remaining + $1 WHERE id = $2::uuid AND class_credits_remaining IS NOT NULL', [booking.credits_used ?? 1, booking.member_id]);
+                }
+            }
+            await query("UPDATE class_bookings SET status = 'cancelled', cancelled_at = NOW() WHERE class_id = $1::uuid AND status IN ('confirmed', 'waitlist')", [id]);
+            const [cancelled] = await query<any[]>(
+                `UPDATE fitness_classes SET is_cancelled = true, cancellation_reason = $2,
+                    available_spots = available_spots + $3, updated_at = NOW() WHERE id = $1::uuid RETURNING *`,
+                [id, reason || 'cancelled by staff', bookings.filter(b => b.status === 'confirmed').length],
+            );
+            return cancelled;
+        });
     }
 
     /**
@@ -493,215 +494,109 @@ export class GymsService {
      * not unlimited. Decrements available_spots on the class atomically.
      */
     async bookClass(schemaName: string, classId: string, memberId: string): Promise<any> {
-        // Verify the class exists + has spots
-        const classRows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT * FROM fitness_classes WHERE id = $1::uuid`,
-            [classId],
-        );
-        const klass = classRows[0];
-        if (!klass) throw new NotFoundException('Class not found');
-        if (klass.is_cancelled) throw new BadRequestException('Class is cancelled');
-        if (klass.available_spots <= 0) throw new BadRequestException('Class is full');
-
-        // Verify the member can book (active + has credits)
-        const member = await this.getMemberById(schemaName, memberId);
-        if (!member) throw new NotFoundException('Member not found');
-        if (member.status !== 'active') throw new BadRequestException('Member is not active');
-
-        const credits = member.class_credits_remaining;
-        const required = klass.credits_required || 1;
-        if (credits !== null && credits < required) {
-            throw new BadRequestException(`Insufficient credits — has ${credits}, needs ${required}`);
-        }
-
-        // Se toma el cupo PRIMERO y de forma atomica.
-        //
-        // Antes el orden era: chequear spots > 0 (arriba) -> INSERT -> UPDATE
-        // guardado, y el resultado del UPDATE se descartaba. Dos socios que
-        // reservaban el ultimo cupo a la vez pasaban los dos el chequeo, los dos
-        // insertaban, y el segundo UPDATE no afectaba ninguna fila en silencio:
-        // dos reservas para un solo lugar, sin que nadie se entere hasta que
-        // llegan a la clase. PgBouncer corre en transaction mode, asi que no hay
-        // BEGIN/COMMIT entre sentencias — la unica atomicidad disponible es un
-        // solo UPDATE guardado, y hay que MIRAR si tomo fila.
-        const claimed = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE fitness_classes SET available_spots = available_spots - 1
-             WHERE id = $1::uuid AND available_spots > 0 RETURNING id`,
-            [classId],
-        );
-
-        // Clase llena → lista de espera, no puerta cerrada.
-        //
-        // El estado 'waitlist' y su índice único están en el schema desde
-        // siempre y no los escribía nadie: la respuesta era "Class is full" y
-        // ahí terminaba la conversación. El costo real no es la molestia del
-        // socio: es que cuando alguien cancela, ese lugar queda VACÍO — el
-        // gimnasio pierde el cupo que ya tenía vendido.
-        //
-        // La reserva en espera NO consume créditos ni ocupa lugar. Los dos se
-        // cobran recién al promoverla (ver promoteFromWaitlist).
-        if (!claimed.length) {
-            const waitRows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            // Every class transition locks the class before its members/bookings.
+            const [klass] = await query<any[]>(
+                'SELECT * FROM fitness_classes WHERE id = $1::uuid FOR UPDATE', [classId],
+            );
+            if (!klass) throw new NotFoundException('Class not found');
+            if (klass.is_cancelled) throw new BadRequestException('Class is cancelled');
+            if (klass.scheduled_at && new Date(klass.scheduled_at).getTime() <= Date.now()) {
+                throw new BadRequestException('Class has already started');
+            }
+            const [member] = await query<any[]>(
+                'SELECT * FROM members WHERE id = $1::uuid FOR UPDATE', [memberId],
+            );
+            if (!member) throw new NotFoundException('Member not found');
+            const [existing] = await query<any[]>(
+                "SELECT * FROM class_bookings WHERE class_id = $1::uuid AND member_id = $2::uuid AND status IN ('confirmed', 'waitlist', 'attended')",
+                [classId, memberId],
+            );
+            if (existing) return this.withWaitlistPosition(query, { ...existing, idempotentReplay: true });
+            if (member.status !== 'active') throw new BadRequestException('Member is not active');
+            const credits = member.class_credits_remaining;
+            const required = klass.credits_required ?? 1;
+            if (credits !== null && credits < required) throw new BadRequestException('Insufficient credits');
+            const waitlisted = klass.available_spots <= 0;
+            if (!waitlisted) {
+                await query('UPDATE fitness_classes SET available_spots = available_spots - 1 WHERE id = $1::uuid', [classId]);
+                if (credits !== null) {
+                    await query('UPDATE members SET class_credits_remaining = class_credits_remaining - $1 WHERE id = $2::uuid', [required, memberId]);
+                }
+            }
+            const [booking] = await query<any[]>(
                 `INSERT INTO class_bookings (class_id, member_id, contact_id, credits_used, status)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'waitlist') RETURNING *`,
-                [classId, memberId, member.contact_id, required],
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5) RETURNING *`,
+                [classId, memberId, member.contact_id, required, waitlisted ? 'waitlist' : 'confirmed'],
             );
-            const [pos] = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT COUNT(*)::int AS n FROM class_bookings
-                 WHERE class_id = $1::uuid AND status = 'waitlist'
-                   AND booked_at <= (SELECT booked_at FROM class_bookings WHERE id = $2::uuid)`,
-                [classId, waitRows[0].id],
-            );
-            return { ...waitRows[0], waitlisted: true, waitlistPosition: Number(pos?.n || 1) };
-        }
-
-        let bookingRows: any[];
-        try {
-            bookingRows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `INSERT INTO class_bookings (class_id, member_id, contact_id, credits_used)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4) RETURNING *`,
-                [classId, memberId, member.contact_id, required],
-            );
-        } catch (e) {
-            // Compensacion: el cupo ya esta tomado y la reserva no existe. Sin
-            // esto un INSERT fallido dejaria el lugar perdido para siempre.
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE fitness_classes SET available_spots = available_spots + 1 WHERE id = $1::uuid`,
-                [classId],
-            ).catch(() => {});
-            throw e;
-        }
-
-        if (credits !== null) {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE members SET class_credits_remaining = GREATEST(class_credits_remaining - $1, 0)
-                 WHERE id = $2::uuid`,
-                [required, memberId],
-            );
-        }
-        return bookingRows[0];
+            return this.withWaitlistPosition(query, booking);
+        });
     }
 
-    async cancelBooking(schemaName: string, bookingId: string): Promise<void> {
-        // El RETURNING de un UPDATE devuelve la fila YA modificada, así que
-        // `status` diría siempre 'cancelled'. El auto-join contra la misma tabla
-        // ve el snapshot ANTERIOR, que es lo único que distingue una reserva
-        // confirmada (ocupaba lugar y créditos) de una en espera (no ocupaba
-        // ninguno de los dos).
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE class_bookings b SET status = 'cancelled', cancelled_at = NOW()
-             FROM class_bookings old
-             WHERE b.id = $1::uuid AND old.id = b.id
-               AND b.status IN ('confirmed', 'waitlist')
-             RETURNING b.class_id, b.member_id, b.credits_used, old.status AS previous_status`,
-            [bookingId],
+    private async withWaitlistPosition(query: <T = any[]>(sql: string, params?: any[]) => Promise<T>, booking: any): Promise<any> {
+        if (booking.status !== 'waitlist') return booking;
+        const [position] = await query<any[]>(
+            `SELECT COUNT(*)::int AS n FROM class_bookings
+             WHERE class_id = $1::uuid AND status = 'waitlist'
+               AND (booked_at, id) <= (SELECT booked_at, id FROM class_bookings WHERE id = $2::uuid)`,
+            [booking.class_id, booking.id],
         );
-        const b = rows[0];
-        if (!b) return;
-
-        // Cancelar una ESPERA no devuelve nada: nunca tomó lugar ni consumió
-        // créditos. Sin este guard, inflaba available_spots por encima del cupo
-        // real de la sala y le regalaba créditos al socio — un bug que estaba
-        // dormido sólo porque hasta ahora no existían filas en espera.
-        if (b.previous_status === 'waitlist') return;
-
-        // Restore credits + spot
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE fitness_classes SET available_spots = available_spots + 1 WHERE id = $1::uuid`,
-            [b.class_id],
-        );
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE members SET class_credits_remaining = COALESCE(class_credits_remaining, 0) + $1
-             WHERE id = $2::uuid AND class_credits_remaining IS NOT NULL`,
-            [b.credits_used || 1, b.member_id],
-        );
-
-        // El lugar liberado se le pasa a quien esté esperando.
-        await this.promoteFromWaitlist(schemaName, b.class_id);
+        return { ...booking, waitlisted: true, waitlistPosition: Number(position?.n || 1) };
     }
 
-    /**
-     * Promueve la espera más antigua de una clase al lugar que acaba de quedar
-     * libre.
-     *
-     * Es lo que le da sentido a la lista: sin esto, un cupo cancelado queda
-     * vacío aunque haya gente esperando, que es exactamente lo que pasaba antes
-     * (con la diferencia de que antes nadie podía siquiera anotarse).
-     *
-     * Reclama el lugar con el MISMO UPDATE guardado que `bookClass`: si entre la
-     * cancelación y esto entró alguien por la puerta, no hay lugar que promover
-     * y la espera sigue esperando. Y si el socio se quedó sin créditos mientras
-     * tanto, se lo saltea en vez de dejarlo con saldo negativo — el siguiente
-     * cancelado lo vuelve a intentar.
-     */
-    private async promoteFromWaitlist(schemaName: string, classId: string): Promise<void> {
-        try {
-            const [next] = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT b.id, b.member_id, b.credits_used, m.class_credits_remaining
-                 FROM class_bookings b
-                 JOIN members m ON m.id = b.member_id
-                 WHERE b.class_id = $1::uuid AND b.status = 'waitlist' AND m.status = 'active'
-                 ORDER BY b.booked_at ASC LIMIT 1`,
-                [classId],
-            );
-            if (!next) return;
-
-            const required = next.credits_used || 1;
-            if (next.class_credits_remaining !== null && next.class_credits_remaining < required) {
-                this.logger.debug(`[Waitlist] member ${next.member_id} sin créditos suficientes — no se promueve`);
-                return;
-            }
-
-            const claimed = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `UPDATE fitness_classes SET available_spots = available_spots - 1
-                 WHERE id = $1::uuid AND available_spots > 0 RETURNING id`,
-                [classId],
-            );
-            if (!claimed.length) return;
-
-            const promoted = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `UPDATE class_bookings SET status = 'confirmed'
-                 WHERE id = $1::uuid AND status = 'waitlist' RETURNING *`,
-                [next.id],
-            );
-            if (!promoted.length) {
-                // Se canceló su propia espera mientras tanto: devolver el lugar.
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `UPDATE fitness_classes SET available_spots = available_spots + 1 WHERE id = $1::uuid`,
-                    [classId],
-                ).catch(() => {});
-                return;
-            }
-
-            if (next.class_credits_remaining !== null) {
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `UPDATE members SET class_credits_remaining = GREATEST(class_credits_remaining - $1, 0)
-                     WHERE id = $2::uuid`,
-                    [required, next.member_id],
+    async cancelBooking(schemaName: string, bookingId: string, contactId?: string): Promise<any> {
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const [reference] = await query<any[]>('SELECT class_id FROM class_bookings WHERE id = $1::uuid', [bookingId]);
+            if (!reference) throw new NotFoundException('Booking not found');
+            const [klass] = await query<any[]>('SELECT * FROM fitness_classes WHERE id = $1::uuid FOR UPDATE', [reference.class_id]);
+            if (!klass) throw new NotFoundException('Class not found');
+            const [booking] = await query<any[]>('SELECT * FROM class_bookings WHERE id = $1::uuid FOR UPDATE', [bookingId]);
+            if (contactId && booking.contact_id !== contactId) throw new BadRequestException('You can only cancel your own bookings');
+            if (booking.status === 'cancelled') return { success: true, bookingId, status: 'cancelled', alreadyCancelled: true, creditsRestored: 0 };
+            if (!['confirmed', 'waitlist'].includes(booking.status)) throw new BadRequestException('This booking cannot be cancelled');
+            if (klass.scheduled_at && new Date(klass.scheduled_at).getTime() <= Date.now()) throw new BadRequestException('Class has already started');
+            await query("UPDATE class_bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = $1::uuid", [bookingId]);
+            let creditsRestored = 0;
+            if (booking.status === 'confirmed') {
+                await query('UPDATE fitness_classes SET available_spots = available_spots + 1 WHERE id = $1::uuid', [booking.class_id]);
+                const restored = await query<any[]>(
+                    `UPDATE members SET class_credits_remaining = class_credits_remaining + $1
+                     WHERE id = $2::uuid AND class_credits_remaining IS NOT NULL RETURNING id`,
+                    [booking.credits_used ?? 1, booking.member_id],
                 );
+                creditsRestored = restored.length ? (booking.credits_used ?? 1) : 0;
+                if (!klass.is_cancelled) await this.promoteFromWaitlist(query, booking.class_id);
             }
+            return { success: true, bookingId, status: 'cancelled', previousStatus: booking.status, creditsRestored };
+        });
+    }
 
-            this.logger.log(`[Waitlist] Reserva ${next.id} promovida a confirmada en la clase ${classId}`);
-        } catch (error: any) {
-            // Una promoción fallida deja el lugar libre para el próximo que
-            // reserve: es una oportunidad perdida, no un dato corrupto.
-            this.logger.warn(`[Waitlist] No se pudo promover en la clase ${classId}: ${error.message}`);
+    /** The caller holds the class lock; a failed promotion rolls back cancellation too. */
+    private async promoteFromWaitlist(query: <T = any[]>(sql: string, params?: any[]) => Promise<T>, classId: string): Promise<void> {
+        const [next] = await query<any[]>(
+            `SELECT b.*, m.class_credits_remaining
+             FROM class_bookings b JOIN members m ON m.id = b.member_id
+             WHERE b.class_id = $1::uuid AND b.status = 'waitlist' AND m.status = 'active'
+               AND (m.class_credits_remaining IS NULL OR m.class_credits_remaining >= b.credits_used)
+             ORDER BY b.booked_at, b.id LIMIT 1 FOR UPDATE OF b, m SKIP LOCKED`, [classId],
+        );
+        if (!next) return;
+        await query("UPDATE class_bookings SET status = 'confirmed' WHERE id = $1::uuid", [next.id]);
+        await query('UPDATE fitness_classes SET available_spots = available_spots - 1 WHERE id = $1::uuid', [classId]);
+        if (next.class_credits_remaining !== null) {
+            await query('UPDATE members SET class_credits_remaining = class_credits_remaining - $1 WHERE id = $2::uuid', [next.credits_used ?? 1, next.member_id]);
         }
+    }
+
+    async listContactBookings(schemaName: string, contactId: string): Promise<any[]> {
+        return this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT b.id AS booking_id, b.status, b.credits_used, fc.id AS class_id,
+                    fc.name, fc.scheduled_at, fc.instructor_name
+             FROM class_bookings b JOIN fitness_classes fc ON fc.id = b.class_id
+             WHERE b.contact_id = $1::uuid AND b.status IN ('confirmed', 'waitlist')
+               AND fc.is_cancelled = false AND fc.scheduled_at >= NOW()
+             ORDER BY fc.scheduled_at LIMIT 30`, [contactId],
+        );
     }
 
     /** AI tool — list upcoming classes available for booking. */
@@ -713,7 +608,6 @@ export class GymsService {
             'fc.is_cancelled = false',
             'fc.scheduled_at >= NOW()',
             'fc.scheduled_at <= $1::timestamp',
-            'fc.available_spots > 0',
         ];
         const params: any[] = [until.toISOString()];
         let i = 2;
@@ -721,7 +615,7 @@ export class GymsService {
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, name, class_type, instructor_name, scheduled_at,
-                    duration_minutes, available_spots, max_capacity, room, level
+                    duration_minutes, available_spots, max_capacity, room, level, credits_required
              FROM fitness_classes fc
              WHERE ${where.join(' AND ')}
              ORDER BY scheduled_at

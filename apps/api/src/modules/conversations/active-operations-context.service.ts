@@ -385,7 +385,7 @@ export class ActiveOperationsContextService {
             case 'memberships':
                 return tools.gyms?.enabled === true ? 'get_my_membership' : undefined;
             case 'class_bookings':
-                return tools.gyms?.enabled === true ? 'list_my_classes' : undefined;
+                return tools.gyms?.enabled === true ? 'get_my_class_bookings' : undefined;
             case 'enrollments':
                 return tools.education?.enabled === true ? 'list_my_enrollments' : undefined;
             case 'photo_sessions':

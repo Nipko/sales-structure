@@ -57,6 +57,8 @@ export class AppointmentNotificationsService {
     @OnEvent('appointment.created')
     async onAppointmentCreated(payload: { schemaName: string; appointment: any }) {
         const { schemaName, appointment } = payload;
+        // A recorded request or payment hold is not yet a confirmation.
+        if (appointment.status !== 'confirmed' || appointment.metadata?.source === 'eval_gate') return;
 
         try {
             const tenantId = await this.getTenantId(schemaName);

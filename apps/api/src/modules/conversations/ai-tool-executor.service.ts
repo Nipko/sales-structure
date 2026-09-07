@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { AppointmentsService } from '../appointments/appointments.service';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { FaqsService } from '../faqs/faqs.service';
@@ -137,6 +138,7 @@ export class AIToolExecutorService {
         private readonly opportunitiesRepository?: OpportunitiesRepository,
         private readonly tasksService?: TasksService,
         private readonly repairOrders?: RepairOrdersService,
+        private readonly appointmentsService?: AppointmentsService,
     ) { }
 
     /**
@@ -237,6 +239,11 @@ export class AIToolExecutorService {
              * country's rules is wrong even when it is fluent and cited.
              */
             jurisdiction?: string | null;
+            knowledgeSearch?: {
+                similarityThreshold?: number; language?: string;
+                rerank?: boolean; rerankTopN?: number;
+                agentId?: string | null; audience?: 'customer' | 'internal';
+            };
             /**
              * El negocio no puede comprometerse en este turno.
              *
@@ -271,6 +278,9 @@ export class AIToolExecutorService {
             // boundary below; every other unknown name fails closed here.
             if (!toolName.startsWith('mcp__') && !isRegisteredStaticTool(toolName)) {
                 return { error: 'unknown_tool', tool: toolName };
+            }
+            if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
+                return { error: 'draft_action_requires_approval', controlBlocked: true, persisted: false, shouldHandoff: false };
             }
 
             // La aprobación revisada de una tool MCP, resuelta ACÁ ARRIBA.
@@ -412,6 +422,7 @@ export class AIToolExecutorService {
                 // short-circuit it and verify nothing.
                 readOnlyExecution: persistenceDisabled(opts?.executionContext) && !evalWriterAllowed,
                 authorityEvidence: opts?.authorityEvidence,
+                draftMode: opts?.executionContext?.mode === 'draft',
             });
             if (!controlDecision.allowed) {
                 if (preparedPaymentLink
@@ -538,6 +549,7 @@ export class AIToolExecutorService {
                 case 'search_knowledge_base':
                     return this.searchKnowledgeBase(
                         tenantId, args.query, args.limit, opts?.executionContext, opts?.jurisdiction,
+                        opts?.knowledgeSearch, conversationId,
                     );
 
                 case 'list_customer_orders':
@@ -768,6 +780,9 @@ export class AIToolExecutorService {
 
                 case 'freeze_membership':
                     return this.freezeMembershipTool(schemaName, contactId, args);
+
+                case 'get_my_class_bookings':
+                    return this.listMyClassBookings(schemaName, contactId);
 
                 case 'cancel_class_booking':
                     return this.cancelClassBooking(schemaName, contactId, args.bookingId);
@@ -2465,7 +2480,7 @@ export class AIToolExecutorService {
      * value: the payment backend resolves those from the contact-owned row.
      */
     private payableReference(
-        kind: 'order' | 'tour' | 'food' | 'enrollment' | 'property',
+        kind: 'order' | 'tour' | 'food' | 'enrollment' | 'property' | 'appointment',
         entityId: unknown,
         paymentStatus: unknown,
         resourceStatus?: unknown,
@@ -2488,6 +2503,7 @@ export class AIToolExecutorService {
             food: ['cancelled', 'refunded'],
             enrollment: ['cancelled', 'dropped', 'refunded'],
             property: ['cancelled', 'refunded'],
+            appointment: ['cancelled', 'refunded', 'completed', 'no_show', 'expired'],
         };
         if (rejectedByKind[kind].includes(normalizedResourceStatus)) return null;
 
@@ -2503,6 +2519,8 @@ export class AIToolExecutorService {
         executionContext?: ServiceExecutionContext,
         /** Operating country, so regulated sources of other countries stay out. */
         jurisdiction?: string | null,
+        settings?: { similarityThreshold?: number; language?: string; rerank?: boolean; rerankTopN?: number; agentId?: string | null; audience?: 'customer' | 'internal' },
+        conversationId?: string,
     ): Promise<any> {
         try {
             const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext);
@@ -2518,7 +2536,7 @@ export class AIToolExecutorService {
                 tenantId,
                 query,
                 limit,
-                { executionContext, jurisdiction },
+                { ...settings, similarityThreshold: settings?.similarityThreshold ?? 0.35, executionContext, jurisdiction, conversationId },
             );
             return readOk({
                 chunks: (results || []).map((r: any) => ({
@@ -2526,6 +2544,14 @@ export class AIToolExecutorService {
                     title: r.title,
                     content: r.chunk_text,
                     score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
+                    documentId: r.document_id,
+                    jurisdiction: r.doc_jurisdiction,
+                    authority: r.doc_authority,
+                    isRegulated: r.doc_is_regulated,
+                    validFrom: r.doc_valid_from,
+                    validTo: r.doc_valid_to,
+                    version: r.doc_version,
+                    sourceUrl: r.doc_source_url,
                 })),
             });
         } catch (e: any) {
@@ -3123,6 +3149,7 @@ export class AIToolExecutorService {
         const meetingUrl: string | undefined = svc.meeting_link || undefined;
         const appointmentMetadata = {
             ...(subject.metadata || {}),
+            ...(evalMode ? { source: 'eval_gate' } : {}),
             isOnline,
             ...(meetingUrl ? { meetingUrl } : {}),
         };
@@ -3138,91 +3165,40 @@ export class AIToolExecutorService {
                 retryable: true,
             };
         }
-        let rows: any[];
         try {
-            const insertSql = `INSERT INTO appointments
-                 (contact_id, opportunity_id, conversation_id, service_id, service_name, assigned_to, start_at, end_at, status,
-                  customer_name, customer_phone, customer_email, location, notes, metadata)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::uuid, $7::timestamp, $8::timestamp, 'confirmed',
-                         $9, $10, $11, $12, $13, $14::jsonb)
-                 RETURNING id, service_name, start_at, end_at, status`;
-            rows = await this.prisma.transactionInTenantSchema(schema, async (query) => {
-                const canonicalContactId = await requireTenantContact(query, contactId);
-                const opportunityId = await resolveNativeEvidenceOpportunity(query, {
-                    contactId: canonicalContactId,
-                    conversationId,
-                });
-                await lockAndAssertAppointmentCapacity(query, {
-                    schemaName: schema,
-                    serviceId: args.serviceId,
-                    staffUserId: assignedTo,
-                    startAt,
-                    endAt,
-                });
-                const insertParams = [
-                    canonicalContactId, opportunityId, conversationId || null,
-                    args.serviceId, svc.name, assignedTo, startAt, endAt,
-                    args.customerName, args.customerPhone || null, args.customerEmail || null,
-                    location, description, JSON.stringify(appointmentMetadata),
-                ];
-                const inserted = await query<any[]>(insertSql, insertParams);
-                if (!evalMode) {
-                    await CalendarSyncOutboxService.enqueueWithTransaction(query, inserted[0].id, 'upsert');
-                }
-                return inserted;
-            });
+            if (!this.appointmentsService) throw new Error('appointment_command_unavailable');
+            const apt = await this.appointmentsService.create(schema, {
+                contactId, conversationId, serviceId: args.serviceId,
+                serviceName: svc.name, assignedTo: assignedTo || undefined,
+                startAt, endAt, customerName: args.customerName,
+                customerPhone: args.customerPhone, customerEmail: args.customerEmail,
+                location: location || undefined, notes: description,
+                metadata: appointmentMetadata, source: 'ai',
+            }, { suppressEffects: evalMode === true, confirmWithoutPayment: true });
+            return {
+                success: true,
+                operationStatus: apt.awaitingPayment ? 'awaiting_payment' : apt.status,
+                appointment: {
+                    id: apt.id, service: apt.serviceName, date: args.date, time: args.time,
+                    status: apt.status, customerName: args.customerName, meetingUrl,
+                    awaitingPayment: apt.awaitingPayment === true,
+                    amountDueToConfirm: apt.amountDueToConfirm,
+                    currency: apt.currency, holdExpiresAt: apt.holdExpiresAt,
+                    paymentChoice: apt.paymentChoice,
+                    payableReference: apt.awaitingPayment
+                        ? this.payableReference('appointment', apt.id, apt.paymentStatus, apt.status)
+                        : null,
+                },
+            };
         } catch (error) {
-            if (error instanceof AppointmentSlotConflictError) {
-                this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
-                return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
+            if (error instanceof AppointmentSlotConflictError || error instanceof ConflictException) {
+                return { error: 'That time slot was just taken. Check availability again.', retryable: true };
             }
-            if (error instanceof AppointmentServiceUnavailableError) {
-                return { error: 'Service not found' };
-            }
+            if (error instanceof AppointmentServiceUnavailableError) return { error: 'Service not found' };
             throw error;
         } finally {
             await this.redis.releaseLockToken(slotLock.key, slotLock.token);
         }
-
-        const apt = rows[0];
-        this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
-
-        // Emit event so notifications (WhatsApp confirmation, email, calendar) are
-        // triggered. In evalMode the INSERT above still happens (so verifyActions can
-        // assert it) but NO outbound side-effect fires (no message/email/webhook/calendar).
-        if (!evalMode) this.eventEmitter.emit('appointment.created', {
-            schemaName: schema,
-            appointment: {
-                id: apt.id,
-                contactId: contactId,
-                serviceName: svc.name,
-                startAt: startAt,
-                endAt: endAt,
-                status: 'confirmed',
-                customerName: args.customerName,
-                customerEmail: args.customerEmail,
-                customerPhone: args.customerPhone,
-                // Without this the confirmation never shows the address: every
-                // listener reads `appointment.location`, and this path — the one
-                // the AI actually uses — used to leave it undefined.
-                location,
-                assignedTo,
-                meetingUrl,
-            },
-        });
-
-        return {
-            success: true,
-            appointment: {
-                id: apt.id,
-                service: svc.name,
-                date: args.date,
-                time: args.time,
-                status: 'confirmed',
-                customerName: args.customerName,
-                meetingUrl,
-            },
-        };
     }
 
     private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string): Promise<any> {
@@ -3318,10 +3294,11 @@ export class AIToolExecutorService {
 
     private async listCustomerAppointments(schema: string, contactId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, service_name, start_at, end_at, status, customer_name
-             FROM "${schema}".appointments
-             WHERE contact_id = $1::uuid AND status NOT IN ('cancelled') AND start_at >= NOW()
-             ORDER BY start_at LIMIT 10`,
+            `SELECT a.id, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, s.price, s.currency,
+                    to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time
+             FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+             WHERE a.contact_id = $1::uuid AND a.status NOT IN ('cancelled') AND a.start_at >= NOW()
+             ORDER BY a.start_at LIMIT 10`,
             contactId,
         );
 
@@ -3329,10 +3306,14 @@ export class AIToolExecutorService {
             appointments: rows.map(r => ({
                 id: r.id,
                 service: r.service_name,
-                date: new Date(r.start_at).toISOString().split('T')[0],
-                time: new Date(r.start_at).toTimeString().slice(0, 5),
+                date: r.local_date,
+                time: r.local_time,
                 status: r.status,
                 customerName: r.customer_name,
+                paymentStatus: r.payment_status, holdExpiresAt: r.hold_expires_at,
+                amountDueToConfirm: r.amount_due ?? r.price, currency: r.currency,
+                payableReference: r.status === 'pending_payment' && new Date(r.hold_expires_at).getTime() > Date.now()
+                    ? this.payableReference('appointment', r.id, r.payment_status, r.status) : null,
             })),
         };
     }
@@ -4467,7 +4448,7 @@ export class AIToolExecutorService {
                     status: booking.status,
                     waitlistPosition: booking.waitlistPosition,
                     creditsUsed: 0,
-                    message: `The class is full. The member is now on the waitlist at position ${booking.waitlistPosition}. Tell them clearly they do NOT have a spot yet, that no credits were used, and that they will get it automatically if someone cancels — they do not need to do anything else.`,
+                    message: `The class is full. The member is now on the waitlist at position ${booking.waitlistPosition}. Tell them clearly they do NOT have a spot yet, that no credits were used, and that eligible members are promoted in order when a spot becomes available. Membership and credits must still be valid at promotion.`,
                 };
             }
             return {
@@ -5650,9 +5631,12 @@ export class AIToolExecutorService {
 
     private async getAppointmentDetails(schema: string, contactId: string, appointmentId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_name, start_at, end_at, status,
-                    customer_name, customer_email, customer_phone, notes, metadata
-             FROM "${schema}".appointments WHERE id = $1::uuid`,
+            `SELECT a.id, a.contact_id, a.service_name, a.status, a.payment_status, a.amount_due, a.hold_expires_at,
+                    a.customer_name, a.customer_email, a.customer_phone, a.notes, a.metadata, s.price, s.currency,
+                    to_char(a.start_at, 'YYYY-MM-DD') AS local_date,
+                    to_char(a.start_at, 'HH24:MI') AS local_time, to_char(a.end_at, 'HH24:MI') AS local_end_time
+             FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+             WHERE a.id = $1::uuid`,
             appointmentId,
         );
         if (!rows.length) return { error: 'Appointment not found' };
@@ -5663,10 +5647,14 @@ export class AIToolExecutorService {
         return {
             id: apt.id,
             service: apt.service_name,
-            date: new Date(apt.start_at).toISOString().split('T')[0],
-            time: new Date(apt.start_at).toTimeString().slice(0, 5),
-            endTime: new Date(apt.end_at).toTimeString().slice(0, 5),
+            date: apt.local_date,
+            time: apt.local_time,
+            endTime: apt.local_end_time,
             status: apt.status,
+            paymentStatus: apt.payment_status, holdExpiresAt: apt.hold_expires_at,
+            amountDueToConfirm: apt.amount_due ?? apt.price, currency: apt.currency,
+            payableReference: apt.status === 'pending_payment' && new Date(apt.hold_expires_at).getTime() > Date.now()
+                ? this.payableReference('appointment', apt.id, apt.payment_status, apt.status) : null,
             customerName: apt.customer_name,
             customerEmail: apt.customer_email,
             customerPhone: apt.customer_phone,
@@ -5903,19 +5891,23 @@ export class AIToolExecutorService {
 
     // ── Gyms management handlers ─────────────────────────────────────
 
+    private async listMyClassBookings(schemaName: string, contactId: string): Promise<any> {
+        try {
+            const bookings = await this.gymsService.listContactBookings(schemaName, contactId);
+            return readOk({ bookings: bookings.map(booking => ({
+                bookingId: booking.booking_id, status: booking.status,
+                classId: booking.class_id, className: booking.name,
+                scheduledAt: booking.scheduled_at, instructor: booking.instructor_name,
+                creditsUsed: booking.status === 'waitlist' ? 0 : booking.credits_used,
+            })) });
+        } catch {
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED);
+        }
+    }
+
     private async cancelClassBooking(schemaName: string, contactId: string, bookingId: string): Promise<any> {
         try {
-            // IDOR guard: verify the booking belongs to this contact before cancelling
-            // (same ownership pattern as cancelAppointment / cancelEnrollment).
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, contact_id FROM "${schemaName}".class_bookings WHERE id = $1::uuid`,
-                bookingId,
-            );
-            if (!rows.length) return { error: 'Booking not found' };
-            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own bookings.' };
-
-            await this.gymsService.cancelBooking(schemaName, bookingId);
-            return { success: true, message: 'Class booking cancelled. Credits have been restored.' };
+            return await this.gymsService.cancelBooking(schemaName, bookingId, contactId);
         } catch (e: any) {
             return { error: e.message };
         }
@@ -5925,52 +5917,7 @@ export class AIToolExecutorService {
 
     private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string): Promise<any> {
         try {
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, contact_id, status, cohort_id, notes FROM "${schema}".enrollments WHERE id = $1::uuid`,
-                enrollmentId,
-            );
-            if (!rows.length) return { error: 'Enrollment not found' };
-            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own enrollments' };
-
-            const cancellableStatuses = ['enrolled', 'active'];
-            if (!cancellableStatuses.includes(rows[0].status)) {
-                return { error: `Cannot cancel an enrollment in "${rows[0].status}" status.` };
-            }
-
-            // 'dropped', no 'cancelled': el vocabulario de la tabla es
-            // enrolled|active|completed|dropped|refunded. 'cancelled' se escribia
-            // igual (status esta mapeado) pero quedaba fuera de la paleta del
-            // panel y como balde desconocido en las analiticas por vertical.
-            //
-            // Y el motivo va a `notes`: updateEnrollment mapea seis campos y
-            // cancellationReason no es uno de ellos — se descartaba en silencio,
-            // asi que la razon que daba el alumno se perdia siempre. No hay
-            // columna cancellation_reason en la tabla; notes es su lugar.
-            await this.educationService.updateEnrollment(schema, enrollmentId, {
-                status: 'dropped',
-                // Se ANEXA: updateEnrollment pisa la columna, y las notas del
-                // profesor sobre el alumno no pueden desaparecer porque este
-                // cancele.
-                notes: `${rows[0].notes ? `${rows[0].notes}\n` : ''}[Cancelled by student]${reason ? ` ${reason}` : ''}`,
-            });
-
-            // Devolver el asiento: enrollStudent decrementa available_seats y marca
-            // 'full' al llegar a 0, pero la cancelación nunca lo restauraba — el
-            // mensaje decía "the seat has been released" y el cupo se perdía para
-            // siempre (cohortes fantasma llenas). Espejo exacto del decremento,
-            // incluida la vuelta de 'full' a 'open'. El guard de status de arriba
-            // impide restaurar dos veces (una cancelada no es cancelable de nuevo).
-            if (rows[0].cohort_id) {
-                await this.prisma.$queryRawUnsafe(
-                    `UPDATE "${schema}".course_cohorts
-                     SET available_seats = available_seats + 1,
-                         status = CASE WHEN status = 'full' THEN 'open' ELSE status END
-                     WHERE id = $1::uuid`,
-                    rows[0].cohort_id,
-                );
-            }
-
-            return { success: true, message: 'Enrollment cancelled successfully. The seat has been released.' };
+            return await this.educationService.cancelEnrollment(schema, enrollmentId, { contactId, reason });
         } catch (e: any) {
             return { error: e.message };
         }

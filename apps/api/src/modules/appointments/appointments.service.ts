@@ -53,6 +53,12 @@ export interface Appointment {
     calendarSyncState: string | null;
     calendarSyncError: string | null;
     calendarSyncedAt: string | null;
+    paymentStatus?: string;
+    holdExpiresAt?: string | null;
+    awaitingPayment?: boolean;
+    amountDueToConfirm?: number | null;
+    paymentChoice?: 'deposit_or_full';
+    currency?: string;
 }
 
 export interface AvailabilitySlot {
@@ -261,7 +267,9 @@ export class AppointmentsService {
         customerPhone?: string;
         customerEmail?: string;
         source?: string;
-    }): Promise<Appointment> {
+    }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean } = {}): Promise<Appointment> {
+        const suppressEffects = execution.suppressEffects === true
+            || data.source === 'eval_gate' || data.metadata?.source === 'eval_gate';
         // Tenant-local appointment rows cannot FK to public.users. Resolve the
         // assignment against the active tenant owner before any conflict/write.
         const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -327,6 +335,7 @@ export class AppointmentsService {
         // si la cita quedó pendiente de pago: es lo que impide que el agente
         // diga "tu cita quedó confirmada" sobre algo que nadie pagó.
         let policy = resolvePaymentPolicy(null, 0);
+        let currency = 'COP';
         try {
             await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 const contactIdUuid = await requireTenantContact(query, requestedContactId);
@@ -349,7 +358,9 @@ export class AppointmentsService {
                 // de la columna es 'pending', que significa otra cosa —
                 // "agendada, falta que el negocio la confirme"— y sí ocupa.
                 policy = resolvePaymentPolicy(service, service?.price);
-                const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS : 'pending';
+                currency = String(service.currency || 'COP');
+                const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS
+                    : execution.confirmWithoutPayment ? 'confirmed' : 'pending';
                 const holdExpiresAt = policy.requiresPayment
                     ? new Date(Date.now() + PAYMENT_HOLD_MS)
                     : null;
@@ -376,7 +387,7 @@ export class AppointmentsService {
                 );
                 // Una cita impaga no se sincroniza al calendario del profesional:
                 // taparía su agenda con algo que todavía está a la venta.
-                if (!policy.requiresPayment) {
+                if (!policy.requiresPayment && !suppressEffects) {
                     await this.calendarOutbox.enqueueWithQuery(query, id, 'upsert');
                 }
             });
@@ -400,16 +411,19 @@ export class AppointmentsService {
         const appointment = await this.getById(schemaName, id);
 
         // Emit event for WhatsApp confirmation
-        this.eventEmitter.emit('appointment.created', { schemaName, appointment });
+        if (!suppressEffects) {
+            this.eventEmitter.emit('appointment.created', { schemaName, appointment });
+        }
 
         // La política viaja con la cita: quien la lee —la herramienta, y a
         // través de ella el agente— tiene que saber que esto NO está confirmado
-        // y que el turno sigue disponible para otros hasta que entre el pago.
+        // y que el turno tiene una retención temporal hasta que entre el pago.
         return {
             ...appointment,
             awaitingPayment: policy.requiresPayment,
             amountDueToConfirm: policy.requiresPayment ? policy.dueAmount : undefined,
             paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
+            currency,
         } as Appointment;
     }
 
@@ -952,6 +966,8 @@ export class AppointmentsService {
             startAt: this.toNaiveIso(row.start_at),
             endAt: this.toNaiveIso(row.end_at),
             status: row.status,
+            paymentStatus: row.payment_status || 'pending',
+            holdExpiresAt: row.hold_expires_at ? new Date(row.hold_expires_at).toISOString() : null,
             location: row.location,
             notes: row.notes,
             reminderSent: row.reminder_sent,

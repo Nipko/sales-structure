@@ -801,10 +801,10 @@ export class AIToolExecutorService {
 
                 // ── Vacation Rental tools ───────────────────────────
                 case 'list_properties':
-                    return this.listProperties(schemaName, args.guests, args.checkIn, args.checkOut, tenantId);
+                    return this.listProperties(schemaName, args.guests, args.checkIn, args.checkOut, tenantId, opts?.executionContext);
 
                 case 'check_property_availability':
-                    return this.checkPropertyAvailability(schemaName, args.propertyId, args.checkIn, args.checkOut, args.guests, tenantId);
+                    return this.checkPropertyAvailability(schemaName, args.propertyId, args.checkIn, args.checkOut, args.guests, tenantId, opts?.executionContext);
 
                 case 'get_property_details':
                     return this.getPropertyDetails(schemaName, args.propertyId);
@@ -3443,7 +3443,7 @@ export class AIToolExecutorService {
     /**
      * List active properties, optionally filtering by guest capacity.
      */
-    private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string, tenantId?: string): Promise<any> {
+    private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string, tenantId?: string, executionContext?: ServiceExecutionContext): Promise<any> {
         try {
             const conds: string[] = ['is_active = true'];
             const params: any[] = [];
@@ -3494,7 +3494,7 @@ export class AIToolExecutorService {
                 let failures = 0;
                 for (const prop of properties) {
                     try {
-                        const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut, tenantId);
+                        const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut, tenantId, executionContext);
                         if (avail.available) {
                             available.push({ ...prop, totalPrice: avail.totalPrice, nights: avail.nights });
                         }
@@ -3545,10 +3545,10 @@ export class AIToolExecutorService {
      * Check availability and pricing for a specific property + date range.
      */
     private async checkPropertyAvailability(
-        schema: string, propertyId: string, checkIn: string, checkOut: string, guests?: number, tenantId?: string,
+        schema: string, propertyId: string, checkIn: string, checkOut: string, guests?: number, tenantId?: string, executionContext?: ServiceExecutionContext,
     ): Promise<any> {
         try {
-            const avail = await this.propertiesService.checkAvailability(schema, propertyId, checkIn, checkOut, tenantId);
+            const avail = await this.propertiesService.checkAvailability(schema, propertyId, checkIn, checkOut, tenantId, executionContext);
 
             // If guest count provided, verify capacity
             if (guests && avail.available) {

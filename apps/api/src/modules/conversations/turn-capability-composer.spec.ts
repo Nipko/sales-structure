@@ -174,6 +174,11 @@ describe('TurnCapabilityComposerService', () => {
         const procedureEngine = new ProcedureEngineService(
             {
                 executeInTenantSchema: jest.fn().mockResolvedValue([procedure]),
+                transactionInTenantSchema: jest.fn(async (_schema, work) => work(async (sql: string) => {
+                    if (sql.startsWith('SELECT contact_id FROM conversations')) return [{ contact_id: '44444444-4444-4444-8444-444444444444' }];
+                    if (sql.trimStart().startsWith('UPDATE conversations')) return [{ id: '33333333-3333-4333-8333-333333333333' }];
+                    return [];
+                })),
             } as any,
             {
                 getJson: jest.fn().mockResolvedValue({

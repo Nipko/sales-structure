@@ -6,6 +6,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import {
@@ -79,6 +80,7 @@ export class PropertiesService {
         tenantId: string | undefined,
         schemaName: string,
         propertyId: string,
+        executionContext?: ServiceExecutionContext,
     ): Promise<LodgingSorResolution> {
         // Sin resolutor no hay integración en este despliegue, y sin tenantId
         // no hay a quién preguntarle: las dos son ausencias, no fallas.
@@ -86,7 +88,9 @@ export class PropertiesService {
             return { sor: 'local', connected: false, stale: false, health: 'unknown' };
         }
         try {
-            return await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId);
+            return executionContext
+                ? await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId, executionContext)
+                : await this.lodgingSor.resolveForProperty(tenantId, schemaName, propertyId);
         } catch (error: any) {
             this.logger.error(`[Lodging] SoR resolution failed: ${error?.message}`);
             return {
@@ -316,12 +320,13 @@ export class PropertiesService {
         checkIn: string,
         checkOut: string,
         tenantId?: string,
+        executionContext?: ServiceExecutionContext,
     ): Promise<any> {
         this.assertUuid(propertyId, 'propertyId');
         const stay = this.validateStayRange(checkIn, checkOut);
         const property = await this.getById(schemaName, propertyId);
         this.assertPropertyBookable(property);
-        const sor = await this.resolveSor(tenantId, schemaName, propertyId);
+        const sor = await this.resolveSor(tenantId, schemaName, propertyId, executionContext);
 
         // Hotel semantics: both persisted and requested ranges are half-open.
         // A departure on D therefore does not conflict with a new arrival on D.

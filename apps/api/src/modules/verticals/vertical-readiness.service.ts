@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { VerticalReadinessKey } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 
 /**
  * Does this tenant actually have the data its capabilities promise?
@@ -200,14 +201,19 @@ export class VerticalReadinessService {
         tenantId: string,
         schemaName: string,
         keys: readonly VerticalReadinessKey[],
+        executionContext?: ServiceExecutionContext,
     ): Promise<ReadinessReport> {
         if (!keys.length) {
             return { checks: [], unmet: [], evaluatedAt: new Date().toISOString(), degraded: false };
         }
 
-        const cacheKey = `readiness:${tenantId}:${[...keys].sort().join(',')}`;
+        // Read-only previews must see the selected schema, never a production
+        // cache entry. A namespace remains isolated even if an older caller
+        // omitted executionContext. No test result may populate live Redis.
+        const useCache = !persistenceDisabled(executionContext) && !schemaName.startsWith('tenant_eval_');
+        const cacheKey = `readiness:${tenantId}:${schemaName}:${[...keys].sort().join(',')}`;
         try {
-            const cached = await this.redis.getJson<ReadinessReport>(cacheKey);
+            const cached = useCache ? await this.redis.getJson<ReadinessReport>(cacheKey) : null;
             if (cached) return cached;
         } catch { /* A cache miss is not a failure. */ }
 
@@ -250,7 +256,7 @@ export class VerticalReadinessService {
             degraded,
         };
         try {
-            await this.redis.setJson(cacheKey, report, CACHE_TTL_SECONDS);
+            if (useCache) await this.redis.setJson(cacheKey, report, CACHE_TTL_SECONDS);
         } catch { /* Correct but uncached. */ }
         return report;
     }

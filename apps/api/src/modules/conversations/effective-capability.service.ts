@@ -319,7 +319,7 @@ export class EffectiveCapabilityService {
 
         const readinessReport = this.readiness
             ? await this.readiness
-                .evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)])
+                .evaluate(input.tenantId, input.schemaName, [...new Set(readinessKeys)], input.executionContext)
                 .catch(() => null)
             : null;
         if (this.readiness && !readinessReport) degraded = true;

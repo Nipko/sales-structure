@@ -1,17 +1,13 @@
+import { CANONICAL_EVAL_TOOLS } from '../simulation/isolated-eval-namespace';
+export { CANONICAL_EVAL_TOOLS } from '../simulation/isolated-eval-namespace';
 import type { AIToolExecutorService } from './ai-tool-executor.service';
 import type { LLMRouterService } from '../ai/router/llm-router.service';
 import type { AgentTurnSession } from './agent-turn-session';
 import { agentTestBlockedToolResult, isAgentTestSafeToolName } from './agent-test-tool-policy';
 
-export const CANONICAL_EVAL_TOOLS = new Set([
-    'create_appointment', 'cancel_appointment', 'reschedule_appointment',
-    'enroll_student', 'cancel_enrollment', 'book_class', 'cancel_class_booking',
-]);
-
 export function sessionCanExecute(session: AgentTurnSession, name: string): boolean {
     if (session.disableTools) return false;
-    // No writer may be enabled until an isolated, canonical domain adapter is installed.
-    return isAgentTestSafeToolName(name);
+    return isAgentTestSafeToolName(name) || (session.mode === 'sandbox' && !!session.sandboxNamespace && CANONICAL_EVAL_TOOLS.has(name));
 }
 
 export function sessionToolExecutor(executor: AIToolExecutorService, session: AgentTurnSession): AIToolExecutorService {
@@ -29,8 +25,10 @@ export function sessionToolExecutor(executor: AIToolExecutorService, session: Ag
                 ...options,
                 authority: options.authority,
                 executionContext: session.executionContext,
-                readOnly: true,
-                evalMode: false,
+                readOnly: !session.sandboxNamespace || isAgentTestSafeToolName(name),
+                evalMode: !!session.sandboxNamespace,
+                sandboxNamespace: session.sandboxNamespace,
+                executionState: session.state,
                 channelType: session.channelType,
             });
             } catch (error: any) {

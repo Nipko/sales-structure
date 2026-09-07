@@ -1,3 +1,5 @@
+import { PrismaService } from '../prisma/prisma.service';
+import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
 import { LearningModule } from '../learning/learning.module';
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
@@ -120,6 +122,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         }),
     ],
     providers: [
+        { provide: IsolatedEvalNamespace, useFactory: isolatedEvalNamespaceForPrisma, inject: [PrismaService] },
         ExpiredHoldSweeperService,
         ConversationsService,
         ConversationsGateway,
@@ -151,6 +154,6 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         ChatIdentityService,
     ],
     controllers: [ConversationsController, AgentTestController, ToolApprovalController],
-    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService],
+    exports: [IsolatedEvalNamespace, ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService],
 })
 export class ConversationsModule {}

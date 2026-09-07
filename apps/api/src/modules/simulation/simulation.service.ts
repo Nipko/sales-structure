@@ -1,3 +1,4 @@
+import { bindCanonicalEvalFixtures } from './eval-canonical-fixtures';
 import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -503,8 +504,8 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 try {
                     const completed = previous.find(r => r.key === scenarios[idx].key && isScoredScenario(r));
                     if (completed) { results[idx] = completed; continue; }
-                    await session?.reset(channelType);
-                    results[idx] = await this.runScenario(tenantId, agentId, channelType, scenarios[idx], snapshot, session);
+                    await session?.reset(channelType, snapshot);
+                    results[idx] = await this.runScenario(tenantId, agentId, channelType, session?.fixtures ? bindCanonicalEvalFixtures(scenarios[idx],session.fixtures) : scenarios[idx], snapshot, session);
                 } catch (err: any) {
                     const s = scenarios[idx];
                     results[idx] = {
@@ -545,7 +546,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 tenantId,
                 agentId,
                 { message: customerMsg, conversationHistory: [...history], channelType: channelType as any },
-                { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, beforeToolExecution: session.assertLease } : {}) },
+                { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, sandboxNamespace: session.sandboxNamespace, beforeToolExecution: session.assertLease } : {}) },
             );
             if (res.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
             const reply = res.reply || '';

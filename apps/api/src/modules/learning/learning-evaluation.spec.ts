@@ -15,7 +15,9 @@ function build(){
         checkpointEvaluation:jest.fn(),recordEvaluation:jest.fn(async(_t,_a,_r,evidence)=>evidence),failEvaluation:jest.fn()};
     let sessionIndex=0;
     const session={sandboxContactId:'00000000-0000-4000-8000-00000000eba1',sandboxConversationId:'',assertLease:jest.fn(),
-        reset:jest.fn(async()=>{session.sandboxConversationId=`sandbox-${++sessionIndex}`;}),recordInbound:jest.fn()};
+        sandboxNamespace:undefined as any,
+        reset:jest.fn(async()=>{session.sandboxConversationId=`sandbox-${++sessionIndex}`;
+            session.sandboxNamespace={schemaName:`isolated-${sessionIndex}`,token:`lease-${sessionIndex}`};}),recordInbound:jest.fn()};
     const sandbox={withSandboxSession:jest.fn(async(_tenant,callback)=>callback(session))};
     const agentTest={captureSnapshot:jest.fn().mockResolvedValue(snapshot),test:jest.fn(async(_t,_a,req,opts)=>{
         await opts.beforeModelExecution();
@@ -37,7 +39,9 @@ describe('Learning A/B uses the full runtime with isolated histories',()=>{
         const evidence=await service.run(job);
         expect(agentTest.test).toHaveBeenCalledTimes(12);
         expect(session.reset).toHaveBeenCalledTimes(6);
+        expect(session.reset).toHaveBeenCalledWith('web_widget', snapshot);
         const calls=agentTest.test.mock.calls;
+        expect(new Set(calls.map(call=>call[3].sandboxNamespace.schemaName)).size).toBe(6);
         expect(calls.map(call=>call[3].learningReleaseId)).toEqual([null,null,releaseId,releaseId,null,null,releaseId,releaseId,null,null,releaseId,releaseId]);
         for(const call of calls){
             expect(call[3]).toMatchObject({agentSnapshot:snapshot,evalMode:true,disableTools:false});

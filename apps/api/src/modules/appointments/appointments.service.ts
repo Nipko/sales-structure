@@ -1,10 +1,11 @@
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { randomUUID } from 'crypto';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
-import { assertActiveTenantUser } from './tenant-user-scope.util';
+import { assertActiveTenantUser, tenantActorDirectory } from './tenant-user-scope.util';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -230,16 +231,17 @@ export class AppointmentsService {
         return (rows as any[]).map((r) => this.mapRow(r));
     }
 
-    async getById(schemaName: string, appointmentId: string): Promise<Appointment> {
+    async getById(schemaName: string, appointmentId: string, namespace?: EvalNamespaceLease): Promise<Appointment> {
+        const directory = await tenantActorDirectory(this.prisma,schemaName,namespace);
         const rows = await this.prisma.executeInTenantSchema(schemaName,
             `SELECT a.*, c.name as contact_name, u.id as assigned_user_id,
                     u.first_name || ' ' || u.last_name as assigned_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
-             LEFT JOIN public.tenants tenant_owner
+             LEFT JOIN ${directory.tenants} tenant_owner
                ON tenant_owner.schema_name = $1
               AND tenant_owner.is_active = true
-             LEFT JOIN public.users u
+             LEFT JOIN ${directory.users} u
                ON u.id = a.assigned_to::uuid
               AND u.tenant_id = tenant_owner.id
               AND u.is_active = true
@@ -267,8 +269,12 @@ export class AppointmentsService {
         customerPhone?: string;
         customerEmail?: string;
         source?: string;
-    }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean } = {}): Promise<Appointment> {
-        const suppressEffects = execution.suppressEffects === true
+    }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean; sandboxNamespace?: EvalNamespaceLease } = {}): Promise<Appointment> {
+        if (execution.sandboxNamespace) {
+            await tenantActorDirectory(this.prisma,schemaName,execution.sandboxNamespace);
+            data = { ...data, metadata: { ...data.metadata, source: 'eval_gate' } };
+        }
+        const suppressEffects = !!execution.sandboxNamespace || execution.suppressEffects === true
             || data.source === 'eval_gate' || data.metadata?.source === 'eval_gate';
         // Tenant-local appointment rows cannot FK to public.users. Resolve the
         // assignment against the active tenant owner before any conflict/write.
@@ -281,7 +287,7 @@ export class AppointmentsService {
             });
         }
         const assignedToUuid = data.assignedTo
-            ? await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo)
+            ? await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo, execution.sandboxNamespace)
             : null;
         const conversationIdUuid = data.conversationId && uuidRe.test(data.conversationId) ? data.conversationId : null;
 
@@ -408,7 +414,7 @@ export class AppointmentsService {
         }
 
         this.logger.log(`Appointment created: ${id} — ${canonicalServiceName} at ${startAt}`);
-        const appointment = await this.getById(schemaName, id);
+        const appointment = await this.getById(schemaName, id, execution.sandboxNamespace);
 
         // Emit event for WhatsApp confirmation
         if (!suppressEffects) {

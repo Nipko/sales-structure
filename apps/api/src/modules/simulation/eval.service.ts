@@ -1,3 +1,5 @@
+import { prepareCanonicalEvalFixtures, bindCanonicalEvalFixtures, type CanonicalEvalFixtures } from './eval-canonical-fixtures';
+import { IsolatedEvalNamespace, type EvalNamespaceLease } from './isolated-eval-namespace';
 import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,15 +15,16 @@ import {
 } from '@parallext/shared';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
-import { EVAL_SANDBOX_FIXTURE_IDS } from '../conversations/eval-writer-sandbox';
 import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { verifyExpectedEffects } from './eval-effect-verifier';
 
 export interface EvalSandboxSession {
     sandboxContactId: string;
     sandboxConversationId?: string;
+    sandboxNamespace?: EvalNamespaceLease;
+    fixtures?: CanonicalEvalFixtures;
     assertLease(): Promise<void>;
-    reset(channelType: string): Promise<void>;
+    reset(channelType: string, snapshot?: AgentEvaluationSnapshot): Promise<void>;
     recordInbound(text: string): Promise<void>;
 }
 
@@ -81,15 +84,15 @@ export interface EvalGateResult {
 const DEFAULT_THRESHOLD = 7;     // overall (0-10) the suite must average to pass
 const MAX_SCENARIO_MESSAGES = 8;
 const MAX_K = 5;
-// Fixed sandbox contact (valid UUID, hex-only) used for action verification. All
-// writes/asserts/cleanup are scoped to it so an eval never touches real customer data.
+// Reserved fixture identity lives only in a unique owned evaluation namespace.
+// Production tenant tables are never prepared, mutated or swept by these runs.
 const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
 const EVAL_SANDBOX_CHANNEL_ACCOUNT_ID = 'eval-sandbox';
 
 /**
- * Extensible effect-verifier registry. A family enters only after its writer
- * honours evalMode and cleanup is proven. This replaces the anonymous table
- * allowlist that could not describe ownership columns or future verifiers.
+ * Effect verification is read-only and independent of writer permission.
+ * Session execution admits only canonical commands certified for the namespace;
+ * a verifier entry does not make an unsupported writer executable.
  */
 export const EVAL_EFFECT_VERIFIERS: Readonly<Record<string, {
     table: string;
@@ -132,6 +135,7 @@ export class EvalService {
         // Opcional para los specs que arman el servicio a mano. Ausente = trato
         // neutro, que es el default y no el rioplatense.
         @Optional() private readonly regionalProfile?: RegionalProfileService,
+        @Optional() private readonly namespaces?: IsolatedEvalNamespace,
     ) {}
 
     private async withSandboxLease<T>(tenantId: string, callback: (assertLease: () => Promise<void>) => Promise<T>): Promise<T> {
@@ -152,27 +156,41 @@ export class EvalService {
     }
 
     async withSandboxSession<T>(tenantId: string, callback: (session: EvalSandboxSession) => Promise<T>): Promise<T> {
-        return this.withSandboxLease(tenantId, async assertLease => {
-            const schema = await this.prisma.getTenantSchemaName(tenantId);
-            await this.ensureTable(schema);
-            await this.ensureSandboxContact(schema);
-            const session: EvalSandboxSession = {
-                sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
-                assertLease,
-                reset: async channelType => {
-                    await assertLease(); await this.cleanupSandbox(schema);
-                    await this.prepareSandboxFixtures(schema);
-                    session.sandboxConversationId = await this.ensureSandboxConversation(schema, channelType);
-                },
-                recordInbound: async text => {
-                    await assertLease();
-                    if (!session.sandboxConversationId) throw new Error('eval_sandbox_not_initialized');
-                    await this.recordSandboxInbound(schema, session.sandboxConversationId, text);
-                },
-            };
-            try { return await callback(session); }
-            finally { await assertLease(); await this.cleanupSandbox(schema); }
-        });
+        return this.withSandboxLease(tenantId, async assertLease => this.withOwnedSandboxSession(
+            tenantId, await this.prisma.getTenantSchemaName(tenantId), assertLease, callback,
+        ));
+    }
+
+    private async withOwnedSandboxSession<T>(tenantId: string, sourceSchema: string, assertLease: () => Promise<void>, callback: (session: EvalSandboxSession) => Promise<T>): Promise<T> {
+        if (!this.namespaces) throw new Error('canonical_sandbox_not_available');
+        const session: EvalSandboxSession = {
+            sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
+            assertLease: async () => {
+                await assertLease();
+                if (session.sandboxNamespace) await this.namespaces!.assertOwned(session.sandboxNamespace);
+            },
+            reset: async (channelType, snapshot) => {
+                await assertLease();
+                if (session.sandboxNamespace) await this.namespaces!.dispose(session.sandboxNamespace);
+                session.sandboxNamespace = await this.namespaces!.provisionRuntime(tenantId, sourceSchema);
+                const schema = session.sandboxNamespace.schemaName;
+                await this.ensureSandboxContact(schema);
+                session.fixtures = await prepareCanonicalEvalFixtures((sql,params)=>this.prisma.executeInTenantSchema(schema,sql,params),schema,snapshot);
+                if (session.fixtures.status !== 'ready') throw new Error('eval_fixtures_blocked:' + session.fixtures.reason);
+                session.sandboxConversationId = await this.ensureSandboxConversation(schema, channelType);
+            },
+            recordInbound: async text => {
+                await session.assertLease();
+                if (!session.sandboxConversationId || !session.sandboxNamespace) throw new Error('eval_sandbox_not_initialized');
+                await this.recordSandboxInbound(session.sandboxNamespace.schemaName, session.sandboxConversationId, text);
+            },
+        };
+        try { return await callback(session); }
+        finally {
+            // This namespace belongs exclusively to this lease. Losing the queue
+            // lock never permits deleting another run, nor prevents our teardown.
+            if (session.sandboxNamespace) await this.namespaces.dispose(session.sandboxNamespace);
+        }
     }
 
     private async ensureTable(schema: string): Promise<void> {
@@ -538,23 +556,18 @@ export class EvalService {
 
     /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
     private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean, snapshot?: AgentEvaluationSnapshot, channelType = 'web_widget', assertLease?: () => Promise<void>, beforeModelUnits?: (units: number) => Promise<void>) {
-        let cleanupRequired = false;
-        try {
-            await assertLease?.();
-            cleanupRequired = true;
-            await this.cleanupSandbox(schema);
-            await this.prepareSandboxFixtures(schema);
-            // A scenario that asserts side-effects runs on a real sandbox
-            // conversation: the guard binds writes to one, and reads the customer's
-            // latest inbound message to decide whether they confirmed.
-            const sandboxConversationId = await this.ensureSandboxConversation(schema, channelType);
+        return this.withOwnedSandboxSession(tenantId, schema, assertLease || (async () => {}), async session => {
+            await session.reset(channelType, snapshot);
+            sc = bindCanonicalEvalFixtures(sc, session.fixtures!);
+            const sandboxConversationId = session.sandboxConversationId;
+            const isolatedSchema = session.sandboxNamespace!.schemaName;
             const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
             const lines: string[] = [];
             const observedToolCalls: Array<{ name: string; result: unknown }> = [];
             for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
                 await assertLease?.();
                 if (sandboxConversationId) {
-                    await this.recordSandboxInbound(schema, sandboxConversationId, msg);
+                    await session.recordInbound(msg);
                 }
                 const res = await this.agentTest.test(
                     tenantId, agentId,
@@ -563,8 +576,8 @@ export class EvalService {
                             disableTools: false,
                             evalMode: true,
                             sandboxContactId: EVAL_SANDBOX_CONTACT_ID,
-                            sandboxConversationId, agentSnapshot: snapshot, beforeToolExecution: assertLease,
-                            beforeModelExecution: async () => { await assertLease?.(); await beforeModelUnits?.(1); },
+                            sandboxConversationId, sandboxNamespace: session.sandboxNamespace, agentSnapshot: snapshot, beforeToolExecution: session.assertLease,
+                            beforeModelExecution: async () => { await session.assertLease(); await beforeModelUnits?.(1); },
                         },
                 );
                 if (res?.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
@@ -585,7 +598,7 @@ export class EvalService {
             let actionChecks: any[] | undefined;
             if (hasActions) {
                 const v = await this.verifyActions(
-                    schema,
+                    isolatedSchema,
                     sc.expectedActions,
                     EVAL_SANDBOX_CONTACT_ID,
                     observedToolCalls,
@@ -594,12 +607,7 @@ export class EvalService {
                 actionChecks = v.checks;
             }
             return { score, passed: score >= threshold && actionsPassed, resolved: !!judge.resolved, flags: judge.flags || [], actionChecks };
-        } finally {
-            // A failed model/provider/judge call is precisely when residue used
-            // to survive. Cleanup is unconditional once fixture setup starts;
-            // cleanup failures are surfaced instead of turning into a green run.
-            if (cleanupRequired) { await assertLease?.(); await this.cleanupSandbox(schema); }
-        }
+        });
     }
 
     /** Assert each expected DB side-effect, scoped strictly to the sandbox contact. */
@@ -625,199 +633,6 @@ export class EvalService {
              VALUES ($1::uuid, 'eval-sandbox', 'web_widget', 'Eval Sandbox', 'eval-sandbox-0000', NOW(), NOW())
              ON CONFLICT (id) DO NOTHING`,
             [EVAL_SANDBOX_CONTACT_ID]);
-    }
-
-    /**
-     * Deterministic catalog rows the model can discover through production read
-     * tools before invoking a writer. Reserved UUIDs plus an ownership marker
-     * make setup and cleanup reversible without matching user-facing names.
-     */
-    private async prepareSandboxFixtures(schema: string): Promise<void> {
-        const f = EVAL_SANDBOX_FIXTURE_IDS;
-        const marker = JSON.stringify({ evalSandbox: true });
-        const statements: Array<[string, any[]]> = [
-            [
-                `INSERT INTO "${schema}".services
-                    (id, name, description, duration_minutes, price, currency, is_active,
-                     category, max_concurrent, metadata)
-                 VALUES ($1::uuid, '[EVAL] Sandbox Service', 'Evaluation-only fixture', 30, 10,
-                         'COP', true, 'eval', 5, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
-                     max_concurrent = EXCLUDED.max_concurrent, metadata = EXCLUDED.metadata`,
-                [f.service, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".services
-                    (id, name, description, duration_minutes, price, currency, is_active,
-                     category, max_concurrent, metadata)
-                 VALUES ($1::uuid, '[EVAL] Boarding Service', 'Evaluation-only fixture', 1440, 10,
-                         'COP', true, 'guarderia', 5, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
-                     max_concurrent = EXCLUDED.max_concurrent, metadata = EXCLUDED.metadata`,
-                [f.boardingService, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".properties
-                    (id, name, description, city, max_guests, night_price, currency, is_active, metadata)
-                 VALUES ($1::uuid, '[EVAL] Sandbox Property', 'Evaluation-only fixture', 'Eval City',
-                         4, 100, 'COP', true, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
-                     metadata = EXCLUDED.metadata`,
-                [f.property, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".tour_packages
-                    (id, name, description, duration_type, duration_value, price, currency,
-                     max_capacity, destination, is_active, metadata)
-                 VALUES ($1::uuid, '[EVAL] Sandbox Tour', 'Evaluation-only fixture', 'hours', 2,
-                         50, 'COP', 10, 'Eval City', true, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = true,
-                     metadata = EXCLUDED.metadata`,
-                [f.tourPackage, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".tour_inventory
-                    (id, package_id, departure_date, departure_time, available_seats, total_seats,
-                     is_active, notes)
-                 VALUES ($1::uuid, $2::uuid, '2099-06-01'::date, '10:00'::time, 10, 10, true,
-                         '[EVAL] fixture')
-                 ON CONFLICT (id) DO UPDATE SET available_seats = 10, total_seats = 10,
-                     is_active = true, notes = EXCLUDED.notes`,
-                [f.tourInventory, f.tourPackage],
-            ],
-            [
-                `INSERT INTO "${schema}".menu_items
-                    (id, name, description, price, currency, is_available, is_active, metadata)
-                 VALUES ($1::uuid, '[EVAL] Sandbox Menu Item', 'Evaluation-only fixture', 10,
-                         'COP', true, true, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_available = true,
-                     is_active = true, metadata = EXCLUDED.metadata`,
-                [f.menuItem, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".members
-                    (id, contact_id, member_number, current_period_start, current_period_end,
-                     class_credits_remaining, status, metadata)
-                 VALUES ($1::uuid, $2::uuid, 'EVAL-SANDBOX', '2099-01-01'::date,
-                         '2099-12-31'::date, 10, 'active', $3::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET contact_id = EXCLUDED.contact_id,
-                     current_period_end = EXCLUDED.current_period_end, status = 'active',
-                     class_credits_remaining = 10, metadata = EXCLUDED.metadata`,
-                [f.member, EVAL_SANDBOX_CONTACT_ID, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".fitness_classes
-                    (id, name, class_type, scheduled_at, duration_minutes, max_capacity,
-                     available_spots, credits_required, is_cancelled, metadata)
-                 VALUES ($1::uuid, '[EVAL] Sandbox Class', 'eval', '2099-06-01 10:00'::timestamp,
-                         60, 20, 20, 1, false, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, scheduled_at = EXCLUDED.scheduled_at,
-                     available_spots = 20, is_cancelled = false, metadata = EXCLUDED.metadata`,
-                [f.fitnessClass, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".courses
-                    (id, name, slug, description, price, currency, subject, level, is_active, metadata)
-                 VALUES ($1::uuid, '[EVAL] Sandbox Course', 'eval-sandbox-course',
-                         'Evaluation-only fixture', 100, 'COP', 'eval', 'A1', true, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, slug = EXCLUDED.slug,
-                     is_active = true, metadata = EXCLUDED.metadata`,
-                [f.course, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".course_cohorts
-                    (id, course_id, cohort_code, starts_at, ends_at, schedule, max_capacity,
-                     available_seats, status, metadata)
-                 VALUES ($1::uuid, $2::uuid, 'EVAL-2099', '2099-06-01'::date, '2099-06-30'::date,
-                         'Mon 10:00', 20, 20, 'open', $3::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET course_id = EXCLUDED.course_id,
-                     available_seats = 20, status = 'open', metadata = EXCLUDED.metadata`,
-                [f.cohort, f.course, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".products
-                    (id, name, description, category, price, currency, is_available, stock, metadata)
-                 VALUES ($1::uuid, '[EVAL] Sandbox Product', 'Evaluation-only fixture', 'eval',
-                         10, 'COP', true, 100, $2::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_available = true,
-                     stock = 100, metadata = EXCLUDED.metadata`,
-                [f.product, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".vehicles
-                    (id, make, model, year, price_cents, currency, status, category, description)
-                 VALUES ($1::uuid, '[EVAL]', 'Sandbox Vehicle', 2099, 1000, 'COP', 'available',
-                         'eval', 'Evaluation-only fixture')
-                 ON CONFLICT (id) DO UPDATE SET status = 'available', description = EXCLUDED.description`,
-                [f.vehicle],
-            ],
-            [
-                `INSERT INTO "${schema}".pets
-                    (id, contact_id, name, species, is_active, metadata)
-                 VALUES ($1::uuid, $2::uuid, '[EVAL] Sandbox Pet', 'dog', true, $3::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET contact_id = EXCLUDED.contact_id,
-                     is_active = true, metadata = EXCLUDED.metadata`,
-                [f.pet, EVAL_SANDBOX_CONTACT_ID, marker],
-            ],
-            [
-                `INSERT INTO "${schema}".insurance_policies
-                    (id, policy_number, contact_id, policyholder_name, monthly_premium, currency,
-                     starts_at, ends_at, status, metadata)
-                 VALUES ($1::uuid, 'EVAL-SANDBOX-POLICY', $2::uuid, 'Eval Policyholder', 10, 'COP',
-                         '2099-01-01'::date, '2099-12-31'::date, 'active', $3::jsonb)
-                 ON CONFLICT (id) DO UPDATE SET contact_id = EXCLUDED.contact_id,
-                     status = 'active', metadata = EXCLUDED.metadata`,
-                [f.insurancePolicy, EVAL_SANDBOX_CONTACT_ID, marker],
-            ],
-        ];
-        for (const [sql, params] of statements) {
-            await this.prisma.executeInTenantSchema(schema, sql, params);
-        }
-    }
-
-    /** Delete the sandbox contact's rows from the verifiable tables (deterministic rollback). */
-    private async cleanupSandbox(schema: string): Promise<void> {
-        for (const verifier of Object.values(EVAL_EFFECT_VERIFIERS)) {
-            await this.prisma.executeInTenantSchema(schema,
-                `DELETE FROM "${schema}".${verifier.table} WHERE ${verifier.contactColumn} = $1::uuid`,
-                [EVAL_SANDBOX_CONTACT_ID]);
-        }
-        // The conversation the writer needed to bind to, its messages, and the
-        // execution ledger rows the guard wrote. Ordered child-first so foreign
-        // keys never block the rollback.
-        for (const sql of [
-            `DELETE FROM "${schema}".tool_execution_ledger WHERE contact_id = $1::uuid`,
-            `DELETE FROM "${schema}".messages WHERE conversation_id IN (
-                 SELECT id FROM "${schema}".conversations WHERE contact_id = $1::uuid
-             )`,
-            `DELETE FROM "${schema}".conversations WHERE contact_id = $1::uuid`,
-        ]) {
-            await this.prisma.executeInTenantSchema(schema, sql, [EVAL_SANDBOX_CONTACT_ID]);
-        }
-
-        // Reserved id AND ownership marker are both required. Names are never
-        // used as deletion selectors, so a tenant-authored catalog row cannot
-        // be swept by an eval rollback.
-        const f = EVAL_SANDBOX_FIXTURE_IDS;
-        const fixtureDeletes: Array<[string, any[]]> = [
-            [`DELETE FROM "${schema}".tour_inventory WHERE id = $1::uuid AND notes = '[EVAL] fixture'`, [f.tourInventory]],
-            [`DELETE FROM "${schema}".course_cohorts WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.cohort]],
-            [`DELETE FROM "${schema}".members WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.member]],
-            [`DELETE FROM "${schema}".fitness_classes WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.fitnessClass]],
-            [`DELETE FROM "${schema}".insurance_policies WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.insurancePolicy]],
-            [`DELETE FROM "${schema}".pets WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.pet]],
-            [`DELETE FROM "${schema}".vehicles WHERE id = $1::uuid AND description = 'Evaluation-only fixture'`, [f.vehicle]],
-            [`DELETE FROM "${schema}".tour_packages WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.tourPackage]],
-            [`DELETE FROM "${schema}".properties WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.property]],
-            [`DELETE FROM "${schema}".menu_items WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.menuItem]],
-            [`DELETE FROM "${schema}".products WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.product]],
-            [`DELETE FROM "${schema}".courses WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.course]],
-            [`DELETE FROM "${schema}".services WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.service]],
-            [`DELETE FROM "${schema}".services WHERE id = $1::uuid AND metadata->>'evalSandbox' = 'true'`, [f.boardingService]],
-        ];
-        for (const [sql, params] of fixtureDeletes) {
-            await this.prisma.executeInTenantSchema(schema, sql, params);
-        }
     }
 
     /**

@@ -292,7 +292,7 @@ export class EducationService {
             }
             await query(
                 `UPDATE enrollments SET status = 'dropped',
-                    notes = CONCAT_WS(E'\n', NULLIF(notes, ''), $2), updated_at = NOW()
+                    notes = CONCAT_WS(E'\n', NULLIF(notes, ''), $2::text), updated_at = NOW()
                  WHERE id = $1::uuid`,
                 [id, `[Cancelled]${input.reason ? ` ${input.reason}` : ''}`],
             );

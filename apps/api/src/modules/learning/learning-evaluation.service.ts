@@ -121,12 +121,13 @@ export class LearningEvaluationService {
         const history:Array<{role:'user'|'assistant';content:string}>=[];
         try{
             if(!CONVERSATIONAL_CHANNELS.includes(scenario.channel as any))throw new Error('unsupported_source_channel');
-            await guard();await session.reset(scenario.channel);
+            await guard();await session.reset(scenario.channel,snapshot);
             let database=await this.databaseEvidence(tenantId,session.sandboxContactId);
             for(const message of scenario.messages.filter(m=>m.role==='customer')){
                 await guard();await session.recordInbound(message.text);
                 const response=await this.agentTest.test(tenantId,agentId,{message:message.text,conversationHistory:history,
                     channelType:scenario.channel as any},{evalMode:true,disableTools:false,agentSnapshot:snapshot,learningReleaseId:releaseId,
+                    sandboxNamespace:session.sandboxNamespace,
                     sandboxContactId:session.sandboxContactId,sandboxConversationId:session.sandboxConversationId,
                     beforeToolExecution:guard,beforeModelExecution:guard});
                 const debug=response.debug as any;

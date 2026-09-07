@@ -99,4 +99,20 @@ describe('AgentTestService delegates to the operational core', () => {
         expect(second.debug.agentRevision).toEqual(first.debug.agentRevision);
         expect(f.personaService.getAgent).toHaveBeenCalledTimes(1);
     });
+    it('validates the server namespace and threads it through the actual session tool boundary', async () => {
+        const f=agentTurnFixture();publishTools(f,['create_appointment','check_availability','create_payment_link']);
+        const namespace={schemaName:'tenant_eval_11111111_111111111111111111111111',sourceSchema:'tenant_test',tenantId:'tenant',token:'opaque',tables:[],expiresAt:new Date(Date.now()+3600000).toISOString()};
+        const namespaces={assertOwned:jest.fn().mockResolvedValue(undefined)};
+        (f.service as any).namespaces=namespaces;f.tenantsService.getSchemaName.mockResolvedValue('tenant_test');
+        const options={evalMode:true,sandboxContactId:EVAL_SANDBOX_CONTACT_ID,sandboxConversationId:'11111111-1111-4111-8111-111111111111',sandboxNamespace:namespace};
+        f.llmRouter.execute.mockResolvedValueOnce({content:'',toolCalls:[{id:'write',function:{name:'create_appointment',arguments:'{}'}}]});
+        await f.service.test('tenant','agent',{message:'hola'},options);
+        expect(namespaces.assertOwned).toHaveBeenCalledWith(namespace);
+        expect(f.toolExecutor.execute.mock.calls[0][0]).toBe(namespace.schemaName);
+        expect(f.toolExecutor.execute.mock.calls[0][6]).toMatchObject({evalMode:true,sandboxNamespace:namespace,readOnly:false,executionState:expect.any(Object)});
+        await expect(f.service.test('tenant','agent',{message:'hola'},{...options,sandboxNamespace:{...namespace,sourceSchema:'tenant_other'}})).rejects.toThrow('eval_namespace_scope_mismatch');
+        namespaces.assertOwned.mockRejectedValue(new Error('eval_namespace_lease_lost'));
+        await expect(f.service.test('tenant','agent',{message:'hola'},options)).rejects.toThrow('eval_namespace_lease_lost');
+    });
+
 });

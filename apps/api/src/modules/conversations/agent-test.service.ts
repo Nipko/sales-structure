@@ -1,3 +1,4 @@
+import { IsolatedEvalNamespace, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { HttpException, HttpStatus, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { CONVERSATIONAL_CHANNELS, type NormalizedMessage, type TestAgentRequest, type TestAgentResponse } from '@parallext/shared';
@@ -17,6 +18,7 @@ export interface AgentTestExecutionOptions {
     evalMode?: boolean;
     sandboxContactId?: string;
     sandboxConversationId?: string;
+    sandboxNamespace?: EvalNamespaceLease;
     agentSnapshot?: AgentEvaluationSnapshot;
     learningReleaseId?: string | null;
     beforeToolExecution?: () => Promise<void>;
@@ -33,6 +35,7 @@ export class AgentTestService {
         private readonly throttle: TenantThrottleService,
         private readonly runtime: ConversationsService,
         @Optional() private readonly learning?: LearningService,
+        @Optional() private readonly namespaces?: IsolatedEvalNamespace,
     ) {}
 
     async captureSnapshot(tenantId: string, agentId: string): Promise<AgentEvaluationSnapshot> {
@@ -56,16 +59,25 @@ export class AgentTestService {
         }
         const contactId = resolveAgentTestContactId(options?.sandboxContactId);
         if (options?.evalMode && (contactId !== EVAL_SANDBOX_CONTACT_ID || !options.sandboxConversationId)) throw new Error('eval_sandbox_identity_required');
-        const schemaName = await this.tenantsService.getSchemaName(tenantId, AGENT_TEST_EXECUTION_CONTEXT);
+        const sourceSchema = await this.tenantsService.getSchemaName(tenantId, AGENT_TEST_EXECUTION_CONTEXT);
+        const namespace = options?.sandboxNamespace;
+        if (namespace && (!options?.evalMode || namespace.tenantId !== tenantId || namespace.sourceSchema !== sourceSchema)) throw new Error('eval_namespace_scope_mismatch');
+        if (namespace) {
+            if (!this.namespaces) throw new Error('canonical_sandbox_not_available');
+            await this.namespaces.assertOwned(namespace);
+        }
+        const schemaName = namespace?.schemaName || sourceSchema;
+        const assertNamespace = async () => { if (namespace) await this.namespaces!.assertOwned(namespace); };
         const session = this.sessions.resolve({
             id: options?.sandboxConversationId || req.runtimeSessionId,
             tenantId, agentId, channelType, contactId, schemaName, snapshot,
             mode: options?.evalMode ? 'sandbox' : 'preview',
             conversationId: options?.sandboxConversationId || randomUUID(),
             executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+            sandboxNamespace: namespace,
             history: (req.conversationHistory || []).map(row => ({ ...row })),
-            beforeToolExecution: options?.beforeToolExecution,
-            beforeModelExecution: options?.beforeModelExecution,
+            beforeToolExecution: async () => { await assertNamespace(); await options?.beforeToolExecution?.(); },
+            beforeModelExecution: async () => { await assertNamespace(); await options?.beforeModelExecution?.(); },
             disableTools: options?.disableTools ?? req.options?.disableTools,
         });
         session.busy = true;

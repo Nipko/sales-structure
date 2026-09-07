@@ -1,3 +1,4 @@
+import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
@@ -67,7 +68,7 @@ import {
 } from './tool-execution-control.service';
 import { PaymentOperationService, type PreparedPaymentLink } from './payment-operation.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
-import { assertActiveTenantUser } from '../appointments/tenant-user-scope.util';
+import { assertActiveTenantUser, tenantActorDirectory } from '../appointments/tenant-user-scope.util';
 import {
     AppointmentServiceUnavailableError,
     AppointmentSlotConflictError,
@@ -218,6 +219,8 @@ export class AIToolExecutorService {
              */
             authority: ToolExecutionAuthority;
             evalMode?: boolean;
+            sandboxNamespace?: EvalNamespaceLease;
+            executionState?: { get(key: string): Promise<string | null> };
             channelType?: string;
             readOnly?: boolean;
             executionContext?: ServiceExecutionContext;
@@ -284,6 +287,14 @@ export class AIToolExecutorService {
             if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)
                 && (!opts.draftScope || !isDraftProposableToolName(toolName))) {
                 return { error: 'draft_action_requires_approval', controlBlocked: true, persisted: false, shouldHandoff: false };
+            }
+
+            const canonicalSandbox = opts?.sandboxNamespace;
+            if (canonicalSandbox) {
+                if (opts.evalMode !== true || canonicalSandbox.schemaName !== schemaName || canonicalSandbox.tenantId !== tenantId
+                    || contactId !== '00000000-0000-4000-8000-00000000eba1' || !conversationId) throw new Error('eval_namespace_scope_mismatch');
+                await isolatedEvalNamespaceForPrisma(this.prisma).assertOwned(canonicalSandbox);
+                if (!isAgentTestSafeToolName(toolName) && !CANONICAL_EVAL_TOOLS.has(toolName)) return { error: 'canonical_sandbox_not_available', persisted: false, controlBlocked: true };
             }
 
             // La aprobación revisada de una tool MCP, resuelta ACÁ ARRIBA.
@@ -367,7 +378,7 @@ export class AIToolExecutorService {
             // afterwards. Without it the gate could never verify that a booking
             // actually happened — which is the only thing it exists to check.
             const evalWriterAllowed = opts?.evalMode === true
-                && canEvalExecuteWriter(toolName, contactId);
+                && (canonicalSandbox ? CANONICAL_EVAL_TOOLS.has(toolName) : canEvalExecuteWriter(toolName, contactId));
             if (persistenceDisabled(opts?.executionContext)
                 && !isAgentTestSafeToolName(toolName)
                 && !evalWriterAllowed) {
@@ -432,7 +443,7 @@ export class AIToolExecutorService {
             // Audited eval mutations use deterministic fixtures and never call
             // a provider-backed domain precondition. Production keeps its full
             // precondition path unchanged.
-            const precondition = isEvalSandboxMutatingToolName(toolName) && evalWriterAllowed
+            const precondition = !canonicalSandbox && isEvalSandboxMutatingToolName(toolName) && evalWriterAllowed
                 ? null
                 : await this.assertWritePreconditions(schemaName, toolName, args);
             if (precondition) return precondition;
@@ -453,6 +464,7 @@ export class AIToolExecutorService {
                 // short-circuit it and verify nothing.
                 readOnlyExecution: persistenceDisabled(opts?.executionContext) && !evalWriterAllowed,
                 authorityEvidence: opts?.authorityEvidence,
+                executionState: opts?.executionState,
                 draftMode: opts?.executionContext?.mode === 'draft',
             });
             if (!controlDecision.allowed) {
@@ -495,7 +507,7 @@ export class AIToolExecutorService {
             // different final mutation target. This adapter has no reference to
             // domain services, queues, providers or EventEmitter, so evalMode
             // cannot leak a notification or external write.
-            if (evalWriterAllowed && isEvalSandboxMutatingToolName(toolName)) {
+            if (!canonicalSandbox && evalWriterAllowed && isEvalSandboxMutatingToolName(toolName)) {
                 return executeEvalSandboxMutation(
                     this.prisma,
                     schemaName,
@@ -517,13 +529,13 @@ export class AIToolExecutorService {
                     return this.listServices(schemaName);
 
                 case 'check_availability':
-                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId);
+                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox);
 
                 case 'create_appointment':
-                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode);
+                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox);
 
                 case 'cancel_appointment':
-                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason);
+                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox);
 
                 case 'reschedule_appointment':
                     return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason);
@@ -2655,9 +2667,10 @@ export class AIToolExecutorService {
         }
     }
 
-    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string): Promise<any> {
+    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease): Promise<any> {
+        const directory = await tenantActorDirectory(this.prisma,schema,namespace);
         const resolvedStaffId = staffId
-            ? await assertActiveTenantUser(this.prisma, schema, staffId)
+            ? await assertActiveTenantUser(this.prisma, schema, staffId, namespace)
             : undefined;
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId);
@@ -2707,6 +2720,11 @@ export class AIToolExecutorService {
         const buffer = svcRows[0].buffer_minutes || 0;
         // Total block time = service duration + post-buffer
         const totalBlock = duration + buffer;
+        if (!Number.isInteger(duration) || duration < 1 || duration > 1440
+            || !Number.isInteger(buffer) || buffer < 0 || buffer > 1440) {
+            return { available: false, slots: [], error: 'invalid_appointment_temporal_contract',
+                message: 'The service duration or buffer is invalid. Correct the service before offering slots.' };
+        }
 
         // Get availability slots for the day
         const dayOfWeek = dayOfWeekForLocalDate(date);
@@ -2721,10 +2739,10 @@ export class AIToolExecutorService {
         const slots: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT availability.user_id, availability.start_time::text, availability.end_time::text
              FROM "${schema}".availability_slots availability
-             JOIN public.users staff_user
+             JOIN ${directory.users} staff_user
                ON staff_user.id = availability.user_id
               AND staff_user.is_active = true
-             JOIN public.tenants tenant_owner
+             JOIN ${directory.tenants} tenant_owner
                ON tenant_owner.id = staff_user.tenant_id
               AND tenant_owner.schema_name = $2
               AND tenant_owner.is_active = true
@@ -2770,7 +2788,11 @@ export class AIToolExecutorService {
         // Check Google/Microsoft Calendar busy times
         let googleBusy: { start: string; end: string }[] = [];
         try {
-            googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, {
+            if (namespace) {
+                const providers: any[] = await this.prisma.$queryRawUnsafe(`SELECT id FROM "${schema}".calendar_integrations WHERE is_active=true LIMIT 1`);
+                if (providers.length) throw new Error('canonical_fixture_provider_not_available');
+            }
+            googleBusy = namespace ? [] : await this.calendarIntegration.getFreeBusyForDate(schema, date, {
                 serviceId: resolvedServiceId,
                 staffId: resolvedStaffId,
             });
@@ -2792,6 +2814,7 @@ export class AIToolExecutorService {
 
         // Generate available time slots
         const availableSlots: any[] = [];
+        const timezone = await this.getTenantTimezone(schema);
 
         for (const slot of slots) {
             const [startH, startM] = slot.start_time.split(':').map(Number);
@@ -2807,6 +2830,10 @@ export class AIToolExecutorService {
                 const timeStr = `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
                 const endMin = min + duration;
                 const endTimeStr = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+                try {
+                    this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: `${date}T${timeStr}:00`,
+                        timezone, durationMinutes: duration, bufferMinutes: buffer });
+                } catch { continue; }
 
                 // ── All conflict checks use minutes-of-day in TENANT timezone ──
                 // This avoids the UTC vs local-time mismatch bug when the Node.js
@@ -2872,7 +2899,7 @@ export class AIToolExecutorService {
         const userIds = [...new Set(availableSlots.map(s => s.userId).filter(Boolean))];
         let userNames: Record<string, string> = {};
         if (userIds.length > 0) {
-            const users = await this.prisma.user.findMany({
+            const users = namespace ? await this.prisma.$queryRawUnsafe(`SELECT id,first_name AS "firstName",last_name AS "lastName" FROM ${directory.users} WHERE id=ANY($1::uuid[]) AND is_active=true`, userIds) as any[] : await this.prisma.user.findMany({
                 where: {
                     id: { in: userIds },
                     isActive: true,
@@ -3082,6 +3109,7 @@ export class AIToolExecutorService {
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
         conversationId?: string,
         evalMode?: boolean,
+        namespace?: EvalNamespaceLease,
     ): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
@@ -3128,11 +3156,8 @@ export class AIToolExecutorService {
             });
             if (normalized.kind !== 'appointment') throw new Error('wrong_temporal_kind');
             endAt = normalized.endsAtLocal;
-        } catch {
-            return {
-                error: 'invalid_appointment_temporal_contract',
-                message: 'The service duration or timezone is invalid. Correct configuration before creating an appointment.',
-            };
+        } catch (error: unknown) {
+            return this.appointmentTemporalFailure(error);
         }
 
         // El objeto de la cita se resuelve ANTES del lock, no dentro: de él sale
@@ -3144,7 +3169,7 @@ export class AIToolExecutorService {
         const subject = await this.resolveAppointmentSubject(schema, args);
         const staffCandidate = args.staffId || subject.suggestedStaffId || null;
         const assignedTo = staffCandidate
-            ? await assertActiveTenantUser(this.prisma, schema, staffCandidate)
+            ? await assertActiveTenantUser(this.prisma, schema, staffCandidate, namespace)
             : null;
 
         // Build the immutable calendar snapshot before the appointment INSERT.
@@ -3191,7 +3216,7 @@ export class AIToolExecutorService {
         const meetingUrl: string | undefined = svc.meeting_link || undefined;
         const appointmentMetadata = {
             ...(subject.metadata || {}),
-            ...(evalMode ? { source: 'eval_gate' } : {}),
+            ...(evalMode ? { source: 'eval_gate', timezone: await this.getTenantTimezone(schema) } : {}),
             isOnline,
             ...(meetingUrl ? { meetingUrl } : {}),
         };
@@ -3216,7 +3241,7 @@ export class AIToolExecutorService {
                 customerPhone: args.customerPhone, customerEmail: args.customerEmail,
                 location: location || undefined, notes: description,
                 metadata: appointmentMetadata, source: 'ai',
-            }, { suppressEffects: evalMode === true, confirmWithoutPayment: true });
+            }, { suppressEffects: evalMode === true, confirmWithoutPayment: true, sandboxNamespace: namespace });
             return {
                 success: true,
                 operationStatus: apt.awaitingPayment ? 'awaiting_payment' : apt.status,
@@ -3243,7 +3268,7 @@ export class AIToolExecutorService {
         }
     }
 
-    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string): Promise<any> {
+    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string, namespace?: EvalNamespaceLease): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata
@@ -3317,7 +3342,7 @@ export class AIToolExecutorService {
                 const probe = new Date(from);
                 probe.setDate(probe.getDate() + i);
                 const date = probe.toISOString().slice(0, 10);
-                const avail = await this.checkAvailability(schema, date, rows[0].service_id)
+                const avail = await this.checkAvailability(schema, date, rows[0].service_id, undefined, namespace)
                     .catch(() => null);
                 for (const s of (avail?.slots || []).slice(0, 3 - alternatives.length)) {
                     alternatives.push({ date, time: s.time, staffName: s.staffName });
@@ -5554,7 +5579,7 @@ export class AIToolExecutorService {
             `SELECT duration_minutes FROM "${schema}".services WHERE id = $1::uuid`,
             apt.service_id,
         );
-        const duration = Math.max(1, Number(svcRows[0]?.duration_minutes) || 30);
+        const duration = Number(svcRows[0]?.duration_minutes);
 
         if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(newTime)) {
             return { error: 'newDate must use YYYY-MM-DD and newTime must use HH:MM (24-hour)' };
@@ -5565,8 +5590,13 @@ export class AIToolExecutorService {
         }
 
         const newStartAt = `${newDate}T${newTime}:00`;
-        const endBase = new Date(startBase.getTime() + duration * 60_000);
-        const newEndAt = endBase.toISOString().slice(0, 19);
+        let newEndAt: string;
+        try {
+            const temporal = this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: newStartAt,
+                timezone: await this.getTenantTimezone(schema), durationMinutes: duration });
+            if (temporal.kind !== 'appointment') throw new Error('wrong_temporal_kind');
+            newEndAt = temporal.endsAtLocal;
+        } catch (error: unknown) { return this.appointmentTemporalFailure(error); }
 
         const noteAppend = reason
             ? `\n[Rescheduled: ${reason}]`
@@ -5591,6 +5621,12 @@ export class AIToolExecutorService {
             const updated: any[] = await this.prisma.transactionInTenantSchema(
                 schema,
                 async (query) => {
+                    // Competes with create/payment settlement under the same DB
+                    // capacity lock, even when another writer does not use Redis.
+                    await lockAndAssertAppointmentCapacity(query, {
+                        schemaName: schema, serviceId: apt.service_id, staffUserId: assignedTo,
+                        startAt: newStartAt, endAt: newEndAt, excludeAppointmentId: appointmentId,
+                    });
                     const result = await query<any[]>(
                         `UPDATE appointments
                          SET start_at = $1::timestamp, end_at = $2::timestamp,
@@ -5629,6 +5665,16 @@ export class AIToolExecutorService {
                     return { error: 'Appointment changed concurrently. Reload it before retrying.' };
                 }
             }
+        } catch (error: unknown) {
+            if (error instanceof AppointmentSlotConflictError) return {
+                error: 'appointment_slot_unavailable', retryable: true,
+                message: 'That new slot is no longer available. Check availability and ask the customer to choose another time.',
+            };
+            if (error instanceof AppointmentServiceUnavailableError) return {
+                error: 'appointment_service_unavailable',
+                message: 'The appointment service is no longer active. Offer help from the team; do not reschedule it.',
+            };
+            throw error;
         } finally {
             await this.redis.releaseLockToken(slotLock.key, slotLock.token);
         }
@@ -5669,6 +5715,16 @@ export class AIToolExecutorService {
                 time: newTime,
             },
         };
+    }
+
+    private appointmentTemporalFailure(error: unknown): Record<string, unknown> {
+        const response = error instanceof BadRequestException ? error.getResponse() : null;
+        if (response && typeof response === 'object' && (response as any).requiresClarification === true) {
+            return { error: (response as any).error, timezone: (response as any).timezone, requiresClarification: true,
+                message: 'This local time is nonexistent, repeated, or crosses a clock change. Ask the customer for another unambiguous time. Do not guess or retry the same time.' };
+        }
+        return { error: 'invalid_appointment_temporal_contract',
+            message: 'The service duration or timezone is invalid. Correct configuration before creating or rescheduling an appointment.' };
     }
 
     private async getAppointmentDetails(schema: string, contactId: string, appointmentId: string): Promise<any> {

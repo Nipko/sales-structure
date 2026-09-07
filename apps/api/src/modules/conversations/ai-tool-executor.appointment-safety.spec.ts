@@ -14,13 +14,22 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
     function createHarness(queryResults: any[][]) {
         const queuedResults = [...queryResults];
         let insertedAppointment: any | undefined;
-        const rawQuery: jest.Mock<any, any[]> = jest.fn(async (..._args: any[]) => (
-            queuedResults.shift() ?? []
-        ));
+        let rescheduling = false;
+        const rawQuery: jest.Mock<any, any[]> = jest.fn(async (sql: string) => {
+            if (sql.includes('SELECT duration_minutes FROM')) rescheduling = true;
+            if (rescheduling && sql.includes("config_json->'hours'")) return [{ tz: 'America/Bogota' }];
+            if (rescheduling && sql.includes('AS cap FROM')) return [{ cap: 1 }];
+            return queuedResults.shift() ?? [];
+        });
         const transactionQuery: jest.Mock<any, [string, unknown[]?]> = jest.fn(async (
             sql: string,
             params: unknown[] = [],
         ) => {
+            if (rescheduling) {
+                if (sql.includes('pg_advisory_xact_lock')) return [];
+                if (sql.includes('FROM services') && sql.includes('FOR SHARE')) return [{ id: appointment.service_id, name: 'Consulta', max_concurrent: 1 }];
+                if (sql.includes('COUNT(*)::int AS occupied')) return [{ occupied: 0 }];
+            }
             // Keep outbox bookkeeping independent from the ordered domain-query
             // fixtures below. This models one immutable, active calendar owner.
             if (sql.includes('COALESCE(calendar_sync_revision')) {
@@ -91,6 +100,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         const calendarIntegration = {
             createEvent: jest.fn(),
             updateEvent: jest.fn().mockResolvedValue(true),
+            getFreeBusyForDate: jest.fn().mockResolvedValue([]),
         };
         const propertiesService = { getById: jest.fn() };
         const executor = new AIToolExecutorService(
@@ -146,7 +156,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
     const appointment = {
         id: appointmentId,
         contact_id: contactId,
-        service_id: null,
+        service_id: '44444444-4444-4444-8444-444444444444',
         service_name: 'Consulta',
         start_at: new Date('2026-08-10T15:00:00.000Z'),
         end_at: new Date('2026-08-10T15:30:00.000Z'),
@@ -256,7 +266,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         );
 
         expect(result).toMatchObject({ success: true });
-        const updateSql = harness.prisma.$queryRawUnsafe.mock.calls[3][0];
+        const updateSql = harness.prisma.$queryRawUnsafe.mock.calls.find(([sql]) => sql.includes('UPDATE appointments'))![0];
         expect(updateSql).toContain("status <> 'cancelled'");
         expect(updateSql).toContain('start_at IS DISTINCT FROM');
         expect(updateSql).toContain('RETURNING id');
@@ -290,7 +300,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         );
 
         expect(result).toMatchObject({ success: true, alreadyRescheduled: true });
-        const updateSql = harness.prisma.$queryRawUnsafe.mock.calls[3][0];
+        const updateSql = harness.prisma.$queryRawUnsafe.mock.calls.find(([sql]) => sql.includes('UPDATE appointments'))![0];
         expect(updateSql).toContain('notes = COALESCE(notes');
         expect(updateSql).toContain('start_at = $6::timestamp');
         expect(updateSql).toContain('end_at = $7::timestamp');
@@ -320,7 +330,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         );
 
         expect(result).toMatchObject({ retryable: true });
-        expect(harness.prisma.$queryRawUnsafe).toHaveBeenCalledTimes(2);
+        expect(harness.prisma.$queryRawUnsafe).toHaveBeenCalledTimes(3);
         expect(harness.redis.releaseLockToken).not.toHaveBeenCalled();
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
     });
@@ -563,7 +573,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         );
 
         expect(result.error).toContain('changed concurrently');
-        const updateCall = harness.prisma.$queryRawUnsafe.mock.calls[3];
+        const updateCall = harness.prisma.$queryRawUnsafe.mock.calls.find(([sql]) => sql.includes('UPDATE appointments'))!;
         expect(updateCall[0]).toContain('start_at = $6::timestamp');
         expect(updateCall[0]).toContain('end_at = $7::timestamp');
         expect(updateCall[6]).toBe(appointment.start_at);
@@ -571,5 +581,55 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(harness.calendarIntegration.createEvent).not.toHaveBeenCalled();
         expect(harness.calendarIntegration.updateEvent).not.toHaveBeenCalled();
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('rejects a reschedule when a competing canonical writer takes the slot after the preliminary read', async () => {
+        const harness = createHarness([[{ ...appointment, assigned_to: null }], [{ duration_minutes: 30 }]]);
+        jest.spyOn(harness.executor as any, 'findAppointmentConflict').mockResolvedValue(false);
+        const normalQuery = harness.transactionQuery.getMockImplementation()!;
+        harness.transactionQuery.mockImplementation(async (sql, params) => sql.includes('COUNT(*)::int AS occupied')
+            ? [{ occupied: 1 }] : normalQuery(sql, params));
+        const result = await harness.executor.execute(schemaName, tenantId, contactId, 'reschedule_appointment',
+            { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
+            { authority: authorityFor('reschedule_appointment') });
+        expect(result).toMatchObject({ error: 'appointment_slot_unavailable', retryable: true });
+        const occupancy = harness.transactionQuery.mock.calls.find(([sql]) => sql.includes('COUNT(*)::int AS occupied'))!;
+        expect(occupancy[0]).toContain('id <> $4::uuid');
+        expect(occupancy[1]).toEqual(expect.arrayContaining([appointmentId, appointment.service_id]));
+        expect(harness.transactionQuery.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(true);
+        expect(harness.transactionQuery.mock.calls.some(([sql]) => sql.includes('UPDATE appointments') || sql.includes('calendar_sync_outbox'))).toBe(false);
+        expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
+        expect(harness.redis.releaseLockToken).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['2026-03-29', '02:15', 'nonexistent_local_time'],
+        ['2026-10-25', '02:15', 'ambiguous_local_time'],
+    ])('requests clarification before creating or rescheduling the unsafe local time %s %s', async (date, time, error) => {
+        for (const tool of ['create_appointment', 'reschedule_appointment']) {
+            const service = { id: appointment.service_id, name: 'Consulta', duration_minutes: 30, duration_type: 'fixed' };
+            const harness = createHarness(tool === 'create_appointment' ? [[service]] : [[appointment], [service]]);
+            jest.spyOn(harness.executor as any, 'getTenantTimezone').mockResolvedValue('Europe/Paris');
+            const args = tool === 'create_appointment' ? { serviceId: appointment.service_id, date, time, customerName: 'Alex', customerEmail: 'alex@example.invalid' }
+                : { appointmentId, newDate: date, newTime: time };
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, tool, args, undefined, { authority: authorityFor(tool) });
+            expect(result).toMatchObject({ error, requiresClarification: true, timezone: 'Europe/Paris' });
+            expect(harness.prisma.transactionInTenantSchema).not.toHaveBeenCalled();
+            expect(harness.redis.acquireLockToken).not.toHaveBeenCalled();
+            expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
+        }
+    });
+
+    it.each(['2026-03-29', '2026-10-25'])('does not advertise nonexistent, repeated, or transition-crossing slots on %s', async date => {
+        const harness = createHarness([
+            [{ id: appointment.service_id, name: 'Consulta', duration_minutes: 30, buffer_minutes: 0, duration_type: 'fixed', max_concurrent: 1 }],
+            [{ user_id: null, start_time: '01:00:00', end_time: '04:00:00' }], [], [],
+        ]);
+        jest.spyOn(harness.executor as any, 'getTenantTimezone').mockResolvedValue('Europe/Paris');
+        const result = await harness.executor.execute(schemaName, tenantId, contactId, 'check_availability',
+            { serviceId: appointment.service_id, date }, undefined, { authority: authorityFor('check_availability') });
+        expect(result.available).toBe(true);
+        expect(result.slots.map((slot: any) => slot.time)).toEqual(['01:00', '03:00', '03:30']);
+        expect(harness.prisma.transactionInTenantSchema).not.toHaveBeenCalled();
     });
 });

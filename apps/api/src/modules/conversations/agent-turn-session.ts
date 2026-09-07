@@ -1,3 +1,4 @@
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { randomUUID } from 'crypto';
 import type { TestAgentToolCall, TurnContext } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
@@ -37,6 +38,7 @@ export interface AgentTurnSession {
     conversationId: string;
     contactId: string;
     schemaName: string;
+    sandboxNamespace?: EvalNamespaceLease;
     snapshot: AgentEvaluationSnapshot;
     executionContext: ServiceExecutionContext;
     mode: 'preview' | 'sandbox';
@@ -92,7 +94,7 @@ export class AgentTurnSessionStore {
         const existing = this.sessions.get(id)?.session;
         if (existing?.busy) throw new Error('agent_test_session_busy');
         if (existing && (existing.tenantId !== input.tenantId || existing.agentId !== input.agentId
-            || existing.channelType !== input.channelType || existing.mode !== input.mode || existing.contactId !== input.contactId || existing.schemaName !== input.schemaName)) throw new Error('agent_test_session_scope_mismatch');
+            || existing.channelType !== input.channelType || existing.mode !== input.mode || existing.contactId !== input.contactId || existing.schemaName !== input.schemaName || existing.sandboxNamespace?.token !== input.sandboxNamespace?.token)) throw new Error('agent_test_session_scope_mismatch');
         if (existing && (existing.snapshot.configHash !== input.snapshot.configHash || existing.snapshot.learningReleaseId !== input.snapshot.learningReleaseId)) throw new Error('agent_test_session_revision_changed');
         if (!existing && this.sessions.size >= 1000) this.sessions.delete(this.sessions.keys().next().value!);
         const session: AgentTurnSession = existing || { ...input, id, state: new EphemeralTurnState(), metadata: {},

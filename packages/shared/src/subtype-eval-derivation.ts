@@ -37,6 +37,7 @@ import {
     type ResolvedVerticalCapabilityManifest,
 } from './vertical-capability-manifest';
 import type { EvalScenarioSeed } from './subtype-eval-pack';
+import { canonicalTaskEvalScenarios } from './canonical-task-eval-pack';
 
 export type EvalLanguage = 'es' | 'en' | 'pt' | 'fr';
 
@@ -81,7 +82,7 @@ const INTENT_PROBES: readonly {
 }[] = Object.freeze([
     {
         key: 'happy_path',
-        title: phrase('Camino feliz', 'Happy path', 'Caminho feliz', 'Chemin nominal'),
+        title: phrase('Solicitud inicial incompleta', 'Incomplete initial request', 'Solicitação inicial incompleta', 'Demande initiale incomplète'),
         opener: phrase(
             'Hola, quiero avanzar con esto',
             'Hi, I want to go ahead with this',
@@ -537,6 +538,8 @@ const EVAL_WRITER_EFFECTS: Readonly<Record<string, {
     table?: string;
 }>> = Object.freeze({
     create_appointment: { family: 'appointments', table: 'appointments' },
+    cancel_appointment: { family: 'appointments', table: 'appointments' },
+    reschedule_appointment: { family: 'appointments', table: 'appointments' },
     create_property_booking: { family: 'property_bookings', table: 'property_bookings' },
     create_tour_booking: { family: 'tour_bookings', table: 'tour_bookings' },
     place_order: { family: 'restaurant_orders', table: 'food_orders' },
@@ -651,6 +654,7 @@ export function deriveSubtypeScenarios(
 
     for (const intent of contract.intents) {
         scenarios.push(...intentScenarios(intent, language, addressForm));
+        scenarios.push(...canonicalTaskEvalScenarios(intent, language));
     }
 
     for (const probe of PROFILE_PROBES) {

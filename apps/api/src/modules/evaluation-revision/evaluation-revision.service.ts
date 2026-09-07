@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
-import type { ProcedureDefinition } from '@parallext/shared';
+import { buildDomainContractDraft, EVAL_LANGUAGES, isAgentMissionV1, listCanonicalSubtypeExperienceProfileIds, type ProcedureDefinition } from '@parallext/shared';
+import type { AgentReleaseScope } from '../simulation/agent-release-policy';
 import { evaluationArtifactHash } from './evaluation-artifact';
 import { assertRevisionIntegrity, EVALUATION_OUTPUT_TABLES, revisionHash, revisionIgnoredColumns,
     sealRevision, type EvaluationDependency, type EvaluationRevisionManifest } from './evaluation-revision';
@@ -19,6 +20,24 @@ const safeIdentifier = (name: string): string => {
 @Injectable()
 export class EvaluationRevisionService {
     constructor(private readonly prisma: PrismaService, private readonly router: LLMRouterService) {}
+
+    /** Values are frozen inside the private snapshot; manifest guards catch a concurrent tenant/agent edit. */
+    async captureAgentReleaseScope(tenantId:string,agent:any):Promise<AgentReleaseScope> {
+        const tenant=await this.prisma.tenant.findUnique({where:{id:tenantId},select:{industry:true,settings:true}});
+        if(!tenant)throw new Error('evaluation_tenant_scope_unavailable');
+        const vertical=(tenant.settings as any)?.verticalConfig;
+        const industry=vertical?.industry||tenant.industry,subtype=vertical?.subType;
+        const id=typeof industry==='string'&&typeof subtype==='string'?`${industry}/${subtype}`:null;
+        const profileId=id&&listCanonicalSubtypeExperienceProfileIds().includes(id)?id:null;
+        const mission=agent?.config_json?.mission;
+        const reviewed=isAgentMissionV1(mission);
+        const defaults=profileId?buildDomainContractDraft(industry,subtype).intents.map(intent=>intent.key):[];
+        const assigned=Array.isArray(agent?.channel_bindings)&&agent.channel_bindings.length
+            ?agent.channel_bindings.map((binding:any)=>typeof binding==='string'?binding.split(':')[0]:'unknown')
+            :Array.isArray(agent?.channels)?agent.channels:[];
+        return {profileId,intentKeys:reviewed?[...mission.intentKeys]:defaults,missionConfigured:reviewed,
+            channels:[...new Set<string>(assigned)],languages:[...EVAL_LANGUAGES]};
+    }
 
     async capture(tenantId: string): Promise<EvaluationRevisionManifest> {
         try {

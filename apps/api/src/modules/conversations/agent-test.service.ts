@@ -46,12 +46,21 @@ export class AgentTestService {
         @Optional() private readonly integrations?: VerticalIntegrationsService,
     ) {}
 
-    async captureSnapshot(tenantId: string, agentId: string): Promise<AgentEvaluationSnapshot> {
+    async captureSnapshot(tenantId: string, agentId: string, options?:{configurationRevisionId:string}): Promise<AgentEvaluationSnapshot> {
         if (!this.revisions || !this.mcp || !this.integrations) throw new Error('evaluation_revision_service_unavailable');
         const manifest = await this.revisions.capture(tenantId);
-        const agent = await this.personaService.getAgent(tenantId, agentId, AGENT_TEST_EXECUTION_CONTEXT);
+        let agent = await this.personaService.getAgent(tenantId, agentId, AGENT_TEST_EXECUTION_CONTEXT);
         if (!agent) throw new NotFoundException('Agent not found');
+        const revision=options
+            ?await this.personaService.readConfigurationRevision(tenantId,agentId,options.configurationRevisionId,AGENT_TEST_EXECUTION_CONTEXT):null;
+        if(revision){
+            const body=revision.body;
+            agent={...agent,name:body.name,config_json:body.configJson,channels:body.channels,channel_bindings:body.channelBindings,
+                schedule_mode:body.scheduleMode,is_active:body.isActive,is_default:body.isDefault};
+        }
         const snapshot = evaluationSnapshot(tenantId, agentId, agent);
+        if(revision){snapshot.configurationRevisionId=revision.id;snapshot.configurationRevisionHash=revision.body_hash;}
+        snapshot.releaseScope = await this.revisions.captureAgentReleaseScope(tenantId, agent);
         const release = await this.learning?.getPublishedReleaseSnapshot(tenantId, agentId, resolveAgentTestContactId());
         snapshot.learningReleaseId = release?.releaseId || null;
         snapshot.learningReleaseHash = release?.releaseHash || null;

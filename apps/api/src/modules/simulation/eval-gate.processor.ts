@@ -7,6 +7,7 @@ import { EvalAutorunStateService } from './eval-autorun-state.service';
 import { EVAL_GATE_QUEUE, EvalGateJob } from './eval-autorun.listener';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
+import { regressionAppliesToSnapshot } from '../quality/regressions/quality-regression-runtime';
 
 /**
  * Drains the auto-run eval gate. Each job runs the full τ² gate (golden set × k ×
@@ -36,22 +37,33 @@ export class EvalGateProcessor extends WorkerHost {
         const revision = job.data.revision || await this.state.request(tenantId, agentId);
         const request = await this.state.get(tenantId, agentId, revision);
         if (!request || request.status === 'completed') return { ok: true, skipped: true, reason: 'superseded_or_completed' };
+        if (request.status === 'invalidated') return { ok: false, skipped: true, reason: 'evaluation_invalidated' };
         if (request.status === 'budget_deferred' && new Date(request.next_attempt_at).getTime() > Date.now()) return { ok: false, deferred: true };
         try {
-            const scenarios = request.scenarios || (await this.evals.listScenarios(tenantId)).filter(sc => (sc.seedState || 'active') === 'active');
+            // Keep stale applicable approvals visible to the source guard. Removing
+            // review_required here would silently turn an invalid regression into absence.
+            const scenarios = (request.scenarios || await this.evals.listScenarios(tenantId))
+                .filter((scenario:any)=>regressionAppliesToSnapshot(scenario,request.agent_snapshot,'web_widget'));
             await this.state.update(tenantId, agentId, revision, 'running', undefined, scenarios);
+            const admitted=await this.state.get(tenantId,agentId,revision);
+            if(!admitted||admitted.status!=='running')return {ok:false,skipped:true,reason:'evaluation_invalidated_or_superseded'};
             await this.evals.runGateV2(tenantId, agentId, {
                 trigger: job.data.trigger || 'persona_edit', agentSnapshot: request.agent_snapshot,
                 scenarios, previousResults: request.results || [],
                 beforeModelUnits: async units => {
-                    if (!await this.state.get(tenantId, agentId, revision)) throw new Error('eval_revision_superseded');
+                    const current=await this.state.get(tenantId,agentId,revision);
+                    if (!current||current.status!=='running') throw new Error('eval_revision_invalidated_or_superseded');
                     await this.state.consumeBudget(tenantId, units);
                 },
                 onScenarioCompleted: results => this.state.update(tenantId, agentId, revision, 'running', undefined, undefined, results),
             });
             await this.state.update(tenantId, agentId, revision, 'completed');
+            const completed=await this.state.get(tenantId,agentId,revision);
+            if(!completed||completed.status!=='completed')return {ok:false,skipped:true,reason:'evaluation_invalidated_or_superseded'};
             return { ok: true };
         } catch (error: any) {
+            const current=await this.state.get(tenantId,agentId,revision);
+            if(!current||current.status==='invalidated')return {ok:false,skipped:true,reason:'evaluation_invalidated_or_superseded'};
             const budget = error.message === 'eval_autorun_budget_exhausted';
             await this.state.update(tenantId, agentId, revision, budget ? 'budget_deferred' : 'failed', String(error.message || error));
             if (budget) return { ok: false, deferred: true, reason: error.message };

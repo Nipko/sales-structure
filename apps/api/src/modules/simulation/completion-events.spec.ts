@@ -46,9 +46,17 @@ describe('agent quality completion events', () => {
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_COMPLETED_EVENT, {
                 tenantId,
                 agentId,
-                runId: null,
+                runId: expect.stringMatching(/^[a-f0-9-]{36}$/),
                 status: 'completed',
             });
+        });
+
+        it('uses one durable run identity in the result, persistence and event',async()=>{
+            const {service,eventEmitter}=makeService();jest.spyOn(service,'listScenarios').mockResolvedValue([]);
+            const result:any=await service.runGateV2(tenantId,agentId);
+            expect(result.runId).toMatch(/^[a-f0-9-]{36}$/);
+            expect((service as any).persistRun).toHaveBeenCalledWith('tenant_eval',agentId,expect.objectContaining({runId:result.runId}),'manual');
+            expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_COMPLETED_EVENT,expect.objectContaining({runId:result.runId}));
         });
 
         it('emits completion after the persisted v2 eval path finishes', async () => {
@@ -63,7 +71,7 @@ describe('agent quality completion events', () => {
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_COMPLETED_EVENT, {
                 tenantId,
                 agentId,
-                runId: null,
+                runId: expect.stringMatching(/^[a-f0-9-]{36}$/),
                 status: 'completed',
             });
         });
@@ -76,7 +84,7 @@ describe('agent quality completion events', () => {
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_FAILED_EVENT, {
                 tenantId,
                 agentId,
-                runId: null,
+                runId: expect.stringMatching(/^[a-f0-9-]{36}$/),
                 status: 'failed',
             });
         });
@@ -90,7 +98,7 @@ describe('agent quality completion events', () => {
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_FAILED_EVENT, {
                 tenantId,
                 agentId,
-                runId: null,
+                runId: expect.stringMatching(/^[a-f0-9-]{36}$/),
                 status: 'failed',
             });
             expect(eventEmitter.emit).not.toHaveBeenCalledWith(
@@ -112,7 +120,7 @@ describe('agent quality completion events', () => {
             expect(eventEmitter.emit).toHaveBeenCalledWith(AGENT_EVAL_FAILED_EVENT, {
                 tenantId,
                 agentId,
-                runId: null,
+                runId: expect.stringMatching(/^[a-f0-9-]{36}$/),
                 status: 'failed',
             });
         });

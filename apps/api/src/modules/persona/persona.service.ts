@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AgentConfigurationRevisionStore } from './agent-configuration-revision';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
@@ -847,6 +848,12 @@ export class PersonaService {
     /**
      * Get a single agent by ID
      */
+    async readConfigurationRevision(tenantId:string,agentId:string,revisionId:string,executionContext?:ServiceExecutionContext):Promise<any> {
+        const schemaName=await this.tenantsService.getSchemaName(tenantId,executionContext);
+        const store=new AgentConfigurationRevisionStore(this.prisma);
+        return this.prisma.transactionInTenantSchema(schemaName,query=>store.readCurrentRevisionWithQuery(query,agentId,revisionId));
+    }
+
     async getAgent(
         tenantId: string,
         agentId: string,

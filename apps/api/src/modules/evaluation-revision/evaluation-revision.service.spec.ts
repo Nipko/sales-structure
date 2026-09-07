@@ -21,6 +21,16 @@ export function revisionFixture() {
 }
 
 describe('complete guarded evaluation revision',()=>{
+    it('freezes canonical mission and exact connection channel scope without inheriting an unknown subtype',async()=>{
+        const f=revisionFixture();
+        (f.prisma as any).tenant={findUnique:jest.fn().mockResolvedValue({industry:'education',settings:{verticalConfig:{industry:'education',subType:'capacitacion'}}})};
+        const config={mission:{version:1,objective:'Answer questions',intentKeys:['ask_question'],successCriteria:['Grounded answer'],handoffConditions:['Missing evidence']}};
+        const scope=await f.service.captureAgentReleaseScope('tenant',{config_json:config,channels:['whatsapp','telegram'],channel_bindings:['web_widget:connection-id']});
+        expect(scope).toEqual({profileId:'education/capacitacion',intentKeys:['ask_question'],missionConfigured:true,channels:['web_widget'],languages:['es','en','pt','fr']});
+        config.mission.intentKeys.push('book_appointment');expect(scope.intentKeys).toEqual(['ask_question']);
+        (f.prisma as any).tenant.findUnique.mockResolvedValue({industry:'education',settings:{verticalConfig:{subType:'unknown'}}});
+        expect(await f.service.captureAgentReleaseScope('tenant',{})).toMatchObject({profileId:null,intentKeys:[],missionConfigured:false});
+    });
     it('captures every business table by default, full KB lineages and templates/routing/rubrics in one MVCC transaction',async()=>{
         const f=revisionFixture();f.source.future_catalog='new';
         const manifest=await f.service.capture('11111111-1111-4111-8111-111111111111');

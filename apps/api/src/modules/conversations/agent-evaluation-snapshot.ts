@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import type { TenantConfig, ProcedureDefinition } from '@parallext/shared';
+import type { AgentReleaseScope } from '../simulation/agent-release-policy';
 import { assertRevisionIntegrity, revisionHash, sealRevision, type EvaluationRevisionManifest } from '../evaluation-revision/evaluation-revision';
 
 function canonicalJson(value: unknown): string {
@@ -16,6 +17,9 @@ export interface AgentEvaluationSnapshot {
     capturedAt: string;
     configHash: string;
     config: TenantConfig;
+    configurationRevisionId?: string;
+    configurationRevisionHash?: string;
+    releaseScope?: AgentReleaseScope;
     learningReleaseId?: string | null;
     learningReleaseHash?: string | null;
     manifest?: EvaluationRevisionManifest;
@@ -41,6 +45,9 @@ function frozenDependencies(snapshot: AgentEvaluationSnapshot) {
         {key:'frozen.procedures',state:'present' as const,hash:revisionHash(snapshot.procedures || [])},
         {key:'frozen.runtime_inputs',state:'present' as const,hash:revisionHash(snapshot.runtimeInputs)},
         {key:'frozen.learning_selection',state:'present' as const,hash:revisionHash({id:snapshot.learningReleaseId,hash:snapshot.learningReleaseHash})},
+        ...(snapshot.releaseScope?[{key:'frozen.release_scope',state:'present' as const,hash:revisionHash(snapshot.releaseScope)}]:[]),
+        ...(snapshot.configurationRevisionId?[{key:'frozen.configuration_revision',state:'present' as const,
+            hash:revisionHash({id:snapshot.configurationRevisionId,hash:snapshot.configurationRevisionHash})}]:[]),
     ];
 }
 
@@ -57,6 +64,11 @@ export function resolveEvaluationSnapshot(snapshot: AgentEvaluationSnapshot, ten
     if (copy.configHash !== snapshot.configHash) throw new Error('agent_snapshot_integrity_mismatch');
     if (snapshot.manifest) {
         assertRevisionIntegrity(snapshot.manifest);
+        if (snapshot.manifest.dependencies.some(item=>item.key==='frozen.release_scope') !== !!snapshot.releaseScope)
+            throw new Error('agent_snapshot_release_scope_integrity_mismatch');
+        if (snapshot.manifest.dependencies.some(item=>item.key==='frozen.configuration_revision') !== !!snapshot.configurationRevisionId
+            ||!!snapshot.configurationRevisionId!==!!snapshot.configurationRevisionHash)
+            throw new Error('agent_snapshot_configuration_revision_integrity_mismatch');
         if (snapshot.manifest.tenantId !== tenantId) throw new Error('agent_snapshot_scope_mismatch');
         if (revisionHash(snapshot.mcpTools || []) !== snapshot.mcpToolsHash) throw new Error('agent_snapshot_mcp_integrity_mismatch');
         if (revisionHash(snapshot.procedures || []) !== snapshot.proceduresHash) throw new Error('agent_snapshot_procedure_integrity_mismatch');

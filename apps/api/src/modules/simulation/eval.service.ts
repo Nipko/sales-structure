@@ -1,9 +1,12 @@
 import { prepareCanonicalEvalFixtures, bindCanonicalEvalFixtures, type CanonicalEvalFixtures } from './eval-canonical-fixtures';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
+import { assessAgentRelease, releaseRunContext, sealReleaseRun, scenarioAppliesToMission } from './agent-release-policy';
+import { regressionAppliesToSnapshot, withReviewedRegressionScenarios } from '../quality/regressions/quality-regression-runtime';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { IsolatedEvalNamespace, type EvalNamespaceLease } from './isolated-eval-namespace';
-import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Optional, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
@@ -19,6 +22,8 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
 import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { verifyExpectedEffects } from './eval-effect-verifier';
+import { REGRESSION_PREFIX } from '../quality/regressions/quality-regression-contracts';
+import { assertReviewedRegressionScenarios, fetchReviewedRegressionScenarios, regressionCaseIds } from '../quality/regressions/quality-regression-runtime';
 
 export interface EvalSandboxSession {
     sandboxContactId: string;
@@ -90,6 +95,11 @@ const MAX_K = 5;
 // Production tenant tables are never prepared, mutated or swept by these runs.
 const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
 const EVAL_SANDBOX_CHANNEL_ACCOUNT_ID = 'eval-sandbox';
+const regressionProvenance=(scenario:any)=>scenario?.regressionCaseId?{
+    regressionCaseId:scenario.regressionCaseId,regressionRevision:scenario.regressionRevision,
+    regressionSourceHash:scenario.regressionSourceHash,regressionSourceRevision:scenario.regressionSourceRevision,
+    regressionApprovedHash:scenario.regressionApprovedHash,
+}:{};
 
 /**
  * Effect verification is read-only and independent of writer permission.
@@ -245,6 +255,9 @@ export class EvalService {
                 "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget'",
                 "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed'",
                 'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS error TEXT',
+                "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[]",
+                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_evidence JSONB',
+                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_readiness JSONB',
             ]) await this.prisma.executeInTenantSchema(schema, ddl);
             this.ensured.add(schema);
         } catch (e: any) {
@@ -415,7 +428,7 @@ export class EvalService {
             `SELECT id, key, title, vertical, language, locale, profile_id, contract_version,
                     seed_origin, managed_seed_key, seed_state, messages, criteria, expected_actions
                FROM eval_scenarios ORDER BY created_at`);
-        return (rows || []).map(r => ({
+        const stored=(rows || []).filter(r=>!String(r.key).startsWith(REGRESSION_PREFIX)&&r.seed_origin!=='quality_regression').map(r => ({
             id: r.id, key: r.key, title: r.title, vertical: r.vertical, language: r.language,
             messages: Array.isArray(r.messages) ? r.messages : [],
             criteria: r.criteria || undefined,
@@ -427,9 +440,16 @@ export class EvalService {
             managedSeedKey: r.managed_seed_key || undefined,
             seedState: r.seed_state || 'active',
         }));
+        return this.prisma.transactionInTenantSchema(schema,async query=>{
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+            return [...stored,...await fetchReviewedRegressionScenarios(query)];
+        });
     }
 
     async addScenario(tenantId: string, def: EvalScenarioInput): Promise<void> {
+        if(String(def?.key||'').startsWith(REGRESSION_PREFIX)||def?.seedOrigin==='quality_regression'
+            ||Object.keys(def||{}).some(key=>key.startsWith('regression')))
+            throw new BadRequestException({error:'regression_review_workflow_required'});
         if (!def?.key || !def?.title || !Array.isArray(def.messages) || !def.messages.length) {
             throw new BadRequestException('key, title and a non-empty messages[] are required');
         }
@@ -455,8 +475,15 @@ export class EvalService {
     }
 
     async deleteScenario(tenantId: string, id: string): Promise<void> {
+        if(String(id).startsWith(REGRESSION_PREFIX))throw new BadRequestException({error:'regression_review_workflow_required'});
         const schema = await this.prisma.getTenantSchemaName(tenantId);
-        await this.prisma.executeInTenantSchema(schema, `DELETE FROM eval_scenarios WHERE id = $1::uuid`, [id]);
+        const reserved=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT id FROM eval_scenarios WHERE id=$1::uuid
+            AND (key LIKE 'quality_regression:%' OR seed_origin='quality_regression')`,[id]);
+        const tables=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT to_regclass('quality_regression_cases')::text AS name`);
+        if(tables[0]?.name)reserved.push(...await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT id FROM quality_regression_cases WHERE id=$1::uuid`,[id]));
+        if(reserved.length)throw new BadRequestException({error:'regression_review_workflow_required'});
+        await this.prisma.executeInTenantSchema(schema, `DELETE FROM eval_scenarios WHERE id = $1::uuid AND key NOT LIKE 'quality_regression:%'
+            AND seed_origin IS DISTINCT FROM 'quality_regression'`, [id]);
     }
 
     /** The legacy endpoint uses the same safe execution and durable evidence as v2. */
@@ -486,39 +513,56 @@ export class EvalService {
             const k = Math.max(1, Math.min(opts?.k ?? 1, MAX_K));
             const passPolicy = opts?.passPolicy ?? 'all';
             const out: any[] = [];
+            const runId = randomUUID();
             let snapshot: AgentEvaluationSnapshot | undefined;
             let activeScenario: any;
+            let runScenarios: any[] = [];
             try {
-                const scenarios = (opts?.scenarios || await this.listScenarios(tenantId))
-                    .filter(scenario => (scenario.seedState || 'active') === 'active');
+                const availableScenarios = opts?.scenarios || await this.listScenarios(tenantId);
                 snapshot = opts?.agentSnapshot || await this.agentTest.captureSnapshot(tenantId, agentId);
                 await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+                const applicable = availableScenarios.filter(scenario=>regressionAppliesToSnapshot(scenario,snapshot!,channelType));
+                if(applicable.some(scenario=>scenario.regressionBlocked))throw new Error('reviewed_regression_source_changed');
+                const scenarios=applicable.filter(scenario=>(scenario.seedState||'active')==='active'
+                    && scenarioAppliesToMission(scenario,snapshot!.releaseScope));
+                runScenarios = scenarios;
+                const contextHash=releaseRunContext({agentId,dependencyRevision:snapshot.manifest?.revision||'',
+                    configHash:snapshot.configHash,channelType,k,passPolicy,threshold});
                 for (const sc of scenarios) {
-                    const completed = opts?.previousResults?.find(row => row.key === sc.key && row.scenarioHash === revisionHash(sc) && !row.error && Number.isFinite(row.score));
+                    const completed = opts?.previousResults?.find(row => row.contextHash===contextHash && row.key === sc.key && row.scenarioHash === revisionHash(sc) && !row.error && Number.isFinite(row.score));
                     if (completed) { out.push(completed); continue; }
                     activeScenario = sc;
                     const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
                     await assertLease();
-                    out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions, snapshot, channelType, assertLease, opts?.beforeModelUnits));
+                    out.push({...await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions, snapshot, channelType, assertLease, opts?.beforeModelUnits),contextHash});
                     await opts?.onScenarioCompleted?.(out);
                     activeScenario = undefined;
                 }
                 await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
                 const avgScore = out.length ? Math.round((out.reduce((sum, row) => sum + row.score, 0) / out.length) * 100) / 100 : 0;
                 const passed = out.length > 0 && out.every(row => row.passed);
-                const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out,
-                    evalActivable: passed && avgScore >= (opts?.activationThreshold ?? threshold),
+                const releaseEvidence = sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
+                    configHash:snapshot.configHash,channelType,status:'completed',k,passPolicy,threshold,
+                    scenarios,results:out});
+                const releaseReadiness = assessAgentRelease({agentId,dependencyRevision:snapshot.manifest?.revision||'',
+                    configHash:snapshot.configHash,scope:snapshot.releaseScope,runs:[releaseEvidence]});
+                const result = { runId, passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out,
+                    // Scoring is evidence for review. Publishing requires a separate reviewed release transition.
+                    evalActivable: false, releaseEvidence, releaseReadiness,
                     agentSnapshot: snapshot, scenarioSetHash: revisionHash(scenarios), channelType, status: 'completed' };
                 await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
-                this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed');
+                this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed',runId);
                 return result;
             } catch (error: any) {
-                if (activeScenario) out.push({ key: activeScenario.key, title: activeScenario.title,
+                if (activeScenario) out.push({ key: activeScenario.key, title: activeScenario.title,...regressionProvenance(activeScenario),
                     score: null, passed: false, resolved: false, error: String(error.message || error) });
-                await this.persistRun(schema, agentId, { passed: false, avgScore: null, threshold, k, passPolicy,
+                const releaseEvidence = snapshot ? sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
+                    configHash:snapshot.configHash,channelType,status:'failed',k,passPolicy,threshold,scenarios:runScenarios,results:out}) : undefined;
+                await this.persistRun(schema, agentId, { runId, passed: false, avgScore: null, threshold, k, passPolicy,
                     total: out.length, scenarios: out, evalActivable: false, agentSnapshot: snapshot, channelType,
+                    releaseEvidence,
                     status: 'failed', error: String(error.message || error) }, opts?.trigger || 'manual');
-                this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed');
+                this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed',runId);
                 throw error;
             }
         });
@@ -529,9 +573,10 @@ export class EvalService {
         tenantId: string,
         agentId: string,
         status: 'completed' | 'failed',
+        runId: string,
     ): void {
         try {
-            this.eventEmitter.emit(event, { tenantId, agentId, runId: null, status });
+            this.eventEmitter.emit(event, { tenantId, agentId, runId, status });
         } catch (e: any) {
             this.logger.warn(`[Eval] could not emit ${event}: ${e.message}`);
         }
@@ -545,6 +590,7 @@ export class EvalService {
         const required = passPolicy === 'all' ? k : Math.floor(k / 2) + 1;
         return {
             key: sc.key,
+            ...regressionProvenance(sc),
             scenarioHash: revisionHash(sc),
             title: sc.title,
             k,
@@ -560,6 +606,7 @@ export class EvalService {
 
     /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
     private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean, snapshot?: AgentEvaluationSnapshot, channelType = 'web_widget', assertLease?: () => Promise<void>, beforeModelUnits?: (units: number) => Promise<void>) {
+        const reviewedSource=sc;
         return this.withOwnedSandboxSession(tenantId, schema, assertLease || (async () => {}), async session => {
             await session.reset(channelType, snapshot);
             sc = bindCanonicalEvalFixtures(sc, session.fixtures!);
@@ -570,10 +617,9 @@ export class EvalService {
             const observedToolCalls: Array<{ name: string; result: unknown }> = [];
             for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
                 await assertLease?.();
-                if (sandboxConversationId) {
-                    await session.recordInbound(msg);
-                }
-                const res = await this.agentTest.test(
+                const res = await withReviewedRegressionScenarios(this.prisma,schema,[reviewedSource],agentId,channelType,async()=>{
+                    if (sandboxConversationId) await session.recordInbound(msg);
+                    return this.agentTest.test(
                     tenantId, agentId,
                     { message: msg, conversationHistory: [...history], channelType: channelType as any },
                     {
@@ -583,7 +629,8 @@ export class EvalService {
                             sandboxConversationId, sandboxNamespace: session.sandboxNamespace, agentSnapshot: snapshot, beforeToolExecution: session.assertLease,
                             beforeModelExecution: async () => { await session.assertLease(); await beforeModelUnits?.(1); },
                         },
-                );
+                    );
+                });
                 if (res?.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
                 const reply = res?.reply || '';
                 for (const call of res?.debug?.toolCalls || []) {
@@ -596,7 +643,8 @@ export class EvalService {
             if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
             await beforeModelUnits?.(1);
             await this.agentTest.assertSnapshotCurrent(snapshot);
-            const judge = await this.quality.judgeTranscript(tenantId, transcript, AGENT_TEST_EXECUTION_CONTEXT);
+            const judge = await withReviewedRegressionScenarios(this.prisma,schema,[reviewedSource],agentId,channelType,
+                ()=>this.quality.judgeTranscript(tenantId, transcript, AGENT_TEST_EXECUTION_CONTEXT));
             await this.agentTest.assertSnapshotCurrent(snapshot);
             const score = judge.overall;
 
@@ -679,19 +727,48 @@ export class EvalService {
     }
 
     private async persistRun(schema: string, agentId: string, result: any, trigger: string): Promise<void> {
-        await this.prisma.executeInTenantSchema(schema,
-            `INSERT INTO eval_runs (agent_id, k, threshold, passed, avg_score, eval_activable, results, trigger, agent_snapshot, channel_type, status, error, created_at)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12, NOW())`,
+        const definitions=result.releaseEvidence?.scenarios||result.regressionScenarios||[];
+        let ids:string[]=[];
+        let invalidated=false;
+        const runId=result.runId||randomUUID();
+        // Even failure rows/checkpoints must carry complete source authority. Keys alone cannot republish text after erasure.
+        await this.prisma.transactionInTenantSchema(schema,async query=>{
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+            try{
+                ids=regressionCaseIds(definitions);
+                const resultIds=regressionCaseIds(result.scenarios||[]);
+                if(resultIds.some(id=>!ids.includes(id)))throw new ConflictException({error:'regression_provenance_required'});
+                await assertReviewedRegressionScenarios(query,definitions,agentId,result.channelType||'web_widget');
+            }catch(error){
+                if(!(error instanceof ConflictException||error instanceof ForbiddenException||error instanceof NotFoundException))throw error;
+                // Account for the failure without restoring any source-derived content or identifiers after erasure.
+                invalidated=true;
+                await query(`INSERT INTO eval_runs(id,agent_id,k,threshold,passed,avg_score,eval_activable,results,trigger,channel_type,status,error)
+                    VALUES($1::uuid,$2::uuid,$3,$4,false,NULL,false,'[]'::jsonb,$5,$6,'invalidated','regression_source_unavailable')
+                    ON CONFLICT(id) DO UPDATE SET passed=false,avg_score=NULL,eval_activable=false,results='[]'::jsonb,
+                        agent_snapshot=NULL,release_evidence=NULL,release_readiness=NULL,regression_case_ids='{}'::uuid[],
+                        status='invalidated',error='regression_source_unavailable'`,
+                    [runId,agentId,result.k,result.threshold,trigger,result.channelType||'web_widget']);
+                return;
+            }
+            await query(`INSERT INTO eval_runs (agent_id, k, threshold, passed, avg_score, eval_activable, results, trigger, agent_snapshot,
+                channel_type, status, error, regression_case_ids, release_evidence, release_readiness, id, created_at)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12, $13::uuid[], $14::jsonb, $15::jsonb, $16::uuid, NOW())
+             ON CONFLICT(id) DO NOTHING`,
             [agentId, result.k, result.threshold, result.passed, result.avgScore, result.evalActivable,
              JSON.stringify(result.scenarios), trigger, JSON.stringify(result.agentSnapshot || null),
-             result.channelType || 'web_widget', result.status || 'completed', result.error || null]);
+             result.channelType || 'web_widget', result.status || 'completed', result.error || null,ids,
+             JSON.stringify(result.releaseEvidence||null),JSON.stringify(result.releaseReadiness||null),runId]);
+        });
+        if(invalidated&&result.status!=='failed')throw new ConflictException({error:'regression_source_unavailable'});
     }
 
     /** Recent eval runs (for the dashboard). */
     async listRuns(tenantId: string, agentId?: string): Promise<any[]> {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTable(schema);
-        const cols = `id, agent_id, k, threshold, passed, avg_score, eval_activable, trigger, created_at, channel_type, status, error, agent_snapshot`;
+        const cols = `id, agent_id, k, threshold, passed, avg_score, eval_activable, trigger, created_at, channel_type, status, error, agent_snapshot,
+            regression_case_ids, release_readiness`;
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
             agentId
                 ? `SELECT ${cols} FROM eval_runs WHERE agent_id = $1::uuid ORDER BY created_at DESC LIMIT 50`

@@ -26,7 +26,12 @@ export interface ProcedureProcessResult {
     handoff?: boolean;
     handoffReason?: string;
     procedureName?: string;
-    dialogueAct?: 'question' | 'pause' | 'cancel' | 'resume' | 'invalid';
+    procedureId?: string;
+    procedureVersion?: number;
+    procedureStartedAt?: string;
+    currentStepId?: string | null;
+    missionId?: string;
+    dialogueAct?: 'question' | 'pause' | 'cancel' | 'resume' | 'invalid' | 'correction';
 }
 
 /**

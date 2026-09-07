@@ -242,6 +242,7 @@ function msg(lang: string, key: string, vars: Record<string, string> = {}): stri
 const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_failed']);
 
 export interface BookingState {
+    missionId?: string;
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
     services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null; appointmentTerms?: AppointmentServiceTerms }>;
     serviceId?: string;
@@ -362,6 +363,7 @@ export class BookingEngineService {
         // la exige.
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
+        state.missionId ||= randomUUID();
         const L = language; // shorthand for msg() calls
         if (!['idle', 'booked'].includes(state.step) && isPauseMessage(rawText)) {
             state.pausedAt = new Date().toISOString();

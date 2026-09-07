@@ -6,6 +6,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TurnTraceContext } from '../trace/turn-trace-context';
+import { MissionTurnRecorder, type MissionObservation } from '../quality/mission-evidence';
+import { revisionHash as missionConfigurationHash } from '../evaluation-revision/evaluation-revision';
 import { PersonaService, type PersonaResolution } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
@@ -927,6 +929,7 @@ export class ConversationsService {
                 bizHours,
                 inboundMessageId,
                 personaResolution.agentId ?? undefined,
+                undefined,personaResolution.version ?? undefined,
             );
 
         // Persist the decision BEFORE any of it goes out, so a crash between the
@@ -1876,6 +1879,7 @@ export class ConversationsService {
         inboundMessageId?: string,
         resolvedAgentId?: string,
         session?: AgentTurnSession,
+        resolvedAgentVersion?: number,
     ): Promise<string> {
         const draftMode = config.behavior?.draftMode === true;
         const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
@@ -2034,6 +2038,16 @@ export class ConversationsService {
         // Step-by-step turn trace (WS5 #1) — accumulated in memory, persisted
         // fire-and-forget at the end. Never affects the turn's behaviour or latency.
         const turnTrace = new TurnTraceContext({ tenantId, conversationId: conversation.id, messageId: inboundMessageId });
+
+        const missionRecorder=!session&&inboundMessageId?new MissionTurnRecorder(this.prisma,schemaName,{
+            conversationId:conversation.id,messageId:inboundMessageId,agentId:resolvedAgentId,agentVersion:resolvedAgentVersion,
+            configHash:missionConfigurationHash(config),language:userLanguage,channel:msg.channelType,executionMode:draftMode?'draft':'live',
+        }):null;
+        const observeMission=async(observation:MissionObservation)=>{
+            if(!missionRecorder)return;
+            try{await missionRecorder.observe(observation);}catch{this.logger.warn('[MissionEvidence] observation unavailable');}
+        };
+        await observeMission({kind:'context'});
 
         const turnContext: TurnContext = {
             channelType: msg.channelType,
@@ -2344,6 +2358,7 @@ export class ConversationsService {
             channelType: msg.channelType,
         });
         turnContext.capability = capability.status;
+        await observeMission({kind:'context',profileId:capability.status.profileId});
         turnContext.verticalContext = projectVerticalIntentAvailability(
             turnContext.verticalContext,
             capability.contract?.publishedTools ?? [],
@@ -2503,6 +2518,8 @@ export class ConversationsService {
                 regional?.operatingCountry.value,
                 bookingState.step === 'confirm' && bookingState.serviceName ? [bookingState.serviceName] : [],
             );
+            turnTrace.add('intent','interpreted',{intent:intent.intent,bookingStep:bookingState.step});
+            await observeMission({kind:'intent',intent:intent.intent});
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 
             // ═══ GREETING & FAREWELL at idle: let LLM handle naturally ═══
@@ -2524,6 +2541,9 @@ export class ConversationsService {
                     },
                 );
                 bookingState = deniedResult.state;
+                turnTrace.add('booking','authority_result',{state:bookingState.step,handled:deniedResult.handled,handoff:deniedResult.handoff});
+                await observeMission({kind:'booking',state:bookingState.step,handled:deniedResult.handled,handoff:deniedResult.handoff,instanceKey:bookingState.missionId});
+
                 await this.persistBookingState(schemaName, conversation.id, deniedResult.state, session);
                 if (deniedResult.handled) {
                     engineProducedText = deniedResult.text || null;
@@ -2583,6 +2603,9 @@ export class ConversationsService {
                 );
 
                 bookingState = engineResult.state;
+                turnTrace.add('booking','state_result',{state:bookingState.step,handled:engineResult.handled,handoff:engineResult.handoff});
+                await observeMission({kind:'booking',state:bookingState.step,handled:engineResult.handled,handoff:engineResult.handoff,instanceKey:bookingState.missionId});
+
                 this.logger.log(`[Pipeline] Booking state: ${bookingState.step} | service: ${bookingState.serviceName || '-'} | date: ${bookingState.date || '-'} | time: ${bookingState.time || '-'}`);
 
                 if (engineResult.handled) {
@@ -2602,6 +2625,7 @@ export class ConversationsService {
                         await this.saveAiMessage(tenantId, conversation.id, engineResult.flowMessage.body, msg.channelType);
                         this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
                         this.logger.log(`[Pipeline] WhatsApp Flow sent (flow_id=${flowCfg.flowId}) — bypassing LLM`);
+                        await observeMission({kind:'final',state:'flow_enqueued'});
                         return ''; // Flow already enqueued; caller sends no extra text.
                     }
 
@@ -2675,6 +2699,13 @@ export class ConversationsService {
                         deniedTools,
                     },
                 );
+                const observedProcedure={procedureId:procResult.procedureId,
+                    version:procResult.procedureVersion,startedAt:procResult.procedureStartedAt};
+                turnTrace.add('procedure','state_result',{handled:procResult.handled,completed:procResult.completed,
+                    dialogueAct:procResult.dialogueAct,procedureId:observedProcedure?.procedureId,version:observedProcedure?.version});
+                await observeMission({kind:'procedure',handled:procResult.handled,completed:procResult.completed,handoff:procResult.handoff,
+                    dialogueAct:procResult.dialogueAct,procedureId:observedProcedure?.procedureId,procedureVersion:observedProcedure?.version,
+                    procedureStartedAt:observedProcedure?.startedAt,state:procResult.dialogueAct||'active',instanceKey:procResult.missionId});
                 if (procResult.handled) {
                     tools = [];
                     if (procResult.text) engineProducedText = procResult.text;
@@ -3432,6 +3463,9 @@ export class ConversationsService {
 
                         this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
                         executedToolsThisTurn.push({ name: tc.function.name, result });
+                        await observeMission({kind:'tool',tool:tc.function.name,toolStatus:toolResultSucceeded(result)?'succeeded'
+                            :result?.error?'failed':result?.pendingConsent||result?.requiresConfirmation||result?.requiresApproval?'pending':'unknown'});
+
                         turnTrace.add('tool_result', tc.function.name, {
                             ok: !(result && result.error),
                             error: result?.error,
@@ -3754,6 +3788,7 @@ export class ConversationsService {
                     .map(item => ({ kind: item.kind, href: item.href })),
             });
             // Persist the step-by-step trace, fire-and-forget — tracing never breaks the turn.
+            await observeMission({kind:'final'});
             try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
             return finalResponse;
@@ -3775,6 +3810,7 @@ export class ConversationsService {
                     error: e?.message,
                     committed: committed.map(t => t.name),
                 });
+                await observeMission({kind:'error',state:'error_after_commit'});
                 try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
                 return partialSuccessText(userLanguage);
             }
@@ -3793,6 +3829,7 @@ export class ConversationsService {
 
             // Trace failed turns too — they're the most valuable for debugging/evals.
             turnTrace.add('decision', 'error', { error: e?.message });
+            await observeMission({kind:'error',state:'response_failed'});
             try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
             return errorFallbackText(userLanguage);
@@ -4836,6 +4873,7 @@ export class ConversationsService {
                                 tenantId, conversation, msg, config, contact, leads?.[0],
                                 conversation.updated_at || conversation.created_at, businessHours,
                                 inboundMessageId, personaResolution.agentId ?? undefined,
+                                undefined,personaResolution.version ?? undefined,
                             );
                             if (!reply || isErrorFallback(reply)) {
                                 await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});

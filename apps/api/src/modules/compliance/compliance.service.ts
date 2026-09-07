@@ -3,7 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LearningService } from '../learning/learning.service';
 import { eraseWidgetContactSessions } from '../widget/widget-session-erasure';
+import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
 import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
+import { eraseContactMissionEvidence } from '../quality/mission-evidence';
 
 @Injectable()
 export class ComplianceService {
@@ -225,7 +227,7 @@ export class ComplianceService {
                     (SELECT customer_profile_id FROM contact_identities WHERE contact_id=$1::uuid)`, [contactId]);
             const contactIds = [...new Set([contactId, ...linked.map(c=>c.contact_id)])];
             const conversations = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `UPDATE conversations SET metadata='{"procedureStateManaged":true,"bookingStateManaged":true}'::jsonb, updated_at=NOW()
+                `UPDATE conversations SET metadata='{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb, updated_at=NOW()
                  WHERE contact_id=ANY($1::uuid[]) RETURNING id`, [contactIds]);
             // PostgreSQL markers are authoritative if cache deletion is unavailable.
             if(this.redis) for(const conversation of conversations) {
@@ -271,7 +273,7 @@ export class ComplianceService {
 
         // 4. Conversations — clear any PII metadata
         await run('conversations',
-            `UPDATE conversations SET metadata = '{"procedureStateManaged":true,"bookingStateManaged":true}'::jsonb, updated_at = NOW()
+            `UPDATE conversations SET metadata = '{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb, updated_at = NOW()
              WHERE contact_id = $1::uuid RETURNING id`,
             [contactId],
         );
@@ -361,8 +363,13 @@ export class ComplianceService {
             for (const lock of locks) await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text`, [lock]);
             await query(`INSERT INTO customer_memory_erasure (contact_id)
                 SELECT unnest($1::uuid[]) ON CONFLICT (contact_id) DO UPDATE SET erased_at = NOW()`, [contactIds]);
+            await query(`UPDATE conversations SET metadata=(COALESCE(metadata,'{}'::jsonb)-'procedureState'-'bookingState'-'missionFocus')
+                ||'{"procedureStateManaged":true,"bookingStateManaged":true,"missionFocusManaged":true}'::jsonb
+                WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
             const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);
+            const regressionCases = await eraseContactRegressionArtifacts(query, contactIds);
             const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);
+            await eraseContactMissionEvidence(query,contactIds);
             const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger')::text AS ledger,
                 to_regclass('tool_approval_tickets')::text AS tickets,to_regclass('tool_approval_outbox')::text AS outbox,
                 to_regclass('kb_retrieval_log')::text AS kb_log,to_regclass('kb_unanswered_queries')::text AS kb_queries,
@@ -404,7 +411,7 @@ export class ComplianceService {
                     OR source_contact_id = ANY($2::uuid[]) RETURNING id`, [profileIds, contactIds]);
             const merged = await query<any[]>(
                 `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
-            return facts.length + merged.length + widgetSessions + operationalNotices;
+            return facts.length + merged.length + widgetSessions + regressionCases + operationalNotices;
         });
     }
 

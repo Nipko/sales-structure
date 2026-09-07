@@ -4,6 +4,34 @@ import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixtur
 import { EVAL_SANDBOX_CONTACT_ID, AGENT_TEST_SANDBOX_CONTACT_ID } from './agent-test-tool-policy';
 
 describe('AgentTestService delegates to the operational core', () => {
+    it('evaluates the selected canonical draft without replacing the operational persona',async()=>{
+        const f=agentTurnFixture(),live=await f.personaService.getAgent();
+        const draftConfig=structuredClone(live.config_json);draftConfig.persona={...draftConfig.persona,name:'Candidate Alex'};
+        const reader=jest.fn().mockResolvedValue({id:'11111111-1111-4111-8111-111111111111',body_hash:'a'.repeat(64),
+            body:{name:'Candidate Alex',configJson:draftConfig,channels:['telegram'],channelBindings:['telegram:owned'],
+                scheduleMode:'24_7',isActive:true,isDefault:false}});
+        Object.assign(f.personaService,{readConfigurationRevision:reader});
+        const snapshot=await f.service.captureSnapshot('tenant','agent',{configurationRevisionId:'11111111-1111-4111-8111-111111111111'});
+        expect(reader).toHaveBeenCalledWith('tenant','agent','11111111-1111-4111-8111-111111111111',AGENT_TEST_EXECUTION_CONTEXT);
+        expect(snapshot.config.persona.name).toBe('Candidate Alex');
+        expect(snapshot.configurationRevisionHash).toBe('a'.repeat(64));
+        expect((await f.personaService.getAgent()).config_json).toEqual(live.config_json);
+        for(const field of ['configurationRevisionId','configurationRevisionHash'] as const){
+            const altered=structuredClone(snapshot);delete altered[field];
+            await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:altered})).rejects.toThrow('configuration_revision_integrity_mismatch');
+        }
+        const changed=structuredClone(snapshot);changed.configurationRevisionHash='b'.repeat(64);
+        await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:changed})).rejects.toThrow('frozen_dependencies_integrity_mismatch');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
+    it('rejects a changed or removed frozen release scope before using the runtime',async()=>{
+        const f=agentTurnFixture();const snapshot=await f.service.captureSnapshot('tenant','agent');
+        snapshot.releaseScope!.channels.push('telegram');
+        await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:snapshot})).rejects.toThrow('frozen_dependencies_integrity_mismatch');
+        const removed=await f.service.captureSnapshot('tenant','agent');delete removed.releaseScope;
+        await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:removed})).rejects.toThrow('release_scope_integrity_mismatch');
+        expect(f.llmRouter.execute).not.toHaveBeenCalled();
+    });
     it('checks quota before loading config, resolving schema or calling the core', async () => {
         const f = agentTurnFixture(); f.throttle.hasAiMessageQuota.mockResolvedValue(false);
         await expect(f.service.test('tenant', 'agent', { message: 'hola' })).rejects.toThrow('ai_message_quota_exceeded');

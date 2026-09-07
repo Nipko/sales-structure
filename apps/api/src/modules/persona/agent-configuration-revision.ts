@@ -61,6 +61,15 @@ export class AgentConfigurationRevisionStore {
         if(!rows[0])return null;
         this.assertRevision(rows[0]);return rows[0];
     }
+    async readCurrentRevisionWithQuery(query:RevisionQuery,agentId:string,revisionId:string):Promise<any> {
+        if(!UUID.test(revisionId))throw new BadRequestException({error:'agent_configuration_scope_invalid'});
+        const revision=await this.readWithQuery(query,agentId);
+        if(!revision||revision.id!==revisionId)fail('agent_draft_revision_changed');
+        const operational=(await query<any[]>('SELECT * FROM agent_personas WHERE id=$1::uuid',[agentId]))[0];
+        if(!operational||operationalConfigurationHash(operational)!==revision.base_operational_hash)
+            fail('agent_operational_configuration_changed');
+        return revision;
+    }
     assertRevision(row:any):void {
         if(!row||!UUID.test(row.id)||!UUID.test(row.agent_id)||!Number.isInteger(Number(row.base_operational_version))
             ||!/^([a-f0-9]{64})$/.test(row.base_operational_hash)||revisionHash(row.body)!==row.body_hash)

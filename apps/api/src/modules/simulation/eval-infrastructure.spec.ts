@@ -8,6 +8,8 @@ function buildService() {
         getTenantSchemaName: jest.fn().mockResolvedValue('tenant_schema'),
         tenant: { findUnique: jest.fn() },
     };
+    Object.assign(prisma,{transactionInTenantSchema:jest.fn(async(schema:string,work:any)=>
+        work((sql:string,params:any[])=>prisma.executeInTenantSchema(schema,sql,params)))});
     const lease = { schemaName:'tenant_eval_11111111_111111111111111111111111',tenantId:'tenant-id',sourceSchema:'tenant_schema',token:'token',expiresAt:new Date(Date.now()+3600000).toISOString(),tables:[] };
     const namespaces = { provisionRuntime:jest.fn().mockResolvedValue(lease),assertOwned:jest.fn().mockResolvedValue(undefined),dispose:jest.fn().mockResolvedValue(undefined) };
     const service = new EvalService(
@@ -124,6 +126,21 @@ describe('versioned multilingual eval infrastructure', () => {
             'eval-sandbox',
             'web_widget',
         ]);
+    });
+
+    it('reuses a checkpoint only for the same revision, channel, repetition count and pass policy',async()=>{
+        const {service,prisma}=buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([{id:'11111111-1111-4111-8111-111111111111'}]);
+        const snapshot={agentId:'agent',config:{},configHash:'config',capturedAt:'2026-09-07T12:00:00Z',manifest:{revision:'revision'}};
+        const test=jest.fn().mockResolvedValue({reply:'Hello',debug:{toolCalls:[]}});
+        (service as any).agentTest={captureSnapshot:jest.fn().mockResolvedValue(snapshot),assertSnapshotCurrent:jest.fn(),test};
+        (service as any).quality={judgeTranscript:jest.fn().mockResolvedValue({overall:9,resolved:true,flags:[]})};
+        const options:any={agentSnapshot:snapshot,scenarios:[{key:'greeting',messages:['hello']}],channelType:'telegram'};
+        const first=await service.runGateV2('tenant-id','agent',options);expect(test).toHaveBeenCalledTimes(1);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios});expect(test).toHaveBeenCalledTimes(1);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,channelType:'web_widget'});expect(test).toHaveBeenCalledTimes(2);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,k:2});expect(test).toHaveBeenCalledTimes(4);
+        await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,passPolicy:'majority'});expect(test).toHaveBeenCalledTimes(5);
     });
 
     it('cleans its namespace when a provider fails and rejects missing sandbox infrastructure', async () => {

@@ -1383,6 +1383,7 @@ export interface ProcedureDefinition {
 
 /** Durable mission state; Redis caches it but never owns its lifetime. */
 export interface ProcedureRunState {
+    missionId?: string;
     procedureId: string;
     version: number;
     currentStepId: string | null;

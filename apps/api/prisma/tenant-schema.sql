@@ -4853,3 +4853,73 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_configuration_commands" (
     UNIQUE(requested_by,request_key)
 );
 -- END AGENT CONFIGURATION REVISIONS
+
+-- BEGIN QUALITY REGRESSION AND MISSION EVIDENCE
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_regression_cases" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), agent_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_personas"(id) ON DELETE CASCADE,
+        source_contact_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"(id) ON DELETE CASCADE,
+        source_conversation_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE CASCADE,
+        source_kind TEXT NOT NULL CHECK(source_kind IN ('quality_score','tool_ledger')),
+        source_evidence_id UUID NOT NULL, source_message_ids UUID[] NOT NULL,
+        source_revision BIGINT NOT NULL, source_hash TEXT NOT NULL,
+        source_agent_version INTEGER, source_configuration_hash TEXT,
+        state TEXT NOT NULL DEFAULT 'proposed' CHECK(state IN ('proposed','approved','rejected','retired')),
+        revision INTEGER NOT NULL DEFAULT 1, scope JSONB NOT NULL,
+        proposal JSONB NOT NULL, approved_scenario JSONB, approved_hash TEXT,
+        created_by UUID NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(agent_id,source_kind,source_evidence_id,source_hash));
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_regression_revisions" (
+        case_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."quality_regression_cases"(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL, proposal JSONB NOT NULL, scope JSONB NOT NULL,
+        created_by UUID NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(case_id,revision));
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."quality_regression_reviews" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),case_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."quality_regression_cases"(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,decision TEXT NOT NULL CHECK(decision IN ('approved','rejected','retired')),
+        checks JSONB NOT NULL,note TEXT NOT NULL,reviewed_by UUID NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE INDEX IF NOT EXISTS idx_quality_regression_source ON "{{SCHEMA_NAME}}"."quality_regression_cases"(source_conversation_id,source_revision);
+
+CREATE INDEX IF NOT EXISTS idx_quality_regression_agent ON "{{SCHEMA_NAME}}"."quality_regression_cases"(agent_id,state,updated_at);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_erasure"(contact_id UUID PRIMARY KEY,erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_mission_turns" (
+        message_id UUID PRIMARY KEY REFERENCES "{{SCHEMA_NAME}}"."messages"(id) ON DELETE CASCADE,
+        conversation_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE CASCADE,
+        contact_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"(id) ON DELETE CASCADE,agent_id UUID REFERENCES "{{SCHEMA_NAME}}"."agent_personas"(id) ON DELETE SET NULL,
+        agent_version INTEGER,config_hash TEXT NOT NULL,profile_id TEXT,contract_version INTEGER,language TEXT,channel_type TEXT NOT NULL,
+        execution_mode TEXT NOT NULL,transcript_revision BIGINT NOT NULL,source_message_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'started',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_mission_instances" (
+        id UUID PRIMARY KEY,conversation_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"(id) ON DELETE CASCADE,
+        agent_id UUID REFERENCES "{{SCHEMA_NAME}}"."agent_personas"(id) ON DELETE SET NULL,engine TEXT NOT NULL,mission_key TEXT,attempt_key TEXT NOT NULL,
+        definition_id UUID,definition_version INTEGER,workflow_state TEXT NOT NULL DEFAULT 'active',
+        operational_outcome TEXT NOT NULL DEFAULT 'unknown',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(conversation_id,engine,attempt_key));
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_mission_steps" (
+        message_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_mission_turns"(message_id) ON DELETE CASCADE,ordinal INTEGER NOT NULL,
+        instance_id UUID REFERENCES "{{SCHEMA_NAME}}"."agent_mission_instances"(id) ON DELETE CASCADE,kind TEXT NOT NULL,mission_key TEXT,
+        basis TEXT NOT NULL,state TEXT,tool_name TEXT,tool_status TEXT,definition_id UUID,definition_version INTEGER,
+        difficulty TEXT NOT NULL DEFAULT 'unknown',difficulty_rubric TEXT NOT NULL DEFAULT 'observed_trajectory_v1',
+        operational_outcome TEXT NOT NULL DEFAULT 'unknown',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(message_id,ordinal));
+
+CREATE INDEX IF NOT EXISTS idx_agent_mission_turn_agent ON "{{SCHEMA_NAME}}"."agent_mission_turns"(agent_id,created_at);
+
+CREATE INDEX IF NOT EXISTS idx_agent_mission_instances_conversation ON "{{SCHEMA_NAME}}"."agent_mission_instances"(conversation_id,engine,workflow_state);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_runs" (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_id UUID,k INTEGER NOT NULL DEFAULT 1,threshold NUMERIC,passed BOOLEAN,avg_score NUMERIC,
+ eval_activable BOOLEAN NOT NULL DEFAULT false,results JSONB NOT NULL DEFAULT '[]'::jsonb,trigger TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS agent_snapshot JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS error TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[];
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS release_evidence JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_runs" ADD COLUMN IF NOT EXISTS release_readiness JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_autorun_requests" ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[];
+-- END QUALITY REGRESSION AND MISSION EVIDENCE

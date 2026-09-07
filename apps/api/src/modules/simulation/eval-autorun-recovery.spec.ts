@@ -23,7 +23,7 @@ describe('durable evaluation autorun', () => {
     function processor(row: any) {
         const prisma = { tenant: { findUnique: jest.fn().mockResolvedValue({ isInternal: true }) } };
         const evals = { runGateV2: jest.fn(), listScenarios: jest.fn() };
-        const state = { get: jest.fn().mockResolvedValue(row), update: jest.fn(), consumeBudget: jest.fn() };
+        const state = { get: jest.fn().mockResolvedValue(row), update: jest.fn(async(_tenant,_agent,_revision,status)=>{if(row)row.status=status;}), consumeBudget: jest.fn() };
         return { service: new EvalGateProcessor(evals as any, prisma as any, state as any), evals, state };
     }
 
@@ -32,6 +32,28 @@ describe('durable evaluation autorun', () => {
         await expect(service.process({ data: request } as any)).resolves.toMatchObject({ skipped: true });
         expect(evals.runGateV2).not.toHaveBeenCalled();
         expect(state.consumeBudget).not.toHaveBeenCalled();
+    });
+    it('does not restart an invalidated request or consume its budget',async()=>{
+        const {service,evals,state}=processor({status:'invalidated',agent_snapshot:{},scenarios:[]});
+        await expect(service.process({data:request} as any)).resolves.toMatchObject({ok:false,skipped:true});
+        expect(evals.runGateV2).not.toHaveBeenCalled();expect(state.consumeBudget).not.toHaveBeenCalled();expect(state.update).not.toHaveBeenCalled();
+    });
+    it('does not hide a stale approved case from the source guard and stops before running the model',async()=>{
+        const id='11111111-1111-4111-8111-111111111111';
+        const stale={key:`quality_regression:${id}:1`,regressionCaseId:id,regressionRevision:1,regressionAgentId:'agent',
+            regressionScope:{channel:'web_widget',mission:'ask_question'},profileId:'education/capacitacion',seedState:'review_required',regressionBlocked:'source_changed'};
+        const row={status:'pending',agent_snapshot:{agentId:'agent',releaseScope:{profileId:'education/capacitacion',intentKeys:['ask_question']}},scenarios:null};
+        const {service,evals,state}=processor(row);evals.listScenarios.mockResolvedValue([stale,{...stale,regressionAgentId:'other-agent'}]);
+        state.update.mockImplementation(async()=>{row.status='invalidated';});
+        await expect(service.process({data:request} as any)).resolves.toMatchObject({ok:false,skipped:true});
+        expect(state.update).toHaveBeenCalledWith('tenant','agent','revision','running',undefined,[stale]);
+        expect(evals.runGateV2).not.toHaveBeenCalled();expect(state.consumeBudget).not.toHaveBeenCalled();
+    });
+    it('treats invalidation during a run as terminal and refuses its next budget increment',async()=>{
+        const row={status:'pending',agent_snapshot:{},scenarios:[]};const {service,evals,state}=processor(row);
+        evals.runGateV2.mockImplementation(async(_tenant,_agent,options)=>{row.status='invalidated';await options.beforeModelUnits(4);});
+        await expect(service.process({data:request} as any)).resolves.toMatchObject({ok:false,skipped:true});
+        expect(state.consumeBudget).not.toHaveBeenCalled();expect(row.status).toBe('invalidated');
     });
 
     it('runs the saved snapshot and resumes checkpointed scenarios instead of rereading current config', async () => {

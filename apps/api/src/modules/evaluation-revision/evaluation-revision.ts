@@ -48,6 +48,9 @@ export const EVALUATION_OUTPUT_TABLES = new Set([
     'kb_retrieval_log', 'kb_unanswered_queries', 'kb_feedback', 'kb_health_issues',
     'knowledge_conflict_scans',
     'quality_sampling_runs', 'quality_sampling_items',
+    // Active cases remain dependencies: a newly approved case must invalidate an older evaluation.
+    'quality_regression_revisions', 'quality_regression_reviews',
+    'agent_mission_turns', 'agent_mission_instances', 'agent_mission_steps',
     'whatsapp_webhook_events', 'whatsapp_message_logs', 'alert_history', 'dashboard_preferences',
     'crm_sync_log', 'integration_outbox', 'integration_webhook_inbox', 'integration_reconciliations',
     'calendar_sync_outbox', 'webhook_deliveries', 'vertical_migration_outbox',

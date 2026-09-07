@@ -1481,6 +1481,13 @@ export const api = {
     },
 
     // Quality / QA scoring (T1.6/T1.8)
+    getQualityRegressions: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions`),
+    getQualityRegressionSources: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions/sources`),
+    getQualityRegressionOptions: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions/options`),
+    getAgentMissionMetrics: (tenantId: string, agentId: string) => apiGet(`/quality/${tenantId}/agents/${agentId}/regressions/metrics`),
+    proposeQualityRegression: (tenantId: string, agentId: string, body: {kind: string;evidenceId: string}) => apiPost(`/quality/${tenantId}/agents/${agentId}/regressions`,body),
+    editQualityRegression: (tenantId: string, agentId: string, caseId: string, body: unknown) => apiPatch(`/quality/${tenantId}/agents/${agentId}/regressions/${caseId}`,body),
+    reviewQualityRegression: (tenantId: string, agentId: string, caseId: string, body: unknown) => apiPost(`/quality/${tenantId}/agents/${agentId}/regressions/${caseId}/review`,body),
     getQualitySampling: (tenantId: string, day: string) =>
         apiGet(`/quality-sampling/${tenantId}?day=${encodeURIComponent(day)}`),
     getQualitySummary: (tenantId: string, params: { start: string; end: string }) =>

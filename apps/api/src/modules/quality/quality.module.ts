@@ -9,6 +9,8 @@ import { RedisModule } from '../redis/redis.module';
 import { AIModule } from '../ai/ai.module';
 import { AgentQualityService } from './agent-quality.service';
 import { AgentQualitySignalService } from './agent-quality-signal.service';
+import { QualityRegressionService } from './regressions/quality-regression.service';
+import { QualityRegressionController } from './regressions/quality-regression.controller';
 
 @Module({
     imports: [
@@ -17,8 +19,8 @@ import { AgentQualitySignalService } from './agent-quality-signal.service';
         AIModule,
         BullModule.registerQueue({ name: QUALITY_QUEUE }),
     ],
-    providers: [QualityService, AgentQualityService, AgentQualitySignalService, QualityListenerService, QualityProcessor],
-    controllers: [QualityController],
+    providers: [QualityService, AgentQualityService, AgentQualitySignalService, QualityListenerService, QualityProcessor, QualityRegressionService],
+    controllers: [QualityController, QualityRegressionController],
     exports: [QualityService, AgentQualityService, AgentQualitySignalService],
 })
 export class QualityModule {}

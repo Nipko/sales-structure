@@ -111,4 +111,13 @@ integration('Separate editable and operational configurations on PostgreSQL',()=
         await query(`UPDATE agent_configuration_revisions SET body=jsonb_set(body,'{name}','"tampered"'::jsonb) WHERE id=$1::uuid`,[first.id]);
         await expect(tx(q=>store.readWithQuery(q,agentId))).rejects.toMatchObject({response:{error:'agent_configuration_revision_invalid'}});
     });
+    it('only selects the current draft on its unchanged operational baseline for evaluation',async()=>{
+        const first=await save(await request());
+        expect((await tx(q=>store.readCurrentRevisionWithQuery(q,agentId,first.id))).id).toBe(first.id);
+        const second=await save(await request({expectedDraftRevision:first.id}));
+        await expect(tx(q=>store.readCurrentRevisionWithQuery(q,agentId,first.id))).rejects.toMatchObject({response:{error:'agent_draft_revision_changed'}});
+        expect((await tx(q=>store.readCurrentRevisionWithQuery(q,agentId,second.id))).id).toBe(second.id);
+        await query('UPDATE agent_personas SET version=8');
+        await expect(tx(q=>store.readCurrentRevisionWithQuery(q,agentId,second.id))).rejects.toMatchObject({response:{error:'agent_operational_configuration_changed'}});
+    });
 });

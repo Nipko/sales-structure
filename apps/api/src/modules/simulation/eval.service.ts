@@ -518,8 +518,13 @@ export class EvalService {
             let activeScenario: any;
             let runScenarios: any[] = [];
             try {
-                const availableScenarios = opts?.scenarios || await this.listScenarios(tenantId);
+                // Initialize managed tables/seeds before capture, then read the
+                // actual inventory against that captured revision. A case added
+                // between initialization and capture must not disappear from the run.
+                if(!opts?.scenarios)await this.listScenarios(tenantId);
                 snapshot = opts?.agentSnapshot || await this.agentTest.captureSnapshot(tenantId, agentId);
+                await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
+                const availableScenarios = opts?.scenarios || await this.listScenarios(tenantId);
                 await this.agentTest.assertSnapshotCurrent(snapshot, tenantId, agentId);
                 const applicable = availableScenarios.filter(scenario=>regressionAppliesToSnapshot(scenario,snapshot!,channelType));
                 if(applicable.some(scenario=>scenario.regressionBlocked))throw new Error('reviewed_regression_source_changed');

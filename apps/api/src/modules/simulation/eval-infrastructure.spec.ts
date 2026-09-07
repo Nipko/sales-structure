@@ -142,6 +142,17 @@ describe('versioned multilingual eval infrastructure', () => {
         await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,k:2});expect(test).toHaveBeenCalledTimes(4);
         await service.runGateV2('tenant-id','agent',{...options,previousResults:first.scenarios,passPolicy:'majority'});expect(test).toHaveBeenCalledTimes(5);
     });
+    it('includes a regression added between seed initialization and capturing the current revision',async()=>{
+        const {service,prisma}=buildService();prisma.executeInTenantSchema.mockResolvedValue([]);
+        const initial={key:'initial',messages:['hello']},added={key:'added_before_capture',messages:['A new failure']};
+        jest.spyOn(service,'listScenarios').mockResolvedValueOnce([initial]).mockResolvedValueOnce([initial,added]);
+        (service as any).agentTest={captureSnapshot:jest.fn().mockResolvedValue({agentId:'agent',config:{},configHash:'config',manifest:{revision:'revision'}}),
+            assertSnapshotCurrent:jest.fn()};
+        const run=jest.spyOn(service as any,'runPassK').mockImplementation(async(...args:any[])=>({key:args[3].key,score:9,passed:true}));
+        jest.spyOn(service as any,'persistRun').mockResolvedValue(undefined);
+        const result=await service.runGateV2('tenant-id','agent');
+        expect(result.total).toBe(2);expect(run.mock.calls.map((call:any[])=>call[3].key)).toEqual(['initial','added_before_capture']);
+    });
 
     it('cleans its namespace when a provider fails and rejects missing sandbox infrastructure', async () => {
         const {service,prisma,namespaces,lease}=buildService();

@@ -1,4 +1,5 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { PrismaService } from '../prisma/prisma.service';
 import {
     parsePaymentReference,
@@ -152,8 +153,15 @@ export class TenantPaymentStoreService {
         return schemaName;
     }
 
-    async isAvailable(tenantId: string): Promise<boolean> {
+    async isAvailable(tenantId: string, executionContext?: ServiceExecutionContext): Promise<boolean> {
         try {
+            if (persistenceDisabled(executionContext)) {
+                const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+                if (!schemaName) return false;
+                const rows = await this.prisma.executeInTenantSchema<Array<{ available: boolean }>>(schemaName,
+                    `SELECT to_regclass('tenant_payment_intents') IS NOT NULL AND to_regclass('tenant_payment_attempts') IS NOT NULL AS available`, []);
+                return rows[0]?.available === true;
+            }
             await this.ensureForTenant(tenantId);
             return true;
         } catch (error: any) {

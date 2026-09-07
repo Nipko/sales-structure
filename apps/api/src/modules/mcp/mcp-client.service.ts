@@ -16,6 +16,7 @@ import {
 } from './mcp-tool-approval';
 import { MCP_EFFECTS_REQUIRING_CONFIRMATION, ToolEffectDeclaration } from './mcp-approval.types';
 import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import {
     isMaskedSecret,
     TENANT_SECRET_MASK,
@@ -78,7 +79,7 @@ export class McpClientService {
     ) {}
 
     // ── Config (tenant.settings.mcpServers) ──────────────────
-    async listServers(tenantId: string): Promise<McpServerConfig[]> {
+    async listServers(tenantId: string, executionContext?: ServiceExecutionContext): Promise<McpServerConfig[]> {
         const stored = await this.listStoredServers(tenantId);
         const runtime: McpServerConfig[] = [];
         const rewrap = new Map<string, { expected: string; envelope: string }>();
@@ -111,7 +112,7 @@ export class McpClientService {
             runtime.push(server);
         }
 
-        if (rewrap.size) {
+        if (rewrap.size && !persistenceDisabled(executionContext)) {
             await this.persistRewrappedHeaders(tenantId, rewrap).catch((error: any) => {
                 this.logger.warn(`[MCP] no se pudieron re-cifrar credenciales: ${error?.message}`);
             });
@@ -199,12 +200,12 @@ export class McpClientService {
 
     // ── Discovery + invocation ───────────────────────────────
     /** Aggregate tools across enabled servers (cached). Returns ToolDefinitions + resolution map. */
-    async listRemoteTools(tenantId: string): Promise<DiscoveredTools> {
+    async listRemoteTools(tenantId: string, executionContext?: ServiceExecutionContext): Promise<DiscoveredTools> {
         const cacheKey = `mcp:tools:${tenantId}`;
         const cached = await this.redis.getJson<DiscoveredTools>(cacheKey);
         if (cached) return cached;
 
-        const servers = (await this.listServers(tenantId)).filter((s) => s.enabled);
+        const servers = (await this.listServers(tenantId, executionContext)).filter((s) => s.enabled);
         const tools: ToolDefinition[] = [];
         const map: DiscoveredTools['map'] = {};
 
@@ -222,7 +223,7 @@ export class McpClientService {
         }
 
         const result = { tools, map };
-        await this.redis.setJson(cacheKey, result, DISCOVERY_TTL);
+        if (!persistenceDisabled(executionContext)) await this.redis.setJson(cacheKey, result, DISCOVERY_TTL);
         return result;
     }
 
@@ -235,14 +236,14 @@ export class McpClientService {
      * an explicit, reviewed approval are published — which for a tenant that has
      * approved nothing means an empty list, and the agent never mentions them.
      */
-    async listPublishableTools(tenantId: string): Promise<PublishableMcpTools> {
-        const { tools, map } = await this.listRemoteTools(tenantId);
+    async listPublishableTools(tenantId: string, executionContext?: ServiceExecutionContext): Promise<PublishableMcpTools> {
+        const { tools, map } = await this.listRemoteTools(tenantId, executionContext);
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },
         });
         const approved = approvedMcpToolNames(tenant?.settings);
-        const servers = await this.listServers(tenantId);
+        const servers = await this.listServers(tenantId, executionContext);
         const approvals = readMcpApprovals(tenant?.settings);
         const effectByName = new Map(approvals.map(a => [
             mcpRegisteredName(a.serverId, a.toolName),
@@ -273,14 +274,14 @@ export class McpClientService {
     }
 
     /** The approval record backing one registered tool name, if any. */
-    async getApproval(tenantId: string, registeredName: string): Promise<McpToolApproval | null> {
+    async getApproval(tenantId: string, registeredName: string, executionContext?: ServiceExecutionContext): Promise<McpToolApproval | null> {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },
         });
         const approval = findMcpApproval(tenant?.settings, registeredName);
         if (!hasExecutableMcpReview(approval)) return null;
-        const [{ tools }, servers] = await Promise.all([this.listRemoteTools(tenantId), this.listServers(tenantId)]);
+        const [{ tools }, servers] = await Promise.all([this.listRemoteTools(tenantId, executionContext), this.listServers(tenantId, executionContext)]);
         const tool = tools.find(t => t.name === registeredName);
         const server = servers.find(s => s.id === approval.serverId && s.enabled && !s._authUnavailable);
         return tool && server && approval.definitionHash === mcpDefinitionHash(tool, server.url, server.authHeader) ? approval : null;

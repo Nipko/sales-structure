@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -115,7 +116,7 @@ export interface PaymentOperationProvider {
      * `discountsAvailable` is derived from `supports('discount')` here, so a
      * provider cannot claim a money capability it did not implement.
      */
-    getRuntimeCapability?(tenantId: string): Promise<
+    getRuntimeCapability?(tenantId: string, executionContext?: ServiceExecutionContext): Promise<
         Omit<PaymentRuntimeCapability, 'planEnabled' | 'discountsAvailable' | 'maxDiscountPercent'>
     >;
     /** A bound adapter may deliberately expose only a subset of money actions. */
@@ -204,8 +205,8 @@ export class PaymentOperationService {
         @Optional() private readonly throttle?: TenantThrottleService,
     ) {}
 
-    async getRuntimeCapability(tenantId: string): Promise<PaymentRuntimeCapability> {
-        const planEnabled = await this.isCustomerPaymentsEnabled(tenantId);
+    async getRuntimeCapability(tenantId: string, executionContext?: ServiceExecutionContext): Promise<PaymentRuntimeCapability> {
+        const planEnabled = await this.isCustomerPaymentsEnabled(tenantId, executionContext);
         // Status availability is deliberately resolved even after a downgrade:
         // existing links still need an authoritative read path. Entitlement and
         // provider readiness affect only creation.
@@ -219,7 +220,7 @@ export class PaymentOperationService {
             };
         }
         try {
-            const providerCapability = await this.provider.getRuntimeCapability(tenantId);
+            const providerCapability = await this.provider.getRuntimeCapability(tenantId, executionContext);
             return {
                 planEnabled,
                 configured: providerCapability.configured === true,
@@ -767,10 +768,10 @@ export class PaymentOperationService {
             && prepared.paymentStatus === current.paymentStatus;
     }
 
-    private async isCustomerPaymentsEnabled(tenantId: string): Promise<boolean> {
+    private async isCustomerPaymentsEnabled(tenantId: string, executionContext?: ServiceExecutionContext): Promise<boolean> {
         if (!this.throttle) return false;
         try {
-            return await this.throttle.isFeatureEnabled(tenantId, 'customerPayments');
+            return await this.throttle.isFeatureEnabled(tenantId, 'customerPayments', executionContext);
         } catch {
             return false;
         }

@@ -1,3 +1,4 @@
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import {
     BadRequestException,
     ConflictException,
@@ -779,14 +780,14 @@ export class TenantPaymentsService {
         });
     }
 
-    async getRuntimeCapability(tenantId: string): Promise<{
+    async getRuntimeCapability(tenantId: string, executionContext?: ServiceExecutionContext): Promise<{
         configured: boolean;
         ready: boolean;
         statusAvailable: boolean;
         activeProvider?: TenantPaymentProvider;
     }> {
         const config = await this.getConfig(tenantId);
-        const statusAvailable = this.store ? await this.store.isAvailable(tenantId) : false;
+        const statusAvailable = this.store ? await this.store.isAvailable(tenantId, executionContext) : false;
         return {
             configured: config.connected,
             ready: config.ready && statusAvailable,

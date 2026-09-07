@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import {
     AddressForm,
     COUNTRY_DEFAULT_ADDRESS_FORM,
@@ -128,7 +129,7 @@ export class RegionalProfileService {
         private readonly redis: RedisService,
     ) {}
 
-    async resolve(tenantId: string): Promise<TenantRegionalProfileV1> {
+    async resolve(tenantId: string, executionContext?: ServiceExecutionContext): Promise<TenantRegionalProfileV1> {
         const cacheKey = `regional:${tenantId}`;
         try {
             const cached = await this.redis.getJson<TenantRegionalProfileV1>(cacheKey);
@@ -137,7 +138,7 @@ export class RegionalProfileService {
 
         const profile = await this.build(tenantId);
         try {
-            await this.redis.setJson(cacheKey, profile, CACHE_TTL_SECONDS);
+            if (!persistenceDisabled(executionContext)) await this.redis.setJson(cacheKey, profile, CACHE_TTL_SECONDS);
         } catch { /* Correct but uncached. */ }
         return profile;
     }

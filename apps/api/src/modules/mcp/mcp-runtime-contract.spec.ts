@@ -3,6 +3,7 @@ import { bindMcpArguments, hasExecutableMcpReview, mcpDefinitionHash, mcpRegiste
 import { reviewedMcpPolicy } from './mcp-execution-policy';
 import { CORE_PREREQUISITES } from '../conversations/tool-task-dependencies';
 import { STATIC_TOOL_NAMES } from '../conversations/tool-policy-registry';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 
 describe('reviewed MCP runtime contract', () => {
     const server = { id: 'erp', name: 'ERP', url: 'https://erp.example.com/mcp', enabled: true };
@@ -45,6 +46,15 @@ describe('reviewed MCP runtime contract', () => {
         service.rpc.mockRejectedValue(new Error('timeout'));
         await expect(service.callRemoteTool('tenant', tool.name, bindMcpArguments(review, {}, 'tenant', 'contact')))
             .rejects.toThrow('mcp_execution_outcome_unknown');
+    });
+    it('discovery in preview reads the remote contract without writing the cache', async () => {
+        const redis: any = { getJson: jest.fn().mockResolvedValue(null), setJson: jest.fn() };
+        const service: any = new McpClientService({} as any, redis, {} as any, {} as any);
+        service.listServers = jest.fn().mockResolvedValue([server]);
+        service.fetchServerTools = jest.fn().mockResolvedValue([remote]);
+        expect((await service.listRemoteTools('tenant', AGENT_TEST_EXECUTION_CONTEXT)).tools).toHaveLength(1);
+        expect(redis.setJson).not.toHaveBeenCalled();
+        expect(service.listServers).toHaveBeenCalledWith('tenant', AGENT_TEST_EXECUTION_CONTEXT);
     });
     it('keeps financial identity and irreversible human approval', () => {
         expect(reviewedMcpPolicy({ ...review, effect: 'payment' })).toMatchObject({ assurance: 'A3', confirmation: 'runtime_enforced' });

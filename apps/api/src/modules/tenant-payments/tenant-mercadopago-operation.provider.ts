@@ -1,4 +1,5 @@
 import { HttpException, Injectable } from '@nestjs/common';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import {
     type DiscountProviderRequest,
     type PaymentLinkProviderRequest,
@@ -24,8 +25,8 @@ export class TenantMercadoPagoOperationProvider implements PaymentOperationProvi
         return kind === 'payment_link';
     }
 
-    getRuntimeCapability(tenantId: string) {
-        return this.tenantPayments.getRuntimeCapability(tenantId);
+    getRuntimeCapability(tenantId: string, executionContext?: ServiceExecutionContext) {
+        return this.tenantPayments.getRuntimeCapability(tenantId, executionContext);
     }
 
     async resolveOwnership(input: {

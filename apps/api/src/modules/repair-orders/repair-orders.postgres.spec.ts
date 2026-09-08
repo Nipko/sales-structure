@@ -11,6 +11,7 @@ import { EVAL_SANDBOX_CONTACT_ID } from '../conversations/agent-test-tool-policy
 import { isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
 import { prepareRepairEvalFixtures, REPAIR_EVAL_IDS } from './repair-order-eval-fixtures';
 import { repairRequestHash } from './repair-order-terms';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const databaseUrl = process.env.REPAIR_ORDERS_TEST_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
@@ -22,7 +23,6 @@ integration('Canonical workshop commands on PostgreSQL', () => {
     const conversationId = randomUUID(), appointmentId = randomUUID();
     const tenantId = randomUUID();
     let client: PrismaClient, prisma: PrismaService, service: RepairOrdersService;
-    let createdTenants = false, createdUuid = false;
     const execute = (sql: string, params: any[] = []) => prisma.executeInTenantSchema<any[]>(schema, sql, params);
     const intake = (overrides: any = {}) => ({ contactId, vehicle: { make: 'Mazda', model: '3', licensePlate: 'EVAL123' },
         customerConcern: 'Vibra al frenar', idempotencyKey: randomUUID(), ...overrides });
@@ -36,9 +36,8 @@ integration('Canonical workshop commands on PostgreSQL', () => {
             throw new Error('disposable_loopback_database_required');
         }
         client = new PrismaClient({ datasourceUrl: databaseUrl });
-        const globalTables: any[] = await client.$queryRawUnsafe("SELECT to_regclass('public.tenants')::text AS tenants,(SELECT COUNT(*)::int FROM pg_extension WHERE extname='uuid-ossp') AS uuid");
-        if (!globalTables[0].tenants) { await client.$executeRawUnsafe('CREATE TABLE public.tenants(id UUID PRIMARY KEY,schema_name TEXT)'); createdTenants = true; }
-        if (!globalTables[0].uuid) { await client.$executeRawUnsafe('CREATE EXTENSION "uuid-ossp" WITH SCHEMA public'); createdUuid = true; }
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
+        await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public');
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)', tenantId, schema);
         prisma = Object.create(PrismaService.prototype);
         prisma.$transaction = client.$transaction.bind(client);
@@ -75,10 +74,12 @@ integration('Canonical workshop commands on PostgreSQL', () => {
     afterAll(async () => {
         if (client) {
             if (!/^tenant_repair_[a-f0-9]{32}$/.test(schema)) throw new Error('invalid_cleanup_scope');
+            // Se borra el esquema propio y la fila propia, nunca la tabla ni la
+            // extensión: son andamiaje COMPARTIDO por todas las suites
+            // PostgreSQL de la misma base desechable. Soltarlas mataba a la
+            // suite que estuviera usándolas en el otro worker.
             try { await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
                 await client.$executeRawUnsafe('DELETE FROM public.tenants WHERE id=$1::uuid AND schema_name=$2', tenantId, schema);
-                if (createdTenants) await client.$executeRawUnsafe('DROP TABLE public.tenants');
-                if (createdUuid) await client.$executeRawUnsafe('DROP EXTENSION "uuid-ossp"');
             } finally { await client.$disconnect(); }
         }
     });

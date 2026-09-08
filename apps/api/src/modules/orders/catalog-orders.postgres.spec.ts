@@ -13,6 +13,7 @@ import { authorityFor } from '../conversations/__fixtures__/tool-authority.fixtu
 import { isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
 import { EVAL_SANDBOX_CONTACT_ID } from '../conversations/agent-test-tool-policy';
 import { CATALOG_EVAL_IDS, prepareCatalogEvalFixtures } from './catalog-order-eval-fixtures';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const databaseUrl = process.env.CATALOG_ORDERS_TEST_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
@@ -22,17 +23,14 @@ integration('Catalog integrity through real PostgreSQL and Prisma', () => {
     const tenantId = randomUUID(), contactId = randomUUID(), otherId = randomUUID();
     const productId = randomUUID(), conversationId = randomUUID();
     let client: PrismaClient, prisma: PrismaService, orders: OrdersService, inventory: InventoryService, payments: TenantPaymentStoreService;
-    let createdTenants=false,createdUuid=false;
     const query = (sql: string, params: any[] = []) => prisma.executeInTenantSchema<any[]>(schema, sql, params);
     const input = (extra: any = {}) => ({ contactId, items: [{ productId, quantity: 2, productName: 'Forged', unitPrice: 1 }], ...extra });
     beforeAll(async () => {
         const url = new URL(databaseUrl!);
         if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || !url.pathname.endsWith('_eval_isolation')) throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: databaseUrl });
-        const tables:any[]=await client.$queryRawUnsafe("SELECT to_regclass('public.tenants')::text AS name");
-        if(!tables[0].name){await client.$executeRawUnsafe('CREATE TABLE public.tenants(id UUID PRIMARY KEY,schema_name TEXT)');createdTenants=true;}
-        const extensions:any[]=await client.$queryRawUnsafe("SELECT COUNT(*)::int AS count FROM pg_extension WHERE extname='uuid-ossp'");
-        if(!extensions[0].count){await client.$executeRawUnsafe('CREATE EXTENSION "uuid-ossp" WITH SCHEMA public');createdUuid=true;}
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
+        await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public');
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)',tenantId,schema);
         prisma = Object.create(PrismaService.prototype);
         prisma.$transaction = client.$transaction.bind(client);
@@ -75,10 +73,12 @@ integration('Catalog integrity through real PostgreSQL and Prisma', () => {
         if (!client) return;
         try {
             if (!/^tenant_catalog_[a-f0-9]{32}$/.test(schema)) throw new Error('invalid_cleanup_scope');
+            // Se borra el esquema propio y la fila propia, nunca la tabla ni la
+            // extensión: son andamiaje COMPARTIDO por todas las suites
+            // PostgreSQL de la misma base desechable. Soltarlas mataba a la
+            // suite que estuviera usándolas en el otro worker.
             await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
             await client.$executeRawUnsafe('DELETE FROM public.tenants WHERE id=$1::uuid AND schema_name=$2',tenantId,schema);
-            if(createdTenants)await client.$executeRawUnsafe('DROP TABLE public.tenants');
-            if(createdUuid)await client.$executeRawUnsafe('DROP EXTENSION "uuid-ossp"');
         } finally { await client.$disconnect(); }
     });
     it('does not invent stock when cancelling an untracked product', async () => {

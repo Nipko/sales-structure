@@ -138,11 +138,16 @@ describe("guided tour catalogue", () => {
 
 describe("guided tour copy", () => {
   const messages = readSpanishMessages();
-  // Unit C ships its keys through the i18n merge file; until that merge lands
-  // `guidedTours` does not exist and the parity check has nothing to compare.
-  const merged = Boolean(messages.guidedTours);
 
-  (merged ? it : it.skip).each(['es', 'en', 'pt', 'fr'])("has all tour and verification copy in %s", locale => {
+  it("has the guidedTours namespace at all", () => {
+    // This used to gate the check below, so the whole parity assertion skipped
+    // itself while the merge was pending — and would have gone on skipping
+    // silently if the namespace were ever dropped. The pending state is over;
+    // its absence is now a failure, not a reason to stop looking.
+    expect(Object.keys(messages.guidedTours ?? {}).length).toBeGreaterThan(0);
+  });
+
+  it.each(['es', 'en', 'pt', 'fr'])("has all tour and verification copy in %s", locale => {
     const localized = JSON.parse(fs.readFileSync(path.join(SRC, '..', 'messages', `${locale}.json`), 'utf8'));
     const keys = [...guidedTourMessageKeys(), 'guidedTours.connect_channel.steps.channel.title', 'guidedTours.connect_channel.steps.channel.content',
       'qualityHealth.setup.items.appointments', 'qualityHealth.setup.verificationUnavailable', 'qualityHealth.focus.verificationUnavailable',

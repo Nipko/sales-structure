@@ -3,6 +3,7 @@ import { MODULE_METADATA } from '@nestjs/common/constants';
 import { ConversationsModule } from './conversations.module';
 import { ToolApprovalController } from './tool-approval.controller';
 import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
+import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const ticketId = '22222222-2222-4222-8222-222222222222';
@@ -10,6 +11,19 @@ const actorId = '33333333-3333-4333-8333-333333333333';
 const contactId = '44444444-4444-4444-8444-444444444444';
 const conversationId = '55555555-5555-4555-8555-555555555555';
 const schemaName = 'tenant_approval_e2e';
+const agentId = '88888888-8888-4888-8888-888888888888';
+const agent = { id: agentId, name: 'Agent', is_active: true, version: 3,
+    config_json: { industry: 'retail', tools: { ecommerce: { enabled: true, canApplyDiscount: true } } } };
+const operationalScope = { kind: 'agent' as const, tenantId, schemaName, agentId, version: agent.version,
+    operationalHash: operationalConfigurationHash(agent) };
+const resolution = { config: agent.config_json, agentId, version: agent.version, operationalHash: operationalScope.operationalHash };
+const contextQuery = async (sql: string) => {
+    if (sql.includes('FROM public.tenants t')) return [{ schemaName, isActive: true, industry: 'retail',
+        settings: { verticalConfig: { industry: 'retail', subType: 'ecommerce' } }, operatingCountry: 'CO' }];
+    if (sql.includes('FROM conversations')) return [{ channel_type: 'whatsapp', channel_account_id: 'wa-number-1', contact_id: contactId }];
+    if (sql.includes('WITH ranked AS')) return [{ matches: [agent], has_agents: true, legacy_config: null }];
+    return [];
+};
 
 describe('A4 approval workflow e2e', () => {
     it('dispatches durable effect references and leaves an enqueue failure recoverable without repeating the command', async () => {
@@ -95,6 +109,7 @@ describe('A4 approval workflow e2e', () => {
                         contactId,
                         conversationId,
                         channelType: 'whatsapp',
+                        operationalScope,
                         args: { percent: 10, reason: 'retención' },
                     },
                 };
@@ -136,31 +151,26 @@ describe('A4 approval workflow e2e', () => {
             }),
         };
         const personaService = {
-            getAgent: jest.fn().mockResolvedValue({
-                id: 'agent-1',
-                is_active: true,
-                version: 3,
-                config_json: { industry: 'retail', tools: { ecommerce: { enabled: true, canApplyDiscount: true } } },
-            }),
-            resolvePersonaForChannel: jest.fn().mockResolvedValue({
-                config: { industry: 'retail', tools: { ecommerce: { enabled: true, canApplyDiscount: true } } },
-                agentId: 'agent-1',
-                version: 3,
-            }),
+            getAgent: jest.fn(),
+            resolvePersonaForChannel: jest.fn().mockResolvedValue(resolution),
         };
         const events = new EventEmitter2();
         const notifications: any[] = [];
         events.on('tool.approval.notification', (event) => notifications.push(event));
         const workflow = new ToolApprovalWorkflowService(
             {
+                transactionInTenantSchema: async (_schema: string, work: any) => work(contextQuery),
                 executeInTenantSchema: jest.fn().mockResolvedValue([{
                     channel_type: 'whatsapp',
                     channel_account_id: 'wa-number-1',
-                    agent_persona_id: 'agent-1',
+                    agent_persona_id: agentId,
+                    contact_id: contactId,
                 }]),
                 tenant: {
                     findMany: jest.fn().mockResolvedValue([]),
                     findUnique: jest.fn().mockResolvedValue({
+                        schemaName,
+                        isActive: true,
                         industry: 'retail',
                         settings: { verticalConfig: { industry: 'retail', subType: 'ecommerce' } },
                         operatingCountry: 'CO',
@@ -206,7 +216,7 @@ describe('A4 approval workflow e2e', () => {
             resume: { state: 'completed', result: { discountId: 'discount-1' } },
         });
         expect(executor.execute).toHaveBeenCalledTimes(1);
-        expect(personaService.getAgent).toHaveBeenCalledWith(tenantId, 'agent-1');
+        expect(personaService.getAgent).not.toHaveBeenCalled();
         expect(personaService.resolvePersonaForChannel).not.toHaveBeenCalled();
         expect(executor.execute).toHaveBeenCalledWith(
             schemaName,
@@ -219,6 +229,7 @@ describe('A4 approval workflow e2e', () => {
                 // Human approval satisfies A4, but execution still uses the
                 // complete contract rebuilt at resume time.
                 authority: currentAuthority,
+                operationalScope,
                 channelType: 'whatsapp',
             },
         );
@@ -241,6 +252,7 @@ describe('A4 approval workflow e2e', () => {
             contactId,
             conversationId,
             channelType: 'whatsapp',
+            operationalScope,
             args: { percent: 10 },
         };
         const controls = {
@@ -253,8 +265,14 @@ describe('A4 approval workflow e2e', () => {
         const executor = { execute: jest.fn() };
         const workflow = new ToolApprovalWorkflowService(
             {
+                transactionInTenantSchema: async (_schema: string, work: any) => work(contextQuery),
+                executeInTenantSchema: jest.fn().mockResolvedValue([{
+                    channel_type: 'whatsapp', channel_account_id: 'wa-number-1', contact_id: contactId,
+                }]),
                 tenant: {
                     findUnique: jest.fn().mockResolvedValue({
+                        schemaName,
+                        isActive: true,
                         industry: 'retail',
                         settings: { verticalConfig: { industry: 'retail', subType: 'ecommerce' } },
                         operatingCountry: 'CO',
@@ -277,11 +295,7 @@ describe('A4 approval workflow e2e', () => {
                 }),
             } as any,
             {
-                resolvePersonaForChannel: jest.fn().mockResolvedValue({
-                    config: { industry: 'retail', tools: {} },
-                    agentId: 'agent-1',
-                    version: 4,
-                }),
+                resolvePersonaForChannel: jest.fn().mockResolvedValue(resolution),
             } as any,
         );
 

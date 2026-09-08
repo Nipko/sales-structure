@@ -1,6 +1,6 @@
 import { ToolApprovalEffectsService } from './tool-approval-effects.service';
-import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
-import { servedAgentAuthority, sameServedAgentAuthority, VERSION_GUARDED_TOOLS } from '../persona/served-agent-authority';
+import { servedAgentAuthority, sameServedAgentAuthority, validServedAgentAuthority } from '../persona/served-agent-authority';
+import { readServingPersona } from '../persona/serving-persona';
 import { APPROVAL_EFFECTS_EVENT } from './tool-approval-effects.contracts';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -21,6 +21,7 @@ import {
 } from './tool-execution-control.service';
 
 const MAX_RESUMES_PER_TENANT_RUN = 25;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 /**
  * Durable A4 workflow boundary. Human decisions, execution resume and UI
@@ -127,8 +128,35 @@ export class ToolApprovalWorkflowService {
     }
 
     private async executeClaim(claim: ToolApprovalResumeClaim) {
+        const withoutFinalization = (result: Record<string, unknown>) => ({
+            state: 'in_progress' as const,
+            result: { ...result, persisted: false, controlBlocked: true },
+        });
+        // The finalizer itself opens claim.schemaName. Until ownership is
+        // established, leave its lease to recovery by the legitimate owner.
+        if (!claim || ![claim.tenantId, claim.ticketId, claim.leaseToken, claim.contactId, claim.conversationId]
+            .every(id => typeof id === 'string' && UUID.test(id))
+            || typeof claim.schemaName !== 'string' || !/^[a-z][a-z0-9_]*$/.test(claim.schemaName)) {
+            return withoutFinalization({ error: 'approval_context_invalid' });
+        }
+        let tenantMappingVerified = false;
         let result: Record<string, unknown>;
         try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: claim.tenantId },
+                select: { schemaName: true, isActive: true, industry: true, settings: true, operatingCountry: true },
+            });
+            if (!tenant || tenant.schemaName !== claim.schemaName) {
+                return withoutFinalization({ error: 'approval_tenant_unavailable' });
+            }
+            tenantMappingVerified = true;
+            if (!tenant.isActive) {
+                return this.controls.finishApprovalResume(claim, {
+                    error: 'approval_tenant_unavailable',
+                    message: 'La cuenta ya no está disponible. La acción no fue ejecutada.',
+                    shouldHandoff: true,
+                });
+            }
             // A human decision authorises the ticket, not an obsolete tenant
             // configuration. Rebuild the same complete contract production
             // uses immediately before the side effect. This catches plan
@@ -144,74 +172,57 @@ export class ToolApprovalWorkflowService {
                 return this.controls.finishApprovalResume(claim, result);
             }
 
-            const [conversationRows, tenant] = await Promise.all([
-                typeof (this.prisma as any).executeInTenantSchema === 'function'
-                    ? this.prisma.executeInTenantSchema<Array<{
-                        channel_type: string | null;
-                        channel_account_id: string | null;
-                        agent_persona_id: string | null;
-                    }>>(
-                        claim.schemaName,
-                        `SELECT channel_type, channel_account_id, agent_persona_id
-                           FROM conversations WHERE id = $1::uuid LIMIT 1`,
-                        [claim.conversationId],
-                    )
-                    : Promise.resolve([]),
-                this.prisma.tenant.findUnique({
-                    where: { id: claim.tenantId },
-                    select: {
-                        industry: true,
-                        settings: true,
-                        operatingCountry: true,
-                    },
-                }),
-            ]);
-            if (!tenant) {
-                result = {
-                    error: 'approval_tenant_unavailable',
-                    message: 'La cuenta ya no está disponible. La acción no fue ejecutada.',
-                    shouldHandoff: true,
-                };
-                return this.controls.finishApprovalResume(claim, result);
+            // Only the private provenance loaded from the ledger is authority.
+            // Older tickets without a hash cannot be upgraded from current
+            // routing or model arguments; they require a fresh proposal.
+            if (!validServedAgentAuthority(claim.operationalScope, claim.schemaName, claim.tenantId)) {
+                return this.controls.finishApprovalResume(claim, {
+                    error: 'agent_operational_revision_changed', persisted: false, controlBlocked: true,
+                    message: 'La propuesta no conserva su versión de origen. Prepara una nueva propuesta.',
+                });
             }
 
-            const conversation = conversationRows?.[0];
-            const currentChannel = conversation?.channel_type || claim.channelType || 'whatsapp';
-            let persona: Awaited<ReturnType<PersonaService['resolvePersonaForChannel']>>;
-            if (conversation?.agent_persona_id) {
-                const assigned = await this.personaService.getAgent(
-                    claim.tenantId,
-                    conversation.agent_persona_id,
-                );
-                if (!assigned || assigned.is_active === false || !assigned.config_json) {
-                    result = {
-                        error: 'approval_agent_unavailable',
-                        message: 'El agente que solicitó la acción ya no está activo. La acción no fue ejecutada.',
-                        shouldHandoff: true,
-                    };
-                    return this.controls.finishApprovalResume(claim, result);
-                }
-                persona = {
-                    config: assigned.config_json,
-                    agentId: String(assigned.id),
-                    version: Number.isInteger(Number(assigned.version)) ? Number(assigned.version) : null,
-                    operationalHash: operationalConfigurationHash(assigned),
-                };
-            } else {
-                persona = await this.personaService.resolvePersonaForChannel(
-                    claim.tenantId,
-                    currentChannel,
-                    conversation?.channel_account_id || undefined,
-                );
+            // The global lookup above is only a precheck. Resolve the context
+            // under one short mapping lock, using production's pure selector.
+            // No bootstrap, provider call or effect runs inside this transaction.
+            const context = await this.prisma.transactionInTenantSchema(claim.schemaName, async query => {
+                await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', [`agent-privacy:${claim.schemaName}`]);
+                const [owner] = await query<any[]>(`SELECT t.id,t.schema_name AS "schemaName",t.is_active AS "isActive",
+                    to_jsonb(t)->>'industry' AS industry,to_jsonb(t)->'settings' AS settings,
+                    to_jsonb(t)->>'operating_country' AS "operatingCountry"
+                    FROM public.tenants t WHERE t.id=$1::uuid AND t.schema_name=$2 FOR SHARE`, [claim.tenantId, claim.schemaName]);
+                if (!owner) return { state: 'owner_changed' as const };
+                if (!owner.isActive) return { state: 'inactive' as const };
+                const [conversation] = await query<Array<{
+                    channel_type: string | null; channel_account_id: string | null; contact_id: string | null;
+                }>>(`SELECT channel_type, channel_account_id, contact_id
+                    FROM conversations WHERE id = $1::uuid LIMIT 1`, [claim.conversationId]);
+                if (!conversation || conversation.contact_id !== claim.contactId || !conversation.channel_type
+                    || !conversation.channel_account_id || (claim.channelType && claim.channelType !== conversation.channel_type))
+                    return { state: 'context_changed' as const };
+                const persona = await readServingPersona(query, conversation.channel_type, conversation.channel_account_id);
+                return { state: 'resolved' as const, owner, conversation, persona };
+            });
+            if (context.state === 'owner_changed') return withoutFinalization({ error: 'approval_tenant_unavailable' });
+            if (context.state === 'inactive') return this.controls.finishApprovalResume(claim, { error: 'approval_tenant_unavailable' });
+            if (context.state === 'context_changed') {
+                return this.controls.finishApprovalResume(claim, {
+                    error: 'approval_context_changed', persisted: false, controlBlocked: true,
+                    message: 'La conversación o su conexión cambió. Prepara una nueva propuesta.',
+                });
             }
-
+            const { conversation, persona, owner } = context;
+            const currentChannel = conversation.channel_type!;
+            // Conversation attribution records the FIRST agent for analytics.
+            // Resolve the current connection with the production routing rules,
+            // then require that it is still the exact proposal's agent/version.
+            // The resolver only permits legacy config while no durable agents exist.
             if(!persona.config)return this.controls.finishApprovalResume(claim,{
                 error:'approval_agent_unavailable',message:'El agente ya no está activo. La acción no fue ejecutada.',
             });
-            const vertical = (tenant.settings as any)?.verticalConfig ?? {};
+            const vertical = (owner.settings as any)?.verticalConfig ?? {};
             const currentScope = servedAgentAuthority(claim.tenantId, claim.schemaName, persona);
-            if ((claim.operationalScope || VERSION_GUARDED_TOOLS.has(claim.toolName))
-                && !sameServedAgentAuthority(claim.operationalScope, currentScope)) {
+            if (!sameServedAgentAuthority(claim.operationalScope, currentScope)) {
                 return this.controls.finishApprovalResume(claim, {
                     error: 'agent_operational_revision_changed', persisted: false, controlBlocked: true,
                     message: 'El agente cambió o la propuesta no conserva su versión de origen. Prepara una nueva propuesta.',
@@ -228,13 +239,13 @@ export class ToolApprovalWorkflowService {
                 tenantId: claim.tenantId,
                 schemaName: claim.schemaName,
                 config: persona.config,
-                industry: vertical.industry || persona.config.industry || tenant.industry,
+                industry: vertical.industry || persona.config.industry || owner.industry,
                 subType: vertical.subType ?? vertical.subtype,
                 agentId: persona.agentId ?? undefined,
                 role: 'tenant_agent',
                 channelType: currentChannel,
-                operatingCountry: tenant.operatingCountry ?? undefined,
-                jurisdiction: tenant.operatingCountry ?? undefined,
+                operatingCountry: owner.operatingCountry ?? undefined,
+                jurisdiction: owner.operatingCountry ?? undefined,
             });
             const currentDecision = decideToolAuthority(capability.authority, claim.toolName, {
                 isNonCommittal: isNonCommittalTool(claim.toolName),
@@ -275,6 +286,7 @@ export class ToolApprovalWorkflowService {
                 error: 'approval_resume_failed',
                 message: 'No se pudo reanudar la acción aprobada en este momento.',
             };
+            if (!tenantMappingVerified) return withoutFinalization(result);
         }
         return this.controls.finishApprovalResume(claim, result);
     }

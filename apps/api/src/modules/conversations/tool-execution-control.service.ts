@@ -828,6 +828,14 @@ export class ToolExecutionControlService {
     ): Promise<{ state: 'completed' | 'pending' | 'in_progress'; result: Record<string, unknown> }> {
         const result = this.recordPayload(resultInput);
         return this.transaction(claim.schemaName, async (query) => {
+            // The workflow's lookup is only a precheck. Bind this finalization
+            // to the same tenant/schema until COMMIT, before any tenant-table
+            // read or write. Inactive owners may still clean up their leases.
+            const owners = await query<any[]>(
+                'SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 FOR SHARE',
+                [claim.tenantId, claim.schemaName]);
+            if (!owners[0]) return { state: 'in_progress' as const,
+                result: { error: 'approval_tenant_unavailable', persisted: false, controlBlocked: true } };
             try { await this.assertContactActive(query,claim.schemaName,claim.contactId); }
             catch(error:any){if(error.message==='contact_erased')return {state:'completed' as const,result:{error:'contact_erased'}};throw error;}
             const rows = await query<any[]>(

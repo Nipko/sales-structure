@@ -19,6 +19,7 @@ function build(){
     const state={erased:false,response:{private:'old'} as any,request:{private:'request'} as any,updates:0,delay:false,outbox:{private:'old'},ticketResult:{private:'old'}};
     const started=deferred(),finish=deferred();
     const query=jest.fn(async(sql:string,params:any[]=[])=>{
+        if(sql==='SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 FOR SHARE')return [{id:tenant}];
         if(sql.startsWith('SELECT * FROM tool_execution_ledger'))return [{id:ledgerId,contact_id:contact,status:'executing'}];
         if(sql.includes('SELECT contact_id FROM customer_memory_erasure'))return state.erased?[{contact_id:contact}]:[];
         if(sql.includes('SELECT t.id AS ticket_id'))return [{ticket_id:ticket,contact_id:contact,ticket_status:'approved',ledger_status:'succeeded',response_payload:{private:'cached'}}];
@@ -39,8 +40,17 @@ function build(){
         executeInTenantSchema:jest.fn((_schema:string,sql:string,params:any[])=>query(sql,params)),
         transactionInTenantSchema:jest.fn(async(_schema:string,callback:any)=>{
             const releases:Array<()=>void>=[];
+            let heldPrivacy: 'shared' | 'exclusive' | undefined;
             try{return await callback(async(sql:string,params:any[]=[])=>{
-                if(sql.includes('pg_advisory_xact_lock')&&params[0]===`agent-privacy:${schema}`){releases.push(await lock(sql.includes('_shared')));return [];}
+                if(sql.includes('FROM pg_locks')&&sql.includes("mode='ExclusiveLock'"))
+                    return heldPrivacy==='exclusive'&&params[0]===`agent-privacy:${schema}`?[{'?column?':1}]:[];
+                if(sql.includes('pg_advisory_xact_lock')&&params[0]===`agent-privacy:${schema}`){
+                    const mode=sql.includes('_shared')?'shared':'exclusive';
+                    // PostgreSQL reacquires an already-held transaction lock without self-waiting.
+                    if(heldPrivacy==='exclusive'||heldPrivacy===mode)return [];
+                    if(heldPrivacy)throw new Error('fixture_lock_upgrade_not_supported');
+                    releases.push(await lock(mode==='shared'));heldPrivacy=mode;return [];
+                }
                 return query(sql,params);
             });}finally{releases.forEach(release=>release());}
         })};

@@ -1,4 +1,6 @@
 import { PersonaService, type PersonaResolution } from './persona.service';
+import { operationalConfigurationHash } from './agent-configuration-revision';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const AGENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -51,11 +53,19 @@ function buildHarness(options: {
 describe('PersonaService production resolution', () => {
     it('returns the current database agent/config version for an account binding', async () => {
         const config = { language: 'es', persona: { name: 'Maya' } } as any;
-        const ctx = buildHarness({ rows: [{ id: AGENT_ID, version: 7, config_json: config }] });
+        const row = { id: AGENT_ID, version: 7, config_json: config };
+        const ctx = buildHarness({ rows: [row] });
 
+        // La resolución rinde además la huella operativa de la revisión servida.
+        // No es decorativa: `assertServedAgentConnectionAuthority` la compara
+        // para rechazar un efecto decidido con una configuración que ya cambió,
+        // así que se afirma que es la del renglón servido y no cualquiera.
         await expect(ctx.service.resolvePersonaForChannel(
             TENANT_ID, 'whatsapp', 'phone-1',
-        )).resolves.toEqual({ config, agentId: AGENT_ID, version: 7 });
+        )).resolves.toEqual({
+            config, agentId: AGENT_ID, version: 7,
+            operationalHash: operationalConfigurationHash(row as any),
+        });
 
         expect(ctx.prisma.executeInTenantSchema).toHaveBeenCalledWith(
             SCHEMA,expect.stringContaining('WITH ranked'),['whatsapp:phone-1','whatsapp'],
@@ -76,17 +86,21 @@ describe('PersonaService production resolution', () => {
         const config = { language: 'pt', persona: { name: 'Padrão' } } as any;
         const ctx = buildHarness({legacy:config});
 
+        // Sin agente durable la atribución es nula, pero la configuración
+        // servida sigue teniendo procedencia: la huella del renglón legacy.
         await expect(ctx.service.resolvePersonaForChannel(TENANT_ID, 'messenger')).resolves.toEqual({
             config,
             agentId: null,
             version: null,
+            legacyConfigHash: revisionHash(config),
         });
     });
 
     it('does not block live resolution on DDL failure and retries next turn', async () => {
         const config = { language: 'fr', persona: { name: 'Camille' } } as any;
+        const row = { id: AGENT_ID, version: 1, config_json: config };
         const ctx = buildHarness({
-            rows: [{ id: AGENT_ID, version: 1, config_json: config }],
+            rows: [row],
             ddlFailure: new Error('lock timeout'),
         });
 
@@ -94,6 +108,7 @@ describe('PersonaService production resolution', () => {
             config,
             agentId: AGENT_ID,
             version: 1,
+            operationalHash: operationalConfigurationHash(row as any),
         });
         await ctx.service.resolvePersonaForChannel(TENANT_ID, 'instagram');
         expect(ctx.prisma.executeInTenantSchema.mock.calls.filter((call:any[])=>!call[1].startsWith('WITH ranked'))).toHaveLength(4);

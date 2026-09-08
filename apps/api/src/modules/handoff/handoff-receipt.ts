@@ -61,6 +61,7 @@ export const HANDOFF_RECEIPT_DDL: readonly string[] = Object.freeze([
         notice_kind TEXT NOT NULL,
         notice_language TEXT NOT NULL,
         trace_id TEXT,
+        effects JSONB NOT NULL DEFAULT '{}'::jsonb,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT agent_handoff_receipts_to_status
             CHECK (to_status IN ('waiting_human','with_human')),
@@ -89,7 +90,21 @@ export interface HandoffReceipt {
     readonly noticeKind: HandoffNoticeKind;
     readonly noticeLanguage: HandoffNoticeLanguage;
     readonly traceId: string | null;
+    /**
+     * Which side effects of this transfer already completed.
+     *
+     * Receipt, status and note commit together, but assignment, the inbox
+     * announcement and the notification happen after. A crash in that window
+     * used to leave a receipt that made every later attempt return immediately,
+     * so nobody was ever assigned and nobody was ever told. Each phase records
+     * itself here so a resumed transfer finishes what is missing and repeats
+     * nothing that already happened.
+     */
+    readonly effects: Readonly<Record<string, unknown>>;
 }
+
+export const HANDOFF_EFFECT_KEYS = ['assignment', 'cache', 'announced', 'notified'] as const;
+export type HandoffEffectKey = (typeof HANDOFF_EFFECT_KEYS)[number];
 
 export interface HandoffReceiptRequest {
     readonly contactId: string;
@@ -134,6 +149,8 @@ function mapReceipt(row: any): HandoffReceipt {
         noticeKind: row.notice_kind,
         noticeLanguage: handoffNoticeLanguage(row.notice_language),
         traceId: row.trace_id === null || row.trace_id === undefined ? null : String(row.trace_id),
+        effects: Object.freeze(row.effects && typeof row.effects === 'object' && !Array.isArray(row.effects)
+            ? { ...row.effects } : {}),
     });
 }
 
@@ -189,6 +206,26 @@ export async function recordHandoffReceipt(query: HandoffReceiptQuery, schema: s
             input.traceId === undefined || input.traceId === null ? null : String(input.traceId).slice(0, 128)]);
     if (!inserted) throw new HandoffReceiptAlreadyRecorded();
     return mapReceipt(inserted);
+}
+
+/**
+ * Record that one side effect of a transfer completed.
+ *
+ * Written per phase, immediately after the phase, so a crash costs at most the
+ * phase in flight. An `unknown` value is deliberate and terminal for that phase:
+ * a notification whose outcome was never confirmed must not be sent again.
+ */
+export async function markHandoffEffect(query: HandoffReceiptQuery, schema: string,
+    receiptId: string, key: HandoffEffectKey, value: unknown): Promise<void> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(receiptId))
+        || !HANDOFF_EFFECT_KEYS.includes(key)) throw new HandoffReceiptBindingChanged();
+    await query(
+        `UPDATE agent_handoff_receipts
+         SET effects = jsonb_set(COALESCE(effects, '{}'::jsonb), $2::text[], $3::jsonb, true)
+         WHERE id = $1::uuid`,
+        // `null` is a real answer here — "nobody was assigned" — so only an
+        // absent value defaults to true. `value ?? true` erased that distinction.
+        [receiptId, [key], JSON.stringify(value === undefined ? true : value)]);
 }
 
 /**

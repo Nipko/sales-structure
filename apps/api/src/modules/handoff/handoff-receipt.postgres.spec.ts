@@ -26,7 +26,9 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         owner.transactionInTenantSchema(schema, work);
 
     function serviceFor(owner: any) {
-        const redis = { set: jest.fn().mockResolvedValue(undefined), del: jest.fn(), get: jest.fn() };
+        const redis = { set: jest.fn().mockResolvedValue(undefined), del: jest.fn(), get: jest.fn(),
+            acquireLockToken: jest.fn().mockResolvedValue('resume-lock'),
+            releaseLockToken: jest.fn().mockResolvedValue(undefined) };
         const events = { emit: jest.fn().mockReturnValue(true), emitAsync: jest.fn().mockResolvedValue([]) };
         const email = { send: jest.fn().mockResolvedValue(undefined) };
         const templates = { renderAndSend: jest.fn().mockResolvedValue(true) };
@@ -273,11 +275,72 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 { contactId: f.contactId, inboundMessageId: f.inboundMessageId, noticeKind: 'queue_head', noticeLanguage: 'es' });
             const [left, right] = await Promise.all(owners.map(attempt));
 
-            expect(left).toEqual(right);
+            // Identity, not the effects snapshot: the loser reads the receipt
+            // while the winner is still settling its phases, so the two views
+            // legitimately differ in how far along they saw it.
+            expect(left.id).toBe(right.id);
+            expect(left.inboundMessageId).toBe(right.inboundMessageId);
             expect(await sql('SELECT id FROM agent_handoff_receipts')).toHaveLength(1);
             expect(await sql('SELECT id FROM internal_notes')).toHaveLength(1);
             const transfers = owners.reduce((total, owner) => total + owner.events.emit.mock.calls.length, 0);
             expect(transfers).toBe(1);
+        });
+
+        it('finishes the effects a crashed transfer never reached, repeating none', async () => {
+            const f = await fixture();
+            const { service, redis, events } = serviceFor(prisma);
+            const message = inboundMessage(f.conversationId, f.externalId);
+            const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
+                noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
+
+            // Crash right after the transition committed: the receipt exists and
+            // no side effect ran. This used to be invisible — a receipt made
+            // every later attempt return at once, so nobody was ever told.
+            const first = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            await sql("UPDATE agent_handoff_receipts SET effects='{}'::jsonb WHERE id=$1::uuid", [first.id]);
+            await sql('DELETE FROM internal_notes');
+            redis.set.mockClear(); events.emit.mockClear();
+
+            const resumed = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            expect(resumed.id).toBe(first.id);
+            expect(redis.set).toHaveBeenCalledTimes(1);
+            expect(events.emit).toHaveBeenCalledTimes(1);
+            // The transition itself is never repeated: no second internal note.
+            expect(await sql('SELECT id FROM internal_notes')).toHaveLength(0);
+            expect(await sql('SELECT id FROM agent_handoff_receipts')).toHaveLength(1);
+            const [row] = await sql('SELECT effects FROM agent_handoff_receipts WHERE id=$1::uuid', [first.id]);
+            expect(Object.keys(row.effects).sort()).toEqual(['announced', 'assignment', 'cache', 'notified']);
+        });
+
+        it('resumes only the phase that is missing, and never re-announces', async () => {
+            const f = await fixture();
+            const { service, redis, events } = serviceFor(prisma);
+            const message = inboundMessage(f.conversationId, f.externalId);
+            const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
+                noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
+            const first = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+
+            // Crash after the announcement but before the notification settled.
+            await sql(`UPDATE agent_handoff_receipts SET effects = effects - 'notified' WHERE id=$1::uuid`, [first.id]);
+            redis.set.mockClear(); events.emit.mockClear();
+            await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            // Ringing the inbox twice for one transfer is the repeat that matters.
+            expect(events.emit).not.toHaveBeenCalled();
+            expect(redis.set).not.toHaveBeenCalled();
+        });
+
+        it('does everything exactly once when nothing crashed', async () => {
+            const f = await fixture();
+            const { service, redis, events } = serviceFor(prisma);
+            const message = inboundMessage(f.conversationId, f.externalId);
+            const request = { contactId: f.contactId, inboundMessageId: f.inboundMessageId,
+                noticeKind: 'queue_head' as const, noticeLanguage: 'es' as const };
+            await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
+            expect(redis.set).toHaveBeenCalledTimes(1);
+            expect(events.emit).toHaveBeenCalledTimes(1);
+            expect(await sql('SELECT id FROM internal_notes')).toHaveLength(1);
         });
 
         it('reports no receipt for an inbound that never transferred the conversation', async () => {

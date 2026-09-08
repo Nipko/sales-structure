@@ -5084,6 +5084,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_handoff_receipts" (
     notice_kind TEXT NOT NULL,
     notice_language TEXT NOT NULL,
     trace_id TEXT,
+    effects JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT agent_handoff_receipts_to_status
         CHECK (to_status IN ('waiting_human','with_human')),

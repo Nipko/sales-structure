@@ -383,6 +383,38 @@ export async function readPendingDispatch(query: DispatchOutboxQuery, schema: st
 }
 
 /**
+ * Record a failure that happened BEFORE any permission was granted — no
+ * credential, no entitlement, no transport for this channel.
+ *
+ * It spends an attempt on purpose. A preflight that keeps failing must run out
+ * the same budget as a failed send, otherwise a rolled-back attempt leaves a row
+ * that looks retryable forever and recovery loops on it without end.
+ */
+export async function recordDispatchPreflightFailure(query: DispatchOutboxQuery, schema: string, input: {
+    dispatchId: string; errorCode: string; retryInSeconds?: number; permanent?: boolean;
+}): Promise<DispatchRow> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId))
+        || typeof input.errorCode !== 'string' || !input.errorCode.trim()) fail('dispatch_invalid_reference');
+    const [row] = await query<any[]>(
+        'SELECT * FROM agent_dispatch_outbox WHERE id = $1::uuid FOR UPDATE', [input.dispatchId]);
+    if (!row) fail('dispatch_unavailable');
+    // A permission already granted is not a preflight. Its outcome belongs to
+    // whoever holds the lease, and its lapse belongs to the reconciliation pass.
+    if (row.state === 'admitted') fail('dispatch_lease_active');
+    if (DISPATCH_TERMINAL_STATES.includes(row.state as DispatchState)) fail(`dispatch_terminal:${row.state}`);
+    const attempts = Number(row.attempts) + 1;
+    const exhausted = input.permanent === true || attempts >= DISPATCH_MAX_ATTEMPTS;
+    const delay = Math.min(Math.max(Number(input.retryInSeconds ?? 30), 0), 3600);
+    const [updated] = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state=$3, attempts=$4, error_code=$2,
+            available_at=NOW() + make_interval(secs => $5::double precision), updated_at=NOW()
+         WHERE id=$1::uuid RETURNING *`,
+        [input.dispatchId, String(input.errorCode).slice(0, 120),
+            exhausted ? 'suppressed' : 'failed', attempts, exhausted ? 0 : delay]);
+    return mapRow(updated);
+}
+
+/**
  * Move permissions whose lease ran out into reconciliation. This is a committed
  * pass of its own, never a side effect of somebody else's admission attempt:
  * the attempt these rows describe may have reached the provider, and the lease

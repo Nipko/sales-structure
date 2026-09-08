@@ -19,6 +19,7 @@ import { OutboundQueueService } from './outbound-queue.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
 import { DispatchRecoveryService } from './dispatch-recovery.service';
 import { DispatchRolloutService } from './dispatch-rollout.service';
+import { DispatchRolloutController } from './dispatch-rollout.controller';
 import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
 import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
@@ -45,7 +46,8 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         forwardRef(() => WhatsappModule),
         SmsCreditsModule,
     ],
-    controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController],
+    controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController,
+        DispatchRolloutController],
     providers: [
         ChannelGatewayService,
         WidgetChannelAdapter,

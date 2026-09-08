@@ -29,8 +29,8 @@ const conversationId = '33333333-3333-4333-8333-333333333333';
 function createExecutor(queryRawUnsafe: jest.Mock, extras: Record<string, any> = {}) {
     const control = {
         preflight: jest.fn().mockResolvedValue({ allowed: true }),
-        complete: jest.fn(),
-        fail: jest.fn(),
+        complete: jest.fn().mockResolvedValue(undefined),
+        fail: jest.fn().mockResolvedValue(undefined),
     };
     const stub = () => ({}) as any;
     const executor = new AIToolExecutorService(
@@ -107,6 +107,68 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         );
         expect(missingResult.status).toBe('empty');
         expect(missingResult.product).toBeNull();
+    });
+
+    it.each(['11111111-1111-4111-8111-111111111111', 'Synthetic product'])(
+        'get_product distinguishes an unavailable database from an absent product (%s)', async productId => {
+            const broken = createExecutor(jest.fn().mockRejectedValue(DB_DOWN));
+            const failed = await broken.execute(schemaName, tenantId, contactId, 'get_product', { productId }, conversationId,
+                { authority: authorityFor('get_product') });
+            expect(failed).toMatchObject({ status: 'error', error: 'read_failed', retryable: true });
+            expect(failed.product).toBeUndefined();
+            expect(JSON.stringify(sanitizeToolResultForModel(failed, 'es'))).not.toMatch(/tenant_reads|relation|not found/i);
+
+            const empty = createExecutor(jest.fn().mockResolvedValue([]));
+            const missing = await empty.execute(schemaName, tenantId, contactId, 'get_product', { productId }, conversationId,
+                { authority: authorityFor('get_product') });
+            expect(missing).toMatchObject({ status: 'empty', product: null, source: 'tenant_db' });
+            expect(missing.error).toBeUndefined();
+        },
+    );
+
+    it('get_product preserves catalog facts and exposes read freshness without private metadata', async () => {
+        const executor = createExecutor(jest.fn().mockResolvedValue([{ id: tenantId, name: 'Synthetic product',
+            price: '12500.50', currency: 'COP', stock: null, is_available: false, requires_prescription: true,
+            images: ['https://media.example.test/product.png'], metadata: { internal: 'private supplier' } }]));
+        const result = await executor.execute(schemaName, tenantId, contactId, 'get_product', { productId: tenantId }, conversationId,
+            { authority: authorityFor('get_product') });
+        expect(result).toMatchObject({ status: 'ok', source: 'tenant_db', id: tenantId, price: 12500.5,
+            stock: null, isAvailable: false, requiresPrescription: true, images: ['https://media.example.test/product.png'] });
+        expect(Date.parse(result.asOf)).not.toBeNaN();
+        expect(result.metadata).toBeUndefined();
+    });
+
+    it('send_product_image preserves a failed catalog read and produces no media effect', async () => {
+        const executor = createExecutor(jest.fn().mockRejectedValue(DB_DOWN));
+        const result = await executor.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(result).toMatchObject({ status: 'error', error: 'read_failed', source: 'tenant_db', retryable: true });
+        expect(result._mediaToSend).toBeUndefined();
+        expect(result.success).not.toBe(true);
+    });
+
+    it('send_product_image distinguishes an absent product from a product with no images', async () => {
+        const empty = createExecutor(jest.fn().mockResolvedValue([]));
+        const absent = await empty.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(absent).toMatchObject({ error: 'product_not_found', retryable: false });
+        expect(absent._mediaToSend).toBeUndefined();
+
+        const existing = createExecutor(jest.fn().mockResolvedValue([{ id: tenantId, name: 'Synthetic product', images: [] }]));
+        const noImage = await existing.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(noImage.error).toBeTruthy();
+        expect(noImage.error).not.toBe(absent.error);
+        expect(noImage._mediaToSend).toBeUndefined();
+    });
+
+    it('send_product_image uses the product image after a successful catalog read', async () => {
+        const executor = createExecutor(jest.fn().mockResolvedValue([{ id: tenantId, name: 'Synthetic product',
+            images: ['https://media.example.test/product.png'] }]));
+        const result = await executor.execute(schemaName, tenantId, contactId, 'send_product_image', { productId: tenantId }, conversationId,
+            { authority: authorityFor('send_product_image') });
+        expect(result).toMatchObject({ success: true, count: 1,
+            _mediaToSend: [{ url: 'https://media.example.test/product.png' }] });
     });
 
     it('get_customer_context no degrada una base caída a "cliente nuevo"', async () => {

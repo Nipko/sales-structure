@@ -1359,7 +1359,7 @@ export class AIToolExecutorService {
             );
             if (rows.length > 0) {
                 const p = rows[0];
-                return {
+                return readOk({
                     id: p.id,
                     name: p.name,
                     description: p.description,
@@ -1370,12 +1370,13 @@ export class AIToolExecutorService {
                     isAvailable: !!p.is_available,
                     requiresPrescription: !!p.requires_prescription,
                     images: Array.isArray(p.images) ? p.images : [],
-                };
+                });
             }
         } catch (e: any) {
             this.logger.warn(`[Tool] get_product products lookup failed: ${e.message}`);
+            return readFailed();
         }
-        return { error: 'Product not found' };
+        return readEmpty({ product: null });
     }
 
     /**
@@ -1385,7 +1386,8 @@ export class AIToolExecutorService {
      */
     private async sendProductImage(schema: string, productIdOrName: string): Promise<any> {
         const product = await this.getProduct(schema, productIdOrName);
-        if (product?.error) return { error: product.error };
+        if (product?.error) return product;
+        if (!product?.id) return { error: 'product_not_found', retryable: false };
         const media = this.toMediaSet(product.images, product.name || undefined);
         if (!media.length) {
             return { error: 'Ese producto no tiene una imagen disponible.' };

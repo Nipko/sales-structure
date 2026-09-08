@@ -32,7 +32,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 const integration = connection ? describe : describe.skip;
 
 const TABLES = ['agent_dispatch_outbox', 'agent_dispatch_outbox_sources', 'agent_handoff_receipts',
-    'agent_turn_ledger', 'agent_handoff_effects'];
+    'agent_turn_ledger', 'agent_handoff_effects', 'agent_dispatch_resolutions'];
 
 integration('the three definitions of the dispatch tables agree', () => {
     const suffix = randomUUID().replace(/-/g, '');
@@ -83,7 +83,8 @@ integration('the three definitions of the dispatch tables agree', () => {
             // production shape as the first.
             for (const name of ['20260908150000_backfill_agent_dispatch_tenant_tables',
                 '20260908180000_add_agent_turn_ledger',
-                '20260908190000_add_agent_handoff_effects']) {
+                '20260908190000_add_agent_handoff_effects',
+                '20260908200000_add_dispatch_resolution_ledger']) {
                 await q(readFileSync(resolve(__dirname,
                     `../../../prisma/migrations/${name}/migration.sql`), 'utf8'));
             }

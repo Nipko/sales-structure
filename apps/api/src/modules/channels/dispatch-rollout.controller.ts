@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, Logger, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { DispatchRolloutService } from './dispatch-rollout.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
+import type { DispatchResolutionRecord } from './agent-dispatch-outbox';
 import { PrismaService } from '../prisma/prisma.service';
 import { DISPATCH_RECONCILIATION_SLA_SECONDS, type DispatchResolution } from './agent-dispatch-outbox';
 
@@ -28,6 +29,8 @@ export class DispatchRolloutController {
         private readonly outbox: AgentDispatchOutboxStore,
         private readonly prisma: PrismaService,
     ) {}
+
+    private readonly logger = new Logger(DispatchRolloutController.name);
 
     @Get()
     @ApiOperation({ summary: 'Effective durable dispatch rollout state (super_admin only)' })
@@ -78,30 +81,79 @@ export class DispatchRolloutController {
     @ApiOperation({ summary: 'Resolve an uncertain dispatch effect (super_admin only)' })
     async resolve(@Param('tenantId') tenantId: string, @Param('dispatchId') dispatchId: string,
         @Body() body: any, @Req() request: any) {
+        let settled;
         try {
-            const row = await this.outbox.resolve(tenantId, {
+            settled = await this.outbox.resolve(tenantId, {
                 dispatchId,
                 resolution: String(body?.resolution || '') as DispatchResolution,
                 evidence: String(body?.evidence || ''),
                 receipt: body?.receipt ?? null,
-                actorId: request?.user?.id ?? null,
+                actorId: request?.user?.id ?? request?.user?.sub ?? null,
+                actorRole: request?.user?.role ?? null,
             });
+        } catch (error: any) {
+            const code = String(error?.code || error?.message || 'dispatch_resolution_failed');
+            // A row that settled between the read and the decision is not a
+            // malformed request; somebody else got there first, and the surface
+            // has to be able to tell those apart to say the right thing.
+            if (code.startsWith('dispatch_not_reconcilable')) throw new ConflictException({ error: code });
+            throw new BadRequestException({ error: code });
+        }
+        // The decision itself already committed with the state change. This is
+        // its copy in the platform-wide log, and losing it loses a duplicate,
+        // not the record — the row keeps `exported_at` null and can be drained
+        // again.
+        await this.exportResolution(tenantId, settled.resolution, request?.user?.email ?? null);
+        return { success: true, data: { ...settled.row, resolution: settled.resolution } };
+    }
+
+    /**
+     * Copy one tenant decision into `public.audit_logs`.
+     *
+     * The audit row used to be the ONLY record of who resolved an uncertain
+     * effect, written after the transaction and with its failure discarded — so
+     * an irreversible decision could exist with no author at all. Now it is a
+     * projection of a durable row, and a failure here is visible and retryable.
+     */
+    private async exportResolution(tenantId: string, resolution: DispatchResolutionRecord,
+        actorEmail: string | null): Promise<void> {
+        try {
             await this.prisma.auditLog.create({
                 data: {
                     tenantId,
-                    userId: request?.user?.id ?? null,
+                    userId: resolution.actorId,
                     action: 'dispatch.reconciliation.resolved',
-                    resource: dispatchId,
-                    details: JSON.parse(JSON.stringify({ resolution: body?.resolution,
-                        evidence: String(body?.evidence || '').slice(0, 500),
-                        receipt: body?.receipt ?? null, resultingState: row.state,
-                        actorEmail: request?.user?.email ?? null })),
+                    resource: resolution.dispatchId,
+                    details: JSON.parse(JSON.stringify({
+                        resolutionId: resolution.id, resolution: resolution.resolution,
+                        evidence: resolution.evidence, receipt: resolution.receipt,
+                        previousState: resolution.previousState, previousErrorCode: resolution.previousErrorCode,
+                        resultingState: resolution.newState, actorRole: resolution.actorRole, actorEmail,
+                    })),
                 },
-            }).catch(() => undefined);
-            return { success: true, data: row };
+            });
+            await this.outbox.markResolutionExported(tenantId, resolution.id);
         } catch (error: any) {
-            throw new BadRequestException(String(error?.code || error?.message || 'dispatch_resolution_failed'));
+            this.logger.error(`[Dispatch] audit copy of resolution ${resolution.id} deferred: ${error?.message}`);
         }
+    }
+
+    /**
+     * Re-run the copies a previous export never completed.
+     *
+     * Nothing is lost while they wait — the decision, its author and its
+     * evidence are in the tenant schema — but an operator asking "who resolved
+     * this" looks in the platform log, so the copies have to be catchable up.
+     */
+    @Post('reconciliation/:tenantId/export')
+    @ApiOperation({ summary: 'Copy pending reconciliation decisions into the audit log (super_admin only)' })
+    async exportPending(@Param('tenantId') tenantId: string, @Req() request: any) {
+        const pending = await this.outbox.unexportedResolutions(tenantId, 200);
+        for (const resolution of pending) {
+            await this.exportResolution(tenantId, resolution, request?.user?.email ?? null);
+        }
+        const remaining = await this.outbox.unexportedResolutions(tenantId, 200);
+        return { success: true, data: { attempted: pending.length, remaining: remaining.length } };
     }
 
     @Post('disable')

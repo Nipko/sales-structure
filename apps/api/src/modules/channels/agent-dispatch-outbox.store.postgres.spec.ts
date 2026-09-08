@@ -286,6 +286,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     });
 
     describe('the reconciliation queue an operator works from', () => {
+        const OPERATOR = '99999999-9999-4999-8999-999999999999';
         async function uncertain(errorCode = 'provider_timeout') {
             const binding = await fixture();
             const { rows } = await prepare(binding);
@@ -327,17 +328,25 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
         it('closes it as delivered with the receipt the operator found', async () => {
             const { row } = await uncertain();
-            const settled = await store.resolve(tenantId, { dispatchId: row.id, resolution: 'delivered',
+            const settled = await store.resolve(tenantId, { actorId: OPERATOR, actorRole: 'super_admin', dispatchId: row.id, resolution: 'delivered',
                 evidence: 'Found in Meta manager, delivered 10:04', receipt: 'wamid.FOUND' });
-            expect(settled).toMatchObject({ state: 'sent', receipt: 'wamid.FOUND' });
+            expect(settled.row).toMatchObject({ state: 'sent', receipt: 'wamid.FOUND' });
+            // The decision committed with the change it authorises, and the
+            // provider failure that justified the reconciliation survives it.
+            expect(settled.resolution).toMatchObject({
+                resolution: 'delivered', actorId: OPERATOR, actorRole: 'super_admin',
+                previousState: 'reconciliation_required', previousErrorCode: 'provider_timeout',
+                newState: 'sent', evidence: 'Found in Meta manager, delivered 10:04',
+            });
+            expect(settled.row.errorCode).toBe('provider_timeout');
             expect((await sql('SELECT status FROM messages WHERE id=$1::uuid', [row.messageId]))[0].status).toBe('sent');
         });
 
         it('closes it as not delivered without sending anything', async () => {
             const { row } = await uncertain();
-            const settled = await store.resolve(tenantId, { dispatchId: row.id, resolution: 'not_delivered',
+            const settled = await store.resolve(tenantId, { actorId: OPERATOR, actorRole: 'super_admin', dispatchId: row.id, resolution: 'not_delivered',
                 evidence: 'Absent from provider logs for the whole window' });
-            expect(settled.state).toBe('suppressed');
+            expect(settled.row.state).toBe('suppressed');
             expect((await sql('SELECT status FROM messages WHERE id=$1::uuid', [row.messageId]))[0].status).toBe('failed');
         });
 
@@ -345,19 +354,21 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             const { row } = await uncertain();
             // Silence is what this state MEANS; it can never be the justification.
             expect(await reason(store.resolve(tenantId,
-                { dispatchId: row.id, resolution: 'retry', evidence: '   ' })))
+                { actorId: OPERATOR, dispatchId: row.id, resolution: 'retry', evidence: '   ' })))
                 .toBe('dispatch_resolution_evidence_required');
-            const settled = await store.resolve(tenantId, { dispatchId: row.id, resolution: 'retry',
+            const settled = await store.resolve(tenantId, { actorId: OPERATOR, actorRole: 'super_admin', dispatchId: row.id, resolution: 'retry',
                 evidence: 'Provider log shows no request in the window' });
-            expect(settled.state).toBe('failed');
+            expect(settled.row.state).toBe('failed');
             expect((await store.pending(tenantId)).rows.map(entry => entry.id)).toEqual([row.id]);
+            // The attempt that goes out next carries the decision that allowed it.
+            expect(settled.resolution).toMatchObject({ resolution: 'retry', actorId: OPERATOR, newState: 'failed' });
         });
 
         it('refuses a decision about an effect that already settled itself', async () => {
             const { row } = await uncertain();
-            await store.resolve(tenantId, { dispatchId: row.id, resolution: 'not_delivered', evidence: 'checked' });
+            await store.resolve(tenantId, { actorId: OPERATOR, actorRole: 'super_admin', dispatchId: row.id, resolution: 'not_delivered', evidence: 'checked' });
             expect(await reason(store.resolve(tenantId,
-                { dispatchId: row.id, resolution: 'retry', evidence: 'changed my mind' })))
+                { actorId: OPERATOR, dispatchId: row.id, resolution: 'retry', evidence: 'changed my mind' })))
                 .toBe('dispatch_not_reconcilable:suppressed');
         });
 
@@ -366,14 +377,48 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await prisma.transactionInTenantSchema(schema, (query: any) =>
                 redactDispatchOutbox(query, schema, { contactIds: [binding.contactId] }));
             expect(await reason(store.resolve(tenantId,
-                { dispatchId: row.id, resolution: 'retry', evidence: 'provider never saw it' })))
+                { actorId: OPERATOR, dispatchId: row.id, resolution: 'retry', evidence: 'provider never saw it' })))
                 .toBe('dispatch_redacted');
+        });
+
+        it('refuses a decision nobody signed', async () => {
+            const { row } = await uncertain();
+            expect(await reason(store.resolve(tenantId,
+                { dispatchId: row.id, resolution: 'not_delivered', evidence: 'checked' } as any)))
+                .toBe('dispatch_resolution_actor_required');
+            // And the row is untouched: a refused decision changes nothing.
+            expect((await store.reconciliation(tenantId)).map(entry => entry.id)).toEqual([row.id]);
+        });
+
+        it('keeps the whole evidence, not the first hundred characters of it', async () => {
+            const { row } = await uncertain();
+            const evidence = `Checked the provider console for the whole window. ${'x'.repeat(400)}`;
+            const settled = await store.resolve(tenantId,
+                { actorId: OPERATOR, dispatchId: row.id, resolution: 'not_delivered', evidence });
+            expect(settled.resolution.evidence).toBe(evidence);
+            expect(settled.resolution.evidence.length).toBe(evidence.length);
+        });
+
+        it('leaves the decision waiting to be copied into the platform log, and stops once it is', async () => {
+            const { row } = await uncertain();
+            const settled = await store.resolve(tenantId,
+                { actorId: OPERATOR, dispatchId: row.id, resolution: 'not_delivered', evidence: 'checked' });
+            expect((await store.unexportedResolutions(tenantId, 200)).map(entry => entry.id))
+                .toContain(settled.resolution.id);
+            await store.markResolutionExported(tenantId, settled.resolution.id);
+            expect((await store.unexportedResolutions(tenantId, 200)).map(entry => entry.id))
+                .not.toContain(settled.resolution.id);
+        });
+
+        it('says which state a listed row is in rather than leaving it to be inferred', async () => {
+            await uncertain();
+            expect((await store.reconciliation(tenantId))[0].state).toBe('reconciliation_required');
         });
 
         it('requires a receipt to claim it was delivered after all', async () => {
             const { row } = await uncertain();
             expect(await reason(store.resolve(tenantId,
-                { dispatchId: row.id, resolution: 'delivered', evidence: 'I think it went out' })))
+                { actorId: OPERATOR, dispatchId: row.id, resolution: 'delivered', evidence: 'I think it went out' })))
                 .toBe('dispatch_receipt_required');
         });
     });

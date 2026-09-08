@@ -9,8 +9,10 @@ import {
     admitDispatch, expireDispatchLeases, markDispatchQueued, prepareDispatchBatch,
     readDispatchBacklog, readDispatchBatchForInbound, readDispatchReconciliation, readDispatchRow,
     readNextDispatchInBatch, readPendingDispatch, recordDispatchPreflightFailure,
+    markDispatchResolutionExported, readUnexportedDispatchResolutions,
     resolveDispatchReconciliation, settleDispatch,
     type DispatchReconciliationBacklog, type DispatchReconciliationEntry, type DispatchResolution,
+    type DispatchResolutionRecord,
     type DispatchBinding, type DispatchItem, type DispatchOutcome, type DispatchRow,
 } from './agent-dispatch-outbox';
 import {
@@ -256,15 +258,39 @@ export class AgentDispatchOutboxStore {
         });
     }
 
-    /** Apply a person's decision about an uncertain effect. */
+    /**
+     * Apply a person's decision about an uncertain effect.
+     *
+     * The decision and the state change it authorises commit together, so an
+     * irreversible resolution can never exist without the actor and the
+     * evidence that justified it. The global audit copy is drained from that
+     * row afterwards and can be retried; the record itself cannot be lost.
+     */
     async resolve(tenantId: string, input: {
         dispatchId: string; resolution: DispatchResolution; evidence: string;
-        actorId?: string | null; receipt?: string | null;
-    }): Promise<DispatchRow> {
+        actorId?: string | null; actorRole?: string | null; receipt?: string | null;
+    }): Promise<{ row: DispatchRow; resolution: DispatchResolutionRecord }> {
         const schema = await this.schemaFor(tenantId);
         return this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return resolveDispatchReconciliation(query, schema, input);
+        });
+    }
+
+    /** Decisions still to be copied into the global audit log, oldest first. */
+    async unexportedResolutions(tenantId: string, limit = 50): Promise<readonly DispatchResolutionRecord[]> {
+        const schema = await this.schemaFor(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            await this.privacy(query, schema, tenantId);
+            return readUnexportedDispatchResolutions(query, schema, limit);
+        });
+    }
+
+    async markResolutionExported(tenantId: string, resolutionId: string): Promise<void> {
+        const schema = await this.schemaFor(tenantId);
+        await this.prisma.transactionInTenantSchema(schema, async query => {
+            await this.privacy(query, schema, tenantId);
+            await markDispatchResolutionExported(query, schema, resolutionId);
         });
     }
 

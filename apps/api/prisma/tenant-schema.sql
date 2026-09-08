@@ -5239,4 +5239,34 @@ CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_receipt ON "{{SCHEMA_NAME}}
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(contact_id) WHERE redacted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_source ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_id, dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_contact_id, dispatch_id);
+
+-- La decision de una persona sobre un efecto incierto, escrita en la MISMA
+-- transaccion que el cambio de estado que autoriza. El actor se descartaba y la
+-- evidencia se truncaba dentro de `error_code`, lo que ademas borraba el fallo
+-- del proveedor que justificaba la reconciliacion: una decision irreversible
+-- podia quedar sin autor ni motivo. `exported_at` es lo que permite que el log
+-- global de auditoria sea una COPIA de esta fila y no un segundo original.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_resolutions" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dispatch_id UUID NOT NULL,
+    resolution TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    actor_role TEXT,
+    receipt TEXT,
+    previous_state TEXT NOT NULL,
+    previous_error_code TEXT,
+    new_state TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    exported_at TIMESTAMPTZ,
+    CONSTRAINT agent_dispatch_resolutions_kind
+        CHECK (resolution IN ('delivered','not_delivered','retry')),
+    CONSTRAINT agent_dispatch_resolutions_evidence
+        CHECK (char_length(evidence) BETWEEN 1 AND 500),
+    CONSTRAINT agent_dispatch_resolutions_actor CHECK (char_length(actor_id) BETWEEN 1 AND 200)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_dispatch
+    ON "{{SCHEMA_NAME}}"."agent_dispatch_resolutions"(dispatch_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_unexported
+    ON "{{SCHEMA_NAME}}"."agent_dispatch_resolutions"(created_at) WHERE exported_at IS NULL;
 -- END NORMAL DISPATCH OUTBOX

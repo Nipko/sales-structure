@@ -115,6 +115,36 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         ON agent_dispatch_outbox_sources(source_id, dispatch_id)`,
     `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_contact
         ON agent_dispatch_outbox_sources(source_contact_id, dispatch_id)`,
+    // A person's decision about an uncertain effect, written in the SAME
+    // transaction as the state change it authorises. The actor used to be
+    // discarded outright and the evidence truncated into `error_code`, which
+    // also destroyed the provider failure that justified the reconciliation in
+    // the first place — so an irreversible decision could exist with no record
+    // of who made it or why. `exported_at` is what lets the global audit log be
+    // a copy of this rather than a second, best-effort original.
+    `CREATE TABLE IF NOT EXISTS agent_dispatch_resolutions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        dispatch_id UUID NOT NULL,
+        resolution TEXT NOT NULL,
+        evidence TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_role TEXT,
+        receipt TEXT,
+        previous_state TEXT NOT NULL,
+        previous_error_code TEXT,
+        new_state TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        exported_at TIMESTAMPTZ,
+        CONSTRAINT agent_dispatch_resolutions_kind
+            CHECK (resolution IN ('delivered','not_delivered','retry')),
+        CONSTRAINT agent_dispatch_resolutions_evidence
+            CHECK (char_length(evidence) BETWEEN 1 AND 500),
+        CONSTRAINT agent_dispatch_resolutions_actor CHECK (char_length(actor_id) BETWEEN 1 AND 200)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_dispatch
+        ON agent_dispatch_resolutions(dispatch_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_resolutions_unexported
+        ON agent_dispatch_resolutions(created_at) WHERE exported_at IS NULL`,
 ]);
 
 export interface DispatchBinding {
@@ -702,6 +732,10 @@ export async function applyDispatchProviderStatus(query: DispatchOutboxQuery, sc
  */
 export interface DispatchReconciliationEntry {
     readonly id: string;
+    /** Always `reconciliation_required` in this listing, and said out loud: a
+     *  row that settles between the read and the decision has to be
+     *  distinguishable from one that is still waiting. */
+    readonly state: DispatchState;
     readonly conversationId: string | null;
     readonly inboundMessageId: string;
     readonly channelType: string;
@@ -736,6 +770,7 @@ const maskRecipient = (value: unknown): string | null => {
 function mapReconciliation(row: any): DispatchReconciliationEntry {
     return Object.freeze({
         id: String(row.id),
+        state: row.state as DispatchState,
         conversationId: row.conversation_id ? String(row.conversation_id) : null,
         inboundMessageId: String(row.inbound_message_id),
         channelType: String(row.channel_type),
@@ -816,50 +851,119 @@ export type DispatchResolution = (typeof DISPATCH_RESOLUTIONS)[number];
  * about an effect that has since settled on its own is refused rather than
  * applied to a different reality.
  */
+export interface DispatchResolutionRecord {
+    readonly id: string;
+    readonly dispatchId: string;
+    readonly resolution: DispatchResolution;
+    readonly evidence: string;
+    readonly actorId: string;
+    readonly actorRole: string | null;
+    readonly previousState: string;
+    readonly previousErrorCode: string | null;
+    readonly newState: string;
+    readonly receipt: string | null;
+    readonly createdAt: Date;
+}
+
+function mapResolution(row: any): DispatchResolutionRecord {
+    return Object.freeze({
+        id: String(row.id), dispatchId: String(row.dispatch_id),
+        resolution: row.resolution as DispatchResolution, evidence: String(row.evidence),
+        actorId: String(row.actor_id), actorRole: row.actor_role ?? null,
+        previousState: String(row.previous_state), previousErrorCode: row.previous_error_code ?? null,
+        newState: String(row.new_state), receipt: row.receipt ?? null,
+        createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+    });
+}
+
 export async function resolveDispatchReconciliation(query: DispatchOutboxQuery, schema: string, input: {
     dispatchId: string; resolution: DispatchResolution; evidence: string;
-    actorId?: string | null; receipt?: string | null;
-}): Promise<DispatchRow> {
+    actorId?: string | null; actorRole?: string | null; receipt?: string | null;
+}): Promise<{ row: DispatchRow; resolution: DispatchResolutionRecord }> {
     if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId))
         || !DISPATCH_RESOLUTIONS.includes(input.resolution)) fail('dispatch_invalid_reference');
     const evidence = typeof input.evidence === 'string' ? input.evidence.trim() : '';
     if (!evidence || evidence.length > 500) fail('dispatch_resolution_evidence_required');
+    // An irreversible decision with no author is not a decision anyone can
+    // review later, and `retry` sends another message to a real customer.
+    const actorId = typeof input.actorId === 'string' ? input.actorId.trim() : '';
+    if (!actorId || actorId.length > 200) fail('dispatch_resolution_actor_required');
+    const actorRole = typeof input.actorRole === 'string' && input.actorRole.trim()
+        ? input.actorRole.trim().slice(0, 60) : null;
+
     const [row] = await query<any[]>(
         'SELECT * FROM agent_dispatch_outbox WHERE id=$1::uuid FOR UPDATE', [input.dispatchId]);
     if (!row) fail('dispatch_unavailable');
     if (row.state !== 'reconciliation_required') fail(`dispatch_not_reconcilable:${row.state}`);
-    const note = `${input.resolution}:${evidence}`.slice(0, 120);
+
+    // The provider failure that put this row here is evidence too, and writing
+    // the decision over `error_code` used to erase it.
+    const previousErrorCode: string | null = row.error_code ?? null;
+    let settled: any;
+    let newState: DispatchState;
+    let receipt: string | null = null;
 
     if (input.resolution === 'delivered') {
-        const receipt = typeof input.receipt === 'string' ? input.receipt.trim() : '';
-        if (!receipt) fail('dispatch_receipt_required');
-        const [settled] = await query<any[]>(
-            `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, error_code=$3, updated_at=NOW()
-             WHERE id=$1::uuid RETURNING *`, [input.dispatchId, receipt.slice(0, 300), note]);
+        const stated = typeof input.receipt === 'string' ? input.receipt.trim() : '';
+        if (!stated) fail('dispatch_receipt_required');
+        receipt = stated.slice(0, 300);
+        newState = 'sent';
+        [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId, receipt]);
         if (row.message_id) {
             await query(`UPDATE messages SET status='sent' WHERE id=$1::uuid AND status='pending'`, [row.message_id]);
         }
-        return mapRow(settled);
-    }
-    if (input.resolution === 'not_delivered') {
-        const [settled] = await query<any[]>(
-            `UPDATE agent_dispatch_outbox SET state='suppressed', error_code=$2, updated_at=NOW()
-             WHERE id=$1::uuid RETURNING *`, [input.dispatchId, note]);
+    } else if (input.resolution === 'not_delivered') {
+        newState = 'suppressed';
+        [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='suppressed', updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId]);
         if (row.message_id) {
             await query(`UPDATE messages SET status='failed' WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
                 [row.message_id]);
         }
-        return mapRow(settled);
+    } else {
+        // The operator states the effect did not happen and accepts another
+        // attempt. Redacted words cannot be resent under any evidence.
+        if (row.redacted_at) fail('dispatch_redacted');
+        if (Number(row.attempts) >= DISPATCH_MAX_ATTEMPTS) fail('dispatch_attempts_exhausted');
+        newState = 'failed';
+        [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='failed', available_at=NOW(), updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId]);
     }
-    // retry: the operator states the effect did not happen and accepts another
-    // attempt. Redacted words cannot be resent under any evidence.
-    if (row.redacted_at) fail('dispatch_redacted');
-    if (Number(row.attempts) >= DISPATCH_MAX_ATTEMPTS) fail('dispatch_attempts_exhausted');
-    const [settled] = await query<any[]>(
-        `UPDATE agent_dispatch_outbox SET state='failed', error_code=$2, available_at=NOW(), updated_at=NOW()
-         WHERE id=$1::uuid RETURNING *`, [input.dispatchId, note]);
-    void input.actorId;
-    return mapRow(settled);
+
+    // Same transaction as the change it authorises. A decision that committed
+    // while its record did not is exactly the gap this closes.
+    const [recorded] = await query<any[]>(
+        `INSERT INTO agent_dispatch_resolutions
+            (dispatch_id, resolution, evidence, actor_id, actor_role, receipt,
+             previous_state, previous_error_code, new_state)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [input.dispatchId, input.resolution, evidence, actorId, actorRole, receipt,
+            String(row.state), previousErrorCode, newState]);
+    return { row: mapRow(settled), resolution: mapResolution(recorded) };
+}
+
+/** Decisions whose copy has not reached the global audit log yet. */
+export async function readUnexportedDispatchResolutions(query: DispatchOutboxQuery, schema: string,
+    limit = 50): Promise<readonly DispatchResolutionRecord[]> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>('SELECT to_regclass($1)::text AS present',
+        [`${schema}.agent_dispatch_resolutions`]);
+    if (!tables?.present) return Object.freeze([]);
+    const rows = await query<any[]>(
+        `SELECT * FROM agent_dispatch_resolutions WHERE exported_at IS NULL
+          ORDER BY created_at ASC LIMIT $1`, [Math.min(Math.max(Number(limit) || 50, 1), 200)]);
+    return Object.freeze(rows.map(mapResolution));
+}
+
+export async function markDispatchResolutionExported(query: DispatchOutboxQuery, schema: string,
+    resolutionId: string): Promise<void> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(resolutionId))) fail('dispatch_invalid_reference');
+    await query(`UPDATE agent_dispatch_resolutions SET exported_at=NOW()
+                  WHERE id=$1::uuid AND exported_at IS NULL`, [resolutionId]);
 }
 
 export interface DispatchRedactionScope {

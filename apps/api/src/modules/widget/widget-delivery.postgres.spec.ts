@@ -17,10 +17,12 @@ import { io as connect } from 'socket.io-client';
 import { eraseWidgetContactSessions } from './widget-session-erasure';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { WidgetChannelAdapter } from '../channels/widget.adapter';
+import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('persisted Web Chat against disposable PostgreSQL', () => {
     const tenantId = randomUUID(), schema = `tenant_widget_${randomUUID().replace(/-/g, '')}`;
+    const servedAgentId = randomUUID();
     const origin = 'https://shop.example.test', secret = 'disposable-widget-secret-32-characters';
     let pool: any, prisma: any, service: WidgetService, store: WidgetMessageStore, controls: ToolExecutionControlService;
     let widget: any, session: any, binding: any;
@@ -77,11 +79,18 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         await new AiResolutionService(prisma, redis).ensureResolutionColumns(schema);
         await scoped('CREATE TABLE conversation_assignments(conversation_id UUID,agent_id UUID,first_response_at TIMESTAMPTZ,resolved_at TIMESTAMPTZ)');
         await scoped('CREATE TABLE payment_operation_ledger(id UUID PRIMARY KEY,execution_ledger_id UUID,operation_kind TEXT,status TEXT,response_payload JSONB)');
+        await scoped(`CREATE TABLE agent_personas(id UUID PRIMARY KEY,name TEXT,config_json JSONB,channels TEXT[],channel_bindings TEXT[],
+            schedule_mode TEXT,is_active BOOLEAN,is_default BOOLEAN,version INTEGER)`);
+        await scoped('ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_persona_id UUID');
+        await scoped('ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_config_version INTEGER');
+        await scoped('ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_attribution_conflicted BOOLEAN DEFAULT false');
     });
     beforeEach(async () => {
         relay.publish.mockReset();
         session = await service.createSession(widget, { visitorId: `visitor_${randomUUID()}` });
         binding = await store.ensureConversation(credentials());
+        await scoped(`INSERT INTO agent_personas VALUES($1::uuid,'Alex','{"persona":{"name":"Alex"}}'::jsonb,ARRAY['web_widget'],
+            ARRAY['web_widget:owned'],'24_7',true,true,1) ON CONFLICT(id) DO UPDATE SET version=1,is_active=true,config_json=EXCLUDED.config_json`,[servedAgentId]);
     });
     afterAll(async () => {
         if (!pool) return;
@@ -184,10 +193,17 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         } finally { await q('DELETE FROM public.tenants WHERE id=$1::uuid', [foreignTenant]); }
     });
 
-    async function complete(tool: string, result: any) {
+    async function currentScope(id=servedAgentId) {
+        const agent=(await scoped('SELECT * FROM agent_personas WHERE id=$1::uuid',[id]))[0];
+        return {kind:'agent',tenantId,schemaName:schema,agentId:id,version:agent.version,operationalHash:operationalConfigurationHash(agent)};
+    }
+    async function complete(tool: string, result: any, requestPayload?: any) {
         const ledger = randomUUID(), ticket = randomUUID(), lease = randomUUID();
-        await scoped(`INSERT INTO tool_execution_ledger(id,idempotency_key,tool_name,args_hash,assurance_level,status,contact_id,conversation_id,channel_type,response_payload)
-            VALUES($1::uuid,$2,$3,$4,'A4','succeeded',$5::uuid,$6::uuid,'web_widget',$7::jsonb)`, [ledger, randomUUID(), tool, 'a'.repeat(64), binding.contact_id, binding.conversation_id, JSON.stringify(result)]);
+        const scope=await currentScope();
+        await scoped('UPDATE conversations SET agent_persona_id=COALESCE(agent_persona_id,$2::uuid),agent_config_version=COALESCE(agent_config_version,1) WHERE id=$1::uuid',[binding.conversation_id,servedAgentId]);
+        const payload=requestPayload ?? {operationalScope:scope,draftReview:{agentId:scope.agentId,agentVersion:scope.version}};
+        await scoped(`INSERT INTO tool_execution_ledger(id,idempotency_key,tool_name,args_hash,assurance_level,status,contact_id,conversation_id,channel_type,response_payload,request_payload)
+            VALUES($1::uuid,$2,$3,$4,'A4','succeeded',$5::uuid,$6::uuid,'web_widget',$7::jsonb,$8::jsonb)`, [ledger, randomUUID(), tool, 'a'.repeat(64), binding.contact_id, binding.conversation_id, JSON.stringify(result),JSON.stringify(payload)]);
         await scoped(`INSERT INTO tool_approval_tickets(id,execution_ledger_id,tool_name,contact_id,conversation_id,status,expires_at,resume_state,resume_lease_token)
             VALUES($1::uuid,$2::uuid,$3,$4::uuid,$5::uuid,'approved',NOW()+INTERVAL '1 day','processing',$6::uuid)`, [ticket, ledger, tool, binding.contact_id, binding.conversation_id, lease]);
         await controls.finishApprovalResume({ tenantId, schemaName: schema, ticketId: ticket, leaseToken: lease, toolName: tool, contactId: binding.contact_id, conversationId: binding.conversation_id, args: {} }, {});
@@ -222,6 +238,190 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await history()).toHaveLength(0);
         expect(await effects.deliver(reference, transport)).toBe('effect:stored');
         expect(await history()).toHaveLength(1); expect(transport.prepare).not.toHaveBeenCalled();
+    });
+
+    const approvedMedia = {success:true,_mediaToSend:[{url:'https://media.example.test/authority.png'}]};
+    const effectState = async (id:string) => (await scoped('SELECT state,attempts,error_code FROM tool_approval_effects WHERE id=$1::uuid',[id]))[0];
+    const localEffects = () => new ToolApprovalEffectsService(prisma,{} as any,{} as any,store);
+
+    it.each(['missing','argument_forgery','foreign_tenant','bad_hash','wrong_draft_version','other_active_agent'])(
+        'rejects %s scope without a widget message or provider preparation',async fault=>{
+        const scope=await currentScope();
+        const payload:any={operationalScope:scope,draftReview:{agentId:servedAgentId,agentVersion:1}};
+        if(fault==='missing')delete payload.operationalScope;
+        if(fault==='argument_forgery'){delete payload.operationalScope;payload.args={operationalScope:scope};}
+        if(fault==='foreign_tenant')payload.operationalScope={...scope,tenantId:randomUUID()};
+        if(fault==='bad_hash')payload.operationalScope={...scope,operationalHash:'f'.repeat(64)};
+        if(fault==='wrong_draft_version')payload.draftReview.agentVersion=2;
+        if(fault==='other_active_agent'){
+            const other=randomUUID();
+            await scoped('INSERT INTO agent_personas SELECT $1::uuid,name,config_json,channels,channel_bindings,schedule_mode,is_active,is_default,version FROM agent_personas WHERE id=$2::uuid',[other,servedAgentId]);
+            payload.operationalScope=await currentScope(other);
+        }
+        const {reference}=await complete('send_product_image',approvedMedia,payload);
+        const transport={prepare:jest.fn()};
+        expect(await localEffects().deliver(reference,transport)).toBe('effect:suppressed');
+        expect(await effectState(reference.effectId)).toMatchObject({state:'suppressed',attempts:0});
+        expect(await history()).toHaveLength(0);expect(transport.prepare).not.toHaveBeenCalled();
+    });
+
+    it.each(['version','config','inactive'])('suppresses a pending delivery when the served %s changed',async change=>{
+        const {reference}=await complete('send_product_image',approvedMedia);
+        if(change==='version')await scoped('UPDATE agent_personas SET version=2 WHERE id=$1::uuid',[servedAgentId]);
+        if(change==='config')await scoped(`UPDATE agent_personas SET config_json='{"persona":{"name":"Changed"}}'::jsonb WHERE id=$1::uuid`,[servedAgentId]);
+        if(change==='inactive')await scoped('UPDATE agent_personas SET is_active=false WHERE id=$1::uuid',[servedAgentId]);
+        expect(await localEffects().deliver(reference,{prepare:jest.fn()})).toBe('effect:suppressed');
+        expect(await effectState(reference.effectId)).toMatchObject({error_code:'agent_operational_revision_changed'});
+        expect(await history()).toHaveLength(0);
+    });
+
+    it.each(['draft','policy'])('accepts a new %s approval after publication while the conversation retains its first version',async mode=>{
+        await scoped('UPDATE conversations SET agent_persona_id=$2::uuid,agent_config_version=1,agent_attribution_conflicted=true WHERE id=$1::uuid',[binding.conversation_id,servedAgentId]);
+        await scoped('UPDATE agent_personas SET version=2 WHERE id=$1::uuid',[servedAgentId]);
+        const scope=await currentScope();
+        const payload:any={operationalScope:scope,...(mode==='draft'?{draftReview:{agentId:servedAgentId,agentVersion:2}}:{})};
+        const {reference}=await complete('send_product_image',approvedMedia,payload);
+        expect(await localEffects().deliver(reference,{prepare:jest.fn()})).toBe('effect:stored');
+        expect(await history()).toHaveLength(1);
+        expect((await scoped('SELECT agent_config_version FROM conversations WHERE id=$1::uuid',[binding.conversation_id]))[0].agent_config_version).toBe(1);
+    });
+
+    it('preserves a canonical payment operation when a new link delivery is suppressed, and keeps accepted receipts after publication',async()=>{
+        const operationId=randomUUID();
+        const result={linkCreated:true,operationId,paymentLink:'https://pay.example.test/authority',paid:false,paymentStatus:'pending'};
+        const {reference,ledger}=await complete('create_payment_link',result);
+        await scoped("INSERT INTO payment_operation_ledger VALUES($1::uuid,$2::uuid,'payment_link','succeeded',$3::jsonb)",[operationId,ledger,JSON.stringify(result)]);
+        const original=await scoped('SELECT * FROM payment_operation_ledger WHERE id=$1::uuid',[operationId]);
+        await scoped('UPDATE agent_personas SET version=2 WHERE id=$1::uuid',[servedAgentId]);
+        expect(await localEffects().deliver(reference,{prepare:jest.fn()})).toBe('effect:suppressed');
+        expect(await history()).toHaveLength(0);
+        expect(await scoped('SELECT * FROM payment_operation_ledger WHERE id=$1::uuid',[operationId])).toEqual(original);
+        const next=await complete('send_product_image',approvedMedia);
+        const effects=localEffects();await effects.deliver(next.reference,{prepare:jest.fn()});
+        const stored=(await history())[0];
+        await scoped('UPDATE agent_personas SET version=3,is_active=false WHERE id=$1::uuid',[servedAgentId]);
+        relay.publish.mockClear();
+        expect(await effects.deliver(next.reference,{prepare:jest.fn()})).toBe('effect:stored');
+        expect(await history()).toHaveLength(1);expect((await history())[0].id).toBe(stored.id);
+        expect(relay.publish).not.toHaveBeenCalled();
+    });
+
+    it('serializes publication behind the guarded local commit and then replays its existing receipt',async()=>{
+        const {reference}=await complete('send_product_image',approvedMedia);
+        const publisher=await pool.connect();
+        let publication:Promise<any>|undefined,observedBlock=false;
+        const original=store.persistWithQuery.bind(store);
+        const persist=jest.spyOn(store,'persistWithQuery').mockImplementation(async(query,s,tenant,input)=>{
+            const sourcePid=(await query<any[]>('SELECT pg_backend_pid() AS pid'))[0].pid;
+            await publisher.query('BEGIN');await publisher.query("SET LOCAL lock_timeout='4s'");
+            await publisher.query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
+            const publisherPid=(await publisher.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+            publication=(async()=>{
+                await publisher.query('SELECT id FROM public.tenants WHERE id=$1::uuid FOR UPDATE',[tenantId]);
+                await publisher.query(`UPDATE "${schema}".agent_personas SET version=2 WHERE id=$1::uuid`,[servedAgentId]);
+                await publisher.query('COMMIT');
+            })();
+            void publication.catch(()=>undefined);
+            const deadline=Date.now()+2000;
+            while(Date.now()<deadline){
+                if((await q('SELECT pg_blocking_pids($1::int) AS blockers',[publisherPid]))[0].blockers.includes(sourcePid)){observedBlock=true;break;}
+                await new Promise(resolve=>setTimeout(resolve,10));
+            }
+            return original(query,s,tenant,input);
+        });
+        try{
+            const effects=localEffects();
+            expect(await effects.deliver(reference,{prepare:jest.fn()})).toBe('effect:stored');
+            await publication;
+            expect(observedBlock).toBe(true);
+            expect(await effects.deliver(reference,{prepare:jest.fn()})).toBe('effect:stored');
+            expect(await history()).toHaveLength(1);
+        }finally{persist.mockRestore();await publication?.catch(()=>undefined);await publisher.query('ROLLBACK');publisher.release();}
+    });
+
+    it('rolls back message plus receipt on SQL failure and stops retrying after five failed attempts',async()=>{
+        const {reference}=await complete('send_product_image',approvedMedia);
+        const original=store.persistWithQuery.bind(store);
+        const persist=jest.spyOn(store,'persistWithQuery').mockImplementation(async(query,s,tenant,input)=>{
+            await original(query,s,tenant,input);
+            await query('SELECT 1/0 AS synthetic_failure');
+            throw new Error('unreachable');
+        });
+        try{
+            const effects=localEffects();
+            for(let attempt=1;attempt<=5;attempt++){
+                await expect(effects.deliver(reference,{prepare:jest.fn()})).rejects.toThrow();
+                expect(await history()).toHaveLength(0);
+                expect(await effectState(reference.effectId)).toMatchObject({state:'failed',attempts:attempt});
+            }
+            expect(await effects.deliver(reference,{prepare:jest.fn()})).toBe('effect:failed');
+            expect(persist).toHaveBeenCalledTimes(5);expect(relay.publish).not.toHaveBeenCalled();
+        }finally{persist.mockRestore();}
+    });
+
+    it('does not turn a stored message into a failed attempt after its COMMIT acknowledgement is lost',async()=>{
+        const {reference}=await complete('send_product_image',approvedMedia);
+        let loseAck=true;
+        const intercepted={...prisma,transactionInTenantSchema:async(s:string,work:any)=>{
+            const result=await tx(s,work);
+            if(result?.value==='effect:stored'&&loseAck){loseAck=false;throw new Error('commit_ACK_lost');}
+            return result;
+        }};
+        const effects=new ToolApprovalEffectsService(intercepted,{} as any,{} as any,store);
+        await expect(effects.deliver(reference,{prepare:jest.fn()})).rejects.toThrow('commit_ACK_lost');
+        expect(await effectState(reference.effectId)).toMatchObject({state:'stored',attempts:1});
+        expect(await effects.deliver(reference,{prepare:jest.fn()})).toBe('effect:stored');
+        expect(await history()).toHaveLength(1);
+    });
+
+    it.each(['unavailable_plan','missing_widget_port'])('bounds repeated %s failures without invoking persistence',async fault=>{
+        const {reference}=await complete('send_product_image',approvedMedia);
+        const available=fault==='unavailable_plan'?jest.spyOn(store,'assertAvailable').mockRejectedValue(new Error('widget_delivery_unavailable')):undefined;
+        const persist=jest.spyOn(store,'persistWithQuery');
+        const effects=new ToolApprovalEffectsService(prisma,{} as any,{} as any,fault==='missing_widget_port'?undefined:store);
+        try{
+            for(let attempt=1;attempt<=5;attempt++){
+                await expect(effects.deliver(reference,{prepare:jest.fn()})).rejects.toThrow('widget_delivery_unavailable');
+                expect(await effectState(reference.effectId)).toMatchObject({state:'failed',attempts:attempt});
+            }
+            expect(await effects.deliver(reference,{prepare:jest.fn()})).toBe('effect:failed');
+            expect(persist).not.toHaveBeenCalled();
+            expect(await scoped('SELECT id FROM messages WHERE conversation_id=$1::uuid',[binding.conversation_id])).toHaveLength(0);
+        }finally{available?.mockRestore();persist.mockRestore();}
+    });
+
+    it.each(['web_widget','whatsapp'])('rejects a channel change after initial %s classification without a local or external dispatch',async initial=>{
+        const {reference,ledger}=await complete('send_product_image',approvedMedia);
+        await scoped('UPDATE tool_execution_ledger SET channel_type=$2 WHERE id=$1::uuid',[ledger,initial]);
+        let changed=false;
+        const intercepted={...prisma,executeInTenantSchema:async(s:string,sql:string,params:any[])=>{
+            const result=await prisma.executeInTenantSchema(s,sql,params);
+            if(!changed&&sql.includes('SELECT e.kind,e.state,l.channel_type')){
+                changed=true;
+                await scoped('UPDATE tool_execution_ledger SET channel_type=$2 WHERE id=$1::uuid',[ledger,initial==='web_widget'?'whatsapp':'web_widget']);
+            }
+            return result;
+        }};
+        const transport={prepare:jest.fn()};
+        expect(await new ToolApprovalEffectsService(intercepted,{} as any,{} as any,store).deliver(reference,transport)).toBe('effect:suppressed');
+        expect(changed).toBe(true);expect(transport.prepare).not.toHaveBeenCalled();expect(await history()).toHaveLength(0);
+    });
+
+    it('rechecks the ledger scope under its lock after the agent guard has read the original authority',async()=>{
+        const {reference,ledger}=await complete('send_product_image',approvedMedia);
+        let changed=false;
+        const intercepted={...prisma,transactionInTenantSchema:async(s:string,work:any)=>tx(s,(query:any)=>work(async(sql:string,params:any[])=>{
+            const result=await query(sql,params);
+            if(!changed&&sql.includes('SELECT * FROM agent_personas WHERE id=')){
+                changed=true;
+                await scoped(`UPDATE tool_execution_ledger SET request_payload=jsonb_set(request_payload,'{operationalScope,version}','2'::jsonb) WHERE id=$1::uuid`,[ledger]);
+            }
+            return result;
+        }))};
+        expect(await new ToolApprovalEffectsService(intercepted,{} as any,{} as any,store).deliver(reference,{prepare:jest.fn()})).toBe('effect:suppressed');
+        expect(changed).toBe(true);
+        expect(await effectState(reference.effectId)).toMatchObject({error_code:'approval_effect_authority_changed'});
+        expect(await history()).toHaveLength(0);
     });
     it('uses the same persisted transport for a human reply and preserves handoff response metrics', async () => {
         const actor = randomUUID();

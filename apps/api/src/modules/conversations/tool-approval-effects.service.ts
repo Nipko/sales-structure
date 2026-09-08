@@ -8,6 +8,8 @@ import { HandoffService } from '../handoff/handoff.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ApprovalEffectSuppressed, type ApprovedEffectDeliveryPort, type ApprovedEffectReference, type ApprovedEffectTransport } from '../channels/approved-effect-delivery.port';
 import { approvedEffectDescriptors, approvalMediaItems } from './tool-approval-effects.contracts';
+import { assertServedAgentAuthority, validServedAgentAuthority, ServedAgentAuthorityError } from '../persona/served-agent-authority';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CHANNELS = new Set(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);
@@ -57,7 +59,12 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
         if (![reference.ticketId, reference.effectId].every(id => UUID.test(id))) throw new Error('approval_effect_invalid_reference');
         const schema = await this.schema(reference.tenantId);
         const effect = await this.prisma.executeInTenantSchema<any[]>(schema,
-            'SELECT kind FROM tool_approval_effects WHERE id=$1::uuid AND ticket_id=$2::uuid', [reference.effectId,reference.ticketId]);
+            `SELECT e.kind,e.state,l.channel_type FROM tool_approval_effects e JOIN tool_approval_tickets t ON t.id=e.ticket_id
+                JOIN tool_execution_ledger l ON l.id=t.execution_ledger_id WHERE e.id=$1::uuid AND t.id=$2::uuid`, [reference.effectId,reference.ticketId]);
+        if (effect[0]?.channel_type === 'web_widget' && ['media','payment_link'].includes(effect[0]?.kind)) {
+            if (['stored','sent','completed','suppressed','reconciliation_required'].includes(effect[0].state)) return `effect:${effect[0].state}`;
+            return this.deliverApprovedWidget(reference, schema);
+        }
         // Canonical handoff lazily prepares columns. Do that before our transaction
         // reads the conversation: cross-connection ALTER would otherwise deadlock.
         if (effect[0]?.kind === 'handoff') await this.handoff.prepareDelivery(reference.tenantId);
@@ -100,6 +107,12 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
             }
             const invalid = this.invalidBinding(row);
             if (invalid) { await this.finish(query, reference.effectId, 'suppressed', invalid); return { value: 'effect:suppressed' }; }
+            // A channel changed after initial classification. Never let it enter
+            // the local writer without the operational authority transaction.
+            if (row.channel_type === 'web_widget' && ['media','payment_link'].includes(row.kind)) {
+                await this.finish(query, reference.effectId, 'suppressed', 'approval_effect_binding_changed');
+                return { value: 'effect:suppressed' };
+            }
             const active = await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 AND is_active=true FOR SHARE', [reference.tenantId,schema]);
             if (!active[0]) { await this.finish(query, reference.effectId, 'suppressed', 'approval_effect_tenant_unavailable'); return { value: 'effect:suppressed' }; }
             let started = false;
@@ -165,6 +178,116 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
         return outcome.value;
     }
 
+    /** Local delivery has no provider boundary: authority, message and receipt
+     * commit together. Accepted receipts are historical facts, not new actions. */
+    private async deliverApprovedWidget(reference: ApprovedEffectReference, schema: string): Promise<string> {
+        let availabilityError: unknown;
+        try {
+            if (!this.widgetMessages) throw new Error('widget_delivery_unavailable');
+            await this.widgetMessages.assertAvailable(reference.tenantId);
+        } catch (error) { availabilityError = error; }
+        let published: WidgetMessageReference | undefined;
+        let failureReceipt: {state:string; attempts:number; updatedAt:string; scope:any} | undefined;
+        let outcome: {value:string; retry?:boolean};
+        try { outcome = await this.privacyTransaction(schema, async query => {
+            const before = (await this.load(query, reference, false))[0];
+            if (!before) return { value: 'effect:missing' };
+            const terminal = (state: string) => ['stored','sent','completed','suppressed','reconciliation_required'].includes(state);
+            if (terminal(before.state)) return { value: `effect:${before.state}` };
+            const authorityHash = this.widgetAuthorityHash(before);
+            let authorityError = this.widgetAuthorityError(before, schema, reference.tenantId);
+            // No effect/ticket/ledger/conversation row locks before tenant/agent.
+            if (!authorityError) {
+                try { await assertServedAgentAuthority(query, schema, before.operational_scope); }
+                catch (error) {
+                    if (!(error instanceof ServedAgentAuthorityError)) throw error;
+                    authorityError = error.code;
+                }
+            } else {
+                await query('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 FOR SHARE', [reference.tenantId,schema]);
+            }
+            let row = (await this.load(query, reference, true))[0];
+            if (!row) return { value: 'effect:missing' };
+            if (terminal(row.state)) return { value: `effect:${row.state}` };
+            if (row.state === 'processing') {
+                if (new Date(row.lease_expires_at).getTime() > Date.now()) throw new Error('approval_effect_in_progress');
+                await this.finish(query, reference.effectId, 'failed', 'delivery_lease_expired');
+                return { value: 'effect:failed', retry: true };
+            }
+            if (!['pending','queued','failed'].includes(row.state) || Number(row.attempts) >= 5) return { value: `effect:${row.state}` };
+            if (authorityHash !== this.widgetAuthorityHash(row)) authorityError = 'approval_effect_authority_changed';
+            if (authorityError) {
+                await this.finish(query, reference.effectId, 'suppressed', authorityError);
+                return { value: 'effect:suppressed' };
+            }
+            if (row.conversation_id) await query('SELECT id FROM conversations WHERE id=$1::uuid FOR UPDATE', [row.conversation_id]);
+            if (row.contact_id) await query('SELECT id FROM contacts WHERE id=$1::uuid FOR UPDATE', [row.contact_id]);
+            row = (await this.load(query, reference, true))[0];
+            const invalid = this.invalidBinding(row) || (authorityHash !== this.widgetAuthorityHash(row) ? 'approval_effect_authority_changed' : null);
+            if (invalid) { await this.finish(query, reference.effectId, 'suppressed', invalid); return { value: 'effect:suppressed' }; }
+            failureReceipt = {state:row.state,attempts:Number(row.attempts),updatedAt:row.effect_updated_at,scope:row.operational_scope};
+            if (availabilityError) throw availabilityError;
+            try {
+                if (row.channel_type !== 'web_widget' || row.ledger_channel_type !== 'web_widget'
+                    || !['media','payment_link'].includes(row.kind)) throw new ApprovalEffectSuppressed('approval_effect_binding_changed');
+                if (!approvedEffectDescriptors(row.tool_name,row.ledger_status,row.response_payload || {})
+                    .some(item => item.kind === row.kind && item.itemIndex === row.item_index))
+                    throw new ApprovalEffectSuppressed('approval_effect_result_changed');
+                if (!this.widgetMessages) throw new ApprovalEffectSuppressed('widget_delivery_unavailable');
+                const outbound = await this.hydrate(query, reference, row);
+                await query('UPDATE tool_approval_effects SET attempts=attempts+1 WHERE id=$1::uuid', [reference.effectId]);
+                const message = await this.widgetMessages.persistWithQuery(query,schema,reference.tenantId,{
+                    conversationId:row.conversation_id,contactId:row.contact_id,content:outbound.content,source:'approval',
+                    dedupeId:`approval:${reference.effectId}`,approvalEffectId:reference.effectId });
+                await this.finish(query,reference.effectId,'stored');
+                published = {tenantId:reference.tenantId,conversationId:row.conversation_id,messageId:message.id};
+                return {value:'effect:stored'};
+            } catch (error) {
+                if (!(error instanceof ApprovalEffectSuppressed)) throw error; // SQL failures roll back message and receipt together.
+                await this.finish(query, reference.effectId, 'suppressed', error.code);
+                return { value: 'effect:suppressed' };
+            }
+        }); } catch (error) {
+            // SQL rollback restores attempts too. Record bounded retry metadata
+            // separately, but never degrade an accepted or replaced receipt.
+            if (failureReceipt) await this.privacyTransaction(schema, async query => {
+                try { await assertServedAgentAuthority(query, schema, failureReceipt!.scope); }
+                catch (changed) { if (!(changed instanceof ServedAgentAuthorityError)) throw changed; }
+                await query(`UPDATE tool_approval_effects SET state='failed',attempts=attempts+1,error_code='delivery_preflight_failed',
+                    next_attempt_at=NOW()+INTERVAL '60 seconds',updated_at=NOW()
+                    WHERE id=$1::uuid AND ticket_id=$2::uuid AND state=$3 AND state IN ('pending','queued','failed')
+                        AND attempts=$4 AND updated_at=$5::timestamptz`,
+                [reference.effectId,reference.ticketId,failureReceipt!.state,failureReceipt!.attempts,failureReceipt!.updatedAt]);
+            }).catch(() => undefined);
+            throw error;
+        }
+        if (published) this.widgetMessages!.publish(published);
+        if (outcome.retry) throw new Error('approval_effect_preflight_failed');
+        return outcome.value;
+    }
+
+    private widgetAuthorityHash(row: any): string {
+        return revisionHash({scope:row.operational_scope ?? null,draft:row.draft_review ?? null,
+            agentId:row.draft_review ? null : row.expected_agent_id ?? null,
+            ledger:row.execution_ledger_id,kind:row.kind,channel:row.channel_type,ledgerChannel:row.ledger_channel_type});
+    }
+
+    private widgetAuthorityError(row: any, schema: string, tenantId: string): string | null {
+        const scope = row.operational_scope, draft = row.draft_review;
+        if (!validServedAgentAuthority(scope,schema,tenantId)) return 'approval_effect_authority_required';
+        if (scope.kind === 'legacy') return draft || row.expected_agent_id ? 'approval_effect_authority_mismatch' : null;
+        // Conversation attribution keeps the first served version for analytics.
+        // An exact draft origin belongs to this proposal and takes precedence.
+        if (draft) return draft.agentId === scope.agentId && draft.agentVersion === scope.version ? null : 'approval_effect_authority_mismatch';
+        // Policy approval resume resolves this persisted agent ID, then checks
+        // the full operational scope. Its historical attribution version is not
+        // the version of this new proposal.
+        if (row.expected_agent_id && row.expected_agent_id !== scope.agentId)
+            return 'approval_effect_authority_mismatch';
+        if (!draft && !row.expected_agent_id) return 'approval_effect_authority_required';
+        return null;
+    }
+
     private async hydrate(query: Query, reference: ApprovedEffectReference, row: any): Promise<OutboundMessage> {
         if (!CHANNELS.has(row.channel_type)) throw new ApprovalEffectSuppressed('approval_effect_channel_unsupported');
         const base: OutboundMessage = { tenantId: reference.tenantId, channelType: row.channel_type,
@@ -203,10 +326,12 @@ export class ToolApprovalEffectsService implements ApprovedEffectDeliveryPort {
     }
 
     private load(query: Query, reference: ApprovedEffectReference, lock: boolean): Promise<any[]> {
-        return query(`SELECT e.*, t.status AS ticket_status,t.resume_state,t.contact_id,t.conversation_id,t.execution_ledger_id,
+        return query(`SELECT e.*,e.updated_at::text AS effect_updated_at, t.status AS ticket_status,t.resume_state,t.contact_id,t.conversation_id,t.execution_ledger_id,
             l.tool_name,l.status AS ledger_status,l.response_payload,l.contact_id AS ledger_contact_id,
+            l.request_payload->'operationalScope' AS operational_scope,l.request_payload->'draftReview' AS draft_review,
             l.conversation_id AS ledger_conversation_id,l.channel_type AS ledger_channel_type,
             c.contact_id AS conversation_contact_id,c.channel_type,c.channel_account_id,c.status AS conversation_status,
+            to_jsonb(c)->>'agent_persona_id' AS expected_agent_id,
             contact.external_id,contact.channel_type AS contact_channel_type,
             EXISTS(SELECT 1 FROM customer_memory_erasure erased WHERE erased.contact_id=t.contact_id) AS erased
             FROM tool_approval_effects e JOIN tool_approval_tickets t ON t.id=e.ticket_id

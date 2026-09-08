@@ -5097,3 +5097,62 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_handoff_receipts" (
 CREATE INDEX IF NOT EXISTS idx_agent_handoff_receipts_conversation
     ON "{{SCHEMA_NAME}}"."agent_handoff_receipts"(conversation_id, created_at DESC);
 -- END CANONICAL HANDOFF RECEIPT
+
+-- BEGIN NORMAL DISPATCH OUTBOX
+-- One row per remote effect, never per call: a Messenger image and its caption
+-- are two POSTs and one receipt cannot describe both. The row is the only thing
+-- that authorizes an attempt. An 'admitted' lease that runs out does NOT become
+-- available again — the attempt may have reached the provider — so recovery goes
+-- through reconciliation. attempts is raised in the admission transaction, which
+-- commits before the external call, so a rolled-back send cannot loop forever.
+-- No cascading FK: erasure clears the payload and the row survives as the fact
+-- that stops a recovered job from delivering the same effect twice.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    batch_id UUID NOT NULL,
+    conversation_id UUID,
+    contact_id UUID,
+    inbound_message_id UUID NOT NULL,
+    channel_type TEXT NOT NULL,
+    channel_account_id TEXT NOT NULL,
+    recipient TEXT,
+    item_index INTEGER NOT NULL,
+    item_kind TEXT NOT NULL,
+    payload JSONB,
+    operational_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+    learning_footprint JSONB,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    error_code TEXT,
+    receipt TEXT,
+    settled_lease_token UUID,
+    redacted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_dispatch_outbox_identity UNIQUE (inbound_message_id, item_index),
+    CONSTRAINT agent_dispatch_outbox_state
+        CHECK (state IN ('prepared','queued','admitted','sent','stored','suppressed','failed','reconciliation_required')),
+    CONSTRAINT agent_dispatch_outbox_kind
+        CHECK (item_kind IN ('text','media','payment_link','flow')),
+    CONSTRAINT agent_dispatch_outbox_item_index CHECK (item_index >= 0),
+    CONSTRAINT agent_dispatch_outbox_lease
+        CHECK ((state = 'admitted') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)),
+    CONSTRAINT agent_dispatch_outbox_redaction
+        CHECK (redacted_at IS NOT NULL OR (conversation_id IS NOT NULL AND contact_id IS NOT NULL
+            AND recipient IS NOT NULL AND payload IS NOT NULL))
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources" (
+    dispatch_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(id) ON DELETE CASCADE,
+    source_id UUID NOT NULL, source_contact_id UUID,
+    PRIMARY KEY (dispatch_id, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_pending ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(available_at, id) WHERE state IN ('prepared','queued','failed');
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_lease ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(lease_expires_at) WHERE state = 'admitted';
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_batch ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(batch_id, item_index);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(contact_id) WHERE redacted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_source ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_id, dispatch_id);
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_contact_id, dispatch_id);
+-- END NORMAL DISPATCH OUTBOX

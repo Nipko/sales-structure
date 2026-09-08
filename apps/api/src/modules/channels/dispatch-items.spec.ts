@@ -105,11 +105,11 @@ describe('Messenger strict dispatch', () => {
         expect(sent).toHaveLength(0);
     });
 
-    it('classifies a refusal and a lost connection differently', async () => {
+    it('classifies a documented rate limit and a lost connection differently', async () => {
         answer(400, { error: { code: 613, message: 'Calls to this api have exceeded the rate limit' } });
         await expect(adapter.sendStrict({ itemKind: 'text', to: 'psid-1', channelAccountId: 'page-1',
             payload: { text: 'Hola' } }, 'token'))
-            .resolves.toEqual({ kind: 'rejected', errorCode: 'fb_613', retryable: false });
+            .resolves.toEqual({ kind: 'rejected', errorCode: 'meta_613', retryable: true });
 
         (global as any).fetch = jest.fn(async () => {
             throw Object.assign(new Error('timed out'), { name: 'TimeoutError' });

@@ -5,7 +5,7 @@ import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
 import { toWhatsAppFormatting } from '../../../common/utils/channel-text-format.util';
 import {
-    classifyProviderResponse, classifyTransportFailure,
+    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
     type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
 } from '../strict-dispatch-transport';
 
@@ -63,8 +63,8 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
         }
         let data: any = null;
         try { data = await response.json(); } catch { data = null; }
-        return classifyProviderResponse(response.status, data?.messages?.[0]?.id,
-            data?.error?.code != null ? `wa_${data.error.code}` : null);
+        // The Graph contract: an id or an error object, never both, never neither.
+        return metaGraphClassifier(metaGraphAnswer(response.status, data, 'messages'));
     }
 
     /** Build the body for exactly one effect. No caption riding on an image. */

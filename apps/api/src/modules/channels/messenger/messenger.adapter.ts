@@ -5,7 +5,7 @@ import { IChannelAdapter } from '../channel-gateway.service';
 import { NormalizedMessage, ChannelType } from '@parallext/shared';
 import { v4 as uuid } from 'uuid';
 import {
-    classifyProviderResponse, classifyTransportFailure,
+    classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
     type StrictDispatchOutcome, type StrictDispatchRequest, type StrictDispatchTransport,
 } from '../strict-dispatch-transport';
 
@@ -53,8 +53,8 @@ export class MessengerAdapter implements IChannelAdapter, StrictDispatchTranspor
         } catch (error) { return classifyTransportFailure(error); }
         let data: any = null;
         try { data = await response.json(); } catch { data = null; }
-        return classifyProviderResponse(response.status, data?.message_id,
-            data?.error?.code != null ? `fb_${data.error.code}` : null);
+        // The Graph contract: an id or an error object, never both, never neither.
+        return metaGraphClassifier(metaGraphAnswer(response.status, data, 'message_id'));
     }
 
     private strictMessage(request: StrictDispatchRequest): Record<string, any> {

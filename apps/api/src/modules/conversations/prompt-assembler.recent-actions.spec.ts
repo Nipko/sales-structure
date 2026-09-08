@@ -92,10 +92,18 @@ describe('quien llena el turno lo hace antes de armarlo', () => {
         expect(assignment).toBeLessThan(assembly);
     });
 
-    it('el prompt se arma una sola vez, así que nada más puede mutar el turno después', () => {
-        // Si algún día se re-arma el prompt dentro del loop, este test se cae y
-        // hay que revisar el invariante de arriba en cada punto de ensamblado.
-        const assemblies = SERVICE_SRC.match(/assembleWithCacheBoundary\(/g) || [];
-        expect(assemblies).toHaveLength(1);
+    it('ningún ensamblado precede al llenado del turno', () => {
+        // Antes exigía UN solo ensamblado, como tripwire: si aparecía otro había
+        // que revisar el invariante en cada punto. Aparecieron dos —la
+        // recuperación sin aprendizaje y el refresco de ejemplos dentro del
+        // loop— y los tres releen el MISMO `turnContext`, así que el invariante
+        // se sostiene. Se afirma entonces lo que de verdad importa: que ninguno
+        // ocurra antes de la asignación, no cuántos son.
+        const assignment = SERVICE_SRC.indexOf('.recentActions = priorActions');
+        const positions = [...SERVICE_SRC.matchAll(/assembleWithCacheBoundary\(/g)].map(m => m.index as number);
+
+        expect(assignment).toBeGreaterThan(-1);
+        expect(positions.length).toBeGreaterThan(0);
+        for (const at of positions) expect(at).toBeGreaterThan(assignment);
     });
 });

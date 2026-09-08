@@ -63,7 +63,10 @@ describe('el envío', () => {
     });
 
     it('deduplica: dos herramientas pueden devolver el mismo enlace', () => {
-        expect(SRC).toContain('for (const url of new Set(paymentLinks))');
+        // La cabecera del bucle ganó guardas (`draftMode`, `session`) que no
+        // tocan la deduplicación, así que se afirma lo que importa —que lo
+        // recorrido es un Set de los enlaces— y no el texto exacto de la línea.
+        expect(SRC).toMatch(/for \(const url of .*new Set\(paymentLinks\)\)/);
     });
 
     it('el dedupeId va atado al enlace, no al turno', () => {

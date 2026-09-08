@@ -1,5 +1,6 @@
 import { Module, Controller, Post, Param, UseGuards } from '@nestjs/common';
-import { BullModule, Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
+import { BullModule, Processor, WorkerHost } from '@nestjs/bullmq';
+import { randomUUID } from 'crypto';
 import { AuthGuard } from '@nestjs/passport';
 import { Job } from 'bullmq';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -27,12 +28,16 @@ export class LearningEvaluationController {
 @Processor(LEARNING_EVALUATION_QUEUE,{concurrency:1})
 export class LearningEvaluationProcessor extends WorkerHost {
     constructor(private readonly evaluation:LearningEvaluationService,private readonly learning:LearningService){super();}
-    process(job:Job<LearningEvaluationJob>){return this.evaluation.run(job.data);}
-    @OnWorkerEvent('failed')
-    async failed(job:Job<LearningEvaluationJob>,error:Error){
-        if(job&&job.attemptsMade>=(job.opts.attempts||1)){
-            const {tenantId,agentId,releaseId,attemptId}=job.data;
-            await this.learning.failEvaluation(tenantId,agentId,releaseId,attemptId,String(error.message||'evaluation_failed').slice(0,160));
+    async process(job:Job<LearningEvaluationJob>){
+        // This token belongs to this invocation, never to a shared job.data
+        // object or a delayed failed event from another invocation.
+        const workerToken=randomUUID();
+        try{return await this.evaluation.run(job.data,workerToken);}catch(error:any){
+            if(job.attemptsMade+1>=(job.opts.attempts||1)){
+                const {tenantId,agentId,releaseId,attemptId}=job.data;
+                await this.learning.failEvaluation(tenantId,agentId,releaseId,attemptId,String(error.message||'evaluation_failed').slice(0,160),workerToken);
+            }
+            throw error;
         }
     }
 }

@@ -426,6 +426,9 @@
     }
   },
   "agentLearning": {
+    "sourceChanged": "Este chat cambió o su versión original no se pudo verificar. Vuelve a importarlo y revisa los ejemplos nuevos antes de usarlos.",
+    "reimportSource": "Importar y revisar de nuevo",
+    "releaseSourceChanged": "Una fuente de esta versión dejó de ser válida. Sus ejemplos no se usan en las respuestas. Reimporta y revisa la fuente para crear y evaluar una versión nueva.",
     "uploadOriginal": "Ver texto original de esta importación",
     "uploadOriginalHelp": "Visible solo durante esta visita. Al salir de esta pantalla se descarta.",
     "qualityThreshold": "Para aprobar se necesita al menos 3/4 en cada dimensión y 2/4 en brevedad. Corrige la propuesta y vuelve a analizarla.",

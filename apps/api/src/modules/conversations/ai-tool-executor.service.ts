@@ -1,4 +1,5 @@
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { assertServedAgentAuthority, validServedAgentAuthority, VERSION_GUARDED_TOOLS, ServedAgentAuthorityError, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { educationToolError } from './education-tool-error';
 import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
@@ -230,6 +231,7 @@ export class AIToolExecutorService {
             operationalScope?: ServedAgentAuthority;
             evalMode?: boolean;
             sandboxNamespace?: EvalNamespaceLease;
+            withDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority;
             structuredKnowledgeInputs?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture;
             executionState?: { get(key: string): Promise<string | null> };
             missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
@@ -684,7 +686,7 @@ export class AIToolExecutorService {
                 case 'search_knowledge_base':
                     return this.searchKnowledgeBase(
                         tenantId, args.query, args.limit, opts?.executionContext, opts?.jurisdiction,
-                        opts?.knowledgeSearch, conversationId,
+                        opts?.knowledgeSearch, conversationId,opts?.withDataSourceAuthority,
                     );
 
                 case 'list_customer_orders':
@@ -1100,6 +1102,7 @@ export class AIToolExecutorService {
                     .fail(schemaName, controlDecision, 'tool_execution_failed')
                     .catch(() => undefined);
             }
+            if(error instanceof LLMSourceAuthorityUnavailable)throw error;
             if (error instanceof ServedAgentAuthorityError) return {
                 error: error.code, persisted: false, controlBlocked: true,
                 message: 'The agent configuration changed. Reload it and prepare a new proposal before executing this action.',
@@ -2616,6 +2619,7 @@ export class AIToolExecutorService {
         jurisdiction?: string | null,
         settings?: { similarityThreshold?: number; language?: string; rerank?: boolean; rerankTopN?: number; agentId?: string | null; audience?: 'customer' | 'internal' },
         conversationId?: string,
+        withDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority,
     ): Promise<any> {
         try {
             const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext, {
@@ -2633,7 +2637,7 @@ export class AIToolExecutorService {
                 tenantId,
                 query,
                 limit,
-                { ...settings, similarityThreshold: settings?.similarityThreshold ?? 0.35, executionContext, jurisdiction, conversationId },
+                { ...settings, similarityThreshold: settings?.similarityThreshold ?? 0.35, executionContext, jurisdiction, conversationId,withDataSourceAuthority },
             );
             return readOk({
                 chunks: (results || []).map((r: any) => ({
@@ -2659,6 +2663,7 @@ export class AIToolExecutorService {
             // Un RAG caído devolvía `{chunks: []}`, indistinguible de "no hay
             // nada sobre eso" — así el agente contestaba de memoria sobre una
             // política que no pudo leer.
+            if(e instanceof LLMSourceAuthorityUnavailable)throw e;
             this.logger.warn(`[Tool] search_knowledge_base failed: ${e.message}`);
             return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
                 message: 'No pude consultar la base de conocimiento en este momento.',

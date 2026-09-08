@@ -426,6 +426,9 @@
     }
   },
   "agentLearning": {
+    "sourceChanged": "This chat changed or its original version could not be verified. Import it again and review the new examples before using them.",
+    "reimportSource": "Import and review again",
+    "releaseSourceChanged": "A source in this release is no longer valid. Its examples are excluded from replies. Import and review the source again to create and evaluate a new release.",
     "uploadOriginal": "View the original uploaded text",
     "uploadOriginalHelp": "Available only during this visit. It is discarded when you leave this page.",
     "qualityThreshold": "Approval needs at least 3/4 in each dimension and 2/4 in brevity. Correct the proposal and analyze it again.",

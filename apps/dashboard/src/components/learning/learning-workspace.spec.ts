@@ -26,6 +26,23 @@ const release = (): LearningRelease => ({ id: 'release', status: 'candidate', tr
     example_ids: ['example'], baseline_release_id: null, evaluation: { candidateAverage: 60, baselineAverage: 70, totalCases: 3, completedCases: 2, failedCases: 1 } });
 
 describe('review and publication surfaces', () => {
+    it.each(['es','en','pt','fr'])('explains changed sources and prevents stale approval/publication in %s',locale=>{
+        mockLocale=locale;
+        const item={...example(),source_kind:'inbox',source_conversation_id:'conversation',sourceAvailability:'changed' as const};
+        const html=renderToStaticMarkup(createElement(ExampleCard,{...common,example:item,selected:false,onSelect:jest.fn()}));
+        expect(html).toContain(mockMessages[locale].sourceChanged);
+        expect(html).toContain(mockMessages[locale].reimportSource);
+        expect(html).not.toContain(mockMessages[locale].privacyChecked);
+        expect(html).not.toContain(mockMessages[locale].selectExample);
+        for(const status of ['candidate','published']){
+            const stale={...release(),status,evaluation_status:'passed',sourceAvailability:'changed' as const};
+            const comparison=renderToStaticMarkup(createElement(ReleaseCard,{...common,release:stale,number:1}));
+            expect(comparison).toContain(mockMessages[locale].releaseSourceChanged);
+            expect(comparison).not.toContain(mockMessages[locale].publish+'</button>');
+            expect(comparison).not.toContain(mockMessages[locale].evaluate+'</button>');
+            if(status==='published')expect(comparison).toContain(mockMessages[locale].rollback);
+        }
+    });
     it.each(['es', 'en', 'pt', 'fr'])('keeps failed or loading evidence unknown rather than inventing zero reserved cases in %s', locale => {
         mockLocale = locale;
         for (const unavailable of [false, true]) {

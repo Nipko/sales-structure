@@ -9,10 +9,12 @@ export type LearningExample = {
     facts_required: string[]; analysis: { scores?: Record<string, number>; exclusions?: string[] } | null;
     status: string; revision: number; dedup_status: string; split: string; channel: string;
     language: string; source_kind: string; source_conversation_id?: string;
+    sourceAvailability?: 'current' | 'changed';
 };
 export type LearningRelease = {
     id: string; status: string; traffic_percent: number; evaluation_status: string;
     example_ids: string[]; baseline_release_id: string | null;
+    sourceAvailability?: 'current' | 'changed';
     evaluation?: { candidateAverage?: number; baselineAverage?: number; error?: string;
         totalCases?: number; completedCases?: number; failedCases?: number };
 };
@@ -43,13 +45,13 @@ export function parseLearningTranscript(text: string): LearningMessage[] {
 }
 
 export function canSelectLearningExample(example: LearningExample): boolean {
-    return example.status === "approved" && example.split === "train" &&
+    return example.sourceAvailability !== 'changed' && example.status === "approved" && example.split === "train" &&
         ["brand_style", "operational_pattern"].includes(example.kind || "");
 }
 
 export function canApproveLearningExample(example: LearningExample): boolean {
     const scores = example.analysis?.scores;
-    return example.status === 'analyzed' && example.dedup_status === 'clear' && !!scores &&
+    return example.sourceAvailability !== 'changed' && example.status === 'analyzed' && example.dedup_status === 'clear' && !!scores &&
         !example.analysis?.exclusions?.length &&
         ['accuracy', 'toolUse', 'understanding', 'clarity', 'brevity', 'empathy', 'brandTone', 'uncertainty', 'closure']
             .every(dimension => Number.isInteger(scores[dimension]) && scores[dimension] >= (dimension === 'brevity' ? 2 : 3) && scores[dimension] <= 4);

@@ -57,6 +57,8 @@ export function LearningWorkspace({ tenantId, agentId }: { tenantId: string; age
 
     const errorText = useCallback((result: Envelope | Error) => {
         const code = result instanceof Error ? result.message : result.errorCode;
+        if (code === 'learning_inbox_source_changed' || code === 'learning_source_identity_changed') return t('sourceChanged');
+        if (code === 'learning_release_source_withdrawn') return t('releaseSourceChanged');
         return code && t.has(`errors.${code}`) ? t(`errors.${code}`) : t("errors.requestFailed");
     }, [t]);
     const refresh = useCallback(async () => {
@@ -165,7 +167,7 @@ export function LearningWorkspace({ tenantId, agentId }: { tenantId: string; age
         <section className="space-y-4" aria-labelledby="learning-review">
             <div><h2 id="learning-review" className="text-lg font-semibold">{t("reviewTitle")}</h2><p className="text-sm text-neutral-500">{t("reviewHelp")}</p></div>
             {!data ? <LearningReviewAvailability unavailable={Boolean(error)} /> : !data.examples.length ? <p className={panel}>{t("noExamples")}</p> : data.examples.map(example =>
-                <ExampleCard key={`${example.id}:${example.revision}:${example.status}`} example={example} tenantId={tenantId} agentId={agentId} busy={busy} run={run} uploadOriginal={uploadOriginals[example.source_id]}
+                <ExampleCard key={`${example.id}:${example.revision}:${example.status}:${example.sourceAvailability}`} example={example} tenantId={tenantId} agentId={agentId} busy={busy} run={run} uploadOriginal={uploadOriginals[example.source_id]}
                     selected={selected.includes(example.id)} onSelect={checked => setSelected(current => checked ? [...new Set([...current, example.id])] : current.filter(id => id !== example.id))} />)}
         </section>
 
@@ -188,13 +190,18 @@ export function ExampleCard({ example, tenantId, agentId, busy, run, selected, o
     const [original, setOriginal] = useState<Array<{ direction: string; content_text: string }> | null>(null);
     const status = t.has(`statuses.${example.status}`) ? t(`statuses.${example.status}`) : t("statuses.pending");
     const changed = pattern !== (example.response_pattern || "");
-    const reviewable = !['approved', 'rejected', 'retired', 'analyzing'].includes(example.status);
+    const sourceChanged = example.sourceAvailability === 'changed';
+    const reviewable = !sourceChanged && !['approved', 'rejected', 'retired', 'analyzing'].includes(example.status);
     return <article className={panel}>
         <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold">{t.has(`intents.${example.intent}`) ? t(`intents.${example.intent}`) : t("intents.general")}</h3><span className="text-xs text-neutral-500">{status} · {t("revision", { number: example.revision })}</span></div>
+        {sourceChanged && <div role="status" className="space-y-2 text-sm text-amber-700 dark:text-amber-300"><p>{t('sourceChanged')}</p>
+            {example.source_kind === 'inbox' && example.source_conversation_id && <button className={button} disabled={busy}
+                onClick={() => run(() => api.importInboxLearning(tenantId,agentId,example.source_conversation_id!), 'imported')}>{t('reimportSource')}</button>}
+        </div>}
         <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2"><h4 className="text-sm font-medium">{t("sourceExcerpt")}</h4>
                 <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg bg-neutral-50 p-3 dark:bg-neutral-950">{example.episode.map((message, index) => <p key={index} className="whitespace-pre-wrap text-sm"><strong>{t(message.role)}: </strong>{message.text}</p>)}</div>
-                {example.source_kind === "inbox" && <button className={button} disabled={busy} onClick={() => original ? setOriginal(null) : run(async () => {
+                {example.source_kind === "inbox" && <button className={button} disabled={busy || sourceChanged} onClick={() => original ? setOriginal(null) : run(async () => {
                     const result = await api.getLearningOriginal(tenantId, agentId, example.source_id);
                     if (result.success && Array.isArray(result.data)) setOriginal(result.data); return result;
                 }, "originalLoaded")}>{t(original ? "hideOriginal" : "showOriginal")}</button>}
@@ -204,8 +211,8 @@ export function ExampleCard({ example, tenantId, agentId, busy, run, selected, o
             <div className="space-y-3"><Label text={t("pattern")}><textarea className={field} rows={6} maxLength={1800} value={pattern} disabled={busy} onChange={event => setPattern(event.target.value)} /></Label>
                 {example.rationale && <p className="text-sm text-neutral-500">{example.rationale}</p>}
                 {!!example.facts_required?.length && <p className="text-sm"><strong>{t("factsRequired")}: </strong>{example.facts_required.join(" · ")}</p>}
-                <div className="flex flex-wrap gap-2"><button className={button} disabled={busy || !changed || !pattern.trim()} onClick={() => run(() => api.reviseLearningExample(tenantId, agentId, example.id, example.revision, pattern), "revisionSaved")}>{t("saveRevision")}</button>
-                    <button className={button} disabled={busy || changed || example.status === "approved" || example.status === "analyzing"} onClick={() => run(() => api.analyzeLearningExample(tenantId, agentId, example.id), "analyzed")}>{t("analyze")}</button></div>
+                <div className="flex flex-wrap gap-2"><button className={button} disabled={busy || sourceChanged || !changed || !pattern.trim()} onClick={() => run(() => api.reviseLearningExample(tenantId, agentId, example.id, example.revision, pattern), "revisionSaved")}>{t("saveRevision")}</button>
+                    <button className={button} disabled={busy || sourceChanged || changed || example.status === "approved" || example.status === "analyzing"} onClick={() => run(() => api.analyzeLearningExample(tenantId, agentId, example.id), "analyzed")}>{t("analyze")}</button></div>
             </div>
         </div>
         {example.analysis?.scores && <dl className="grid grid-cols-2 gap-2 text-xs md:grid-cols-3">{Object.entries(example.analysis.scores).map(([name, score]) => <div key={name} className="flex justify-between rounded-lg bg-neutral-50 p-2 dark:bg-neutral-950"><dt>{t.has(`dimensions.${name}`) ? t(`dimensions.${name}`) : t("quality")}</dt><dd>{score}/4</dd></div>)}</dl>}
@@ -230,18 +237,20 @@ export function ReleaseCard({ release, number, busy, run, tenantId, agentId }: {
     const [traffic, setTraffic] = useState(10);
     const summary = learningEvaluationSummary(release);
     const status = release.status === "candidate" ? release.evaluation_status : release.status;
+    const sourceChanged = release.sourceAvailability === 'changed';
     return <article className="space-y-3 rounded-lg border border-neutral-200 p-4 dark:border-neutral-700">
         <div className="flex flex-wrap justify-between gap-2"><h3 className="font-medium">{t("candidate", { number })}</h3><span className="text-sm">{t.has(`statuses.${status}`) ? t(`statuses.${status}`) : t("statuses.pending")}</span></div>
+        {sourceChanged && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{t('releaseSourceChanged')}</p>}
         {release.evaluation_status === "running" && <p className="text-sm">{t("evaluating")}</p>}
         {release.evaluation && <>
             <dl className="grid grid-cols-2 gap-3 text-sm"><div><dt>{t("baselineScore")}</dt><dd className="text-xl font-semibold">{release.evaluation.baselineAverage?.toFixed(1) ?? t("unavailable")}</dd></div><div><dt>{t("candidateScore")}</dt><dd className="text-xl font-semibold">{release.evaluation.candidateAverage?.toFixed(1) ?? t("unavailable")}</dd></div></dl>
             <p className="text-sm">{t("evaluationCounts", summary)}</p>
             {release.evaluation.error && <p className="text-sm text-amber-700 dark:text-amber-300">{t("evaluationFailed")}</p>}
         </>}
-        {release.status === "candidate" && <div className="flex flex-wrap items-end gap-3">
+        {release.status === "candidate" && !sourceChanged && <div className="flex flex-wrap items-end gap-3">
             <button className={button} disabled={busy || release.evaluation_status === "running"} onClick={() => run(() => api.evaluateLearningRelease(tenantId, agentId, release.id), "evaluationStarted")}>{t("evaluate")}</button>
             {release.evaluation_status === "passed" && <><Label text={t("traffic")}><select className={field} value={traffic} disabled={busy} onChange={event => setTraffic(Number(event.target.value))}>{[10, 25, 50, 100].map(value => <option key={value} value={value}>{value}%</option>)}</select></Label><button className={primary} disabled={busy} onClick={() => run(() => api.publishLearningRelease(tenantId, agentId, release.id, traffic), "published")}>{t("publish")}</button></>}
         </div>}
-        {release.status === "published" && <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm">{t("liveTraffic", { percent: release.traffic_percent })}</p><button className={button} disabled={busy} onClick={() => run(() => api.rollbackLearningRelease(tenantId, agentId, release.id), "rolledBack")}>{t("rollback")}</button></div>}
+        {release.status === "published" && <div className="flex flex-wrap items-center justify-between gap-3">{!sourceChanged && <p className="text-sm">{t("liveTraffic", { percent: release.traffic_percent })}</p>}<button className={button} disabled={busy} onClick={() => run(() => api.rollbackLearningRelease(tenantId, agentId, release.id), "rolledBack")}>{t("rollback")}</button></div>}
     </article>;
 }

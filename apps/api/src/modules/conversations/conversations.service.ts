@@ -1,6 +1,9 @@
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
+import type { RuntimeLearningExample } from '../learning/learning-contracts';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
+import { learningRecoveryMessages } from './learning-recovery-messages';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -2145,7 +2148,8 @@ export class ConversationsService {
         // Long-term memory (#1): inject what we know about this customer across
         // conversations, when the agent has it enabled.
         if (config.llm?.memory?.longTerm && conversation.contact_id) {
-            const mem = await this.customerMemory.getMemory(schemaName, conversation.contact_id, userText, tenantId, executionContext).catch(() => null);
+            const mem = await this.customerMemory.getMemory(schemaName, conversation.contact_id, userText, tenantId, executionContext,session?.evaluationDataSourceAuthority)
+                .catch(error=>{if(error instanceof LLMSourceAuthorityUnavailable)throw error;return null;});
             if (mem) turnContext.customerMemory = mem;
         }
 
@@ -3247,6 +3251,7 @@ export class ConversationsService {
                         language: userLanguage,
                         executionContext,
                         agentId: resolvedAgentId,
+                        withDataSourceAuthority:session?.evaluationDataSourceAuthority,
                         audience: 'customer',
                         // Regulated sources are filtered by the tenant's operating
                         // country, not by language. Two countries sharing a
@@ -3277,6 +3282,7 @@ export class ConversationsService {
                 }
             }
         } catch (ragError: any) {
+            if(ragError instanceof LLMSourceAuthorityUnavailable)throw ragError;
             this.logger.warn(`RAG search failed (non-fatal): ${ragError.message}`);
         }
 
@@ -3392,7 +3398,10 @@ export class ConversationsService {
             (turnContext as any).recentActions = priorActions;
         }
 
+        const learningFootprint=new Map<string,RuntimeLearningExample>();
+        let learningSuppressed=false;
         const refreshLearningExamples = async (operation?: { toolName: string; status: string }) => {
+        if(learningSuppressed){turnContext.learningExamples=[];return;}
         if (this.learning && resolvedAgentId) {
             try {
                 const examples = await this.learning.getRuntimeExamples(tenantId, resolvedAgentId, {
@@ -3401,6 +3410,7 @@ export class ConversationsService {
                 });
                 if (session?.snapshot.learningReleaseHash && examples.some(example => example.releaseHash !== session.snapshot.learningReleaseHash)) throw new Error('learning_release_revision_mismatch');
                 turnContext.learningExamples = examples;
+                for(const example of examples)learningFootprint.set(`${example.releaseId}:${example.releaseHash}:${example.id}`,example);
             } catch (error: any) {
                 if (session) throw error;
                 this.logger.warn(`[Learning] Style examples unavailable: ${error.message}`);
@@ -3458,6 +3468,28 @@ export class ConversationsService {
             const voicedWrite = preExecutedTools.some(t => isBusinessWriteTool(t.name));
             const MAX_TOOL_ITERATIONS = 5;
             const currentMessages = [...messages] as any[];
+            // The router invokes this authority separately for every provider
+            // attempt. Keep earlier examples too: generated tool-loop prose may
+            // still derive from them after the visible style selection changes.
+            const executeLearningModel:LLMRouterService['execute']=async request=>{
+                if(session?.learningEvaluationSource&&(!this.learning||!resolvedAgentId))throw new LLMSourceAuthorityUnavailable();
+                const withSourceAuthority=!learningSuppressed&&(learningFootprint.size||session?.learningEvaluationSource)&&this.learning&&resolvedAgentId
+                    ?this.learning.runtimeSourceAuthority(tenantId,resolvedAgentId,[...learningFootprint.values()],executionContext,session?.learningEvaluationSource):undefined;
+                try{
+                    return await llmRouter.execute({...request,withSourceAuthority,
+                        ...(learningSuppressed?{systemPrompt,cacheableSystemPromptChars:cachePrefixChars,tools:undefined,task:'conversation' as const}:{})});
+                }catch(error){
+                    if(!(error instanceof LLMSourceAuthorityUnavailable)||session)throw error;
+                    learningSuppressed=true;learningFootprint.clear();turnContext.learningExamples=[];
+                    currentMessages.splice(0,currentMessages.length,...learningRecoveryMessages(messages,executedToolsThisTurn,userLanguage));
+                    ({systemPrompt,cachePrefixChars}=this.promptAssembler.assembleWithCacheBoundary(config,turnContext,bizHours));
+                    turnTrace.add('decision','learning_source_unavailable',{recoveredWithoutLearning:true});
+                    // A replacement answer may explain already committed results;
+                    // it cannot request another effect or repeat a previous one.
+                    return llmRouter.execute({...request,task:'conversation',tools:undefined,withSourceAuthority:undefined,
+                        systemPrompt,cacheableSystemPromptChars:cachePrefixChars,messages:currentMessages});
+                }
+            };
             let finalResponse = '';
             // Media the LLM asked to send (e.g. product images), collected across
             // tool iterations and dispatched after the text reply.
@@ -3503,7 +3535,7 @@ export class ConversationsService {
             let turnModel: { provider: string; model: string } | undefined;
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-                const hasTools = tools.length > 0;
+                const hasTools = tools.length > 0 && !learningSuppressed;
                 const styleOperation = [...executedToolsThisTurn].reverse().find(tool => isBusinessWriteTool(tool.name) && toolResultSucceeded(tool.result));
                 if (styleOperation && styleOperation !== lastStyleOperation) {
                     await refreshLearningExamples({ toolName: styleOperation.name, status: 'succeeded' });
@@ -3515,7 +3547,7 @@ export class ConversationsService {
                 // Honor the agent's configured temperature/maxTokens (previously
                 // ignored). Tool-calling stays deterministic (0.3) regardless, since
                 // a high temperature degrades tool-argument accuracy.
-                const response = await llmRouter.execute({
+                const response = await executeLearningModel({
                     task: hasTools ? 'tool_calling' : 'conversation',
                     messages: currentMessages,
                     systemPrompt,
@@ -3544,7 +3576,7 @@ export class ConversationsService {
                 }
 
                 // Check if LLM wants to call tools
-                if (response.toolCalls?.length && hasTools) {
+                if (response.toolCalls?.length && hasTools && !learningSuppressed) {
                     this.logger.log(`[Pipeline] LLM requested ${response.toolCalls.length} tool call(s) (iteration ${iteration + 1})`);
 
                     // Add assistant message with tool calls (using ChatMessage format)
@@ -3759,7 +3791,7 @@ export class ConversationsService {
             if (!finalResponse) {
                 this.logger.warn(`[Pipeline] Tool loop exhausted ${MAX_TOOL_ITERATIONS} iterations without a final answer — forcing a no-tools response`);
                 try {
-                    const closing = await llmRouter.execute({
+                    const closing = await executeLearningModel({
                         task: 'conversation',
                         messages: currentMessages,
                         systemPrompt,
@@ -3786,7 +3818,7 @@ export class ConversationsService {
             // whole message thread (history + tool results) — everything the model saw.
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
-                executedToolsThisTurn, userLanguage, priorActions, turnContext, session,
+                executedToolsThisTurn, userLanguage, priorActions, turnContext, session, {execute:executeLearningModel},
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
 
@@ -4436,8 +4468,9 @@ export class ConversationsService {
         priorActions?: Array<{ tool?: string; ok?: boolean; awaiting?: boolean }>,
         trustedContext?: Partial<TurnContext>,
         session?: AgentTurnSession,
+        modelRouter?: Pick<LLMRouterService,'execute'>,
     ): Promise<string> {
-        const llmRouter = session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter;
+        const llmRouter = modelRouter || (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter);
         if (!response || isErrorFallback(response)) return response;
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)
@@ -4574,7 +4607,8 @@ export class ConversationsService {
             if (fixed) {
                 const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator);
                 if (enforced.blocked) {
-                    this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: enforced.validation.hallucinatedPrices });
+                    if(session)this.recordAgentSignal(tenantId,'unverified_price',session);
+                    else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: enforced.validation.hallucinatedPrices });
                 }
                 return enforced.reply;
             }
@@ -4582,7 +4616,8 @@ export class ConversationsService {
             this.logger.warn(`[Guardrail] corrective retry failed: ${e.message}`);
         }
         // Couldn't correct: surface for monitoring and fail closed on the price.
-        this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
+        if(session)this.recordAgentSignal(tenantId,'unverified_price',session);
+        else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
         return buildUnverifiedPriceReply(systemPrompt);
     }
 

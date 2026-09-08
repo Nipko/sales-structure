@@ -1,5 +1,17 @@
 import { createHash } from 'crypto';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+
+/** Internal evaluator context, never accepted from a customer or dashboard DTO. */
+export interface LearningEvaluationSourceScope {
+    releaseId:string;
+    releaseHash:string;
+    attemptId:string;
+    workerToken?:string;
+    baselineReleaseId:string|null;
+    baselineReleaseHash:string|null;
+    namespace?:EvalNamespaceLease;
+}
 
 export const LEARNING_DIMENSIONS = [
     'accuracy', 'toolUse', 'understanding', 'clarity', 'brevity', 'empathy', 'brandTone', 'uncertainty', 'closure',

@@ -8,6 +8,7 @@ import { operationalConfigurationBody, operationalConfigurationHash } from '../p
 import { TenantsService } from '../tenants/tenants.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LearningService } from '../learning/learning.service';
+import type { LearningEvaluationSourceScope } from '../learning/learning-contracts';
 import { ConversationsService } from './conversations.service';
 import { AgentEvaluationSnapshot, evaluationSnapshot, sealEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
@@ -29,6 +30,7 @@ export interface AgentTestExecutionOptions {
     sandboxInboundMessageId?: string;
     agentSnapshot?: AgentEvaluationSnapshot;
     learningReleaseId?: string | null;
+    learningEvaluationSource?:LearningEvaluationSourceScope;
     beforeToolExecution?: () => Promise<void>;
     beforeModelExecution?: () => Promise<void>;
 }
@@ -123,6 +125,10 @@ export class AgentTestService {
         const sourceSchema = await this.tenantsService.getSchemaName(tenantId, AGENT_TEST_EXECUTION_CONTEXT);
         if (snapshot.structuredKnowledgeInputs!.sourceSchema !== sourceSchema) throw new Error('evaluation_structured_knowledge_schema_mismatch');
         const namespace = options?.sandboxNamespace;
+        const evaluationSource=options?.learningEvaluationSource;
+        if(evaluationSource&&(!options?.evalMode||!namespace||evaluationSource.namespace?.schemaName!==namespace.schemaName
+            ||evaluationSource.namespace?.token!==namespace.token))throw new Error('learning_evaluation_namespace_required');
+        if(evaluationSource&&!this.learning)throw new Error('learning_source_authority_unavailable');
         if (namespace && !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(options?.sandboxInboundMessageId || '')) throw new Error('eval_sandbox_inbound_required');
         if (options?.sandboxInboundMessageId && !namespace) throw new Error('eval_namespace_scope_mismatch');
         if (namespace && (!options?.evalMode || namespace.tenantId !== tenantId || namespace.sourceSchema !== sourceSchema)) throw new Error('eval_namespace_scope_mismatch');
@@ -139,6 +145,9 @@ export class AgentTestService {
             conversationId: options?.sandboxConversationId || randomUUID(),
             executionContext: AGENT_TEST_EXECUTION_CONTEXT,
             sandboxNamespace: namespace,
+            learningEvaluationSource:options?.learningEvaluationSource,
+            evaluationSourceAuthority:evaluationSource?this.learning!.runtimeSourceAuthority(tenantId,agentId,[],AGENT_TEST_EXECUTION_CONTEXT,evaluationSource):undefined,
+            evaluationDataSourceAuthority:evaluationSource?this.learning!.runtimeDataSourceAuthority(tenantId,agentId,[],AGENT_TEST_EXECUTION_CONTEXT,evaluationSource):undefined,
             history: (req.conversationHistory || []).map(row => ({ ...row })),
             beforeToolExecution: async () => { await assertNamespace(); await options?.beforeToolExecution?.(); },
             beforeModelExecution: async () => { await assertNamespace(); await options?.beforeModelExecution?.(); },

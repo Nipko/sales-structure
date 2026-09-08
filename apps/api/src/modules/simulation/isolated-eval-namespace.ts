@@ -192,16 +192,22 @@ export class IsolatedEvalNamespace {
     async dispose(lease: EvalNamespaceLease): Promise<void> {
         this.validate(lease);
         await this.database.transaction(async query => {
+            await disposeOwnedEvalNamespace(query,lease);
+        });
+    }
+}
+
+/** Shared teardown for normal completion and source erasure, within the caller's transaction. */
+export async function disposeOwnedEvalNamespace(query:EvalNamespaceQuery,lease:EvalNamespaceLease):Promise<void> {
+    if (!NAMESPACE.test(lease.schemaName) || !UUID.test(lease.tenantId) || !UUID.test(lease.token)) throw new Error('eval_invalid_lease');
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text AS locked', [`eval-namespace:${lease.schemaName}`]);
             const exists = await query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [lease.schemaName]);
             if (!exists.length) return; // Idempotent teardown after a successful drop.
-            const owner = await query(`SELECT 1 FROM ${quote(lease.schemaName)}.__eval_namespace WHERE tenant_id=$1::uuid AND owner_token=$2::uuid`, [lease.tenantId, lease.token]);
+            const owner = await query(`SELECT 1 FROM ${quote(lease.schemaName)}.__eval_namespace WHERE tenant_id=$1::uuid AND owner_token=$2::uuid AND source_schema=$3::text`, [lease.tenantId, lease.token, lease.sourceSchema]);
             if (owner.length !== 1) throw new Error('eval_namespace_owner_mismatch');
             // RESTRICT protects every external dependency (views/functions as
             // well as FKs). Drop the complete internal graph in one statement.
             const tables = await query(`SELECT c.relname::text AS relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind IN ('r','p')`, [lease.schemaName]);
             if (tables.length) await query(`DROP TABLE ${tables.map(table => `${quote(lease.schemaName)}.${quote(table.relname)}`).join(',')} RESTRICT`);
             await query(`DROP SCHEMA ${quote(lease.schemaName)} RESTRICT`);
-        });
-    }
 }

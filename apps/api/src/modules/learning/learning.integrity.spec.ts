@@ -9,7 +9,7 @@ const releaseId='33333333-3333-4333-8333-333333333333',exampleId='44444444-4444-
 const sourceIds=['55555555-5555-4555-8555-555555555555','66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
 const scores=()=>Object.fromEntries(LEARNING_DIMENSIONS.map(key=>[key,4]));
 function build(){
-    const query=jest.fn(async(_sql:string,_params:any[]=[])=>[{id:exampleId}] as any[]);
+    const query=jest.fn(async(_sql:string,_params:any[]=[])=>_sql.includes('SELECT * FROM learning_releases')?[release()]:[{id:exampleId}] as any[]);
     const prisma={getTenantSchemaName:jest.fn().mockResolvedValue('tenant_learning'),
         executeInTenantSchema:jest.fn((_schema:string,sql:string,params:any[])=>query(sql,params)),
         transactionInTenantSchema:jest.fn((_schema:string,callback:any)=>callback(query))};
@@ -20,12 +20,12 @@ function build(){
     jest.spyOn(service,'ensureTables').mockResolvedValue(undefined);
     return {service,query,prisma,knowledge,llm};
 }
-function release(){return {id:releaseId,status:'candidate',snapshot_hash:'snapshot',baseline_release_id:null,example_ids:[exampleId],
+function release(){const row={id:releaseId,status:'candidate',snapshot_hash:'',baseline_release_id:null,example_ids:[exampleId],
     evaluation_status:'running',evaluation:{attemptId:'attempt',dependencyHash:'dependencies',agentSnapshot:{configHash:'agent'}},
     snapshot:{examples:[{id:exampleId,source_id:sourceIds[0],kind:'brand_style',language:'es',intent:'support',
         response_pattern:'Te ayudo. ¿Qué necesitas resolver?',rationale:'Question',facts_required:[]}],
-        heldout:sourceIds.map(source_id=>({source_id}))}};}
-function evidence():LearningEvaluationEvidence{return {attemptId:'attempt',releaseHash:'snapshot',baselineReleaseId:null,
+        heldout:sourceIds.map(source_id=>({source_id}))}};row.snapshot_hash=learningSnapshotHash(row.snapshot);return row;}
+function evidence():LearningEvaluationEvidence{return {attemptId:'attempt',releaseHash:release().snapshot_hash,baselineReleaseId:null,
     agentRevision:'agent',dependencyHash:'dependencies',results:sourceIds.map(sourceId=>({sourceId,candidateCompleted:true,
         baselineCompleted:true,candidateScore:90,baselineScore:80,criticalFailures:[],traceHash:'trace'}))};}
 
@@ -77,7 +77,7 @@ describe('Learning publication safety',()=>{
         const {service,query}=build();jest.spyOn(service as any,'loadRelease').mockResolvedValue(release());
         jest.spyOn(service as any,'assertReleaseSourcesAvailable').mockResolvedValue(undefined);
         await expect(service.recordEvaluation(tenant,agent,releaseId,{...evidence(),attemptId:'old'})).rejects.toThrow();
-        query.mockResolvedValueOnce([]);
+        query.mockImplementation(async sql=>sql.includes('SELECT * FROM learning_releases')?[{...release(),status:'retired'}]:[]);
         await expect(service.recordEvaluation(tenant,agent,releaseId,evidence())).rejects.toBeInstanceOf(ConflictException);
     });
     it('never treats the absence of a source row as a valid release',async()=>{
@@ -91,6 +91,7 @@ describe('Learning publication safety',()=>{
     it('does not use polished imported claims as tool execution proof',async()=>{
         const {service,query}=build();jest.spyOn(service as any,'example').mockResolvedValue({id:exampleId,status:'pending',revision:1,split:'train',language:'es',
             episode:[{role:'customer',text:'Quiero reservar'},{role:'assistant',text:'Tu reserva está confirmada'}]});
+        jest.spyOn(service as any,'assertSourcesAvailable').mockResolvedValue(undefined);
         query.mockImplementation(async sql=>sql.includes("UPDATE learning_examples")?[{id:exampleId}]:[]);
         const result=await service.analyze(tenant,agent,exampleId);
         expect(result.status).toBe('flagged');expect(result.analysis.exclusions).toContain('unverified_operation');
@@ -144,10 +145,15 @@ describe('Learning runtime scope',()=>{
         expect(await service.getRuntimeExamples(tenant,agent,{...opts,language:'fr'})).toEqual([]);
     });
     it('withdrawal erases reviews and both training and heldout frozen derivatives',async()=>{
-        const {service,query}=build();await service.withdrawSource(tenant,agent,sourceIds[0]);
+        const {service,query}=build();
+        query.mockImplementation(async sql=>sql.includes('information_schema.columns')?[{column_name:'snapshot'},{column_name:'evaluation_namespaces'}]
+            :sql.includes('WITH RECURSIVE')?[{id:releaseId,evaluation_namespaces:[]}]
+            :sql.includes('current_schema() AS schema')?[{schema:'tenant_learning'}]:[{id:exampleId}]);
+        await service.withdrawSource(tenant,agent,sourceIds[0]);
         const statements=query.mock.calls.map(([sql])=>sql);
         expect(statements.some(sql=>sql.includes('DELETE FROM learning_reviews'))).toBe(true);
-        expect(statements.some(sql=>sql.includes("snapshot->'heldout'")&&sql.includes("snapshot='{}'::jsonb"))).toBe(true);
+        expect(statements.some(sql=>sql.includes("snapshot->'heldout'"))).toBe(true);
+        expect(statements.some(sql=>sql.includes("snapshot='{}'::jsonb"))).toBe(true);
         expect(statements.some(sql=>sql.includes('embedding=NULL')&&sql.includes("episode='[]'::jsonb"))).toBe(true);
     });
 });

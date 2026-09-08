@@ -426,6 +426,9 @@
     }
   },
   "agentLearning": {
+    "sourceChanged": "Esta conversa mudou ou sua versão original não pôde ser verificada. Importe novamente e revise os novos exemplos antes de usá-los.",
+    "reimportSource": "Importar e revisar novamente",
+    "releaseSourceChanged": "Uma fonte desta versão deixou de ser válida. Seus exemplos não são usados nas respostas. Importe e revise a fonte novamente para criar e avaliar uma nova versão.",
     "uploadOriginal": "Ver o texto original desta importação",
     "uploadOriginalHelp": "Disponível apenas durante esta visita. É descartado ao sair desta página.",
     "qualityThreshold": "A aprovação exige pelo menos 3/4 em cada dimensão e 2/4 em brevidade. Corrija a proposta e analise novamente.",

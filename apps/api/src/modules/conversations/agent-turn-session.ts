@@ -31,6 +31,9 @@ export class EphemeralTurnState implements TurnStateStore {
 }
 
 export interface AgentTurnSession {
+    learningEvaluationSource?:import('../learning/learning-contracts').LearningEvaluationSourceScope;
+    evaluationSourceAuthority?:import('../ai/interfaces/llm-source-authority').LLMSourceAuthority;
+    evaluationDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority;
     id: string;
     tenantId: string;
     agentId: string;
@@ -108,6 +111,9 @@ export class AgentTurnSessionStore {
         session.history = input.history;
         session.beforeToolExecution = input.beforeToolExecution;
         session.beforeModelExecution = input.beforeModelExecution;
+        session.learningEvaluationSource = input.learningEvaluationSource ? structuredClone(input.learningEvaluationSource) : undefined;
+        session.evaluationSourceAuthority = input.evaluationSourceAuthority;
+        session.evaluationDataSourceAuthority = input.evaluationDataSourceAuthority;
         session.afterDependencyRead = input.afterDependencyRead;
         session.trace = new AgentTurnTrace();
         this.sessions.set(id, { session, expires: Date.now() + 3600_000 });

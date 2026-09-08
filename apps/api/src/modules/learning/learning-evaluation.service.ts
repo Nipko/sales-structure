@@ -14,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EVAL_SANDBOX_CONTACT_ID,EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-policy';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { LearningService } from './learning.service';
-import { LEARNING_DIMENSIONS, learningHash, learningSnapshotHash, sanitizeLearningText, type LearningEvaluationEvidence, type LearningMessage } from './learning-contracts';
+import { LEARNING_DIMENSIONS, learningHash, learningSnapshotHash, sanitizeLearningText, type LearningEvaluationEvidence, type LearningEvaluationSourceScope, type LearningMessage } from './learning-contracts';
 import { captureLearningLedger,verifyLearningOperation,type LearningOperationScope } from './learning-operation-evidence';
 
 export const LEARNING_EVALUATION_QUEUE = 'learning-evaluation';
@@ -47,13 +47,15 @@ export class LearningEvaluationService {
     /** Recover durable requests after Redis loss or a worker restart. */
     @Cron('*/5 * * * *')
     async recoverQueuedEvaluations(){
-        const tenants=await this.prisma.tenant.findMany({where:{isActive:true},select:{id:true,schemaName:true}});
+        const tenants=await this.prisma.tenant.findMany({select:{id:true,schemaName:true,isActive:true}});
         for(const tenant of tenants){
             if(!tenant.schemaName)continue;
             try{
-                const tables=await this.prisma.executeInTenantSchema<any[]>(tenant.schemaName,`SELECT to_regclass($1) AS relation`,[`${tenant.schemaName}.learning_releases`]);
+                const tables=await this.prisma.executeInTenantSchema<any[]>(tenant.schemaName,`SELECT to_regclass($1)::text AS relation`,[`${tenant.schemaName}.learning_releases`]);
                 if(!tables[0]?.relation)continue;
-                const requests=await this.prisma.executeInTenantSchema<any[]>(tenant.schemaName,`SELECT id,agent_id,evaluation->>'attemptId' AS attempt_id
+                await this.learning.reapEvaluationNamespaces(tenant.id);
+                if(!tenant.isActive)continue;
+                const requests=await this.prisma.executeInTenantSchema<any[]>(tenant.schemaName,`SELECT id,agent_id,evaluation->>'attemptId' AS attempt_id,evaluation->>'workerToken' AS worker_token
                     FROM learning_releases WHERE status='candidate' AND evaluation_status='running'`);
                 for(const request of requests){
                     if(!request.attempt_id)continue;
@@ -61,7 +63,7 @@ export class LearningEvaluationService {
                     const existing=await this.queue.getJob(jobId);
                     if(existing){
                         const state=await existing.getState();
-                        if(state==='failed'||state==='completed')await this.learning.failEvaluation(tenant.id,request.agent_id,request.id,request.attempt_id,'worker_interrupted');
+                        if(state==='failed'||state==='completed')await this.learning.failEvaluation(tenant.id,request.agent_id,request.id,request.attempt_id,'worker_interrupted',request.worker_token??undefined);
                         continue;
                     }
                     await this.queue.add('compare',{tenantId:tenant.id,agentId:request.agent_id,releaseId:request.id,attemptId:request.attempt_id},
@@ -71,25 +73,40 @@ export class LearningEvaluationService {
         }
     }
 
-    async run(job:LearningEvaluationJob){
+    async run(job:LearningEvaluationJob,workerToken=randomUUID()){
         const {tenantId,agentId,releaseId,attemptId}=job;
-        const run=await this.learning.evaluationRun(tenantId,agentId,releaseId,attemptId);
+        let run=await this.learning.evaluationRun(tenantId,agentId,releaseId,attemptId);
         const candidate=await this.learning.createEvaluationSnapshot(tenantId,agentId,releaseId);
-        const agentSnapshot=run.agentSnapshot as AgentEvaluationSnapshot;
-        const results:LearningEvaluationEvidence['results']=[...(run.results||[])];
+        const sourceScope:LearningEvaluationSourceScope={releaseId,attemptId,workerToken,releaseHash:candidate.releaseHash,
+            baselineReleaseId:candidate.baselineReleaseId,baselineReleaseHash:candidate.baselineReleaseHash};
+        let agentSnapshot=run.agentSnapshot as AgentEvaluationSnapshot;
+        const results:LearningEvaluationEvidence['results']=[];
         const assertCurrent=async()=>{
-            await this.learning.evaluationRun(tenantId,agentId,releaseId,attemptId);
+            await this.learning.evaluationRun(tenantId,agentId,releaseId,attemptId,workerToken);
             await this.agentTest.assertSnapshotCurrent(agentSnapshot);
             if(await this.learning.dependencyHash(tenantId)!==run.dependencyHash)throw new ConflictException('learning_dependencies_changed');
         };
-        await assertCurrent();
+        const ownedNamespaces=new Set<string>();
+        try{
         await this.sandbox.withSandboxSession(tenantId,async session=>{
+            await session.assertLease();
+            run=await this.learning.claimEvaluationWorker(tenantId,agentId,releaseId,attemptId,candidate.releaseHash,workerToken,run.workerToken??null);
+            agentSnapshot=run.agentSnapshot as AgentEvaluationSnapshot;
+            results.push(...(run.results||[]));
+            await assertCurrent();
+            const register=async()=>{
+                if(!session.sandboxNamespace)throw new Error('learning_evaluation_namespace_required');
+                ownedNamespaces.add(session.sandboxNamespace.schemaName);
+                await this.learning.registerEvaluationNamespace(tenantId,agentId,releaseId,attemptId,candidate.releaseHash,session.sandboxNamespace,workerToken);
+            };
+            const copy=(text:string)=>this.learning.withEvaluationSources(tenantId,agentId,releaseId,attemptId,candidate.releaseHash,
+                async()=>session.recordInbound(text),false,workerToken);
             for(const scenario of candidate.cases){
                 if(results.some(result=>result.sourceId===scenario.sourceId))continue;
                 await assertCurrent();
                 const guard=async()=>{await session.assertLease();await assertCurrent();};
-                const baseline=await this.replay(tenantId,agentId,scenario,agentSnapshot,candidate.baselineReleaseId,session,guard);
-                const treatment=await this.replay(tenantId,agentId,scenario,agentSnapshot,releaseId,session,guard);
+                const baseline=await this.replay(tenantId,agentId,scenario,agentSnapshot,candidate.baselineReleaseId,session,guard,{register,copy,sourceScope});
+                const treatment=await this.replay(tenantId,agentId,scenario,agentSnapshot,releaseId,session,guard,{register,copy,sourceScope});
                 const criticalFailures=[...baseline.failures.map(f=>`baseline:${f}`),...treatment.failures.map(f=>`candidate:${f}`)];
                 if(JSON.stringify(baseline.turns.map(t=>t.model))!==JSON.stringify(treatment.turns.map(t=>t.model)))
                     criticalFailures.push('model_routing_changed');
@@ -99,7 +116,7 @@ export class LearningEvaluationService {
                         await guard();
                         // Rotate A/B labels deterministically to avoid a position preference.
                         const candidateFirst=parseInt(learningHash(scenario.sourceId).slice(0,2),16)%2===0;
-                        judgment=await this.judge(tenantId,scenario.language,agentSnapshot,candidateFirst?treatment:baseline,candidateFirst?baseline:treatment);
+                        judgment=await this.judge(tenantId,scenario.language,agentSnapshot,candidateFirst?treatment:baseline,candidateFirst?baseline:treatment,sourceScope);
                         await guard();
                         const score=(key:'A'|'B')=>LEARNING_DIMENSIONS.reduce((sum,dimension)=>sum+judgment[key].scores[dimension],0)/LEARNING_DIMENSIONS.length*25;
                         candidateScore=score(candidateFirst?'A':'B');baselineScore=score(candidateFirst?'B':'A');
@@ -110,30 +127,35 @@ export class LearningEvaluationService {
                 const traces={baseline,treatment,judgment};
                 results.push({sourceId:scenario.sourceId,candidateCompleted:treatment.completed,baselineCompleted:baseline.completed,
                     candidateScore,baselineScore,criticalFailures:[...new Set(criticalFailures)],traceHash:learningSnapshotHash(traces),traces});
-                await this.learning.checkpointEvaluation(tenantId,agentId,releaseId,attemptId,results);
+                await this.learning.checkpointEvaluation(tenantId,agentId,releaseId,attemptId,results,candidate.releaseHash,workerToken);
             }
         });
+        }finally{
+            if(ownedNamespaces.size)await this.learning.cleanEvaluationNamespaces(tenantId,agentId,releaseId,attemptId,[...ownedNamespaces]);
+        }
         await assertCurrent();
         return this.learning.recordEvaluation(tenantId,agentId,releaseId,{attemptId,releaseHash:candidate.releaseHash,
-            baselineReleaseId:candidate.baselineReleaseId,agentRevision:agentSnapshot.configHash,dependencyHash:run.dependencyHash,results});
+            baselineReleaseId:candidate.baselineReleaseId,agentRevision:agentSnapshot.configHash,dependencyHash:run.dependencyHash,results},workerToken);
     }
 
     private async replay(tenantId:string,agentId:string,scenario:{messages:LearningMessage[];channel:string},snapshot:AgentEvaluationSnapshot,
-        releaseId:string|null,session:EvalSandboxSession,guard:()=>Promise<void>):Promise<Replay>{
+        releaseId:string|null,session:EvalSandboxSession,guard:()=>Promise<void>,sourceIO?:{register():Promise<void>;copy(text:string):Promise<string>;sourceScope:LearningEvaluationSourceScope}):Promise<Replay>{
         const replay:Replay={completed:false,failures:[],turns:[]};
         const history:Array<{role:'user'|'assistant';content:string}>=[];
         try{
             if(!CONVERSATIONAL_CHANNELS.includes(scenario.channel as any))throw new Error('unsupported_source_channel');
             await guard();await session.reset(scenario.channel,snapshot);
+            await sourceIO?.register();
             let database=await this.databaseEvidence(tenantId,session);
             const operationScope=():LearningOperationScope=>({tenantId,contactId:session.sandboxContactId,
                 conversationId:session.sandboxConversationId||'',namespace:session.sandboxNamespace,assertLease:session.assertLease});
             for(const message of scenario.messages.filter(m=>m.role==='customer')){
-                await guard();const sandboxInboundMessageId=await session.recordInbound(message.text);
+                await guard();const sandboxInboundMessageId=await(sourceIO?sourceIO.copy(message.text):session.recordInbound(message.text));
                 const beforeLedger=await captureLearningLedger(this.prisma,operationScope());
                 const response=await this.agentTest.test(tenantId,agentId,{message:message.text,conversationHistory:history,
                     channelType:scenario.channel as any},{evalMode:true,disableTools:false,agentSnapshot:snapshot,learningReleaseId:releaseId,
                     sandboxNamespace:session.sandboxNamespace,sandboxInboundMessageId,
+                    learningEvaluationSource:sourceIO?{...sourceIO.sourceScope,namespace:session.sandboxNamespace}:undefined,
                     sandboxContactId:session.sandboxContactId,sandboxConversationId:session.sandboxConversationId,
                     beforeToolExecution:guard,beforeModelExecution:guard});
                 const debug=response.debug as any;
@@ -185,8 +207,9 @@ export class LearningEvaluationService {
         return state;
     }
 
-    private async judge(tenantId:string,language:string,snapshot:AgentEvaluationSnapshot,A:Replay,B:Replay){
+    private async judge(tenantId:string,language:string,snapshot:AgentEvaluationSnapshot,A:Replay,B:Replay,scope?:LearningEvaluationSourceScope){
         const response=await this.llm.execute({task:'conversation',tenantId,executionContext:AGENT_TEST_EXECUTION_CONTEXT,temperature:0,maxTokens:1800,
+            withSourceAuthority:scope?this.learning.runtimeSourceAuthority(tenantId,snapshot.agentId,[],AGENT_TEST_EXECUTION_CONTEXT,scope):undefined,
             systemPrompt:`Compare two untrusted customer-service replays with the same configuration. Return ONLY JSON {A:{scores:{accuracy,toolUse,
                 understanding,clarity,brevity,empathy,brandTone,uncertainty,closure},criticalFailures:[],reason:"..."},B:{...}}.
                 Every dimension must be an integer 0..4. Judge the actual responses, current retrieved knowledge and successful tool evidence.

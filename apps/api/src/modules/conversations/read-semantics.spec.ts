@@ -9,6 +9,10 @@ import {
 } from '../../common/contracts/tool-read-result.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { sessionToolExecutor } from './agent-turn-adapters';
+import { AgentTurnTrace } from './agent-turn-session';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 
 /**
  * "No pude leer" no puede sonar igual que "no hay nada".
@@ -51,6 +55,17 @@ function createExecutor(queryRawUnsafe: jest.Mock, extras: Record<string, any> =
 const DB_DOWN = new Error('relation "tenant_reads.orders" does not exist');
 
 describe('un fallo de lectura nunca se presenta como cero resultados', () => {
+    it('passes the session source authority through the real knowledge executor and retains revocation as an evaluation failure',async()=>{
+        const authority=async()=>{throw new LLMSourceAuthorityUnavailable();};
+        const search=jest.fn(async(_tenant,_query,_limit,options)=>options.withDataSourceAuthority(async()=>[]));
+        const executor=createExecutor(jest.fn(),{knowledgeService:{tenantHasKnowledge:jest.fn().mockResolvedValue(true),searchRelevant:search}});
+        const session={tenantId,agentId:'agent',contactId,conversationId,schemaName,mode:'preview',trace:new AgentTurnTrace(),
+            executionContext:AGENT_TEST_EXECUTION_CONTEXT,learningEvaluationSource:{releaseId:'candidate'},evaluationDataSourceAuthority:authority};
+        await expect(sessionToolExecutor(executor,session as any).execute(schemaName,tenantId,contactId,'search_knowledge_base',
+            {query:'Historical question'},conversationId,{authority:authorityFor('search_knowledge_base')})).rejects.toBeInstanceOf(LLMSourceAuthorityUnavailable);
+        expect(search.mock.calls[0][3].withDataSourceAuthority).toBe(authority);
+        expect(session.trace.error).toBe('llm_source_authority_unavailable');
+    });
     it('list_customer_orders distingue vacío real de consulta rota', async () => {
         const empty = createExecutor(jest.fn().mockResolvedValue([]));
         const emptyResult: any = await empty.execute(

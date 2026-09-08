@@ -2,9 +2,10 @@ import { CANONICAL_EVAL_TOOLS } from '../simulation/isolated-eval-namespace';
 export { CANONICAL_EVAL_TOOLS } from '../simulation/isolated-eval-namespace';
 import type { AIToolExecutorService } from './ai-tool-executor.service';
 import type { LLMRouterService } from '../ai/router/llm-router.service';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import type { AgentTurnSession } from './agent-turn-session';
-import { resolveStructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { agentTestBlockedToolResult, isAgentTestSafeToolName } from './agent-test-tool-policy';
+import { resolveStructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 
 export function sessionCanExecute(session: AgentTurnSession, name: string): boolean {
     if (session.disableTools) return false;
@@ -19,6 +20,7 @@ export function sessionToolExecutor(executor: AIToolExecutorService, session: Ag
             let result: any;
             try {
             await session.beforeToolExecution?.();
+            if(session.learningEvaluationSource&&!session.evaluationDataSourceAuthority)throw new LLMSourceAuthorityUnavailable();
             if (schemaName !== session.schemaName || tenantId !== session.tenantId || contactId !== session.contactId
                 || (conversationId && conversationId !== session.conversationId)) throw new Error('runtime_tool_scope_mismatch');
             const structuredKnowledgeInputs = ['search_faqs', 'get_policy'].includes(name)
@@ -32,6 +34,7 @@ export function sessionToolExecutor(executor: AIToolExecutorService, session: Ag
                 evalMode: !!session.sandboxNamespace,
                 sandboxNamespace: session.sandboxNamespace,
                 executionState: session.state,
+                withDataSourceAuthority:session.evaluationDataSourceAuthority,
                 structuredKnowledgeInputs,
                 channelType: session.channelType,
             });
@@ -57,8 +60,12 @@ export function sessionLlmRouter(router: LLMRouterService, session: AgentTurnSes
         execute: async (request: Parameters<LLMRouterService['execute']>[0]) => {
         try {
             await session.beforeModelExecution?.();
+            // Auxiliary intent/query calls use the evaluator fence too. The main
+            // turn supplies a single combined fence with its accumulated styles.
+            const withSourceAuthority=request.withSourceAuthority||session.evaluationSourceAuthority;
+            if(session.learningEvaluationSource&&!withSourceAuthority)throw new LLMSourceAuthorityUnavailable();
             session.trace.providerCalls++;
-            const response = await router.execute({ ...request, executionContext: session.executionContext });
+            const response = await router.execute({ ...request,withSourceAuthority, executionContext: session.executionContext });
             session.trace.provider(response);
             await session.afterDependencyRead?.();
             return response;

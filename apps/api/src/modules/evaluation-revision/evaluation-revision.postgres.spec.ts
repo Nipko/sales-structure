@@ -17,8 +17,8 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
             await query(`CREATE TABLE "${schema}"."${table}"(id uuid PRIMARY KEY,payload jsonb NOT NULL)`);
             await query(`INSERT INTO "${schema}"."${table}" VALUES($1::uuid,$2::jsonb)`,[randomUUID(),JSON.stringify({version:1,text:'original',price:777,secret:'private-provider-token'})]);
         }
-        await query(`CREATE TABLE "${schema}".learning_releases(id uuid PRIMARY KEY,snapshot jsonb,evaluation jsonb,evaluation_status text,updated_at timestamptz)`);
-        await query(`INSERT INTO "${schema}".learning_releases VALUES($1::uuid,'{"examples":["approved"]}','{}','pending',NOW())`,[randomUUID()]);
+        await query(`CREATE TABLE "${schema}".learning_releases(id uuid PRIMARY KEY,snapshot jsonb,evaluation jsonb,evaluation_status text,updated_at timestamptz,evaluation_namespaces jsonb)`);
+        await query(`INSERT INTO "${schema}".learning_releases VALUES($1::uuid,'{"examples":["approved"]}','{}','pending',NOW(),NULL)`,[randomUUID()]);
         await query(`CREATE TABLE "${schema}".eval_runs(id uuid PRIMARY KEY,output jsonb)`);
         const prisma={$transaction:async(work:any,options:any)=>{
             expect(options.isolationLevel).toBe('RepeatableRead');
@@ -80,7 +80,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
     });
     it('does not invalidate itself when evaluation bookkeeping changes, but release contents do invalidate it',async()=>{
         const before=await service.capture(tenantId);
-        await query(`UPDATE "${schema}".learning_releases SET evaluation='{"scores":[90]}',evaluation_status='passed',updated_at=NOW()`);
+        await query(`UPDATE "${schema}".learning_releases SET evaluation='{"scores":[90]}',evaluation_status='passed',updated_at=NOW(),evaluation_namespaces='[{"schemaName":"owned-temporary-copy"}]'::jsonb`);
         await query(`INSERT INTO "${schema}".eval_runs VALUES($1::uuid,'{"passed":true}')`,[randomUUID()]);
         await expect(service.assertCurrent(before)).resolves.toBeUndefined();
         await query(`UPDATE "${schema}".learning_releases SET snapshot='{"examples":["different"]}'`);

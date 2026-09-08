@@ -4,8 +4,19 @@ import { PromptAssemblerService } from './prompt-assembler.service';
 import { ResponseValidatorService } from './response-validator.service';
 import { attributeKnowledgeResponse } from '../knowledge/knowledge-attribution';
 import { enrollmentTerms,enrollmentTermsReviewResult } from '../education/enrollment-terms';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 
 describe('Shared runtime integrity', () => {
+    const style=(id='style-one')=>({id,releaseId:'release',releaseHash:'hash',situation:'general',
+        responsePattern:`REVIEWED_STYLE_${id}`,rationale:'Tone only',factsRequired:[],authority:'style_only'});
+    function addLearning(service:any,revokeAttempt:number){
+        let attempt=0;
+        service.learning={getRuntimeExamples:jest.fn().mockResolvedValue([style()]),
+            runtimeSourceAuthority:jest.fn((_tenant,_agent,_examples)=>async(invoke:any)=>{
+                const response=await invoke();if(++attempt===revokeAttempt)throw new LLMSourceAuthorityUnavailable(response.usage);
+                return response;
+            })};
+    }
     function fixture(draftMode = false) {
         const service: any = Object.create(ConversationsService.prototype);
         const executor: any = Object.create(AIToolExecutorService.prototype);
@@ -17,6 +28,10 @@ describe('Shared runtime integrity', () => {
         const llm = jest.fn().mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
         let metadata: any = {};
         const query = jest.fn(async (_schema: string, sql: string, params: any[] = []) => {
+            if(sql.startsWith('SELECT contact_id FROM conversations'))return[{contact_id:'22222222-2222-4222-8222-222222222222'}];
+            if(sql.startsWith("UPDATE conversations SET metadata=(COALESCE")){
+                metadata={...metadata,...JSON.parse(params[1])};return[{id:params[0]}];
+            }
             if (sql.startsWith('SELECT metadata FROM conversations')) return [{ metadata: structuredClone(metadata) }];
             if (sql.startsWith('UPDATE conversations SET metadata=') && params[2]) {
                 metadata = { ...metadata, ...JSON.parse(params[2]) }; return [{ id: params[0] }];
@@ -75,6 +90,76 @@ describe('Shared runtime integrity', () => {
         expect(service.knowledgeService.searchRelevant).toHaveBeenCalledTimes(1);
         expect(llm.mock.calls[0][0].systemPrompt).toContain(`<channel>${channel}</channel>`);
         expect(query.mock.calls.some((call: any[]) => call[1].includes('id <> $2::uuid'))).toBe(true);
+    });
+    it('discards tool requests generated from a revoked learning source and recovers without tools',async()=>{
+        const {service,run,llm}=fixture();addLearning(service,1);
+        service.toolExecutor={execute:jest.fn()};
+        let calls=0;
+        llm.mockImplementation(async request=>{
+            const invoke=async()=>++calls===1?{content:'REVOKED_MODEL_PROSE',toolCalls:[{id:'call',function:{name:'create_appointment',arguments:'{}'}}]}
+                :{content:'La consulta cuesta COP 20000.'};
+            return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();
+        });
+        expect(await run()).toBe('La consulta cuesta COP 20000.');
+        expect(service.toolExecutor.execute).not.toHaveBeenCalled();
+        expect(llm.mock.calls[0][0].systemPrompt).toContain('REVIEWED_STYLE_style-one');
+        const recovery=llm.mock.calls[1][0];
+        expect(recovery.tools).toBeUndefined();expect(recovery.withSourceAuthority).toBeUndefined();
+        expect(recovery.systemPrompt).not.toContain('REVIEWED_STYLE_style-one');
+        expect(JSON.stringify(recovery.messages)).not.toContain('REVOKED_MODEL_PROSE');
+    });
+    it('preserves a committed receipt without repeating its writer when a later learning selection is revoked',async()=>{
+        const {service,run,llm,config}=fixture();addLearning(service,2);config.tools.appointments.enabled=true;
+        service.intentInterpreter={interpret:jest.fn(async()=>({intent:'other'}))};
+        service.learning.getRuntimeExamples.mockResolvedValueOnce([style()]).mockResolvedValue([style('style-two')]);
+        service.toolExecutor={execute:jest.fn(async()=>({success:true,status:'confirmed',appointmentId:'55555555-5555-4555-8555-555555555555'}))};
+        let calls=0;
+        llm.mockImplementation(async request=>{
+            const invoke=async()=>{
+                calls++;
+                if(calls===1)return{content:'OLD_GENERATED_STYLE',toolCalls:[{id:'call',function:{name:'create_appointment',arguments:'{}'}}]};
+                if(calls===2)return{content:'REVOKED_CLOSING_STYLE'};
+                return{content:'Tu cita está confirmada.'};
+            };
+            return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();
+        });
+        expect(await run('whatsapp','Sí, confirmo')).toBe('Tu cita está confirmada.');
+        expect(service.toolExecutor.execute).toHaveBeenCalledTimes(1);
+        expect(service.learning.runtimeSourceAuthority.mock.calls[1][2].map((e:any)=>e.id)).toEqual(['style-one','style-two']);
+        const recovery=llm.mock.calls[2][0];expect(recovery.tools).toBeUndefined();
+        expect(JSON.stringify(recovery.messages)).toContain('55555555-5555-4555-8555-555555555555');
+        expect(JSON.stringify(recovery.messages)).not.toMatch(/OLD_GENERATED_STYLE|REVOKED_CLOSING_STYLE/);
+        expect(recovery.systemPrompt).not.toContain('REVIEWED_STYLE_');
+    });
+    it('uses the same authority for corrective rewrites and removes revoked examples from the replacement',async()=>{
+        const {service,run,llm}=fixture();addLearning(service,2);
+        let calls=0;
+        llm.mockImplementation(async request=>{
+            const invoke=async()=>({content:++calls<3?'El precio es COP 1000.':'La consulta cuesta COP 20000.'});
+            return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();
+        });
+        expect(await run()).toBe('La consulta cuesta COP 20000.');
+        expect(llm.mock.calls[1][0].withSourceAuthority).toBeInstanceOf(Function);
+        expect(llm.mock.calls[2][0].systemPrompt).not.toContain('REVIEWED_STYLE_');
+        expect(llm.mock.calls[2][0].tools).toBeUndefined();
+    });
+    it('guards the forced closing answer after tool-loop exhaustion',async()=>{
+        const {service,run,llm}=fixture();addLearning(service,6);
+        service.toolExecutor={execute:jest.fn(async()=>({products:[]}))};
+        let calls=0;
+        llm.mockImplementation(async request=>{
+            const invoke=async()=>{
+                calls++;
+                if(calls<=5)return{content:'OLD_LOOP_PROSE',toolCalls:[{id:`call-${calls}`,function:{name:'search_products',arguments:'{}'}}]};
+                return{content:calls===6?'REVOKED_CLOSING':'La consulta cuesta COP 20000.'};
+            };
+            return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();
+        });
+        expect(await run()).toBe('La consulta cuesta COP 20000.');
+        expect(service.toolExecutor.execute).toHaveBeenCalledTimes(5);
+        expect(llm.mock.calls[5][0].withSourceAuthority).toBeInstanceOf(Function);
+        expect(llm.mock.calls[6][0].tools).toBeUndefined();
+        expect(JSON.stringify(llm.mock.calls[6][0].messages)).not.toMatch(/OLD_LOOP_PROSE|REVOKED_CLOSING/);
     });
 
     it('does not let the customer-proposed price authorize the live response', async () => {

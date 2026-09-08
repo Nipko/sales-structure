@@ -13,6 +13,7 @@ export const LEARNING_SCHEMA = [
         UNIQUE (agent_id, source_kind, source_key))`,
     `CREATE INDEX IF NOT EXISTS idx_learning_sources_group ON learning_sources(group_key, split)`,
     `CREATE INDEX IF NOT EXISTS idx_learning_sources_contact ON learning_sources(source_contact_id)`,
+    `ALTER TABLE learning_sources ADD COLUMN IF NOT EXISTS source_evidence JSONB`,
     `CREATE TABLE IF NOT EXISTS learning_examples (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(), source_id UUID NOT NULL REFERENCES learning_sources(id) ON DELETE CASCADE,
         agent_id UUID NOT NULL, kind VARCHAR(24) NOT NULL DEFAULT 'brand_style'
@@ -40,4 +41,5 @@ export const LEARNING_SCHEMA = [
         evaluation JSONB, created_by VARCHAR(100) NOT NULL, published_by VARCHAR(100), published_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
     `CREATE INDEX IF NOT EXISTS idx_learning_releases_active ON learning_releases(agent_id, status, created_at DESC)`,
+    `ALTER TABLE learning_releases ADD COLUMN IF NOT EXISTS evaluation_namespaces JSONB`,
 ] as const;

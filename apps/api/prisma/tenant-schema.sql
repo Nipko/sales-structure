@@ -4696,6 +4696,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_sources" (
 CREATE INDEX IF NOT EXISTS idx_learning_sources_group ON "{{SCHEMA_NAME}}"."learning_sources"(group_key, split);
 
 CREATE INDEX IF NOT EXISTS idx_learning_sources_contact ON "{{SCHEMA_NAME}}"."learning_sources"(source_contact_id);
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_sources" ADD COLUMN IF NOT EXISTS source_evidence JSONB;
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_examples" (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(), source_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."learning_sources"(id) ON DELETE CASCADE,
@@ -4728,6 +4729,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."learning_releases" (
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 
 CREATE INDEX IF NOT EXISTS idx_learning_releases_active ON "{{SCHEMA_NAME}}"."learning_releases"(agent_id, status, created_at DESC);
+ALTER TABLE "{{SCHEMA_NAME}}"."learning_releases" ADD COLUMN IF NOT EXISTS evaluation_namespaces JSONB;
 
 -- Durable approved-command delivery stores references and outcomes only.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_approval_effects" (

@@ -59,7 +59,7 @@ export const EVALUATION_OUTPUT_TABLES = new Set([
 
 /** Retrieval counters and evaluation bookkeeping cannot invalidate their own run. Business fields stay included. */
 export function revisionIgnoredColumns(table: string): readonly string[] {
-    if (table === 'learning_releases') return ['evaluation', 'evaluation_status', 'updated_at'];
+    if (table === 'learning_releases') return ['evaluation', 'evaluation_status', 'evaluation_namespaces', 'updated_at'];
     if (['knowledge_documents', 'knowledge_embeddings', 'knowledge_resources', 'knowledge_chunks', 'faqs'].includes(table))
         return ['query_frequency', 'last_accessed_at', 'access_count', 'views', 'view_count', 'retrieval_count'];
     return [];

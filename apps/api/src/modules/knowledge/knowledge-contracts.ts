@@ -1,8 +1,11 @@
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import type { RetrievedKnowledgeItem } from '@parallext/shared';
+import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-authority';
 
 /** Shared retrieval contract for automatic context, explicit tools and evaluation. */
 export interface KnowledgeSearchOptions {
+    /** Internal provenance fence, never accepted from request JSON. */
+    withDataSourceAuthority?:ExternalSourceAuthority;
     similarityThreshold?: number;
     poolSize?: number;
     conversationId?: string;

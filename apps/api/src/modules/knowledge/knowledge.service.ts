@@ -6,6 +6,8 @@ import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LlmKeyService } from '../settings/llm-key.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-authority';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { kbmsg } from './knowledge-i18n';
 import type { KnowledgeHit, KnowledgeSearchOptions, KnowledgeSourceMetadata } from './knowledge-contracts';
 import { knowledgeSourceAvailable } from './knowledge-contracts';
@@ -675,7 +677,7 @@ export class KnowledgeService {
         if (!persistenceDisabled(options?.executionContext)) {
             await this.ensureKbSearchVector(schema);
         }
-        const queryEmbedding = await this.embedQueryCached(query, tenantId, options?.executionContext);
+        const queryEmbedding = await this.embedQueryCached(query, tenantId, options?.executionContext,options?.withDataSourceAuthority);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
         const regconfig = this.pgRegconfig(options?.language);
 
@@ -815,6 +817,7 @@ export class KnowledgeService {
                 options.rerankTopN ?? 12,
                 tenantId,
                 options.executionContext,
+                options.withDataSourceAuthority,
             )
             : ranked;
 
@@ -848,6 +851,7 @@ export class KnowledgeService {
         topN: number,
         tenantId?: string,
         executionContext?: ServiceExecutionContext,
+        sourceAuthority?:ExternalSourceAuthority,
     ): Promise<any[]> {
         const pool = candidates.slice(0, Math.min(topN, candidates.length));
         if (pool.length <= 1) return candidates;
@@ -865,6 +869,7 @@ export class KnowledgeService {
                 maxTokens: 200,
                 tenantId,
                 executionContext,
+                withSourceAuthority:sourceAuthority?invoke=>sourceAuthority(invoke,response=>response.usage):undefined,
                 systemPrompt: 'Sos un reranker. Devolvé SOLO un JSON array de índices (enteros) ordenados por relevancia a la consulta, el más relevante primero. Sin texto extra.',
                 messages: [{ role: 'user', content: `Consulta: ${query}\n\nFragmentos:\n${list}` }],
             });
@@ -881,6 +886,7 @@ export class KnowledgeService {
             pool.forEach((c, i) => { if (!seen.has(i)) reordered.push(c); }); // append omitted
             return [...reordered, ...candidates.slice(pool.length)];
         } catch (e: any) {
+            if(e instanceof LLMSourceAuthorityUnavailable)throw e;
             this.logger.warn(`[KB rerank] failed (non-fatal): ${e.message}`);
             return candidates;
         }
@@ -1556,15 +1562,30 @@ export class KnowledgeService {
         text: string,
         tenantId?: string,
         executionContext?: ServiceExecutionContext,
+        sourceAuthority?:ExternalSourceAuthority,
     ): Promise<number[]> {
         // Embeddings currently require OpenAI specifically. Fail with a clear,
         // actionable message instead of an opaque 401 from the SDK when the key
         // is missing (the platform contract only guarantees ≥1 provider of any kind).
         const openai = await this.ensureOpenAI(tenantId);
-        const response = await openai.embeddings.create({
-            model: 'text-embedding-3-small',
-            input: text,
-        });
+        const input={model:'text-embedding-3-small',input:text};
+        const request=async()=>{
+            if(!sourceAuthority)return openai.embeddings.create(input);
+            for(let attempt=0;;attempt++){
+                try{
+                    // Retries live outside the SDK, with fresh authority before
+                    // each outgoing attempt and a bounded request duration.
+                    return await sourceAuthority(()=>openai.embeddings.create(input,{maxRetries:0,timeout:45000}),response=>({
+                        promptTokens:response.usage?.prompt_tokens||0,completionTokens:0,totalTokens:response.usage?.total_tokens||0,
+                    }));
+                }catch(error:any){
+                    if(error instanceof LLMSourceAuthorityUnavailable||attempt>=2
+                        ||!(error instanceof OpenAI.APIConnectionError||[408,409,429].includes(error?.status)||error?.status>=500))throw error;
+                    await new Promise(resolve=>setTimeout(resolve,200*2**attempt));
+                }
+            }
+        };
+        const response = await request();
         if (tenantId && !persistenceDisabled(executionContext)) {
             const date = new Date().toISOString().slice(0, 10);
             const baseKey = `ai:stats:${tenantId}:${date}:embeddings`;
@@ -1594,9 +1615,10 @@ export class KnowledgeService {
         query: string,
         tenantId?: string,
         executionContext?: ServiceExecutionContext,
+        sourceAuthority?:ExternalSourceAuthority,
     ): Promise<number[]> {
-        if (persistenceDisabled(executionContext)) {
-            return this.generateEmbedding(query, tenantId, executionContext);
+        if (persistenceDisabled(executionContext)||sourceAuthority) {
+            return this.generateEmbedding(query, tenantId, executionContext,sourceAuthority);
         }
         const h = crypto.createHash('sha256').update(query.trim().toLowerCase()).digest('hex').slice(0, 32);
         const key = `kb:qemb:${tenantId || 'g'}:${h}`;

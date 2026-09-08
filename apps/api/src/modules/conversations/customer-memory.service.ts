@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-authority';
+import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { createHash } from 'crypto';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 
@@ -113,14 +115,14 @@ export class CustomerMemoryService {
      * (e.g. for the extractor's "previous memory" input). Returns null when nothing
      * is known.
      */
-    async getMemory(schema: string, contactId: string, query?: string, tenantId?: string, executionContext?: ServiceExecutionContext): Promise<CustomerMemory | null> {
+    async getMemory(schema: string, contactId: string, query?: string, tenantId?: string, executionContext?: ServiceExecutionContext,sourceAuthority?:ExternalSourceAuthority): Promise<CustomerMemory | null> {
         if (!contactId) return null;
         try {
             const erased = await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT contact_id FROM customer_memory_erasure WHERE contact_id = $1::uuid`,
                 [contactId]);
             if (erased.length) return null;
-            const facts = await this.retrieveFacts(schema, contactId, query?.trim() || '', tenantId, executionContext);
+            const facts = await this.retrieveFacts(schema, contactId, query?.trim() || '', tenantId, executionContext,sourceAuthority);
             const owner=await this.resolveOwner(schema,contactId);
             const disputed=await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT fact_key,array_agg(DISTINCT fact_text ORDER BY fact_text) AS observations FROM customer_memory_facts
@@ -130,18 +132,20 @@ export class CustomerMemoryService {
             // An empty current snapshot is authoritative. A legacy merged row or
             // summary can contain a retracted fact from another channel/contact.
             return facts.length||conflicts.length ? { facts: facts.slice(0, MEMORY_BLOCK_FACTS),...(conflicts.length?{conflicts}:{}) } : null;
-        } catch {
+        } catch (error) {
+            if(error instanceof LLMSourceAuthorityUnavailable)throw error;
             return null;
         }
     }
 
     /** Semantic top-K facts for the owner; falls back to most-recent when embeddings are off. */
-    private async retrieveFacts(schema: string, contactId: string, query: string, tenantId?: string, executionContext?: ServiceExecutionContext): Promise<string[]> {
+    private async retrieveFacts(schema: string, contactId: string, query: string, tenantId?: string, executionContext?: ServiceExecutionContext,sourceAuthority?:ExternalSourceAuthority): Promise<string[]> {
         try {
             const owner = await this.resolveOwner(schema, contactId);
             let emb: number[] | null = null;
             if (query) {
-                try { emb = await this.knowledge.generateEmbedding(query.slice(0, 1000), tenantId, executionContext); } catch { emb = null; }
+                try { emb = await this.knowledge.generateEmbedding(query.slice(0, 1000), tenantId, executionContext,sourceAuthority); }
+                catch (error) { if(error instanceof LLMSourceAuthorityUnavailable)throw error;emb = null; }
             }
             // Match the resolved owner OR the raw contact — facts saved before identity
             // resolution are keyed by contact and would otherwise be orphaned once the
@@ -165,7 +169,8 @@ export class CustomerMemoryService {
                   ORDER BY last_seen_at DESC LIMIT $4`,
                 [owner.kind, owner.id, contactId, MEMORY_BLOCK_FACTS]);
             return [...new Set((rows || []).map(r => r.fact_text).filter((f: any) => typeof f === 'string'))];
-        } catch {
+        } catch (error) {
+            if(error instanceof LLMSourceAuthorityUnavailable)throw error;
             return [];
         }
     }

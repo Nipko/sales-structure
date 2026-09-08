@@ -35,6 +35,8 @@ export interface PersonaResolution {
     config: TenantConfig | null;
     agentId: string | null;
     version: number | null;
+    operationalHash?: string;
+    legacyConfigHash?: string;
 }
 
 /**

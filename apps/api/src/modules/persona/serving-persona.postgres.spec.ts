@@ -14,7 +14,7 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         const parsed=new URL(url!);if(!['127.0.0.1','localhost'].includes(parsed.hostname)||!parsed.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
         client=new PrismaClient({datasourceUrl:url});await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         prisma=Object.create(PrismaService.prototype);prisma.$transaction=client.$transaction.bind(client);
-        await query('CREATE TABLE agent_personas(id UUID PRIMARY KEY,config_json JSONB,version INTEGER,is_active BOOLEAN,is_default BOOLEAN,channels TEXT[],channel_bindings TEXT[])');
+        await query('CREATE TABLE agent_personas(id UUID PRIMARY KEY,name TEXT DEFAULT \'Agent\',config_json JSONB,version INTEGER,is_active BOOLEAN,is_default BOOLEAN,channels TEXT[],channel_bindings TEXT[],schedule_mode TEXT DEFAULT \'24_7\')');
         await query('CREATE TABLE persona_config(config_json JSONB,version INTEGER,is_active BOOLEAN)');
     });
     beforeEach(async()=>{await query('TRUNCATE agent_personas,persona_config');});

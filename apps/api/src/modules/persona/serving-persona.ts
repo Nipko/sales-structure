@@ -1,8 +1,9 @@
 import { ConflictException } from '@nestjs/common';
 import type { TenantConfig } from '@parallext/shared';
-import type { RevisionQuery } from './agent-configuration-revision';
+import { operationalConfigurationHash, type RevisionQuery } from './agent-configuration-revision';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
-export interface ServingPersona {config:TenantConfig|null;agentId:string|null;version:number|null}
+export interface ServingPersona {config:TenantConfig|null;agentId:string|null;version:number|null;operationalHash?:string;legacyConfigHash?:string}
 /** Resolve routing, version and instructions from one database snapshot. A stale
  * Redis entry must never resurrect an inactive agent or pair old instructions
  * with a newly published version. An explicit legacy row remains compatible only
@@ -10,7 +11,7 @@ export interface ServingPersona {config:TenantConfig|null;agentId:string|null;ve
 export async function readServingPersona(query:RevisionQuery,channelType:string,accountId?:string):Promise<ServingPersona>{
     const binding=accountId?`${channelType}:${accountId}`:null;
     const rows=await query<any[]>(`WITH ranked AS (
-        SELECT id,config_json,version,CASE
+        SELECT id,name,config_json,version,channels,channel_bindings,schedule_mode,is_active,is_default,CASE
             WHEN $1::text IS NOT NULL AND $1=ANY(channel_bindings) THEN 1
             WHEN $2=ANY(channels) THEN 2 ELSE 3 END AS priority
         FROM agent_personas WHERE is_active=true AND
@@ -25,7 +26,8 @@ export async function readServingPersona(query:RevisionQuery,channelType:string,
     if(matches[0]){
         const selected=matches[0],version=Number(selected.version);
         if(!selected.id||!selected.config_json||!Number.isInteger(version)||version<1)throw new Error('persona_revision_unavailable');
-        return {config:selected.config_json,agentId:String(selected.id),version};
+        return {config:selected.config_json,agentId:String(selected.id),version,operationalHash:operationalConfigurationHash(selected)};
     }
-    return {config:rows[0].has_agents?null:rows[0].legacy_config||null,agentId:null,version:null};
+    const legacy=rows[0].has_agents?null:rows[0].legacy_config||null;
+    return {config:legacy,agentId:null,version:null,...(legacy?{legacyConfigHash:revisionHash(legacy)}:{})};
 }

@@ -27,6 +27,7 @@ describe('frozen public release review subject', () => {
         expect(absent).toMatchObject({ configurationHash: 'a'.repeat(64), baseOperationalVersion: 7, baseOperationalHash: null, changes: null });
         snapshot.configurationBaseOperationalHash = 'b'.repeat(64);
         snapshot.configurationBaseOperationalBody = { name: 'Alex', configJson: config(), channels: [], channelBindings: [], isActive: true, isDefault: true, scheduleMode: '24_7' };
+        snapshot.configurationBody=structuredClone(snapshot.configurationBaseOperationalBody);
         snapshot.config.persona.greeting = 'Candidate greeting';
         expect(releaseReviewSubject(snapshot)).toMatchObject({ baseOperationalHash: 'b'.repeat(64),
             changes: [{ key: 'greeting', before: 'Welcome', after: 'Candidate greeting' }] });
@@ -39,6 +40,17 @@ describe('frozen public release review subject', () => {
         expect(fields).toContainEqual({ key: 'forbiddenTopics', value: ['Private data'] });
         expect(fields).toContainEqual({ key: 'role', value: null });
         expect(fields).toContainEqual({ key: 'handoffTriggers', value: null });
+    });
+    it('shows the exact captured assignment and activation metadata without exposing private configuration',()=>{
+        const snapshot=evaluationSnapshot(randomUUID(),randomUUID(),{version:7,config_json:config()});
+        snapshot.configurationBaseOperationalBody={name:'Alex',configJson:config(),channels:['telegram'],channelBindings:['telegram:old'],isActive:false,isDefault:false,scheduleMode:'24_7'};
+        snapshot.configurationBody={...structuredClone(snapshot.configurationBaseOperationalBody),channelBindings:['telegram:reviewed'],isDefault:true,scheduleMode:'business_hours'};
+        const subject=releaseReviewSubject(snapshot);
+        expect(subject.changes).toEqual(expect.arrayContaining([{key:'channelBindings',before:['telegram:old'],after:['telegram:reviewed']},
+            {key:'isDefault',before:false,after:true},{key:'scheduleMode',before:'24_7',after:'business_hours'}]));
+        expect(subject.fields).toContainEqual({key:'isActive',value:false});expect(JSON.stringify(subject)).not.toContain('PRIVATE');
+        snapshot.configurationBody.channelBindings.push('telegram:another');
+        expect(releaseReviewSubject(snapshot).changes).not.toEqual(subject.changes);
     });
     it('binds the displayed subject and both sides of the comparison into the same evidence hash used for review', () => {
         const snapshot = evaluationSnapshot(randomUUID(), randomUUID(), { version: 7, config_json: config() });

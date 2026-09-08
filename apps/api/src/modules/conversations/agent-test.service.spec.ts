@@ -3,12 +3,14 @@ import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-conte
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import { EVAL_SANDBOX_CONTACT_ID, AGENT_TEST_SANDBOX_CONTACT_ID } from './agent-test-tool-policy';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 describe('AgentTestService delegates to the operational core', () => {
     it('binds a public draft selection to its preview session and rejects switching revisions mid-conversation',async()=>{
         const f=agentTurnFixture(),live=await f.personaService.getAgent(),id='11111111-1111-4111-8111-111111111111';
         Object.assign(f.personaService,{readConfigurationRevision:jest.fn().mockResolvedValue({id,body_hash:'a'.repeat(64),base_operational_hash:operationalConfigurationHash({...live,id:'agent'}),
             body:{configJson:{...live.config_json,language:'fr'},channels:['web_widget'],channelBindings:[],scheduleMode:'24_7',isActive:true,isDefault:false}})});
+        const revision=await (f.personaService as any).readConfigurationRevision();revision.body_hash=revisionHash(revision.body);
         const first=await f.service.test('tenant','agent',{message:'Bonjour',configurationRevisionId:id});
         expect(first.debug.agentRevision?.configurationRevisionId).toBe(id);
         const calls=f.llmRouter.execute.mock.calls.length;
@@ -24,20 +26,24 @@ describe('AgentTestService delegates to the operational core', () => {
         const reader=jest.fn().mockResolvedValue({id:'11111111-1111-4111-8111-111111111111',body_hash:'a'.repeat(64),base_operational_hash:operationalConfigurationHash({...live,id:'agent'}),
             body:{name:'Candidate Alex',configJson:draftConfig,channels:['telegram'],channelBindings:['telegram:owned'],
                 scheduleMode:'24_7',isActive:true,isDefault:false}});
+        const revision=await reader();revision.body_hash=revisionHash(revision.body);
         Object.assign(f.personaService,{readConfigurationRevision:reader});
         const snapshot=await f.service.captureSnapshot('tenant','agent',{configurationRevisionId:'11111111-1111-4111-8111-111111111111'});
         expect(reader).toHaveBeenCalledWith('tenant','agent','11111111-1111-4111-8111-111111111111',AGENT_TEST_EXECUTION_CONTEXT);
         expect(snapshot.config.persona.name).toBe('Candidate Alex');
-        expect(snapshot.configurationRevisionHash).toBe('a'.repeat(64));
+        expect(snapshot.configurationRevisionHash).toBe(revision.body_hash);
+        expect(snapshot.configurationBody?.channelBindings).toEqual(['telegram:owned']);
         expect(snapshot.configurationBaseOperationalHash).toBe(operationalConfigurationHash({...live,id:'agent'}));
         expect(snapshot.configurationBaseOperationalBody?.configJson).toEqual(live.config_json);
         expect((await f.personaService.getAgent()).config_json).toEqual(live.config_json);
-        for(const field of ['configurationRevisionId','configurationRevisionHash','configurationBaseOperationalHash','configurationBaseOperationalBody'] as const){
+        for(const field of ['configurationRevisionId','configurationRevisionHash','configurationBody','configurationBaseOperationalHash','configurationBaseOperationalBody'] as const){
             const altered=structuredClone(snapshot);delete altered[field];
             await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:altered})).rejects.toThrow('configuration_revision_integrity_mismatch');
         }
         const changed=structuredClone(snapshot);changed.configurationRevisionHash='b'.repeat(64);
-        await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:changed})).rejects.toThrow('frozen_dependencies_integrity_mismatch');
+        await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:changed})).rejects.toThrow('configuration_body_integrity_mismatch');
+        const routing=structuredClone(snapshot);routing.configurationBody!.channelBindings=['telegram:someone_else'];
+        await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:routing})).rejects.toThrow('configuration_body_integrity_mismatch');
         expect(f.llmRouter.execute).not.toHaveBeenCalled();
     });
     it('rejects a changed or misleading before-state rather than showing the wrong configuration diff',async()=>{
@@ -47,6 +53,7 @@ describe('AgentTestService delegates to the operational core', () => {
         Object.assign(f.personaService,{readConfigurationRevision:reader});
         await expect(f.service.captureSnapshot('tenant','agent',{configurationRevisionId:'11111111-1111-4111-8111-111111111111'})).rejects.toThrow('agent_operational_configuration_changed');
         reader.mockResolvedValue({...await reader(),base_operational_hash:operationalConfigurationHash({...live,id:'agent'})});
+        const revision=await reader();revision.body_hash=revisionHash(revision.body);
         const snapshot=await f.service.captureSnapshot('tenant','agent',{configurationRevisionId:'11111111-1111-4111-8111-111111111111'});
         snapshot.configurationBaseOperationalBody!.channels=['telegram'];
         await expect(f.service.test('tenant','agent',{message:'hello'},{agentSnapshot:snapshot})).rejects.toThrow('configuration_base_integrity_mismatch');

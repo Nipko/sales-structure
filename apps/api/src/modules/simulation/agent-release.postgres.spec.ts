@@ -30,6 +30,7 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         const draft=await tx(q=>new AgentConfigurationRevisionStore(prisma).saveWithQuery(q,{tenantId,agentId,actor,requestKey:randomUUID(),expectedOperationalVersion:7,expectedDraftRevision:null,body}));
         const snapshot=evaluationSnapshot(tenantId,agentId,{version:7,config_json:body.configJson});
         snapshot.configurationRevisionId=draft.id;snapshot.configurationRevisionHash=draft.body_hash;
+        snapshot.configurationBody=structuredClone(body);
         snapshot.configurationBaseOperationalHash=draft.base_operational_hash;snapshot.configurationBaseOperationalBody=baseBody;
         snapshot.releaseScope={profileId:'education/capacitacion',intentKeys:['ask_question'],missionConfigured:true,channels,languages:[...EVAL_LANGUAGES]};
         snapshot.mcpTools=[];snapshot.mcpToolsHash=revisionHash([]);snapshot.procedures=[];snapshot.proceduresHash=revisionHash([]);
@@ -95,6 +96,8 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         const input=await request();await expect(create({...input,actor:{...actor,role:'tenant_agent'}})).rejects.toMatchObject({response:{error:'agent_release_role_required'}});
         await expect(create({...input,tenantId:randomUUID()})).rejects.toThrow('agent_snapshot_scope_mismatch');
         input.snapshot.configurationRevisionHash='f'.repeat(64);sealEvaluationSnapshot(input.snapshot);
+        await expect(create(input)).rejects.toThrow('agent_snapshot_configuration_body_integrity_mismatch');
+        input.snapshot.configurationBody!.channelBindings=['telegram:changed'];input.snapshot.configurationRevisionHash=revisionHash(input.snapshot.configurationBody);sealEvaluationSnapshot(input.snapshot);
         await expect(create(input)).rejects.toMatchObject({response:{error:'agent_release_draft_mismatch'}});expect(await query('SELECT * FROM agent_release_candidates')).toHaveLength(0);
     });
     it('rolls a candidate back when one of its channel requests cannot be stored',async()=>{

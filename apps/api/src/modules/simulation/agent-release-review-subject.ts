@@ -53,8 +53,12 @@ export function projectReleaseConfiguration(config: any): AgentReleaseSubjectFie
 export function releaseReviewSubject(snapshot: AgentEvaluationSnapshot): AgentReleaseReviewSubject {
     const captured = snapshot as AgentEvaluationSnapshot & { configurationBaseOperationalHash?: string;
         configurationBaseOperationalBody?: { configJson: Record<string, any> } };
-    const fields = projectReleaseConfiguration(snapshot.config);
-    const baseFields = captured.configurationBaseOperationalBody ? projectReleaseConfiguration(captured.configurationBaseOperationalBody.configJson) : null;
+    const routing = (body: AgentEvaluationSnapshot['configurationBody']): AgentReleaseSubjectField[] => [
+        {key:'channels',value:list(body?.channels)},{key:'channelBindings',value:list(body?.channelBindings)},
+        {key:'scheduleMode',value:text(body?.scheduleMode)},{key:'isActive',value:flag(body?.isActive)},{key:'isDefault',value:flag(body?.isDefault)},
+    ];
+    const fields = [...projectReleaseConfiguration(snapshot.config),...routing(snapshot.configurationBody)];
+    const baseFields = captured.configurationBaseOperationalBody ? [...projectReleaseConfiguration(captured.configurationBaseOperationalBody.configJson),...routing(snapshot.configurationBaseOperationalBody)] : null;
     return { version: 1, configurationRevisionId: snapshot.configurationRevisionId ?? null,
         configurationHash: snapshot.configurationRevisionHash ?? null, baseOperationalVersion: snapshot.version,
         baseOperationalHash: captured.configurationBaseOperationalHash ?? null, fields, baseFields,

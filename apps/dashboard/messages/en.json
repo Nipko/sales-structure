@@ -226,7 +226,10 @@
       "guided": "Guided configuration",
       "sales": "Sales",
       "support": "Support",
-      "both": "Sales and support"
+      "both": "Sales and support",
+      "24_7": "Every day, around the clock",
+      "24/7": "Every day, around the clock",
+      "business_hours": "Business hours"
     },
     "checks": {
       "objective": "The objective and success criteria fit the agent’s role.",
@@ -274,7 +277,12 @@
       "maxDiscountPercent": "Maximum discount (%)",
       "knowledgeEnabled": "Knowledge retrieval",
       "knowledgeTopK": "Chunks per search",
-      "knowledgeThreshold": "Similarity threshold"
+      "knowledgeThreshold": "Similarity threshold",
+      "channels": "Assigned channels",
+      "channelBindings": "Assigned connections",
+      "scheduleMode": "Operating schedule",
+      "isActive": "Active state when review was prepared",
+      "isDefault": "Default agent"
     },
     "gaps": {
       "complete_revision_required": "A complete configuration and dependency snapshot is required.",

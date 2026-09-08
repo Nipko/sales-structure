@@ -17,7 +17,12 @@ function SubjectValue({ value, field }: { value: AgentReleaseSubjectValue; field
             if (value === 'appointments') return tools('appointmentScheduling');
             if (tools.has(`${value}Title`)) return tools(`${value}Title`);
         }
-        if (['mode', 'skillset'].includes(field) && t.has(`values.${value}`)) return t(`values.${value}`);
+        if(field==='channels'&&t.has(`channels.${value}`))return t(`channels.${value}`);
+        if(field==='channelBindings'){
+            const split=value.indexOf(':'),channel=value.slice(0,split);
+            if(split>0&&t.has(`channels.${channel}`))return `${t(`channels.${channel}`)} · ${value.slice(split+1)}`;
+        }
+        if (['mode', 'skillset','scheduleMode'].includes(field) && t.has(`values.${value}`)) return t(`values.${value}`);
         return value;
     };
     if (value === null) return <span className="text-neutral-500 dark:text-neutral-400">{t('unknown')}</span>;

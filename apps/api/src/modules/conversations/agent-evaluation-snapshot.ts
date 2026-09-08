@@ -20,6 +20,8 @@ export interface AgentEvaluationSnapshot {
     config: TenantConfig;
     configurationRevisionId?: string;
     configurationRevisionHash?: string;
+    /** Complete private candidate body, including routing and activation metadata. */
+    configurationBody?: AgentConfigurationBody;
     configurationBaseOperationalHash?: string;
     /** Private before-state for a deterministic review projection; never return raw tool credentials. */
     configurationBaseOperationalBody?: AgentConfigurationBody;
@@ -51,7 +53,7 @@ function frozenDependencies(snapshot: AgentEvaluationSnapshot) {
         {key:'frozen.learning_selection',state:'present' as const,hash:revisionHash({id:snapshot.learningReleaseId,hash:snapshot.learningReleaseHash})},
         ...(snapshot.releaseScope?[{key:'frozen.release_scope',state:'present' as const,hash:revisionHash(snapshot.releaseScope)}]:[]),
         ...(snapshot.configurationRevisionId?[{key:'frozen.configuration_revision',state:'present' as const,
-            hash:revisionHash({id:snapshot.configurationRevisionId,hash:snapshot.configurationRevisionHash,
+            hash:revisionHash({id:snapshot.configurationRevisionId,hash:snapshot.configurationRevisionHash,body:snapshot.configurationBody,
                 baseOperationalHash:snapshot.configurationBaseOperationalHash,baseOperationalBody:snapshot.configurationBaseOperationalBody})}]:[]),
     ];
 }
@@ -73,9 +75,13 @@ export function resolveEvaluationSnapshot(snapshot: AgentEvaluationSnapshot, ten
             throw new Error('agent_snapshot_release_scope_integrity_mismatch');
         if (snapshot.manifest.dependencies.some(item=>item.key==='frozen.configuration_revision') !== !!snapshot.configurationRevisionId
             ||!!snapshot.configurationRevisionId!==!!snapshot.configurationRevisionHash
+            ||!!snapshot.configurationRevisionId!==!!snapshot.configurationBody
             ||!!snapshot.configurationRevisionId!==!!snapshot.configurationBaseOperationalHash
             ||!!snapshot.configurationRevisionId!==!!snapshot.configurationBaseOperationalBody)
             throw new Error('agent_snapshot_configuration_revision_integrity_mismatch');
+        if(snapshot.configurationRevisionId&&(revisionHash(snapshot.configurationBody)!==snapshot.configurationRevisionHash
+            ||revisionHash(snapshot.configurationBody!.configJson)!==snapshot.configHash))
+            throw new Error('agent_snapshot_configuration_body_integrity_mismatch');
         if(snapshot.configurationRevisionId&&revisionHash({agentId:snapshot.agentId,version:snapshot.version,...snapshot.configurationBaseOperationalBody})!==snapshot.configurationBaseOperationalHash)
             throw new Error('agent_snapshot_configuration_base_integrity_mismatch');
         if (snapshot.manifest.tenantId !== tenantId) throw new Error('agent_snapshot_scope_mismatch');

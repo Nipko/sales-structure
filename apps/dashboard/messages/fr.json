@@ -226,7 +226,10 @@
       "guided": "Configuration guidée",
       "sales": "Ventes",
       "support": "Assistance",
-      "both": "Ventes et assistance"
+      "both": "Ventes et assistance",
+      "24_7": "Tous les jours, à toute heure",
+      "24/7": "Tous les jours, à toute heure",
+      "business_hours": "Horaires de l’entreprise"
     },
     "checks": {
       "objective": "L’objectif et les critères de réussite correspondent au rôle de l’agent.",
@@ -274,7 +277,12 @@
       "maxDiscountPercent": "Remise maximale (%)",
       "knowledgeEnabled": "Recherche de connaissances",
       "knowledgeTopK": "Fragments par recherche",
-      "knowledgeThreshold": "Seuil de similarité"
+      "knowledgeThreshold": "Seuil de similarité",
+      "channels": "Canaux attribués",
+      "channelBindings": "Connexions attribuées",
+      "scheduleMode": "Horaires de fonctionnement",
+      "isActive": "État actif lors de la préparation de la révision",
+      "isDefault": "Agent par défaut"
     },
     "gaps": {
       "complete_revision_required": "Une capture complète de la configuration et des dépendances est requise.",

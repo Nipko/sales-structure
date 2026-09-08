@@ -65,7 +65,7 @@ export class AgentTestService {
                 schedule_mode:body.scheduleMode,is_active:body.isActive,is_default:body.isDefault};
         }
         const snapshot = evaluationSnapshot(tenantId, agentId, agent);
-        if(revision){snapshot.configurationRevisionId=revision.id;snapshot.configurationRevisionHash=revision.body_hash;
+        if(revision){snapshot.configurationRevisionId=revision.id;snapshot.configurationRevisionHash=revision.body_hash;snapshot.configurationBody=structuredClone(revision.body);
             snapshot.configurationBaseOperationalHash=revision.base_operational_hash;snapshot.configurationBaseOperationalBody=operationalBody;}
         snapshot.releaseScope = await this.revisions.captureAgentReleaseScope(tenantId, agent);
         const release = await this.learning?.getPublishedReleaseSnapshot(tenantId, agentId, resolveAgentTestContactId());

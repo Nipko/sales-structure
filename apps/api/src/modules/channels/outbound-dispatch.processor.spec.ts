@@ -10,7 +10,7 @@ function row(over: Partial<DispatchRow> = {}): DispatchRow {
     return {
         id: dispatchId, batchId: '33333333-3333-4333-8333-333333333333',
         itemIndex: 0, itemKind: 'text', state: 'queued', attempts: 0,
-        receipt: null, errorCode: null, redacted: false,
+        receipt: null, errorCode: null, redacted: false, availableAt: new Date(Date.now() + 30_000),
         binding: { conversationId: '44444444-4444-4444-8444-444444444444',
             contactId: '55555555-5555-4555-8555-555555555555',
             inboundMessageId: '66666666-6666-4666-8666-666666666666',
@@ -101,14 +101,25 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         expect(h.sendStrict).toHaveBeenCalledTimes(1);
     });
 
-    it('asks for a retry only when the provider said it did not act', async () => {
+    it('parks a retryable refusal on the durable date, and never on its own clock', async () => {
         const retryable = harness({ outcome: { kind: 'rejected', errorCode: 'http_503', retryable: true } });
-        await expect(retryable.processor.process(retryable.job)).rejects.toThrow('dispatch_retryable:http_503');
+        // A thrown Error here would hand the schedule to BullMQ, whose retry can
+        // arrive before the row is available — the loss this replaced.
+        await expect(retryable.processor.process(retryable.job, 'worker-token')).rejects.toBeInstanceOf(DelayedError);
         expect(retryable.dispatchOutbox.settle).toHaveBeenCalledWith(tenantId, dispatchId, 'lease-1',
             { kind: 'failed', errorCode: 'http_503' });
+        expect(retryable.job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'worker-token');
 
         const permanent = harness({ outcome: { kind: 'rejected', errorCode: 'wa_131047', retryable: false } });
         await expect(permanent.processor.process(permanent.job)).resolves.toBe('dispatch:suppressed:wa_131047');
+        expect(permanent.job.moveToDelayed).not.toHaveBeenCalled();
+    });
+
+    it('waits for the durable date when admission says the row is not due yet', async () => {
+        const h = harness({ admit: async () => { throw new DispatchOutboxError('dispatch_not_available_yet'); } });
+        await expect(h.processor.process(h.job, 'worker-token')).rejects.toBeInstanceOf(DelayedError);
+        expect(h.job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'worker-token');
+        expect(h.sendStrict).not.toHaveBeenCalled();
     });
 
     it('keeps a receipt it observed but could not write, without sending again', async () => {
@@ -128,10 +139,14 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         expect(h.dispatchOutbox.admit).not.toHaveBeenCalled();
     });
 
-    it('spends an attempt on a preflight that cannot reach the provider', async () => {
+    it('spends an attempt on a preflight that cannot reach the provider, then waits', async () => {
         const noCredentials = harness({ credentials: false });
-        await expect(noCredentials.processor.process(noCredentials.job))
-            .resolves.toContain('channel_credentials_unavailable');
+        // Retryable preflight keeps its job, parked on the durable date; letting
+        // it complete is how a pending effect used to be abandoned.
+        await expect(noCredentials.processor.process(noCredentials.job, 'worker-token'))
+            .rejects.toBeInstanceOf(DelayedError);
+        expect(noCredentials.dispatchOutbox.failPreflight).toHaveBeenCalledWith(tenantId, dispatchId,
+            expect.objectContaining({ errorCode: expect.stringContaining('channel_credentials_unavailable') }));
         expect(noCredentials.sendStrict).not.toHaveBeenCalled();
 
         const notEntitled = harness({ entitled: false });

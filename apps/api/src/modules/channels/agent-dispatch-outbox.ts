@@ -139,6 +139,8 @@ export interface DispatchRow {
     readonly attempts: number;
     readonly receipt: string | null;
     readonly errorCode: string | null;
+    /** When this row may next be admitted. PostgreSQL is the only scheduler. */
+    readonly availableAt: Date;
     readonly redacted: boolean;
     readonly binding: DispatchBinding | null;
     readonly payload: Record<string, any> | null;
@@ -163,6 +165,7 @@ function mapRow(row: any): DispatchRow {
         attempts: Number(row.attempts),
         receipt: row.receipt ?? null,
         errorCode: row.error_code ?? null,
+        availableAt: row.available_at instanceof Date ? row.available_at : new Date(row.available_at),
         redacted,
         binding: redacted ? null : Object.freeze({
             conversationId: String(row.conversation_id),

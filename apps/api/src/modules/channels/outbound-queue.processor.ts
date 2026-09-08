@@ -83,9 +83,30 @@ export class OutboundQueueProcessor extends WorkerHost {
         // produce a second effect. An accepted receipt is read, not re-earned.
         if (DISPATCH_TERMINAL_STATES.includes(existing.state)) return `dispatch:${existing.state}`;
 
+        /**
+         * PostgreSQL is the only scheduler.
+         *
+         * Letting BullMQ keep its own backoff produced a silent loss: the row
+         * was `failed` with a future `available_at`, the BullMQ retry arrived
+         * first, admission answered `dispatch_not_available_yet`, the job
+         * COMPLETED — and recovery then found a retained completed job and never
+         * republished it. Every deliberate wait is now expressed by moving the
+         * job to the durable date instead, which consumes no attempt and leaves
+         * no completed job behind.
+         */
+        const waitUntil = async (availableAt: Date, why: string): Promise<never> => {
+            const delay = Math.max(availableAt.getTime() - Date.now(), 1000);
+            this.logger.warn(`[Dispatch] ${dispatchId} waiting ${delay}ms (${why})`);
+            await job.moveToDelayed(Date.now() + delay, token);
+            throw new DelayedError();
+        };
+
         const preflight = async (errorCode: string, options?: { permanent?: boolean; retryInSeconds?: number }) => {
             const row = await this.dispatchOutbox!.failPreflight(tenantId, dispatchId, { errorCode, ...options });
             this.logger.warn(`[Dispatch] ${dispatchId} ${row.state} (${errorCode}) attempts=${row.attempts}`);
+            // A row that may still be admitted keeps its job, rescheduled to the
+            // date the database chose. Only a terminal row completes the job.
+            if (row.state === 'failed') await waitUntil(row.availableAt, errorCode);
             return `dispatch:${row.state}:${errorCode}`;
         };
 
@@ -121,7 +142,13 @@ export class OutboundQueueProcessor extends WorkerHost {
             const code = String(error?.code || error?.message || 'admission_failed');
             if (code.startsWith('dispatch_terminal:')) return `dispatch:${code}`;
             if (code === 'dispatch_lease_active') return 'dispatch:lease_held_elsewhere';
-            if (code === 'dispatch_not_available_yet') return 'dispatch:waiting_backoff';
+            if (code === 'dispatch_not_available_yet') {
+                // The durable schedule says later. Wait for it rather than
+                // completing the job and losing the work to a retained id.
+                const row = await this.dispatchOutbox!.read(tenantId, dispatchId);
+                if (row) await waitUntil(row.availableAt, 'backoff');
+                return 'dispatch:waiting_backoff';
+            }
             // The scope, the routing, the sources or the binding no longer hold.
             // A later attempt cannot make this payload admissible again.
             return preflight(code, { permanent: true });
@@ -150,10 +177,12 @@ export class OutboundQueueProcessor extends WorkerHost {
             }
             const settled = await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                 { kind: outcome.retryable ? 'failed' : 'suppressed', errorCode: outcome.errorCode });
-            if (settled.state === 'failed') throw new Error(`dispatch_retryable:${outcome.errorCode}`);
+            // Same rule as preflight: the database chose when, so honour it here
+            // instead of throwing and letting BullMQ pick a different moment.
+            if (settled.state === 'failed') await waitUntil(settled.availableAt, outcome.errorCode);
             return `dispatch:${settled.state}:${outcome.errorCode}`;
         } catch (error: any) {
-            if (String(error?.message || '').startsWith('dispatch_retryable:')) throw error;
+            if (error instanceof DelayedError) throw error;
             // Recording the outcome failed. The row keeps its live permission, so
             // no other worker can send this item; when the lease lapses it becomes
             // a reconciliation, which is the honest state — especially after an

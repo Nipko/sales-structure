@@ -32,14 +32,25 @@ export class OutboundQueueService {
         const jobId = sanitizeJobId(`dispatch-${dispatchId}`);
         const existing = await this.outboundQueue.getJob(jobId);
         if (existing) {
-            if (await existing.getState() === 'failed') await existing.retry();
-            return;
+            const state = await existing.getState();
+            // A live job already carries this work.
+            if (['active', 'waiting', 'delayed', 'waiting-children', 'prioritized'].includes(state)) return;
+            if (state === 'failed') { await existing.retry(); return; }
+            // A retained COMPLETED job used to make this a silent no-op: the row
+            // still had work, recovery called here, the deterministic id existed,
+            // and nothing was ever republished. Retention is a debugging
+            // convenience, not a reason to abandon a pending effect.
+            await existing.remove().catch(() => undefined);
         }
         await this.outboundQueue.add('dispatch', { dispatch: { tenantId, dispatchId } }, {
             jobId,
             priority: await this.throttle.getPriority(tenantId),
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 5000 },
+            // One attempt on purpose. Every deliberate wait is expressed by
+            // moving the job to the date the outbox row holds, so PostgreSQL is
+            // the only scheduler and BullMQ never picks a competing moment. An
+            // unexpected exception fails the job, and the recovery pass — which
+            // reads the durable row — is what brings it back.
+            attempts: 1,
             ...(delayMs && delayMs > 0 ? { delay: delayMs } : {}),
             removeOnComplete: { age: 3600 },
             removeOnFail: { age: 86400 },

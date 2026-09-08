@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { withAgentSourceFence } from '../../common/utils/agent-source-fence';
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { cleanLearningEvaluationNamespaces, retireLearningReleases } from './learning-evaluation-retention';
 import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
@@ -808,8 +809,7 @@ export class LearningService {
             let providerError:unknown;
             try{
                 const schema=await this.schema(tenantId);
-                return await this.prisma.transactionInTenantSchema(schema,async query=>{
-                    await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`,[`agent-privacy:${schema}`]);
+                return await withAgentSourceFence(this.prisma,schema,async query=>{
                     const check=async()=>{
                         if(scope){
                             if(!preview)throw new LLMSourceAuthorityUnavailable();
@@ -834,7 +834,7 @@ export class LearningService {
                     try{response=await invoke();}catch(error){providerError=error;throw error;}
                     await check();
                     return response;
-                },{timeout:120000});
+                });
             }catch(error){
                 if(providerError===error)throw error;
                 throw new LLMSourceAuthorityUnavailable(response===undefined?undefined:usage?.(response));

@@ -1,3 +1,13 @@
+// Source authority concurrency/erasure is exercised with real Prisma in simulation-replay.postgres.spec.ts.
+jest.mock('./simulation-replay-authority',()=>({
+    ...jest.requireActual('./simulation-replay-authority'),
+    assertSimulationReplayRun:async()=>undefined,
+    withSimulationReplayRun:async(prisma:any,schema:string,runId:string,work:any)=>{
+        const query=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(schema,sql,params);
+        const rows=await query('SELECT * FROM simulation_runs WHERE id=$1::uuid',[runId]);
+        return work(query,rows?.[0] || {});
+    },
+}));
 import {
     AGENT_EVAL_COMPLETED_EVENT,
     AGENT_EVAL_FAILED_EVENT,
@@ -214,7 +224,7 @@ describe('agent quality completion events', () => {
                 {
                     key: 'judge', title: 'Judge', goal: 'Test', language: 'es',
                     source: 'replay', openingMessage: 'Hola', replayMessages: ['Hola'],
-                },
+                }, undefined, undefined, {schemaName:'tenant_simulation',runId},
             )).rejects.toThrow('judge unavailable');
         });
 

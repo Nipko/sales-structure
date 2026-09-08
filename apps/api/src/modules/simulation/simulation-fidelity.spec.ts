@@ -1,13 +1,24 @@
+// Source authority concurrency/erasure is exercised with real Prisma in simulation-replay.postgres.spec.ts.
+jest.mock('./simulation-replay-authority',()=>({
+    ...jest.requireActual('./simulation-replay-authority'),
+    assertSimulationReplayRun:async()=>undefined,
+    withSimulationReplayRun:async(prisma:any,schema:string,runId:string,work:any)=>{
+        const query=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(schema,sql,params);
+        const rows=await query('SELECT * FROM simulation_runs WHERE id=$1::uuid',[runId]);
+        return work(query,rows?.[0] || {});
+    },
+}));
 import { SimulationService } from './simulation.service';
 import { EvalService } from './eval.service';
 import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
+const replayRun={schemaName:'test_schema',runId:'test_run'};
 const scenario = (key: string) => ({ key, title: key, source: 'replay', language: 'fr', goal: 'support', openingMessage: 'bonjour', replayMessages: ['bonjour', 'oui'] });
 const judge = { overall: 8, resolved: true, tone: 8, accuracy: 8, empathy: 8, resolution: 8, flags: [] };
 
 function simulation() {
-    const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([]) };
+    const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([]),transactionInTenantSchema:jest.fn(async(_schema:any,work:any)=>work(async()=>[])) };
     const agentTest = { assertSnapshotCurrent: jest.fn().mockResolvedValue(undefined), test: jest.fn().mockResolvedValue({ reply: 'Comment puis-je vous aider?', debug: { toolCalls: [] } }) };
     const llm = { execute: jest.fn() };
     const quality = { judgeTranscript: jest.fn().mockResolvedValue(judge) };
@@ -22,19 +33,19 @@ describe('simulation execution fidelity', () => {
         (f.service as any).redis=redis;
         await f.service.ensureTables('tenant_test');
         expect(f.prisma.executeInTenantSchema.mock.calls.some((call:any[])=>call[1].includes('ADD COLUMN IF NOT EXISTS evaluation_snapshot JSONB'))).toBe(true);
-        expect(redis.set).toHaveBeenCalledWith('simulation_cols:v3:tenant_test','1',86400);
+        expect(redis.set).toHaveBeenCalledWith('simulation_cols:v4:tenant_test','1',86400);
     });
     it('reruns a previous result when its customer script changed under the same scenario key',async()=>{
         const f=simulation();const old=scenario('same');const changed={...old,replayMessages:['Nouvelle demande']};
         const previous={...old,scenarioHash:revisionHash(old),transcript:[],turns:1,latencyMs:1,judge};
-        const results=await (f.service as any).runScenariosConcurrently('tenant','agent','telegram',[changed],undefined,undefined,[previous]);
+        const results=await (f.service as any).runScenariosConcurrently('tenant','agent','telegram',[changed],undefined,undefined,[previous],undefined,replayRun);
         expect(f.agentTest.test).toHaveBeenCalledTimes(1);
         expect(results[0]).not.toBe(previous);expect(results[0].scenarioHash).toBe(revisionHash(changed));
     });
     it('never grades a runtime failure as a successful customer-service answer', async () => {
         const { service, agentTest, quality } = simulation();
         agentTest.test.mockResolvedValue({ reply: 'Disculpa, hubo un problema.', debug: { runtimeError: 'provider unavailable', toolCalls: [] } } as any);
-        const results = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('failed')]);
+        const results = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('failed')],undefined,undefined,[],undefined,replayRun);
         expect(results[0]).toMatchObject({ judge: null, error: 'agent_runtime_failed:provider unavailable' });
         expect(quality.judgeTranscript).not.toHaveBeenCalled();
     });
@@ -42,11 +53,11 @@ describe('simulation execution fidelity', () => {
         const { service, agentTest } = simulation();
         const snapshot = evaluationSnapshot('tenant', 'agent', { version: 9, config_json: { language: 'fr' } });
         const session = { sandboxContactId: 'sandbox', sandboxConversationId: 'conversation', recordInbound: jest.fn(), assertLease: jest.fn(), reset: jest.fn() };
-        await (service as any).runScenario('tenant', 'agent', 'instagram', scenario('one'), snapshot, session);
+        await (service as any).runScenario('tenant', 'agent', 'instagram', scenario('one'), snapshot, session,replayRun);
         expect(agentTest.test).toHaveBeenCalledTimes(2);
         for (const call of agentTest.test.mock.calls as any[]) {
             expect(call[2].channelType).toBe('instagram');
-            expect(call[3]).toMatchObject({ disableTools: false, evalMode: true, agentSnapshot: snapshot, sandboxConversationId: 'conversation', beforeToolExecution: session.assertLease });
+            expect(call[3]).toMatchObject({ disableTools: false, evalMode: true, agentSnapshot: snapshot, sandboxConversationId: 'conversation', beforeToolExecution:expect.any(Function),beforeModelExecution:expect.any(Function) });
         }
         expect(session.recordInbound.mock.calls).toEqual([['bonjour'], ['oui']]);
     });
@@ -54,10 +65,10 @@ describe('simulation execution fidelity', () => {
     it('preserves partial evidence when customer generation fails and retries only failed scenarios', async () => {
         const { service, agentTest, llm } = simulation();
         llm.execute.mockRejectedValue(new Error('provider timeout'));
-        const synthetic = { ...scenario('broken'), source: 'synthetic' };
+        const synthetic = { ...scenario('broken'), source: 'synthetic',replayMessages:undefined };
         const good = { ...scenario('done'), scenarioHash: revisionHash(scenario('done')), transcript: [], turns: 1, latencyMs: 1, judge };
         const reset = jest.fn(); const checkpoint = jest.fn();
-        const result = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('done'), synthetic], undefined, { reset, recordInbound: jest.fn() }, [good], checkpoint);
+        const result = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('done'), synthetic], undefined, { reset, recordInbound: jest.fn() }, [good], checkpoint,replayRun);
         expect(result[0]).toBe(good);
         expect(result[1]).toMatchObject({ error: 'customer_simulator_failed:provider timeout', judge: null, turns: 1 });
         expect(result[1].transcript).toHaveLength(2);

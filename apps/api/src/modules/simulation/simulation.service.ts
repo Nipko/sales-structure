@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto';
+import { assertSimulationReplayRun, captureSimulationReplays, registerSimulationReplayNamespace, isReplayDefinition, scenarioDefinition, SimulationReplayUnavailable, withSimulationReplayRun, type ReplayAuthority } from './simulation-replay-authority';
+import { retireSimulationReplayRuns, type SimulationReplayQuery } from './simulation-replay-retention';
 import { bindCanonicalEvalFixtures } from './eval-canonical-fixtures';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
@@ -50,6 +53,7 @@ interface ScenarioDef {
     openingMessage: string;
     /** Replay only: the ordered real inbound customer messages. */
     replayMessages?: string[];
+    replaySource?: {version: 1; sourceId: string; originRunId: string};
 }
 
 interface ScenarioResult extends ScenarioDef {
@@ -99,7 +103,7 @@ export class SimulationService {
     // Table bootstrap
     // ---------------------------------------------------------------------
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `simulation_cols:v3:${schemaName}`;
+        const cacheKey = `simulation_cols:v4:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -140,6 +144,13 @@ export class SimulationService {
 
         await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS scenario_definitions JSONB`);
         await this.prisma.executeInTenantSchema(schemaName, `ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS evaluation_snapshot JSONB`);
+        await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS replay_authority JSONB');
+        await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ');
+        await this.prisma.executeInTenantSchema(schemaName, 'ALTER TABLE simulation_runs ADD COLUMN IF NOT EXISTS replay_namespace_leases JSONB');
+        await this.prisma.transactionInTenantSchema(schemaName, async query => {
+            await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', ['agent-privacy:' + schemaName]);
+            await retireSimulationReplayRuns(query, {legacy:true});
+        });
         await this.redis.set(cacheKey, '1', 86400);
     }
 
@@ -163,15 +174,30 @@ export class SimulationService {
         const source = input.scenarioSource === 'replay' ? 'replay' : 'synthetic';
 
         const requestedCount = Math.min(Math.max(Number(input.count) || 50, 1), MAX_COUNT);
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO simulation_runs
-                (agent_id, channel_type, scenario_source, vertical, status, scenario_count, baseline_run_id, created_by, persona_version, persona_snapshot, evaluation_snapshot)
-             VALUES ($1::uuid, $2, $3, $4, 'pending', $5, $6::uuid, $7, $8, $9::jsonb, $10::jsonb)
-             RETURNING id`,
-            [agentId, channelType, source, input.vertical || null, requestedCount, input.baselineRunId || null, input.createdBy || null, snapshot.version, JSON.stringify(snapshot.config), JSON.stringify(snapshot)],
-        );
-        const runId: string = rows?.[0]?.id;
+        const runId = randomUUID();
+        await this.prisma.transactionInTenantSchema(schemaName, async query => {
+            await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', ['agent-privacy:' + schemaName]);
+            let scenarios: ScenarioDef[] | null = null, authorities: ReplayAuthority[] = [];
+            if (input.baselineRunId) {
+                const [baseline] = await query<any[]>('SELECT * FROM simulation_runs WHERE id=$1::uuid',[input.baselineRunId]);
+                await assertSimulationReplayRun(query,baseline,true);
+                if (baseline.agent_id!==agentId || baseline.channel_type!==channelType) throw new SimulationReplayUnavailable();
+                scenarios=(baseline.results || []).map(scenarioDefinition);
+                if (!scenarios?.length) throw new BadRequestException('simulation_baseline_scenarios_required');
+                authorities=baseline.replay_authority || [];
+            } else if (source==='replay') {
+                const captured=await this.buildReplayScenarios(query,runId,agentId,channelType,snapshot.config.language || 'es-CO',input.createdBy || '',requestedCount);
+                scenarios=captured.scenarios; authorities=captured.authorities;
+            }
+            const [run]=await query<any[]>(`INSERT INTO simulation_runs
+                (id,agent_id,channel_type,scenario_source,vertical,status,scenario_count,baseline_run_id,created_by,
+                 persona_version,persona_snapshot,evaluation_snapshot,scenario_definitions,replay_authority)
+                VALUES ($1::uuid,$2::uuid,$3,$4,$5,'pending',$6,$7::uuid,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb) RETURNING *`,
+                [runId,agentId,channelType,source,input.vertical || null,scenarios?.length || requestedCount,input.baselineRunId || null,
+                 input.createdBy || null,snapshot.version,JSON.stringify(snapshot.config),JSON.stringify(snapshot),
+                 JSON.stringify(scenarios),JSON.stringify(authorities)]);
+            await assertSimulationReplayRun(query,run,true);
+        });
 
         try { await this.queue.add(
             'run',
@@ -186,7 +212,7 @@ export class SimulationService {
         );
 
         } catch (error: any) {
-            await this.prisma.executeInTenantSchema(schemaName, `UPDATE simulation_runs SET status = 'failed', error = $2 WHERE id = $1::uuid`, [runId, 'enqueue_failed:' + String(error.message || error).slice(0, 500)]);
+            await this.prisma.executeInTenantSchema(schemaName, `UPDATE simulation_runs SET status = 'failed', error = $2 WHERE id = $1::uuid AND status<>'retired'`, [runId, 'simulation_enqueue_failed']);
             throw error;
         }
         this.logger.log(`[Sim] Enqueued run ${runId} (tenant=${tenantId}, agent=${agentId}, source=${source})`);
@@ -196,33 +222,39 @@ export class SimulationService {
     async listRuns(tenantId: string, limit = 20): Promise<any[]> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT id, agent_id, channel_type, scenario_source, vertical, status, scenario_count,
-                    avg_score, resolved_rate, summary, baseline_run_id, error, created_at, completed_at
-             FROM simulation_runs
-             ORDER BY created_at DESC
-             LIMIT $1`,
-            [Math.min(limit, 100)],
-        );
-        return (rows || []).map((r) => this.mapRunSummary(r));
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            'SELECT id FROM simulation_runs ORDER BY created_at DESC LIMIT $1',[Math.min(limit,100)]);
+        const results=[];
+        for (const row of rows || []) { const run=await this.readRun(schemaName,row.id); if(run)results.push(this.mapRunSummary(run)); }
+        return results;
     }
 
     async getRun(tenantId: string, runId: string): Promise<any | null> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT * FROM simulation_runs WHERE id = $1::uuid`,
-            [runId],
-        );
-        const r = rows?.[0];
-        if (!r) return null;
-        return {
-            ...this.mapRunSummary(r),
-            personaVersion: r.persona_version,
-            results: Array.isArray(r.results) ? r.results : [],
-        };
+        const r=await this.readRun(schemaName,runId);
+        return r ? {...this.mapRunSummary(r),personaVersion:r.persona_version,results:Array.isArray(r.results)?r.results:[]} : null;
+    }
+
+    /** Withdraw evaluative permission and every baseline copy; this never changes learning releases. */
+    async retireRun(tenantId:string,runId:string):Promise<{retired:boolean}> {
+        const schemaName=await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureTables(schemaName);
+        await this.prisma.transactionInTenantSchema(schemaName,async query=>{
+            await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',['agent-privacy:'+schemaName]);
+            await retireSimulationReplayRuns(query,{runIds:[runId]});
+        });
+        return {retired:true};
+    }
+
+    private async readRun(schemaName: string, runId: string): Promise<any | null> {
+        try { return await withSimulationReplayRun(this.prisma,schemaName,runId,async(_query,run)=>run,{commit:true}); }
+        catch(error) {
+            if (!(error instanceof SimulationReplayUnavailable)) throw error;
+            const rows=await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                'SELECT id,agent_id,channel_type,scenario_source,status,created_at,completed_at FROM simulation_runs WHERE id=$1::uuid',[runId]);
+            return rows[0] ? {...rows[0],status:'retired',results:[],error:'simulation_replay_source_unavailable'} : null;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -243,7 +275,7 @@ export class SimulationService {
             return;
         }
 
-        if (run.status === 'completed') return;
+        if (run.status === 'completed' || run.status === 'retired') return;
         try {
             const agentId: string = run.agent_id;
             const channelType: string = run.channel_type || 'web_widget';
@@ -259,15 +291,12 @@ export class SimulationService {
             const baselineRunId: string | null = run.baseline_run_id || null;
             let scenarios: ScenarioDef[];
             if (Array.isArray(run.scenario_definitions) && run.scenario_definitions.length) {
-                scenarios = run.scenario_definitions;
+                scenarios = await withSimulationReplayRun(this.prisma,schemaName,runId,async(_query,current)=>current.scenario_definitions);
             } else if (baselineRunId) {
                 scenarios = await this.loadScenariosFromRun(schemaName, baselineRunId);
                 if (!scenarios.length) throw new Error('Baseline run has no reusable scenarios');
             } else if (run.scenario_source === 'replay') {
-                scenarios = await this.buildReplayScenarios(schemaName, requestedCount || 50);
-                if (!scenarios.length) {
-                    throw new Error('No hay conversaciones históricas suficientes para reproducir');
-                }
+                throw new SimulationReplayUnavailable(); // Historical jobs never acquire new source authority implicitly.
             } else {
                 scenarios = await this.generateSyntheticScenarios(
                     tenantId,
@@ -278,20 +307,24 @@ export class SimulationService {
             if (!scenarios.length) throw new Error('Simulation produced no scenarios');
             await this.agentTest.assertSnapshotCurrent(snapshot);
 
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE simulation_runs
-                 SET status = 'running', scenario_count = $2, persona_version = $3, persona_snapshot = $4::jsonb, scenario_definitions = $5::jsonb, error = NULL
-                 WHERE id = $1::uuid`,
-                [runId, scenarios.length, personaVersion, JSON.stringify(personaSnapshot), JSON.stringify(scenarios)],
-            );
+            await withSimulationReplayRun(this.prisma,schemaName,runId,async(query,current)=>{
+                current.scenario_definitions=scenarios;
+                await assertSimulationReplayRun(query,current,true);
+                await query(`UPDATE simulation_runs SET status='running',scenario_count=$2,persona_version=$3,
+                    persona_snapshot=$4::jsonb,scenario_definitions=$5::jsonb,error=NULL WHERE id=$1::uuid AND status<>'retired'`,
+                    [runId,scenarios.length,personaVersion,JSON.stringify(personaSnapshot),JSON.stringify(scenarios)]);
+            },{commit:true});
 
             // 2. Run scenarios with bounded concurrency.
             const checkpoint = async (results: ScenarioResult[]) => {
                 const lastResults = results.filter(Boolean);
-                await this.prisma.executeInTenantSchema(schemaName, 'UPDATE simulation_runs SET results = $2::jsonb WHERE id = $1::uuid', [runId, JSON.stringify(lastResults)]);
+                await withSimulationReplayRun(this.prisma,schemaName,runId,async(query,current)=>{
+                    current.results=lastResults;
+                    await assertSimulationReplayRun(query,current,true);
+                    await query('UPDATE simulation_runs SET results=$2::jsonb WHERE id=$1::uuid AND status<>\'retired\'', [runId,JSON.stringify(lastResults)]);
+                },{commit:true});
             };
-            const runBatch = (session?: EvalSandboxSession) => this.runScenariosConcurrently(tenantId, agentId, channelType, scenarios, snapshot, session, run.results || [], checkpoint);
+            const runBatch = (session?: EvalSandboxSession) => this.runScenariosConcurrently(tenantId, agentId, channelType, scenarios, snapshot, session, run.results || [], checkpoint, {schemaName,runId});
             if (!this.evals) throw new Error('simulation_sandbox_unavailable');
             const results = await this.evals.withSandboxSession(tenantId, runBatch);
             const scored = results.filter(isScoredScenario);
@@ -313,14 +346,13 @@ export class SimulationService {
                 ? Math.round((scored.filter((r) => r.judge?.resolved).length / results.length) * 10000) / 100
                 : 0;
 
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE simulation_runs
-                 SET status = 'completed', results = $2::jsonb, summary = $3::jsonb,
-                     avg_score = $4, resolved_rate = $5, completed_at = NOW()
-                 WHERE id = $1::uuid`,
-                [runId, JSON.stringify(results), JSON.stringify(summary), avgScore, resolvedRate],
-            );
+            await withSimulationReplayRun(this.prisma,schemaName,runId,async(query,current)=>{
+                current.results=results;
+                await assertSimulationReplayRun(query,current,true);
+                await query(`UPDATE simulation_runs SET status='completed',results=$2::jsonb,summary=$3::jsonb,
+                    avg_score=$4,resolved_rate=$5,completed_at=NOW() WHERE id=$1::uuid AND status<>'retired'`,
+                    [runId,JSON.stringify(results),JSON.stringify(summary),avgScore,resolvedRate]);
+            },{commit:true});
 
             if (!scored.length) throw new Error('Simulation produced no scorable scenarios');
             if (scored.length !== results.length) throw new Error('Simulation has unscorable scenarios');
@@ -329,13 +361,15 @@ export class SimulationService {
             );
             this.emitRunEvent(AGENT_SIMULATION_COMPLETED_EVENT, tenantId, agentId, runId, 'completed');
         } catch (err: any) {
-            this.logger.error(`[Sim] Run ${runId} failed: ${err.message}`);
+            this.logger.error(`[Sim] Run ${runId} failed`);
             await this.prisma.executeInTenantSchema(
                 schemaName,
-                `UPDATE simulation_runs SET status = 'failed', error = $2, completed_at = NOW() WHERE id = $1::uuid`,
-                [runId, String(err.message || err).slice(0, 1000)],
+                `UPDATE simulation_runs SET status = 'failed', error = $2, completed_at = NOW() WHERE id = $1::uuid AND status<>'retired'`,
+                [runId, 'simulation_execution_failed'],
             );
             this.emitRunEvent(AGENT_SIMULATION_FAILED_EVENT, tenantId, run.agent_id, runId, 'failed');
+            if (err instanceof SimulationReplayUnavailable) throw err;
+            if (run.scenario_source==='replay' || run.replay_authority?.length) throw new Error('simulation_execution_failed');
             throw err;
         }
     }
@@ -358,47 +392,10 @@ export class SimulationService {
     // Scenario sources
     // ---------------------------------------------------------------------
 
-    /** Reconstruct customer scripts from real historical conversations. */
-    private async buildReplayScenarios(schemaName: string, count: number): Promise<ScenarioDef[]> {
-        const convs = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT c.id,
-                    (SELECT m.content_text FROM messages m
-                       WHERE m.conversation_id = c.id AND m.direction = 'inbound' AND m.content_text IS NOT NULL
-                       ORDER BY m.created_at ASC LIMIT 1) AS first_msg
-             FROM conversations c
-             WHERE EXISTS (
-                 SELECT 1 FROM messages m2
-                 WHERE m2.conversation_id = c.id AND m2.direction = 'inbound' AND m2.content_text IS NOT NULL
-             )
-             ORDER BY c.created_at DESC
-             LIMIT $1`,
-            [Math.min(count, MAX_COUNT)],
-        );
-
-        const scenarios: ScenarioDef[] = [];
-        for (const c of convs || []) {
-            const inbound = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT content_text FROM messages
-                 WHERE conversation_id = $1::uuid AND direction = 'inbound' AND content_text IS NOT NULL
-                 ORDER BY created_at ASC
-                 LIMIT $2`,
-                [c.id, MAX_REPLAY_MESSAGES],
-            );
-            const messages = (inbound || []).map((m) => String(m.content_text)).filter(Boolean);
-            if (!messages.length) continue;
-            scenarios.push({
-                key: `replay:${c.id}`,
-                title: String(c.first_msg || messages[0]).slice(0, 80),
-                goal: 'Reproducir una conversación real de un cliente histórico',
-                language: 'es-CO',
-                source: 'replay',
-                openingMessage: messages[0],
-                replayMessages: messages,
-            });
-        }
-        return scenarios;
+    /** Capture once under the requesting actor's tenant authorization and privacy fence. */
+    private buildReplayScenarios(query: SimulationReplayQuery,runId:string,agentId:string,channelType:string,
+        language:string,actor:string,count:number) {
+        return captureSimulationReplays(query,{runId,agentId,channelType,language,actor,count});
     }
 
     /** LLM generates synthetic customer personas + goals for the tenant's vertical. */
@@ -469,24 +466,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
 
     /** Strip judge/transcript from a previous run's results to reuse the customer scripts. */
     private async loadScenariosFromRun(schemaName: string, runId: string): Promise<ScenarioDef[]> {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT results FROM simulation_runs WHERE id = $1::uuid`,
-            [runId],
-        );
-        const results = rows?.[0]?.results;
-        if (!Array.isArray(results)) return [];
-        return results.map((r: any) => ({
-            key: r.key,
-            title: r.title,
-            personaDescription: r.personaDescription,
-            goal: r.goal,
-            difficulty: r.difficulty,
-            language: r.language || 'es-CO',
-            source: r.source,
-            openingMessage: r.openingMessage,
-            replayMessages: r.replayMessages,
-        }));
+        return withSimulationReplayRun(this.prisma,schemaName,runId,async(_query,run)=>(run.results || []).map(scenarioDefinition));
     }
 
     // ---------------------------------------------------------------------
@@ -499,6 +479,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         scenarios: ScenarioDef[],
         snapshot?: AgentEvaluationSnapshot, session?: EvalSandboxSession,
         previous: ScenarioResult[] = [], checkpoint?: (results: ScenarioResult[]) => Promise<void>,
+        replayRun?: {schemaName:string;runId:string},
     ): Promise<ScenarioResult[]> {
         const results: ScenarioResult[] = new Array(scenarios.length);
         let cursor = 0;
@@ -510,11 +491,18 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 try {
                     const scenarioHash = revisionHash(scenarios[idx]);
                     const completed = previous.find(r => r.key === scenarios[idx].key && (r as any).scenarioHash === scenarioHash && isScoredScenario(r));
-                    if (completed) { results[idx] = completed; continue; }
+                    if (completed) {
+                        if (isReplayDefinition(completed)) {
+                            if (!replayRun) throw new SimulationReplayUnavailable();
+                            await withSimulationReplayRun(this.prisma,replayRun.schemaName,replayRun.runId,async()=>undefined);
+                        }
+                        results[idx] = completed; continue;
+                    }
                     await session?.reset(channelType, snapshot);
-                    results[idx] = await this.runScenario(tenantId, agentId, channelType, session?.fixtures ? bindCanonicalEvalFixtures(scenarios[idx],session.fixtures) : scenarios[idx], snapshot, session);
+                    results[idx] = await this.runScenario(tenantId, agentId, channelType, session?.fixtures ? bindCanonicalEvalFixtures(scenarios[idx],session.fixtures) : scenarios[idx], snapshot, session, replayRun);
                     Object.assign(results[idx], {scenarioHash});
                 } catch (err: any) {
+                    if (err instanceof SimulationReplayUnavailable) throw err;
                     const s = scenarios[idx];
                     results[idx] = {
                         ...s,
@@ -541,6 +529,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
         channelType: string,
         scenario: ScenarioDef,
         snapshot?: AgentEvaluationSnapshot, session?: EvalSandboxSession,
+        replayRun?: {schemaName:string;runId:string},
     ): Promise<ScenarioResult> {
         const startedAt = Date.now();
         const transcript: Array<{ role: 'customer' | 'agent'; content: string }> = [];
@@ -548,13 +537,22 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
 
         const falseClaims: Array<{ turn: number; reply: string }> = [];
 
-        const askAgent = async (customerMsg: string): Promise<string> => {
+        const useSource = async <T>(work:(assertSource?:()=>Promise<void>)=>Promise<T>):Promise<T> => {
+            if (!isReplayDefinition(scenario)) return work();
+            if (!replayRun) throw new SimulationReplayUnavailable();
+            return withSimulationReplayRun(this.prisma,replayRun.schemaName,replayRun.runId,async(query,run)=>{
+                await assertSimulationReplayRun(query,{...run,scenario_definitions:[scenario]});
+                return work(()=>assertSimulationReplayRun(query,{...run,scenario_definitions:[scenario]}));
+            });
+        };
+        const askAgent = async (customerMsg: string): Promise<string> => useSource(async (assertSource) => {
+            const beforeExecution=async()=>{ await session?.assertLease?.(); await assertSource?.(); };
             const sandboxInboundMessageId=await session?.recordInbound(customerMsg);
             const res = await this.agentTest.test(
                 tenantId,
                 agentId,
                 { message: customerMsg, conversationHistory: [...history], channelType: channelType as any },
-                { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, sandboxNamespace: session.sandboxNamespace, sandboxInboundMessageId, beforeToolExecution: session.assertLease } : {}) },
+                { disableTools: false, agentSnapshot: snapshot, ...(session ? { evalMode: true, sandboxContactId: session.sandboxContactId, sandboxConversationId: session.sandboxConversationId, sandboxNamespace: session.sandboxNamespace, sandboxInboundMessageId, beforeToolExecution: beforeExecution, beforeModelExecution: beforeExecution } : {}) },
             );
             if (res.debug?.runtimeError) throw new Error(`agent_runtime_failed:${res.debug.runtimeError}`);
             const reply = res.reply || '';
@@ -574,9 +572,15 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             history.push({ role: 'user', content: customerMsg });
             history.push({ role: 'assistant', content: reply });
             return reply;
-        };
+        });
 
         try {
+        // Register durably before opening the source-use fence. A second connection
+        // acquiring shared behind a queued erasure would deadlock with the outer fence.
+        // If erasure wins between registration and use, useSource rejects before copying.
+        if (isReplayDefinition(scenario) && replayRun && session?.sandboxNamespace) {
+            await registerSimulationReplayNamespace(this.prisma,replayRun.schemaName,replayRun.runId,session.sandboxNamespace);
+        }
         if (scenario.source === 'replay' && scenario.replayMessages?.length) {
             for (const msg of scenario.replayMessages.slice(0, MAX_REPLAY_MESSAGES)) {
                 await askAgent(msg);
@@ -599,7 +603,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             .join('\n');
 
         await this.agentTest.assertSnapshotCurrent(snapshot);
-        const judge = await this.qualityService.judgeTranscript(tenantId, transcriptText, AGENT_TEST_EXECUTION_CONTEXT);
+        const judge = await useSource(()=>this.qualityService.judgeTranscript(tenantId, transcriptText, AGENT_TEST_EXECUTION_CONTEXT));
         await this.agentTest.assertSnapshotCurrent(snapshot);
 
         return {
@@ -611,6 +615,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             falseClaims: falseClaims.length ? falseClaims : undefined,
         };
         } catch (cause: any) {
+            if (cause instanceof SimulationReplayUnavailable) throw cause;
             const error = new Error(String(cause?.message || cause));
             Object.assign(error, { partialScenario: { transcript, turns: Math.floor(transcript.length / 2), latencyMs: Date.now() - startedAt, falseClaims } });
             throw error;
@@ -715,13 +720,9 @@ Reglas:
 
         // Regression diff vs baseline (match scenarios by key).
         if (baselineRunId) {
-            const baseRows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT results, avg_score FROM simulation_runs WHERE id = $1::uuid`,
-                [baselineRunId],
-            );
-            const baseResults: ScenarioResult[] = Array.isArray(baseRows?.[0]?.results) ? baseRows[0].results : [];
-            const baseAvg = Number(baseRows?.[0]?.avg_score) || 0;
+            const base = await withSimulationReplayRun(this.prisma,schemaName,baselineRunId,async(_query,run)=>run);
+            const baseResults: ScenarioResult[] = Array.isArray(base.results) ? base.results : [];
+            const baseAvg = Number(base.avg_score) || 0;
             const baseByKey = new Map(baseResults.map((b) => [b.key, b]));
 
             const regressions: any[] = [];

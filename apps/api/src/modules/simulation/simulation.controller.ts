@@ -45,6 +45,12 @@ export class SimulationController {
         return { success: true, data };
     }
 
+    @Post(':tenantId/:runId/retire')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async retire(@Param('tenantId') tenantId: string, @Param('runId') runId: string) {
+        return {success:true,data:await this.simulation.retireRun(tenantId,runId)};
+    }
+
     @Get(':tenantId')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async list(@Param('tenantId') tenantId: string, @Query('limit') limit?: string) {

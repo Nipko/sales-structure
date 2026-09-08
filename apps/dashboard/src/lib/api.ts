@@ -1555,6 +1555,8 @@ export const api = {
         apiGet(`/simulation/${tenantId}?limit=${limit}`),
     getAgentSimulation: (tenantId: string, runId: string) =>
         apiGet(`/simulation/${tenantId}/${runId}`),
+    retireAgentSimulation: (tenantId: string, runId: string) =>
+        apiPost(`/simulation/${tenantId}/${runId}/retire`, {}),
 
     // Procedures / SOP (T2.12)
     listProcedures: (tenantId: string) => apiGet(`/procedures/${tenantId}`),

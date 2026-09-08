@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PersonaService } from './persona.service';
 import { AgentConfigurationRevisionStore, operationalConfigurationBody, operationalConfigurationHash, validateConfigurationBody,
-    type ConfigurationRevisionActor, type RevisionQuery } from './agent-configuration-revision';
+    type AgentConfigurationBody, type ConfigurationRevisionActor, type RevisionQuery } from './agent-configuration-revision';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -74,6 +74,22 @@ export class AgentDraftService {
         const body = input.body;
         // Deactivation is an immediate safety action. Reactivation belongs to publication.
         if (body.isActive !== operational.is_active) throw new BadRequestException({ error: 'agent_activation_managed_separately' });
+        await this.assertConfigurationEntitlement(tenantId, schema, operational, tenant, body);
+    }
+
+    /**
+     * What this tenant is allowed to run RIGHT NOW: the subtype ceiling, the
+     * plan features behind each tool family, the custom prompt, the mission
+     * within the profile and the appointment prerequisites.
+     *
+     * Publication re-runs this immediately before the side effect, on the same
+     * transaction. A human approval authorises the candidate, not an entitlement
+     * from whenever the draft was written: a plan downgrade, a STOP profile or a
+     * disconnected calendar between saving and publishing must stop it.
+     */
+    async assertConfigurationEntitlement(
+        tenantId: string, schema: string, operational: any, tenant: any, body: AgentConfigurationBody,
+    ): Promise<void> {
         this.persona.assertAgentConfigValid(body.configJson, { partial: true });
         const settings = tenant.settings || {};
         const industry = settings.verticalConfig?.industry ?? tenant.industry ?? 'otro';

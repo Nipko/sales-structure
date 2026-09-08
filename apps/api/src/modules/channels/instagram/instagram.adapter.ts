@@ -119,7 +119,10 @@ export class InstagramAdapter implements IChannelAdapter, StrictDispatchTranspor
             const messaging = entry?.messaging?.[0];
 
             if (!messaging?.message) {
-                // Could be a read receipt, echo, or reaction — skip
+                // Not an inbound message. Instagram's read receipt does name a
+                // mid (`messaging_seen`) and IS applied now — by the controller,
+                // through the shared delivery-status writer, never through this
+                // return type. See `meta-messaging-status.ts`.
                 return null;
             }
 

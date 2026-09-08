@@ -719,6 +719,82 @@ export async function applyDispatchProviderStatus(query: DispatchOutboxQuery, sc
 }
 
 /**
+ * How far back a single cutoff is allowed to reach.
+ *
+ * A bound, not a correctness mechanism: the query already excludes every row
+ * the claim cannot change, so repeated watermarks drain the thread. This only
+ * stops one malformed or replayed timestamp from scanning a whole history.
+ */
+export const DISPATCH_WATERMARK_MAX_ROWS = 200;
+
+/**
+ * The receipts a provider's cutoff is actually talking about.
+ *
+ * Messenger says "everything sent to this conversation before or at this
+ * instant was read" and names no message at all; its delivery event may do the
+ * same, since Meta documents `delivery.mids` as possibly absent. A per-receipt
+ * writer cannot consume that, and minting a fake mid to feed it would be a lie
+ * about which message the provider meant. So the cutoff is resolved to receipts
+ * we can prove are covered, and each one is then decided by the ordinary
+ * per-receipt path — the ranking, the idempotency and the refusal to degrade
+ * `delivered`/`read` all stay in one place.
+ *
+ * Every clause here is a fence rather than a filter:
+ *   - the connection and the recipient, so a cutoff can never reach another
+ *     contact's messages or another account's;
+ *   - `state = 'sent'` with a receipt, so a row the provider never accepted is
+ *     not claimed as read by it;
+ *   - `redacted_at IS NULL`, so erasure is not undone by a late webhook;
+ *   - `NOT IN` the statuses the claim cannot improve, which also excludes
+ *     `failed`: a bulk cutoff must not overwrite a recorded rejection, or a
+ *     refused message ends up reading as "read" — the exact lie this whole
+ *     path exists to prevent. The per-mid writer never meets that case, so the
+ *     guard belongs with the producer that does.
+ *
+ * `updated_at` is the acceptance moment: `settleDispatch` stamps it in the same
+ * statement that writes `state='sent'`. Anything that touches the row later
+ * only pushes it forward, which can only drop a row out of a cutoff — the safe
+ * direction. It is still OUR clock against Meta's, so a message accepted in the
+ * seconds between Meta stamping the cutoff and us reading the webhook can be
+ * covered early. That is a message Meta did accept, to this contact, in this
+ * thread — an optimistic read, never a fabricated delivery.
+ */
+export async function resolveDispatchReceiptsUpTo(query: DispatchOutboxQuery, schema: string, input: {
+    channelType: string; channelAccountId: string; recipient: string;
+    status: DispatchProviderStatus; watermarkMs: number;
+}): Promise<string[]> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const recipient = typeof input?.recipient === 'string' ? input.recipient.trim() : '';
+    const account = typeof input?.channelAccountId === 'string' ? input.channelAccountId.trim() : '';
+    if (!recipient || recipient.length > 300 || !account || account.length > 255
+        || !input.channelType || !Number.isInteger(input.watermarkMs)
+        || !DISPATCH_PROVIDER_STATUSES.includes(input.status)) fail('dispatch_invalid_reference');
+    // A cutoff is a claim about arrival. `sent` and `failed` are not arrivals,
+    // and neither can be asserted about a range of messages nobody named.
+    if (input.status !== 'delivered' && input.status !== 'read') fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return [];
+    const claimed = MESSAGE_STATUS_RANK[input.status];
+    const settled = Object.entries(MESSAGE_STATUS_RANK)
+        .filter(([, rank]) => rank >= claimed).map(([status]) => status)
+        .concat('redacted', 'failed');
+    const rows = await query<any[]>(
+        `SELECT d.receipt FROM agent_dispatch_outbox d
+           JOIN messages m ON m.id = d.message_id
+          WHERE d.channel_type = $1 AND d.channel_account_id = $2 AND d.recipient = $3
+            AND d.state = 'sent' AND d.receipt IS NOT NULL AND d.redacted_at IS NULL
+            AND d.updated_at <= to_timestamp($4::double precision / 1000)
+            AND m.status <> ALL($5::text[])
+          ORDER BY d.updated_at ASC
+          LIMIT ${DISPATCH_WATERMARK_MAX_ROWS}`,
+        [input.channelType, account, recipient, input.watermarkMs, settled]);
+    return (rows || []).map(row => String(row.receipt)).filter(Boolean);
+}
+
+/**
  * The reconciliation queue, as an operator sees it.
  *
  * `reconciliation_required` means the attempt may have reached the provider and

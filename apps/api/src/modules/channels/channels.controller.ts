@@ -29,6 +29,12 @@ import { WhatsappWebhookService } from '../whatsapp/services/whatsapp-webhook.se
 import { ChannelTokenService } from './channel-token.service';
 import { validateMetaSignature } from './meta-signature.util';
 import { InboundQueueService } from '../inbound/inbound-queue.service';
+import { recordChannelDeliveryStatuses } from './channel-delivery-status';
+import {
+    classifyMetaMessagingEvent,
+    isInboundMessagingEvent,
+    type MetaMessagingStatus,
+} from './meta-messaging-status';
 
 @ApiTags('channels')
 @Controller('channels')
@@ -150,11 +156,30 @@ export class ChannelsController {
 
                 const messagingItems = Array.isArray(entry?.messaging) ? entry.messaging : [];
                 for (const messagingItem of messagingItems) {
+                    // Classify before the adapter sees it. `handleWebhook` answers
+                    // exactly one question — "is this an inbound message?" — and
+                    // returned null for read receipts, echoes and reactions alike;
+                    // this loop then dropped all of them with `continue` and no
+                    // log at all. Status has its own path now, and what stays
+                    // unmodelled at least says its own name.
+                    const status = classifyMetaMessagingEvent(messagingItem, 'instagram');
+                    if (!isInboundMessagingEvent(status)) {
+                        await this.recordMetaMessagingStatus(
+                            'instagram', channelAccount.tenantId, igUserId, status);
+                        continue;
+                    }
                     // Per-message idempotency (atomic SET NX).
                     // Synthesize a single-item payload for the adapter (it reads entry[0].messaging[0]).
                     const singlePayload = { ...body, entry: [{ ...entry, messaging: [messagingItem] }] };
                     const normalized = await this.gateway.processIncomingWebhook('instagram', singlePayload, igUserId);
-                    if (!normalized) continue;
+                    if (!normalized) {
+                        // Message-shaped but unparseable — a missing sender, say.
+                        // Worth a line: it is the one drop the classifier cannot
+                        // account for, and it used to look like every other one.
+                        this.logger.warn(
+                            `[instagram] mensaje entrante descartado por el adaptador (cuenta ${igUserId})`);
+                        continue;
+                    }
                     normalized.tenantId = channelAccount.tenantId;
                     // Enrich BEFORE enqueuing: the profile is written onto the
                     // message metadata, so it must be present in the job.
@@ -172,6 +197,56 @@ export class ChannelsController {
         }
 
         return res.status(200).send('OK');
+    }
+
+    /**
+     * What Meta later said about an outbound message, on the two channels that
+     * were throwing it away.
+     *
+     * Both send their outbound through the durable outbox, so both already have
+     * a receipt in `agent_dispatch_outbox.receipt` — the mid the Send API
+     * returned. What was missing was anyone reading the events that quote it
+     * back. `delivery.mids[]` is a list of those receipts and maps one-to-one
+     * onto the writer WhatsApp already shares; the cutoffs (Messenger's `read`,
+     * and a `delivery` whose optional `mids` did not arrive) are expanded into
+     * receipts inside that same call, so no second ranking exists here.
+     *
+     * The shared writer never throws, and that is load-bearing: the webhook owes
+     * Meta a 200 and the messages in the same payload are already durable in the
+     * queue, so an unwritable status must not turn into a redelivery of the
+     * whole body. If one ever did escape, the route's 500 is still safe — every
+     * status here is idempotent and every message has a deterministic jobId.
+     */
+    private async recordMetaMessagingStatus(
+        channelType: 'instagram' | 'messenger',
+        tenantId: string,
+        accountId: string,
+        status: MetaMessagingStatus,
+    ): Promise<void> {
+        if (!status.events.length && !status.watermark) {
+            // Real traffic we do not model — an echo, a reaction, a postback, or
+            // a status whose recipient or timestamp did not survive validation.
+            // Named on purpose: the silent version of this branch is how months
+            // of delivery receipts went missing with nothing to grep for.
+            this.logger.debug(
+                `[${channelType}] evento ${status.kind} sin estado aplicable (cuenta ${accountId}) — ignorado`);
+            return;
+        }
+        const report = await recordChannelDeliveryStatuses(
+            status.events,
+            { channelType, channelAccountId: accountId },
+            {
+                store: this.prisma,
+                logger: this.logger,
+                resolveSchema: async () => (await this.prisma.getTenantSchemaName(tenantId)) || null,
+            },
+            status.watermark ? [status.watermark] : [],
+        );
+        if (report.unavailable) {
+            this.logger.warn(
+                `[${channelType}] estado ${status.kind} no registrado: el historial del tenant ` +
+                `${tenantId} no pudo leerse (cuenta ${accountId})`);
+        }
     }
 
     /** Fetch the IG sender profile (cached 1h) and dispatch the message to the pipeline. */
@@ -259,9 +334,23 @@ export class ChannelsController {
 
                 const messagingItems = Array.isArray(entry?.messaging) ? entry.messaging : [];
                 for (const messagingItem of messagingItems) {
+                    // Same classification as Instagram, and deliberately not the
+                    // same events: Messenger is the only one of the two that
+                    // sends `delivery`, and its read receipt is a cutoff with no
+                    // message id in it. See `meta-messaging-status.ts`.
+                    const status = classifyMetaMessagingEvent(messagingItem, 'messenger');
+                    if (!isInboundMessagingEvent(status)) {
+                        await this.recordMetaMessagingStatus(
+                            'messenger', channelAccount.tenantId, pageId, status);
+                        continue;
+                    }
                     const singlePayload = { ...body, entry: [{ ...entry, messaging: [messagingItem] }] };
                     const normalized = await this.gateway.processIncomingWebhook('messenger', singlePayload, pageId);
-                    if (!normalized) continue;
+                    if (!normalized) {
+                        this.logger.warn(
+                            `[messenger] mensaje entrante descartado por el adaptador (cuenta ${pageId})`);
+                        continue;
+                    }
                     normalized.tenantId = channelAccount.tenantId;
                     // Enrich BEFORE enqueuing: the profile is written onto the
                     // message metadata, so it must be present in the job.

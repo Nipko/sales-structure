@@ -108,7 +108,13 @@ export class MessengerAdapter implements IChannelAdapter, StrictDispatchTranspor
             const messaging = entry?.messaging?.[0];
 
             if (!messaging?.message) {
-                // Delivery confirmation, read receipt, or postback
+                // Not an inbound message — the only question this method answers.
+                // The null used to be the end of the story: the controller threw
+                // away delivery confirmations and read receipts right here with
+                // no log. They are classified before the adapter now, in
+                // `meta-messaging-status.ts`. This return type deliberately stays
+                // `NormalizedMessage | null`: a status is not an inbound message
+                // and has no business travelling inside one.
                 return null;
             }
 

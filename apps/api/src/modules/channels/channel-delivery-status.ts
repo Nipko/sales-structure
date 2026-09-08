@@ -1,5 +1,6 @@
 import {
     applyDispatchProviderStatus,
+    resolveDispatchReceiptsUpTo,
     DISPATCH_PROVIDER_STATUSES,
     type DispatchProviderStatus,
 } from './agent-dispatch-outbox';
@@ -30,6 +31,19 @@ export interface ChannelDeliveryStatusEvent {
 export interface ChannelDeliveryStatusContext {
     readonly channelType: string;
     readonly channelAccountId: string;
+}
+
+/**
+ * A provider claim that names no message, only an instant and a thread.
+ *
+ * Messenger's read receipt is exactly this and nothing else. It is expanded
+ * into real receipts before anything is written, so the decision about each
+ * message stays where it already lives, in the per-receipt writer.
+ */
+export interface ChannelDeliveryWatermark {
+    readonly status: DispatchProviderStatus;
+    readonly watermarkMs: number;
+    readonly recipient: string;
 }
 
 export type ChannelDeliveryStatusReason =
@@ -177,9 +191,16 @@ export async function recordChannelDeliveryStatuses(
         /** Null means the connection belongs to no tenant we know — terminal. */
         resolveSchema: () => Promise<string | null>;
     },
+    /**
+     * Cutoffs that have to become receipts first. Kept on this one entry point
+     * rather than given a writer of their own: a second path would be a second
+     * ranking, and the last time this rule existed twice one copy let `failed`
+     * overwrite `delivered`.
+     */
+    watermarks: readonly ChannelDeliveryWatermark[] = [],
 ): Promise<ChannelDeliveryStatusReport> {
     reportRejections(events, context, deps.logger);
-    if (!events.length) return { results: [], unavailable: false };
+    if (!events.length && !watermarks.length) return { results: [], unavailable: false };
 
     let schemaName: string | null;
     try {
@@ -192,7 +213,33 @@ export async function recordChannelDeliveryStatuses(
 
     const results: ChannelDeliveryStatusResult[] = [];
     let unavailable = false;
-    for (const event of events) {
+
+    // Expand before deciding, so a cutoff and a named mid reach the writer as
+    // the same kind of thing. A resolution that finds nothing is a fact — the
+    // thread has no message the claim could change — not a failure.
+    const resolved: ChannelDeliveryStatusEvent[] = [];
+    for (const watermark of watermarks) {
+        try {
+            const receipts = await deps.store.transactionInTenantSchema(schemaName, query =>
+                resolveDispatchReceiptsUpTo(query, schemaName as string, {
+                    channelType: context.channelType,
+                    channelAccountId: context.channelAccountId,
+                    recipient: watermark.recipient,
+                    status: watermark.status,
+                    watermarkMs: watermark.watermarkMs,
+                }));
+            for (const providerMessageId of receipts) {
+                resolved.push({ providerMessageId, status: watermark.status, errorCode: null });
+            }
+        } catch (error: any) {
+            deps.logger.warn(
+                `[${context.channelType}] no se pudo resolver el corte ${watermark.status} ` +
+                `de ${watermark.watermarkMs}: ${error?.message}`);
+            unavailable = true;
+        }
+    }
+
+    for (const event of [...events, ...resolved]) {
         // One transaction per event: they arrive out of order and repeated, and
         // each decides on its own whether it is newer than what is recorded.
         try {

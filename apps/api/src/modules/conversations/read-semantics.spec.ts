@@ -13,6 +13,7 @@ import { sessionToolExecutor } from './agent-turn-adapters';
 import { AgentTurnTrace } from './agent-turn-session';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
+import { evaluationKnowledgeFixture } from './__fixtures__/evaluation-knowledge.fixture';
 
 /**
  * "No pude leer" no puede sonar igual que "no hay nada".
@@ -59,7 +60,16 @@ describe('un fallo de lectura nunca se presenta como cero resultados', () => {
         const authority=async()=>{throw new LLMSourceAuthorityUnavailable();};
         const search=jest.fn(async(_tenant,_query,_limit,options)=>options.withDataSourceAuthority(async()=>[]));
         const executor=createExecutor(jest.fn(),{knowledgeService:{tenantHasKnowledge:jest.fn().mockResolvedValue(true),searchRelevant:search}});
-        const session={tenantId,agentId:'agent',contactId,conversationId,schemaName,mode:'preview',trace:new AgentTurnTrace(),
+        // Una sesión de evaluación no puede buscar en la base de conocimiento
+        // sin la réplica sellada que congela lo que va a leer: sin ella la
+        // corrida leería el conocimiento vivo y no sería reproducible, así que
+        // el adaptador falla cerrado ANTES de llegar al ejecutor. Este caso es
+        // sobre lo que pasa DESPUÉS, así que la sesión trae la réplica como
+        // cualquier sesión real, y el agente es un UUID porque la réplica se
+        // valida contra él.
+        const agentId='55555555-5555-4555-8555-555555555555';
+        const session={tenantId,agentId,contactId,conversationId,schemaName,mode:'preview',trace:new AgentTurnTrace(),
+            snapshot:{knowledgeInputs:evaluationKnowledgeFixture(tenantId,agentId)},
             executionContext:AGENT_TEST_EXECUTION_CONTEXT,learningEvaluationSource:{releaseId:'candidate'},evaluationDataSourceAuthority:authority};
         await expect(sessionToolExecutor(executor,session as any).execute(schemaName,tenantId,contactId,'search_knowledge_base',
             {query:'Historical question'},conversationId,{authority:authorityFor('search_knowledge_base')})).rejects.toBeInstanceOf(LLMSourceAuthorityUnavailable);

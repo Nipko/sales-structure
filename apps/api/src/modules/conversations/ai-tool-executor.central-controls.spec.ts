@@ -1,10 +1,25 @@
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import type { ServedAgentAuthority } from '../persona/served-agent-authority';
 
 const schemaName = 'tenant_executor_controls';
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const contactId = '22222222-2222-4222-8222-222222222222';
 const conversationId = '33333333-3333-4333-8333-333333333333';
+const agentId = '44444444-4444-4444-8444-444444444444';
+
+/**
+ * La procedencia privada de la revisión que sirve este turno.
+ *
+ * `create_payment_link` es una tool con versión guardada, así que el ejecutor
+ * la rechaza antes de cualquier otra puerta si el turno no la trae. Sin ella
+ * estos dos casos morían en esa primera puerta y no llegaban a ejercitar ni la
+ * identidad ni la confirmación, que es lo que vienen a probar. Que la puerta
+ * misma funcione lo fija `payment-agent-executor.spec.ts`.
+ */
+const operationalScope: ServedAgentAuthority = {
+    kind: 'agent', tenantId, schemaName, agentId, version: 7, operationalHash: 'a'.repeat(64),
+};
 
 function createExecutor(
     control: any,
@@ -194,7 +209,7 @@ describe('AIToolExecutorService central authority boundary', () => {
             'create_payment_link',
             { payableReference: 'order:11111111-1111-4111-8111-111111111111' },
             conversationId,
-            { authority: authorityFor('create_payment_link') },
+            { authority: authorityFor('create_payment_link'), operationalScope },
         );
 
         expect(result).toEqual({ error: 'identity_verification_required' });
@@ -223,7 +238,7 @@ describe('AIToolExecutorService central authority boundary', () => {
                 description: 'inventado por el modelo',
             },
             conversationId,
-            { authority: authorityFor('create_payment_link') },
+            { authority: authorityFor('create_payment_link'), operationalScope },
         );
 
         expect(control.preflight).toHaveBeenCalledWith(expect.objectContaining({

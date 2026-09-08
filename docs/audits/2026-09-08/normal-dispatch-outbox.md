@@ -50,7 +50,7 @@ Ambos plazos se evalúan con el reloj de la base, en la misma sentencia que bloq
 
 Un canal sin adaptador migrado se rechaza explícitamente (`transport_not_migrated`) en vez de degradarse al gateway suelto. WhatsApp está migrado; los demás conservan la ruta actual.
 
-**Decisión de producto registrada como tal:** un 5xx *respondido* se lee como rechazo reintentable y no como resultado desconocido. Meta no emite id de mensaje en ese caso y no hay nada contra qué reconciliar un POST fallido, así que la alternativa deja una respuesta del cliente varada detrás de una reconciliación que no puede resolverse. Cambia un duplicado raro por no perder una respuesta — el mismo canje que el pipeline ya hace explícito. Una petición **sin respuesta** sigue siendo desconocida. Conviene confirmar este criterio al cierre.
+> **Corregido en `42c9282f`.** Esta sección registraba como decisión de producto que *todo* 5xx respondido se leyera como rechazo reintentable. Era incorrecto: un 5xx sin recibo no demuestra que el proveedor no actuó, y reintentar sobre él invita justo al duplicado que el outbox existe para evitar. La clasificación es ahora **por proveedor y por código documentado**; ver [los bloqueos cerrados](dispatch-blockers-closed.md).
 
 ## Admisión: qué se comprueba y en qué orden
 
@@ -90,8 +90,8 @@ La suite completa de la API se ejecutó en un worktree limpio de `7c613864` y so
 ## Límites explícitos
 
 - **Nada cambia en producción.** El interruptor está apagado, apagado para todo canal no listado, y apagado cuando la configuración no se puede leer, así que el productor devuelve falso en todas partes hasta que alguien lo escriba deliberadamente.
-- Solo WhatsApp tiene transporte estricto. Instagram, Messenger, Telegram y correo se rechazan explícitamente si alguna vez reciben una fila.
-- Medios, enlaces y Flow como ítems separados —con la división de imagen y caption y el fallback de Flow solo tras un rechazo demostrado— no están implementados.
+- ~~Solo WhatsApp tiene transporte estricto.~~ **Desactualizado desde `a850726c`**: Messenger también lo implementa. Instagram, Telegram y correo se rechazan explícitamente si alguna vez reciben una fila. Estado vigente por canal en [los bloqueos cerrados](dispatch-blockers-closed.md).
+- ~~Medios, enlaces y Flow como ítems separados no están implementados.~~ **Desactualizado desde `a850726c`**: `buildDispatchItems` ya los separa, con la división de imagen y caption. Lo que sigue abierto es distinto y más acotado: el **productor** de la respuesta normal solo alimenta texto, así que medios, enlaces canónicos y Flow tienen primitiva y transporte pero todavía no productor conectado.
 - No se prometió exactly-once remoto. Un resultado desconocido exige conciliación y puede dejar un mensaje sin enviar.
 - Las respuestas de proveedor de las pruebas son sintéticas. No hay piloto con Meta ni con ningún otro proveedor.
 - El DDL está en `tenant-schema.sql` y en el bootstrap perezoso; no se aplicó a tenants existentes.

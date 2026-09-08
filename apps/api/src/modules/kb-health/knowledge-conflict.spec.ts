@@ -17,7 +17,7 @@ function harness(options:{failRead?:boolean;failJudge?:boolean;judge?:string}={}
         if(sql.startsWith('INSERT INTO knowledge_conflict_cases')){if(cases.some(c=>c.pair_key===p[0]))return[];cases.push({id:CASE,pair_key:p[0],source_a:JSON.parse(p[1]),source_b:JSON.parse(p[2]),quote_a:p[3],quote_b:p[4],detail:p[5],suggestion:p[6],status:'open',revision:1});return[{id:CASE}];}
         if(sql.startsWith('INSERT INTO knowledge_conflict_scans')){scans.push(JSON.parse(p[1]));return[];}
         if(sql.includes('SELECT report FROM'))return scans.length?[{report:scans.at(-1)}]:[];
-        if(sql.startsWith('SELECT c.*'))return cases.map(c=>({...c,...decisions.at(-1),revision:c.revision}));
+        if(sql.startsWith('SELECT c.*') || sql.startsWith('SELECT c.id,c.source_a,c.source_b'))return cases.map(c=>({...c,...decisions.at(-1),revision:c.revision}));
         if(sql.startsWith('SELECT * FROM knowledge_conflict_cases'))return cases;
         if(sql.startsWith('INSERT INTO knowledge_conflict_decisions')){decisions.push({decision:p[2],reason:p[3],actor_id:p[4],scope:JSON.parse(p[7]),revision:p[1]});return[];}
         if(sql.startsWith('UPDATE knowledge_conflict_cases')){cases[0].revision++;cases[0].status=p[1];return[];}

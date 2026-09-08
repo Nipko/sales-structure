@@ -180,9 +180,10 @@ export class KnowledgeConflictService {
         try {
             if (!persistenceDisabled(executionContext)) await this.ensureTables(schema);
             const query: Query = (sql,params=[]) => this.prisma.executeInTenantSchema(schema,sql,params);
-            const rows = await query(`SELECT c.*,d.decision,d.scope FROM knowledge_conflict_cases c
+            const rows = await query(`SELECT c.id,c.source_a,c.source_b,c.quote_a::text AS quote_a,c.quote_b::text AS quote_b,
+                d.decision::text AS decision,d.scope FROM knowledge_conflict_cases c
                 LEFT JOIN LATERAL (SELECT * FROM knowledge_conflict_decisions WHERE case_id=c.id ORDER BY revision DESC LIMIT 1) d ON true
-                WHERE document_a=ANY($1::uuid[]) OR document_b=ANY($1::uuid[]) ORDER BY c.updated_at DESC LIMIT 100`,[documentIds]);
+                WHERE document_a=ANY($1::uuid[]) OR document_b=ANY($1::uuid[]) ORDER BY c.updated_at DESC,c.id LIMIT 100`,[documentIds]);
             for (const row of rows) {
                 const [a,b] = await Promise.all([this.current(query,row.source_a),this.current(query,row.source_b)]);
                 if (!a || !b || a.hash !== row.source_a.hash || b.hash !== row.source_b.hash ||

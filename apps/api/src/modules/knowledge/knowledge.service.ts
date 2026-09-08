@@ -12,6 +12,7 @@ import { kbmsg } from './knowledge-i18n';
 import type { KnowledgeHit, KnowledgeSearchOptions, KnowledgeSourceMetadata } from './knowledge-contracts';
 import { knowledgeSourceAvailable } from './knowledge-contracts';
 import { KnowledgeConflictService } from '../kb-health/knowledge-conflict.service';
+import { knowledgeReplicaSchema } from '../evaluation-revision/evaluation-knowledge-replica';
 import type { KnowledgeGapReport, RetrievedKnowledgeItem } from '@parallext/shared';
 import { attributeKnowledgeResponse, knowledgeDocumentReadiness } from './knowledge-attribution';
 import { KNOWLEDGE_ATTRIBUTION_SCHEMA } from './knowledge-attribution-schema';
@@ -670,7 +671,9 @@ export class KnowledgeService {
         topK = 5,
         options?: KnowledgeSearchOptions,
     ): Promise<KnowledgeHit[]> {
-        const schema = await this.tenantSchema(tenantId);
+        const schema = options?.evaluationKnowledge
+            ? await knowledgeReplicaSchema(this.prisma, options.evaluationKnowledge, tenantId, options.executionContext)
+            : await this.tenantSchema(tenantId);
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
         const similarityThreshold = options?.similarityThreshold ?? 0;
 
@@ -707,12 +710,12 @@ export class KnowledgeService {
                    )
                    AND (kd.valid_from IS NULL OR kd.valid_from <= CURRENT_DATE)
                    AND (kd.valid_to IS NULL OR kd.valid_to >= CURRENT_DATE)`;
-        const DOC_COLUMNS = `kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
-                        kd.jurisdiction AS doc_jurisdiction, kd.authority AS doc_authority,
+        const DOC_COLUMNS = `kd.title::text AS title, kd.id AS document_id, kd.language::text AS doc_language,
+                        kd.jurisdiction::text AS doc_jurisdiction, kd.authority::text AS doc_authority,
                         kd.valid_from AS doc_valid_from, kd.valid_to AS doc_valid_to,
                         COALESCE(kd.is_regulated, false) AS doc_is_regulated,
-                        COALESCE(kd.version, 1) AS doc_version, kd.source_url AS doc_source_url,
-                        COALESCE(kd.audience, 'customer') AS doc_audience, kd.agent_ids AS doc_agent_ids`;
+                        COALESCE(kd.version, 1) AS doc_version, kd.source_url::text AS doc_source_url,
+                        COALESCE(kd.audience, 'customer')::text AS doc_audience, kd.agent_ids AS doc_agent_ids`;
 
         const [vectorPool, tsPool] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
@@ -724,7 +727,7 @@ export class KnowledgeService {
                  WHERE kd.status = 'ready'
                  ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$3')}
                  ${SCOPE_GATE.replace(/\$AUDIENCE\$/g, '$4').replace(/\$AGENT\$/g, '$5')}
-                 ORDER BY ke.embedding <=> $1::vector
+                 ORDER BY ke.embedding <=> $1::vector, ke.id
                  LIMIT $2`,
                 [embeddingStr, poolSize, jurisdiction, audience, agentId]),
             this.prisma.executeInTenantSchema<any[]>(schema,
@@ -735,7 +738,7 @@ export class KnowledgeService {
                  WHERE kd.status = 'ready' AND ke.search_tsv @@ plainto_tsquery($1::regconfig, $2)
                  ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$4')}
                  ${SCOPE_GATE.replace(/\$AUDIENCE\$/g, '$5').replace(/\$AGENT\$/g, '$6')}
-                 ORDER BY ts_rank(ke.search_tsv, plainto_tsquery($1::regconfig, $2)) DESC
+                 ORDER BY ts_rank(ke.search_tsv, plainto_tsquery($1::regconfig, $2)) DESC, ke.id
                  LIMIT $3`,
                 [regconfig, query, poolSize, jurisdiction, audience, agentId]).catch(() => [] as any[]),
         ]);
@@ -1247,10 +1250,12 @@ export class KnowledgeService {
     async tenantHasKnowledge(
         tenantId: string,
         executionContext?: ServiceExecutionContext,
-        scope?: Pick<KnowledgeSearchOptions, 'agentId' | 'audience' | 'jurisdiction'>,
+        scope?: Pick<KnowledgeSearchOptions, 'agentId' | 'audience' | 'jurisdiction' | 'evaluationKnowledge'>,
     ): Promise<boolean> {
         if (persistenceDisabled(executionContext) || scope) {
-            const schema = await this.tenantSchema(tenantId);
+            const schema = scope?.evaluationKnowledge
+                ? await knowledgeReplicaSchema(this.prisma, scope.evaluationKnowledge, tenantId, executionContext)
+                : await this.tenantSchema(tenantId);
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
                 `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings ke

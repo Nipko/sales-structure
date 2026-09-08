@@ -48,7 +48,7 @@ integration('Knowledge and memory publication with real PostgreSQL + pgvector',(
             `CREATE TABLE knowledge_embeddings(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),document_id UUID REFERENCES knowledge_documents(id) ON DELETE CASCADE,chunk_index INT,chunk_text TEXT,embedding vector(1536),metadata JSONB,search_tsv TSVECTOR,created_at TIMESTAMPTZ DEFAULT NOW())`,
             `CREATE TABLE knowledge_document_versions(document_id UUID,version INT,title TEXT,content_text TEXT,chunk_count INT,changed_by TEXT,change_summary TEXT,UNIQUE(document_id,version))`,
             `CREATE TABLE messages(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),conversation_id UUID,direction TEXT,content_text TEXT,created_at TIMESTAMPTZ DEFAULT NOW())`,
-            `CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID)`,
+            `CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID,metadata JSONB DEFAULT '{}'::jsonb)`,
             `CREATE TABLE contact_identities(contact_id UUID,customer_profile_id UUID,is_primary BOOLEAN DEFAULT false)`,
             `CREATE TABLE customer_profiles(id UUID PRIMARY KEY,phone TEXT,email TEXT,updated_at TIMESTAMPTZ DEFAULT NOW())`,
             `CREATE TABLE merge_suggestions(id UUID PRIMARY KEY,customer_profile_id_a UUID,customer_profile_id_b UUID,status TEXT,reviewed_by UUID,reviewed_at TIMESTAMPTZ)`,
@@ -148,12 +148,18 @@ integration('Knowledge and memory publication with real PostgreSQL + pgvector',(
         expect((await currentMemory())?.facts).toEqual([stopContact.text]);
     });
     it('erasure of the unified profile removes old/current facts and blocks a delayed extractor',async()=>{
+        await execute(`UPDATE conversations SET metadata='{"procedureState":{"email":"private@example.test"},"bookingState":{"name":"Private"},"missionFocus":{"customer":"Private"},"theme":"light"}'::jsonb`);
         const entered=deferred(),release=deferred();
         router.execute.mockImplementation(async()=>{entered.resolve();await release.promise;return{content:JSON.stringify({facts:[correction]})};});
-        const pending=extract();await entered.promise;await (compliance as any).eraseCustomerMemory(schema,contactId);release.resolve();await pending;
+        const pending=extract();await entered.promise;
+        try{await (compliance as any).eraseCustomerMemory(schema,contactId);}finally{release.resolve();await pending;}
         expect(await execute('SELECT id FROM customer_memory_facts')).toEqual([]);expect(await execute('SELECT contact_id FROM customer_memories')).toEqual([]);
         expect((await execute('SELECT contact_id FROM customer_memory_erasure')).map(row=>row.contact_id).sort()).toEqual([contactId,siblingId].sort());
         expect(await currentMemory()).toBeNull();expect(await currentMemory(siblingId)).toBeNull();
+        expect((await execute('SELECT metadata FROM conversations')).map(row=>row.metadata)).toEqual([
+            {theme:'light',procedureStateManaged:true,bookingStateManaged:true,missionFocusManaged:true},
+            {theme:'light',procedureStateManaged:true,bookingStateManaged:true,missionFocusManaged:true},
+        ]);
     });
     it('rolls back tombstones and deletions together if erasure fails, then retries successfully',async()=>{
         await execute(`CREATE FUNCTION refuse_synthetic_memory_erasure() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'synthetic erasure failure'; END$$`);

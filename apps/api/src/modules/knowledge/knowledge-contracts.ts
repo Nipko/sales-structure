@@ -4,6 +4,8 @@ import type { ExternalSourceAuthority } from '../ai/interfaces/external-source-a
 
 /** Shared retrieval contract for automatic context, explicit tools and evaluation. */
 export interface KnowledgeSearchOptions {
+    /** Trusted server capture only; never copied from a public request or tool arguments. */
+    evaluationKnowledge?: import('../evaluation-revision/evaluation-knowledge-replica').EvaluationKnowledgeReplica;
     /** Internal provenance fence, never accepted from request JSON. */
     withDataSourceAuthority?:ExternalSourceAuthority;
     similarityThreshold?: number;

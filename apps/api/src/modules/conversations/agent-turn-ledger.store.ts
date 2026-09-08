@@ -119,7 +119,20 @@ export class AgentTurnLedgerStore {
         }
     }
 
-    /** Erasure by contact or by withdrawn release. Reaches the stored envelope. */
+    /**
+     * Erasure by contact or by withdrawn release, on the caller's transaction.
+     *
+     * The compliance and learning-retirement paths already hold the exclusive
+     * `agent-privacy` fence when they call this, so it takes their query rather
+     * than opening a second transaction that could commit apart from the erasure
+     * it belongs to.
+     */
+    async redactWithin(query: (sql: string, params?: any[]) => Promise<any>, schema: string,
+        scope: TurnLedgerRedactionScope): Promise<number> {
+        return redactTurnLedger(query as any, schema, scope);
+    }
+
+    /** The same erasure when the caller has no transaction of its own. */
     async redact(schema: string, scope: TurnLedgerRedactionScope): Promise<number> {
         return this.run(schema, query => redactTurnLedger(query, schema, scope));
     }

@@ -320,30 +320,47 @@ export async function settleTurnLedger(query: TurnLedgerQuery, schema: string,
 }
 
 export interface TurnLedgerRedactionScope {
-    readonly contactId?: string;
-    readonly releaseId?: string;
+    readonly contactIds?: readonly string[];
+    readonly releaseIds?: readonly string[];
 }
 
 /**
- * Erasure reaches the envelope like it reaches the outbox: the words, the
- * links, the pictures and the learned sources go, the row stays. A release
- * withdrawal clears only the turns that derived from it.
+ * Erasure reaches the envelope the way it reaches the outbox: the words, the
+ * links, the pictures and the learned sources go, the row stays as the fact
+ * that stops a replay from running the turn again.
+ *
+ * By contact, and by withdrawn release. It cannot filter by learning SOURCE id:
+ * the envelope carries footprints — release, example and their hashes — not the
+ * source rows the outbox keeps in a side table. Both callers already resolve
+ * sources to the releases that contain them before they get here, which is what
+ * makes that limit survivable rather than a hole.
  */
 export async function redactTurnLedger(query: TurnLedgerQuery, schema: string,
     scope: TurnLedgerRedactionScope): Promise<number> {
-    if (scope.contactId && !UUID.test(scope.contactId)) fail('turn_ledger_contact_invalid');
-    if (scope.releaseId && !UUID.test(scope.releaseId)) fail('turn_ledger_release_invalid');
-    if (!scope.contactId && !scope.releaseId) fail('turn_ledger_redaction_scope_required');
+    const contactIds = [...new Set(scope.contactIds || [])];
+    const releaseIds = [...new Set(scope.releaseIds || [])];
+    if (contactIds.some(id => !UUID.test(id))) fail('turn_ledger_contact_invalid');
+    if (releaseIds.some(id => !UUID.test(id))) fail('turn_ledger_release_invalid');
+    if (!contactIds.length && !releaseIds.length) fail('turn_ledger_redaction_scope_required');
+    // A tenant that never took a turn through the ledger has no table, and
+    // erasure must not fail because there was nothing to erase.
+    const [present] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.agent_turn_ledger`]);
+    if (!present?.name) return 0;
     const rows = await query<any[]>(
         `UPDATE "${schema}".agent_turn_ledger
             SET envelope = NULL, writers = '[]'::jsonb, handoff = NULL,
                 recipient = NULL, provider_message_id = NULL,
                 redacted_at = COALESCE(redacted_at, NOW()), updated_at = NOW()
           WHERE redacted_at IS NULL
-            AND ($1::uuid IS NULL OR contact_id = $1::uuid)
-            AND ($2::uuid IS NULL OR envelope -> 'learningFootprints' @> $3::jsonb)
+            AND (
+                ($1::uuid[] <> '{}'::uuid[] AND contact_id = ANY($1::uuid[]))
+                OR ($2::text[] <> '{}'::text[] AND EXISTS (
+                    SELECT 1
+                      FROM jsonb_array_elements(COALESCE(envelope -> 'learningFootprints', '[]'::jsonb)) AS footprint,
+                           jsonb_array_elements(COALESCE(footprint -> 'entries', '[]'::jsonb)) AS entry
+                     WHERE entry ->> 'releaseId' = ANY($2::text[])))
+            )
           RETURNING id`,
-        [scope.contactId ?? null, scope.releaseId ?? null,
-            JSON.stringify([{ entries: [{ releaseId: scope.releaseId ?? null }] }])]);
+        [contactIds, releaseIds]);
     return rows.length;
 }

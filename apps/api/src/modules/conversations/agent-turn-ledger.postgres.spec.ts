@@ -143,7 +143,7 @@ integration('the durable record of a turn', () => {
         const bind = binding();
         await openTurnLedger(query, schema, bind);
         await recordTurnResult(query, schema, { inboundMessageId: bind.inboundMessageId, envelope: envelope('con datos') });
-        expect(await redactTurnLedger(query, schema, { contactId: bind.contactId })).toBe(1);
+        expect(await redactTurnLedger(query, schema, { contactIds: [bind.contactId] })).toBe(1);
 
         const after = await readTurnLedger(query, schema, bind.inboundMessageId);
         expect(after?.redacted).toBe(true);
@@ -152,7 +152,7 @@ integration('the durable record of a turn', () => {
         // The row itself survives: it is what stops the turn from running again.
         expect(after?.id).toBeTruthy();
         // And a second erasure is not an error.
-        expect(await redactTurnLedger(query, schema, { contactId: bind.contactId })).toBe(0);
+        expect(await redactTurnLedger(query, schema, { contactIds: [bind.contactId] })).toBe(0);
     });
 
     it('erases only the turns that derived from a withdrawn release', async () => {
@@ -166,7 +166,7 @@ integration('the durable record of a turn', () => {
             envelope: { ...envelope('sin estilo'), learningFootprints: [] },
         });
 
-        expect(await redactTurnLedger(query, schema, { releaseId: release })).toBeGreaterThanOrEqual(1);
+        expect(await redactTurnLedger(query, schema, { releaseIds: [release] })).toBeGreaterThanOrEqual(1);
         expect((await readTurnLedger(query, schema, withdrawn.inboundMessageId))?.envelope).toBeNull();
         expect((await readTurnLedger(query, schema, untouched.inboundMessageId))?.envelope?.text).toBe('sin estilo');
     });
@@ -174,5 +174,28 @@ integration('the durable record of a turn', () => {
     it('refuses an erasure with no scope rather than clearing the table', async () => {
         await expect(redactTurnLedger(query, schema, {} as any))
             .rejects.toBeInstanceOf(TurnLedgerError);
+        await expect(redactTurnLedger(query, schema, { contactIds: [], releaseIds: [] }))
+            .rejects.toBeInstanceOf(TurnLedgerError);
+    });
+
+    it('erases several contacts at once, the way the compliance path asks', async () => {
+        const one = binding(), two = binding(), other = binding();
+        for (const bind of [one, two, other]) {
+            await openTurnLedger(query, schema, bind);
+            await recordTurnResult(query, schema, { inboundMessageId: bind.inboundMessageId, envelope: envelope('hola') });
+        }
+        expect(await redactTurnLedger(query, schema, { contactIds: [one.contactId, two.contactId] })).toBe(2);
+        expect((await readTurnLedger(query, schema, other.inboundMessageId))?.envelope?.text).toBe('hola');
+    });
+
+    it('answers zero for a tenant that never took a turn through the ledger', async () => {
+        // Erasure must not fail because there was nothing to erase.
+        const empty = `${schema}_absent`;
+        await query(`CREATE SCHEMA IF NOT EXISTS "${empty}"`);
+        try {
+            expect(await redactTurnLedger(query, empty, { contactIds: [randomUUID()] })).toBe(0);
+        } finally {
+            await query(`DROP SCHEMA IF EXISTS "${empty}" CASCADE`);
+        }
     });
 });

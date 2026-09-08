@@ -5,6 +5,7 @@ import { LearningService } from '../learning/learning.service';
 import { eraseWidgetContactSessions } from '../widget/widget-session-erasure';
 import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
+import { redactTurnLedger } from '../conversations/agent-turn-ledger';
 import { eraseSimulationContactReplays } from '../simulation/simulation-replay-retention';
 import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
 import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
@@ -382,6 +383,10 @@ export class ComplianceService {
             // an outbound item not yet sent must go, while the row survives so a
             // recovered job cannot repopulate the payload and deliver it.
             const dispatchItems = await redactDispatchOutbox(query, schema, {contactIds});
+            // The turn ledger holds the same words one step earlier: the envelope
+            // an interrupted turn would be resumed from. Leaving it would let a
+            // replay repopulate everything the line above just cleared.
+            const turnEnvelopes = await redactTurnLedger(query as any, schema, {contactIds});
             const regressionCases = await eraseContactRegressionArtifacts(query, contactIds);
             const simulationReplays = await eraseSimulationContactReplays(query, contactIds);
             const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);

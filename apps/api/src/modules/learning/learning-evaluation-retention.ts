@@ -1,6 +1,7 @@
 import { disposeOwnedEvalNamespace, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import type { LearningSourceQuery } from './learning-inbox-source';
 import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
+import { redactTurnLedger } from '../conversations/agent-turn-ledger';
 import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 
 export interface LearningEvaluationNamespace extends EvalNamespaceLease { attemptId:string;workerToken?:string; }
@@ -62,6 +63,11 @@ export async function retireLearningReleases(query:LearningSourceQuery,input:{re
     await redactWidgetAgentReplies(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
     // Outbound items still waiting to be sent derive from the same examples.
     await redactDispatchOutbox(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
+    // And the envelope a turn would be resumed from, which carries the same
+    // footprints. The recursive lineage above is what makes release ids enough:
+    // the ledger cannot filter by source id, and by here every affected release
+    // has already been resolved.
+    if(rows.length)await redactTurnLedger(query as any,schema,{releaseIds:rows.map(row=>row.id)});
     if(!rows.length)return 0;
     for(const row of rows)for(const lease of (row.evaluation_namespaces||[]) as LearningEvaluationNamespace[]){
         if(lease.sourceSchema!==schema)throw new Error('learning_evaluation_namespace_scope_mismatch');

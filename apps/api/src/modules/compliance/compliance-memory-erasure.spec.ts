@@ -5,12 +5,22 @@ const siblingId = '22222222-2222-4222-8222-222222222222';
 const profileId = '33333333-3333-4333-8333-333333333333';
 
 function build(failMemory = false) {
-    const state = { tombstones: [] as string[], facts: ['active', 'superseded'], merged: [contactId, siblingId] };
+    const state = { tombstones: [] as string[], facts: ['active', 'superseded'], merged: [contactId, siblingId],
+        ledgerPresent: false, ledgerErased: null as string[] | null };
     const query = jest.fn(async (sql: string, params: any[] = []) => {
         if (sql.includes('current_schema() AS schema') && sql.includes('AS replies')) return [{schema:'tenant_memory',replies:null,sources:null}];
         // Same shape for the dispatch outbox: this tenant has no such table yet,
         // which must be a no-op rather than a refusal of the whole erasure.
         if (sql.includes('current_schema() AS schema') && sql.includes('AS outbox')) return [{schema:'tenant_memory',outbox:null,sources:null}];
+        // The turn ledger answers the same way: absent is a no-op, present is an
+        // erasure the contact is entitled to.
+        if (sql.includes('to_regclass($1)::text AS name')) {
+            return [{ name: state.ledgerPresent ? 'tenant_memory.agent_turn_ledger' : null }];
+        }
+        if (sql.includes('UPDATE "tenant_memory".agent_turn_ledger')) {
+            state.ledgerErased = params[0];
+            return [{ id: 'turn-1' }];
+        }
         if (sql.includes('SELECT DISTINCT customer_profile_id')) return [{ customer_profile_id: profileId }];
         if (sql.includes('SELECT DISTINCT contact_id')) return [{ contact_id: contactId }, { contact_id: siblingId }];
         if (sql.includes("to_regclass('tool_execution_ledger')")) return [{ kb_log: 'kb_retrieval_log', kb_queries: 'kb_unanswered_queries', kb_feedback: 'kb_feedback' }];
@@ -122,5 +132,21 @@ describe('Contact erasure reaches memory derivatives', () => {
         expect(query.mock.calls.some(([sql]) => sql.includes('UPDATE kb_feedback f SET query=NULL,comment=NULL,message_id=NULL'))).toBe(true);
         expect(query.mock.calls.findIndex(([sql]) => sql.includes('pg_advisory_xact_lock(hashtextextended($1,0))')))
             .toBeLessThan(query.mock.calls.findIndex(([sql]) => sql.includes('DELETE FROM kb_retrieval_log')));
+    });
+
+    it('clears the envelope a turn would be resumed from, for every contact in the request', async () => {
+        const { service, state } = build();
+        state.ledgerPresent = true;
+        await service.eraseContactData('tenant_memory', profileId, contactId, 'admin');
+        // Erasing the outbound item is not enough on its own: the ledger holds
+        // the same words one step earlier, and a replay would repopulate them.
+        expect(state.ledgerErased).toEqual([contactId, siblingId]);
+    });
+
+    it('does not refuse the whole erasure when the tenant has no turn ledger yet', async () => {
+        const { service, state } = build();
+        state.ledgerPresent = false;
+        await expect(service.eraseContactData('tenant_memory', profileId, contactId, 'admin')).resolves.toBeDefined();
+        expect(state.ledgerErased).toBeNull();
     });
 });

@@ -4,6 +4,8 @@ Inicio: 6 de septiembre de 2026. Base auditada: `b1e87c71`.
 
 Alcance autorizado: ejecutar íntegramente los planes `assist-agent-experience-audit-2026-09-05.md` y `agent-runtime-learning-plan-2026-09-05.md`, con commits incrementales; reservar decisiones de producto pendientes para el cierre. Este registro conserva requisitos y evidencia sin reducir el alcance a los cambios ya hechos.
 
+Los commits retomados el 7 de septiembre después de `b6db0507`, con su validación por bloque y los cambios que siguen locales, están registrados en [Reanudación de commits incrementales](audits/2026-09-07/incremental-commits-resumed.md).
+
 ## Estado por requisito
 
 | ID | Requisito y evidencia de aceptación | Estado |

@@ -228,6 +228,26 @@ describe('ConversationsService durable reply producer', () => {
                 .toEqual(['text', 'text']);
         });
 
+        it('registra la procedencia de aprendizaje del turno, no una lista vacía', async () => {
+            // La admisión valida las fuentes del payload ANTES de autorizar la
+            // llamada al proveedor. Validar una lista vacía no prueba nada: con
+            // la huella real, un release retirado entre la respuesta y su
+            // entrega detiene la entrega, y el borrado por release alcanza estas
+            // filas. La lista vacía sigue siendo el valor honesto de un turno
+            // que no usó ningún ejemplo; ya no es un marcador de posición.
+            const footprints = [{ version: 1, tenantId, agentId,
+                entries: [{ releaseId: '66666666-6666-4666-8666-666666666666',
+                    releaseHash: 'd'.repeat(64), exampleId: '77777777-7777-4777-8777-777777777777',
+                    projectionHash: 'e'.repeat(64) }] }];
+            const h = harness({ enabled: true });
+            await run(h.service, { learningFootprints: footprints });
+            expect(h.dispatchOutbox.prepare.mock.calls[0][1].learningFootprints).toEqual(footprints);
+
+            const empty = harness({ enabled: true });
+            await run(empty.service, {});
+            expect(empty.dispatchOutbox.prepare.mock.calls[0][1].learningFootprints).toEqual([]);
+        });
+
         it('no se queda con la respuesta si no puede expresar un efecto', async () => {
             // Un medio sin URL no es despachable. Rechazar el lote entero deja la
             // respuesta al camino viejo, que sí puede entregar el texto; aceptar

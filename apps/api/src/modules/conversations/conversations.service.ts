@@ -6,6 +6,7 @@ import { createAgentReplyProvenanceCollector, createAgentReplySourceAuthority,
     type AgentReplyProvenanceCollector } from './agent-reply-provenance';
 import { handoffNoticeLanguage, type HandoffNoticeKind } from '../handoff/handoff-notice';
 import type { RuntimeLearningExample } from '../learning/learning-contracts';
+import type { RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { learningRecoveryMessages } from './learning-recovery-messages';
 import { Injectable, Logger, Optional } from '@nestjs/common';
@@ -263,6 +264,18 @@ const PERSISTED_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{
 interface TurnEffectSink {
     readonly paymentLinks: string[];
     readonly media: { url: string; caption?: string }[];
+    /**
+     * Which learned examples this reply actually derives from.
+     *
+     * Messaging turns recorded an EMPTY footprint on every dispatch row. That
+     * was honest — inventing one would make release-scoped erasure look like it
+     * had reached those words — but it also made the admission guard vacuous:
+     * admission validates the payload's learning sources before it authorises
+     * the provider call, and validating an empty list proves nothing. With the
+     * real footprint recorded, a release withdrawn between the reply and its
+     * delivery stops that delivery, and erasure by release reaches these rows.
+     */
+    learningFootprints: readonly RuntimeLearningFootprint[];
 }
 
 // Directive templates for an operation the SERVER executed after the customer
@@ -959,7 +972,7 @@ export class ConversationsService {
         // Collected here, dispatched below with the bubbles: the link and the
         // pictures are effects of this same turn and cannot be split across two
         // delivery paths. A resumed reply produced no new effects.
-        const turnEffects: TurnEffectSink = { paymentLinks: [], media: [] };
+        const turnEffects: TurnEffectSink = { paymentLinks: [], media: [], learningFootprints: [] };
         const response = resumedReply
             || await this.generateResponse(
                 tenantId,
@@ -1031,6 +1044,7 @@ export class ConversationsService {
                     tenantId, schemaName, conversation, inboundMsg: normalizedMsg, inboundMessageId,
                     chunks, operationalScope: turnScope, gapMs: CHUNK_GAP_MS,
                     paymentLinks: turnEffects.paymentLinks, media: turnEffects.media,
+                    learningFootprints: turnEffects.learningFootprints,
                 });
                 if (!durable) {
                     this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
@@ -4106,6 +4120,24 @@ export class ConversationsService {
             await observeMission({kind:'final'});
             try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
+            // The turn's learning provenance, handed up with its other effects.
+            // `learningSuppressed` means the turn recovered without learning
+            // after a source was withdrawn, and then the honest footprint is
+            // empty: the collector is monotonic on purpose, so it must not be
+            // asked what it remembers from before the recovery.
+            if (effectSink && operationalScope && !learningSuppressed && learningFootprint.size) {
+                try {
+                    const collector = createAgentReplyProvenanceCollector(operationalScope);
+                    collector.addExamples([...learningFootprint.values()]);
+                    effectSink.learningFootprints = collector.getFootprints();
+                } catch (error: any) {
+                    // Aggregation is pure and offline; a refusal means the scope
+                    // or an example is malformed. Record nothing rather than
+                    // something unverifiable, and let admission see an empty set.
+                    this.logger.error(`[Learning] reply provenance unavailable: ${error?.message}`);
+                }
+            }
+
             return finalResponse;
         } catch (e: any) {
             if (session) session.trace.error = String(e.message || e);
@@ -5286,6 +5318,8 @@ export class ConversationsService {
         paymentLinks?: readonly string[];
         /** Attachments the model requested by id; each caption is its own item. */
         media?: readonly { url: string; caption?: string }[];
+        /** Learned examples this reply derives from, or empty when it uses none. */
+        learningFootprints?: readonly RuntimeLearningFootprint[];
     }): Promise<boolean> {
         const { tenantId, conversation, inboundMsg } = input;
         const contactId = String(conversation?.contact_id || '');
@@ -5332,10 +5366,14 @@ export class ConversationsService {
             prepared = await this.dispatchOutbox.prepare(tenantId, {
                 binding, items,
                 operationalScope: input.operationalScope,
-                // Messaging turns do not collect learning provenance yet, so none
-                // is recorded. Claiming an empty footprint is honest; inventing
-                // one would make release-scoped erasure look like it applied.
-                learningFootprints: [],
+                // The provenance of the words in this batch. Admission validates
+                // these before it authorises the provider call, so a release
+                // withdrawn between the reply and its delivery stops the
+                // delivery; and erasure by release reaches these rows. An empty
+                // list stays the honest value for a turn that used no learned
+                // example, or that recovered without learning after one was
+                // withdrawn — it is not a placeholder any more.
+                learningFootprints: input.learningFootprints ?? [],
             });
         } catch (error: any) {
             // The exception is ambiguous: `prepare` may have committed and lost

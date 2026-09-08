@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { Client } from 'pg';
 import { DISPATCH_OUTBOX_DDL } from './agent-dispatch-outbox';
 import { HANDOFF_RECEIPT_DDL } from '../handoff/handoff-receipt';
+import { TURN_LEDGER_DDL } from '../conversations/agent-turn-ledger';
 
 /**
  * ═══ TRES DEFINICIONES DE LA MISMA TABLA ═══
@@ -29,7 +30,8 @@ import { HANDOFF_RECEIPT_DDL } from '../handoff/handoff-receipt';
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 const integration = connection ? describe : describe.skip;
 
-const TABLES = ['agent_dispatch_outbox', 'agent_dispatch_outbox_sources', 'agent_handoff_receipts'];
+const TABLES = ['agent_dispatch_outbox', 'agent_dispatch_outbox_sources', 'agent_handoff_receipts',
+    'agent_turn_ledger'];
 
 integration('the three definitions of the dispatch tables agree', () => {
     const suffix = randomUUID().replace(/-/g, '');
@@ -54,12 +56,12 @@ integration('the three definitions of the dispatch tables agree', () => {
 
         // 1. Lazy bootstrap: the constants the runtime executes itself.
         await q(`SET search_path TO "${schemas.bootstrap}"`);
-        for (const sql of [...HANDOFF_RECEIPT_DDL, ...DISPATCH_OUTBOX_DDL]) await q(sql);
+        for (const sql of [...HANDOFF_RECEIPT_DDL, ...DISPATCH_OUTBOX_DDL, ...TURN_LEDGER_DDL]) await q(sql);
         await q('SET search_path TO public');
 
         // 2. The checked-in definition of a brand new tenant.
         const tenantSchema = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8');
-        for (const marker of ['CANONICAL HANDOFF RECEIPT', 'NORMAL DISPATCH OUTBOX']) {
+        for (const marker of ['CANONICAL HANDOFF RECEIPT', 'AGENT TURN LEDGER', 'NORMAL DISPATCH OUTBOX']) {
             const block = tenantSchema.split(`-- BEGIN ${marker}`)[1]?.split(`-- END ${marker}`)[0];
             if (!block) throw new Error(`tenant_schema_block_missing:${marker}`);
             for (const statement of block.replace(/^\s*--.*$/gm, '').split(';').filter(value => value.trim())) {
@@ -73,9 +75,14 @@ integration('the three definitions of the dispatch tables agree', () => {
         const tenantId = randomUUID();
         await q('INSERT INTO public.tenants(id, schema_name) VALUES($1::uuid,$2)', [tenantId, schemas.migrated]);
         try {
-            const migration = readFileSync(resolve(__dirname,
-                '../../../prisma/migrations/20260908150000_backfill_agent_dispatch_tenant_tables/migration.sql'), 'utf8');
-            await q(migration);
+            // Every migration that touches these tables, in the order the deploy
+            // applies them. A table added by a later one is as much part of the
+            // production shape as the first.
+            for (const name of ['20260908150000_backfill_agent_dispatch_tenant_tables',
+                '20260908180000_add_agent_turn_ledger']) {
+                await q(readFileSync(resolve(__dirname,
+                    `../../../prisma/migrations/${name}/migration.sql`), 'utf8'));
+            }
         } finally {
             await q('DELETE FROM public.tenants WHERE id=$1::uuid', [tenantId]);
         }

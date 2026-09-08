@@ -84,6 +84,75 @@ describe('Shared runtime integrity', () => {
         return { service, run, llm, domainCreate, config, query };
     }
 
+    // The provenance of a learned reply is proven as the examples arrive, not
+    // once the words exist. Aggregating only at the end left a single move when
+    // the scope or an example was malformed: hand admission an empty footprint,
+    // which reads as "this reply used no learning" — the one claim it cannot
+    // make. Now the refusal happens before the prompt is assembled.
+    const scope = { kind: 'agent' as const, tenantId: '11111111-1111-4111-8111-111111111111',
+        schemaName: 'tenant_test', agentId: '66666666-6666-4666-8666-666666666666', version: 3,
+        operationalHash: 'c'.repeat(64), legacyConfigHash: null };
+    const provable = (id = '77777777-7777-4777-8777-777777777777') => ({ id,
+        releaseId: '88888888-8888-4888-8888-888888888888', releaseHash: 'd'.repeat(64),
+        situation: 'general', responsePattern: `REVIEWED_STYLE_${id}`, rationale: 'Tone only',
+        factsRequired: [] as string[], authority: 'style_only' as const });
+    const withSink = (service: any, conversation: any, config: any, sink: any) => service.generateResponse(
+        '11111111-1111-4111-8111-111111111111', conversation,
+        { channelType: 'whatsapp', channelAccountId: 'wa', content: { type: 'text', text: 'hola' }, metadata: {} },
+        config, { id: conversation.contact_id, name: 'Alice' }, {}, conversation.updated_at, {},
+        '44444444-4444-4444-8444-444444444444', scope.agentId, undefined, 3, scope, undefined, sink);
+
+    it('hands up the sources a messaging reply really derives from', async () => {
+        const { service, llm } = fixture();
+        const conversation = { id: '33333333-3333-4333-8333-333333333333', contact_id: '22222222-2222-4222-8222-222222222222', updated_at: new Date(), metadata: {} };
+        const config: any = { language: 'es', industry: 'salud', behavior: {}, llm: {}, tools: { appointments: { enabled: false } } };
+        service.learning = { getRuntimeExamples: jest.fn().mockResolvedValue([provable()]),
+            runtimeSourceAuthority: jest.fn(() => async (invoke: any) => invoke()) };
+        const sink: any = { paymentLinks: [], media: [], learningFootprints: [], writers: [] };
+        await withSink(service, conversation, config, sink);
+
+        expect(llm.mock.calls[0][0].systemPrompt).toContain('REVIEWED_STYLE_77777777-7777-4777-8777-777777777777');
+        expect(sink.learningProvenanceRefused).toBeUndefined();
+        expect(sink.learningFootprints).toEqual([expect.objectContaining({
+            agentId: scope.agentId,
+            entries: [expect.objectContaining({ releaseId: '88888888-8888-4888-8888-888888888888' })],
+        })]);
+    });
+
+    it('keeps an example whose provenance cannot be stated out of the prompt and answers without it', async () => {
+        const { service, llm } = fixture();
+        const conversation = { id: '33333333-3333-4333-8333-333333333333', contact_id: '22222222-2222-4222-8222-222222222222', updated_at: new Date(), metadata: {} };
+        const config: any = { language: 'es', industry: 'salud', behavior: {}, llm: {}, tools: { appointments: { enabled: false } } };
+        // `releaseId` is not an identifier the collector can attribute anything to.
+        service.learning = { getRuntimeExamples: jest.fn().mockResolvedValue([{ ...provable(), releaseId: 'release' }]),
+            runtimeSourceAuthority: jest.fn(() => async (invoke: any) => invoke()) };
+        const sink: any = { paymentLinks: [], media: [], learningFootprints: [], writers: [] };
+        expect(await withSink(service, conversation, config, sink)).toBe('La consulta cuesta COP 20000.');
+
+        expect(llm.mock.calls[0][0].systemPrompt).not.toContain('REVIEWED_STYLE_');
+        expect(llm.mock.calls[0][0].withSourceAuthority).toBeUndefined();
+        expect(sink.learningFootprints).toEqual([]);
+        expect(sink.learningProvenanceRefused).toBeUndefined();
+    });
+
+    it('never asks for a learned example when the turn scope itself cannot hold provenance', async () => {
+        const { service } = fixture();
+        const conversation = { id: '33333333-3333-4333-8333-333333333333', contact_id: '22222222-2222-4222-8222-222222222222', updated_at: new Date(), metadata: {} };
+        const config: any = { language: 'es', industry: 'salud', behavior: {}, llm: {}, tools: { appointments: { enabled: false } } };
+        service.learning = { getRuntimeExamples: jest.fn().mockResolvedValue([provable()]),
+            runtimeSourceAuthority: jest.fn(() => async (invoke: any) => invoke()) };
+        const sink: any = { paymentLinks: [], media: [], learningFootprints: [], writers: [] };
+        await service.generateResponse(
+            '11111111-1111-4111-8111-111111111111', conversation,
+            { channelType: 'whatsapp', channelAccountId: 'wa', content: { type: 'text', text: 'hola' }, metadata: {} },
+            config, { id: conversation.contact_id, name: 'Alice' }, {}, conversation.updated_at, {},
+            '44444444-4444-4444-8444-444444444444', scope.agentId, undefined, 3,
+            { ...scope, operationalHash: 'not-a-hash' }, undefined, sink);
+
+        expect(service.learning.getRuntimeExamples).not.toHaveBeenCalled();
+        expect(sink.learningFootprints).toEqual([]);
+    });
+
     it.each(['whatsapp', 'web_widget'])('grounds the %s turn in the same business knowledge', async channel => {
         const { service, run, llm, query } = fixture();
         expect(await run(channel)).toBe('La consulta cuesta COP 20000.');

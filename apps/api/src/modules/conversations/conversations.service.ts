@@ -22,6 +22,8 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.store';
+import { AgentTurnLedgerStore } from './agent-turn-ledger.store';
+import type { TurnEnvelope, TurnLedgerRow, TurnWriterRecord } from './agent-turn-ledger';
 import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
 import { buildDispatchItems } from '../channels/dispatch-items';
 import { ChannelTokenService } from '../channels/channel-token.service';
@@ -276,6 +278,20 @@ interface TurnEffectSink {
      * delivery stops that delivery, and erasure by release reaches these rows.
      */
     learningFootprints: readonly RuntimeLearningFootprint[];
+    /**
+     * Set when this reply derives from learned examples whose provenance could
+     * not be stated. Aggregation used to swallow that failure and hand up an
+     * empty list, which reads to admission as "this reply used no learning" —
+     * so the words went out with no source, no release, and nothing for erasure
+     * by release to reach. The turn refuses to deliver instead.
+     */
+    learningProvenanceRefused?: boolean;
+    /**
+     * The writers this turn ran and what they produced. Recorded with the
+     * envelope so a recovered turn can say which business already happened
+     * rather than inferring it from the words.
+     */
+    writers: TurnWriterRecord[];
 }
 
 // Directive templates for an operation the SERVER executed after the customer
@@ -455,6 +471,7 @@ export class ConversationsService {
         @Optional() private readonly widgetAgentReplies?: WidgetAgentReplyStore,
         @Optional() private readonly dispatchOutbox?: AgentDispatchOutboxStore,
         @Optional() private readonly dispatchRollout?: DispatchRolloutService,
+        @Optional() private readonly turnLedger?: AgentTurnLedgerStore,
     ) {}
 
     /**
@@ -504,6 +521,12 @@ export class ConversationsService {
         const pmid = providerMessageId(normalizedMsg);
         if (pmid) {
             await this.redis.set(turnDoneKey(tenantId, pmid), '1', 86400).catch(() => { /* best-effort */ });
+        }
+        // The same fact, durable. A Redis key that expires or is evicted takes
+        // the only record of "this turn finished" with it; the row does not.
+        const ledgerRef = (normalizedMsg as any).turnLedgerRef;
+        if (this.turnLedger && ledgerRef?.schemaName && ledgerRef?.inboundMessageId) {
+            await this.turnLedger.settle(ledgerRef.schemaName, ledgerRef.inboundMessageId);
         }
     }
 
@@ -728,7 +751,44 @@ export class ConversationsService {
         //                         that attempt already sent is dropped by the
         //                         outbound dedupeId, so no duplicate reaches them.
         let resumedReply: string | null = null;
+        let recoveredEnvelope: TurnEnvelope | null = null;
         const saved = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+        const inboundMessageId = saved.id;
+
+        // The durable record of this inbound, opened before anything is asked of
+        // a model or a tool. Redis only ever held the words, so a crash between
+        // generating and dispatching replayed the text and lost the payment
+        // link, the pictures, the learned sources and the identity of the
+        // writers that had already run — and the answer that finally arrived was
+        // a different answer. What this returns is also the difference between
+        // "nothing ran yet" and "the result exists and never left".
+        const ledgerContactId = String(conversation.contact_id || '');
+        const ledgerInboundId = typeof inboundMessageId === 'string' ? inboundMessageId : '';
+        const priorTurn: TurnLedgerRow | null =
+            this.turnLedger && PERSISTED_ID.test(ledgerInboundId) && PERSISTED_ID.test(ledgerContactId)
+                ? await this.turnLedger.open(schemaName, {
+                    conversationId: String(conversation.id), contactId: ledgerContactId,
+                    inboundMessageId: ledgerInboundId,
+                    channelType: normalizedMsg.channelType,
+                    channelAccountId: normalizedMsg.channelAccountId ?? null,
+                    recipient: normalizedMsg.contactId ?? null,
+                    providerMessageId: providerMessageId(normalizedMsg) || null,
+                })
+                : null;
+        // Transient, like `receivedAt`: the completion stamp lives one level up,
+        // where the turn is known to have finished without throwing.
+        if (priorTurn) (normalizedMsg as any).turnLedgerRef = { schemaName, inboundMessageId: ledgerInboundId };
+        if (priorTurn?.state === 'settled') {
+            this.logger.warn(`[Pipeline] ${ledgerInboundId} was already answered to the end — skipping the turn`);
+            return;
+        }
+        if (priorTurn?.envelope) {
+            recoveredEnvelope = priorTurn.envelope;
+            this.logger.warn(
+                `[Pipeline] Recovered the whole result of ${ledgerInboundId} from the turn ledger: `
+                + `${priorTurn.envelope.chunks.length} bubble(s), ${priorTurn.envelope.paymentLinks.length} link(s), `
+                + `${priorTurn.envelope.media.length} attachment(s), ${priorTurn.writers.length} writer(s)`);
+        }
         if (saved.duplicate) {
             const dupPmid = providerMessageId(normalizedMsg);
             const alreadyAnswered = dupPmid
@@ -744,14 +804,22 @@ export class ConversationsService {
             // a different number of bubbles: bubble 0 was deduped by its job id
             // and bubbles 1..n were not, so the customer received the first half
             // of one answer followed by the second half of another.
-            if (dupPmid) {
+            // The ledger answers this better when it can; Redis stays the cache
+            // in front of it for turns that started before the row existed.
+            if (!recoveredEnvelope && dupPmid) {
                 resumedReply = await this.redis.get(turnReplyKey(tenantId, dupPmid)).catch(() => null);
                 if (resumedReply) {
                     this.logger.warn(`[Pipeline] Reusing the reply the interrupted attempt had already produced for ${dupPmid}`);
                 }
             }
+            // A committed batch already owns this reply. Asking here, before the
+            // model, is what stops a replay from running the writers again only
+            // to discover afterwards that the answer was already committed.
+            if (!recoveredEnvelope && !resumedReply
+                && await this.resumeOwnedDispatchBatch(tenantId, schemaName, conversation, normalizedMsg, ledgerInboundId)) {
+                return;
+            }
         }
-        const inboundMessageId = saved.id;
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
         // Customer language for the deterministic appointment-button replies below:
@@ -972,8 +1040,19 @@ export class ConversationsService {
         // Collected here, dispatched below with the bubbles: the link and the
         // pictures are effects of this same turn and cannot be split across two
         // delivery paths. A resumed reply produced no new effects.
-        const turnEffects: TurnEffectSink = { paymentLinks: [], media: [], learningFootprints: [] };
-        const response = resumedReply
+        const turnEffects: TurnEffectSink = { paymentLinks: [], media: [], learningFootprints: [], writers: [] };
+        if (recoveredEnvelope) {
+            // The original envelope, not a fresh one that happens to share its
+            // words. The link and the pictures are results of this turn's tool
+            // receipts; regenerating them would mean running the tools again.
+            turnEffects.paymentLinks.push(...recoveredEnvelope.paymentLinks);
+            turnEffects.media.push(...recoveredEnvelope.media.map(entry =>
+                entry.caption === undefined ? { url: entry.url } : { url: entry.url, caption: entry.caption }));
+            turnEffects.learningFootprints = recoveredEnvelope.learningFootprints;
+            turnEffects.writers.push(...(priorTurn?.writers ?? []));
+        }
+        let response = recoveredEnvelope?.text
+            || resumedReply
             || await this.generateResponse(
                 tenantId,
                 conversation,
@@ -997,6 +1076,52 @@ export class ConversationsService {
         const replyPmid = providerMessageId(normalizedMsg);
         if (response && !resumedReply && replyPmid && !isErrorFallback(response)) {
             await this.redis.set(turnReplyKey(tenantId, replyPmid), response, 86400).catch(() => {});
+        }
+
+        // Words that derive from learned examples whose provenance could not be
+        // stated do not go out by any path. Aggregation used to swallow that
+        // failure and hand admission an empty footprint, which reads as "this
+        // reply used no learning" — the one claim the turn cannot make.
+        if (response && turnEffects.learningProvenanceRefused) {
+            this.logger.error(`[Learning] Refusing to deliver the reply to ${ledgerInboundId}: `
+                + `it derives from learned examples whose source could not be stated`);
+            this.recordAgentSignal(tenantId, 'learning_provenance_refused');
+            return;
+        }
+
+        // The whole result, durable before a single effect leaves the process.
+        // A concurrent attempt that recorded first keeps the answer: two answers
+        // to one message is the defect this row exists to prevent, and only the
+        // stored one may already have started reaching the customer.
+        let deliveryChunks = recoveredEnvelope?.chunks.length
+            ? [...recoveredEnvelope.chunks]
+            : (response ? this.splitResponseIntoChunks(response) : []);
+        if (response && !recoveredEnvelope && !isErrorFallback(response) && this.turnLedger && priorTurn) {
+            const stored = await this.turnLedger.recordResult(schemaName, {
+                inboundMessageId: ledgerInboundId,
+                envelope: {
+                    text: response,
+                    chunks: deliveryChunks,
+                    paymentLinks: [...new Set(turnEffects.paymentLinks)],
+                    media: turnEffects.media.map(entry =>
+                        entry.caption === undefined ? { url: entry.url } : { url: entry.url, caption: entry.caption }),
+                    learningFootprints: turnEffects.learningFootprints,
+                },
+                writers: turnEffects.writers,
+                agentId: personaResolution.agentId ?? null,
+                agentVersion: personaResolution.version ?? null,
+                operationalScope: { ...turnScope },
+            });
+            if (stored?.envelope && stored.envelope.text !== response) {
+                this.logger.warn(`[Pipeline] Another attempt had already recorded the result of ${ledgerInboundId} — `
+                    + `adopting the stored answer instead of the one just generated`);
+                response = stored.envelope.text;
+                deliveryChunks = [...stored.envelope.chunks];
+                turnEffects.paymentLinks.splice(0, turnEffects.paymentLinks.length, ...stored.envelope.paymentLinks);
+                turnEffects.media.splice(0, turnEffects.media.length, ...stored.envelope.media.map(entry =>
+                    entry.caption === undefined ? { url: entry.url } : { url: entry.url, caption: entry.caption }));
+                turnEffects.learningFootprints = stored.envelope.learningFootprints;
+            }
         }
 
         // Auto-progress signals from the RESOLVED inbound text (post audio/image processing,
@@ -1030,12 +1155,13 @@ export class ConversationsService {
                 // console instead of the AI replying directly. Store the suggestion
                 // and notify the inbox; the customer gets nothing until approval.
                 await this.persistDraft(tenantId, schemaName, conversation.id, response, contact?.name, inboundMessageId);
+                if (this.turnLedger && priorTurn) await this.turnLedger.recordDelivery(schemaName, ledgerInboundId, 'draft');
                 this.logger.log(`[Pipeline] Draft mode — reply suggested to console (not sent to customer)`);
             } else {
                 // Deliver long, multi-paragraph replies as 2-3 natural bubbles (more
                 // human than a wall of text). Short replies go as one message. Bubbles
                 // are staggered so they arrive in order with a brief pause.
-                const chunks = this.splitResponseIntoChunks(response);
+                const chunks = deliveryChunks;
                 const CHUNK_GAP_MS = 1200;
                 // The durable path records the bubbles and their history in one
                 // transaction and answers true; otherwise this tenant and channel
@@ -1046,6 +1172,9 @@ export class ConversationsService {
                     paymentLinks: turnEffects.paymentLinks, media: turnEffects.media,
                     learningFootprints: turnEffects.learningFootprints,
                 });
+                if (this.turnLedger && priorTurn) {
+                    await this.turnLedger.recordDelivery(schemaName, ledgerInboundId, durable ? 'durable' : 'legacy');
+                }
                 if (!durable) {
                     this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
                     const turnPmid = providerMessageId(normalizedMsg) || normalizedMsg.id || '';
@@ -3506,8 +3635,23 @@ export class ConversationsService {
 
         const learningFootprint=new Map<string,RuntimeLearningExample>();
         let learningSuppressed=false;
+        // Provenance is proven as the examples arrive, before the prompt is
+        // assembled with them — not once at the end, when the words already
+        // exist and the only remaining moves are to deliver them with no source
+        // or to throw a finished turn away. A refusal here simply stops the turn
+        // from taking learning; what it already accepted stays provable.
+        let turnProvenance: AgentReplyProvenanceCollector | null = null;
+        let learningAdmissionClosed = false;
+        if (effectSink && operationalScope) {
+            try { turnProvenance = createAgentReplyProvenanceCollector(operationalScope); }
+            catch (error: any) {
+                this.logger.error(`[Learning] no provenance can be stated for this turn: ${error?.message}`);
+                learningAdmissionClosed = true;
+            }
+        }
         const refreshLearningExamples = async (operation?: { toolName: string; status: string }) => {
         if(learningSuppressed){turnContext.learningExamples=[];return;}
+        if(learningAdmissionClosed)return;
         if (this.learning && resolvedAgentId) {
             try {
                 const examples = await this.learning.getRuntimeExamples(tenantId, resolvedAgentId, {
@@ -3515,6 +3659,16 @@ export class ConversationsService {
                     releaseId: session?.snapshot.learningReleaseId, executionContext, operation,
                 });
                 if (session?.snapshot.learningReleaseHash && examples.some(example => example.releaseHash !== session.snapshot.learningReleaseHash)) throw new Error('learning_release_revision_mismatch');
+                if (turnProvenance && examples.length) {
+                    try { turnProvenance.addExamples(examples); }
+                    catch (refusal: any) {
+                        // Nothing whose source cannot be stated reaches the prompt.
+                        learningAdmissionClosed = true;
+                        this.logger.error(`[Learning] refused ${examples.length} example(s) with unstatable provenance: ${refusal?.message}`);
+                        turnTrace.add('decision', 'learning_provenance_refused', { examples: examples.length });
+                        return;
+                    }
+                }
                 turnContext.learningExamples = examples;
                 for(const example of examples)learningFootprint.set(`${example.releaseId}:${example.releaseHash}:${example.id}`,example);
             } catch (error: any) {
@@ -4120,6 +4274,21 @@ export class ConversationsService {
             await observeMission({kind:'final'});
             try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
+            // Which writers ran and what each produced, so a recovered turn can
+            // say which business already happened instead of inferring it from
+            // the words. Reads are left out: repeating one costs nothing.
+            if (effectSink) {
+                effectSink.writers.splice(0, effectSink.writers.length,
+                    ...executedToolsThisTurn.filter(item => isBusinessWriteTool(item.name)).map(item => ({
+                        tool: item.name,
+                        status: (toolResultSucceeded(item.result) ? 'succeeded'
+                            : item.result?.uncertain ? 'uncertain' : 'failed') as TurnWriterRecord['status'],
+                        ledgerId: item.result?.ledgerId ? String(item.result.ledgerId) : null,
+                        receipt: item.result?.confirmationId ? String(item.result.confirmationId)
+                            : item.result?.activeObject?.href ? String(item.result.activeObject.href) : null,
+                    })));
+            }
+
             // The turn's learning provenance, handed up with its other effects.
             // `learningSuppressed` means the turn recovered without learning
             // after a source was withdrawn, and then the honest footprint is
@@ -4127,14 +4296,19 @@ export class ConversationsService {
             // asked what it remembers from before the recovery.
             if (effectSink && operationalScope && !learningSuppressed && learningFootprint.size) {
                 try {
-                    const collector = createAgentReplyProvenanceCollector(operationalScope);
-                    collector.addExamples([...learningFootprint.values()]);
+                    // `turnProvenance` accepted every one of these examples as it
+                    // arrived, before the prompt was assembled with it, so this
+                    // call can only fail on serialisation. If it does, the words
+                    // derive from learning whose source cannot be named — and an
+                    // empty list is not the honest answer for that, it is the
+                    // claim that no learning was used. Refuse the delivery.
+                    const collector = turnProvenance ?? createAgentReplyProvenanceCollector(operationalScope);
+                    if (!turnProvenance) collector.addExamples([...learningFootprint.values()]);
                     effectSink.learningFootprints = collector.getFootprints();
                 } catch (error: any) {
-                    // Aggregation is pure and offline; a refusal means the scope
-                    // or an example is malformed. Record nothing rather than
-                    // something unverifiable, and let admission see an empty set.
                     this.logger.error(`[Learning] reply provenance unavailable: ${error?.message}`);
+                    effectSink.learningFootprints = [];
+                    effectSink.learningProvenanceRefused = true;
                 }
             }
 
@@ -5310,6 +5484,40 @@ export class ConversationsService {
      * fallbacks and automations keep their own producers and their own
      * authorities, exactly as the dispatch plan requires.
      */
+    /**
+     * A committed batch already owns the answer to this inbound.
+     *
+     * That question used to be asked only after the model and the tools had run,
+     * so a replay could execute business a second time and discover afterwards
+     * that the reply had been committed all along. Asking here costs one query.
+     */
+    private async resumeOwnedDispatchBatch(
+        tenantId: string, schemaName: string, conversation: any,
+        inboundMsg: NormalizedMessage, inboundMessageId: string,
+    ): Promise<boolean> {
+        const contactId = String(conversation?.contact_id || '');
+        if (!this.dispatchOutbox || !PERSISTED_ID.test(inboundMessageId) || !PERSISTED_ID.test(contactId)) return false;
+        const binding = {
+            conversationId: String(conversation.id), contactId, inboundMessageId,
+            channelType: inboundMsg.channelType,
+            channelAccountId: inboundMsg.channelAccountId,
+            recipient: inboundMsg.contactId,
+        };
+        const existing = await this.dispatchOutbox.findBatchForInbound(tenantId, schemaName, binding)
+            .catch(error => {
+                this.logger.warn(`[Dispatch] could not check batch ownership for ${inboundMessageId}: ${error?.message}`);
+                return null;
+            });
+        if (!existing?.length) return false;
+        await this.dispatchOutbox.publishBatch(tenantId, existing, (dispatchId, delayMs) =>
+            this.outboundQueue.enqueueDispatch(tenantId, dispatchId, delayMs)
+                .catch(error => this.logger.warn(
+                    `[Dispatch] publish deferred to recovery for ${dispatchId}: ${error?.message}`)), 1200);
+        this.logger.warn(`[Dispatch] the reply to ${inboundMessageId} was already committed as `
+            + `${existing.length} durable item(s) — resumed without asking the model again`);
+        return true;
+    }
+
     private async dispatchReplyThroughOutbox(input: {
         tenantId: string; schemaName: string; conversation: any; inboundMsg: NormalizedMessage;
         inboundMessageId?: string; chunks: readonly string[];

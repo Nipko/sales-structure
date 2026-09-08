@@ -5099,6 +5099,51 @@ CREATE INDEX IF NOT EXISTS idx_agent_handoff_receipts_conversation
     ON "{{SCHEMA_NAME}}"."agent_handoff_receipts"(conversation_id, created_at DESC);
 -- END CANONICAL HANDOFF RECEIPT
 
+-- BEGIN AGENT TURN LEDGER
+-- One row per inbound message: the whole result of the turn it produced.
+-- Redis held only the words, so a crash between generating and dispatching
+-- replayed the text and lost the payment link, the pictures, the learned
+-- sources and the identity of the writers that had already run -- and the
+-- answer that finally arrived was a different answer. No cascading foreign key:
+-- erasure clears the envelope and the row survives as the fact that stops a
+-- replay from running the turn again.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_turn_ledger" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inbound_message_id UUID NOT NULL UNIQUE,
+    conversation_id UUID NOT NULL,
+    contact_id UUID NOT NULL,
+    channel_type TEXT NOT NULL,
+    channel_account_id TEXT,
+    recipient TEXT,
+    provider_message_id TEXT,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 1,
+    agent_id UUID,
+    agent_version INTEGER,
+    operational_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+    envelope JSONB,
+    writers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    handoff JSONB,
+    delivery_route TEXT NOT NULL DEFAULT 'unknown',
+    redacted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT agent_turn_ledger_state
+        CHECK (state IN ('open','result_recorded','dispatch_owned','settled')),
+    CONSTRAINT agent_turn_ledger_route
+        CHECK (delivery_route IN ('unknown','durable','legacy','draft','none')),
+    CONSTRAINT agent_turn_ledger_attempts CHECK (attempts >= 1),
+    CONSTRAINT agent_turn_ledger_result
+        CHECK (state = 'open' OR envelope IS NOT NULL OR redacted_at IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_conversation
+    ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_contact
+    ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(contact_id) WHERE redacted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_unsettled
+    ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(updated_at) WHERE state <> 'settled';
+-- END AGENT TURN LEDGER
+
 -- BEGIN NORMAL DISPATCH OUTBOX
 -- One row per remote effect, never per call: a Messenger image and its caption
 -- are two POSTs and one receipt cannot describe both. The row is the only thing

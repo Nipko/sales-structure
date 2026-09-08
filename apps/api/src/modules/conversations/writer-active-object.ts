@@ -32,7 +32,7 @@ export const WRITER_ACTIVE_OBJECTS: Readonly<Record<string, WriterObjectDefiniti
     cancel_property_booking: object('property_booking', ['bookingId', 'id'], ['bookingId']),
     create_tour_booking: object('tour_booking', ['bookingId', 'booking.id', 'id']),
     cancel_tour_booking: object('tour_booking', ['bookingId', 'id'], ['bookingId']),
-    schedule_test_drive: object('appointment', ['appointmentId', 'bookingId', 'id']),
+    schedule_test_drive: object('appointment', ['appointmentId', 'appointment.id', 'id']),
     enroll_student: object('enrollment', ['enrollmentId', 'enrollment.id', 'id']),
     cancel_enrollment: object('enrollment', ['enrollmentId', 'id'], ['enrollmentId']),
     register_pet: object('pet', ['petId', 'pet.id', 'id']),

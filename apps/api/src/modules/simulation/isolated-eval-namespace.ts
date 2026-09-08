@@ -3,11 +3,15 @@ import type { PrismaService } from '../prisma/prisma.service';
 
 export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Object.freeze({
     create_appointment: 'appointments', cancel_appointment: 'appointments', reschedule_appointment: 'appointments',
+    schedule_test_drive: 'appointments',
     enroll_student: 'enrollments', cancel_enrollment: 'enrollments', book_class: 'class_bookings', cancel_class_booking: 'class_bookings',
     create_repair_order: 'repair_orders', approve_repair: 'repair_orders', cancel_repair_order: 'repair_orders',
     place_catalog_order:'catalog_orders',cancel_catalog_order:'catalog_orders',
 });
-export const CANONICAL_EVAL_TOOLS = new Set(['check_availability', ...Object.keys(CANONICAL_EVAL_TOOL_FAMILIES)]);
+/** Private readers keep their normal identity/ownership guards; this only admits
+ * their schema-local implementation after a fixture lease has been verified. */
+export const CANONICAL_EVAL_TOOLS = new Set(['check_availability', 'get_appointment_details', 'list_customer_appointments',
+    ...Object.keys(CANONICAL_EVAL_TOOL_FAMILIES)]);
 
 export function isolatedEvalNamespaceForPrisma(prisma: PrismaService): IsolatedEvalNamespace {
     return new IsolatedEvalNamespace({ transaction: work => prisma.$transaction(async tx => work(async (sql, params = []) => {
@@ -115,6 +119,7 @@ export class IsolatedEvalNamespace {
             const rows = await query(`INSERT INTO ${quote(schemaName)}.__eval_namespace VALUES ($1::uuid,$2::uuid,$4::text,clock_timestamp()+$3::integer*interval '1 millisecond') RETURNING expires_at`, [tenantId, token, ttlMs, sourceSchema]);
             await query(`CREATE TABLE ${quote(schemaName)}.__eval_ref_users (id uuid PRIMARY KEY,tenant_id uuid NOT NULL,is_active boolean NOT NULL DEFAULT true,first_name text,last_name text)`);
             await query(`CREATE TABLE ${quote(schemaName)}.__eval_ref_tenants (id uuid PRIMARY KEY,schema_name text NOT NULL,is_active boolean NOT NULL DEFAULT true)`);
+            await query(`CREATE TABLE ${quote(schemaName)}.__eval_identity_assurance (conversation_id uuid PRIMARY KEY,contact_id uuid NOT NULL,assurance text NOT NULL CHECK (assurance='synthetic_A2'),expires_at timestamptz NOT NULL)`);
             await query(`INSERT INTO ${quote(schemaName)}.__eval_ref_tenants(id,schema_name) VALUES($1::uuid,$2)`,[tenantId,schemaName]);
             for (const table of tables) {
                 // INCLUDING IDENTITY creates separate sequences; DEFAULTS would not.

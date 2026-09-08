@@ -9520,7 +9520,7 @@
       "sold": "Véhicule marqué comme vendu"
     },
     "testDrives": {
-      "empty": "Aucun essai routier planifié pour le moment. L'agent IA les planifie quand un client le demande.",
+      "empty": "Aucun essai routier pour le moment. Activez les rendez-vous et configurez un service en personne, un conseiller et ses disponibilités pour que l’agent puisse réserver.",
       "customer": "Client",
       "vehicle": "Véhicule",
       "date": "Date",
@@ -9531,8 +9531,16 @@
         "confirmed": "Confirmé",
         "completed": "Terminé",
         "cancelled": "Annulé",
-        "no_show": "Absent"
-      }
+        "no_show": "Absent",
+        "pending": "En attente d’approbation",
+        "pending_payment": "En attente de paiement",
+        "expired": "Expiré",
+        "unknown": "État à vérifier"
+      },
+      "agendaHint": "Les 100 derniers essais routiers. Les nouvelles réservations utilisent l’agenda ; les anciens enregistrements sont signalés comme historiques.",
+      "openAgenda": "Ouvrir l’agenda",
+      "legacyRecord": "Enregistrement historique : à vérifier avant de le considérer comme une réservation actuelle.",
+      "loadError": "Impossible de consulter les essais routiers. Réessayez pour vérifier les réservations."
     }
   },
   "treatmentPlans": {
@@ -11822,7 +11830,11 @@
         "refresh_eval": "Le dernier test de {agent} est périmé : la configuration a changé depuis. Réévaluez-le pour mesurer ce qui est publié aujourd'hui.",
         "collect_production_evidence": "Il n'y a pas encore assez de conversations réelles de {agent} pour mesurer sa performance. Continuez et revenez quand l'échantillon aura grandi.",
         "resolve_knowledge_gaps": "Des questions n'ont pas pu être traitées par {agent} avec les connaissances disponibles. Examinez ces lacunes et ajoutez le contenu manquant.",
-        "generic": "Cette action reste ouverte pour {agent}. Ouvrez l'écran, corrigez ce qui manque et le statut se met à jour tout seul."
+        "generic": "Cette action reste ouverte pour {agent}. Ouvrez l'écran, corrigez ce qui manque et le statut se met à jour tout seul.",
+        "fix_tool_vehicles": "Ajoutez au moins un véhicule disponible pour que {agent} puisse proposer des options réelles.",
+        "fix_test_drive_permissions": "La mission de {agent} comprend les essais routiers. Activez les rendez-vous et l’autorisation de réserver, ou adaptez la mission si l’agent doit seulement informer sur les véhicules.",
+        "fix_test_drive_service": "Créez un service en personne ou hybride à durée fixe pour les essais routiers. Une consultation en ligne ne permet pas de réserver un véhicule.",
+        "fix_test_drive_staff": "Affectez un utilisateur actif de l’entreprise et configurez une plage disponible assez longue pour l’essai. Le créneau exact est vérifié lors de la réservation."
       }
     }
   },
@@ -12000,7 +12012,11 @@
       "after_hours_behavior": "Comportement hors horaires",
       "llm_limits": "Limites de réponse du modèle",
       "vertical_tool": "Outil opérationnel du secteur",
-      "unknown": "Contrôle de configuration"
+      "unknown": "Contrôle de configuration",
+      "tool_vehicles": "Stock de véhicules disponible",
+      "test_drive_permissions": "Autorisation de réserver des essais routiers",
+      "test_drive_service": "Service pour les essais routiers",
+      "test_drive_staff": "Conseiller et disponibilité pour les essais"
     },
     "recommendations": {
       "fix": "Configurez : {item}",
@@ -12090,7 +12106,11 @@
       "credentialIssue": "Statut de l'autorisation",
       "credentialAffectedAssignments": "Canaux qui ne peuvent pas envoyer",
       "credentialWarningAssignments": "Canaux à vérifier",
-      "hasCredentialIssue": "Problème d'autorisation"
+      "hasCredentialIssue": "Problème d'autorisation",
+      "appointmentsEnabled": "Rendez-vous activés",
+      "canBook": "Peut réserver",
+      "compatibleServices": "Services compatibles",
+      "compatibleAvailability": "Plages de disponibilité compatibles"
     },
     "common": {
       "yes": "Oui",

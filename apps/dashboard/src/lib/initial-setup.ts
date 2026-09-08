@@ -1,4 +1,4 @@
-import type { AgentSetupTaskKey, GuidedTourId } from "@parallext/shared";
+import { AGENT_SETUP_TASK_CHECKS, type AgentSetupTaskKey, type GuidedTourId } from "@parallext/shared";
 
 /**
  * The essential setup checklist — the ONE place that answers "what is still
@@ -168,8 +168,7 @@ function groupSettled(checks: QualityCheckStatuses, codes: readonly string[]): b
 
 /** True when the business runs on appointments, per the checks the agent is graded on. */
 function usesAppointments(checks: QualityCheckStatuses): boolean {
-  const appointments = checks.tool_appointments;
-  return appointments !== undefined && appointments !== "not_applicable";
+  return AGENT_SETUP_TASK_CHECKS.appointments.some(code => checks[code] !== undefined && checks[code] !== "not_applicable");
 }
 
 const AGENT_CHECKS = ["agent_active", "persona_identity", "custom_prompt", "fallback_message", "behavior_rules", "handoff_triggers"] as const;
@@ -185,6 +184,7 @@ const CATALOG_CHECKS: Record<string, string[]> = {
   "/admin/memberships": ["tool_gyms"], "/admin/courses": ["tool_education"],
   "/admin/insurance": ["tool_insurance"], "/admin/service-requests": ["tool_home_services"],
   "/admin/inventory": ["tool_catalog", "tool_ecommerce"],
+  "/admin/vehicles": ["tool_vehicles"],
 };
 
 export function buildEssentialSetupItems({
@@ -278,14 +278,17 @@ export function buildEssentialSetupItems({
   }
 
   if (usesAppointments(checks) && canAccess("/admin/appointments")) {
-    items.push({ key: "appointments", href: "/admin/appointments", done: groupSettled(checks, ["tool_appointments"]), tourId: "appointments_setup" });
+    const appointmentChecks = AGENT_SETUP_TASK_CHECKS.appointments.filter(code => checks[code] !== undefined);
+    const missingPermission = checks.test_drive_permissions === "fail";
+    items.push({ key: "appointments", href: missingPermission ? (agentId ? `/admin/agent/${agentId}` : "/admin/agent") : "/admin/appointments",
+      done: groupSettled(checks, appointmentChecks), tourId: missingPermission ? null : "appointments_setup" });
   }
 
   const itemChecks: Record<EssentialSetupItemKey, readonly string[]> = {
     mission: [], tests: [],
     channel: CHANNEL_CHECKS, agent: AGENT_CHECKS, business: BUSINESS_CHECKS,
     knowledge: KNOWLEDGE_CHECKS, catalog: CATALOG_CHECKS[catalogRoute ?? ""] ?? KNOWLEDGE_CHECKS,
-    team: TEAM_CHECKS, hours: HOURS_CHECKS, appointments: ["tool_appointments"],
+    team: TEAM_CHECKS, hours: HOURS_CHECKS, appointments: AGENT_SETUP_TASK_CHECKS.appointments,
   };
   for (const item of items) {
     if (itemChecks[item.key].some(code => checks[code] === "unknown")) item.verification = "unavailable";

@@ -9520,7 +9520,7 @@
       "sold": "Vehicle marked as sold"
     },
     "testDrives": {
-      "empty": "No test drives scheduled yet. The AI agent books them when a customer asks.",
+      "empty": "No test drives yet. Enable appointments and configure an in-person service, a staff member and their availability so the agent can book.",
       "customer": "Customer",
       "vehicle": "Vehicle",
       "date": "Date",
@@ -9531,8 +9531,16 @@
         "confirmed": "Confirmed",
         "completed": "Completed",
         "cancelled": "Cancelled",
-        "no_show": "No show"
-      }
+        "no_show": "No show",
+        "pending": "Pending approval",
+        "pending_payment": "Awaiting payment",
+        "expired": "Expired",
+        "unknown": "Status unverified"
+      },
+      "agendaHint": "Latest 100 test drives. New bookings use the appointment calendar; older records are marked as historical.",
+      "openAgenda": "Open appointments",
+      "legacyRecord": "Historical record: review before treating it as a current booking.",
+      "loadError": "We could not load test drives. Retry to check the bookings."
     }
   },
   "treatmentPlans": {
@@ -11822,7 +11830,11 @@
         "refresh_eval": "The last test for {agent} is stale: the configuration changed after it ran. Evaluate it again to measure what is live today.",
         "collect_production_evidence": "There are not enough real conversations from {agent} to measure performance yet. Keep it working and come back when the sample grows.",
         "resolve_knowledge_gaps": "Some questions could not be answered by {agent} with the available knowledge. Review those gaps and add the missing content.",
-        "generic": "This action is open for {agent}. Open the screen, fix what is missing, and the status updates on its own."
+        "generic": "This action is open for {agent}. Open the screen, fix what is missing, and the status updates on its own.",
+        "fix_tool_vehicles": "Add at least one available vehicle so {agent} can present real options.",
+        "fix_test_drive_permissions": "The mission for {agent} includes test drives. Enable appointments and booking permission, or adjust the mission if it should only provide vehicle information.",
+        "fix_test_drive_service": "Create an in-person or hybrid service with a fixed duration for test drives. An online consultation cannot reserve a vehicle.",
+        "fix_test_drive_staff": "Assign an active business user and configure an availability window long enough for the test drive. The exact slot is checked when booking."
       }
     }
   },
@@ -12000,7 +12012,11 @@
       "after_hours_behavior": "After-hours behavior",
       "llm_limits": "Model response limits",
       "vertical_tool": "Industry operational tool",
-      "unknown": "Configuration check"
+      "unknown": "Configuration check",
+      "tool_vehicles": "Available vehicle inventory",
+      "test_drive_permissions": "Permission to book test drives",
+      "test_drive_service": "Test-drive service",
+      "test_drive_staff": "Test-drive staff and availability"
     },
     "recommendations": {
       "fix": "Configure: {item}",
@@ -12090,7 +12106,11 @@
       "credentialIssue": "Authorisation status",
       "credentialAffectedAssignments": "Channels that cannot send",
       "credentialWarningAssignments": "Channels to review",
-      "hasCredentialIssue": "Authorisation problem"
+      "hasCredentialIssue": "Authorisation problem",
+      "appointmentsEnabled": "Appointments enabled",
+      "canBook": "Can book",
+      "compatibleServices": "Compatible services",
+      "compatibleAvailability": "Compatible availability windows"
     },
     "common": {
       "yes": "Yes",

@@ -16,6 +16,8 @@ export const CANONICAL_EVAL_FIXTURE_IDS = Object.freeze({
     unavailableClass: '00000000-0000-4000-8000-00000000b011',
     unavailableCohort: '00000000-0000-4000-8000-00000000b012',
     persona: '00000000-0000-4000-8000-00000000b013',
+    unavailableVehicle: '00000000-0000-4000-8000-00000000b014',
+    vehicleDepositService: '00000000-0000-4000-8000-00000000b015',
 });
 
 type Window = { day: number; start: number; end: number };
@@ -151,6 +153,8 @@ export async function prepareCanonicalEvalFixtures(query: EvalNamespaceQuery, sc
     for (const [id, name, duration, category] of [[f.service, '[EVAL] Sandbox Service', 30, 'eval'], [f.boardingService, '[EVAL] Boarding Service', 1440, 'guarderia']]) {
         await seed(`INSERT INTO ${table('services')} (id,name,description,duration_minutes,price,currency,is_active,category,max_concurrent,metadata) VALUES ($1::uuid,$2,'Evaluation-only fixture',$3,10,'COP',true,$4,1,$5::jsonb)`, [id, name, duration, category, marker]);
     }
+    await seed(`INSERT INTO ${table('services')} (id,name,duration_minutes,price,currency,is_active,category,max_concurrent,payment_policy,deposit_percent,metadata)
+        VALUES ($1::uuid,'[EVAL] Vehicle Deposit Service',30,10,'COP',true,'eval',1,'deposit',25,$2::jsonb)`, [f.vehicleDepositService, marker]);
     await seed(`INSERT INTO ${table('properties')} (id,name,description,city,max_guests,night_price,currency,is_active,metadata) VALUES ($1::uuid,'[EVAL] Sandbox Property','Evaluation-only fixture','Eval City',4,100,'COP',true,$2::jsonb)`, [f.property, marker]);
     await seed(`INSERT INTO ${table('tour_packages')} (id,name,description,duration_type,duration_value,price,currency,max_capacity,destination,is_active,metadata) VALUES ($1::uuid,'[EVAL] Sandbox Tour','Evaluation-only fixture','hours',2,50,'COP',10,'Eval City',true,$2::jsonb)`, [f.tourPackage, marker]);
     await seed(`INSERT INTO ${table('tour_inventory')} (id,package_id,departure_date,departure_time,available_seats,total_seats,is_active,notes) VALUES ($1::uuid,$2::uuid,$3::date,$4::time,10,10,true,'[EVAL] fixture')`, [f.tourInventory, f.tourPackage, fixture.date, fixture.time]);
@@ -164,7 +168,9 @@ export async function prepareCanonicalEvalFixtures(query: EvalNamespaceQuery, sc
         await seed(`INSERT INTO ${table('course_cohorts')} (id,course_id,cohort_code,starts_at,ends_at,schedule,max_capacity,available_seats,status,metadata) VALUES ($1::uuid,$2::uuid,$3,$4::date,$5::date,$6,20,20,$7,$8::jsonb)`, [id, f.course, code, fixture.date, fixture.endDate, `${fixture.date} ${fixture.time}-${fixture.recoveryEndTime}`, status, marker]);
     }
     await seed(`INSERT INTO ${table('products')} (id,name,description,category,price,currency,is_available,stock,metadata) VALUES ($1::uuid,'[EVAL] Sandbox Product','Evaluation-only fixture','eval',10,'COP',true,100,$2::jsonb)`, [f.product, marker]);
-    await seed(`INSERT INTO ${table('vehicles')} (id,make,model,year,price_cents,currency,status,category,description) VALUES ($1::uuid,'[EVAL]','Sandbox Vehicle',$2,1000,'COP','available','eval','Evaluation-only fixture')`, [f.vehicle, Number(fixture.date.slice(0, 4))]);
+    for (const [id, model, status] of [[f.vehicle, 'Sandbox Vehicle', 'available'], [f.unavailableVehicle, 'Sold Vehicle', 'sold']]) {
+        await seed(`INSERT INTO ${table('vehicles')} (id,make,model,year,price_cents,currency,status,category,description) VALUES ($1::uuid,'[EVAL]',$2,$3,1000,'COP',$4,'eval','Evaluation-only fixture')`, [id, model, Number(fixture.date.slice(0, 4)), status]);
+    }
     await seed(`INSERT INTO ${table('pets')} (id,contact_id,name,species,is_active,metadata) VALUES ($1::uuid,$2::uuid,'[EVAL] Sandbox Pet','dog',true,$3::jsonb)`, [f.pet, EVAL_SANDBOX_CONTACT_ID, marker]);
     await seed(`INSERT INTO ${table('insurance_policies')} (id,policy_number,contact_id,policyholder_name,monthly_premium,currency,starts_at,ends_at,status,metadata) VALUES ($1::uuid,'EVAL-SANDBOX-POLICY',$2::uuid,'Eval Policyholder',10,'COP',CURRENT_DATE,$3::date,'active',$4::jsonb)`, [f.insurancePolicy, EVAL_SANDBOX_CONTACT_ID, fixture.endDate, marker]);
     await prepareRepairEvalFixtures(query, schema);

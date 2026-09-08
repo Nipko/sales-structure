@@ -12,9 +12,11 @@ import { ToolExecutionControlService } from '../conversations/tool-execution-con
 import { ToolApprovalWorkflowService } from '../conversations/tool-approval-workflow.service';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from './isolated-eval-namespace';
-import { EvalService } from './eval.service';
+import { EvalService, EVAL_EFFECT_VERIFIERS } from './eval.service';
+import { verifyExpectedEffects } from './eval-effect-verifier';
 import { tenantActorDirectoryWithQuery } from '../appointments/tenant-user-scope.util';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
+import { hasEvalIdentityFixture } from './eval-identity-fixture';
 import { PAYMENT_REFERENCE_TARGETS } from '../tenant-payments/tenant-payment-reference';
 import { MissionFocusStore } from '../conversations/mission-focus-store';
 import { arbitrateMissionFocus } from '../conversations/mission-focus';
@@ -38,6 +40,10 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     let conversationId: string;
     const effects = { emit: jest.fn(() => { throw new Error('outbound_domain_event_forbidden'); }) };
     const calendar = { enqueueWithQuery: jest.fn(() => { throw new Error('calendar_outbox_forbidden'); }) };
+    const identityBoundary = {
+        isVerified: jest.fn(() => { throw new Error('live_identity_read_forbidden'); }),
+        startVerification: jest.fn(() => { throw new Error('live_identity_otp_forbidden'); }),
+    };
     const tables = ['customer_memory_erasure','customer_profiles','contact_identities','contacts','conversations','messages','persona_config','agent_personas','courses','campaigns','companies','leads','opportunities',
         'pipelines','pipeline_stages','deals','services','service_staff','calendar_integrations','appointments','availability_slots','blocked_dates',
         'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments',
@@ -88,7 +94,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         appointments = new AppointmentsService(prisma,effects as any,calendar as any,{ timezoneForSchema: async()=> 'America/Bogota' } as any);
         gyms = new GymsService(prisma); education = new EducationService(prisma);
         const slots = { acquireLockToken:async()=>randomUUID(),releaseLockToken:async()=>true,get:async()=>null,incr:async()=>1,expire:async()=>true };
-        const control = new ToolExecutionControlService(prisma,{ get:()=> 'isolated-test-secret-length-32-characters' } as any,{} as any,slots as any);
+        const control = new ToolExecutionControlService(prisma,{ get:()=> 'isolated-test-secret-length-32-characters' } as any,identityBoundary as any,slots as any);
         const args: any[] = Array(32).fill({});
         Object.assign(args,{0:prisma,1:slots,2:effects,13:gyms,14:education,21:control,22:{},31:appointments});
         executor = new (AIToolExecutorService as any)(...args);
@@ -470,6 +476,87 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect((await q('SELECT status FROM appointments WHERE id=$1::uuid',[appointmentId]))[0].status).toBe('cancelled');
         expect(effects.emit).not.toHaveBeenCalled();expect(calendar.enqueueWithQuery).not.toHaveBeenCalled();
         expect((await query(`SELECT count(*)::int AS n FROM "${source}".appointments`))[0].n).toBe(0);
+    });
+    it.each(['none','deposit'])('executes a vehicle appointment lifecycle with %s payment policy, real consent and the exact owned vehicle', async paymentPolicy => {
+        const staff = randomUUID(), vehicle = randomUUID();
+        const q = (sql:string, params:any[]=[]) => prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        await q("INSERT INTO __eval_ref_users(id,tenant_id,is_active,first_name,last_name) VALUES($1::uuid,$2::uuid,true,'Eval','Staff')", [staff,tenantId]);
+        await q("INSERT INTO availability_slots(user_id,day_of_week,start_time,end_time) VALUES($1::uuid,$2,'09:00','17:00')", [staff,new Date(`${date}T12:00Z`).getUTCDay()]);
+        await q("INSERT INTO vehicles(id,make,model,year,price_cents,currency,status) VALUES($1::uuid,'EVAL','Isolated Vehicle',2026,1000,'COP','available')", [vehicle]);
+        if(paymentPolicy==='deposit')await q("UPDATE services SET payment_policy='deposit',deposit_percent=25 WHERE id=$1::uuid",[serviceId]);
+        const expectedStatus=paymentPolicy==='deposit'?'pending_payment':'confirmed';
+        const calls:Array<{name:string;result:any}>=[];
+        const evidenceScope={tenantId,contactId,conversationId,namespace:lease,assertLease:()=>namespaces.assertOwned(lease)};
+        const invoke=async(name:string,args:any)=>{
+            const result=await executor.execute(lease.schemaName,tenantId,contactId,name,args,conversationId,{
+                authority:authorityFor(name),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,
+            });
+            calls.push({name,result});return result;
+        };
+        const inbound=async(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
+        const confirmed=async(name:string,args:any)=>{
+            await inbound('Quiero realizar esta operación');
+            const challenge=await invoke(name,args); expect(challenge.error).toBe('confirmation_required');
+            await inbound('Sí, confirmo');
+            const input={...args,_control:{confirmationToken:challenge.confirmationToken}};
+            const before=await captureLearningLedger(prisma,evidenceScope);
+            const result=await invoke(name,input);expect(result.error).toBeUndefined();
+            const evidence=await verifyLearningOperation(prisma,evidenceScope,{name,args:input,result},before);
+            expect(evidence.reason).toBeUndefined();expect(evidence).toMatchObject({status:'verified',effect:'committed'});
+            const beforeReplay=await captureLearningLedger(prisma,evidenceScope);
+            const replay=await invoke(name,input);expect(replay).toMatchObject(JSON.parse(JSON.stringify(result)));
+            expect(await verifyLearningOperation(prisma,evidenceScope,{name,args:input,result:replay},beforeReplay)).toMatchObject({status:'verified',effect:'replayed'});
+            return result;
+        };
+        expect((await invoke('search_vehicles',{})).vehicles.map((row:any)=>row.id)).toEqual([vehicle]);
+        expect(await invoke('get_vehicle_details',{vehicleId:vehicle})).toMatchObject({id:vehicle,status:'available'});
+        expect((await invoke('list_services',{})).services.some((row:any)=>row.id===serviceId)).toBe(true);
+        const slots=await invoke('check_availability',{date,serviceId,staffId:staff,vehicleId:vehicle});
+        expect(slots.slots.some((slot:any)=>slot.time==='10:00')).toBe(true);
+        const created=await confirmed('schedule_test_drive',{vehicleId:vehicle,serviceId,staffId:staff,scheduledDate:date,scheduledTime:'10:00',contactName:'Eval'});
+        expect(created).toMatchObject({success:true,appointment:{status:expectedStatus,vehicleId:vehicle,awaitingPayment:paymentPolicy==='deposit'}});
+        if(paymentPolicy==='deposit')expect(created.appointment.amountDueToConfirm).toBe(25);
+        const appointmentId=created.appointment.id;
+        expect(await invoke('get_appointment_details',{appointmentId})).toMatchObject({error:'eval_identity_fixture_required'});
+        await q("INSERT INTO __eval_identity_assurance(conversation_id,contact_id,assurance,expires_at) SELECT $1::uuid,$2::uuid,'synthetic_A2',expires_at FROM __eval_namespace",[conversationId,contactId]);
+        expect(await invoke('get_appointment_details',{appointmentId})).toMatchObject({vehicleId:vehicle});
+        expect((await invoke('list_customer_appointments',{})).appointments.map((row:any)=>row.id)).toEqual([appointmentId]);
+        const expected:any[]=[{kind:'db_effect',type:'row_count',family:'appointments',table:'appointments',count:1},
+            {kind:'db_effect',type:'row_exists',family:'appointments',table:'appointments',where:{vehicle_id:vehicle,vehicle_terms_id:vehicle,
+                service_terms_id:serviceId,service_id:serviceId,assigned_to:staff,start_at:`${date}T10:00:00`,status:expectedStatus}}];
+        const verify=()=>verifyExpectedEffects({expected,contactId,verifiers:EVAL_EFFECT_VERIFIERS,observedToolCalls:calls,query:q});
+        expect((await verify()).passed).toBe(true);
+        expected[1].where.vehicle_id=randomUUID(); expect((await verify()).passed).toBe(false); expected[1].where.vehicle_id=vehicle;
+        expect((await verifyExpectedEffects({expected,contactId:otherContact,verifiers:EVAL_EFFECT_VERIFIERS,query:q})).passed).toBe(false);
+        const busy=await invoke('check_availability',{date,serviceId,staffId:staff,vehicleId:vehicle});
+        expect(busy.slots.some((slot:any)=>slot.time==='10:00')).toBe(false);
+        expect(await confirmed('reschedule_appointment',{appointmentId,newDate:date,newTime:'11:00'})).toMatchObject({success:true,appointment:{time:'11:00',vehicleId:vehicle}});
+        expect((await confirmed('cancel_appointment',{appointmentId})).success).toBe(true);
+        expect((await q('SELECT status FROM appointments WHERE id=$1::uuid',[appointmentId]))[0].status).toBe('cancelled');
+        const foreign=randomUUID();
+        await q("INSERT INTO appointments(id,contact_id,start_at,end_at,status,customer_name) VALUES($1::uuid,$2::uuid,$3::timestamp,$4::timestamp,'confirmed','Private Other Customer')",
+            [foreign,otherContact,`${date}T15:00:00`,`${date}T15:30:00`]);
+        expect(await invoke('get_appointment_details',{appointmentId:foreign})).toMatchObject({error:'You can only view your own appointments'});
+        expect(JSON.stringify(await invoke('list_customer_appointments',{}))).not.toContain('Private Other Customer');
+        expect((await query('SELECT id FROM public.users WHERE id=$1::uuid',[staff]))).toEqual([]);
+        expect((await query(`SELECT count(*)::int AS n FROM "${source}".appointments`))[0].n).toBe(0);
+        expect((await query(`SELECT count(*)::int AS n FROM "${source}".vehicles`))[0].n).toBe(0);
+        expect(effects.emit).not.toHaveBeenCalled();expect(calendar.enqueueWithQuery).not.toHaveBeenCalled();
+        expect(identityBoundary.isVerified).not.toHaveBeenCalled();expect(identityBoundary.startVerification).not.toHaveBeenCalled();
+    });
+    it('binds synthetic identity to the fixture contact, conversation, tool and expiry',async()=>{
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const scope={schemaName:lease.schemaName,tenantId,contactId,conversationId,toolName:'get_appointment_details',sandboxNamespace:lease};
+        expect(await hasEvalIdentityFixture(prisma,scope)).toBe(false);
+        await q("INSERT INTO __eval_identity_assurance(conversation_id,contact_id,assurance,expires_at) SELECT $1::uuid,$2::uuid,'synthetic_A2',expires_at FROM __eval_namespace",[conversationId,contactId]);
+        expect(await hasEvalIdentityFixture(prisma,scope)).toBe(true);
+        for(const patch of [{contactId:otherContact},{conversationId:randomUUID()},{tenantId:randomUUID()},{toolName:'file_claim'}])
+            expect(await hasEvalIdentityFixture(prisma,{...scope,...patch})).toBe(false);
+        await q('UPDATE conversations SET contact_id=$1::uuid WHERE id=$2::uuid',[otherContact,conversationId]);
+        expect(await hasEvalIdentityFixture(prisma,scope)).toBe(false);
+        await q('UPDATE conversations SET contact_id=$1::uuid WHERE id=$2::uuid',[contactId,conversationId]);
+        await q("UPDATE __eval_identity_assurance SET expires_at=clock_timestamp()-interval '1 second'");
+        expect(await hasEvalIdentityFixture(prisma,scope)).toBe(false);
     });
     it('refuses a fixture directory without a current, transaction-checked lease',async()=>{
         const work=(proof:any)=>prisma.transactionInTenantSchema(lease.schemaName,(q:any)=>tenantActorDirectoryWithQuery(q,lease.schemaName,proof));

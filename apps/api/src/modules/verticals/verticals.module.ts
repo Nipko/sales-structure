@@ -18,6 +18,7 @@ import { EmailModule } from '../email/email.module';
 import { VerticalAuditController } from './vertical-audit.controller';
 import { VerticalTaxonomyInventoryService } from './vertical-taxonomy-inventory.service';
 import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-integrations.module';
+import { AppointmentCommandsModule } from '../appointments/appointment-commands.module';
 
 @Module({
     // TenantsModule aporta el resolutor regional: el perfil efectivo tiene que
@@ -28,6 +29,7 @@ import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-in
         EmailModule,
         VerticalIntegrationsModule,
         forwardRef(() => TenantsModule),
+        AppointmentCommandsModule,
     ],
     controllers: [
         VerticalsController,

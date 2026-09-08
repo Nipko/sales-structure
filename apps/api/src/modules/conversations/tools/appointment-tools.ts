@@ -22,6 +22,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
             properties: {
                 date: { type: 'string', description: 'YYYY-MM-DD format' },
                 serviceId: { type: 'string', description: 'Service UUID or name' },
+                vehicleId: {type:'string',description:'For a test drive, vehicle UUID from search_vehicles; filters occupied vehicle intervals as well as the staff agenda'},
                 staffId: {
                     type: 'string',
                     description: 'Optional availability-owner platform user UUID returned by check_availability; not a staff profile UUID',
@@ -51,7 +52,6 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
                 // las verticales que lo tienen; en el resto se omite.
                 listingId: { type: 'string', description: 'Real-estate listing UUID this visit is about — from search_listings / get_listing_details. Only for real-estate tenants.' },
                 petId: { type: 'string', description: 'Pet UUID this appointment is for — from list_pets_for_contact. Only for veterinary tenants.' },
-                vehicleId: { type: 'string', description: 'Vehicle UUID this test drive / service is about — from the vehicle search tools. Only for automotive tenants.' },
             },
             required: ['serviceId', 'date', 'time', 'customerName', 'customerEmail'],
         },

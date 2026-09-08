@@ -34,6 +34,11 @@ function overview(checks: QualityCheckStatuses) {
 }
 
 describe("buildEssentialSetupItems", () => {
+  it("keeps test-drive setup visible when the mission needs booking but the agenda is disabled", () => {
+    const items = buildEssentialSetupItems({ status: {}, planChannels: [], activeChannels: [], canAccess: allowAll,
+      checks: { ...READY, tool_appointments: "not_applicable", test_drive_permissions: "fail", test_drive_service: "pass", test_drive_staff: "unknown" } });
+    expect(items.find(item => item.key === "appointments")).toMatchObject({ done: false, verification: "unavailable" });
+  });
   it("derives every essential from the agent's own preparation checks", () => {
     const items = buildEssentialSetupItems({
       status: { setupWizardChannels: ["whatsapp"] },

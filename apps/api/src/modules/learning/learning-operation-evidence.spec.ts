@@ -17,6 +17,20 @@ function setup(){
     return {scope,result,state,prisma:prisma as any,call:{name:'place_catalog_order',result}};
 }
 describe('Learning operation evidence does not equate table deltas with success',()=>{
+    it('binds an appointment currency and vehicle to captured terms, including the displayed label',async()=>{
+        const f=setup(),vehicleId='55555555-5555-4555-8555-555555555555';
+        const result={success:true,appointment:{id:objectId,status:'confirmed',currency:'COP',vehicleId,vehicleLabel:'Fixture Vehicle'}};
+        const object={id:objectId,contact_id:contactId,status:'confirmed',service_id:ledgerId,currency:'USD',
+            metadata:{vehicleId,vehicleTerms:{vehicleId,label:'Fixture Vehicle'},serviceTerms:{serviceId:ledgerId,currency:'COP'}}};
+        Object.assign(f.state.ledgers[0],{tool_name:'schedule_test_drive',response_payload:result});
+        Object.assign(f.state.objects[0],{data:object});
+        const verify=()=>verifyLearningOperation(f.prisma,f.scope,{name:'schedule_test_drive',result},{available:true,entries:{}});
+        expect(await verify()).toMatchObject({status:'verified'});
+        object.metadata.vehicleTerms.label='Wrong Vehicle';
+        expect(await verify()).toMatchObject({status:'unverified',reason:'vehicle_appointment_terms_mismatch'});
+        object.metadata.vehicleTerms.label='Fixture Vehicle';object.metadata.serviceTerms.currency='USD';
+        expect(await verify()).toMatchObject({status:'unverified',reason:'object_state_mismatch'});
+    });
     it('accepts a valid idempotent replay with the same exact ledger and owned object',async()=>{
         const f=setup(),before=await captureLearningLedger(f.prisma,f.scope);
         const proof=await verifyLearningOperation(f.prisma,f.scope,{...f.call,result:{...f.result,idempotentReplay:true}},before);

@@ -1,5 +1,8 @@
 import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { APPOINTMENT_SERVICE_TERMS_COLUMNS } from './appointment-service-terms';
+import { assertVehicleAppointmentCapacity, VehicleAppointmentError, type VehicleAppointmentTerms } from './vehicle-appointment-capacity';
+import { tenantActorDirectoryWithQuery } from './tenant-user-scope.util';
+import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 export type AppointmentTenantQuery = <T = unknown>(sql: string, params?: unknown[]) => Promise<T>;
 
@@ -28,6 +31,9 @@ export interface AppointmentCapacityInput {
     startAt: string;
     endAt: string;
     excludeAppointmentId?: string;
+    vehicleId?: string;
+    expectedVehicleTerms?: VehicleAppointmentTerms;
+    sandboxNamespace?: EvalNamespaceLease;
 }
 
 export interface ActiveAppointmentService {
@@ -87,12 +93,20 @@ export function wallClockEpoch(value: string | Date): number {
     );
 }
 
-export async function lockAndAssertAppointmentCapacity(
+export async function lockAppointmentCapacityResources(
     query: AppointmentTenantQuery,
     input: AppointmentCapacityInput,
-): Promise<ActiveAppointmentService> {
+): Promise<void> {
     const localDate = localDatePart(input.startAt);
+    if (input.vehicleId) {
+        // The vehicle check also locks the active staff/tenant rows. Take the
+        // tenant first, matching served-agent publication and avoiding a queued
+        // tenant update between a resource lock and its ownership check.
+        const directory = await tenantActorDirectoryWithQuery(query, input.schemaName, input.sandboxNamespace);
+        await query(`SELECT id FROM ${directory.tenants} WHERE schema_name=$1 FOR SHARE`, [input.schemaName]);
+    }
     const lockKeys = [
+        ...(input.vehicleId ? [`appointment:vehicle:${input.schemaName}:${input.vehicleId}`] : []),
         `appointment:service:${input.schemaName}:${input.serviceId}:${localDate}`,
         ...(input.staffUserId
             ? [`appointment:staff:${input.schemaName}:${input.staffUserId}:${localDate}`]
@@ -104,6 +118,13 @@ export async function lockAndAssertAppointmentCapacity(
             [lockKey],
         );
     }
+}
+
+export async function lockAndAssertAppointmentCapacity(
+    query: AppointmentTenantQuery,
+    input: AppointmentCapacityInput,
+): Promise<ActiveAppointmentService> {
+    await lockAppointmentCapacityResources(query, input);
 
     const services = await query<any[]>(
         // La política de pago viaja con el servicio bloqueado, en la misma
@@ -118,6 +139,15 @@ export async function lockAndAssertAppointmentCapacity(
         [input.serviceId],
     );
     if (!services?.length) throw new AppointmentServiceUnavailableError();
+    let vehicleTerms: VehicleAppointmentTerms | undefined;
+    if (input.vehicleId) {
+        const duration = (wallClockEpoch(input.endAt) - wallClockEpoch(input.startAt)) / 60_000;
+        if (String(services[0].duration_type || 'fixed') !== 'fixed' || duration !== Number(services[0].duration_minutes)
+            || !['in_person','hybrid'].includes(String(services[0].location_type || 'in_person'))) {
+            throw new VehicleAppointmentError('test_drive_service_contract_required');
+        }
+        vehicleTerms=await assertVehicleAppointmentCapacity(query, { ...input, vehicleId: input.vehicleId });
+    }
 
     const excludeSql = input.excludeAppointmentId ? ' AND id <> $4::uuid' : '';
     if (input.staffUserId) {
@@ -156,6 +186,7 @@ export async function lockAndAssertAppointmentCapacity(
 
     return {
         ...services[0],
+        ...(vehicleTerms?{vehicleTerms}:{}),
         id: services[0].id,
         name: services[0].name,
         maxConcurrent,

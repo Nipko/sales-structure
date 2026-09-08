@@ -74,8 +74,13 @@ export async function verifyLearningOperation(prisma:PrismaService,scope:Learnin
     const object=objects[0].data,body=result.order||result.appointment||result.repairOrder||result.enrollment||result;
     const cancellation:Record<string,string>={cancel_catalog_order:'cancelled',cancel_appointment:'cancelled',cancel_repair_order:'cancelled',cancel_class_booking:'cancelled',cancel_enrollment:'dropped'};
     const expectedStatus=cancellation[call.name]||body.status;
+    const currency=family.table==='appointments'?object.metadata?.serviceTerms?.currency:object.currency;
     if((expectedStatus!==undefined&&expectedStatus!==object.status)||(body.paymentStatus!==undefined&&body.paymentStatus!==object.payment_status)
-        ||(body.currency!==undefined&&body.currency!==object.currency)||(body.version!==undefined&&body.version!==object.version))return {status:'unverified',reason:'object_state_mismatch'};
+        ||(body.currency!==undefined&&body.currency!==currency)||(body.version!==undefined&&body.version!==object.version))return {status:'unverified',reason:'object_state_mismatch'};
+    if(call.name==='schedule_test_drive' && (!body.vehicleId || body.vehicleId!==object.metadata?.vehicleId
+        ||body.vehicleId!==object.metadata?.vehicleTerms?.vehicleId
+        ||body.vehicleLabel!==object.metadata?.vehicleTerms?.label
+        ||object.service_id!==object.metadata?.serviceTerms?.serviceId))return {status:'unverified',reason:'vehicle_appointment_terms_mismatch'};
     if(family.table==='orders'){
         try{
             const amount=String(catalogCents(object.total_amount));

@@ -1,7 +1,13 @@
 import type { ExpectedAction } from './eval.service';
 
-export interface EffectVerifier { table: string; contactColumn: string; }
+export interface EffectVerifier {
+    table: string;
+    contactColumn: string;
+    /** Code-owned projections only; assertions never provide JSON paths or SQL. */
+    jsonFields?: Readonly<Record<string, { column: string; path: readonly string[] }>>;
+}
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+const JSON_KEY = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Query = (sql: string, params: unknown[]) => Promise<unknown>;
 type Check = { ok: boolean; description: string; detail: string };
@@ -52,7 +58,12 @@ export async function verifyExpectedEffects(input: {
                     (typeof filter.value === 'number' && Number.isFinite(filter.value))) ||
                 (filter.op !== 'eq' && typeof filter.value !== 'string')) { invalid = true; break; }
             const index = parameters.length + 1;
-            const quoted = `"${column}"`;
+            const projection = verifier.jsonFields?.[column];
+            if (projection && (!IDENTIFIER.test(projection.column) || !Array.isArray(projection.path)
+                || !projection.path.length || projection.path.some(key => !JSON_KEY.test(key)))) { invalid = true; break; }
+            const quoted = projection
+                ? `"${projection.column}" #>> '{${projection.path.join(',')}}'`
+                : `"${column}"`;
             if (filter.value === null) { conditions.push(`${quoted} IS NULL`); continue; }
             if (filter.op === 'ilike') conditions.push(`${quoted} ILIKE $${index}`);
             else if (filter.op === 'date_eq') conditions.push(`DATE(${quoted}) = $${index}::date`);

@@ -108,7 +108,7 @@ export const GUIDED_TOURS: readonly GuidedTourDefinition[] = [
         id: 'appointments_setup',
         route: '/admin/appointments',
         minRole: 'tenant_admin',
-        qualityCodes: ['tool_appointments'],
+        qualityCodes: ['tool_appointments', 'test_drive_service', 'test_drive_staff'],
         kbArticleIds: ['citas-calendarios'],
     },
     {

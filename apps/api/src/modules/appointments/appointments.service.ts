@@ -5,6 +5,10 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { randomUUID } from 'crypto';
+import { appointmentVehicleId, VehicleAppointmentError, type VehicleAppointmentTerms } from './vehicle-appointment-capacity';
+import { assertVehicleAppointmentReplay, vehicleAppointmentCommand } from './appointment-command-identity';
+import { updateVehicleAppointment } from './vehicle-appointment-update';
+import { operationalContactWasErased } from '../operational-notices/operational-notice-outbox';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
 import { assertActiveTenantUser, tenantActorDirectory } from './tenant-user-scope.util';
@@ -273,7 +277,8 @@ export class AppointmentsService {
         customerEmail?: string;
         source?: string;
     }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean; sandboxNamespace?: EvalNamespaceLease;
-        expectedServiceTerms?: AppointmentServiceTerms; operationalScope?: ServedAgentAuthority } = {}): Promise<Appointment> {
+        expectedServiceTerms?: AppointmentServiceTerms; operationalScope?: ServedAgentAuthority; vehicleRequestKey?: string;
+        expectedVehicleTerms?: VehicleAppointmentTerms } = {}): Promise<Appointment> {
         if (execution.sandboxNamespace) {
             await tenantActorDirectory(this.prisma,schemaName,execution.sandboxNamespace);
             data = { ...data, metadata: { ...data.metadata, source: 'eval_gate' } };
@@ -342,7 +347,13 @@ export class AppointmentsService {
             durationMinutes: this.diffMinutesNaive(startAt, endAt),
         });
 
-        const id = randomUUID();
+        const vehicleId = appointmentVehicleId(data.metadata);
+        const command = vehicleId ? vehicleAppointmentCommand(schemaName, requestedContactId, execution.vehicleRequestKey,
+            [vehicleId, serviceIdUuid, assignedToUuid, startAt, endAt, conversationIdUuid,
+                data.customerName || null, data.customerPhone || null, data.customerEmail || null, data.notes || null,
+                execution.expectedServiceTerms || null,execution.expectedVehicleTerms || null]) : undefined;
+        const id = command?.id || randomUUID();
+        let replay = false;
         let canonicalServiceName = data.serviceName;
         // Se declara fuera de la transacción porque el llamador necesita saber
         // si la cita quedó pendiente de pago: es lo que impide que el agente
@@ -352,7 +363,16 @@ export class AppointmentsService {
         try {
             await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 await assertServedAgentAuthority(query, schemaName, execution.operationalScope);
+                if (vehicleId) {
+                    await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text', [`agent-privacy:${schemaName}`]);
+                    if (await operationalContactWasErased(query, requestedContactId)) throw new BadRequestException({ error: 'contact_erased' });
+                }
                 const contactIdUuid = await requireTenantContact(query, requestedContactId);
+                if (command) {
+                    await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`vehicle-appointment-command:${schemaName}:${id}`]);
+                    const [existing] = await query<any[]>('SELECT id, contact_id, metadata FROM appointments WHERE id=$1::uuid', [id]);
+                    if (existing) { assertVehicleAppointmentReplay(existing, command.hash, contactIdUuid!); replay = true; return; }
+                }
                 const opportunityId = await resolveNativeEvidenceOpportunity(query, {
                     contactId: contactIdUuid,
                     conversationId: conversationIdUuid,
@@ -364,6 +384,9 @@ export class AppointmentsService {
                     staffUserId: assignedToUuid,
                     startAt,
                     endAt,
+                    vehicleId,
+                    expectedVehicleTerms: execution.expectedVehicleTerms,
+                    sandboxNamespace: execution.sandboxNamespace,
                 });
                 canonicalServiceName = service.name;
                 // The same service row is held FOR SHARE until the INSERT commits.
@@ -398,7 +421,8 @@ export class AppointmentsService {
                     [
                         id, contactIdUuid, opportunityId, conversationIdUuid, assignedToUuid, serviceIdUuid,
                         canonicalServiceName, startAt, endAt, data.location || null,
-                        data.notes || null, JSON.stringify({ ...data.metadata, serviceTerms: appointmentServiceTerms(service) }),
+                        data.notes || null, JSON.stringify({ ...data.metadata, serviceTerms: appointmentServiceTerms(service),
+                            ...(command ? { vehicleId, vehicleTerms:service.vehicleTerms, vehicleAppointmentCommandHash: command.hash, testDrive: true } : {}) }),
                         data.customerName || null, data.customerPhone || null,
                         data.customerEmail || null, data.source || 'manual',
                         status, amountDue, holdExpiresAt,
@@ -411,6 +435,7 @@ export class AppointmentsService {
                 }
             });
         } catch (error) {
+            if (error instanceof VehicleAppointmentError) throw new ConflictException({ error: error.vehicleCode });
             if (error instanceof AppointmentSlotConflictError) {
                 throw new ConflictException({
                     error: error.code,
@@ -430,7 +455,7 @@ export class AppointmentsService {
         const appointment = await this.getById(schemaName, id, execution.sandboxNamespace);
 
         // Emit event for WhatsApp confirmation
-        if (!suppressEffects) {
+        if (!suppressEffects && !replay) {
             this.eventEmitter.emit('appointment.created', { schemaName, appointment });
         }
 
@@ -439,10 +464,11 @@ export class AppointmentsService {
         // y que el turno tiene una retención temporal hasta que entre el pago.
         return {
             ...appointment,
-            awaitingPayment: policy.requiresPayment,
-            amountDueToConfirm: policy.requiresPayment ? policy.dueAmount : undefined,
-            paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
-            currency,
+            ...(replay ? { idempotentReplay: true } : {}),
+            awaitingPayment: replay ? appointment.status === PENDING_PAYMENT_STATUS : policy.requiresPayment,
+            amountDueToConfirm: replay ? appointment.metadata?.serviceTerms?.amountDue : policy.requiresPayment ? policy.dueAmount : undefined,
+            paymentChoice: (replay ? appointment.metadata?.serviceTerms?.customerChooses : policy.customerChooses) ? 'deposit_or_full' : undefined,
+            currency: replay ? appointment.metadata?.serviceTerms?.currency : currency,
         } as Appointment;
     }
 
@@ -451,6 +477,40 @@ export class AppointmentsService {
         startAt?: string; endAt?: string; status?: string;
         location?: string; notes?: string;
     }): Promise<Appointment> {
+        const [vehicleSnapshot] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT *, to_char(start_at,'YYYY-MM-DD"T"HH24:MI:SS') AS start_local,
+                to_char(end_at,'YYYY-MM-DD"T"HH24:MI:SS') AS end_local, updated_at::text AS update_revision
+             FROM appointments WHERE id=$1::uuid AND (metadata ? 'vehicleId' OR metadata ? 'vehicle_id')`, [appointmentId]);
+        if (vehicleSnapshot) {
+            if (data.serviceName !== undefined && data.serviceName !== vehicleSnapshot.service_name) {
+                throw new ConflictException({ error: 'test_drive_service_change_requires_review' });
+            }
+            const assignedTo = data.assignedTo === undefined ? vehicleSnapshot.assigned_to : data.assignedTo === null ? null
+                : await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo);
+            const startAt = data.startAt === undefined ? vehicleSnapshot.start_local : this.normalizeNaive(data.startAt);
+            const endAt = data.endAt === undefined ? vehicleSnapshot.end_local : this.normalizeNaive(data.endAt);
+            if (!startAt || !endAt || endAt <= startAt) throw new BadRequestException({ error: 'invalid_test_drive_time' });
+            this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: startAt,
+                timezone: await this.resolveTimezoneForSchema(schemaName), durationMinutes: this.diffMinutesNaive(startAt, endAt) });
+            const status = data.status ?? vehicleSnapshot.status;
+            try {
+                await this.prisma.transactionInTenantSchema(schemaName, async query => {
+                    await updateVehicleAppointment(query, schemaName, vehicleSnapshot, {
+                        startAt, endAt, assignedTo, status,
+                        location: data.location ?? vehicleSnapshot.location, notes: data.notes ?? vehicleSnapshot.notes,
+                    });
+                    if (status !== PENDING_PAYMENT_STATUS) {
+                        await this.calendarOutbox.enqueueWithQuery(query, appointmentId, status === 'cancelled' ? 'delete' : 'upsert');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof VehicleAppointmentError || error instanceof AppointmentSlotConflictError) {
+                    throw new ConflictException({ error: error instanceof VehicleAppointmentError ? error.vehicleCode : error.code });
+                }
+                throw error;
+            }
+            return this.getById(schemaName, appointmentId);
+        }
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
@@ -539,19 +599,20 @@ export class AppointmentsService {
     }
 
     async cancel(schemaName: string, appointmentId: string, reason?: string): Promise<Appointment> {
-        await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            await query(
+        const changed = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const rows = await query<any[]>(
                 `UPDATE appointments SET status = 'cancelled',
                         cancellation_reason = $2, updated_at = NOW()
-                 WHERE id = $1::uuid`,
+                 WHERE id = $1::uuid AND status <> 'cancelled' RETURNING id`,
                 [appointmentId, reason || null],
             );
-            await this.calendarOutbox.enqueueWithQuery(query, appointmentId, 'delete');
+            if (rows.length) await this.calendarOutbox.enqueueWithQuery(query, appointmentId, 'delete');
+            return rows.length > 0;
         });
         const appointment = await this.getById(schemaName, appointmentId);
 
         // Emit event for WhatsApp cancellation notification
-        this.eventEmitter.emit('appointment.cancelled', { schemaName, appointment, reason });
+        if (changed) this.eventEmitter.emit('appointment.cancelled', { schemaName, appointment, reason });
 
         return appointment;
     }
@@ -576,6 +637,10 @@ export class AppointmentsService {
             endDate?: string; // alternative: stop at date
         };
     }): Promise<{ groupId: string; appointments: Appointment[] }> {
+        if (data.metadata?.vehicleId !== undefined || data.metadata?.vehicle_id !== undefined) {
+            throw new BadRequestException({ error: 'test_drive_recurrence_not_supported',
+                message: 'Book each test drive through the vehicle appointment command with its own verified slot.' });
+        }
         const requestedContactId = assertOptionalContactId(data.contactId);
         if (!requestedContactId) {
             throw new BadRequestException({

@@ -111,15 +111,17 @@ const regressionProvenance=(scenario:any)=>scenario?.regressionCaseId?{
  * Session execution admits only canonical commands certified for the namespace;
  * a verifier entry does not make an unsupported writer executable.
  */
-export const EVAL_EFFECT_VERIFIERS: Readonly<Record<string, {
-    table: string;
-    contactColumn: string;
-}>> = Object.freeze(Object.fromEntries(
+export const EVAL_EFFECT_VERIFIERS: Readonly<Record<string, import('./eval-effect-verifier').EffectVerifier>> = Object.freeze(Object.fromEntries(
     Object.entries(EVAL_WRITER_SANDBOX_FAMILIES)
         .filter(([, family]) => (family.status === 'audited' || family.verifierAudited) && !!family.contactColumn)
         .map(([name, family]) => [name, Object.freeze({
             table: family.table,
             contactColumn: family.contactColumn!,
+            ...(name === 'appointments' ? { jsonFields: Object.freeze({
+                vehicle_id: Object.freeze({ column: 'metadata', path: Object.freeze(['vehicleId']) }),
+                vehicle_terms_id: Object.freeze({ column: 'metadata', path: Object.freeze(['vehicleTerms', 'vehicleId']) }),
+                service_terms_id: Object.freeze({ column: 'metadata', path: Object.freeze(['serviceTerms', 'serviceId']) }),
+            }) } : {}),
         })]),
 ));
 
@@ -195,6 +197,11 @@ export class EvalService {
                 session.fixtures = await prepareCanonicalEvalFixtures((sql,params)=>this.prisma.executeInTenantSchema(schema,sql,params),schema,snapshot);
                 if (session.fixtures.status !== 'ready') throw new Error('eval_fixtures_blocked:' + session.fixtures.reason);
                 session.sandboxConversationId = await this.ensureSandboxConversation(schema, channelType);
+                // An explicit synthetic precondition for fixture-only appointment
+                // readers. This is no evidence that a provider verified identity.
+                await this.prisma.executeInTenantSchema(schema, `INSERT INTO __eval_identity_assurance(conversation_id,contact_id,assurance,expires_at)
+                    SELECT $1::uuid,$2::uuid,'synthetic_A2',expires_at FROM __eval_namespace`,
+                [session.sandboxConversationId, session.sandboxContactId]);
             },
             recordInbound: async text => {
                 await session.assertLease();
@@ -677,6 +684,7 @@ export class EvalService {
             // aggregate score. Bound storage and disclose any shortened sample.
             const transcriptTruncated=history.some(row=>row.content.length>8_000);
             return { score, passed: score >= threshold && actionsPassed, resolved: !!judge.resolved, flags: judge.flags || [], actionChecks,
+                fixtureAssumptions: ['synthetic_A2_for_appointment_readers'],
                 transcript:history.map(row=>({...row,content:row.content.slice(0,8_000)})),transcriptTruncated };
         });
     }

@@ -102,6 +102,9 @@ type ReadinessFacts = {
     policiesUpdatedAt: Date | string | null;
     services: number;
     availabilitySlots: number;
+    testDriveServices: number;
+    testDriveSlots: number;
+    vehicles: number;
     products: number;
     orders: number;
     offers: number;
@@ -399,7 +402,7 @@ export class AgentQualityService {
                 return fallback;
             });
 
-        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows] = await Promise.all([
+        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows, vehicleRows] = await Promise.all([
             safe<any[]>(
                 'company',
                 `SELECT name, industry, about, phone, email, website, address, city, country, updated_at
@@ -434,7 +437,19 @@ export class AgentQualityService {
                 'appointments',
                 `SELECT
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true AND btrim(name) <> '' AND duration_minutes > 0) AS services,
-                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots`, [], [{ services: 0, slots: 0 }],
+                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots,
+                    (SELECT COUNT(*)::int FROM services WHERE is_active=true AND btrim(name)<>''
+                        AND COALESCE(duration_type,'fixed')='fixed' AND duration_minutes BETWEEN 1 AND 1440
+                        AND COALESCE(location_type,'in_person') IN ('in_person','hybrid')) AS test_drive_services,
+                    (SELECT COUNT(*)::int FROM availability_slots a
+                        JOIN public.users u ON u.id=a.user_id AND u.is_active=true
+                        JOIN public.tenants t ON t.id=u.tenant_id AND t.is_active=true AND t.schema_name=$1
+                        WHERE a.is_active=true AND a.start_time<a.end_time
+                        AND EXISTS(SELECT 1 FROM services s WHERE s.is_active=true AND btrim(s.name)<>''
+                            AND COALESCE(s.duration_type,'fixed')='fixed' AND s.duration_minutes BETWEEN 1 AND 1440
+                            AND COALESCE(s.location_type,'in_person') IN ('in_person','hybrid')
+                            AND EXTRACT(EPOCH FROM (a.end_time-a.start_time))/60 >= s.duration_minutes)) AS test_drive_slots`,
+                [schemaName], [{ services: 0, slots: 0 }],
             ),
             safe<any[]>('products', `SELECT COUNT(*)::int AS count FROM products WHERE is_available = true AND btrim(name) <> ''`, [], [{ count: 0 }]),
             safe<any[]>('orders', `SELECT COUNT(*)::int AS count FROM orders`, [], [{ count: 0 }]),
@@ -456,6 +471,7 @@ export class AgentQualityService {
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS photography,
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS professional_services`, [], [{}],
             ),
+            safe<any[]>('vehicles', `SELECT COUNT(*)::int AS count FROM vehicles WHERE status='available'`, [], [{ count: 0 }]),
         ]);
 
         const company = companies[0] || null;
@@ -472,6 +488,9 @@ export class AgentQualityService {
             policiesUpdatedAt: policyRows[0]?.updated_at || null,
             services: Number(appointmentRows[0]?.services) || 0,
             availabilitySlots: Number(appointmentRows[0]?.slots) || 0,
+            testDriveServices: Number(appointmentRows[0]?.test_drive_services) || 0,
+            testDriveSlots: Number(appointmentRows[0]?.test_drive_slots) || 0,
+            vehicles: Number(vehicleRows[0]?.count) || 0,
             products: Number(productRows[0]?.count) || 0,
             orders: Number(orderRows[0]?.count) || 0,
             offers: Number(offerRows[0]?.count) || 0,
@@ -760,6 +779,7 @@ export class AgentQualityService {
             rag_knowledge: ['knowledge'], tool_faqs: ['faqs'], tool_policies: ['policies'],
             tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
             tool_orders: ['orders'], tool_offers: ['offers'],
+            tool_vehicles: ['vehicles'], test_drive_service: ['appointments'], test_drive_staff: ['appointments'],
         };
         const add = (check: CheckInput) => {
             const required = dependencies[check.code] ?? (check.code.startsWith('tool_') && check.evidence && 'records' in check.evidence ? ['verticalCatalogs'] : []);
@@ -767,7 +787,8 @@ export class AgentQualityService {
             if (check.code === 'human_handoff_route' && tenant.humanLookupAvailable === false) unavailable.push('humans');
             if (['channel_connection', 'channel_coverage'].includes(check.code) && tenant.channelLookupAvailable === false) unavailable.push('channels');
             if (check.code === 'knowledge_coverage' && Number(check.evidence?.availableSources ?? 0) === 0) {
-                unavailable.push(...(facts.unavailableSources ?? []).filter(source => ['knowledge', 'faqs', 'policies', 'products', 'appointments', 'verticalCatalogs'].includes(source)));
+                unavailable.push(...(facts.unavailableSources ?? []).filter(source => ['knowledge', 'faqs', 'policies', 'products', 'appointments', 'verticalCatalogs'].includes(source)
+                    || source === 'vehicles' && tools.vehicles?.enabled === true));
             }
             checks.push(unavailable.length && check.status !== 'not_applicable'
                 ? { ...check, status: 'unknown', evidence: { sourceAvailability: 'unavailable', unavailableSources: [...new Set(unavailable)].join(',') } }
@@ -800,7 +821,7 @@ export class AgentQualityService {
 
         const knowledgeRequired = config.rag?.enabled === true || tools.knowledge?.enabled === true;
         const availableKnowledgeSources = facts.knowledgeChunks + facts.faqs + facts.policies + facts.products
-            + facts.services + Object.values(facts.verticalCatalogs).reduce((sum, count) => sum + count, 0);
+            + facts.services + (tools.vehicles?.enabled === true ? facts.vehicles : 0) + Object.values(facts.verticalCatalogs).reduce((sum, count) => sum + count, 0);
         add({ code: 'knowledge_coverage', dimension: 'knowledge_grounding', status: availableKnowledgeSources > 0 ? 'pass' : 'warning', critical: false, weight: 4, href: '/admin/knowledge', evidence: { availableSources: availableKnowledgeSources } });
         add({ code: 'rag_knowledge', dimension: 'knowledge_grounding', status: knowledgeRequired ? status(facts.knowledgeChunks > 0) : 'not_applicable', critical: knowledgeRequired, weight: 6, href: '/admin/knowledge', evidence: { enabled: knowledgeRequired, chunks: facts.knowledgeChunks } });
         const ragValid = Number(config.rag?.chunkSize) > 0
@@ -868,6 +889,17 @@ export class AgentQualityService {
             },
         });
         add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: '/admin/appointments', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
+        const missionIntents = (config as any).mission?.intentKeys;
+        const wantsTestDrives = tools.vehicles?.enabled === true
+            && (!Array.isArray(missionIntents) || missionIntents.includes('schedule_test_drive'));
+        add({ code: 'tool_vehicles', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.vehicles, facts.vehicles > 0), critical: tools.vehicles?.enabled === true,
+            weight: 4, href: '/admin/vehicles', evidence: { enabled: tools.vehicles?.enabled === true, records: facts.vehicles } });
+        add({ code: 'test_drive_permissions', dimension: 'actions_outcomes', status: wantsTestDrives ? status(tools.appointments?.enabled === true && tools.appointments?.canBook !== false) : 'not_applicable',
+            critical: wantsTestDrives, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { appointmentsEnabled: tools.appointments?.enabled === true, canBook: tools.appointments?.canBook !== false } });
+        add({ code: 'test_drive_service', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveServices > 0) : 'not_applicable',
+            critical: wantsTestDrives, weight: 3, href: '/admin/appointments', evidence: { compatibleServices: facts.testDriveServices } });
+        add({ code: 'test_drive_staff', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveSlots > 0) : 'not_applicable',
+            critical: wantsTestDrives, weight: 3, href: '/admin/appointments', evidence: { compatibleAvailability: facts.testDriveSlots } });
         add({ code: 'tool_catalog', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.catalog, facts.products > 0), critical: tools.catalog?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.catalog?.enabled === true, products: facts.products } });
         add({ code: 'tool_ecommerce', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.ecommerce, facts.products > 0), critical: tools.ecommerce?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.ecommerce?.enabled === true, products: facts.products } });
         add({ code: 'tool_orders', dimension: 'actions_outcomes', status: tools.orders?.enabled === true ? 'pass' : 'not_applicable', critical: false, weight: 2, href: '/admin/orders', evidence: { enabled: tools.orders?.enabled === true, existingOrders: facts.orders } });

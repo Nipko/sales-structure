@@ -99,7 +99,7 @@ export class AgentAssessmentService {
             const firstPending = relevant.find(check => ['fail', 'warning', 'unknown'].includes(check.status));
             tasks.push({ key: key as AgentSetupTask['key'], status: setupTaskStatus(relevant), checks: relevant,
                 ...defaults[key], href: firstPending?.href ?? defaults[key].href,
-                tourId: findGuidedTourForQualityCode(firstPending?.code)?.id ?? defaults[key].tourId,
+                tourId: firstPending?.code === 'test_drive_permissions' ? null : findGuidedTourForQualityCode(firstPending?.code)?.id ?? defaults[key].tourId,
                 ...(key === 'channel' ? { channelType: preferredChannel } : {}) });
         }
         const catalog = getVerticalCatalog(industry, subType);

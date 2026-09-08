@@ -8,6 +8,23 @@ const run = (expected: any[], query = jest.fn().mockResolvedValue([{ cnt: 0 }]))
     verifyExpectedEffects({ expected, query, contactId, verifiers: EVAL_EFFECT_VERIFIERS });
 
 describe('committed effect evidence', () => {
+    it('verifies vehicle and accepted service identities through code-owned metadata projections', async () => {
+        const query = jest.fn().mockResolvedValue([{ cnt: 1 }]);
+        expect((await run([{ kind: 'db_effect', type: 'row_exists', family: 'appointments', table: 'appointments',
+            where: { vehicle_id: contactId, vehicle_terms_id: contactId, service_terms_id: contactId } }], query)).passed).toBe(true);
+        expect(query.mock.calls[0][0]).toContain('contact_id = $1::uuid');
+        expect(query.mock.calls[0][0]).toContain(`"metadata" #>> '{vehicleTerms,vehicleId}' = $3`);
+        expect(query.mock.calls[0][1]).toEqual([contactId, contactId, contactId, contactId]);
+    });
+    it('rejects malformed projection definitions before querying', async () => {
+        const query = jest.fn();
+        const result = await verifyExpectedEffects({ contactId, query,
+            verifiers: { appointments: { table: 'appointments', contactColumn: 'contact_id',
+                jsonFields: { vehicle_id: { column: 'metadata', path: ["vehicleId'} OR TRUE --"] } } } },
+            expected: [{ kind: 'db_effect', type: 'row_exists', family: 'appointments', table: 'appointments', where: { vehicle_id: contactId } }],
+        });
+        expect(result.passed).toBe(false); expect(query).not.toHaveBeenCalled();
+    });
     it('verifies workshop rows without authorizing a workshop writer', async () => {
         expect(canEvalExecuteWriter('create_repair_order', contactId)).toBe(false);
         const query = jest.fn().mockResolvedValue([{ cnt: 1 }]);

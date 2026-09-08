@@ -49,6 +49,9 @@ type HarnessOptions = {
     policies?: number;
     services?: number;
     slots?: number;
+    testDriveServices?: number;
+    testDriveSlots?: number;
+    vehicles?: number;
     products?: number;
     orders?: number;
     offers?: number;
@@ -128,7 +131,8 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('FROM faqs')) return [{ count: options.faqs ?? 0, updated_at: null }];
         if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, updated_at: null }];
         if (query.includes('FROM properties') && query.includes('tour_packages')) return [options.verticalCatalogs ?? {}];
-        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0 }];
+        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0 }];
+        if (query.includes('FROM vehicles')) return [{ count: options.vehicles ?? 0 }];
         if (query.includes('FROM products')) return [{ count: options.products ?? 0 }];
         if (query.includes('FROM orders')) return [{ count: options.orders ?? 0 }];
         if (query.includes('FROM commercial_offers')) return [{ count: options.offers ?? 0 }];
@@ -200,6 +204,35 @@ function check(overview: AgentQualityOverview, code: string) {
 }
 
 describe('AgentQualityService', () => {
+    it('identifies test-drive prerequisites even when the general agenda has rows', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
+        const result = await createHarness({ config, services: 1, slots: 1, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'tool_appointments').status).toBe('pass');
+        expect(check(result, 'tool_vehicles').status).toBe('pass');
+        expect(check(result, 'test_drive_service')).toMatchObject({ status: 'fail', href: '/admin/appointments' });
+        expect(check(result, 'test_drive_staff').status).toBe('fail');
+    });
+    it('keeps the intended test-drive mission pending when booking permission is disabled', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: false } } };
+        const result = await createHarness({ config, vehicles: 1, testDriveServices: 1, testDriveSlots: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'test_drive_permissions')).toMatchObject({ status: 'fail', href: `/admin/agent/${AGENT_ID}` });
+    });
+    it('reports verified setup without claiming that the vehicle task has passed evaluation', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
+        const result = await createHarness({ config, vehicles: 1, testDriveServices: 1, testDriveSlots: 1, latestEval: null, latestSimulation: null }).service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['tool_vehicles', 'test_drive_service', 'test_drive_staff', 'test_drive_permissions']) expect(check(result, code).status).toBe('pass');
+        expect(result.tested.status).not.toBe('ready');
+    });
+    it('does not require booking for a mission explicitly limited to finding vehicles', async () => {
+        const config = { ...completeConfig, mission: { intentKeys: ['find_vehicle'] }, tools: { vehicles: { enabled: true } } };
+        const result = await createHarness({ config, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['test_drive_service', 'test_drive_staff', 'test_drive_permissions']) expect(check(result, code).status).toBe('not_applicable');
+    });
+    it('does not present failed inventory or schedule probes as empty data', async () => {
+        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
+        const result = await createHarness({ config, failedQueries: ['FROM vehicles', 'availability_slots'] }).service.getOverview(TENANT_ID, AGENT_ID);
+        for (const code of ['tool_vehicles', 'test_drive_service', 'test_drive_staff']) expect(check(result, code)).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+    });
     beforeAll(() => jest.useFakeTimers().setSystemTime(NOW));
     afterAll(() => jest.useRealTimers());
 

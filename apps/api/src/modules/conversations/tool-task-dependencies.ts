@@ -4,6 +4,7 @@ import { isBusinessWriteTool } from './tool-policy-registry';
 /** Core lifecycles also apply when they are not a vertical's primary mission. */
 export const CORE_PREREQUISITES: Readonly<Record<string, readonly string[]>> = {
     create_appointment: ['list_services', 'check_availability'],
+    schedule_test_drive: ['search_vehicles', 'get_vehicle_details', 'list_services', 'check_availability'],
     cancel_appointment: ['list_customer_appointments', 'get_appointment_details'],
     reschedule_appointment: ['list_customer_appointments', 'get_appointment_details', 'check_availability'],
     create_payment_link: ['get_payment_status'],

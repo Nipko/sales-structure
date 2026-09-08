@@ -9520,7 +9520,7 @@
       "sold": "Veículo marcado como vendido"
     },
     "testDrives": {
-      "empty": "Ainda não há test drives agendados. O agente de IA os agenda quando um cliente pede.",
+      "empty": "Ainda não há test drives. Ative a agenda e configure um serviço presencial, um atendente e seus horários para que o agente possa reservar.",
       "customer": "Cliente",
       "vehicle": "Veículo",
       "date": "Data",
@@ -9531,8 +9531,16 @@
         "confirmed": "Confirmado",
         "completed": "Concluído",
         "cancelled": "Cancelado",
-        "no_show": "Não compareceu"
-      }
+        "no_show": "Não compareceu",
+        "pending": "Aguardando aprovação",
+        "pending_payment": "Aguardando pagamento",
+        "expired": "Expirado",
+        "unknown": "Estado a verificar"
+      },
+      "agendaHint": "Últimos 100 test drives. As novas reservas usam a agenda; os registros antigos são identificados como históricos.",
+      "openAgenda": "Abrir agenda",
+      "legacyRecord": "Registro histórico: revise antes de considerar uma reserva vigente.",
+      "loadError": "Não foi possível consultar os test drives. Tente novamente para verificar as reservas."
     }
   },
   "treatmentPlans": {
@@ -11822,7 +11830,11 @@
         "refresh_eval": "O último teste de {agent} ficou desatualizado: a configuração mudou depois. Avalie de novo para medir o que está publicado hoje.",
         "collect_production_evidence": "Ainda não há conversas reais suficientes de {agent} para medir o desempenho. Siga usando e volte quando houver mais amostra.",
         "resolve_knowledge_gaps": "Houve perguntas que {agent} não conseguiu responder com o conhecimento disponível. Revise essas lacunas e adicione o conteúdo que falta.",
-        "generic": "Esta ação ficou aberta para {agent}. Abra a tela, corrija o que falta e o estado se atualiza sozinho."
+        "generic": "Esta ação ficou aberta para {agent}. Abra a tela, corrija o que falta e o estado se atualiza sozinho.",
+        "fix_tool_vehicles": "Adicione pelo menos um veículo disponível para que {agent} possa apresentar opções reais.",
+        "fix_test_drive_permissions": "A missão de {agent} inclui test drives. Ative a agenda e a permissão para agendar, ou ajuste a missão se o agente deve apenas informar sobre veículos.",
+        "fix_test_drive_service": "Crie um serviço presencial ou híbrido com duração fixa para test drives. Uma consulta online não permite reservar um veículo.",
+        "fix_test_drive_staff": "Atribua um usuário ativo do negócio e configure um período disponível suficiente para a duração do test drive. O horário exato é verificado ao reservar."
       }
     }
   },
@@ -12000,7 +12012,11 @@
       "after_hours_behavior": "Comportamento fora do horário",
       "llm_limits": "Limites de resposta do modelo",
       "vertical_tool": "Ferramenta operacional da indústria",
-      "unknown": "Controle de configuração"
+      "unknown": "Controle de configuração",
+      "tool_vehicles": "Estoque de veículos disponível",
+      "test_drive_permissions": "Permissão para reservar test drives",
+      "test_drive_service": "Serviço para test drives",
+      "test_drive_staff": "Atendente e disponibilidade para test drives"
     },
     "recommendations": {
       "fix": "Configure: {item}",
@@ -12090,7 +12106,11 @@
       "credentialIssue": "Estado da autorização",
       "credentialAffectedAssignments": "Canais que não podem enviar",
       "credentialWarningAssignments": "Canais para revisar",
-      "hasCredentialIssue": "Há um problema de autorização"
+      "hasCredentialIssue": "Há um problema de autorização",
+      "appointmentsEnabled": "Agenda ativada",
+      "canBook": "Pode agendar",
+      "compatibleServices": "Serviços compatíveis",
+      "compatibleAvailability": "Períodos de disponibilidade compatíveis"
     },
     "common": {
       "yes": "Sim",

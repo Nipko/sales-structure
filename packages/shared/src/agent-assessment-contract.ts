@@ -73,5 +73,5 @@ export const AGENT_SETUP_TASK_CHECKS: Readonly<Record<Exclude<AgentSetupTaskKey,
     knowledge: ['knowledge_coverage', 'rag_knowledge', 'rag_configuration', 'tool_faqs', 'tool_policies'],
     team: ['human_handoff_route'],
     hours: ['business_hours', 'after_hours_behavior'],
-    appointments: ['tool_appointments'],
+    appointments: ['tool_appointments', 'test_drive_permissions', 'test_drive_service', 'test_drive_staff'],
 };

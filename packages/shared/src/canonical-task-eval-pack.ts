@@ -3,6 +3,7 @@ import type { EvalActionAssertionSeed, EvalScenarioSeed } from './subtype-eval-p
 import type { IntentContract } from './vertical-domain-contract';
 import { repairTaskEvalScenarios } from './repair-task-eval-pack';
 import { catalogTaskEvalScenarios } from './catalog-task-eval-pack';
+import { vehicleTaskEvalScenarios } from './vehicle-task-eval-pack';
 
 type Domain = 'appointments' | 'class_bookings' | 'enrollments';
 const F = (name: string) => `{{fixture.${name}}}`;
@@ -59,6 +60,8 @@ export function canonicalTaskEvalScenarios(intent: IntentContract, language: Eva
     if (repair.length) return repair;
     const catalog = catalogTaskEvalScenarios(intent,language);
     if(catalog.length) return catalog;
+    const vehicle = vehicleTaskEvalScenarios(intent, language);
+    if (vehicle.length) return vehicle;
     const domain: Domain | undefined = intent.key === 'book_appointment' || intent.key === 'cancel_appointment' ? 'appointments'
         : intent.key === 'book_class' ? 'class_bookings' : intent.key === 'enrol_student' ? 'enrollments' : undefined;
     if (!domain || !intent.commits) return [];

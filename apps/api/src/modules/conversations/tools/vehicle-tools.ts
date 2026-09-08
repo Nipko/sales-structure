@@ -48,17 +48,21 @@ export const VEHICLE_TOOLS: ToolDefinition[] = [
     // announced "te agendo la prueba de manejo" and nothing was ever recorded.
     {
         name: 'schedule_test_drive',
-        description: 'Book a test drive for a specific vehicle. This is how a test drive actually gets recorded — never tell the customer their test drive is scheduled unless this succeeded. Call it only after the customer chose a vehicle (vehicleId from search_vehicles) and agreed on a day and time. If the slot is taken the call fails and you must offer another time.',
+        description: 'Create a test-drive appointment in the shared agenda. Requires the appointments capability, an explicit configured service from list_services and a staff/time slot from check_availability for this vehicle. Present vehicle, duration, price and payment terms before confirmation. Report the returned status exactly: pending or awaiting payment is not confirmed. Use list_customer_appointments/get_appointment_details, reschedule_appointment and cancel_appointment for follow-up.',
         parameters: {
             type: 'object',
             properties: {
                 vehicleId: { type: 'string', description: 'Vehicle UUID returned by search_vehicles' },
+                serviceId: { type:'string',description:'Configured in-person appointment service UUID from list_services; never invent one' },
+                staffId: { type:'string',description:'Availability-owner user UUID returned by check_availability for this vehicle and service' },
                 contactName: { type: 'string', description: 'Full name of the person who will drive' },
+                contactEmail: {type:'string',description:'Optional customer email for calendar invitation'},
+                contactPhone: {type:'string',description:'Optional customer phone'},
                 scheduledDate: { type: 'string', description: 'Date in YYYY-MM-DD' },
                 scheduledTime: { type: 'string', description: 'Time in HH:MM (24h), local to the dealership' },
                 notes: { type: 'string', description: 'Anything the team should know (optional)' },
             },
-            required: ['vehicleId', 'contactName', 'scheduledDate', 'scheduledTime'],
+            required: ['vehicleId', 'serviceId', 'staffId', 'contactName', 'scheduledDate', 'scheduledTime'],
         },
     },
 ];

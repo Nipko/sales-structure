@@ -1,5 +1,8 @@
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
+import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
+import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
+import { updateVehicleAppointment } from '../appointments/vehicle-appointment-update';
 import { assertServedAgentAuthority, validServedAgentAuthority, VERSION_GUARDED_TOOLS, ServedAgentAuthorityError, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { educationToolError } from './education-tool-error';
 import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
@@ -357,7 +360,17 @@ export class AIToolExecutorService {
                 return this.authorityDenied(toolName, authorityDecision);
             }
 
-            if (toolName === 'create_appointment' && (opts?.executionContext?.mode === 'draft'
+            if(toolName==='schedule_test_drive') {
+                if(![args.vehicleId,args.serviceId,args.staffId].every(value=>typeof value==='string'&&AIToolExecutorService.UUID_PATTERN.test(value)))
+                    return {error:'test_drive_service_staff_vehicle_required',persisted:false};
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(args.scheduledDate || '') || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(args.scheduledTime || '')
+                    || typeof args.contactName !== 'string' || !args.contactName.trim()) return { error: 'test_drive_customer_and_time_required', persisted: false };
+            }
+            if (toolName === 'create_appointment' && args.vehicleId !== undefined) {
+                return { error: 'test_drive_tool_required', persisted: false,
+                    message: 'Use schedule_test_drive for a dealership vehicle. It requires both vehicle and appointment permissions.' };
+            }
+            if (['create_appointment','schedule_test_drive'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
                 || !persistenceDisabled(opts?.executionContext) || canonicalSandbox)) {
                 const serviceId = String(args.serviceId || '');
                 const byId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(serviceId);
@@ -368,9 +381,18 @@ export class AIToolExecutorService {
                 const terms = appointmentServiceTerms(rows[0]);
                 const termsHash = appointmentServiceTermsHash(terms);
                 if (!termsHash) return { error: 'appointment_service_terms_unavailable', persisted: false };
+                if (toolName === 'schedule_test_drive' && (terms.durationType !== 'fixed' || !['in_person', 'hybrid'].includes(terms.locationType))) {
+                    return { error: 'test_drive_service_contract_required', persisted: false };
+                }
                 // Discard any model-provided terms. The digest binds exact facts
                 // even though the legacy consent canonicalizer folds accents/case.
                 args = { ...args, serviceId: terms.serviceId, appointmentTerms: terms, appointmentTermsHash: termsHash };
+                if(args.vehicleId!==undefined){
+                    const vehicleId=appointmentVehicleId({vehicleId:args.vehicleId});
+                    const [vehicle]=await this.prisma.$queryRawUnsafe(`SELECT id,make,model,year,trim_level,vin,license_plate,status
+                        FROM "${schemaName}".vehicles WHERE id=$1::uuid`,vehicleId) as any[];
+                    args={...args,vehicleId,vehicleTerms:vehicleAppointmentTerms(vehicle)};
+                }
             }
 
             if (['place_catalog_order','cancel_catalog_order'].includes(toolName) && (opts?.executionContext?.mode === 'draft'
@@ -425,8 +447,8 @@ export class AIToolExecutorService {
                     return { ...proposal.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
                 }
                 if(args.catalogTerms && proposal.result.error==='confirmation_required') return {...proposal.result,...catalogTermsReviewResult(args.catalogTerms)};
-                if (toolName === 'create_appointment' && proposal.result.error === 'confirmation_required') {
-                    return { ...proposal.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
+                if (['create_appointment', 'schedule_test_drive'].includes(toolName) && proposal.result.error === 'confirmation_required') {
+                    return { ...proposal.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required'), vehicle: args.vehicleTerms };
                 }
                 if (toolName === 'enroll_student' && proposal.result.error === 'confirmation_required') {
                     return {...proposal.result,...enrollmentTermsReviewResult(args.enrollmentTerms,args.allowWaitlist===true)};
@@ -540,15 +562,18 @@ export class AIToolExecutorService {
                 executionState: opts?.executionState,
                 missionScope: opts?.missionScope,
                 draftMode: opts?.executionContext?.mode === 'draft',
+                // Keep server provenance for the approval ledger during isolated
+                // replay. Domain commands use the namespace lease, not live authority.
                 operationalScope: opts?.operationalScope,
+                sandboxNamespace: canonicalSandbox,
             });
             if (!controlDecision.allowed) {
                 if (args.repairTerms && controlDecision.result?.error === 'confirmation_required') {
                     return { ...controlDecision.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
                 }
                 if(args.catalogTerms && controlDecision.result?.error==='confirmation_required') return {...controlDecision.result,...catalogTermsReviewResult(args.catalogTerms)};
-                if (toolName === 'create_appointment' && controlDecision.result?.error === 'confirmation_required' && args.appointmentTerms) {
-                    return { ...controlDecision.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required') };
+                if (['create_appointment', 'schedule_test_drive'].includes(toolName) && controlDecision.result?.error === 'confirmation_required' && args.appointmentTerms) {
+                    return { ...controlDecision.result, ...appointmentTermsReviewResult(args.appointmentTerms, 'confirmation_required'), vehicle: args.vehicleTerms };
                 }
                 if(toolName==='enroll_student' && controlDecision.result?.error==='confirmation_required' && args.enrollmentTerms){
                     return {...controlDecision.result,...enrollmentTermsReviewResult(args.enrollmentTerms,args.allowWaitlist===true)};
@@ -614,10 +639,16 @@ export class AIToolExecutorService {
                     return this.listServices(schemaName);
 
                 case 'check_availability':
-                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox);
+                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId);
 
                 case 'create_appointment':
-                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope);
+                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
+
+                case 'schedule_test_drive':
+                    return this.createAppointment(schemaName, tenantId, contactId, {
+                        ...args, date: args.scheduledDate, time: args.scheduledTime,
+                        customerName: args.contactName, customerPhone: args.contactPhone, customerEmail: args.contactEmail,
+                    } as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
 
                 case 'cancel_appointment':
                     return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox, operationalScope);
@@ -663,9 +694,6 @@ export class AIToolExecutorService {
 
                 case 'send_vehicle_image':
                     return this.sendVehicleImage(schemaName, args.vehicleId);
-
-                case 'schedule_test_drive':
-                    return this.scheduleTestDrive(tenantId, args);
 
                 case 'place_catalog_order':
                     return this.placeCatalogOrder(schemaName, contactId, conversationId, args, executionIdempotencyKey, operationalScope);
@@ -1107,6 +1135,7 @@ export class AIToolExecutorService {
                 error: error.code, persisted: false, controlBlocked: true,
                 message: 'The agent configuration changed. Reload it and prepare a new proposal before executing this action.',
             };
+            if(error instanceof VehicleAppointmentError) return {error:error.vehicleCode,persisted:false,requiresReview:true};
             if(catalogCommitted) return {error:'reconciliation_required',persisted:true,retryable:false,shouldHandoff:true,
                 message:'The order operation committed but its acknowledgement could not be verified. Do not create another order or claim a refund. Re-read the owned order through the normal privacy and ownership checks.'};
             if(['place_catalog_order','cancel_catalog_order','get_catalog_order','list_my_catalog_orders'].includes(toolName)) {
@@ -1612,57 +1641,7 @@ export class AIToolExecutorService {
         }
     }
 
-    /** Full details of one vehicle (query-directa). */
-    /**
-     * Books a test drive — the dealership's actual sale step.
-     *
-     * `scheduleTestDrive` has existed in the vehicle service for months, with its
-     * own slot-conflict check, and was never exposed to the agent. So automotive
-     * tenants had an agent that could search, describe and photograph a car and
-     * then had nothing to close with: it said "te agendo la prueba" and nothing
-     * was recorded anywhere.
-     */
     private static readonly UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    private async scheduleTestDrive(tenantId: string, args: any): Promise<any> {
-        const UUID_RE = AIToolExecutorService.UUID_PATTERN;
-        if (!this.vehicleInventory) {
-            return { error: 'test_drive_unavailable', message: 'La agenda de pruebas de manejo no está disponible.' };
-        }
-        const vehicleId = String(args?.vehicleId || '');
-        if (!UUID_RE.test(vehicleId)) return { error: 'vehicle_not_found' };
-        const contactName = String(args?.contactName || '').trim();
-        if (!contactName) return { error: 'contact_name_required', message: 'Falta el nombre de quien va a manejar.' };
-        const scheduledDate = String(args?.scheduledDate || '').trim();
-        const scheduledTime = String(args?.scheduledTime || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) return { error: 'invalid_date', message: 'La fecha debe ser YYYY-MM-DD.' };
-        if (!/^\d{2}:\d{2}$/.test(scheduledTime)) return { error: 'invalid_time', message: 'La hora debe ser HH:MM.' };
-        try {
-            const drive = await this.vehicleInventory.scheduleTestDrive(tenantId, {
-                vehicleId,
-                contactName,
-                contactPhone: args?.contactPhone ? String(args.contactPhone) : undefined,
-                scheduledDate,
-                scheduledTime,
-                notes: args?.notes ? String(args.notes).slice(0, 500) : undefined,
-            });
-            return {
-                success: true,
-                testDrive: {
-                    id: drive?.id,
-                    vehicleId,
-                    date: scheduledDate,
-                    time: scheduledTime,
-                    status: drive?.status || 'scheduled',
-                },
-            };
-        } catch (e: any) {
-            // A taken slot is a normal outcome, not a failure to hide: the agent
-            // must offer another time instead of claiming the drive is booked.
-            this.logger.warn(`[Tool] schedule_test_drive failed: ${e.message}`);
-            return { error: 'slot_unavailable', message: e?.message || 'Ese horario ya está tomado.' };
-        }
-    }
 
     /**
      * Creates a real order from catalog products.
@@ -2724,7 +2703,7 @@ export class AIToolExecutorService {
         }
     }
 
-    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease): Promise<any> {
+    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string): Promise<any> {
         const directory = await tenantActorDirectory(this.prisma,schema,namespace);
         const resolvedStaffId = staffId
             ? await assertActiveTenantUser(this.prisma, schema, staffId, namespace)
@@ -2750,7 +2729,7 @@ export class AIToolExecutorService {
         // 10 mesas): la ruta pública ya lo respeta y la de chat lo ignoraba, así
         // que un salón con 4 estilistas rechazaba al segundo cliente de las 15:00.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max, max_concurrent FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max, max_concurrent, location_type FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
             resolvedServiceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -2758,6 +2737,9 @@ export class AIToolExecutorService {
         const maxConcurrent = Math.max(1, Number(svcRows[0].max_concurrent) || 1);
 
         const durationType = svcRows[0].duration_type || 'fixed';
+        if (vehicleId && (durationType !== 'fixed' || !['in_person', 'hybrid'].includes(svcRows[0].location_type))) {
+            return { available: false, slots: [], error: 'test_drive_service_contract_required' };
+        }
 
         // `open` is not an appointment duration. It must be migrated to the
         // explicit nightly/day-capacity/session/resource model before booking.
@@ -2835,10 +2817,11 @@ export class AIToolExecutorService {
         // del negocio: 4 sillas de corte no son 4 salas de depilación).
         const existing: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT assigned_to, service_id,
-                    to_char(start_at, 'HH24:MI') as start_time,
-                    to_char(end_at, 'HH24:MI') as end_time
+                    to_char(GREATEST(start_at,$1::date), 'HH24:MI') as start_time,
+                    CASE WHEN end_at >= $1::date + interval '1 day' THEN '24:00' ELSE to_char(end_at, 'HH24:MI') END as end_time
              FROM "${schema}".appointments
-             WHERE DATE(start_at) = $1::date AND status NOT IN ('cancelled')`,
+             WHERE start_at < $1::date + interval '1 day' AND end_at > $1::date
+               AND status NOT IN ('cancelled') AND ${holdStillAliveSql()}`,
             date,
         );
 
@@ -2944,6 +2927,13 @@ export class AIToolExecutorService {
             }
         }
 
+        if(vehicleId){
+            const busy=await vehicleAppointmentBusyIntervals((sql,params)=>this.prisma.executeInTenantSchema(schema,sql,params as any[]),vehicleId,date);
+            for(let index=availableSlots.length-1;index>=0;index--){
+                const slot=availableSlots[index],start=`${date}T${slot.time}:00`,end=`${date}T${slot.endTime}:00`;
+                if(!slot.userId || busy.some(block=>start<block.end&&end>block.start))availableSlots.splice(index,1);
+            }
+        }
         // Slot hold (D3): ofrecer sin reservar es race. Al mostrar slots, pre-reservar 2 min con NX
         // para que segundo cliente no vea mismo hueco libre y luego falle al crear.
         for (const s of availableSlots.slice(0, 6)) {
@@ -3163,11 +3153,12 @@ export class AIToolExecutorService {
 
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
-        args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string; appointmentTerms?: AppointmentServiceTerms },
+        args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string; appointmentTerms?: AppointmentServiceTerms; vehicleTerms?: VehicleAppointmentTerms; vehicleId?: string },
         conversationId?: string,
         evalMode?: boolean,
         namespace?: EvalNamespaceLease,
         operationalScope?: ServedAgentAuthority,
+        executionIdempotencyKey?: string,
     ): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
@@ -3274,6 +3265,7 @@ export class AIToolExecutorService {
         const meetingUrl: string | undefined = svc.meeting_link || undefined;
         const appointmentMetadata = {
             ...(subject.metadata || {}),
+            ...(args.vehicleId ? { vehicleId: args.vehicleId } : {}),
             ...(evalMode ? { source: 'eval_gate', timezone: await this.getTenantTimezone(schema, namespace) } : {}),
             isOnline,
             ...(meetingUrl ? { meetingUrl } : {}),
@@ -3300,12 +3292,14 @@ export class AIToolExecutorService {
                 location: location || undefined, notes: description,
                 metadata: appointmentMetadata, source: 'ai',
             }, { suppressEffects: evalMode === true, confirmWithoutPayment: true, sandboxNamespace: namespace,
-                expectedServiceTerms: args.appointmentTerms, operationalScope });
+                expectedServiceTerms: args.appointmentTerms, operationalScope, vehicleRequestKey:executionIdempotencyKey,
+                expectedVehicleTerms:args.vehicleTerms });
             return {
                 success: true,
                 operationStatus: apt.awaitingPayment ? 'awaiting_payment' : apt.status,
                 appointment: {
                     id: apt.id, service: apt.serviceName, date: args.date, time: args.time,
+                    ...(apt.metadata?.vehicleId?{vehicleId:apt.metadata.vehicleId,vehicleLabel:apt.metadata.vehicleTerms?.label}:{}),
                     status: apt.status, customerName: args.customerName, meetingUrl,
                     awaitingPayment: apt.awaitingPayment === true,
                     amountDueToConfirm: apt.amountDueToConfirm,
@@ -3318,6 +3312,11 @@ export class AIToolExecutorService {
             };
         } catch (error) {
             if (error instanceof AppointmentTermsChangedError) return appointmentTermsReviewResult(error.currentTerms);
+            if(error instanceof ConflictException){
+                const code=(error.getResponse() as any)?.error;
+                if(typeof code==='string'&&(code.startsWith('test_drive_')||code.startsWith('appointment_vehicle_')))
+                    return {error:code,persisted:false,requiresReview:true};
+            }
             if (error instanceof AppointmentSlotConflictError || error instanceof ConflictException) {
                 return { error: 'That time slot was just taken. Check availability again.', retryable: true };
             }
@@ -3403,10 +3402,10 @@ export class AIToolExecutorService {
                 const probe = new Date(from);
                 probe.setDate(probe.getDate() + i);
                 const date = probe.toISOString().slice(0, 10);
-                const avail = await this.checkAvailability(schema, date, rows[0].service_id, undefined, namespace)
+                const avail = await this.checkAvailability(schema, date, rows[0].service_id, undefined, namespace, appointmentVehicleId(rows[0].metadata))
                     .catch(() => null);
                 for (const s of (avail?.slots || []).slice(0, 3 - alternatives.length)) {
-                    alternatives.push({ date, time: s.time, staffName: s.staffName });
+                    alternatives.push({ date, time: s.time, staffName: s.staffName, staffId: s.staffId });
                 }
             }
         }
@@ -3422,7 +3421,7 @@ export class AIToolExecutorService {
 
     private async listCustomerAppointments(schema: string, contactId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT a.id, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at,
+            `SELECT a.id, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, a.metadata,
                     ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
                     to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time
              FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
@@ -3438,6 +3437,8 @@ export class AIToolExecutorService {
                 date: r.local_date,
                 time: r.local_time,
                 status: r.status,
+                vehicleId: r.metadata?.vehicleId || r.metadata?.vehicle_id,
+                vehicleLabel: r.metadata?.vehicleTerms?.label,
                 customerName: r.customer_name,
                 paymentStatus: r.payment_status, holdExpiresAt: r.hold_expires_at,
                 amountDueToConfirm: r.amount_due ?? r.price, currency: r.currency,
@@ -5646,7 +5647,9 @@ export class AIToolExecutorService {
     ): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, assigned_to,
-                    google_event_id, outlook_event_id, metadata
+                    google_event_id, outlook_event_id, metadata, location, notes,
+                    to_char(start_at,'YYYY-MM-DD"T"HH24:MI:SS') AS start_local,
+                    to_char(end_at,'YYYY-MM-DD"T"HH24:MI:SS') AS end_local, updated_at::text AS update_revision
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -5678,6 +5681,13 @@ export class AIToolExecutorService {
             newEndAt = temporal.endsAtLocal;
         } catch (error: unknown) { return this.appointmentTemporalFailure(error); }
 
+        if (appointmentVehicleId(apt.metadata) && apt.start_local === newStartAt && apt.end_local === newEndAt) {
+            return { success: true, alreadyRescheduled: true, appointment: {
+                id: appointmentId, service: apt.service_name, date: newDate, time: newTime, status: apt.status,
+                vehicleId: appointmentVehicleId(apt.metadata), vehicleLabel: apt.metadata?.vehicleTerms?.label,
+            } };
+        }
+
         const noteAppend = reason
             ? `\n[Rescheduled: ${reason}]`
             : '\n[Rescheduled by customer]';
@@ -5704,9 +5714,18 @@ export class AIToolExecutorService {
                     // Competes with create/payment settlement under the same DB
                     // capacity lock, even when another writer does not use Redis.
                     await assertServedAgentAuthority(query, schema, operationalScope);
+                    if (appointmentVehicleId(apt.metadata)) {
+                        await updateVehicleAppointment(query, schema, apt, {
+                            startAt: newStartAt, endAt: newEndAt, assignedTo, status: apt.status,
+                            notes: (apt.notes || '') + noteAppend, location: apt.location,
+                        }, sandboxNamespace);
+                        if (apt.status !== 'pending_payment') await CalendarSyncOutboxService.enqueueWithTransaction(query, appointmentId, 'upsert');
+                        return [{ id: appointmentId }];
+                    }
                     await lockAndAssertAppointmentCapacity(query, {
                         schemaName: schema, serviceId: apt.service_id, staffUserId: assignedTo,
                         startAt: newStartAt, endAt: newEndAt, excludeAppointmentId: appointmentId,
+                        vehicleId:appointmentVehicleId(apt.metadata),
                     });
                     const result = await query<any[]>(
                         `UPDATE appointments
@@ -5747,6 +5766,9 @@ export class AIToolExecutorService {
                 }
             }
         } catch (error: unknown) {
+            if(error instanceof VehicleAppointmentError)return {error:error.vehicleCode,persisted:false,requiresReview:true};
+            if (error instanceof ConflictException) return { error: (error.getResponse() as any)?.error || 'appointment_changed_concurrently', persisted: false, requiresReview: true };
+            if (error instanceof AppointmentTermsChangedError) return appointmentTermsReviewResult(error.currentTerms);
             if (error instanceof AppointmentSlotConflictError) return {
                 error: 'appointment_slot_unavailable', retryable: true,
                 message: 'That new slot is no longer available. Check availability and ask the customer to choose another time.',
@@ -5788,12 +5810,14 @@ export class AIToolExecutorService {
             success: true,
             message: 'Appointment rescheduled successfully',
             calendarSynced: false,
-            calendarSyncState: 'pending',
+            calendarSyncState: apt.status === 'pending_payment' ? 'awaiting_payment' : 'pending',
             appointment: {
                 id: appointmentId,
                 service: apt.service_name,
                 date: newDate,
                 time: newTime,
+                status: apt.status,
+                vehicleId: appointmentVehicleId(apt.metadata), vehicleLabel: apt.metadata?.vehicleTerms?.label,
             },
         };
     }
@@ -5831,6 +5855,8 @@ export class AIToolExecutorService {
             time: apt.local_time,
             endTime: apt.local_end_time,
             status: apt.status,
+            vehicleId: metadata.vehicleId || metadata.vehicle_id,
+            vehicleLabel: metadata.vehicleTerms?.label,
             paymentStatus: apt.payment_status, holdExpiresAt: apt.hold_expires_at,
             amountDueToConfirm: apt.amount_due ?? apt.price, currency: apt.currency,
             payableReference: apt.status === 'pending_payment' && new Date(apt.hold_expires_at).getTime() > Date.now()

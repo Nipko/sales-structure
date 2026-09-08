@@ -6,7 +6,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { Cron } from '@nestjs/schedule';
 import { CronLockService } from '../redis/cron-lock.service';
-import { lockAndAssertAppointmentCapacity, AppointmentSlotConflictError, AppointmentServiceUnavailableError } from './appointment-capacity.util';
+import { lockAndAssertAppointmentCapacity, lockAppointmentCapacityResources, AppointmentSlotConflictError, AppointmentServiceUnavailableError } from './appointment-capacity.util';
+import { appointmentVehicleId, VehicleAppointmentError } from './vehicle-appointment-capacity';
 
 /**
  * El cliente pagó la seña: la cita se confirma y recién ahí entra a la agenda.
@@ -67,13 +68,20 @@ export class AppointmentPaymentListener {
             let unavailable = false;
             const confirmed = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
                 await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schemaName}`]);
-                [appointment] = await query<any[]>(
-                    `SELECT id, service_id, assigned_to,
+                const appointmentSql = `SELECT id, service_id, assigned_to,
                             to_char(start_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS start_at,
                             to_char(end_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS end_at, status, payment_status,
-                            contact_id, conversation_id, metadata FROM appointments WHERE id = $1::uuid FOR UPDATE`,
-                    [event.entityId],
-                );
+                            contact_id, conversation_id, metadata, updated_at::text AS update_revision FROM appointments WHERE id = $1::uuid`;
+                const [snapshot] = await query<any[]>(appointmentSql, [event.entityId]);
+                if (!snapshot || snapshot.payment_status !== 'paid') return false;
+                // Match create/reschedule ordering: resource locks before the row.
+                // Never hold a row while waiting for a resource owned by its editor.
+                await lockAppointmentCapacityResources(query, {
+                    schemaName, serviceId: snapshot.service_id, staffUserId: snapshot.assigned_to,
+                    startAt: snapshot.start_at, endAt: snapshot.end_at, vehicleId: appointmentVehicleId(snapshot.metadata),
+                });
+                [appointment] = await query<any[]>(`${appointmentSql} FOR UPDATE`, [event.entityId]);
+                if (JSON.stringify(snapshot) !== JSON.stringify(appointment)) return false;
                 // Only settlement recorded on this tenant-owned row can confirm it.
                 if (!appointment || appointment.payment_status !== 'paid' || appointment.metadata?.source === 'eval_gate') return false;
                 if (await operationalContactWasErased(query,appointment.contact_id)) return false;
@@ -84,12 +92,14 @@ export class AppointmentPaymentListener {
                 }
                 if (!['pending_payment','expired'].includes(appointment.status)) return false;
                 try {
+                    if (appointmentVehicleId(appointment.metadata) && !appointment.metadata?.vehicleTerms) throw new VehicleAppointmentError('test_drive_legacy_review_required');
                     await lockAndAssertAppointmentCapacity(query, {
                         schemaName, serviceId: appointment.service_id, staffUserId: appointment.assigned_to,
                         startAt: appointment.start_at, endAt: appointment.end_at, excludeAppointmentId: appointment.id,
+                        vehicleId: appointmentVehicleId(appointment.metadata), expectedVehicleTerms: appointment.metadata?.vehicleTerms,
                     });
                 } catch (error) {
-                    if (!(error instanceof AppointmentSlotConflictError) && !(error instanceof AppointmentServiceUnavailableError)) throw error;
+                    if (!(error instanceof AppointmentSlotConflictError) && !(error instanceof AppointmentServiceUnavailableError) && !(error instanceof VehicleAppointmentError)) throw error;
                     unavailable = !appointment.metadata?.paymentConfirmationIssue;
                     await query(`UPDATE appointments SET metadata = COALESCE(metadata, '{}'::jsonb)
                         || jsonb_build_object('paymentConfirmationIssue', 'availability_requires_review'), updated_at = NOW()

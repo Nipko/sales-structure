@@ -2563,7 +2563,7 @@ export const api = {
         const q = qs.toString();
         return apiGet(`/vehicles/${tenantId}/test-drives/list${q ? `?${q}` : ''}`);
     },
-    scheduleVehicleTestDrive: (tenantId: string, data: { vehicleId: string; contactName: string; contactPhone?: string; scheduledDate: string; scheduledTime: string; notes?: string }) =>
+    scheduleVehicleTestDrive: (tenantId: string, data: { vehicleId: string; contactId: string; serviceId: string; staffId: string; requestKey: string; conversationId?: string; contactName: string; contactPhone?: string; contactEmail?: string; scheduledDate: string; scheduledTime: string; notes?: string }) =>
         apiPost(`/vehicles/${tenantId}/test-drives`, data),
 
     // ─── Vehicle rentals & pet boarding ───

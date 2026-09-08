@@ -37,7 +37,10 @@ describe('canonical appointment settlement', () => {
         const h = harness(); await h.listener.onPaid(event);
         expect(h.state().status).toBe('confirmed');
         expect(h.prisma.executeInTenantSchema).not.toHaveBeenCalled();
-        expect(h.query.mock.calls.find(([sql])=>sql.includes('FROM appointments WHERE id'))?.[0]).toContain('FOR UPDATE');
+        const resourceLock = h.query.mock.calls.findIndex(([sql]) => sql.includes('pg_advisory_xact_lock('));
+        const rowLock = h.query.mock.calls.findIndex(([sql]) => sql.includes('FROM appointments WHERE id') && sql.includes('FOR UPDATE'));
+        expect(resourceLock).toBeGreaterThanOrEqual(0);
+        expect(rowLock).toBeGreaterThan(resourceLock);
         expect(h.query.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(true);
         expect(h.enqueue).toHaveBeenCalledWith(expect.any(Function), appointmentId, 'upsert');
         expect(h.notifier.recoverTenant).toHaveBeenCalledTimes(1);

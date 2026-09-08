@@ -147,6 +147,8 @@ export interface ToolExecutionControlRequest {
     /** Only the operational runtime can supply this reviewed agent revision. */
     draftScope?: DraftActionScope;
     operationalScope?: ServedAgentAuthority;
+    /** Internal fixture lease only; never accepted from tool arguments. */
+    sandboxNamespace?: import('../simulation/isolated-eval-namespace').EvalNamespaceLease;
     /** Server-owned sandbox state; never deserialized from a customer/model argument. */
     executionState?: { get(key: string): Promise<string | null> };
     missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
@@ -1479,6 +1481,13 @@ export class ToolExecutionControlService {
                 error: 'identity_context_required',
                 message: 'Esta gestión sensible requiere una conversación vinculada y verificación de identidad.',
             };
+        }
+        if (request.sandboxNamespace) {
+            const { hasEvalIdentityFixture } = await import('../simulation/eval-identity-fixture');
+            const verified = await hasEvalIdentityFixture(this.prisma, { ...request, conversationId: request.conversationId,
+                sandboxNamespace: request.sandboxNamespace });
+            return verified ? null : { error: 'eval_identity_fixture_required', persisted: false, needsVerification: true,
+                message: 'La evaluación no dispone de una identidad sintética verificada para esta consulta. No se envió ningún código.' };
         }
         if (await this.chatIdentity.isVerified(request.conversationId, request.contactId)) return null;
 

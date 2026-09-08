@@ -8,6 +8,7 @@ import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.process
 import { DISPATCH_OUTBOX_DDL, type DispatchBinding, type DispatchItem } from './agent-dispatch-outbox';
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import type { StrictDispatchOutcome } from './strict-dispatch-transport';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 const redisUrl = process.env.DISPATCH_QUEUE_TEST_REDIS_URL;
@@ -56,8 +57,7 @@ const ready = !!databaseUrl && !!redisUrl;
         connection = { host: rUrl.hostname, port: Number(rUrl.port) };
 
         client = new PrismaClient({ datasourceUrl: databaseUrl });
-        await client.$executeRawUnsafe(
-            'CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN,language TEXT)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe(
             'INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)', tenantId, schema);
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);

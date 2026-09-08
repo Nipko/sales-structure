@@ -7,6 +7,7 @@ import { DISPATCH_MAX_ATTEMPTS, DISPATCH_OUTBOX_DDL, redactDispatchOutbox,
 import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { createRuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 import { learningSnapshotHash, type RuntimeLearningExample } from '../learning/learning-contracts';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
@@ -27,8 +28,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         if (!['localhost', '127.0.0.1'].includes(url.hostname) || !url.pathname.endsWith('_eval_isolation'))
             throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: databaseUrl });
-        await client.$executeRawUnsafe(
-            'CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN,language TEXT)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe(
             'INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)', tenantId, schema);
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);

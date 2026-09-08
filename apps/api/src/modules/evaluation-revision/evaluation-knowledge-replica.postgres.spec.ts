@@ -14,6 +14,7 @@ import { captureKnowledgeReplica, disposeKnowledgeReplica, knowledgeReplicaSchem
 import { EvaluationRevisionService } from './evaluation-revision.service';
 import { revisionHash } from './evaluation-revision';
 import { isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
 (url ? describe : describe.skip)('RAG replicas through PostgreSQL/pgvector and canonical readers', () => {
@@ -45,7 +46,7 @@ const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
         await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         const extensions = await sql("SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='vector'");
         if (extensions.length !== 1 || extensions[0].nspname !== 'public') throw new Error('disposable_public_pgvector_required');
-        await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN DEFAULT true)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)', tenantId, schema);
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         const ddl = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8').replaceAll('{{SCHEMA_NAME}}', schema);

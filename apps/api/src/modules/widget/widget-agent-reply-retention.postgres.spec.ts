@@ -8,6 +8,7 @@ import { learningHash, learningSnapshotHash } from '../learning/learning-contrac
 import { retireLearningReleases } from '../learning/learning-evaluation-retention';
 import { ComplianceService } from '../compliance/compliance.service';
 import { redactWidgetAgentReplies, WIDGET_AGENT_REPLY_DDL } from './widget-agent-reply-retention';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
 (databaseUrl ? describe : describe.skip)('Widget reply retention with real PostgreSQL/Prisma', () => {
@@ -29,7 +30,7 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         if (!['localhost','127.0.0.1'].includes(url.hostname) || !url.pathname.endsWith('_eval_isolation'))
             throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: databaseUrl });
-        await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name,is_active) VALUES($1::uuid,$2,true)',tenantId,schema);
         for (const name of [schema,foreign]) await client.$executeRawUnsafe(`CREATE SCHEMA "${name}"`);
         prisma = Object.create(PrismaService.prototype);

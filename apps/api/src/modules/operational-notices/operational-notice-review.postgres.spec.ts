@@ -7,6 +7,7 @@ import { OperationalNoticeReviewService } from './operational-notice-review.serv
 import { OperationalNoticeService } from './operational-notice.service';
 import { eraseOperationalContactNotices } from './operational-notice-erasure';
 import type { NoticeReviewInput } from './operational-notice-review.contracts';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const url=process.env.OPERATIONAL_NOTICE_REVIEW_TEST_DATABASE_URL;
 (url?describe:describe.skip)('Operational notice review on PostgreSQL with the Prisma adapter',()=>{
@@ -17,8 +18,7 @@ const url=process.env.OPERATIONAL_NOTICE_REVIEW_TEST_DATABASE_URL;
     beforeAll(async()=>{
         const parsed=new URL(url!);if(!['127.0.0.1','localhost'].includes(parsed.hostname)||!parsed.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
         client=new PrismaClient({datasourceUrl:url});
-        await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT NOT NULL)');
-        await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.users(id UUID PRIMARY KEY,tenant_id UUID,is_active BOOLEAN,role TEXT,first_name TEXT,last_name TEXT)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)',tenantId,schema);
         for(const [id,role,owner] of [[admin,'tenant_admin',tenantId],[supervisor,'tenant_supervisor',tenantId],[agent,'tenant_agent',tenantId],[foreign,'tenant_admin',randomUUID()],[superAdmin,'super_admin',null]])
             await client.$executeRawUnsafe("INSERT INTO public.users(id,role,tenant_id,is_active,first_name,last_name) VALUES($1::uuid,$2,$3::uuid,true,'Synthetic','Reviewer')",id,role,owner);

@@ -11,6 +11,7 @@ import { serviceCatalogCaptureDatabase, type CaptureDatabase } from './evaluatio
 import { EvaluationRevisionService } from './evaluation-revision.service';
 import { agentTurnFixture, publishTools } from '../conversations/__fixtures__/agent-turn.fixture';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 (url ? describe : describe.skip)('Captured FAQs/policies through canonical PostgreSQL readers', () => {
@@ -29,7 +30,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
             $queryRawUnsafe: client.$queryRawUnsafe.bind(client), $executeRawUnsafe: client.$executeRawUnsafe.bind(client) });
         database = serviceCatalogCaptureDatabase(prisma);
         await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
-        await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN DEFAULT true)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)', tenantId, schema);
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         const ddl = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8').replaceAll('{{SCHEMA_NAME}}', schema);

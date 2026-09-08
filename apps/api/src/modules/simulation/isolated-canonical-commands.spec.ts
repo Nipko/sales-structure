@@ -30,6 +30,7 @@ import { evaluationNamespaceTimezone } from './eval-temporal-context';
 import { prepareCanonicalEvalFixtures } from './eval-canonical-fixtures';
 import { PrismaClient } from '@prisma/client';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('canonical domain commands in a disposable PostgreSQL namespace', () => {
@@ -78,9 +79,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             getTenantSchemaName: async()=>source,
         };
         await query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
-        await query('CREATE TABLE IF NOT EXISTS public.tenants (id uuid PRIMARY KEY,schema_name text NOT NULL)');
-        await query('ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true');
-        await query('CREATE TABLE IF NOT EXISTS public.users (id uuid PRIMARY KEY,tenant_id uuid,is_active boolean,first_name text,last_name text)');
+        await ensureSyntheticGlobalTables(sql => query(sql));
         await query('INSERT INTO public.tenants(id,schema_name) VALUES($1,$2)',[tenantId,source]);
         await query(`CREATE SCHEMA "${source}"`);
         // Use the checked-in domain DDL, including its later column migrations.

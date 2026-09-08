@@ -29,6 +29,7 @@ import { ToolExecutionControlService } from './tool-execution-control.service';
 import { sealEvaluationSnapshot, type AgentEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import { ComplianceService } from '../compliance/compliance.service';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
 const REGISTRY = 'public.evaluation_knowledge_usages';
@@ -73,7 +74,7 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
         await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         const vector = await sql("SELECT 1 FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='vector' AND n.nspname='public'");
         if (vector.length !== 1) throw new Error('disposable_public_pgvector_required');
-        await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN DEFAULT true)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         for (const [column, type] of Object.entries({ settings: "JSONB DEFAULT '{}'", industry: 'TEXT', language: "TEXT DEFAULT 'es'",
             operating_currency: 'TEXT', billing_country: 'TEXT', operating_country: 'TEXT', operating_timezone: 'TEXT',
             default_locale: 'TEXT', phone_region: 'TEXT', address_schema_id: 'TEXT', country_pack_id: 'TEXT', country_pack_version: 'TEXT' }))

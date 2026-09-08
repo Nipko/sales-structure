@@ -12,6 +12,7 @@ import { disposeKnowledgeReplica, knowledgeReplicaSchema, knowledgeSourceRevisio
     type EvaluationKnowledgeReplica } from './evaluation-knowledge-replica';
 import { acquireKnowledgeReplica, bootstrapKnowledgeReplicaLifecycle, reapKnowledgeReplicas,
     releaseKnowledgeReplica, retireKnowledgeReplicasInTransaction } from './evaluation-knowledge-lifecycle';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const url = process.env.KNOWLEDGE_MEMORY_TEST_DATABASE_URL;
 const REGISTRY = 'public.evaluation_knowledge_usages';
@@ -39,7 +40,7 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
         await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         const vectorExtension = await sql("SELECT 1 FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='vector' AND n.nspname='public'");
         if (vectorExtension.length !== 1) throw new Error('disposable_public_pgvector_required');
-        await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN DEFAULT true)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe('ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true');
         await sql('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)', tenantId, schema);
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);

@@ -11,6 +11,7 @@ import {
     readHandoffReceipt,
     recordHandoffReceipt,
 } from './handoff-receipt';
+import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
@@ -57,8 +58,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             throw new Error('disposable_loopback_database_required');
         client = new PrismaClient({ datasourceUrl: databaseUrl });
         second = new PrismaClient({ datasourceUrl: databaseUrl });
-        await client.$executeRawUnsafe(
-            'CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT,is_active BOOLEAN,language TEXT)');
+        await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         await client.$executeRawUnsafe(
             'INSERT INTO public.tenants(id,schema_name,is_active,language) VALUES($1::uuid,$2,true,$3)',
             tenantId, schema, 'es');

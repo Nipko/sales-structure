@@ -7,8 +7,10 @@ import { RedisService } from '../redis/redis.service';
 import {
     DISPATCH_OUTBOX_DDL, DispatchOutboxError,
     admitDispatch, expireDispatchLeases, markDispatchQueued, prepareDispatchBatch,
-    readDispatchBatchForInbound, readDispatchRow, readNextDispatchInBatch, readPendingDispatch,
-    recordDispatchPreflightFailure, settleDispatch,
+    readDispatchBacklog, readDispatchBatchForInbound, readDispatchReconciliation, readDispatchRow,
+    readNextDispatchInBatch, readPendingDispatch, recordDispatchPreflightFailure,
+    resolveDispatchReconciliation, settleDispatch,
+    type DispatchReconciliationBacklog, type DispatchReconciliationEntry, type DispatchResolution,
     type DispatchBinding, type DispatchItem, type DispatchOutcome, type DispatchRow,
 } from './agent-dispatch-outbox';
 import {
@@ -232,6 +234,37 @@ export class AgentDispatchOutboxStore {
         return this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return settleDispatch(query, schema, { dispatchId, leaseToken, outcome });
+        });
+    }
+
+    /** The uncertain effects waiting for a person, oldest first. */
+    async reconciliation(tenantId: string, options: { limit?: number; search?: string | null } = {}):
+        Promise<DispatchReconciliationEntry[]> {
+        const schema = await this.schemaFor(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            await this.privacy(query, schema, tenantId);
+            return readDispatchReconciliation(query, schema, options);
+        });
+    }
+
+    /** How big the backlog is and how old, for an alert to act on. */
+    async backlog(tenantId: string): Promise<DispatchReconciliationBacklog> {
+        const schema = await this.schemaFor(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            await this.privacy(query, schema, tenantId);
+            return readDispatchBacklog(query, schema);
+        });
+    }
+
+    /** Apply a person's decision about an uncertain effect. */
+    async resolve(tenantId: string, input: {
+        dispatchId: string; resolution: DispatchResolution; evidence: string;
+        actorId?: string | null; receipt?: string | null;
+    }): Promise<DispatchRow> {
+        const schema = await this.schemaFor(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, async query => {
+            await this.privacy(query, schema, tenantId);
+            return resolveDispatchReconciliation(query, schema, input);
         });
     }
 

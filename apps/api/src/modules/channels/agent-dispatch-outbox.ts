@@ -576,6 +576,12 @@ export async function recordDispatchPreflightFailure(query: DispatchOutboxQuery,
          WHERE id=$1::uuid RETURNING *`,
         [input.dispatchId, String(input.errorCode).slice(0, 120),
             exhausted ? 'suppressed' : 'failed', attempts, exhausted ? 0 : delay]);
+    // A definitely refused effect must not sit in the conversation looking as if
+    // it were still on its way. `pending` is reserved for genuine uncertainty.
+    if (exhausted && row.message_id) {
+        await query(`UPDATE messages SET status='failed' WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
+            [row.message_id]);
+    }
     return mapRow(updated);
 }
 
@@ -680,6 +686,180 @@ export async function applyDispatchProviderStatus(query: DispatchOutboxQuery, sc
             WHERE id=$1::uuid`, [row.id, input.errorCode ? String(input.errorCode).slice(0, 120) : null]);
     }
     return { applied: true, reason: 'applied', messageId: String(row.message_id), status: input.status };
+}
+
+/**
+ * The reconciliation queue, as an operator sees it.
+ *
+ * `reconciliation_required` means the attempt may have reached the provider and
+ * nobody knows. Ending that in a log leaves customers with a message that either
+ * arrived twice or never — and no one able to tell which. These rows have to be
+ * listable, searchable, and resolvable by a person whose decision is recorded.
+ *
+ * No message text or caption is exposed: reconciliation is about whether an
+ * effect happened, never about what it said. The recipient is masked, because a
+ * queue view is not a reason to hand out phone numbers.
+ */
+export interface DispatchReconciliationEntry {
+    readonly id: string;
+    readonly conversationId: string | null;
+    readonly inboundMessageId: string;
+    readonly channelType: string;
+    readonly channelAccountId: string;
+    /** Last four characters only. Enough to recognise, not enough to reuse. */
+    readonly recipientHint: string | null;
+    readonly itemKind: DispatchItemKind;
+    readonly itemIndex: number;
+    readonly attempts: number;
+    readonly errorCode: string | null;
+    readonly receipt: string | null;
+    readonly settledLeaseToken: string | null;
+    readonly redacted: boolean;
+    readonly createdAt: Date;
+    readonly updatedAt: Date;
+    readonly ageSeconds: number;
+}
+
+export interface DispatchReconciliationBacklog {
+    readonly total: number;
+    readonly oldestAgeSeconds: number;
+    /** Rows past the operational deadline; what an alert should count. */
+    readonly breachingSla: number;
+}
+
+const maskRecipient = (value: unknown): string | null => {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw) return null;
+    return raw.length <= 4 ? '*'.repeat(raw.length) : `${'*'.repeat(Math.min(raw.length - 4, 12))}${raw.slice(-4)}`;
+};
+
+function mapReconciliation(row: any): DispatchReconciliationEntry {
+    return Object.freeze({
+        id: String(row.id),
+        conversationId: row.conversation_id ? String(row.conversation_id) : null,
+        inboundMessageId: String(row.inbound_message_id),
+        channelType: String(row.channel_type),
+        channelAccountId: String(row.channel_account_id),
+        recipientHint: maskRecipient(row.recipient),
+        itemKind: row.item_kind,
+        itemIndex: Number(row.item_index),
+        attempts: Number(row.attempts),
+        errorCode: row.error_code ?? null,
+        receipt: row.receipt ?? null,
+        settledLeaseToken: row.settled_lease_token ? String(row.settled_lease_token) : null,
+        redacted: !!row.redacted_at,
+        createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+        updatedAt: row.updated_at instanceof Date ? row.updated_at : new Date(row.updated_at),
+        ageSeconds: Math.max(0, Math.round(Number(row.age_seconds) || 0)),
+    });
+}
+
+/** How long an uncertain effect may wait before it is an operational problem. */
+export const DISPATCH_RECONCILIATION_SLA_SECONDS = 3600;
+
+export async function readDispatchReconciliation(query: DispatchOutboxQuery, schema: string, options: {
+    limit?: number; search?: string | null;
+} = {}): Promise<DispatchReconciliationEntry[]> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const limit = Math.min(Math.max(Number(options.limit ?? 50), 1), 200);
+    const search = typeof options.search === 'string' ? options.search.trim() : '';
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return [];
+    const rows = await query<any[]>(
+        `SELECT *, EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age_seconds
+         FROM agent_dispatch_outbox
+         WHERE state = 'reconciliation_required'
+           AND ($1 = '' OR receipt = $1 OR id::text = $1 OR inbound_message_id::text = $1
+                OR conversation_id::text = $1)
+         ORDER BY updated_at ASC
+         LIMIT $2`, [search, limit]);
+    return rows.map(mapReconciliation);
+}
+
+export async function readDispatchBacklog(query: DispatchOutboxQuery,
+    schema: string): Promise<DispatchReconciliationBacklog> {
+    if (!SCHEMA.test(schema)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return { total: 0, oldestAgeSeconds: 0, breachingSla: 0 };
+    const [row] = await query<any[]>(
+        `SELECT COUNT(*)::int AS total,
+                COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - updated_at))), 0) AS oldest,
+                COUNT(*) FILTER (WHERE updated_at < NOW() - make_interval(secs => $1::double precision))::int AS breaching
+         FROM agent_dispatch_outbox WHERE state = 'reconciliation_required'`,
+        [DISPATCH_RECONCILIATION_SLA_SECONDS]);
+    return {
+        total: Number(row?.total ?? 0),
+        oldestAgeSeconds: Math.max(0, Math.round(Number(row?.oldest ?? 0))),
+        breachingSla: Number(row?.breaching ?? 0),
+    };
+}
+
+export const DISPATCH_RESOLUTIONS = ['delivered', 'not_delivered', 'retry'] as const;
+export type DispatchResolution = (typeof DISPATCH_RESOLUTIONS)[number];
+
+/**
+ * A person's decision about an uncertain effect, recorded as one.
+ *
+ * `delivered` closes it with the receipt the operator found at the provider.
+ * `not_delivered` closes it without sending anything.
+ * `retry` is the only one that can produce another POST, and it therefore
+ * demands written evidence that the effect did NOT happen — the whole reason
+ * this state exists is that silence is not such evidence.
+ *
+ * Only a row still in `reconciliation_required` may be resolved: a decision
+ * about an effect that has since settled on its own is refused rather than
+ * applied to a different reality.
+ */
+export async function resolveDispatchReconciliation(query: DispatchOutboxQuery, schema: string, input: {
+    dispatchId: string; resolution: DispatchResolution; evidence: string;
+    actorId?: string | null; receipt?: string | null;
+}): Promise<DispatchRow> {
+    if (!SCHEMA.test(schema) || !UUID.test(String(input?.dispatchId))
+        || !DISPATCH_RESOLUTIONS.includes(input.resolution)) fail('dispatch_invalid_reference');
+    const evidence = typeof input.evidence === 'string' ? input.evidence.trim() : '';
+    if (!evidence || evidence.length > 500) fail('dispatch_resolution_evidence_required');
+    const [row] = await query<any[]>(
+        'SELECT * FROM agent_dispatch_outbox WHERE id=$1::uuid FOR UPDATE', [input.dispatchId]);
+    if (!row) fail('dispatch_unavailable');
+    if (row.state !== 'reconciliation_required') fail(`dispatch_not_reconcilable:${row.state}`);
+    const note = `${input.resolution}:${evidence}`.slice(0, 120);
+
+    if (input.resolution === 'delivered') {
+        const receipt = typeof input.receipt === 'string' ? input.receipt.trim() : '';
+        if (!receipt) fail('dispatch_receipt_required');
+        const [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, error_code=$3, updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId, receipt.slice(0, 300), note]);
+        if (row.message_id) {
+            await query(`UPDATE messages SET status='sent' WHERE id=$1::uuid AND status='pending'`, [row.message_id]);
+        }
+        return mapRow(settled);
+    }
+    if (input.resolution === 'not_delivered') {
+        const [settled] = await query<any[]>(
+            `UPDATE agent_dispatch_outbox SET state='suppressed', error_code=$2, updated_at=NOW()
+             WHERE id=$1::uuid RETURNING *`, [input.dispatchId, note]);
+        if (row.message_id) {
+            await query(`UPDATE messages SET status='failed' WHERE id=$1::uuid AND status NOT IN ('redacted','delivered','read')`,
+                [row.message_id]);
+        }
+        return mapRow(settled);
+    }
+    // retry: the operator states the effect did not happen and accepts another
+    // attempt. Redacted words cannot be resent under any evidence.
+    if (row.redacted_at) fail('dispatch_redacted');
+    if (Number(row.attempts) >= DISPATCH_MAX_ATTEMPTS) fail('dispatch_attempts_exhausted');
+    const [settled] = await query<any[]>(
+        `UPDATE agent_dispatch_outbox SET state='failed', error_code=$2, available_at=NOW(), updated_at=NOW()
+         WHERE id=$1::uuid RETURNING *`, [input.dispatchId, note]);
+    void input.actorId;
+    return mapRow(settled);
 }
 
 export interface DispatchRedactionScope {

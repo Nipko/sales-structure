@@ -285,6 +285,99 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         });
     });
 
+    describe('the reconciliation queue an operator works from', () => {
+        async function uncertain(errorCode = 'provider_timeout') {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const granted = await store.admit(tenantId, rows[0].id);
+            await store.settle(tenantId, rows[0].id, granted.leaseToken,
+                { kind: 'reconciliation_required', errorCode });
+            return { binding, row: rows[0] };
+        }
+
+        it('lists uncertain effects oldest first, without the words or the number', async () => {
+            const { binding, row } = await uncertain();
+            const [entry] = await store.reconciliation(tenantId);
+            expect(entry).toMatchObject({ id: row.id, channelType: 'whatsapp', itemKind: 'text',
+                errorCode: 'provider_timeout', inboundMessageId: binding.inboundMessageId });
+            // Reconciliation is about whether an effect happened, never about
+            // what it said, and a queue view is no reason to hand out a number.
+            expect(JSON.stringify(entry)).not.toContain('La respuesta del agente');
+            expect(entry.recipientHint).toBe('*********0000');
+            expect(entry.recipientHint).not.toContain('573');
+        });
+
+        it('finds a row by receipt, by its own id and by the binding', async () => {
+            const { binding, row } = await uncertain();
+            await sql("UPDATE agent_dispatch_outbox SET receipt='wamid.LOST' WHERE id=$1::uuid", [row.id]);
+            for (const search of ['wamid.LOST', row.id, binding.inboundMessageId, binding.conversationId]) {
+                expect((await store.reconciliation(tenantId, { search })).map(entry => entry.id)).toEqual([row.id]);
+            }
+            expect(await store.reconciliation(tenantId, { search: 'wamid.OTHER' })).toEqual([]);
+        });
+
+        it('reports the backlog and what is past the deadline', async () => {
+            const { row } = await uncertain();
+            await expect(store.backlog(tenantId)).resolves.toMatchObject({ total: 1, breachingSla: 0 });
+            await sql("UPDATE agent_dispatch_outbox SET updated_at=NOW()-INTERVAL '2 hours' WHERE id=$1::uuid", [row.id]);
+            const backlog = await store.backlog(tenantId);
+            expect(backlog).toMatchObject({ total: 1, breachingSla: 1 });
+            expect(backlog.oldestAgeSeconds).toBeGreaterThan(3600);
+        });
+
+        it('closes it as delivered with the receipt the operator found', async () => {
+            const { row } = await uncertain();
+            const settled = await store.resolve(tenantId, { dispatchId: row.id, resolution: 'delivered',
+                evidence: 'Found in Meta manager, delivered 10:04', receipt: 'wamid.FOUND' });
+            expect(settled).toMatchObject({ state: 'sent', receipt: 'wamid.FOUND' });
+            expect((await sql('SELECT status FROM messages WHERE id=$1::uuid', [row.messageId]))[0].status).toBe('sent');
+        });
+
+        it('closes it as not delivered without sending anything', async () => {
+            const { row } = await uncertain();
+            const settled = await store.resolve(tenantId, { dispatchId: row.id, resolution: 'not_delivered',
+                evidence: 'Absent from provider logs for the whole window' });
+            expect(settled.state).toBe('suppressed');
+            expect((await sql('SELECT status FROM messages WHERE id=$1::uuid', [row.messageId]))[0].status).toBe('failed');
+        });
+
+        it('allows another attempt only with written evidence that nothing happened', async () => {
+            const { row } = await uncertain();
+            // Silence is what this state MEANS; it can never be the justification.
+            expect(await reason(store.resolve(tenantId,
+                { dispatchId: row.id, resolution: 'retry', evidence: '   ' })))
+                .toBe('dispatch_resolution_evidence_required');
+            const settled = await store.resolve(tenantId, { dispatchId: row.id, resolution: 'retry',
+                evidence: 'Provider log shows no request in the window' });
+            expect(settled.state).toBe('failed');
+            expect((await store.pending(tenantId)).rows.map(entry => entry.id)).toEqual([row.id]);
+        });
+
+        it('refuses a decision about an effect that already settled itself', async () => {
+            const { row } = await uncertain();
+            await store.resolve(tenantId, { dispatchId: row.id, resolution: 'not_delivered', evidence: 'checked' });
+            expect(await reason(store.resolve(tenantId,
+                { dispatchId: row.id, resolution: 'retry', evidence: 'changed my mind' })))
+                .toBe('dispatch_not_reconcilable:suppressed');
+        });
+
+        it('never resends words that erasure removed, whatever the evidence', async () => {
+            const { binding, row } = await uncertain();
+            await prisma.transactionInTenantSchema(schema, (query: any) =>
+                redactDispatchOutbox(query, schema, { contactIds: [binding.contactId] }));
+            expect(await reason(store.resolve(tenantId,
+                { dispatchId: row.id, resolution: 'retry', evidence: 'provider never saw it' })))
+                .toBe('dispatch_redacted');
+        });
+
+        it('requires a receipt to claim it was delivered after all', async () => {
+            const { row } = await uncertain();
+            expect(await reason(store.resolve(tenantId,
+                { dispatchId: row.id, resolution: 'delivered', evidence: 'I think it went out' })))
+                .toBe('dispatch_receipt_required');
+        });
+    });
+
     describe('recording the outcome and bounding failure', () => {
         it('settles an accepted attempt against its own lease', async () => {
             const { rows } = await prepare(await fixture());

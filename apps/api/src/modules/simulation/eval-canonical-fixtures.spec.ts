@@ -1,10 +1,62 @@
 import { bindCanonicalEvalFixtures, prepareCanonicalEvalFixtures, resolveCanonicalEvalFixtures } from './eval-canonical-fixtures';
 import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
+import { agentTurnFixture } from '../conversations/__fixtures__/agent-turn.fixture';
 
 const snapshot = (hours: unknown, capturedAt = '2026-09-07T04:30:00Z') => ({ capturedAt, config: { hours } } as AgentEvaluationSnapshot);
 const schema = 'tenant_eval_12345678_123456781234567812345678';
 
 describe('canonical eval fixtures', () => {
+    it('uses captured tenant hours and timezone instead of a conflicting agent schedule', async () => {
+        const input = snapshot({ timezone: 'America/Bogota', schedule: { monday: { start: '09:00', end: '10:00' } } });
+        input.contextInputs = { businessHours: { timezone: 'Pacific/Auckland', schedule: {
+            tuesday: { enabled: true, open: '13:15', close: '14:15', start: '08:00', end: '09:00' },
+        } } } as any;
+        const original = JSON.stringify(input);
+        const query = jest.fn().mockResolvedValue([]);
+        expect(await prepareCanonicalEvalFixtures(query, schema, input)).toMatchObject({ status: 'ready',
+            timezone: 'Pacific/Auckland', date: '2026-09-15', time: '13:15', recoveryTime: '13:45', weekday: 2 });
+        const configured = JSON.parse(query.mock.calls.find(([sql]) => sql.includes('.persona_config'))![1][1]);
+        expect(configured.hours).toEqual({ timezone: 'Pacific/Auckland', schedule: { mar: { start: '13:15', end: '14:15' } } });
+        expect(query.mock.calls.find(([sql]) => sql.includes('.availability_slots'))![1]).toEqual(expect.arrayContaining([2, '13:15', '14:15']));
+        expect(JSON.stringify(input)).toBe(original);
+    });
+    it.each([{}, { schedule: {} }, { schedule: null }, { is247: true, schedule: { monday: { enabled: false } } }])
+    ('does not inherit a closed legacy schedule when tenant hours are unrestricted: %j', businessHours => {
+        const input = snapshot({ schedule: { monday: { enabled: false } } });
+        input.contextInputs = { businessHours } as any;
+        expect(resolveCanonicalEvalFixtures(input)).toMatchObject({ status: 'ready', time: '09:00', windows: expect.any(Array) });
+    });
+    it('keeps tenant closures authoritative and rejects malformed tenant schedules before any fixture write', async () => {
+        const input = snapshot({ schedule: {} }), query = jest.fn();
+        input.contextInputs = { businessHours: { schedule: { monday: { enabled: false } } } } as any;
+        expect(await prepareCanonicalEvalFixtures(query, schema, input)).toEqual({ status: 'blocked', reason: 'business_hours_closed' });
+        input.contextInputs = { businessHours: { schedule: { lun: { start: '09:00', end: '10:00' } } } } as any;
+        expect(await prepareCanonicalEvalFixtures(query, schema, input)).toEqual({ status: 'blocked', reason: 'invalid_business_hours' });
+        expect(query).not.toHaveBeenCalled();
+    });
+    it('uses the captured regional timezone when neither tenant nor agent declares hours timezone', () => {
+        const input = snapshot({ schedule: {} });
+        input.contextInputs = { businessHours: null, regional: { timezone: { value: 'Pacific/Auckland' } } } as any;
+        expect(resolveCanonicalEvalFixtures(input)).toMatchObject({ timezone: 'Pacific/Auckland', date: '2026-09-09' });
+        input.config.hours = { timezone: 'America/Bogota', schedule: {} } as any;
+        expect(resolveCanonicalEvalFixtures(input)).toMatchObject({ timezone: 'America/Bogota', date: '2026-09-08' });
+    });
+    it('skips nonexistent local times according to the captured tenant zone', () => {
+        const input = snapshot({ timezone: 'America/Bogota', schedule: {} }, '2026-03-27T12:00:00Z');
+        input.contextInputs = { businessHours: { timezone: 'Europe/Paris', schedule: {
+            sunday: { enabled: true, open: '02:15', close: '03:15' },
+        } } } as any;
+        expect(resolveCanonicalEvalFixtures(input)).toMatchObject({ status: 'ready', timezone: 'Europe/Paris', date: '2026-04-05' });
+    });
+    it('agrees with the actual turn core about the captured timezone', async () => {
+        const f = agentTurnFixture();
+        f.prisma.tenant.findUnique.mockResolvedValue({ settings: { businessHours: { timezone: 'Pacific/Auckland', is247: true } } });
+        const captured = await f.service.captureSnapshot('tenant', 'agent');
+        const fixture = resolveCanonicalEvalFixtures(captured);
+        expect(fixture.status).toBe('ready');
+        const response = await f.service.test('tenant', 'agent', { message: 'hola' }, { agentSnapshot: captured });
+        expect(response.debug.turnContext.timezone).toBe(fixture.status === 'ready' ? fixture.timezone : 'unexpected_block');
+    });
     it.each(['America/Bogota', 'Pacific/Auckland', 'America/Los_Angeles', 'Europe/Paris'])('uses future civil weekdays and enough configured duration in %s', timezone => {
         const fixtures = resolveCanonicalEvalFixtures(snapshot({ timezone, schedule: { monday: { start: '13:15', end: '14:15' } } }));
         expect(fixtures).toMatchObject({ status: 'ready', date: '2026-09-14', time: '13:15', recoveryTime: '13:45', recoveryEndTime: '14:15', weekday: 1, timezone });

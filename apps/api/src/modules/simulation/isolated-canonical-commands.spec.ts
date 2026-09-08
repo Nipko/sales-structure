@@ -13,6 +13,8 @@ import { ToolApprovalWorkflowService } from '../conversations/tool-approval-work
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { IsolatedEvalNamespace, isolatedEvalNamespaceForPrisma } from './isolated-eval-namespace';
 import { EvalService } from './eval.service';
+import { tenantActorDirectoryWithQuery } from '../appointments/tenant-user-scope.util';
+import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 import { PAYMENT_REFERENCE_TARGETS } from '../tenant-payments/tenant-payment-reference';
 import { MissionFocusStore } from '../conversations/mission-focus-store';
 import { arbitrateMissionFocus } from '../conversations/mission-focus';
@@ -21,6 +23,10 @@ import { agentTurnFixture, publishTools } from '../conversations/__fixtures__/ag
 import { AgentTurnTrace, EphemeralTurnState, type AgentTurnSession } from '../conversations/agent-turn-session';
 import { persistConversationRuntimeState } from '../conversations/conversation-runtime-state';
 import { captureLearningLedger, verifyLearningOperation } from '../learning/learning-operation-evidence';
+import { evaluationNamespaceTimezone } from './eval-temporal-context';
+import { prepareCanonicalEvalFixtures } from './eval-canonical-fixtures';
+import { PrismaClient } from '@prisma/client';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('canonical domain commands in a disposable PostgreSQL namespace', () => {
@@ -108,7 +114,59 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         await pool.end();
     });
     const create = (time='10:00') => appointments.create(lease.schemaName,{contactId,conversationId,serviceId,serviceName:'Service',
-        startAt:`${date}T${time}:00`,endAt:`${date}T${time.slice(0,2)}:30:00`,metadata:{source:'eval_gate'},customerName:'Eval'}, {suppressEffects:true,confirmWithoutPayment:true});
+        startAt:`${date}T${time}:00`,endAt:`${date}T${time.slice(0,2)}:30:00`,metadata:{source:'eval_gate'},customerName:'Eval'}, {suppressEffects:true,confirmWithoutPayment:true,sandboxNamespace:lease});
+    it('uses the owned namespace timezone even when direct creation supplies a conflicting metadata zone', async () => {
+        const q = (sql: string, params: any[] = []) => prisma.executeInTenantSchema(lease.schemaName, sql, params);
+        await q("UPDATE persona_config SET config_json=jsonb_set(config_json,'{hours,timezone}','\"Europe/Paris\"'::jsonb)");
+        const result = await appointments.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service',
+            startAt: '2027-03-28T02:15:00', endAt: '2027-03-28T02:45:00', metadata: { timezone: 'America/Bogota' } },
+            { sandboxNamespace: lease }).then(() => null, error => error.getResponse?.() || error.message);
+        expect(result).toMatchObject({ error: 'nonexistent_local_time', timezone: 'Europe/Paris' });
+        expect(Number((await q('SELECT COUNT(*) AS count FROM appointments'))[0].count)).toBe(0);
+        const valid = await appointments.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service',
+            startAt: '2027-03-29T10:00:00', endAt: '2027-03-29T10:30:00', metadata: { timezone: 'America/Bogota' } },
+            { sandboxNamespace: lease, confirmWithoutPayment: true });
+        expect(valid.metadata?.timezone).toBe('Europe/Paris');
+    });
+    it.each(['missing', 'duplicate', 'invalid', 'expired', 'foreign'])
+    ('rejects %s evaluation timezone authority without substituting a live default', async state => {
+        const q = (sql: string, params: any[] = []) => prisma.executeInTenantSchema(lease.schemaName, sql, params);
+        if (state === 'missing') await q("UPDATE persona_config SET config_json='{}'::jsonb");
+        if (state === 'duplicate') await q("INSERT INTO persona_config(config_yaml,config_json,is_active) VALUES('{}',$1::jsonb,true)", [JSON.stringify({ hours: { timezone: 'UTC' } })]);
+        if (state === 'invalid') await q("UPDATE persona_config SET config_json=jsonb_set(config_json,'{hours,timezone}','\"Etc/Broken\"'::jsonb)");
+        if (state === 'expired') await q("UPDATE __eval_namespace SET expires_at=clock_timestamp()-interval '1 second'");
+        await expect(evaluationNamespaceTimezone(prisma, lease.schemaName, state === 'foreign' ? { ...lease, token: randomUUID() } : lease))
+            .rejects.toThrow(state === 'invalid' ? 'eval_timezone_invalid' : ['foreign', 'expired'].includes(state) ? 'eval_namespace_lease_lost' : 'eval_timezone_unavailable');
+        expect(Number((await q('SELECT COUNT(*) AS count FROM appointments'))[0].count)).toBe(0);
+    });
+    it('seeds captured scheduling facts and creates a canonical appointment through real Prisma without regional lookup', async () => {
+        const client = new PrismaClient({ datasourceUrl: connection });
+        try {
+            const actual = Object.assign(Object.create(PrismaService.prototype), { tenant: client.tenant,
+                $transaction: client.$transaction.bind(client), $queryRawUnsafe: client.$queryRawUnsafe.bind(client),
+                $executeRawUnsafe: client.$executeRawUnsafe.bind(client) }) as PrismaService;
+            const q = (sql: string, params: any[] = []) => actual.executeInTenantSchema<any[]>(lease.schemaName, sql, params);
+            await q('DELETE FROM persona_config');
+            const capture = { capturedAt: new Date().toISOString(), config: { hours: { timezone: 'America/Bogota', schedule: {} } },
+                contextInputs: { businessHours: { timezone: 'Pacific/Auckland', schedule: {
+                    tuesday: { enabled: true, open: '13:15', close: '14:15' },
+                } } } };
+            const fixture = await prepareCanonicalEvalFixtures(q, lease.schemaName, capture as any);
+            expect(fixture.status).toBe('ready');
+            if (fixture.status !== 'ready') throw new Error('fixture_blocked');
+            const regional = new RegionalProfileService(actual, {} as any);
+            const liveLookup = jest.spyOn(regional, 'timezoneForSchema').mockRejectedValue(new Error('live_region_forbidden'));
+            const command = new AppointmentsService(actual, effects as any, calendar as any, regional);
+            const created = await command.create(lease.schemaName, { contactId, conversationId,
+                assignedTo: fixture.ids.staffUser, serviceId: fixture.ids.service, serviceName: fixture.bindings.service,
+                startAt: `${fixture.date}T${fixture.time}:00`, endAt: `${fixture.date}T${fixture.endTime}:00` },
+                { sandboxNamespace: lease, confirmWithoutPayment: true });
+            expect(created.metadata?.timezone).toBe('Pacific/Auckland');
+            expect(created.status).toBe('confirmed');
+            expect((await q("SELECT to_char(start_at,'HH24:MI') AS time FROM appointments WHERE id=$1::uuid", [created.id]))[0].time).toBe('13:15');
+            expect(liveLookup).not.toHaveBeenCalled();
+        } finally { await client.$disconnect(); }
+    });
     it.each([
         ['es', 'Quiero matricularme', 'Ahora quiero agendar una cita', 'Sí, confirmo'],
         ['en', 'I want to enroll', 'Now I want to book an appointment', 'Yes, I confirm'],
@@ -287,12 +345,12 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         await query(`UPDATE "${lease.schemaName}".services SET price=150,payment_policy='deposit',deposit_percent=40 WHERE id=$1::uuid`, [serviceId]);
         await expect(appointments.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service', source: 'ai',
             startAt: `${date}T10:00:00`, endAt: `${date}T10:30:00`, metadata: { source: 'eval_gate' } },
-        { expectedServiceTerms: expected, suppressEffects: true })).rejects.toBeInstanceOf(AppointmentTermsChangedError);
+        { expectedServiceTerms: expected, suppressEffects: true, sandboxNamespace: lease })).rejects.toBeInstanceOf(AppointmentTermsChangedError);
         expect((await query(`SELECT count(*)::int AS n FROM "${lease.schemaName}".appointments`))[0].n).toBe(0);
         const [fresh] = await query(`SELECT * FROM "${lease.schemaName}".services WHERE id=$1::uuid`, [serviceId]);
         const created = await appointments.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service', source: 'ai',
             startAt: `${date}T10:00:00`, endAt: `${date}T10:30:00`, metadata: { source: 'eval_gate' } },
-        { expectedServiceTerms: appointmentServiceTerms(fresh), suppressEffects: true });
+        { expectedServiceTerms: appointmentServiceTerms(fresh), suppressEffects: true, sandboxNamespace: lease });
         expect(created).toMatchObject({ status: 'pending_payment', amountDueToConfirm: 60 });
     });
     it('holds material service terms against a concurrent owner edit until the appointment commits', async () => {
@@ -316,7 +374,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         try {
             const created = await command.create(lease.schemaName, { contactId, conversationId, serviceId, serviceName: 'Service', source: 'ai',
                 startAt: `${date}T10:00:00`, endAt: `${date}T10:30:00`, metadata: { source: 'eval_gate' } },
-            { expectedServiceTerms: appointmentServiceTerms(row), suppressEffects: true, confirmWithoutPayment: true });
+            { expectedServiceTerms: appointmentServiceTerms(row), suppressEffects: true, confirmWithoutPayment: true, sandboxNamespace: lease });
             expect(created.status).toBe('confirmed'); await ownerWrite;
             expect(Number((await query(`SELECT price FROM "${lease.schemaName}".services WHERE id=$1::uuid`, [serviceId]))[0].price)).toBe(200);
             const target = PAYMENT_REFERENCE_TARGETS.appointment;
@@ -412,6 +470,16 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect((await q('SELECT status FROM appointments WHERE id=$1::uuid',[appointmentId]))[0].status).toBe('cancelled');
         expect(effects.emit).not.toHaveBeenCalled();expect(calendar.enqueueWithQuery).not.toHaveBeenCalled();
         expect((await query(`SELECT count(*)::int AS n FROM "${source}".appointments`))[0].n).toBe(0);
+    });
+    it('refuses a fixture directory without a current, transaction-checked lease',async()=>{
+        const work=(proof:any)=>prisma.transactionInTenantSchema(lease.schemaName,(q:any)=>tenantActorDirectoryWithQuery(q,lease.schemaName,proof));
+        await expect(work(undefined)).rejects.toThrow('eval_namespace_lease_required');
+        await expect(work({...lease,token:randomUUID()})).rejects.toThrow('eval_namespace_lease_lost');
+        await expect(work({...lease,tenantId:randomUUID()})).rejects.toThrow('eval_namespace_lease_lost');
+        await expect(work({...lease,sourceSchema:'tenant_wrong_source'})).rejects.toThrow('eval_namespace_lease_lost');
+        await expect(work({...lease,schemaName:source})).rejects.toThrow('eval_namespace_scope_mismatch');
+        await prisma.executeInTenantSchema(lease.schemaName,"UPDATE __eval_namespace SET expires_at=clock_timestamp()-interval '1 second'");
+        await expect(work(lease)).rejects.toThrow('eval_namespace_lease_lost');
     });
     it.each(['education','gym'])('routes %s tools through the real ledger and canonical commands, including retries',async(family)=>{
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
@@ -514,6 +582,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
         const config={behavior:{draftMode:true},hours:{timezone:'America/Bogota'},tools:{appointments:{enabled:true}}};
         await q("INSERT INTO agent_personas(id,name,is_active,config_json,version) VALUES($1::uuid,'Eval Agent',true,$2::jsonb,1)",[agentId,JSON.stringify(config)]);
+        const [agentRow]=await q('SELECT * FROM agent_personas WHERE id=$1::uuid',[agentId]);
+        const operationalScope={kind:'agent' as const,tenantId,schemaName:lease.schemaName,agentId,version:1,operationalHash:operationalConfigurationHash(agentRow)};
         await q('UPDATE conversations SET agent_persona_id=$1::uuid WHERE id=$2::uuid',[agentId,conversationId]);
         // These are explicit test boundary adapters. All SQL, approval state
         // transitions and domain commands below are their production classes.
@@ -525,7 +595,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         (draftExecutor as any).toolExecutionControl=controls;
         const propose=(input:any)=>draftExecutor.execute(lease.schemaName,tenantId,contactId,'create_appointment',input,conversationId,
             {authority:authorityFor('create_appointment'),evalMode:true,sandboxNamespace:lease,
-                executionContext:{mode:'draft',persistence:'disabled'},draftScope:{agentId,agentVersion:1}});
+                executionContext:{mode:'draft',persistence:'disabled'},draftScope:{agentId,agentVersion:1},operationalScope});
         const inbound=async(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
         await inbound('Quiero reservar');
         const challenge=await propose(args);
@@ -542,7 +612,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         })};
         const workflow=new ToolApprovalWorkflowService(ownedPrisma,controls,commandPort as any,{emitAsync:async()=>{throw new Error('outbound_forbidden');}} as any,{} as any,
             {resolve:async()=>({authority:authorityFor('create_appointment'),status:{}})} as any,
-            {getAgent:async()=>({id:agentId,is_active:true,config_json:config,version:1})} as any);
+            {getAgent:async()=>(await q('SELECT * FROM agent_personas WHERE id=$1::uuid',[agentId]))[0]} as any);
         const completed=await workflow.resumeApprovedTicket(tenantId,ticket.id);
         expect(completed).toMatchObject({state:'completed',result:{success:true}});
         expect(await workflow.resumeApprovedTicket(tenantId,ticket.id)).toMatchObject({state:'completed'});

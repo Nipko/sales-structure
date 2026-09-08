@@ -47,10 +47,21 @@ export async function assertActiveTenantUser(
 
 /** Server-only fixture directory; the ownership proof is checked before SQL interpolation. */
 export async function tenantActorDirectory(prisma: Pick<PrismaService,'executeInTenantSchema'>,schemaName: string,namespace?: EvalNamespaceLease): Promise<{users:string;tenants:string}> {
-    if (!namespace) return {users:'public.users',tenants:'public.tenants'};
+    return tenantActorDirectoryWithQuery((sql, params) => prisma.executeInTenantSchema<any[]>(schemaName, sql, params), schemaName, namespace);
+}
+
+/** Writers use their own transaction so the lease and directory remain fenced
+ * until the effect commits. The model cannot select these reference tables. */
+export async function tenantActorDirectoryWithQuery(
+    query: (sql: string, params?: unknown[]) => Promise<any[]>, schemaName: string, namespace?: EvalNamespaceLease,
+): Promise<{users:string;tenants:string}> {
+    if (!namespace) {
+        if (schemaName.startsWith('tenant_eval_')) throw new Error('eval_namespace_lease_required');
+        return {users:'public.users',tenants:'public.tenants'};
+    }
     if (!/^tenant_eval_[a-f0-9]{8}_[a-f0-9]{24}$/.test(schemaName) || namespace.schemaName !== schemaName) throw new Error('eval_namespace_scope_mismatch');
-    const rows = await prisma.executeInTenantSchema<any[]>(schemaName,
-        'SELECT 1 FROM __eval_namespace WHERE owner_token=$1::uuid AND tenant_id=$2::uuid AND source_schema=$3 AND expires_at>clock_timestamp()', [namespace.token,namespace.tenantId,namespace.sourceSchema]);
+    const rows = await query(
+        'SELECT 1 FROM __eval_namespace WHERE owner_token=$1::uuid AND tenant_id=$2::uuid AND source_schema=$3 AND expires_at>clock_timestamp() FOR SHARE', [namespace.token,namespace.tenantId,namespace.sourceSchema]);
     if (rows.length !== 1) throw new Error('eval_namespace_lease_lost');
     return {users:`"${schemaName}".__eval_ref_users`,tenants:`"${schemaName}".__eval_ref_tenants`};
 }

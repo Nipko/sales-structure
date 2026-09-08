@@ -24,7 +24,7 @@ import { TOOL_POLICY_REGISTRY } from './tool-policy-registry';
  */
 
 describe('eval writable tools', () => {
-    it('contains exactly the ten isolated mutation families plus the step-up negative gate', () => {
+    it('contains the current reviewed mutation tools plus the step-up negative gate', () => {
         expect(EVAL_SANDBOX_MUTATING_TOOL_NAMES).toEqual([
             'create_appointment',
             'create_property_booking',
@@ -37,11 +37,15 @@ describe('eval writable tools', () => {
             'create_vehicle_rental',
             'create_pet_boarding',
             'place_catalog_order',
+            'cancel_catalog_order',
+            'create_repair_order',
+            'approve_repair',
+            'cancel_repair_order',
         ]);
-        expect(EVAL_WRITABLE_TOOL_NAMES).toEqual([
+        expect([...EVAL_WRITABLE_TOOL_NAMES].sort()).toEqual([
             ...EVAL_SANDBOX_MUTATING_TOOL_NAMES,
             'file_claim',
-        ]);
+        ].sort());
         for (const [name, family] of Object.entries(EVAL_WRITER_SANDBOX_FAMILIES)) {
             expect(family.status).not.toBe('pending');
             if (name === 'insurance_claims') expect(family.status).toBe('identity_challenge');

@@ -2,6 +2,7 @@ import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/e
 import { assertServedAgentAuthority, validServedAgentAuthority, VERSION_GUARDED_TOOLS, ServedAgentAuthorityError, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { educationToolError } from './education-tool-error';
 import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context';
 import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
 import { catalogHash, catalogActionError, catalogTermsReviewResult } from '../orders/catalog-order-contract';
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
@@ -620,7 +621,7 @@ export class AIToolExecutorService {
                     return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox, operationalScope);
 
                 case 'reschedule_appointment':
-                    return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason, operationalScope);
+                    return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason, operationalScope, canonicalSandbox);
 
                 case 'get_appointment_details':
                     return this.getAppointmentDetails(schemaName, contactId, args.appointmentId);
@@ -2703,7 +2704,11 @@ export class AIToolExecutorService {
     }
 
     /** Resolve tenant timezone from persona_config or default */
-    private async getTenantTimezone(schema: string): Promise<string> {
+    private async getTenantTimezone(schema: string, namespace?: EvalNamespaceLease): Promise<string> {
+        if (schema.startsWith('tenant_eval_')) {
+            if (!namespace) throw new Error('eval_namespace_lease_required');
+            return evaluationNamespaceTimezone(this.prisma, schema, namespace);
+        }
         try {
             const rows = await this.prisma.$queryRawUnsafe(
                 `SELECT config_json->'hours'->>'timezone' as tz FROM "${schema}".persona_config WHERE is_active = true LIMIT 1`,
@@ -2861,7 +2866,7 @@ export class AIToolExecutorService {
 
         // Generate available time slots
         const availableSlots: any[] = [];
-        const timezone = await this.getTenantTimezone(schema);
+        const timezone = await this.getTenantTimezone(schema, namespace);
 
         for (const slot of slots) {
             const [startH, startM] = slot.start_time.split(':').map(Number);
@@ -3199,7 +3204,7 @@ export class AIToolExecutorService {
             const normalized = this.temporalContracts.normalize({
                 kind: 'appointment',
                 startsAtLocal: startAt,
-                timezone: await this.getTenantTimezone(schema),
+                timezone: await this.getTenantTimezone(schema, namespace),
                 durationMinutes: effectiveDuration,
             });
             if (normalized.kind !== 'appointment') throw new Error('wrong_temporal_kind');
@@ -3264,7 +3269,7 @@ export class AIToolExecutorService {
         const meetingUrl: string | undefined = svc.meeting_link || undefined;
         const appointmentMetadata = {
             ...(subject.metadata || {}),
-            ...(evalMode ? { source: 'eval_gate', timezone: await this.getTenantTimezone(schema) } : {}),
+            ...(evalMode ? { source: 'eval_gate', timezone: await this.getTenantTimezone(schema, namespace) } : {}),
             isOnline,
             ...(meetingUrl ? { meetingUrl } : {}),
         };
@@ -5632,6 +5637,7 @@ export class AIToolExecutorService {
         schema: string, contactId: string, appointmentId: string,
         newDate: string, newTime: string, reason?: string,
         operationalScope?: ServedAgentAuthority,
+        sandboxNamespace?: EvalNamespaceLease,
     ): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, assigned_to,
@@ -5662,7 +5668,7 @@ export class AIToolExecutorService {
         let newEndAt: string;
         try {
             const temporal = this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: newStartAt,
-                timezone: await this.getTenantTimezone(schema), durationMinutes: duration });
+                timezone: await this.getTenantTimezone(schema, sandboxNamespace), durationMinutes: duration });
             if (temporal.kind !== 'appointment') throw new Error('wrong_temporal_kind');
             newEndAt = temporal.endsAtLocal;
         } catch (error: unknown) { return this.appointmentTemporalFailure(error); }

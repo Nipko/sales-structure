@@ -1,4 +1,5 @@
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context';
 import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -330,7 +331,10 @@ export class AppointmentsService {
                 message: 'La cita necesita una hora final explícita posterior al inicio.',
             });
         }
-        const timezone = await this.resolveTimezoneForSchema(schemaName, data.metadata?.timezone);
+        const timezone = execution.sandboxNamespace
+            ? await evaluationNamespaceTimezone(this.prisma, schemaName, execution.sandboxNamespace)
+            : await this.resolveTimezoneForSchema(schemaName, data.metadata?.timezone);
+        if (execution.sandboxNamespace) data = { ...data, metadata: { ...data.metadata, timezone } };
         this.temporalContracts.normalize({
             kind: 'appointment',
             startsAtLocal: startAt,

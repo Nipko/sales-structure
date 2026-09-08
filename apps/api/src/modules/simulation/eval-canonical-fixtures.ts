@@ -6,6 +6,7 @@ import { TemporalCapacityContractService } from '../verticals/temporal-capacity-
 import { wallClockToUtc } from '../appointments/appointment-ics.util';
 import { REPAIR_EVAL_IDS, prepareRepairEvalFixtures } from '../repair-orders/repair-order-eval-fixtures';
 import { CATALOG_EVAL_IDS, prepareCatalogEvalFixtures } from '../orders/catalog-order-eval-fixtures';
+import { evaluationTemporalInputs } from './eval-temporal-context';
 
 export const CANONICAL_EVAL_FIXTURE_IDS = Object.freeze({
     ...EVAL_SANDBOX_FIXTURE_IDS,
@@ -46,26 +47,28 @@ function uniqueWallClock(value: string, timezone: string): boolean {
 export function resolveCanonicalEvalFixtures(snapshot?: AgentEvaluationSnapshot): CanonicalEvalFixtures {
     const captured = new Date(snapshot?.capturedAt ?? Date.now());
     if (!Number.isFinite(captured.getTime())) return { status: 'blocked', reason: 'invalid_snapshot_time' };
-    const hours = snapshot?.config?.hours;
-    const timezone = hours?.timezone || 'America/Bogota';
+    const temporal = evaluationTemporalInputs(snapshot);
+    const timezone = temporal.timezone;
+    if (typeof timezone !== 'string') return { status: 'blocked', reason: 'invalid_timezone' };
     let date: string;
     try {
         const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(captured);
         const part = (type: string) => parts.find(value => value.type === type)!.value;
         date = `${part('year')}-${part('month')}-${part('day')}`;
     } catch { return { status: 'blocked', reason: 'invalid_timezone' }; }
-    const schedule: unknown = hours?.schedule;
+    const schedule: unknown = temporal.schedule;
     if (schedule !== undefined && (!schedule || typeof schedule !== 'object' || Array.isArray(schedule))) {
         return { status: 'blocked', reason: 'invalid_business_hours' };
     }
     const configured = schedule as Record<string, unknown> | undefined;
     const windows: Window[] = [];
-    // The actual runtime treats an absent/empty agent schedule as unrestricted.
+    // The actual runtime treats an absent/empty effective schedule as unrestricted.
     // Explicit closed/malformed schedules must never be replaced by that default.
     if (!configured || Object.keys(configured).length === 0) {
         for (let day = 0; day < 7; day++) windows.push({ day, start: 0, end: 1439 });
     } else {
-        if (Object.keys(configured).some(key => !DAYS.flat().includes(key))) return { status: 'blocked', reason: 'invalid_business_hours' };
+        const acceptedKeys = temporal.source === 'tenant' ? DAYS.map(([, english]) => english) : DAYS.flat();
+        if (Object.keys(configured).some(key => !acceptedKeys.includes(key))) return { status: 'blocked', reason: 'invalid_business_hours' };
         for (const [day, aliases] of DAYS.entries()) {
             const values = aliases.filter(key => Object.hasOwn(configured, key)).map(key => configured[key]);
             if (values.length > 1 && JSON.stringify(values[0]) !== JSON.stringify(values[1])) return { status: 'blocked', reason: 'invalid_business_hours' };
@@ -73,7 +76,10 @@ export function resolveCanonicalEvalFixtures(snapshot?: AgentEvaluationSnapshot)
             if (value === undefined || value === null || value === false || value === 'closed' || value === 'cerrado') continue;
             if (typeof value !== 'object' || Array.isArray(value)) return { status: 'blocked', reason: 'invalid_business_hours' };
             if (value.enabled === false) continue;
-            const start = minutes(value.start ?? value.open), end = minutes(value.end ?? value.close);
+            const tenantToggle = temporal.source === 'tenant' && Object.hasOwn(value, 'enabled');
+            if (tenantToggle && typeof value.enabled !== 'boolean') return { status: 'blocked', reason: 'invalid_business_hours' };
+            const start = minutes(tenantToggle ? value.open || value.start : value.start || value.open);
+            const end = minutes(tenantToggle ? value.close || value.end : value.end || value.close);
             if (start === null || end === null || end <= start) return { status: 'blocked', reason: 'invalid_business_hours' };
             windows.push({ day, start, end });
         }
@@ -130,8 +136,14 @@ export async function prepareCanonicalEvalFixtures(query: EvalNamespaceQuery, sc
     if (fixture.status !== 'ready') return fixture;
     const f = fixture.ids, marker = JSON.stringify({ evalSandbox: true }), table = (name: string) => `"${schema}".${name}`;
     const seed = async (sql: string, params: unknown[]) => { await query(sql, params); };
+    // Namespace readers consume persona_config, while the prompt consumes the
+    // captured tenant context. Project the effective scheduling facts into this
+    // synthetic row without changing the source snapshot or its agent config.
+    const fixtureConfig = { ...snapshot?.config, hours: { ...snapshot?.config?.hours,
+        timezone: fixture.timezone, schedule: Object.fromEntries(fixture.windows.map(window =>
+            [DAYS[window.day][0], { start: clock(window.start), end: clock(window.end) }])) } };
     await seed(`INSERT INTO ${table('persona_config')} (id, config_yaml, config_json, version, is_active) VALUES ($1::uuid, '{}', $2::jsonb, 1, true)`,
-        [f.persona, JSON.stringify(snapshot?.config ?? { hours: { timezone: fixture.timezone, schedule: {} } })]);
+        [f.persona, JSON.stringify(fixtureConfig)]);
     // No global users, provider accounts or credentials are created here.
     await seed(`INSERT INTO ${table('__eval_ref_users')} (id,tenant_id,is_active,first_name,last_name) SELECT $1::uuid,tenant_id,true,'Eval','Staff' FROM ${table('__eval_namespace')} ON CONFLICT DO NOTHING`, [f.staffUser]);
     for (const window of fixture.windows) await seed(`INSERT INTO ${table('availability_slots')} (user_id, day_of_week, start_time, end_time, is_active) VALUES ($1::uuid,$2,$3::time,$4::time,true)`,

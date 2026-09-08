@@ -178,6 +178,20 @@ describe('computing whether a profile has been shown to do its work', () => {
         expect(certification.byLanguage.es.required).toBe(keys.size);
     });
 
+    it('sizes the catalogue it has to prove, so the number is a fact and not a feeling', () => {
+        // One channel and one model: the smallest honest universe. Every channel
+        // and every model a profile is meant to serve multiplies it, which is
+        // the point — a run on one proves nothing about the others.
+        const report = certifyProfiles({ scope, evidence: [] });
+        expect(report.summary.profiles).toBe(76);
+        expect(report.summary.requiredCases).toBe(15_172);
+        // Pinned like the 76/268/146 of the declared matrix: adding or removing a
+        // case changes what certification costs, and that should be noticed.
+        expect(certifyProfiles({
+            scope: { channels: ['web_widget', 'whatsapp'], models: scope.models }, evidence: [],
+        }).summary.requiredCases).toBe(15_172 * 2);
+    });
+
     it('shares one definition of a passing run with the release gate', () => {
         // Two copies of "this run counts" would drift, and the drift would look
         // like a pass on one side and a refusal on the other.

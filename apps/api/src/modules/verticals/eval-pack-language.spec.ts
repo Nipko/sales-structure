@@ -86,13 +86,21 @@ describe('barrido semántico de todos los perfiles', () => {
         for (const id of PROFILES) {
             const [industry, subtype] = id.split('/');
             const contract = buildDomainContractDraft(industry, subtype);
+            // Una palabra suelta no prueba nada: español y portugués escriben
+            // igual buena parte del vocabulario. `diagnóstico` y `consulta`
+            // aparecían en paquetes PT bien traducidos —"Não inventa peso,
+            // raça, vacinas, diagnóstico ou tratamento"— y el barrido los leía
+            // como prosa sin traducir. Lo que sí es evidencia es una FRASE del
+            // contrato apareciendo entera, que es exactamente la forma que
+            // tenía el defecto original: escenarios enteros en español dentro
+            // de los cuatro paquetes.
             const spanishSource = [
                 ...contract.intents.map(intent => intent.description),
                 ...contract.prompt.notOffered,
                 ...contract.prompt.terminology.avoid,
             ]
                 .map(value => value.trim().toLowerCase())
-                .filter(value => value.length >= 6);
+                .filter(value => value.length >= 6 && value.split(/\s+/).length >= 2);
 
             for (const language of ['en', 'pt', 'fr'] as const) {
                 const pack = composeSubtypeEvalPack({ industry, subtype, language });

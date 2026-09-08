@@ -2,6 +2,7 @@ import { catalogItems, catalogTerms } from '../orders/catalog-order-contract';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { resolveVerticalCapabilityManifest } from '@parallext/shared';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import type { ServedAgentAuthority } from '../persona/served-agent-authority';
 
 /**
  * Venta libre y venta bajo fórmula no son el mismo producto.
@@ -18,6 +19,15 @@ describe('pharmacy prescription boundary', () => {
     const contactId = '22222222-2222-4222-8222-222222222222';
     const otc = '33333333-3333-4333-8333-333333333333';
     const rx = '44444444-4444-4444-8444-444444444444';
+    const agentId = '66666666-6666-4666-8666-666666666666';
+    // `place_catalog_order` escribe con versión guardada, así que el ejecutor
+    // la rechaza sin la procedencia privada de la revisión que sirve el turno.
+    // Las tres pruebas de pedido la traen: así el rechazo por fórmula se mide
+    // contra un pedido que por lo demás estaba completamente autorizado, y no
+    // gana por una puerta anterior.
+    const operationalScope: ServedAgentAuthority = {
+        kind: 'agent', tenantId, schemaName, agentId, version: 3, operationalHash: 'b'.repeat(64),
+    };
 
     function createHarness() {
         const prisma = {
@@ -58,7 +68,7 @@ describe('pharmacy prescription boundary', () => {
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: otc, quantity: 2 }] }, undefined,
-            { authority: authorityFor('place_catalog_order') },
+            { authority: authorityFor('place_catalog_order'), operationalScope },
         );
 
         expect(result.success).toBe(true);
@@ -74,7 +84,7 @@ describe('pharmacy prescription boundary', () => {
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: rx, quantity: 1 }] }, undefined,
-            { authority: authorityFor('place_catalog_order') },
+            { authority: authorityFor('place_catalog_order'), operationalScope },
         );
 
         expect(result.error).toBe('catalog_prescription_review_required');
@@ -97,7 +107,7 @@ describe('pharmacy prescription boundary', () => {
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'place_catalog_order',
             { items: [{ productId: otc, quantity: 1 }, { productId: rx, quantity: 1 }] }, undefined,
-            { authority: authorityFor('place_catalog_order') },
+            { authority: authorityFor('place_catalog_order'), operationalScope },
         );
 
         expect(result.error).toBe('catalog_prescription_review_required');

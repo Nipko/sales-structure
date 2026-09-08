@@ -718,14 +718,30 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const agentId=randomUUID();
         const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
         const config={behavior:{draftMode:true},hours:{timezone:'America/Bogota'},tools:{appointments:{enabled:true}}};
-        await q("INSERT INTO agent_personas(id,name,is_active,config_json,version) VALUES($1::uuid,'Eval Agent',true,$2::jsonb,1)",[agentId,JSON.stringify(config)]);
+        // El agente queda atado a la conexión de esta conversación, como uno
+        // real: la reanudación vuelve a resolver quién sirve el canal con las
+        // reglas de producción y exige que siga siendo el agente y la versión
+        // de la propuesta. Un agente sin canales no sirve ninguna conexión, así
+        // que el ticket se cerraría por agente ausente sin llegar al comando.
+        await q("INSERT INTO agent_personas(id,name,is_active,config_json,version,channels,channel_bindings)"
+            + " VALUES($1::uuid,'Eval Agent',true,$2::jsonb,1,ARRAY['web_widget'],ARRAY['web_widget:eval'])",
+            [agentId,JSON.stringify(config)]);
         const [agentRow]=await q('SELECT * FROM agent_personas WHERE id=$1::uuid',[agentId]);
         const operationalScope={kind:'agent' as const,tenantId,schemaName:lease.schemaName,agentId,version:1,operationalHash:operationalConfigurationHash(agentRow)};
         await q('UPDATE conversations SET agent_persona_id=$1::uuid WHERE id=$2::uuid',[agentId,conversationId]);
         // These are explicit test boundary adapters. All SQL, approval state
         // transitions and domain commands below are their production classes.
+        // El namespace arrendado ES el esquema del tenant durante la evaluación:
+        // así lo declara `getTenantSchemaName` para el servicio de control, y la
+        // reanudación de un ticket aprobado comprueba ahora que la fila global
+        // del tenant diga lo mismo antes de tocar nada. La fila de `tenants` y
+        // el doble de Prisma tienen que coincidir con esa declaración; si no, el
+        // ticket se cierra como `approval_tenant_unavailable` sin llegar al
+        // comando, que es lo contrario de lo que este caso mide.
+        await query('UPDATE public.tenants SET schema_name=$1 WHERE id=$2',[lease.schemaName,tenantId]);
         const ownedPrisma={...prisma,getTenantSchemaName:async()=>lease.schemaName,
-            tenant:{findUnique:async()=>({industry:'beauty',settings:{},operatingCountry:'CO'})}};
+            tenant:{findUnique:async()=>({schemaName:lease.schemaName,isActive:true,
+                industry:'beauty',settings:{},operatingCountry:'CO'})}};
         const controls=new ToolExecutionControlService(ownedPrisma,{get:()=> 'isolated-test-secret-length-32-characters'} as any,{} as any,{get:async()=>null,incr:async()=>1,expire:async()=>true} as any);
         const args={serviceId,date,time:'10:00',customerName:'Eval'};
         const draftExecutor=Object.create(executor) as AIToolExecutorService;

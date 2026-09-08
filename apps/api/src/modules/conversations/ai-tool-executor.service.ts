@@ -1,4 +1,5 @@
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
+import { assertServedAgentAuthority, validServedAgentAuthority, VERSION_GUARDED_TOOLS, ServedAgentAuthorityError, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { educationToolError } from './education-tool-error';
 import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
@@ -224,6 +225,8 @@ export class AIToolExecutorService {
              * ellos no pasaban ninguna autorización.
              */
             authority: ToolExecutionAuthority;
+            /** Exact served revision, exclusively from trusted runtime/approval callers. */
+            operationalScope?: ServedAgentAuthority;
             evalMode?: boolean;
             sandboxNamespace?: EvalNamespaceLease;
             executionState?: { get(key: string): Promise<string | null> };
@@ -412,7 +415,7 @@ export class AIToolExecutorService {
                 }
                 const proposal = await this.toolExecutionControl.proposeDraftAction({ schemaName, tenantId, contactId,
                     conversationId, channelType: opts.channelType, toolName, args, mcpApproval,
-                    draftMode: true, draftScope: opts.draftScope });
+                    draftMode: true, draftScope: opts.draftScope, operationalScope: opts.operationalScope });
                 if (proposal.allowed) return { error: 'draft_action_requires_approval', persisted: false };
                 if (args.repairTerms && proposal.result.error === 'confirmation_required') {
                     return { ...proposal.result, ...repairTermsReviewResult(args.repairTerms, 'confirmation_required') };
@@ -440,6 +443,11 @@ export class AIToolExecutorService {
             // actually happened — which is the only thing it exists to check.
             const evalWriterAllowed = opts?.evalMode === true
                 && (canonicalSandbox ? CANONICAL_EVAL_TOOLS.has(toolName) : canEvalExecuteWriter(toolName, contactId));
+            if (VERSION_GUARDED_TOOLS.has(toolName) && !evalWriterAllowed
+                && !validServedAgentAuthority(opts.operationalScope, schemaName, tenantId)) {
+                return { error: 'agent_operational_authority_required', persisted: false, controlBlocked: true };
+            }
+            const operationalScope = evalWriterAllowed ? undefined : opts.operationalScope;
             if (persistenceDisabled(opts?.executionContext)
                 && !isAgentTestSafeToolName(toolName)
                 && !evalWriterAllowed) {
@@ -528,6 +536,7 @@ export class AIToolExecutorService {
                 executionState: opts?.executionState,
                 missionScope: opts?.missionScope,
                 draftMode: opts?.executionContext?.mode === 'draft',
+                operationalScope: opts?.operationalScope,
             });
             if (!controlDecision.allowed) {
                 if (args.repairTerms && controlDecision.result?.error === 'confirmation_required') {
@@ -604,13 +613,13 @@ export class AIToolExecutorService {
                     return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox);
 
                 case 'create_appointment':
-                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox);
+                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope);
 
                 case 'cancel_appointment':
-                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox);
+                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox, operationalScope);
 
                 case 'reschedule_appointment':
-                    return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason);
+                    return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason, operationalScope);
 
                 case 'get_appointment_details':
                     return this.getAppointmentDetails(schemaName, contactId, args.appointmentId);
@@ -655,14 +664,14 @@ export class AIToolExecutorService {
                     return this.scheduleTestDrive(tenantId, args);
 
                 case 'place_catalog_order':
-                    return this.placeCatalogOrder(schemaName, contactId, conversationId, args, executionIdempotencyKey);
+                    return this.placeCatalogOrder(schemaName, contactId, conversationId, args, executionIdempotencyKey, operationalScope);
                 case 'list_my_catalog_orders':
                     return { success:true, orders:await this.catalogCommands().listOwned(schemaName,contactId,args.limit) };
                 case 'get_catalog_order':
                     return { success:true, order:await this.catalogCommands().getOwned(schemaName,String(args.orderId||''),contactId) };
                 case 'cancel_catalog_order':
                     return { success:true, order:await this.catalogCommands().cancel(schemaName,String(args.orderId||''),contactId,
-                        {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason}),refundPerformed:false };
+                        {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason,operationalScope}),refundPerformed:false };
 
                 case 'search_faqs':
                     return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext);
@@ -900,7 +909,7 @@ export class AIToolExecutorService {
                     return this.getMyMembership(schemaName, contactId);
 
                 case 'book_class':
-                    return this.bookClassTool(schemaName, contactId, args);
+                    return this.bookClassTool(schemaName, contactId, args, operationalScope);
 
                 case 'freeze_membership':
                     return this.freezeMembershipTool(schemaName, contactId, args);
@@ -909,7 +918,7 @@ export class AIToolExecutorService {
                     return this.listMyClassBookings(schemaName, contactId);
 
                 case 'cancel_class_booking':
-                    return this.cancelClassBooking(schemaName, contactId, args.bookingId);
+                    return this.cancelClassBooking(schemaName, contactId, args.bookingId, operationalScope);
 
                 // ── Education tools ───────────────────────────────
                 case 'get_courses':
@@ -919,13 +928,13 @@ export class AIToolExecutorService {
                     return this.getCourseScheduleTool(schemaName, args);
 
                 case 'enroll_student':
-                    return this.enrollStudentTool(schemaName, contactId, args);
+                    return this.enrollStudentTool(schemaName, contactId, args, operationalScope);
 
                 case 'get_placement_test_link':
                     return this.getPlacementTestLinkTool(schemaName, contactId, args);
 
                 case 'cancel_enrollment':
-                    return this.cancelEnrollment(schemaName, contactId, args.enrollmentId, args.reason);
+                    return this.cancelEnrollment(schemaName, contactId, args.enrollmentId, args.reason, operationalScope);
 
                 case 'list_my_enrollments':
                     return this.listMyEnrollments(schemaName, contactId);
@@ -1026,6 +1035,7 @@ export class AIToolExecutorService {
                         conversationId,
                         args,
                         executionIdempotencyKey,
+                        operationalScope,
                     );
 
                 case 'list_my_repair_orders':
@@ -1035,10 +1045,10 @@ export class AIToolExecutorService {
                     return this.getRepairOrder(schemaName, contactId, args.repairOrderId);
 
                 case 'approve_repair':
-                    return this.decideRepairEstimate(schemaName, contactId, args.repairOrderId, args.accepted, args.repairTerms, args.repairTermsHash);
+                    return this.decideRepairEstimate(schemaName, contactId, args.repairOrderId, args.accepted, args.repairTerms, args.repairTermsHash, operationalScope);
 
                 case 'cancel_repair_order':
-                    return this.cancelRepairOrder(schemaName, contactId, args.repairOrderId, args.reason, args.repairTerms, args.repairTermsHash);
+                    return this.cancelRepairOrder(schemaName, contactId, args.repairOrderId, args.reason, args.repairTerms, args.repairTermsHash, operationalScope);
 
                 case 'create_pet_boarding':
                     return this.createPetBoarding(schemaName, contactId, args);
@@ -1069,7 +1079,9 @@ export class AIToolExecutorService {
             }
             };
 
-            const result = attachWriterActiveObject(toolName, await executeHandler(), args);
+            const handlerResult = await executeHandler();
+            if (handlerResult?.error === 'agent_operational_revision_changed') throw new ServedAgentAuthorityError();
+            const result = attachWriterActiveObject(toolName, handlerResult, args);
             if(['place_catalog_order','cancel_catalog_order'].includes(toolName) && result && typeof result==='object' && 'success' in result && result.success===true) catalogCommitted=true;
             if (this.toolExecutionControl && controlDecision) {
                 // A handler result is not acknowledged until the central ledger
@@ -1086,6 +1098,10 @@ export class AIToolExecutorService {
                     .fail(schemaName, controlDecision, 'tool_execution_failed')
                     .catch(() => undefined);
             }
+            if (error instanceof ServedAgentAuthorityError) return {
+                error: error.code, persisted: false, controlBlocked: true,
+                message: 'The agent configuration changed. Reload it and prepare a new proposal before executing this action.',
+            };
             if(catalogCommitted) return {error:'reconciliation_required',persisted:true,retryable:false,shouldHandoff:true,
                 message:'The order operation committed but its acknowledgement could not be verified. Do not create another order or claim a refund. Re-read the owned order through the normal privacy and ownership checks.'};
             if(['place_catalog_order','cancel_catalog_order','get_catalog_order','list_my_catalog_orders'].includes(toolName)) {
@@ -1127,6 +1143,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: Record<string, any>,
         trustedIdempotencyKey?: string,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
         if (!AIToolExecutorService.UUID_PATTERN.test(contactId || '')) {
@@ -1154,7 +1171,7 @@ export class AIToolExecutorService {
             appointmentId: args.appointmentId,
             conversationId,
             idempotencyKey,
-        }, { type: 'agent' });
+        }, { type: 'agent' }, operationalScope);
         return {
             success: true,
             repairOrderId: order.id,
@@ -1249,6 +1266,7 @@ export class AIToolExecutorService {
         accepted: unknown,
         terms: RepairOrderTerms,
         termsHash: string,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
         if (typeof accepted !== 'boolean') {
@@ -1256,7 +1274,7 @@ export class AIToolExecutorService {
         }
         const order = await this.repairOrders.decideEstimate(
             schemaName, repairOrderId, contactId, accepted, 'agent', null, undefined,
-            { expectedVersion: terms?.orderVersion, expectedTermsHash: termsHash },
+            { expectedVersion: terms?.orderVersion, expectedTermsHash: termsHash }, operationalScope,
         );
         return {
             success: true,
@@ -1278,10 +1296,11 @@ export class AIToolExecutorService {
         reason?: string,
         terms?: RepairOrderTerms,
         termsHash?: string,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         if (!this.repairOrders) return this.repairOrderWiringUnavailable();
         const order = await this.repairOrders.cancelOwned(schemaName, repairOrderId, contactId, reason,
-            { expectedVersion: terms?.orderVersion as number, expectedTermsHash: termsHash });
+            { expectedVersion: terms?.orderVersion as number, expectedTermsHash: termsHash }, operationalScope);
         return {
             success: true,
             repairOrderId: order.id,
@@ -1662,9 +1681,9 @@ export class AIToolExecutorService {
         return this.ordersService.catalogCommands();
     }
 
-    private async placeCatalogOrder(schema: string,contactId: string,conversationId: string | undefined,args: any,idempotencyKey?: string): Promise<any> {
+    private async placeCatalogOrder(schema: string,contactId: string,conversationId: string | undefined,args: any,idempotencyKey?: string,operationalScope?:ServedAgentAuthority): Promise<any> {
         const order=await this.catalogCommands().create(schema,{contactId,conversationId,items:args.items,notes:args.notes,idempotencyKey},
-            {source:'agent',expectedTermsHash:args.catalogTermsHash});
+            {source:'agent',expectedTermsHash:args.catalogTermsHash,operationalScope});
         return {success:true,order:{...order,total:order.totalAmount,itemCount:order.items.length,
             payableReference:this.payableReference('order',order.id,order.paymentStatus,order.status)}};
     }
@@ -3135,6 +3154,7 @@ export class AIToolExecutorService {
         conversationId?: string,
         evalMode?: boolean,
         namespace?: EvalNamespaceLease,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
@@ -3267,7 +3287,7 @@ export class AIToolExecutorService {
                 location: location || undefined, notes: description,
                 metadata: appointmentMetadata, source: 'ai',
             }, { suppressEffects: evalMode === true, confirmWithoutPayment: true, sandboxNamespace: namespace,
-                expectedServiceTerms: args.appointmentTerms });
+                expectedServiceTerms: args.appointmentTerms, operationalScope });
             return {
                 success: true,
                 operationStatus: apt.awaitingPayment ? 'awaiting_payment' : apt.status,
@@ -3295,7 +3315,7 @@ export class AIToolExecutorService {
         }
     }
 
-    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string, namespace?: EvalNamespaceLease): Promise<any> {
+    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string, namespace?: EvalNamespaceLease, operationalScope?:ServedAgentAuthority): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata
@@ -3312,6 +3332,7 @@ export class AIToolExecutorService {
         const updated: any[] = await this.prisma.transactionInTenantSchema(
             schema,
             async (query) => {
+                await assertServedAgentAuthority(query, schema, operationalScope);
                 const changed = await query<any[]>(
                     `UPDATE appointments
                      SET status = 'cancelled', cancellation_reason = $1,
@@ -4521,7 +4542,7 @@ export class AIToolExecutorService {
         }
     }
 
-    private async bookClassTool(schemaName: string, contactId: string, args: any): Promise<any> {
+    private async bookClassTool(schemaName: string, contactId: string, args: any, operationalScope?:ServedAgentAuthority): Promise<any> {
         try {
             // IDOR guard: a customer can only book classes against their OWN membership.
             // Resolve the member from the current contact and ignore/reject any memberId
@@ -4533,7 +4554,7 @@ export class AIToolExecutorService {
             if (args.memberId && args.memberId !== member.id) {
                 return { error: 'You can only book classes for your own membership.' };
             }
-            const booking = await this.gymsService.bookClass(schemaName, args.classId, member.id);
+            const booking = await this.gymsService.bookClass(schemaName, args.classId, member.id, operationalScope);
             // Clase llena: el socio queda EN ESPERA, no rechazado. El mensaje
             // tiene que decir las dos cosas que le importan — que todavía no
             // tiene lugar, y que no hay que hacer nada más si alguien cancela.
@@ -4649,7 +4670,7 @@ export class AIToolExecutorService {
         }
     }
 
-    private async enrollStudentTool(schemaName: string, contactId: string, args: any): Promise<any> {
+    private async enrollStudentTool(schemaName: string, contactId: string, args: any, operationalScope?:ServedAgentAuthority): Promise<any> {
         try {
             const enrollment = await this.educationService.enrollStudent(schemaName, {
                 cohortId: args.cohortId,
@@ -4659,7 +4680,7 @@ export class AIToolExecutorService {
                 studentPhone: args.studentPhone,
                 allowWaitlist: args.allowWaitlist === true,
                 enrollmentTerms: args.enrollmentTerms,
-            });
+            }, operationalScope);
             return {
                 enrollmentId: enrollment.id,
                 cohortId: enrollment.cohort_id,
@@ -4679,6 +4700,7 @@ export class AIToolExecutorService {
                     : 'Enrollment registered and seat assigned. Payment status remains separate; no charge was made by this command.',
             };
           } catch (e: any) {
+              if (e instanceof ServedAgentAuthorityError) throw e;
               if(['cohort_full_waitlist_requires_consent','enrollment_terms_changed_requires_confirmation'].includes(e.message)){
                   try{
                       const terms=await this.educationService.getEnrollmentTerms(schemaName,args.cohortId);
@@ -5606,6 +5628,7 @@ export class AIToolExecutorService {
     private async rescheduleAppointment(
         schema: string, contactId: string, appointmentId: string,
         newDate: string, newTime: string, reason?: string,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, assigned_to,
@@ -5666,6 +5689,7 @@ export class AIToolExecutorService {
                 async (query) => {
                     // Competes with create/payment settlement under the same DB
                     // capacity lock, even when another writer does not use Redis.
+                    await assertServedAgentAuthority(query, schema, operationalScope);
                     await lockAndAssertAppointmentCapacity(query, {
                         schemaName: schema, serviceId: apt.service_id, staffUserId: assignedTo,
                         startAt: newStartAt, endAt: newEndAt, excludeAppointmentId: appointmentId,
@@ -6047,9 +6071,9 @@ export class AIToolExecutorService {
         }
     }
 
-    private async cancelClassBooking(schemaName: string, contactId: string, bookingId: string): Promise<any> {
+    private async cancelClassBooking(schemaName: string, contactId: string, bookingId: string, operationalScope?:ServedAgentAuthority): Promise<any> {
         try {
-            return await this.gymsService.cancelBooking(schemaName, bookingId, contactId);
+            return await this.gymsService.cancelBooking(schemaName, bookingId, contactId, operationalScope);
         } catch (e: any) {
             return { error: e.message };
         }
@@ -6057,10 +6081,11 @@ export class AIToolExecutorService {
 
     // ── Education management handlers ────────────────────────────────
 
-    private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string): Promise<any> {
+    private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string, operationalScope?:ServedAgentAuthority): Promise<any> {
         try {
-            return await this.educationService.cancelEnrollment(schema, enrollmentId, { contactId, reason });
+            return await this.educationService.cancelEnrollment(schema, enrollmentId, { contactId, reason }, operationalScope);
         } catch (e: any) {
+            if (e instanceof ServedAgentAuthorityError) throw e;
             return educationToolError(e);
         }
     }

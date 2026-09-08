@@ -1,4 +1,5 @@
 import { ensureOperationalNoticeOutbox, enqueueOperationalNotice, operationalContactWasErased } from '../operational-notices/operational-notice-outbox';
+import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -494,9 +495,10 @@ export class GymsService {
      * has a credit allowance; refuses if no credits and the plan is
      * not unlimited. Decrements available_spots on the class atomically.
      */
-    async bookClass(schemaName: string, classId: string, memberId: string): Promise<any> {
+    async bookClass(schemaName: string, classId: string, memberId: string, operationalScope?: ServedAgentAuthority): Promise<any> {
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schemaName}`]);
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
             // Every class transition locks the class before its members/bookings.
             const [klass] = await query<any[]>(
                 'SELECT * FROM fitness_classes WHERE id = $1::uuid FOR UPDATE', [classId],
@@ -547,10 +549,11 @@ export class GymsService {
         return { ...booking, waitlisted: true, waitlistPosition: Number(position?.n || 1) };
     }
 
-    async cancelBooking(schemaName: string, bookingId: string, contactId?: string): Promise<any> {
+    async cancelBooking(schemaName: string, bookingId: string, contactId?: string, operationalScope?: ServedAgentAuthority): Promise<any> {
         await ensureOperationalNoticeOutbox(this.prisma,schemaName);
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schemaName}`]);
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
             const [reference] = await query<any[]>('SELECT class_id FROM class_bookings WHERE id = $1::uuid', [bookingId]);
             if (!reference) throw new NotFoundException('Booking not found');
             const [klass] = await query<any[]>('SELECT * FROM fitness_classes WHERE id = $1::uuid FOR UPDATE', [reference.class_id]);

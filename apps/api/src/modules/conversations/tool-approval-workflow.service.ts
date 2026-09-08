@@ -1,4 +1,6 @@
 import { ToolApprovalEffectsService } from './tool-approval-effects.service';
+import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
+import { servedAgentAuthority, sameServedAgentAuthority, VERSION_GUARDED_TOOLS } from '../persona/served-agent-authority';
 import { APPROVAL_EFFECTS_EVENT } from './tool-approval-effects.contracts';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -193,6 +195,7 @@ export class ToolApprovalWorkflowService {
                     config: assigned.config_json,
                     agentId: String(assigned.id),
                     version: Number.isInteger(Number(assigned.version)) ? Number(assigned.version) : null,
+                    operationalHash: operationalConfigurationHash(assigned),
                 };
             } else {
                 persona = await this.personaService.resolvePersonaForChannel(
@@ -206,6 +209,14 @@ export class ToolApprovalWorkflowService {
                 error:'approval_agent_unavailable',message:'El agente ya no está activo. La acción no fue ejecutada.',
             });
             const vertical = (tenant.settings as any)?.verticalConfig ?? {};
+            const currentScope = servedAgentAuthority(claim.tenantId, claim.schemaName, persona);
+            if ((claim.operationalScope || VERSION_GUARDED_TOOLS.has(claim.toolName))
+                && !sameServedAgentAuthority(claim.operationalScope, currentScope)) {
+                return this.controls.finishApprovalResume(claim, {
+                    error: 'agent_operational_revision_changed', persisted: false, controlBlocked: true,
+                    message: 'El agente cambió o la propuesta no conserva su versión de origen. Prepara una nueva propuesta.',
+                });
+            }
             if (claim.draftReview && (persona.agentId !== claim.draftReview.agentId
                 || persona.version !== claim.draftReview.agentVersion)) {
                 return this.controls.finishApprovalResume(claim, {
@@ -251,6 +262,7 @@ export class ToolApprovalWorkflowService {
                     // still exists at all. It is deliberately not widened to a
                     // fresh one-tool authority invented from the old ticket.
                     authority: capability.authority,
+                    operationalScope: claim.operationalScope,
                     channelType: currentChannel,
                 },
             );

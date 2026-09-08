@@ -127,6 +127,7 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
 });
 
 describe('place_catalog_order delegates the reviewed canonical command', () => {
+    const operationalScope={kind:'agent' as const,tenantId,schemaName,agentId:'55555555-5555-4555-8555-555555555555',version:1,operationalHash:'a'.repeat(64)};
     const product={id:PRODUCT_ID,name:'Ibuprofeno 400mg',price:'12000',currency:'COP',stock:10,is_available:true};
     function writer(rows:any[]=[product]) {
         const quote=jest.fn(async(_schema:string,data:any)=>catalogTerms(rows,catalogItems(data.items),'','agent'));
@@ -134,13 +135,13 @@ describe('place_catalog_order delegates the reviewed canonical command', () => {
         return {quote,create,...createExecutor(jest.fn(),{catalogCommands:()=>({quote,create})})};
     }
     const args={items:[{productId:PRODUCT_ID,quantity:2}]};
-    const run=(executor:AIToolExecutorService,input:any=args)=>executor.execute(schemaName,tenantId,contactId,'place_catalog_order',input,conversationId,{authority:authorityFor('place_catalog_order')});
+    const run=(executor:AIToolExecutorService,input:any=args)=>executor.execute(schemaName,tenantId,contactId,'place_catalog_order',input,conversationId,{authority:authorityFor('place_catalog_order'),operationalScope});
     it('binds the owned schema, identity, canonical prices and execution key; discards model prices',async()=>{
         const {executor,quote,create}=writer();
         const result:any=await run(executor,{items:[{...args.items[0],unitPrice:1}],catalogTermsHash:'forged'});
         expect(quote).toHaveBeenCalledWith(schemaName,expect.objectContaining({contactId,conversationId}));
         const terms=await quote.mock.results[0].value;
-        expect(create).toHaveBeenCalledWith(schemaName,expect.objectContaining({contactId,conversationId,idempotencyKey:'catalog-call'}),{source:'agent',expectedTermsHash:catalogHash(terms)});
+        expect(create).toHaveBeenCalledWith(schemaName,expect.objectContaining({contactId,conversationId,idempotencyKey:'catalog-call'}),{source:'agent',expectedTermsHash:catalogHash(terms),operationalScope});
         expect(result.order).toMatchObject({total:24000,currency:'COP',status:'pending',paymentStatus:'pending'});
     });
     it('returns availability facts for a rejected product without writing',async()=>{

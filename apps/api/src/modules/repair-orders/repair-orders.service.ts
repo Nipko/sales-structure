@@ -1,3 +1,4 @@
+import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import {
     BadRequestException,
     ConflictException,
@@ -314,6 +315,7 @@ export class RepairOrdersService {
         schemaName: string,
         input: CreateRepairOrderInput,
         actor: { id?: string | null; type: 'tenant_user' | 'agent' | 'system' },
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         const contactId = assertUuid(input.contactId, 'contactId')!;
         const customerConcern = cleanText(input.customerConcern, 4_000);
@@ -332,6 +334,7 @@ export class RepairOrdersService {
                 year: input.vehicle?.year ?? null, color: cleanText(input.vehicle?.color,80), mileageKm: input.vehicle?.mileageKm ?? null } });
 
         return this.transaction(schemaName, async (query) => {
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
             await this.assertContactAvailable(query, contactId);
             // Serialize before ANY vehicle mutation, including requests with
             // different keys for the same customer's vehicle.
@@ -492,6 +495,7 @@ export class RepairOrdersService {
         actorId?: string | null,
         evidence?: string,
         options?: RepairDecisionOptions,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         const id = assertUuid(repairOrderId, 'repairOrderId')!;
         if (typeof accepted !== 'boolean') {
@@ -508,6 +512,7 @@ export class RepairOrdersService {
         }
         if (!Number.isInteger(options?.expectedVersion) || options!.expectedVersion < 1) throw new BadRequestException('expectedVersion is required');
         return this.transaction(schemaName, async (query) => {
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
             const params = owner ? [id, owner] : [id];
             const rows = await query<any[]>(
                 `SELECT * FROM repair_orders
@@ -705,12 +710,14 @@ export class RepairOrdersService {
         contactId: string,
         reason?: string,
         options?: RepairDecisionOptions,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<any> {
         const id = assertUuid(repairOrderId, 'repairOrderId')!;
         const owner = assertUuid(contactId, 'contactId')!;
         const cleanReason = cleanText(reason, 1_000);
         if (!Number.isInteger(options?.expectedVersion) || options!.expectedVersion < 1) throw new BadRequestException('expectedVersion is required');
         return this.transaction(schemaName, async (query) => {
+            await assertServedAgentAuthority(query, schemaName, operationalScope);
             const rows = await query<any[]>(
                 `SELECT * FROM repair_orders WHERE id = $1::uuid AND contact_id = $2::uuid FOR UPDATE`,
                 [id, owner],

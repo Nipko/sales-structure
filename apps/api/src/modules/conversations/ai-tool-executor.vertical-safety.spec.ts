@@ -2,12 +2,14 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { EVAL_SANDBOX_CONTACT_ID } from './agent-test-tool-policy';
+import { enrollmentTerms } from '../education/enrollment-terms';
 
 describe('AIToolExecutorService vertical safety contracts', () => {
     const schemaName = 'tenant_vertical';
     const tenantId = '11111111-1111-4111-8111-111111111111';
     const contactId = '22222222-2222-4222-8222-222222222222';
     const conversationId = '33333333-3333-4333-8333-333333333333';
+    const operationalScope = {kind:'agent' as const,tenantId,schemaName,agentId:'55555555-5555-4555-8555-555555555555',version:1,operationalHash:'a'.repeat(64)};
     const gatedClaimTools: Array<[string, Record<string, any>]> = [
         ['file_claim', {
             policyNumber: 'POL-1',
@@ -26,7 +28,10 @@ describe('AIToolExecutorService vertical safety contracts', () => {
         const eventEmitter = { emit: jest.fn() };
         const toursService = { createBooking: jest.fn() };
         const restaurantsService = { createOrder: jest.fn() };
-        const educationService = { enrollStudent: jest.fn() };
+        const educationService = { enrollStudent: jest.fn(), getEnrollmentTerms: jest.fn().mockResolvedValue(enrollmentTerms(
+            {id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',name:'Course',price:100,currency:'COP'},
+            {id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',starts_at:'2026-09-14'},
+        )) };
         const insuranceService = {
             getPolicyByNumber: jest.fn(),
             fileClaim: jest.fn(),
@@ -60,8 +65,8 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             {} as any,
             {
                 preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
-                complete: jest.fn(),
-                fail: jest.fn(),
+                complete: jest.fn().mockResolvedValue(undefined),
+                fail: jest.fn().mockResolvedValue(undefined),
             } as any,
             {} as any,
             {} as any,
@@ -339,7 +344,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             'enroll_student',
             { cohortId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', studentName: 'Ana' },
             conversationId,
-            { authority: authorityFor('enroll_student') },
+            { authority: authorityFor('enroll_student'), operationalScope },
         );
 
         expect(result).toMatchObject({

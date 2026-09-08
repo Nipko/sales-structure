@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import type { ServedAgentAuthority } from '../persona/served-agent-authority';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 
 export const CATALOG_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -19,7 +20,7 @@ export interface CatalogCreateInput {
     status?: 'pending' | 'confirmed' | 'paid'; paymentMethod?: string; notes?: string; currency?: string;
     items: CatalogRequestedItem[]; idempotencyKey?: string; expectedTermsHash?: string;
 }
-export interface CatalogCommandOptions { source: 'agent' | 'tenant_user'; expectedTermsHash?: string; actorId?: string | null; }
+export interface CatalogCommandOptions { source: 'agent' | 'tenant_user'; expectedTermsHash?: string; actorId?: string | null; operationalScope?: ServedAgentAuthority; }
 export function catalogHash(value: unknown): string {
     const stable = (item: any): any => Array.isArray(item) ? item.map(stable) : item && typeof item === 'object'
         ? Object.fromEntries(Object.keys(item).sort().map(key => [key, stable(item[key])])) : item;

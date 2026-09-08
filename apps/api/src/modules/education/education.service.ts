@@ -1,4 +1,5 @@
 import { EducationEnrollmentCommands, type EnrollmentCommand } from './education-enrollment-commands';
+import type { ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -226,11 +227,11 @@ export class EducationService {
     getEnrollmentTerms(schemaName: string, cohortId: string) {
         return new EducationEnrollmentCommands(this.prisma).getTerms(schemaName,cohortId);
     }
-    enrollStudent(schemaName: string, data: EnrollmentCommand): Promise<any> {
-        return new EducationEnrollmentCommands(this.prisma).enroll(schemaName,data);
+    enrollStudent(schemaName: string, data: EnrollmentCommand, operationalScope?:ServedAgentAuthority): Promise<any> {
+        return new EducationEnrollmentCommands(this.prisma).enroll(schemaName,data,operationalScope);
     }
-    cancelEnrollment(schemaName: string, id: string, input: {contactId?: string; reason?: string} = {}): Promise<any> {
-        return new EducationEnrollmentCommands(this.prisma).cancel(schemaName,id,input);
+    cancelEnrollment(schemaName: string, id: string, input: {contactId?: string; reason?: string} = {},operationalScope?:ServedAgentAuthority): Promise<any> {
+        return new EducationEnrollmentCommands(this.prisma).cancel(schemaName,id,input,operationalScope);
     }
     async updateEnrollment(schemaName: string, id: string, data: any): Promise<any> {
         // Dashboard status changes use the same transition as conversational tools.

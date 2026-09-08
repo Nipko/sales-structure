@@ -552,6 +552,31 @@ describe('ToolExecutionControlService', () => {
         });
     });
 
+    it('rejects a pending proposal from an older served revision before using a later confirmation', async () => {
+        const {service,state}=createHarness();
+        const operationalScope={kind:'agent' as const,tenantId,schemaName,agentId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',version:7,operationalHash:'a'.repeat(64)};
+        const request={schemaName,tenantId,contactId,conversationId,toolName:'create_appointment',
+            args:{serviceId:'service-1',date:'2026-08-10',time:'10:00'},operationalScope};
+        await service.preflight(request);state.latestMessage={id:secondMessageId,content_text:'confirmo'};
+        const result=await service.preflight({...request,operationalScope:{...operationalScope,version:8}});
+        expect(result).toMatchObject({allowed:false,result:{error:'agent_operational_revision_changed'}});
+        expect(state.ledger.status).toBe('awaiting_confirmation');expect(state.ledger.confirmed_at).toBeNull();
+        expect(state.ledger.request_payload.operationalScope).toEqual(operationalScope);
+    });
+
+    it.each(['succeeded','reconciliation_required'])('preserves an owned %s receipt after configuration changes without admitting another writer', async status => {
+        const {service,state}=createHarness();
+        const operationalScope={kind:'agent' as const,tenantId,schemaName,agentId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',version:7,operationalHash:'a'.repeat(64)};
+        const request={schemaName,tenantId,contactId,conversationId,toolName:'create_appointment',
+            args:{serviceId:'service-1',date:'2026-08-10',time:'10:00'},operationalScope};
+        await service.preflight(request);
+        const receipt=status==='succeeded'?{success:true,appointmentId:'appointment-1'}:{error:'reconciliation_required',persisted:true};
+        Object.assign(state.ledger,{status,response_payload:receipt});
+        const result=await service.preflight({...request,operationalScope:{...operationalScope,version:8}});
+        expect(result).toEqual({allowed:false,result:{...receipt,idempotentReplay:true}});
+        expect(state.ledgers).toHaveLength(1);expect(state.ledger.status).toBe(status);
+    });
+
     it('opens a new operation for the same arguments from a later inbound intent', async () => {
         const { service, state } = createHarness();
         const request = {

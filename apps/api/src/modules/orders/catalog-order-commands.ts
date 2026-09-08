@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantQuery, requireTenantContact } from '../../common/utils/tenant-contact.util';
 import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
@@ -54,6 +55,7 @@ export class CatalogOrderCommands {
         const requestHash = catalogHash({ contactId, conversationId: data.conversationId || null, opportunityId: data.opportunityId || null,
             items, notes, status, paymentMethod, currency: data.currency || null, expectedTermsHash: options.expectedTermsHash || null, source: options.source });
         return this.transaction(schema, async query => {
+            await assertServedAgentAuthority(query, schema, options.operationalScope);
             await this.identity(query, schema, contactId, data.conversationId);
             if (key) {
                 await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`catalog-order:${schema}:${key}`]);
@@ -144,10 +146,11 @@ export class CatalogOrderCommands {
             await this.checkCancellation(query,schema,row); return this.termsForCancel(row);
         });
     }
-    async cancel(schema: string,id: string,contact: string | null,options: {source:'agent'|'tenant_user';expectedVersion?:number;expectedTermsHash?:string;reason?:string;actorId?:string|null}): Promise<any> {
+    async cancel(schema: string,id: string,contact: string | null,options: {source:'agent'|'tenant_user';expectedVersion?:number;expectedTermsHash?:string;reason?:string;actorId?:string|null;operationalScope?:ServedAgentAuthority}): Promise<any> {
         const contactId=this.contact(contact,options.source==='agent'), reason=catalogText(options.reason,1000);
         if (options.source==='agent' && (!Number.isInteger(options.expectedVersion)||!options.expectedTermsHash)) throw new ConflictException('catalog_terms_required');
         return this.transaction(schema,async query=>{
+            await assertServedAgentAuthority(query, schema, options.operationalScope);
             if(contactId) await this.identity(query,schema,contactId);
             const row=await this.ownedRow(query,id,contactId);
             if(!contactId && row.contact_id) await this.identity(query,schema,row.contact_id);

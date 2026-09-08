@@ -1,4 +1,5 @@
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
+import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -937,6 +938,7 @@ export class ConversationsService {
                 inboundMessageId,
                 personaResolution.agentId ?? undefined,
                 undefined,personaResolution.version ?? undefined,
+                servedAgentAuthority(tenantId, schemaName, personaResolution),
             );
 
         // Persist the decision BEFORE any of it goes out, so a crash between the
@@ -1887,6 +1889,7 @@ export class ConversationsService {
         resolvedAgentId?: string,
         session?: AgentTurnSession,
         resolvedAgentVersion?: number,
+        operationalScope?: ServedAgentAuthority,
     ): Promise<string> {
         const draftMode = config.behavior?.draftMode === true;
         const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
@@ -1904,9 +1907,14 @@ export class ConversationsService {
         const baseToolExecutor = session ? sessionToolExecutor(this.toolExecutor, session) : draftScope ? new Proxy(this.toolExecutor, {
             get: (target, key, receiver) => key === 'execute'
                 ? (...args: Parameters<AIToolExecutorService['execute']>) => target.execute(
-                    args[0], args[1], args[2], args[3], args[4], args[5], { ...args[6], draftScope, executionContext: DRAFT_EXECUTION_CONTEXT })
+                    args[0], args[1], args[2], args[3], args[4], args[5], { ...args[6], draftScope, operationalScope, executionContext: DRAFT_EXECUTION_CONTEXT })
                 : Reflect.get(target, key, receiver),
-        }) : this.toolExecutor;
+        }) : new Proxy(this.toolExecutor, {
+            get: (target, key, receiver) => key === 'execute'
+                ? (...args: Parameters<AIToolExecutorService['execute']>) => target.execute(
+                    args[0], args[1], args[2], args[3], args[4], args[5], { ...args[6], operationalScope })
+                : Reflect.get(target, key, receiver),
+        });
         const missionExecutor = (owner: MissionExecutionScopeV1['executionOwner']) => new Proxy(baseToolExecutor, {
             get: (target, key, receiver) => key === 'execute' ? async (...args: Parameters<AIToolExecutorService['execute']>) => {
                 if (missionAllowsTool && !await missionAllowsTool(args[3], owner)) {
@@ -5019,6 +5027,7 @@ export class ConversationsService {
                                 conversation.updated_at || conversation.created_at, businessHours,
                                 inboundMessageId, personaResolution.agentId ?? undefined,
                                 undefined,personaResolution.version ?? undefined,
+                                servedAgentAuthority(tenantId, schemaName, personaResolution),
                             );
                             if (!reply || isErrorFallback(reply)) {
                                 await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});

@@ -11,6 +11,7 @@ const tenantId = '11111111-1111-4111-8111-111111111111';
 const contactId = '22222222-2222-4222-8222-222222222222';
 const conversationId = '33333333-3333-4333-8333-333333333333';
 const orderId = '44444444-4444-4444-8444-444444444444';
+const operationalScope = {kind:'agent' as const,tenantId,schemaName,agentId:'55555555-5555-4555-8555-555555555555',version:1,operationalHash:'a'.repeat(64)};
 
 function createExecutor(repairOrders: any) {
     repairOrders.getActionTerms ??= jest.fn(async (_schema: string, _id: string, _contact: string, action: 'estimate_decision'|'cancel') => repairOrderTerms({
@@ -102,7 +103,7 @@ describe('agent workshop runtime', () => {
                 customerConcern: 'Vibra al frenar', reportedSymptoms: ['vibración'],
             },
             conversationId,
-            { authority: authorityFor('create_repair_order') },
+            { authority: authorityFor('create_repair_order'), operationalScope },
         );
 
         expect(control.preflight).toHaveBeenCalled();
@@ -114,7 +115,7 @@ describe('agent workshop runtime', () => {
                 idempotencyKey: 'ledger-repair-1',
                 vehicle: expect.objectContaining({ licensePlate: 'ABC123' }),
             }),
-            { type: 'agent' },
+            { type: 'agent' }, operationalScope,
         );
         expect(result).toMatchObject({
             success: true,
@@ -177,12 +178,12 @@ describe('agent workshop runtime', () => {
             schemaName, tenantId, contactId, 'approve_repair',
             { repairOrderId: orderId, accepted: true, amountCents: 1 },
             conversationId,
-            { authority: authorityFor('approve_repair') },
+            { authority: authorityFor('approve_repair'), operationalScope },
         );
 
         expect(repairOrders.decideEstimate).toHaveBeenCalledWith(
             schemaName, orderId, contactId, true, 'agent',null,undefined,
-            {expectedVersion:1,expectedTermsHash:expect.any(String)},
+            {expectedVersion:1,expectedTermsHash:expect.any(String)}, operationalScope,
         );
         expect(result).toMatchObject({
             success: true,
@@ -202,12 +203,12 @@ describe('agent workshop runtime', () => {
             schemaName, tenantId, contactId, 'cancel_repair_order',
             { repairOrderId: orderId, reason: 'Ya no lo necesito' },
             conversationId,
-            { authority: authorityFor('cancel_repair_order') },
+            { authority: authorityFor('cancel_repair_order'), operationalScope },
         );
 
         expect(repairOrders.cancelOwned).toHaveBeenCalledWith(
             schemaName, orderId, contactId, 'Ya no lo necesito',
-            {expectedVersion:1,expectedTermsHash:expect.any(String)},
+            {expectedVersion:1,expectedTermsHash:expect.any(String)}, operationalScope,
         );
         expect(result).toMatchObject({ success: true, repairOrderId: orderId, status: 'cancelled' });
     });

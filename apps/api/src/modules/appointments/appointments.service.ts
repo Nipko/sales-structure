@@ -1,4 +1,5 @@
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -271,7 +272,7 @@ export class AppointmentsService {
         customerEmail?: string;
         source?: string;
     }, execution: { suppressEffects?: boolean; confirmWithoutPayment?: boolean; sandboxNamespace?: EvalNamespaceLease;
-        expectedServiceTerms?: AppointmentServiceTerms } = {}): Promise<Appointment> {
+        expectedServiceTerms?: AppointmentServiceTerms; operationalScope?: ServedAgentAuthority } = {}): Promise<Appointment> {
         if (execution.sandboxNamespace) {
             await tenantActorDirectory(this.prisma,schemaName,execution.sandboxNamespace);
             data = { ...data, metadata: { ...data.metadata, source: 'eval_gate' } };
@@ -346,6 +347,7 @@ export class AppointmentsService {
         let currency = 'COP';
         try {
             await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                await assertServedAgentAuthority(query, schemaName, execution.operationalScope);
                 const contactIdUuid = await requireTenantContact(query, requestedContactId);
                 const opportunityId = await resolveNativeEvidenceOpportunity(query, {
                     contactId: contactIdUuid,

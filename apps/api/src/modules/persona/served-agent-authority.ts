@@ -9,11 +9,10 @@ export type ServedAgentAuthority = Readonly<{ tenantId: string; schemaName: stri
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HASH = /^[a-f0-9]{64}$/;
 export const VERSION_GUARDED_TOOLS: ReadonlySet<string> = new Set([
-    'create_appointment', 'schedule_test_drive', 'cancel_appointment', 'reschedule_appointment',
+    'create_appointment', 'cancel_appointment', 'reschedule_appointment',
     'book_class', 'cancel_class_booking', 'enroll_student', 'cancel_enrollment',
     'create_repair_order', 'approve_repair', 'cancel_repair_order',
     'place_catalog_order', 'cancel_catalog_order',
-    'register_pet', 'update_pet',
 ]);
 export class ServedAgentAuthorityError extends Error {
     readonly code = 'agent_operational_revision_changed';

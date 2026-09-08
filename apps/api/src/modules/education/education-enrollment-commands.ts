@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import type { PrismaService } from '../prisma/prisma.service';
 import { assertOptionalContactId, requireTenantContact } from '../../common/utils/tenant-contact.util';
 import { ensureOperationalNoticeOutbox, enqueueOperationalNotice, operationalContactWasErased } from '../operational-notices/operational-notice-outbox';
@@ -22,13 +23,14 @@ export class EducationEnrollmentCommands {
         return enrollmentTerms(row.course,row.cohort);
     }
 
-    async enroll(schema: string, data: EnrollmentCommand): Promise<any> {
+    async enroll(schema: string, data: EnrollmentCommand, operationalScope?: ServedAgentAuthority): Promise<any> {
         if (!data.cohortId || !data.studentName) throw new BadRequestException('cohortId and studentName are required');
         const contactId = assertOptionalContactId(data.contactId);
         if (data.allowWaitlist && !contactId) throw new BadRequestException('A contact is required to join the waitlist');
         await ensureOperationalNoticeOutbox(this.prisma,schema);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
+            await assertServedAgentAuthority(query, schema, operationalScope);
             await requireTenantContact(query,contactId);
             if (await operationalContactWasErased(query,contactId)) throw new BadRequestException('Contact unavailable');
             const [cohort]=await query<any[]>('SELECT * FROM course_cohorts WHERE id=$1::uuid FOR UPDATE',[data.cohortId]);
@@ -62,10 +64,11 @@ export class EducationEnrollmentCommands {
         });
     }
 
-    async cancel(schema:string,id:string,input:{contactId?:string;reason?:string}={}):Promise<any>{
+    async cancel(schema:string,id:string,input:{contactId?:string;reason?:string}={},operationalScope?:ServedAgentAuthority):Promise<any>{
         await ensureOperationalNoticeOutbox(this.prisma,schema);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
             await query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text',[`agent-privacy:${schema}`]);
+            await assertServedAgentAuthority(query, schema, operationalScope);
             const [reference]=await query<any[]>('SELECT cohort_id FROM enrollments WHERE id=$1::uuid',[id]);
             if (!reference) throw new NotFoundException('Enrollment not found');
             // Cohort first is the common lock order for allocation, cancellation and promotion.

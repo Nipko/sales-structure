@@ -49,6 +49,19 @@ function buildExecutor() {
     return { executor, queryRawUnsafe, control };
 }
 
+describe('served revision authority is separate from model arguments', () => {
+    it.each([undefined,{kind:'agent',tenantId,schemaName:'tenant_other',agentId:contactId,version:1,operationalHash:'a'.repeat(64)}])(
+        'rejects missing or foreign server metadata despite a forged model argument', async operationalScope => {
+            const {executor,control,queryRawUnsafe}=buildExecutor();
+            const result=await executor.execute(schemaName,tenantId,contactId,'cancel_appointment',{
+                appointmentId:contactId,operationalScope:{kind:'agent',tenantId,schemaName,agentId:contactId,version:1,operationalHash:'a'.repeat(64)},
+            },conversationId,{authority:authorityFor('cancel_appointment'),operationalScope:operationalScope as any});
+            expect(result).toMatchObject({error:'agent_operational_authority_required',persisted:false});
+            expect(control.preflight).not.toHaveBeenCalled();expect(queryRawUnsafe).not.toHaveBeenCalled();
+        },
+    );
+});
+
 // ── La decisión, aislada ──────────────────────────────────────────────────
 
 describe('decideToolAuthority: sin autoridad no se ejecuta nada', () => {

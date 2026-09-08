@@ -1,4 +1,5 @@
 import { missionToolAllowed } from './mission-focus';
+import { sameServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { APPROVAL_EFFECTS_DDL, APPROVAL_EFFECTS_STATE_MIGRATION, APPROVAL_EFFECTS_EVENT, approvedEffectDescriptors, approvalDeliveryState, type ApprovalEffectSummary, type ApprovalDeliveryState } from './tool-approval-effects.contracts';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -113,6 +114,7 @@ export interface ToolApprovalResumeClaim {
     channelType?: string;
     args: Record<string, unknown>;
     draftReview?: DraftActionScope;
+    operationalScope?: ServedAgentAuthority;
 }
 
 export type ToolApprovalResumeClaimResult =
@@ -144,6 +146,7 @@ export interface ToolExecutionControlRequest {
     draftMode?: boolean;
     /** Only the operational runtime can supply this reviewed agent revision. */
     draftScope?: DraftActionScope;
+    operationalScope?: ServedAgentAuthority;
     /** Server-owned sandbox state; never deserialized from a customer/model argument. */
     executionState?: { get(key: string): Promise<string | null> };
     missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
@@ -811,6 +814,7 @@ export class ToolExecutionControlService {
                     channelType: row.channel_type || undefined,
                     args,
                     ...(row.request_payload?.draftReview ? { draftReview: row.request_payload.draftReview } : {}),
+                    ...(row.request_payload?.operationalScope ? { operationalScope: row.request_payload.operationalScope } : {}),
                 },
             };
         });
@@ -1025,6 +1029,10 @@ export class ToolExecutionControlService {
                 }
                 const terminal = this.terminalLedgerResult(ledger);
                 if (terminal) return terminal;
+                if ((request.operationalScope || ledger.request_payload?.operationalScope)
+                    && !sameServedAgentAuthority(request.operationalScope, ledger.request_payload?.operationalScope)) {
+                    return this.block('agent_operational_revision_changed', 'La versión de origen de la propuesta cambió. Prepara una propuesta nueva.');
+                }
                 if (policy!.confirmation === 'runtime_enforced' && !ledger.confirmed_at) {
                     const confirmation = await this.resolveConfirmation(scopedRequest, ledger, argsHash);
                     if (!confirmation.allowed) return confirmation;
@@ -1173,11 +1181,15 @@ export class ToolExecutionControlService {
             );
         }
 
+        // A recorded result remains evidence of that operation after publication.
+        // Returning it never admits another writer or reauthorizes an old proposal.
         ledger = await this.failClosedExpiredExecution(request.schemaName, ledger);
-
         const terminal = this.terminalLedgerResult(ledger);
         if (terminal) return terminal;
-
+        if ((request.operationalScope || ledger.request_payload?.operationalScope)
+            && !sameServedAgentAuthority(request.operationalScope, ledger.request_payload?.operationalScope)) {
+            return this.block('agent_operational_revision_changed', 'El agente cambió después de proponer esta acción. Prepara una propuesta nueva.');
+        }
         if (needsConfirmation && !ledger.confirmed_at) {
             const bookingConfirmation = request.authorityEvidence
                 ? await this.resolveBookingAuthorityEvidence(request, ledger, argsHash, latestInbound)
@@ -1607,7 +1619,8 @@ export class ToolExecutionControlService {
                 assurance,
                 needsConfirmation ? 'awaiting_confirmation' : 'ready',
                 sourceMessageId,
-                JSON.stringify({ args: JSON.parse(canonicalArgs), ...(request.draftScope ? { draftReview: request.draftScope } : {}) }),
+                JSON.stringify({ args: JSON.parse(canonicalArgs), ...(request.draftScope ? { draftReview: request.draftScope } : {}),
+                    ...(request.operationalScope ? { operationalScope: request.operationalScope } : {}) }),
                 request.channelType || null,
             ],
         );

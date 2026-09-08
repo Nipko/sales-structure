@@ -3,6 +3,7 @@ import { APPOINTMENT_SERVICE_TERMS_COLUMNS } from '../appointments/appointment-s
 import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { operationalConfigurationHash } from '../persona/agent-configuration-revision';
 
 describe('AIToolExecutorService appointment cancellation safety', () => {
     const schemaName = 'tenant_appointment_safety';
@@ -11,6 +12,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
     const appointmentId = '33333333-3333-4333-8333-333333333333';
     const calendarIntegrationId = '55555555-5555-4555-8555-555555555555';
     const calendarOwnerId = '66666666-6666-4666-8666-666666666666';
+    const servedAgent = {id:'77777777-7777-4777-8777-777777777777',name:'Agent',version:1,is_active:true,config_json:{}};
+    const operationalScope = {kind:'agent' as const,tenantId,schemaName,agentId:servedAgent.id,version:1,operationalHash:operationalConfigurationHash(servedAgent)};
 
     function createHarness(queryResults: any[][]) {
         const queuedResults = [...queryResults];
@@ -37,6 +40,9 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             sql: string,
             params: unknown[] = [],
         ) => {
+            if (sql.includes('pg_advisory_xact_lock_shared')) return [];
+            if (sql.includes('FROM public.tenants')) return [{id:tenantId}];
+            if (sql === 'SELECT * FROM agent_personas WHERE id=$1::uuid FOR SHARE') return [servedAgent];
             if (rescheduling) {
                 if (sql.includes('pg_advisory_xact_lock')) return [];
                 if (sql.includes('FROM services') && sql.includes('FOR SHARE')) return [{ id: appointment.service_id, name: 'Consulta', max_concurrent: 1 }];
@@ -184,7 +190,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'cancel_appointment',
             { appointmentId, reason: 'Cambio de planes' }, undefined,
-            { authority: authorityFor('cancel_appointment') },
+            { operationalScope, authority: authorityFor('cancel_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alternatives: [] });
@@ -210,7 +216,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'cancel_appointment',
             { appointmentId }, undefined,
-            { authority: authorityFor('cancel_appointment') },
+            { operationalScope, authority: authorityFor('cancel_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alreadyCancelled: true });
@@ -227,7 +233,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'cancel_appointment',
             { appointmentId }, undefined,
-            { authority: authorityFor('cancel_appointment') },
+            { operationalScope, authority: authorityFor('cancel_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alreadyCancelled: true });
@@ -249,7 +255,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'get_check_in_instructions',
             { propertyId: appointmentId }, undefined,
-            { authority: authorityFor('get_check_in_instructions') },
+            { operationalScope, authority: authorityFor('get_check_in_instructions') },
         );
 
         expect(result.error).toContain('no active booking');
@@ -274,7 +280,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'reschedule_appointment',
             { appointmentId, newDate: '2026-08-12', newTime: '11:00', reason: 'Cambio' }, undefined,
-            { authority: authorityFor('reschedule_appointment') },
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({ success: true });
@@ -308,7 +314,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'reschedule_appointment',
             { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
-            { authority: authorityFor('reschedule_appointment') },
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({ success: true, alreadyRescheduled: true });
@@ -338,7 +344,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'reschedule_appointment',
             { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
-            { authority: authorityFor('reschedule_appointment') },
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({ retryable: true });
@@ -374,7 +380,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 time: '11:00',
                 customerName: 'Cliente',
             }, undefined,
-            { authority: authorityFor('create_appointment') },
+            { operationalScope, authority: authorityFor('create_appointment') },
         );
 
         expect(result).toMatchObject({ retryable: true });
@@ -397,7 +403,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'check_availability',
             { serviceId, staffId: foreignStaffId, date: '2026-08-12' }, undefined,
-            { authority: authorityFor('check_availability') },
+            { operationalScope, authority: authorityFor('check_availability') },
         );
 
         expect(result).toMatchObject({ error: 'tool_failed' });
@@ -438,7 +444,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 time: '11:00',
                 customerName: 'Cliente',
             }, undefined,
-            { authority: authorityFor('create_appointment') },
+            { operationalScope, authority: authorityFor('create_appointment') },
         );
 
         expect(result).toMatchObject({ error: 'tool_failed' });
@@ -486,7 +492,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 customerEmail: 'cliente@example.com',
                 notes: 'Traer documentos',
             }, undefined,
-            { authority: authorityFor('create_appointment') },
+            { operationalScope, authority: authorityFor('create_appointment') },
         );
 
         expect(result).toMatchObject({
@@ -552,7 +558,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'reschedule_appointment',
             { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
-            { authority: authorityFor('reschedule_appointment') },
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result).toMatchObject({
@@ -583,7 +589,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             contactId,
             'reschedule_appointment',
             { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
-            { authority: authorityFor('reschedule_appointment') },
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
         );
 
         expect(result.error).toContain('changed concurrently');
@@ -605,7 +611,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             ? [{ occupied: 1 }] : normalQuery(sql, params));
         const result = await harness.executor.execute(schemaName, tenantId, contactId, 'reschedule_appointment',
             { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined,
-            { authority: authorityFor('reschedule_appointment') });
+            { operationalScope, authority: authorityFor('reschedule_appointment') });
         expect(result).toMatchObject({ error: 'appointment_slot_unavailable', retryable: true });
         const occupancy = harness.transactionQuery.mock.calls.find(([sql]) => sql.includes('COUNT(*)::int AS occupied'))!;
         expect(occupancy[0]).toContain('id <> $4::uuid');
@@ -626,7 +632,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             jest.spyOn(harness.executor as any, 'getTenantTimezone').mockResolvedValue('Europe/Paris');
             const args = tool === 'create_appointment' ? { serviceId: appointment.service_id, date, time, customerName: 'Alex', customerEmail: 'alex@example.invalid' }
                 : { appointmentId, newDate: date, newTime: time };
-            const result = await harness.executor.execute(schemaName, tenantId, contactId, tool, args, undefined, { authority: authorityFor(tool) });
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, tool, args, undefined, { operationalScope, authority: authorityFor(tool) });
             expect(result).toMatchObject({ error, requiresClarification: true, timezone: 'Europe/Paris' });
             expect(harness.prisma.transactionInTenantSchema).not.toHaveBeenCalled();
             expect(harness.redis.acquireLockToken).not.toHaveBeenCalled();
@@ -641,7 +647,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         ]);
         jest.spyOn(harness.executor as any, 'getTenantTimezone').mockResolvedValue('Europe/Paris');
         const result = await harness.executor.execute(schemaName, tenantId, contactId, 'check_availability',
-            { serviceId: appointment.service_id, date }, undefined, { authority: authorityFor('check_availability') });
+            { serviceId: appointment.service_id, date }, undefined, { operationalScope, authority: authorityFor('check_availability') });
         expect(result.available).toBe(true);
         expect(result.slots.map((slot: any) => slot.time)).toEqual(['01:00', '03:00', '03:30']);
         expect(harness.prisma.transactionInTenantSchema).not.toHaveBeenCalled();

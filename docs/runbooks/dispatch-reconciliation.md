@@ -2,6 +2,8 @@
 
 Operativo para el camino durable de salida normal (`agent_dispatch_outbox`). Cubre el interruptor de despliegue, la cola de reconciliación y el diagnóstico. Todo lo de aquí es **super_admin**.
 
+Los SLOs de este camino —pérdida, duplicado, backlog, edad de reconciliación y latencia—, los números medidos que los sostienen y qué alerta vigila cada uno están en **`dispatch-load-and-slo.md`**, junto con el harness de carga y caos que los produjo y los hallazgos abiertos que encontró.
+
 ## Qué significa cada estado
 
 | Estado de la fila | Qué pasó | Qué hacer |

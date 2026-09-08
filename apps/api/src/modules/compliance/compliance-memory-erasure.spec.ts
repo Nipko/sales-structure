@@ -8,6 +8,9 @@ function build(failMemory = false) {
     const state = { tombstones: [] as string[], facts: ['active', 'superseded'], merged: [contactId, siblingId] };
     const query = jest.fn(async (sql: string, params: any[] = []) => {
         if (sql.includes('current_schema() AS schema') && sql.includes('AS replies')) return [{schema:'tenant_memory',replies:null,sources:null}];
+        // Same shape for the dispatch outbox: this tenant has no such table yet,
+        // which must be a no-op rather than a refusal of the whole erasure.
+        if (sql.includes('current_schema() AS schema') && sql.includes('AS outbox')) return [{schema:'tenant_memory',outbox:null,sources:null}];
         if (sql.includes('SELECT DISTINCT customer_profile_id')) return [{ customer_profile_id: profileId }];
         if (sql.includes('SELECT DISTINCT contact_id')) return [{ contact_id: contactId }, { contact_id: siblingId }];
         if (sql.includes("to_regclass('tool_execution_ledger')")) return [{ kb_log: 'kb_retrieval_log', kb_queries: 'kb_unanswered_queries', kb_feedback: 'kb_feedback' }];

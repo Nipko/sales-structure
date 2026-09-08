@@ -4,6 +4,7 @@ import { RedisService } from '../redis/redis.service';
 import { LearningService } from '../learning/learning.service';
 import { eraseWidgetContactSessions } from '../widget/widget-session-erasure';
 import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
+import { redactDispatchOutbox } from '../channels/agent-dispatch-outbox';
 import { eraseSimulationContactReplays } from '../simulation/simulation-replay-retention';
 import { eraseContactRegressionArtifacts } from '../quality/regressions/quality-regression-retention';
 import { eraseOperationalContactNotices } from '../operational-notices/operational-notice-erasure';
@@ -377,6 +378,10 @@ export class ComplianceService {
                 WHERE contact_id=ANY($1::uuid[])`,[contactIds]);
             const widgetSessions = await eraseWidgetContactSessions(query, schema, contactIds);
             const widgetReplies = await redactWidgetAgentReplies(query, schema, {contactIds});
+            // Same exclusive fence, same reason: the words and the recipient of
+            // an outbound item not yet sent must go, while the row survives so a
+            // recovered job cannot repopulate the payload and deliver it.
+            const dispatchItems = await redactDispatchOutbox(query, schema, {contactIds});
             const regressionCases = await eraseContactRegressionArtifacts(query, contactIds);
             const simulationReplays = await eraseSimulationContactReplays(query, contactIds);
             const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);
@@ -424,7 +429,8 @@ export class ComplianceService {
                     OR source_contact_id = ANY($2::uuid[]) RETURNING id`, [profileIds, contactIds]);
             const merged = await query<any[]>(
                 `DELETE FROM customer_memories WHERE contact_id = ANY($1::uuid[]) RETURNING contact_id`, [contactIds]);
-            return facts.length + merged.length + widgetSessions + widgetReplies + regressionCases + simulationReplays + operationalNotices;
+            return facts.length + merged.length + widgetSessions + widgetReplies + dispatchItems
+                + regressionCases + simulationReplays + operationalNotices;
         });
     }
 

@@ -17,6 +17,7 @@ import { EmailWebhookSecurityService } from './email/email-webhook-security.serv
 import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.processor';
 import { OutboundQueueService } from './outbound-queue.service';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
+import { DispatchRecoveryService } from './dispatch-recovery.service';
 import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
 import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
@@ -58,6 +59,7 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         OutboundQueueProcessor,
         OutboundQueueService,
         AgentDispatchOutboxStore,
+        DispatchRecoveryService,
         ChannelTokenService,
         InstagramTokenRefreshService,
         WhatsappTokenHealthService,

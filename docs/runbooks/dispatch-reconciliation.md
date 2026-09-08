@@ -128,8 +128,72 @@ Síntomas y causa habitual:
 | `reconciliation_required` con `lease_expired_after_admission` | Un worker murió con el permiso en la mano. Reconciliar como arriba. |
 | Muchos `meta_131047` | Fuera de la ventana de 24 h. No es un fallo del despacho. |
 
-## Reversión
+## Migración de las tablas a los tenants existentes
+
+`prisma/migrations/20260908150000_backfill_agent_dispatch_tenant_tables` crea `agent_dispatch_outbox`, `agent_dispatch_outbox_sources` y `agent_handoff_receipts` en **todos** los schemas de `public.tenants`, y ensancha los que arrancaron con una versión anterior. Es idempotente y sólo aditiva: aplicarla dos veces no cambia nada, y una fila que nombra un schema ya purgado se salta sin abortar la pasada. No escribe ninguna fila y no enciende nada — el interruptor sigue siendo una decisión aparte.
+
+### Dry-run: qué falta antes de aplicarla
+
+```sql
+-- Qué tenants no tienen todavía cada objeto. Cero filas = nada que hacer.
+SELECT t.schema_name, o.object_name
+FROM public.tenants t
+CROSS JOIN (VALUES
+    ('agent_dispatch_outbox'),('agent_dispatch_outbox_sources'),('agent_handoff_receipts')
+) AS o(object_name)
+WHERE EXISTS (SELECT 1 FROM information_schema.schemata s WHERE s.schema_name = t.schema_name)
+  AND to_regclass(format('%I.%I', t.schema_name, o.object_name)) IS NULL
+ORDER BY 1, 2;
+```
+
+```sql
+-- Y qué tenants tienen la tabla pero les faltan las columnas posteriores.
+SELECT t.schema_name, c.needed
+FROM public.tenants t
+CROSS JOIN (VALUES
+    ('agent_dispatch_outbox','settled_lease_token'),
+    ('agent_dispatch_outbox','message_id'),
+    ('agent_handoff_receipts','effects')
+) AS c(tbl, needed)
+WHERE to_regclass(format('%I.%I', t.schema_name, c.tbl)) IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = t.schema_name AND table_name = c.tbl AND column_name = c.needed)
+ORDER BY 1, 2;
+```
+
+Las dos consultas son de sólo lectura y se pueden correr contra producción antes del deploy. Después de migrar tienen que devolver **cero filas**; ese es el criterio de éxito, no el hecho de que la migración no haya lanzado error.
+
+### Observabilidad
+
+```sql
+-- Cuántos tenants quedaron con cada objeto, para comparar contra el total.
+SELECT count(*) FILTER (WHERE to_regclass(format('%I.agent_dispatch_outbox', schema_name)) IS NOT NULL) AS outbox,
+       count(*) FILTER (WHERE to_regclass(format('%I.agent_handoff_receipts', schema_name)) IS NOT NULL) AS receipts,
+       count(*) AS tenants
+FROM public.tenants;
+```
+
+Un tenant que salga en el dry-run después de migrar suele significar que su fila de `tenants` nombra un schema que ya no existe: comprobar con `information_schema.schemata` antes de tocar nada.
+
+### Reversión de la migración
+
+Con el interruptor apagado las tablas están **vacías**, así que revertirla es soltar objetos sin datos. Comprobarlo primero:
+
+```sql
+-- Los schemas que hoy tienen la tabla; sobre cada uno hay que contar filas.
+SELECT t.schema_name
+FROM public.tenants t
+WHERE to_regclass(format('%I.agent_dispatch_outbox', t.schema_name)) IS NOT NULL
+ORDER BY 1;
+```
+
+Y por cada schema, `SELECT count(*) FROM "<schema>".agent_dispatch_outbox`. **Si alguno devuelve más de cero, no se revierte**: esas filas son el registro de efectos que pudieron llegar a un cliente, y sin ellas una recuperación entregaría lo mismo dos veces. En ese caso lo que se apaga es el interruptor, no la tabla.
+
+Con todo en cero, la reversión es `DROP TABLE` de `agent_dispatch_outbox_sources`, `agent_dispatch_outbox` y `agent_handoff_receipts` en cada schema. El bootstrap perezoso las vuelve a crear si alguna vez se necesitan, así que la reversión no rompe el código nuevo; sólo devuelve el schema a como estaba.
+
+## Reversión del despliegue
 
 1. `POST /dispatch-rollout/disable` — deja de crear lotes nuevos de inmediato.
 2. Los lotes ya creados se terminan de entregar. Para inspeccionarlos: la consulta de backlog de arriba.
-3. Nada que revertir en base de datos: las tablas son aditivas y el camino viejo nunca se desconectó.
+3. Nada que revertir en base de datos para volver al camino viejo: las tablas son aditivas y el camino viejo nunca se desconectó. La reversión de la migración es aparte y sólo tiene sentido con las tablas vacías.

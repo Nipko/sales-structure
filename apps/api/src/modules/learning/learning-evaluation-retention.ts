@@ -1,5 +1,6 @@
 import { disposeOwnedEvalNamespace, type EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import type { LearningSourceQuery } from './learning-inbox-source';
+import { redactWidgetAgentReplies } from '../widget/widget-agent-reply-retention';
 
 export interface LearningEvaluationNamespace extends EvalNamespaceLease { attemptId:string;workerToken?:string; }
 
@@ -54,8 +55,11 @@ export async function retireLearningReleases(query:LearningSourceQuery,input:{re
         UNION SELECT r.id FROM learning_releases r JOIN affected a ON r.baseline_release_id=a.id
     ) SELECT id,${names.has('evaluation_namespaces')?'evaluation_namespaces':'NULL AS evaluation_namespaces'}
         FROM learning_releases WHERE id IN(SELECT id FROM affected) FOR UPDATE`,[input.releaseIds||[],input.sourceIds||[]]);
-    if(!rows.length)return 0;
     const [{schema}]=await query<any[]>('SELECT current_schema() AS schema');
+    // Retained source IDs still find derived replies after a previous release
+    // retirement emptied its snapshot. Redact before dropping that lineage.
+    await redactWidgetAgentReplies(query,schema,{releaseIds:rows.map(row=>row.id),sourceIds:input.sourceIds});
+    if(!rows.length)return 0;
     for(const row of rows)for(const lease of (row.evaluation_namespaces||[]) as LearningEvaluationNamespace[]){
         if(lease.sourceSchema!==schema)throw new Error('learning_evaluation_namespace_scope_mismatch');
         await disposeOwnedEvalNamespace(query,lease);

@@ -5042,3 +5042,25 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_notice_reviews" (
     UNIQUE(notice_id,idempotency_key)
 );
 -- END OPERATIONAL NOTICE REVIEW
+
+-- BEGIN WIDGET AGENT REPLY PROVENANCE
+-- No cascading contact/message FK: redaction preserves the inbound dedup receipt.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."widget_agent_replies" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID, contact_id UUID, inbound_message_id UUID NOT NULL UNIQUE,
+    channel_account_id TEXT, operational_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+    learning_footprint JSONB, message_id UUID NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('stored','redacted')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK(status='redacted' OR (conversation_id IS NOT NULL AND contact_id IS NOT NULL AND channel_account_id IS NOT NULL))
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."widget_agent_reply_sources" (
+    reply_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."widget_agent_replies"(id) ON DELETE CASCADE,
+    source_id UUID NOT NULL, source_contact_id UUID,
+    PRIMARY KEY(reply_id,source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_widget_agent_replies_contact ON "{{SCHEMA_NAME}}"."widget_agent_replies"(contact_id) WHERE status='stored';
+CREATE INDEX IF NOT EXISTS idx_widget_agent_replies_conversation ON "{{SCHEMA_NAME}}"."widget_agent_replies"(conversation_id) WHERE status='stored';
+CREATE INDEX IF NOT EXISTS idx_widget_agent_reply_sources_source ON "{{SCHEMA_NAME}}"."widget_agent_reply_sources"(source_id,reply_id);
+CREATE INDEX IF NOT EXISTS idx_widget_agent_reply_sources_contact ON "{{SCHEMA_NAME}}"."widget_agent_reply_sources"(source_contact_id,reply_id);
+-- END WIDGET AGENT REPLY PROVENANCE

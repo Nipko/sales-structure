@@ -19,6 +19,7 @@ function build(){
     const state={erased:false,response:{private:'old'} as any,request:{private:'request'} as any,updates:0,delay:false,outbox:{private:'old'},ticketResult:{private:'old'}};
     const started=deferred(),finish=deferred();
     const query=jest.fn(async(sql:string,params:any[]=[])=>{
+        if(sql.includes('current_schema() AS schema')&&sql.includes('AS replies'))return [{schema,replies:null,sources:null}];
         if(sql==='SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 FOR SHARE')return [{id:tenant}];
         if(sql.startsWith('SELECT * FROM tool_execution_ledger'))return [{id:ledgerId,contact_id:contact,status:'executing'}];
         if(sql.includes('SELECT contact_id FROM customer_memory_erasure'))return state.erased?[{contact_id:contact}]:[];

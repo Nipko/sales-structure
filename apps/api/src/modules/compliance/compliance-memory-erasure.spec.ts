@@ -7,6 +7,7 @@ const profileId = '33333333-3333-4333-8333-333333333333';
 function build(failMemory = false) {
     const state = { tombstones: [] as string[], facts: ['active', 'superseded'], merged: [contactId, siblingId] };
     const query = jest.fn(async (sql: string, params: any[] = []) => {
+        if (sql.includes('current_schema() AS schema') && sql.includes('AS replies')) return [{schema:'tenant_memory',replies:null,sources:null}];
         if (sql.includes('SELECT DISTINCT customer_profile_id')) return [{ customer_profile_id: profileId }];
         if (sql.includes('SELECT DISTINCT contact_id')) return [{ contact_id: contactId }, { contact_id: siblingId }];
         if (sql.includes("to_regclass('tool_execution_ledger')")) return [{ kb_log: 'kb_retrieval_log', kb_queries: 'kb_unanswered_queries', kb_feedback: 'kb_feedback' }];
@@ -29,7 +30,13 @@ function build(failMemory = false) {
         executeInTenantSchema: jest.fn((_schema: string, sql: string, params: any[]) => query(sql, params)),
         transactionInTenantSchema: jest.fn(async (_schema: string, callback: (q: typeof query) => Promise<unknown>) => {
             const before = JSON.parse(JSON.stringify(state));
-            try { return await callback(query); } catch (e) { Object.assign(state, before); throw e; }
+            let privacyHeld=false;
+            try { return await callback((async(sql:string,params:any[]=[])=>{
+                if(sql.includes('FROM pg_locks')&&sql.includes("mode='ExclusiveLock'"))
+                    return privacyHeld&&params[0]===`agent-privacy:${_schema}`?[{'?column?':1}]:[];
+                if(sql.includes('pg_advisory_xact_lock(')&&params[0]===`agent-privacy:${_schema}`)privacyHeld=true;
+                return query(sql,params);
+            }) as typeof query); } catch (e) { Object.assign(state, before); throw e; }
         }),
         auditLog: { create: jest.fn().mockResolvedValue({}) },
     };

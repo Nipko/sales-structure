@@ -1837,6 +1837,11 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkSlaBreaches();
         await this.checkRecurringEngine();
         await this.checkDispatchBacklog();
+        // "Run checks now" has to mean all of them. This one was reachable only
+        // from its own cron, so an operator pressing the button never refreshed
+        // the agent incidents — the ones about a customer who was promised
+        // something nobody closed.
+        await this.checkAgentReliability();
     }
 
     // ── Manual status (for /health/detailed or admin API) ──

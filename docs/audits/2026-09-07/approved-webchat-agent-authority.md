@@ -22,7 +22,7 @@ La publicación de la referencia hacia la sesión ocurre después del COMMIT. Re
 
 Este bloque cubre exclusivamente entregas aprobadas de imágenes y enlaces de pago de Web Chat. No completa el control de versión para respuestas normales del agente, despachos externos, handoff ni Flow; tampoco habilita publicación HTTP, pilotos o rollback integral.
 
-Existe además una limitación previa del workflow de aprobación: cuando otro agente toma una conversación, la reanudación todavía puede resolver el primer agente atribuido y rechazar una propuesta nueva del segundo. La autoridad de entrega no corrige esa selección anterior; requiere su propio cambio y pruebas.
+La selección previa al guardar se corrigió por separado en `9e5016f8`: la reanudación usa el agente actual de la conexión y contrasta el scope original, conservando la primera atribución para auditoría. La [evidencia de reanudación](approval-resume-routing.md) distingue ese preflight del guard transaccional de esta entrega.
 
 Implementación registrada en `e8cea802`. La verificación sobre los archivos exactos del índice pasó TypeScript API y **10 suites / 90 pruebas**, incluidas **65 pruebas PostgreSQL en tres suites**, sin casos omitidos. Incluye autoridad ausente/alterada, otra identidad activa, versión/hash/desactivación, nueva aprobación con atribución histórica, publicación concurrente, replay, cambios de canal, pago canónico conservado, rollback, límite de fallos y confirmación perdida del COMMIT. La [bitácora incremental](incremental-commits-resumed.md) conserva la secuencia; las cifras se solapan con otras tandas. Las pruebas locales no certifican un perfil ni una entrega a un proveedor externo.
 

@@ -1,6 +1,6 @@
 # E3 — Autoridad y admisión de la salida normal del agente
 
-Fecha: 2026-09-07. Estado: **revisión de código y propuesta; implementación pendiente**.
+Fecha: 2026-09-07. Estado: **integración de salida normal pendiente; prerrequisito de fuentes implementado por separado**. `54379f90` registra la [procedencia de aprendizaje y guard en la misma conexión](runtime-learning-footprint.md), con lectura integrada; la admisión todavía no tiene consumidores de mensajes ni outbox.
 
 Esta revisión es de solo lectura de la salida normal. No modifica transporte, no invoca proveedores y no añade evidencia de ejecución. Las líneas citadas corresponden al árbol de trabajo inspeccionado; el guard de conexión está en el bloque de aprobación/routing que se registra por separado. Los tests enumerados abajo son referencias existentes o criterios propuestos, no una certificación nueva.
 
@@ -77,9 +77,9 @@ Hace falta un puerto estricto del gateway/adaptadores. Reutilizar sin cambios `s
 
 **No envolver enviar+guardar receipt en ese callback.** Puede rechazar el resultado después de que el proveedor ya lo aceptó. Tampoco llamarlo desde una TX de admisión normal: el wrapper podría abrir una segunda conexión con lock compartido detrás de un borrado exclusivo en cola. `apps/api/src/common/utils/agent-source-fence.ts` solo reutiliza su contexto servidor explícito; no vuelve reentrante cualquier transacción de negocio.
 
-Extracción mínima propuesta, sin API pública: `assertRuntimeLearningFootprint(query, schema, {tenantId, agentId, entries})`. No resuelve schema, abre TX, invoca proveedor ni repara fuentes. Reconstruye la misma proyección de `RuntimeLearningExample`, compara hashes exactos y conserva las comprobaciones actuales de todas las fuentes/ejemplos del release. El servidor genera esas referencias al producir la respuesta. La admisión las verifica con su query, no con un callback externo.
+La extracción mínima ya quedó implementada, sin API pública: `createRuntimeLearningFootprint(tenantId, agentId, examples)` y `assertRuntimeLearningFootprint(query, schema, expectedScope, footprint, options)`. No resuelve schema, abre TX, invoca proveedor ni repara fuentes. Reconstruye la misma proyección de `RuntimeLearningExample`, compara hashes exactos y conserva las comprobaciones de todas las fuentes/ejemplos del release. Falta transportar esas referencias con la respuesta normal; su futura admisión las verificará con su query, no con un callback externo.
 
-La variante para admisión requiere además serializar el retiro hasta el COMMIT. Un `SELECT` sin locks no basta: `LearningService.rollback` (`:688`) usa `learning-release` y puede retirar un release sin tomar el fence exclusivo de privacidad. El guard corto debe mantener locks compartidos de los releases/proyecciones comprobados y los orígenes necesarios, con orden estable y sin atravesar proveedor. La extracción debe conservar una variante de solo lectura para los usos existentes; no imponer esos locks a todos los callbacks de modelos. Las carreras de rollback y edición de origen contra esta TX forman parte de la aceptación pendiente.
+La variante de admisión implementada serializa el retiro hasta el COMMIT. Un `SELECT` sin locks no basta: `LearningService.rollback` usa `learning-release` y puede retirar un release sin tomar el fence exclusivo de privacidad. El guard corto mantiene locks compartidos de los releases/proyecciones comprobados y los orígenes necesarios, con orden estable y sin atravesar proveedor. Conserva una variante de solo lectura para los usos existentes; no impone esos locks a los callbacks de modelos. Las carreras de rollback y edición de origen ya tienen pruebas del helper; falta probarlas con el consumidor de mensajes.
 
 Separar estas situaciones:
 
@@ -126,4 +126,4 @@ Tests nuevos propuestos, usando PostgreSQL/Prisma real para transacciones y un t
 
 Referencias de tests existentes que deben conservarse o ampliarse: `widget/widget-delivery.postgres.spec.ts`, `conversations/conversations.widget-containment.spec.ts`, `channels/outbound-queue.processor.entitlement.spec.ts`, `channels/outbound-approved-effect.spec.ts`, `channels/outbound-operational-notice.spec.ts`, `tenant-payments/payment-agent-authority.postgres.spec.ts`, `ai/router/llm-source-authority.spec.ts` y `conversations/agent-turn-source-authority.spec.ts`. `conversations/media-delivery-dedupe.spec.ts` comprueba forma de código; no sustituye carreras, fallos parciales ni ACK perdido.
 
-No se han ejecutado esas nuevas pruebas porque la implementación descrita aún no existe. La siguiente entrega debe declarar por canal y tipo de ítem qué admisión/receipt está probado; conectar funciones o añadir campos no basta para dar por cerrada esta frontera.
+Las pruebas de integración de salida enumeradas aquí siguen pendientes. La extracción de fuentes tiene evidencia propia en `54379f90`, sin consumidores ni receipts de mensajes. La siguiente entrega debe declarar por canal y tipo de ítem qué admisión/receipt está probado; conectar funciones o añadir campos no basta para dar por cerrada esta frontera.

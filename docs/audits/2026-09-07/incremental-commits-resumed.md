@@ -25,6 +25,9 @@
 | `5f036d10` | Agent Test, Eval, Simulation, Learning y candidatas comparten copias RAG administradas; autoridad por intento, retención durable, limpieza y comprobación de permiso sin bloqueo anidado | API TypeScript sobre el índice; 42 suites / 610 casos, incluidos 273 PostgreSQL/Prisma en 17 suites; cero casos omitidos |
 | `e8cea802` | La entrega aprobada de imágenes/enlaces de Web Chat comprueba la autoridad del agente y guarda mensaje/recibo atómicamente; recuperación acotada sin duplicar recibos aceptados | API TypeScript sobre el índice; 10 suites / 90 casos, incluidos 65 PostgreSQL en tres suites; cero casos omitidos |
 | `92f9d2fa` | La entrega aprobada revalida el agente seleccionado por conexión; permite propuestas legítimas del segundo agente y bloquea cambios concurrentes de prioridad hasta el COMMIT | API TypeScript sobre el índice; 10 suites / 94 casos, incluidos 69 PostgreSQL en tres suites; cero casos omitidos |
+| `9e5016f8` | Reanudación con routing y scope originales; tenant/esquema verificados en el contexto y bloqueados hasta el COMMIT de finalización | API TypeScript sobre el índice; 16 suites / 195 casos, incluidos 91 PostgreSQL en cinco suites; siete inicialmente omitidos ejecutados después sobre la misma copia |
+| `3d9c04ea` | Actualiza la prueba del adaptador para conservar los controles obligatorios de fuentes junto con los solicitados por el turno | API TypeScript sobre el índice; una suite / siete casos; sin cambio de producción |
+| `54379f90` | Procedencia privada de aprendizaje con verificación en la misma conexión; lectura integrada y admisión transaccional preparada, incluidos datos reales de pertenencia en el fixture Replay | API TypeScript sobre el índice; 11 suites / 200 casos, incluidos 86 PostgreSQL en tres suites; cero omitidos |
 
 Las cifras se solapan entre bloques y no se suman como cobertura nueva. Los controles de proveedor usan respuestas sintéticas; las pruebas PostgreSQL se ejecutan en las bases desechables locales de evaluación.
 
@@ -44,8 +47,10 @@ El commit inicial de runtime protegía doce comandos de citas, gimnasio, educaci
 
 La matriz declara 76 perfiles y 268 tareas: 32 tareas aún carecen de positivo propio y 10 de verificador. Ningún perfil queda certificado por estas pruebas de infraestructura y dominio; siguen pendientes la evaluación por revisión, idioma, canal y modelo y la medición de utilidad y tono.
 
-La autoridad de entrega aprobada de Web Chat quedó registrada en `e8cea802`, con sus [límites y evidencia](approved-webchat-agent-authority.md). No amplía el número de writers del sandbox. Siguen pendientes las respuestas normales, los despachos externos, handoff y Flow. La selección del agente al reanudar una aprobación después de cambiar a otro agente dentro de la misma conversación requiere una corrección independiente.
+La autoridad de entrega aprobada de Web Chat quedó registrada en `e8cea802`, con sus [límites y evidencia](approved-webchat-agent-authority.md). No amplía el número de writers del sandbox. Siguen pendientes las respuestas normales, los despachos externos, handoff y Flow. `9e5016f8` corrige la selección del agente al reanudar propuestas del segundo agente y verifica la propiedad del esquema en el contexto y finalización; [evidencia](approval-resume-routing.md).
 
 `92f9d2fa` verifica también el routing actual al guardar esa entrega aprobada. El [plan de salida normal](normal-agent-dispatch-authority-plan.md) registra las fronteras pendientes: preservar origen y fuentes al recuperar texto, admisión durable por mensaje, receipts por efecto remoto y recuperación sin repetir un envío de resultado incierto. Es una propuesta de implementación; no demuestra que esas rutas ya estén protegidas.
+
+El prerrequisito de fuentes quedó registrado en `54379f90`, con [contrato y evidencia](runtime-learning-footprint.md). El control de lectura ya está integrado; su variante de admisión aún requiere consumidores y retención de sus futuras copias. No hay aumento de perfiles certificados ni cierre del despacho normal por esta extracción.
 
 No hubo push, despliegue ni migraciones de tenants operativos. Los cambios ajenos a este plan permanecen en el directorio de trabajo.

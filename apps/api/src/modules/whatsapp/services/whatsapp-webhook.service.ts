@@ -7,6 +7,7 @@ import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
 import { RedisService } from '../../redis/redis.service';
 import * as crypto from 'crypto';
+import { applyDispatchProviderStatus, DISPATCH_PROVIDER_STATUSES, type DispatchProviderStatus } from '../../channels/agent-dispatch-outbox';
 
 @Injectable()
 export class WhatsappWebhookService {
@@ -205,18 +206,34 @@ export class WhatsappWebhookService {
    * como fallido y se loguea el código de Meta, que es lo que permite
    * diagnosticar sin adivinar.
    */
+  /**
+   * Meta's delivery lifecycle, applied to the conversation record.
+   *
+   * Only rejections used to be handled, and they were looked up in
+   * `messages.external_id` — which holds OUR deduplication identity, never the
+   * wamid — so nothing was ever found. The provider id lives on the dispatch
+   * row, and the whole lifecycle now lands: an acceptance is `sent`, and only
+   * Meta can say `delivered` or `read`.
+   */
   private async recordDeliveryStatuses(phoneNumberId: string, statuses: any[] | undefined): Promise<void> {
-    const failed = (statuses || []).filter((s: any) => String(s?.status || '').toLowerCase() === 'failed');
-    if (!failed.length) return;
-
-    for (const status of failed) {
-      const error = status?.errors?.[0] || {};
+    const events = (statuses || [])
+      .map((entry: any) => ({
+        providerMessageId: String(entry?.id || ''),
+        status: String(entry?.status || '').toLowerCase(),
+        recipient: entry?.recipient_id,
+        error: entry?.errors?.[0] || null,
+      }))
+      .filter(event => event.providerMessageId
+        && DISPATCH_PROVIDER_STATUSES.includes(event.status as DispatchProviderStatus));
+    for (const event of events.filter(entry => entry.status === 'failed')) {
+      const error = event.error || {};
       this.logger.error(
-        `[WA] Meta RECHAZÓ el mensaje ${status?.id || 'sin-id'} a ${status?.recipient_id || 'desconocido'} ` +
+        `[WA] Meta RECHAZÓ el mensaje ${event.providerMessageId} a ${event.recipient || 'desconocido'} ` +
         `(phone_number_id ${phoneNumberId}): code=${error.code ?? '?'} title="${error.title ?? ''}" ` +
         `details="${error.error_data?.details ?? error.message ?? ''}"`,
       );
     }
+    if (!events.length) return;
 
     // Marcar en la bandeja. Sin tenant resuelto no se puede, pero el log de
     // arriba ya salió: el diagnóstico nunca depende de que esto funcione.
@@ -225,16 +242,30 @@ export class WhatsappWebhookService {
       if (!tenantId) return;
       const schemaName = await this.prisma.getTenantSchemaName(tenantId);
       if (!schemaName) return;
-      const ids = failed.map((s: any) => s?.id).filter(Boolean);
-      if (!ids.length) return;
-      await this.prisma.executeInTenantSchema(
-        schemaName,
-        `UPDATE messages SET status = 'failed'
-          WHERE external_id = ANY($1::text[]) AND direction = 'outbound' AND status <> 'failed'`,
-        [ids],
-      );
+      for (const event of events) {
+        // One transaction per event: they arrive out of order and repeated, and
+        // each decides on its own whether it is newer than what is recorded.
+        await this.prisma.transactionInTenantSchema(schemaName, query =>
+          applyDispatchProviderStatus(query, schemaName, {
+            providerMessageId: event.providerMessageId,
+            status: event.status as DispatchProviderStatus,
+            errorCode: event.error?.code != null ? `wa_${event.error.code}` : null,
+          })).catch((error: any) =>
+          this.logger.debug(`[WA] estado ${event.status} no aplicado: ${error?.message}`));
+      }
+      // Legacy producers still identify an outbound by the provider id they
+      // stored themselves; keep marking those rejected rather than lose them.
+      const failedIds = events.filter(event => event.status === 'failed').map(event => event.providerMessageId);
+      if (failedIds.length) {
+        await this.prisma.executeInTenantSchema(
+          schemaName,
+          `UPDATE messages SET status = 'failed'
+            WHERE external_id = ANY($1::text[]) AND direction = 'outbound' AND status <> 'failed'`,
+          [failedIds],
+        );
+      }
     } catch (e: any) {
-      this.logger.warn(`[WA] no se pudo marcar el mensaje fallido: ${e.message}`);
+      this.logger.warn(`[WA] no se pudo aplicar el estado del mensaje: ${e.message}`);
     }
   }
 

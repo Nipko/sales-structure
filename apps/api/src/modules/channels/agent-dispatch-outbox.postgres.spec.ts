@@ -3,7 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
     DISPATCH_MAX_ATTEMPTS, DISPATCH_OUTBOX_DDL, DispatchOutboxError,
-    admitDispatch, expireDispatchLeases, markDispatchQueued, prepareDispatchBatch, readDispatchRow,
+    admitDispatch, applyDispatchProviderStatus, expireDispatchLeases, markDispatchQueued,
+    prepareDispatchBatch, readDispatchRow,
     readNextDispatchInBatch, readPendingDispatch, redactDispatchOutbox, settleDispatch,
     type DispatchBinding, type DispatchItem,
 } from './agent-dispatch-outbox';
@@ -344,15 +345,16 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(rows.map(row => row.messageId).every(Boolean)).toBe(true);
         });
 
-        it('marks it delivered only when a provider accepted it', async () => {
+        it('marks it sent when the provider accepted it, and not delivered', async () => {
             const binding = await fixture();
             const { rows } = await prepare(binding);
             const lease = randomUUID();
             await admit(rows[0].id, lease);
             await tx(query => settleDispatch(query, schema,
                 { dispatchId: rows[0].id, leaseToken: lease, outcome: { kind: 'sent', receipt: 'wamid.OK' } }));
+            // An HTTP acceptance is not a claim about the customer's phone.
             expect((await history(binding.conversationId)).map(message => message.status))
-                .toEqual(['delivered', 'pending']);
+                .toEqual(['sent', 'pending']);
         });
 
         it('leaves an uncertain outcome pending and marks a definite refusal failed', async () => {
@@ -393,6 +395,80 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await prepare(binding);
             await prepare(binding);
             expect(await history(binding.conversationId)).toHaveLength(2);
+        });
+    });
+
+    describe('what the provider later says about a receipt', () => {
+        const statusOf = async (messageId: string) =>
+            (await sql('SELECT status FROM messages WHERE id=$1::uuid', [messageId]))[0].status;
+        const apply = (providerMessageId: string, status: any, errorCode?: string) =>
+            tx(query => applyDispatchProviderStatus(query, schema, { providerMessageId, status, errorCode }));
+
+        async function accepted(receipt = 'wamid.ABC') {
+            const binding = await fixture();
+            const { rows } = await prepare(binding);
+            const lease = randomUUID();
+            await admit(rows[0].id, lease);
+            await tx(query => settleDispatch(query, schema,
+                { dispatchId: rows[0].id, leaseToken: lease, outcome: { kind: 'sent', receipt } }));
+            return { binding, row: rows[0], receipt };
+        }
+
+        it('records acceptance as sent, never as delivered', async () => {
+            const { row } = await accepted();
+            // `delivered` is a claim about the customer's phone that an HTTP 200
+            // does not make. Only the provider can say it.
+            expect(await statusOf(row.messageId!)).toBe('sent');
+        });
+
+        it('resolves the provider id through the dispatch row, not through external_id', async () => {
+            const { row, receipt } = await accepted();
+            // external_id holds our own deduplication identity, which is why the
+            // webhook used to match nothing at all.
+            const [message] = await sql('SELECT external_id FROM messages WHERE id=$1::uuid', [row.messageId]);
+            expect(message.external_id).not.toBe(receipt);
+            await expect(apply(receipt, 'delivered')).resolves.toMatchObject(
+                { applied: true, messageId: row.messageId, status: 'delivered' });
+            expect(await statusOf(row.messageId!)).toBe('delivered');
+        });
+
+        it('moves status forward only, whatever order the events arrive in', async () => {
+            const { row, receipt } = await accepted();
+            await apply(receipt, 'read');
+            // A late `delivered` after a `read` must not walk the record back.
+            await expect(apply(receipt, 'delivered')).resolves.toMatchObject({ applied: false, reason: 'not_newer' });
+            await expect(apply(receipt, 'sent')).resolves.toMatchObject({ applied: false, reason: 'not_newer' });
+            expect(await statusOf(row.messageId!)).toBe('read');
+        });
+
+        it('is idempotent for a repeated event', async () => {
+            const { row, receipt } = await accepted();
+            await expect(apply(receipt, 'delivered')).resolves.toMatchObject({ applied: true });
+            await expect(apply(receipt, 'delivered')).resolves.toMatchObject({ applied: false, reason: 'not_newer' });
+            expect(await statusOf(row.messageId!)).toBe('delivered');
+        });
+
+        it('accepts a rejection after acceptance but never after delivery', async () => {
+            const refused = await accepted('wamid.REFUSED');
+            await expect(apply(refused.receipt, 'failed', 'wa_131047')).resolves.toMatchObject({ applied: true });
+            expect(await statusOf(refused.row.messageId!)).toBe('failed');
+            expect((await sql('SELECT error_code FROM agent_dispatch_outbox WHERE id=$1::uuid',
+                [refused.row.id]))[0].error_code).toBe('wa_131047');
+
+            const arrived = await accepted('wamid.ARRIVED');
+            await apply(arrived.receipt, 'delivered');
+            // The customer already has it; "failed" would be the false statement.
+            await expect(apply(arrived.receipt, 'failed')).resolves.toMatchObject(
+                { applied: false, reason: 'already_delivered' });
+            expect(await statusOf(arrived.row.messageId!)).toBe('delivered');
+        });
+
+        it('ignores a receipt it does not know and one whose words were erased', async () => {
+            await expect(apply('wamid.NEVER-SEEN', 'delivered'))
+                .resolves.toMatchObject({ applied: false, reason: 'unknown_receipt' });
+            const { binding, receipt } = await accepted('wamid.ERASED');
+            await tx(query => redactDispatchOutbox(query, schema, { contactIds: [binding.contactId] }));
+            await expect(apply(receipt, 'delivered')).resolves.toMatchObject({ applied: false, reason: 'redacted' });
         });
     });
 

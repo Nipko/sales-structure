@@ -107,6 +107,8 @@ export const DISPATCH_OUTBOX_DDL: readonly string[] = Object.freeze([
         ON agent_dispatch_outbox(lease_expires_at) WHERE state = 'admitted'`,
     `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_batch
         ON agent_dispatch_outbox(batch_id, item_index)`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_receipt
+        ON agent_dispatch_outbox(receipt) WHERE receipt IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_contact
         ON agent_dispatch_outbox(contact_id) WHERE redacted_at IS NULL`,
     `CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_source
@@ -489,7 +491,8 @@ export async function settleDispatch(query: DispatchOutboxQuery, schema: string,
             `UPDATE agent_dispatch_outbox SET state='sent', receipt=$2, error_code=NULL,
                 settled_lease_token=lease_token, lease_token=NULL, lease_expires_at=NULL, updated_at=NOW()
              WHERE id=$1::uuid RETURNING *`, [input.dispatchId, outcome.receipt.trim()]);
-        await markHistory('delivered');
+        // Acceptance, not arrival. `delivered` and `read` come from the provider.
+        await markHistory('sent');
         return mapRow(sent);
     }
     const errorCode = String(outcome.errorCode || 'unknown').slice(0, 120);
@@ -607,6 +610,76 @@ export async function markDispatchQueued(query: DispatchOutboxQuery, schema: str
         `UPDATE agent_dispatch_outbox SET state='queued', updated_at=NOW()
          WHERE id=ANY($1::uuid[]) AND state='prepared' RETURNING id`, [[...dispatchIds]]);
     return rows.length;
+}
+
+/**
+ * What a conversation record may truthfully say about one outbound effect.
+ *
+ * These were conflated: an HTTP acceptance was written as `delivered`, which is
+ * a claim about the customer's phone that nobody had made. Acceptance is `sent`;
+ * `delivered` and `read` only ever come from the provider afterwards.
+ */
+const MESSAGE_STATUS_RANK: Record<string, number> = Object.freeze({
+    pending: 0, sent: 1, delivered: 2, read: 3,
+});
+export const DISPATCH_PROVIDER_STATUSES = ['sent', 'delivered', 'read', 'failed'] as const;
+export type DispatchProviderStatus = (typeof DISPATCH_PROVIDER_STATUSES)[number];
+
+export interface DispatchStatusResult {
+    readonly applied: boolean;
+    readonly reason: 'applied' | 'unknown_receipt' | 'not_newer' | 'already_delivered' | 'redacted';
+    readonly messageId: string | null;
+    readonly status: string | null;
+}
+
+/**
+ * Apply a provider status event to the conversation record behind a receipt.
+ *
+ * The provider id lives on the dispatch row, not on `messages.external_id`,
+ * which holds our own deduplication identity. The webhook used to look the
+ * receipt up in `external_id` and therefore matched nothing at all.
+ *
+ * Status only ever moves forward. Events arrive out of order and more than once,
+ * so a `sent` after a `delivered` changes nothing, and a repeat is a no-op. A
+ * rejection is accepted over `pending` or `sent` — a provider can refuse after
+ * acknowledging — but never over `delivered` or `read`, where the customer
+ * already has the message and "failed" would be the false statement.
+ */
+export async function applyDispatchProviderStatus(query: DispatchOutboxQuery, schema: string, input: {
+    providerMessageId: string; status: DispatchProviderStatus; errorCode?: string | null;
+}): Promise<DispatchStatusResult> {
+    if (!SCHEMA.test(schema) || typeof input?.providerMessageId !== 'string'
+        || !input.providerMessageId.trim() || input.providerMessageId.length > 300
+        || !DISPATCH_PROVIDER_STATUSES.includes(input.status)) fail('dispatch_invalid_reference');
+    const [tables] = await query<any[]>(
+        'SELECT current_schema() AS schema, to_regclass($1)::text AS outbox',
+        [`${schema}.agent_dispatch_outbox`]);
+    if (tables?.schema !== schema) fail('dispatch_invalid_reference');
+    if (!tables.outbox) return { applied: false, reason: 'unknown_receipt', messageId: null, status: null };
+    const [row] = await query<any[]>(
+        `SELECT d.id, d.message_id, d.redacted_at, m.status AS message_status
+         FROM agent_dispatch_outbox d
+         LEFT JOIN messages m ON m.id = d.message_id
+         WHERE d.receipt = $1 FOR UPDATE OF d`, [input.providerMessageId.trim()]);
+    if (!row) return { applied: false, reason: 'unknown_receipt', messageId: null, status: null };
+    if (row.redacted_at || !row.message_id) {
+        return { applied: false, reason: 'redacted', messageId: null, status: null };
+    }
+    const current = String(row.message_status || 'pending');
+    if (current === 'redacted') return { applied: false, reason: 'redacted', messageId: null, status: null };
+    if (input.status === 'failed') {
+        if (MESSAGE_STATUS_RANK[current] >= MESSAGE_STATUS_RANK.delivered) {
+            return { applied: false, reason: 'already_delivered', messageId: String(row.message_id), status: current };
+        }
+    } else if ((MESSAGE_STATUS_RANK[input.status] ?? -1) <= (MESSAGE_STATUS_RANK[current] ?? -1)) {
+        return { applied: false, reason: 'not_newer', messageId: String(row.message_id), status: current };
+    }
+    await query('UPDATE messages SET status=$2 WHERE id=$1::uuid', [row.message_id, input.status]);
+    if (input.status === 'failed') {
+        await query(`UPDATE agent_dispatch_outbox SET error_code=COALESCE($2, error_code), updated_at=NOW()
+            WHERE id=$1::uuid`, [row.id, input.errorCode ? String(input.errorCode).slice(0, 120) : null]);
+    }
+    return { applied: true, reason: 'applied', messageId: String(row.message_id), status: input.status };
 }
 
 export interface DispatchRedactionScope {

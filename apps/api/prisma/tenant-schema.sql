@@ -5153,6 +5153,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources" (
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_pending ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(available_at, id) WHERE state IN ('prepared','queued','failed');
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_lease ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(lease_expires_at) WHERE state = 'admitted';
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_batch ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(batch_id, item_index);
+-- Provider id -> conversation record. The webhook resolves a wamid here because
+-- messages.external_id holds our own deduplication identity, not the provider's.
+CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_receipt ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(receipt) WHERE receipt IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox"(contact_id) WHERE redacted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_source ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_id, dispatch_id);
 CREATE INDEX IF NOT EXISTS idx_agent_dispatch_outbox_sources_contact ON "{{SCHEMA_NAME}}"."agent_dispatch_outbox_sources"(source_contact_id, dispatch_id);

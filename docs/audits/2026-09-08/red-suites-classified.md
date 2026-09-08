@@ -90,7 +90,7 @@ Cada suite comprueba por su cuenta que el host sea loopback y que el nombre de l
 | --- | --- | --- | --- |
 | `7c613864` (partida) | 498/524, **19 en rojo** | 5.370 pasan, 23 fallan | — |
 | `ec430c54` (inicio de esta tanda) | 514/537, **16 en rojo** | 5.585 pasan, 20 fallan | 105 |
-| Hoy | **540/540** | **5.754 pasan, 0 fallan** | **0** |
+| Hoy | **541/541** | **5.765 pasan, 0 fallan** | **0** |
 
 Las omitidas importan tanto como las rojas: eran 105 pruebas de ocho suites PostgreSQL que no corrían por falta de variable de entorno, y una suite omitida no es una suite aprobada. Hoy corren todas.
 

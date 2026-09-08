@@ -3,6 +3,8 @@ import { createHash } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ModelTier, RoutingFactors, RoutingDecision } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { LLMSourceAuthorityUnavailable, type LLMSourceAuthority } from '../interfaces/llm-source-authority';
+import { generateWithSourceAuthority } from './llm-source-attempt';
 import { RedisService } from '../../redis/redis.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
 import type { ServiceExecutionContext } from '../../../common/types/execution-context';
@@ -394,6 +396,7 @@ export class LLMRouterService {
          * riesgo; la excepcion que se escribio no cubria este caso.
          */
         voicedWrite?: boolean;
+        withSourceAuthority?: LLMSourceAuthority;
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
 
         const noPersistence = persistenceDisabled(options.executionContext);
@@ -501,8 +504,8 @@ export class LLMRouterService {
                         ...options as Omit<LLMRequestOptions, 'model'>,
                         model: candidate.id,
                     };
-
-                    const response = await provider.generate(reqOptions);
+                    delete (reqOptions as any).withSourceAuthority;
+                    const response = await generateWithSourceAuthority(provider, reqOptions, options.withSourceAuthority);
                     const durationMs = Date.now() - startTime;
 
                     const escalated = !allowedTiers.includes(candidate.tier);
@@ -544,6 +547,11 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
+                    if (err instanceof LLMSourceAuthorityUnavailable) {
+                        if (accountOperationalUsage && err.usage) this.trackStats(options.tenantId,candidate,durationMs,err.usage,false)
+                            .catch(e=>this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                        throw err;
+                    }
                     if (accountOperationalUsage) {
                         this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
                     }
@@ -597,9 +605,10 @@ export class LLMRouterService {
             ...options as Omit<LLMRequestOptions, 'model'>,
             model: modelConfig.id,
         };
+        delete (reqOptions as any).withSourceAuthority;
         const startTime = Date.now();
         try {
-            const response = await provider.generate(reqOptions);
+            const response = await generateWithSourceAuthority(provider, reqOptions, options.withSourceAuthority);
             const durationMs = Date.now() - startTime;
             this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
             if (accountOperationalUsage) {
@@ -611,6 +620,11 @@ export class LLMRouterService {
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
+            if (e instanceof LLMSourceAuthorityUnavailable) {
+                if (accountOperationalUsage && e.usage) this.trackStats(options.tenantId,modelConfig,durationMs,e.usage,false)
+                    .catch(err=>this.logger.warn(`AI stats tracking failed: ${err.message}`));
+                throw e;
+            }
             if (accountOperationalUsage) {
                 this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
             }

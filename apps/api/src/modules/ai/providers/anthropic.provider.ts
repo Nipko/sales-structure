@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
-import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
 
 @Injectable()
@@ -23,7 +23,7 @@ export class AnthropicProvider implements ILLMProvider {
         return this.client;
     }
 
-    async generate(options: LLMRequestOptions): Promise<LLMResponse> {
+    async generate(options: LLMRequestOptions, transport?: LLMTransportOptions): Promise<LLMResponse> {
         try {
             const anthropic = await this.ensureClient();
 
@@ -70,7 +70,7 @@ export class AnthropicProvider implements ILLMProvider {
                 }));
             }
 
-            const response = await anthropic.messages.create(req);
+            const response = await anthropic.messages.create(req, transport);
 
             let textContent = '';
             const toolCalls = [];

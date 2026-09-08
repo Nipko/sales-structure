@@ -370,6 +370,8 @@ export class ComplianceService {
             const regressionCases = await eraseContactRegressionArtifacts(query, contactIds);
             const operationalNotices = await eraseOperationalContactNotices(query,schema,contactIds);
             await eraseContactMissionEvidence(query,contactIds);
+            const [petReceipts] = await query<any[]>('SELECT to_regclass($1)::text AS name', [`${schema}.pet_command_receipts`]);
+            if (petReceipts?.name) await query('DELETE FROM pet_command_receipts WHERE contact_id=ANY($1::uuid[])', [contactIds]);
             const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger')::text AS ledger,
                 to_regclass('tool_approval_tickets')::text AS tickets,to_regclass('tool_approval_outbox')::text AS outbox,
                 to_regclass('kb_retrieval_log')::text AS kb_log,to_regclass('kb_unanswered_queries')::text AS kb_queries,

@@ -22,6 +22,8 @@ export const CORE_PREREQUISITES: Readonly<Record<string, readonly string[]>> = {
     place_catalog_order: ['search_products', 'get_product', 'check_stock'],
     approve_repair: ['list_my_repair_orders', 'get_repair_order'],
     cancel_repair_order: ['list_my_repair_orders', 'get_repair_order'],
+    register_pet: ['list_pets_for_contact'],
+    update_pet: ['list_pets_for_contact'],
 };
 
 /** Expand selection within the already-authorized snapshot, never outside it. */

@@ -18,6 +18,8 @@ export const CANONICAL_EVAL_FIXTURE_IDS = Object.freeze({
     persona: '00000000-0000-4000-8000-00000000b013',
     unavailableVehicle: '00000000-0000-4000-8000-00000000b014',
     vehicleDepositService: '00000000-0000-4000-8000-00000000b015',
+    petOwner: '00000000-0000-4000-8000-00000000b016',
+    otherPet: '00000000-0000-4000-8000-00000000b017',
 });
 
 type Window = { day: number; start: number; end: number };
@@ -171,7 +173,9 @@ export async function prepareCanonicalEvalFixtures(query: EvalNamespaceQuery, sc
     for (const [id, model, status] of [[f.vehicle, 'Sandbox Vehicle', 'available'], [f.unavailableVehicle, 'Sold Vehicle', 'sold']]) {
         await seed(`INSERT INTO ${table('vehicles')} (id,make,model,year,price_cents,currency,status,category,description) VALUES ($1::uuid,'[EVAL]',$2,$3,1000,'COP',$4,'eval','Evaluation-only fixture')`, [id, model, Number(fixture.date.slice(0, 4)), status]);
     }
-    await seed(`INSERT INTO ${table('pets')} (id,contact_id,name,species,is_active,metadata) VALUES ($1::uuid,$2::uuid,'[EVAL] Sandbox Pet','dog',true,$3::jsonb)`, [f.pet, EVAL_SANDBOX_CONTACT_ID, marker]);
+    await seed(`INSERT INTO ${table('pets')} (id,contact_id,name,species,weight_kg,is_active,metadata) VALUES ($1::uuid,$2::uuid,'[EVAL] Sandbox Pet','dog',4,true,$3::jsonb)`, [f.pet, EVAL_SANDBOX_CONTACT_ID, marker]);
+    await seed(`INSERT INTO ${table('contacts')}(id,external_id,channel_type,name) VALUES($1::uuid,'eval-pet-owner','web_widget','[EVAL] Other tutor')`, [f.petOwner]);
+    await seed(`INSERT INTO ${table('pets')}(id,contact_id,name,species,weight_kg,is_active,metadata) VALUES($1::uuid,$2::uuid,'[EVAL] Other pet','cat',3,true,$3::jsonb)`, [f.otherPet, f.petOwner, marker]);
     await seed(`INSERT INTO ${table('insurance_policies')} (id,policy_number,contact_id,policyholder_name,monthly_premium,currency,starts_at,ends_at,status,metadata) VALUES ($1::uuid,'EVAL-SANDBOX-POLICY',$2::uuid,'Eval Policyholder',10,'COP',CURRENT_DATE,$3::date,'active',$4::jsonb)`, [f.insurancePolicy, EVAL_SANDBOX_CONTACT_ID, fixture.endDate, marker]);
     await prepareRepairEvalFixtures(query, schema);
     await prepareCatalogEvalFixtures(query, schema, f.product);

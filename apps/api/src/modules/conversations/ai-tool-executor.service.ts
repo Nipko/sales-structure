@@ -900,7 +900,7 @@ export class AIToolExecutorService {
                     return this.listPetsForContact(schemaName, contactId);
 
                 case 'register_pet':
-                    return this.registerPet(schemaName, contactId, args);
+                    return this.registerPet(schemaName, contactId, args, conversationId, executionIdempotencyKey, operationalScope);
 
                 case 'get_vaccination_status':
                     return this.getVaccinationStatus(schemaName, contactId, args.petId);
@@ -909,7 +909,7 @@ export class AIToolExecutorService {
                     return this.triagePetEmergency({ symptoms: args.symptoms || '' });
 
                 case 'update_pet':
-                    return this.updatePetTool(schemaName, contactId, args);
+                    return this.updatePetTool(schemaName, contactId, args, conversationId, executionIdempotencyKey, operationalScope);
 
                 // ── Restaurants tools ─────────────────────────────
                 case 'get_menu':
@@ -4151,7 +4151,8 @@ export class AIToolExecutorService {
         }
     }
 
-    private async registerPet(schemaName: string, contactId: string, args: any): Promise<any> {
+    private async registerPet(schemaName: string, contactId: string, args: any, conversationId?: string,
+        idempotencyKey?: string, operationalScope?: ServedAgentAuthority): Promise<any> {
         try {
             const pet = await this.petsService.create(schemaName, {
                 contactId,
@@ -4165,12 +4166,13 @@ export class AIToolExecutorService {
                 color: args.color,
                 allergies: args.allergies,
                 chronicConditions: args.chronicConditions,
-            });
+            }, { contactId, conversationId, idempotencyKey, operationalScope, requireIdempotency: true });
             return {
                 petId: pet.id,
                 name: pet.name,
                 species: pet.species,
                 breed: pet.breed,
+                idempotentReplay: pet.idempotentReplay === true,
                 message: `Pet ${pet.name} registered successfully.`,
             };
         } catch (e: any) {
@@ -6264,12 +6266,9 @@ export class AIToolExecutorService {
 
     // ── Pets management handlers ─────────────────────────────────────
 
-    private async updatePetTool(schema: string, contactId: string, args: any): Promise<any> {
+    private async updatePetTool(schema: string, contactId: string, args: any, conversationId?: string,
+        idempotencyKey?: string, operationalScope?: ServedAgentAuthority): Promise<any> {
         try {
-            const pet = await this.petsService.getById(schema, args.petId);
-            if (!pet) return { error: 'Pet not found' };
-            if (pet.contact_id !== contactId) return { error: 'You can only update your own pets' };
-
             // Claves en camelCase: PetsService.update mapea camelCase→columna y
             // descarta lo que no reconoce. Con snake_case acá, weight_kg /
             // chronic_conditions / is_neutered se perdían EN SILENCIO mientras el
@@ -6287,10 +6286,12 @@ export class AIToolExecutorService {
                 return { error: 'No fields provided to update' };
             }
 
-            const updated = await this.petsService.update(schema, args.petId, updateData);
+            const updated = await this.petsService.update(schema, args.petId, updateData,
+                { contactId, conversationId, idempotencyKey, operationalScope, requireIdempotency: true });
             return {
                 success: true,
-                message: `${updated.name || pet.name} updated successfully`,
+                message: `${updated.name} updated successfully`,
+                idempotentReplay: updated.idempotentReplay === true,
                 pet: {
                     id: updated.id,
                     name: updated.name,

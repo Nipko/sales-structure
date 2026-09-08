@@ -1948,7 +1948,14 @@ export class ToolExecutionControlService {
             sourceMessageId,
             issuedAt: now.toISOString(),
             expiresAt: expiresAt.toISOString(),
-            acceptedReferents: await this.resolveProposalReferents(request.schemaName, request.args),
+            acceptedReferents: [
+                ...await this.resolveProposalReferents(request.schemaName, request.args),
+                // These words name the already-bound pet update; they supply no
+                // new values and only exist inside this signed proposal scope.
+                ...(request.toolName === 'update_pet' ? ['la corrección', 'el cambio', 'la actualización',
+                    'the correction', 'the change', 'the update', 'a correção', 'a alteração', 'a atualização',
+                    'la correction', 'la modification', 'la mise à jour'] : []),
+            ],
             ...(request.missionScope ? { mission: { id: request.missionScope.missionId, revision: request.missionScope.revision } } : {}),
         };
         const token = this.signConfirmationToken(claims);

@@ -363,10 +363,10 @@ const TOOL_POLICY_ENTRIES = [
 
     // Pets and veterinary
     entry('list_pets_for_contact', sensitiveRead({ agentTestAllowed: true })),
-    // Registering a pet commits nothing and costs nothing: asking "¿confirmas que
-    // registre a tu perro?" is friction the customer reads as the agent stalling,
-    // and if the model then fails to re-issue the call the record is never
-    // created at all. The ledger still makes it idempotent.
+    // Registration persists a contact-owned record. The current policy accepts
+    // the customer's registration request without a second confirmation; it
+    // does not book a service or authorize a charge. The canonical command
+    // commits its retry receipt with the pet.
     entry('register_pet', contactWrite({ dataClassification: 'sensitive', confirmation: 'not_required' })),
     entry('get_vaccination_status', stepUpSensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
     entry('triage_pet_emergency', publicRead({

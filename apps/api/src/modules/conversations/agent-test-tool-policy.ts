@@ -115,6 +115,10 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
         status: 'identity_challenge', tools: Object.freeze(['file_claim']),
         table: 'insurance_claims',
     }),
+    pets: Object.freeze({
+        status: 'audited', tools: Object.freeze(['register_pet', 'update_pet']),
+        table: 'pets', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
+    }),
     repair_orders: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_repair_order', 'approve_repair', 'cancel_repair_order']),
         table: 'repair_orders', contactColumn: 'contact_id', verifierAudited: true,

@@ -24,8 +24,8 @@ import { TOOL_POLICY_REGISTRY } from './tool-policy-registry';
  */
 
 describe('eval writable tools', () => {
-    it('contains the current reviewed mutation tools plus the step-up negative gate', () => {
-        expect(EVAL_SANDBOX_MUTATING_TOOL_NAMES).toEqual([
+    it('contains only reviewed mutation tools plus the identity challenge gate', () => {
+        const reviewedMutations = [
             'create_appointment',
             'create_property_booking',
             'create_tour_booking',
@@ -38,12 +38,15 @@ describe('eval writable tools', () => {
             'create_pet_boarding',
             'place_catalog_order',
             'cancel_catalog_order',
+            'register_pet',
+            'update_pet',
             'create_repair_order',
             'approve_repair',
             'cancel_repair_order',
-        ]);
+        ];
+        expect([...EVAL_SANDBOX_MUTATING_TOOL_NAMES].sort()).toEqual(reviewedMutations.sort());
         expect([...EVAL_WRITABLE_TOOL_NAMES].sort()).toEqual([
-            ...EVAL_SANDBOX_MUTATING_TOOL_NAMES,
+            ...reviewedMutations,
             'file_claim',
         ].sort());
         for (const [name, family] of Object.entries(EVAL_WRITER_SANDBOX_FAMILIES)) {
@@ -79,9 +82,18 @@ describe('eval writable tools', () => {
     it('refuses writer families that have no isolated eval contract', () => {
         // These suppress nothing: they would send real emails, real payment
         // links and real notifications from a test run.
-        for (const name of ['create_payment_link', 'refund_payment', 'apply_discount', 'register_pet']) {
+        for (const name of ['create_payment_link', 'refund_payment', 'apply_discount']) {
             expect(isEvalWritableToolName(name)).toBe(false);
             expect(canEvalExecuteWriter(name, EVAL_SANDBOX_CONTACT_ID)).toBe(false);
+        }
+    });
+
+    it('requires namespace admission for canonical pet, catalog and repair commands', () => {
+        for (const name of ['register_pet', 'update_pet', 'place_catalog_order', 'cancel_catalog_order',
+            'create_repair_order', 'approve_repair', 'cancel_repair_order']) {
+            expect(isEvalWritableToolName(name)).toBe(true);
+            expect(canEvalExecuteWriter(name, EVAL_SANDBOX_CONTACT_ID)).toBe(false);
+            expect(isAgentTestSafeToolName(name)).toBe(false);
         }
     });
 

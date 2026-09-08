@@ -72,6 +72,29 @@ export async function verifyLearningOperation(prisma:PrismaService,scope:Learnin
     await scope.assertLease();
     if(objects.length!==1)return {status:'unverified',reason:'owned_object_missing'};
     const object=objects[0].data,body=result.order||result.appointment||result.repairOrder||result.enrollment||result;
+    if(family.table==='pets'){
+        const receipts=await prisma.executeInTenantSchema<any[]>(schema,'SELECT to_regclass($1)::text AS relation',[`${schema}.pet_command_receipts`]);
+        if(!receipts[0]?.relation)return {status:'unverified',reason:'pet_receipt_unavailable'};
+        // The receipt and pet were committed atomically. Rehydrate the recorded
+        // SQL types so date/decimal JSON representations cannot hide a mismatch.
+        // Compare all business columns; database-maintained timestamps do not
+        // change what was registered or corrected.
+        const proof=await prisma.executeInTenantSchema<any[]>(schema,`SELECT
+            (to_jsonb(p)-'created_at'-'updated_at')=(to_jsonb(expected)-'created_at'-'updated_at') AS state_matches,
+            md5(to_jsonb(p)::text) AS object_hash
+            FROM pet_command_receipts r
+            JOIN tool_execution_ledger l ON l.idempotency_key=r.command_key
+            JOIN pets p ON p.id=r.pet_id AND p.contact_id=r.contact_id
+            CROSS JOIN LATERAL jsonb_populate_record(NULL::pets,r.response_row) AS expected
+            WHERE l.id=$1::uuid AND l.contact_id=$2::uuid AND l.conversation_id=$3::uuid AND l.status='succeeded'
+                AND r.contact_id=$2::uuid AND r.pet_id=$4::uuid AND r.command_kind=$5`,
+            [ledger.id,scope.contactId,scope.conversationId,reference.id,call.name==='register_pet'?'create':'update']);
+        await scope.assertLease();
+        if(proof.length!==1)return {status:'unverified',reason:'pet_receipt_missing'};
+        if(proof[0].state_matches!==true||proof[0].object_hash!==objects[0].hash||object.is_active!==true
+            ||(call.name==='register_pet'&&(body.name!==object.name||body.species!==object.species||body.breed!==object.breed)))
+            return {status:'unverified',reason:'pet_record_mismatch'};
+    }
     const cancellation:Record<string,string>={cancel_catalog_order:'cancelled',cancel_appointment:'cancelled',cancel_repair_order:'cancelled',cancel_class_booking:'cancelled',cancel_enrollment:'dropped'};
     const expectedStatus=cancellation[call.name]||body.status;
     const currency=family.table==='appointments'?object.metadata?.serviceTerms?.currency:object.currency;

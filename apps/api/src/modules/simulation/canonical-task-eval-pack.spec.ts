@@ -4,7 +4,7 @@ import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-
 import { buildTaskCompetenceMatrix } from './task-competence-matrix';
 
 const supported = new Set(['book_appointment', 'cancel_appointment', 'book_class', 'enrol_student']);
-const separatelyVerified = new Set(['open_repair_order','track_repair_order','approve_repair_estimate','cancel_repair_order','place_catalog_order','track_catalog_order','cancel_catalog_order','schedule_test_drive']);
+const separatelyVerified = new Set(['open_repair_order','track_repair_order','approve_repair_estimate','cancel_repair_order','place_catalog_order','track_catalog_order','cancel_catalog_order','schedule_test_drive','register_pet']);
 const fixture = resolveCanonicalEvalFixtures({ capturedAt: '2026-09-07T15:00:00Z', config: { hours: { timezone: 'America/Bogota', schedule: {} } } } as AgentEvaluationSnapshot);
 
 describe('complete canonical task evaluation packs', () => {
@@ -17,7 +17,7 @@ describe('complete canonical task evaluation packs', () => {
                 const pack = composeSubtypeEvalPack({ industry, subtype, language });
                 for (const intent of domain.intents) {
                     const cases = pack.filter(scenario => scenario.key.startsWith(`intent_${intent.key}_canonical_`));
-                    // Domain-specific object, price and vehicle identity assertions are
+                    // Domain-specific object, price and pet-field assertions are
                     // verified by dedicated pack suites; they need no booking email.
                     if(separatelyVerified.has(intent.key)) {
                         expect(cases.length).toBeGreaterThan(0);

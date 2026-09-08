@@ -7,6 +7,7 @@ export const CANONICAL_EVAL_TOOL_FAMILIES: Readonly<Record<string, string>> = Ob
     enroll_student: 'enrollments', cancel_enrollment: 'enrollments', book_class: 'class_bookings', cancel_class_booking: 'class_bookings',
     create_repair_order: 'repair_orders', approve_repair: 'repair_orders', cancel_repair_order: 'repair_orders',
     place_catalog_order:'catalog_orders',cancel_catalog_order:'catalog_orders',
+    register_pet: 'pets', update_pet: 'pets',
 });
 /** Private readers keep their normal identity/ownership guards; this only admits
  * their schema-local implementation after a fixture lease has been verified. */
@@ -45,7 +46,7 @@ const TABLES = new Set([
     'courses', 'course_cohorts', 'enrollments', 'products', 'orders', 'order_items','stock_movements',
     'properties', 'property_bookings', 'tour_packages', 'tour_inventory', 'tour_bookings',
     'menu_items', 'food_orders', 'food_order_items', 'service_requests', 'photo_sessions',
-    'resource_rentals', 'vehicles', 'pets', 'insurance_policies', 'insurance_claims',
+    'resource_rentals', 'vehicles', 'pets', 'pet_vaccinations', 'pet_command_receipts', 'insurance_policies', 'insurance_claims',
 ]);
 const quote = (name: string): string => {
     if (!IDENTIFIER.test(name)) throw new Error('eval_invalid_identifier');

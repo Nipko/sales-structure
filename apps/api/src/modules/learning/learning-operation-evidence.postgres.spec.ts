@@ -1,9 +1,12 @@
 import { randomUUID } from 'crypto';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { isolatedEvalNamespaceForPrisma } from '../simulation/isolated-eval-namespace';
 import { EVAL_SANDBOX_CONTACT_ID } from '../conversations/agent-test-tool-policy';
 import { captureLearningLedger,verifyLearningOperation,type LearningOperationScope } from './learning-operation-evidence';
+import { PetsService } from '../pets/pets.service';
 const url=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
 (url?describe:describe.skip)('Learning command proof with PostgreSQL and Prisma',()=>{
     const tenantId=randomUUID(),source=`tenant_learning_proof_${randomUUID().replace(/-/g,'')}`,contactId=EVAL_SANDBOX_CONTACT_ID,otherContact=randomUUID(),conversationId=randomUUID();
@@ -15,6 +18,7 @@ const url=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
     beforeAll(async()=>{
         const parsed=new URL(url!);if(!['127.0.0.1','localhost'].includes(parsed.hostname)||!parsed.pathname.endsWith('_eval_isolation'))throw new Error('disposable_loopback_database_required');
         client=new PrismaClient({datasourceUrl:url});
+        await client.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         const tables:any[]=await client.$queryRawUnsafe("SELECT to_regclass('public.tenants')::text AS name");
         if(!tables[0].name)await client.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS public.tenants(id UUID PRIMARY KEY,schema_name TEXT)');
         await client.$executeRawUnsafe('INSERT INTO public.tenants(id,schema_name) VALUES($1::uuid,$2)',tenantId,source);
@@ -24,18 +28,25 @@ const url=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         // domain command/consent integration is covered by catalog-orders.postgres.
         await sql(source,'CREATE TABLE contacts(id UUID PRIMARY KEY)');
         await sql(source,'CREATE TABLE orders(id UUID PRIMARY KEY,contact_id UUID REFERENCES contacts(id),status TEXT,payment_status TEXT,currency TEXT,total_amount NUMERIC(15,2),version INT)');
-        await sql(source,'CREATE TABLE tool_execution_ledger(id UUID PRIMARY KEY,tool_name TEXT,args_hash CHAR(64),response_payload JSONB,contact_id UUID REFERENCES contacts(id),conversation_id UUID,status TEXT)');
+        await sql(source,'CREATE TABLE tool_execution_ledger(id UUID PRIMARY KEY,tool_name TEXT,args_hash CHAR(64),response_payload JSONB,contact_id UUID REFERENCES contacts(id),conversation_id UUID,status TEXT,idempotency_key TEXT)');
+        await sql(source,'CREATE TABLE conversations(id UUID PRIMARY KEY,contact_id UUID REFERENCES contacts(id))');
+        const ddl=readFileSync(resolve(__dirname,'../../../prisma/tenant-schema.sql'),'utf8').replaceAll('{{SCHEMA_NAME}}',source);
+        for(const statement of (prisma as any).splitSqlStatements(ddl))
+            if(/^CREATE TABLE IF NOT EXISTS\s+"[^"]+"\."(pets|pet_command_receipts)"/i.test(statement))await client.$executeRawUnsafe(statement);
         await sql(source,'INSERT INTO contacts VALUES($1::uuid)',[contactId]);
         await sql(source,"INSERT INTO orders VALUES($1::uuid,$2::uuid,'untouched','pending','COP',42.12,1)",[orderId,contactId]);
         namespaces=isolatedEvalNamespaceForPrisma(prisma);
     });
     beforeEach(async()=>{
-        const lease=await namespaces.provision(tenantId,source,['contacts','orders','tool_execution_ledger']);
+        const lease=await namespaces.provision(tenantId,source,['contacts','orders','tool_execution_ledger','conversations','pets','pet_command_receipts']);
         scope={tenantId,contactId,conversationId,namespace:lease,assertLease:()=>namespaces.assertOwned(lease)};
         await sql(lease.schemaName,'INSERT INTO contacts VALUES($1::uuid),($2::uuid)',[contactId,otherContact]);
+        await sql(lease.schemaName,'INSERT INTO conversations VALUES($1::uuid,$2::uuid)',[conversationId,contactId]);
     });
     afterEach(async()=>{
         expect(await sql(source,'SELECT status,total_amount::text FROM orders')).toEqual([{status:'untouched',total_amount:'42.12'}]);
+        expect(await sql(source,'SELECT id FROM pets')).toEqual([]);
+        expect(await sql(source,'SELECT command_key FROM pet_command_receipts')).toEqual([]);
         await namespaces.dispose(scope.namespace!);
     });
     afterAll(async()=>{
@@ -50,7 +61,7 @@ const url=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
     const commit=async(owner=contactId,status='succeeded')=>{
         await prisma.transactionInTenantSchema(scope.namespace!.schemaName,async query=>{
             await query("INSERT INTO orders VALUES($1::uuid,$2::uuid,'pending','pending','COP',12.35,1)",[orderId,owner]);
-            await query('INSERT INTO tool_execution_ledger VALUES($1::uuid,$2,$3,$4::jsonb,$5::uuid,$6::uuid,$7)',[ledgerId,call.name,'a'.repeat(64),JSON.stringify(result),contactId,conversationId,status]);
+            await query('INSERT INTO tool_execution_ledger(id,tool_name,args_hash,response_payload,contact_id,conversation_id,status) VALUES($1::uuid,$2,$3,$4::jsonb,$5::uuid,$6::uuid,$7)',[ledgerId,call.name,'a'.repeat(64),JSON.stringify(result),contactId,conversationId,status]);
         });
     };
     it('verifies one exact commit and its unchanged idempotent replay',async()=>{
@@ -73,5 +84,25 @@ const url=process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         await sql(scope.namespace!.schemaName,"UPDATE tool_execution_ledger SET status='succeeded'");
         await sql(scope.namespace!.schemaName,'UPDATE orders SET total_amount=20');
         expect(await verifyLearningOperation(prisma,scope,call,before)).toMatchObject({status:'unverified',reason:'object_amount_mismatch'});
+    });
+    it('checks a real pet command receipt across Prisma date/decimal serialization and later corrections',async()=>{
+        const schema=scope.namespace!.schemaName,key=randomUUID(),pets=new PetsService(prisma);
+        const before=await captureLearningLedger(prisma,scope);
+        const pet=await pets.create(schema,{contactId,name:'Receipt pet',species:'cat',birthDate:'2020-02-29',weightKg:4.25},
+            {contactId,conversationId,idempotencyKey:key,requireIdempotency:true});
+        const petResult={petId:pet.id,name:pet.name,species:pet.species,breed:pet.breed};
+        await sql(schema,`INSERT INTO tool_execution_ledger(id,tool_name,args_hash,response_payload,contact_id,conversation_id,status,idempotency_key)
+            VALUES($1::uuid,'register_pet',$2,$3::jsonb,$4::uuid,$5::uuid,'succeeded',$6)`,
+            [ledgerId,'a'.repeat(64),JSON.stringify(petResult),contactId,conversationId,key]);
+        const verify=()=>verifyLearningOperation(prisma,scope,{name:'register_pet',result:petResult},before);
+        expect(await verify()).toMatchObject({status:'verified',effect:'committed',table:'pets'});
+        await pets.update(schema,pet.id,{weightKg:4.5});
+        expect(await verify()).toMatchObject({status:'unverified',reason:'pet_record_mismatch'});
+        await pets.update(schema,pet.id,{weightKg:4.25});
+        expect(await verify()).toMatchObject({status:'verified'});
+        await sql(schema,'UPDATE pet_command_receipts SET contact_id=$1::uuid',[otherContact]);
+        expect(await verify()).toMatchObject({status:'unverified',reason:'pet_receipt_missing'});
+        await sql(schema,'DROP TABLE pet_command_receipts');
+        expect(await verify()).toMatchObject({status:'unverified',reason:'pet_receipt_unavailable'});
     });
 });

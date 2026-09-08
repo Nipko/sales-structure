@@ -4,20 +4,20 @@ Registro generado desde contratos de dominio, herramientas, dependencias y escen
 
 Perfiles canónicos: **76**. Tareas declaradas: **268**. Tareas que comprometen al negocio: **146**.
 
-Tareas sin caso positivo con efecto verificable: **42**. Tareas con alguna herramienta de escritura sin verificador de efecto: **20**.
+Tareas sin caso positivo con efecto verificable: **32**. Tareas con alguna herramienta de escritura sin verificador de efecto: **10**.
 
 La matriz describe cobertura declarada. Los estados por canal e idioma permanecen en «no ejecutado» hasta asociar evidencia de una revisión concreta. No hereda certificación de otro perfil ni convierte un escenario genérico llamado «camino feliz» en prueba de una operación terminada.
 
 La disponibilidad comercial, el permiso de ejecutar una herramienta y la existencia de un verificador de lectura son dimensiones distintas. La prueba de carga de módulos o de componentes tampoco certifica un proveedor externo.
 
-Revisión base del repositorio: `3b3927f3ebe4c27039c9e521b5a8dea798e50e6c`; incluye los cambios del árbol de trabajo al generar.
+Revisión base del repositorio: `9f439e614a4ecc850fd19e6a18a8452dfe9539b3`; incluye los cambios del árbol de trabajo al generar.
 
 [Detalle de tareas en CSV](competence-matrix.csv). El contrato completo está disponible en `GET /eval/:tenantId/competence-matrix`; el generador también lo exporta con `--json`.
 
 | Perfil | Tareas | Comprometen al negocio | Sin caso positivo | Herramientas no registradas |
 |---|---:|---:|---:|---|
-| automotriz/alquiler | 3 | 2 | 2 | — |
-| automotriz/concesionario | 4 | 3 | 1 | — |
+| automotriz/alquiler | 3 | 2 | 1 | — |
+| automotriz/concesionario | 4 | 3 | 0 | — |
 | automotriz/repuestos | 5 | 2 | 0 | — |
 | automotriz/taller | 7 | 5 | 0 | — |
 | construccion/contratista_general | 1 | 0 | 0 | — |
@@ -47,11 +47,11 @@ Revisión base del repositorio: `3b3927f3ebe4c27039c9e521b5a8dea798e50e6c`; incl
 | moda_belleza/salon_belleza | 3 | 2 | 0 | — |
 | moda_belleza/spa | 4 | 2 | 0 | — |
 | otro/__none__ | 5 | 2 | 0 | — |
-| pet_services/adiestramiento | 6 | 3 | 1 | — |
-| pet_services/guarderia | 5 | 2 | 2 | — |
-| pet_services/hotel | 5 | 2 | 2 | — |
-| pet_services/paseos | 6 | 3 | 1 | — |
-| pet_services/peluqueria | 6 | 3 | 1 | — |
+| pet_services/adiestramiento | 6 | 3 | 0 | — |
+| pet_services/guarderia | 5 | 2 | 1 | — |
+| pet_services/hotel | 5 | 2 | 1 | — |
+| pet_services/paseos | 6 | 3 | 0 | — |
+| pet_services/peluqueria | 6 | 3 | 0 | — |
 | restaurantes/cafeteria | 5 | 3 | 1 | — |
 | restaurantes/casual_dining | 5 | 3 | 1 | — |
 | restaurantes/comida_rapida | 3 | 1 | 1 | — |
@@ -89,8 +89,8 @@ Revisión base del repositorio: `3b3927f3ebe4c27039c9e521b5a8dea798e50e6c`; incl
 | turismo/alquiler_vacacional | 3 | 1 | 1 | — |
 | turismo/hotel | 3 | 1 | 1 | — |
 | turismo/tours | 2 | 1 | 1 | — |
-| veterinaria/clinica_general | 5 | 3 | 1 | — |
-| veterinaria/exoticos | 5 | 3 | 1 | — |
-| veterinaria/hospital_24h | 5 | 3 | 1 | — |
+| veterinaria/clinica_general | 5 | 3 | 0 | — |
+| veterinaria/exoticos | 5 | 3 | 0 | — |
+| veterinaria/hospital_24h | 5 | 3 | 0 | — |
 
 Para actualizar: ejecutar `node docs/audits/2026-09-07/generate-competence-matrix.cjs` desde la raíz. Cada cierre requiere escenario, datos de prueba, comando canónico, verificador, revisión del agente y evidencia por canal e idioma.

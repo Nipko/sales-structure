@@ -231,7 +231,7 @@ describe('el ejecutor deniega por defecto y no toca la base', () => {
         );
 
         expect(isToolAuthorityDenial(result?.error)).toBe(false);
-        expect(search).toHaveBeenCalledWith(tenantId, 'horario', 3, undefined);
+        expect(search).toHaveBeenCalledWith(tenantId, 'horario', 3, undefined, undefined);
         expect(result.faqs).toHaveLength(1);
     });
 });

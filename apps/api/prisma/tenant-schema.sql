@@ -2448,6 +2448,16 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pets" (
 CREATE INDEX IF NOT EXISTS "idx_pets_contact" ON "{{SCHEMA_NAME}}"."pets" ("contact_id") WHERE "is_active" = true;
 CREATE INDEX IF NOT EXISTS "idx_pets_microchip" ON "{{SCHEMA_NAME}}"."pets" ("microchip_id") WHERE "microchip_id" IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pet_command_receipts" (
+    command_key TEXT PRIMARY KEY,
+    contact_id UUID NOT NULL,
+    pet_id UUID NOT NULL,
+    command_kind TEXT NOT NULL CHECK(command_kind IN ('create','update')),
+    request_hash TEXT NOT NULL,
+    response_row JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pet_vaccinations" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "pet_id" UUID NOT NULL,

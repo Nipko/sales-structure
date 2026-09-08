@@ -13,6 +13,7 @@ export const VERSION_GUARDED_TOOLS: ReadonlySet<string> = new Set([
     'book_class', 'cancel_class_booking', 'enroll_student', 'cancel_enrollment',
     'create_repair_order', 'approve_repair', 'cancel_repair_order',
     'place_catalog_order', 'cancel_catalog_order',
+    'register_pet', 'update_pet',
 ]);
 export class ServedAgentAuthorityError extends Error {
     readonly code = 'agent_operational_revision_changed';

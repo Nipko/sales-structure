@@ -6,6 +6,7 @@ import { AppointmentsService } from '../appointments/appointments.service';
 import { appointmentServiceTerms, AppointmentTermsChangedError } from '../appointments/appointment-service-terms';
 import { EducationService } from '../education/education.service';
 import { GymsService } from '../gyms/gyms.service';
+import { PetsService } from '../pets/pets.service';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
 import { authorityFor } from '../conversations/__fixtures__/tool-authority.fixture';
 import { ToolExecutionControlService } from '../conversations/tool-execution-control.service';
@@ -48,7 +49,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         'pipelines','pipeline_stages','deals','services','service_staff','calendar_integrations','appointments','availability_slots','blocked_dates',
         'membership_plans','members','fitness_classes','class_bookings','course_cohorts','enrollments',
         'properties','property_bookings','tour_packages','tour_inventory','tour_bookings','menu_items','food_orders','food_order_items',
-        'products','orders','order_items','stock_movements','vehicles','pets','insurance_policies','insurance_claims',
+        'products','orders','order_items','stock_movements','vehicles','pets','pet_vaccinations','pet_command_receipts','insurance_policies','insurance_claims',
         'staff_members','customer_vehicles','repair_orders','repair_order_events'];
     const date = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0,10);
     const query = async (sql: string, params: any[] = []) => (await pool.query(sql, params)).rows;
@@ -96,7 +97,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const slots = { acquireLockToken:async()=>randomUUID(),releaseLockToken:async()=>true,get:async()=>null,incr:async()=>1,expire:async()=>true };
         const control = new ToolExecutionControlService(prisma,{ get:()=> 'isolated-test-secret-length-32-characters' } as any,identityBoundary as any,slots as any);
         const args: any[] = Array(32).fill({});
-        Object.assign(args,{0:prisma,1:slots,2:effects,13:gyms,14:education,21:control,22:{},31:appointments});
+        Object.assign(args,{0:prisma,1:slots,2:effects,11:new PetsService(prisma),13:gyms,14:education,21:control,22:{},31:appointments});
         executor = new (AIToolExecutorService as any)(...args);
     },30000);
     beforeEach(async () => {
@@ -172,6 +173,55 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect((await q("SELECT to_char(start_at,'HH24:MI') AS time FROM appointments WHERE id=$1::uuid", [created.id]))[0].time).toBe('13:15');
             expect(liveLookup).not.toHaveBeenCalled();
         } finally { await client.$disconnect(); }
+    });
+    it.each(['Sí, confirmo la corrección.', 'Yes, I confirm the correction.', 'Sim, confirmo a correção.', 'Oui, je confirme la correction.'])
+    ('registers, replays, reads and corrects a pet through its owned namespace: %s', async confirmation => {
+        const q=(sql:string,params:any[]=[])=>prisma.executeInTenantSchema(lease.schemaName,sql,params);
+        const inbound=async(text:string)=>q("INSERT INTO messages(conversation_id,direction,content_type,content_text,status,created_at) VALUES($1::uuid,'inbound','text',$2,'delivered',clock_timestamp())",[conversationId,text]);
+        const invoke=(name:string,args:any)=>executor.execute(lease.schemaName,tenantId,contactId,name,args,conversationId,{
+            authority:authorityFor(name),executionContext:AGENT_TEST_EXECUTION_CONTEXT,evalMode:true,sandboxNamespace:lease,
+        });
+        await inbound('Registra a Luna, mi gata, con peso de cuatro kilos.');
+        expect((await invoke('list_pets_for_contact',{})).pets).toEqual([]);
+        const evidenceScope={tenantId,contactId,conversationId,namespace:lease,assertLease:()=>namespaces.assertOwned(lease)};
+        const beforeCreate=await captureLearningLedger(prisma,evidenceScope);
+        const created=await invoke('register_pet',{name:'Luna',species:'cat',weightKg:4});
+        expect(created.error).toBeUndefined();expect(created.species).toBe('cat');
+        expect(await verifyLearningOperation(prisma,evidenceScope,{name:'register_pet',result:created},beforeCreate))
+            .toMatchObject({status:'verified',effect:'committed',table:'pets'});
+        const beforeReplay=await captureLearningLedger(prisma,evidenceScope);
+        const replay=await invoke('register_pet',{name:'Luna',species:'cat',weightKg:4});
+        expect(replay.petId).toBe(created.petId);
+        expect(await verifyLearningOperation(prisma,evidenceScope,{name:'register_pet',result:replay},beforeReplay))
+            .toMatchObject({status:'verified',effect:'replayed'});
+        expect((await invoke('list_pets_for_contact',{})).pets[0].id).toBe(created.petId);
+        await inbound('Corrige el peso de Luna a 4.5 kilos.');
+        const args={petId:created.petId,weightKg:4.5};
+        const challenge=await invoke('update_pet',args);expect(challenge.error).toBe('confirmation_required');
+        expect(Number((await q('SELECT weight_kg FROM pets WHERE id=$1::uuid',[created.petId]))[0].weight_kg)).toBe(4);
+        await inbound('Sí, confirmo la corrección, pero primero cambia el peso a 8 kilos.');
+        expect((await invoke('update_pet',{...args,_control:{confirmationToken:challenge.confirmationToken}})).error).toBe('confirmation_required');
+        expect(Number((await q('SELECT weight_kg FROM pets WHERE id=$1::uuid',[created.petId]))[0].weight_kg)).toBe(4);
+        await inbound(confirmation);
+        const beforeUpdate=await captureLearningLedger(prisma,evidenceScope);
+        const updated=await invoke('update_pet',{...args,_control:{confirmationToken:challenge.confirmationToken}});
+        expect(updated.error).toBeUndefined();expect(updated.success).toBe(true);
+        expect(await verifyLearningOperation(prisma,evidenceScope,{name:'update_pet',result:updated},beforeUpdate))
+            .toMatchObject({status:'verified',effect:'committed',table:'pets'});
+        expect((await verifyExpectedEffects({expected:[{kind:'db_effect',type:'row_count',table:'pets',family:'pets',count:1},
+            {kind:'db_effect',type:'row_exists',table:'pets',family:'pets',where:{name:'Luna',species:'cat',weight_kg:4.5}}],
+            contactId,verifiers:EVAL_EFFECT_VERIFIERS,query:q})).passed).toBe(true);
+        await q('UPDATE pets SET weight_kg=8 WHERE id=$1::uuid',[created.petId]);
+        expect(await verifyLearningOperation(prisma,evidenceScope,{name:'update_pet',result:updated},beforeUpdate))
+            .toMatchObject({status:'unverified',reason:'pet_record_mismatch'});
+        await q('UPDATE pets SET weight_kg=4.5 WHERE id=$1::uuid',[created.petId]);
+        await q("DELETE FROM pet_command_receipts WHERE pet_id=$1::uuid AND command_kind='update'",[created.petId]);
+        expect(await verifyLearningOperation(prisma,evidenceScope,{name:'update_pet',result:updated},beforeUpdate))
+            .toMatchObject({status:'unverified',reason:'pet_receipt_missing'});
+        expect(effects.emit).not.toHaveBeenCalled();expect(calendar.enqueueWithQuery).not.toHaveBeenCalled();
+        expect(identityBoundary.startVerification).not.toHaveBeenCalled();
+        expect(await query(`SELECT id FROM "${source}".pets`)).toEqual([]);
+        expect(await query(`SELECT command_key FROM "${source}".pet_command_receipts`)).toEqual([]);
     });
     it.each([
         ['es', 'Quiero matricularme', 'Ahora quiero agendar una cita', 'Sí, confirmo'],

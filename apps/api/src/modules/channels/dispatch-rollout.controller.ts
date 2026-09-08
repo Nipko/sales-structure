@@ -47,7 +47,10 @@ export class DispatchRolloutController {
         } catch (error: any) {
             // A refused configuration is an operator mistake to surface now, not
             // a value to store and quietly ignore later.
-            throw new BadRequestException(String(error?.message || 'dispatch_rollout_invalid'));
+            // The code goes in `error`, like every other refusal here: leaving it
+            // in `message` hands a client reading `errorCode` the string
+            // "Bad Request" and nothing it can act on.
+            throw new BadRequestException({ error: String(error?.message || 'dispatch_rollout_invalid') });
         }
     }
 
@@ -68,6 +71,29 @@ export class DispatchRolloutController {
             this.outbox.backlog(tenantId),
         ]);
         return { success: true, data: { entries, backlog, slaSeconds: DISPATCH_RECONCILIATION_SLA_SECONDS } };
+    }
+
+    /**
+     * Re-run the copies a previous export never completed.
+     *
+     * Declared BEFORE the `:dispatchId` route on purpose: Nest matches in
+     * declaration order, so a parameter placed first swallows every literal
+     * segment after it and this endpoint answers `dispatch_invalid_reference`
+     * for a path that never reaches it.
+     *
+     * Nothing is lost while they wait — the decision, its author and its
+     * evidence are in the tenant schema — but an operator asking "who resolved
+     * this" looks in the platform log, so the copies have to be catchable up.
+     */
+    @Post('reconciliation/:tenantId/export')
+    @ApiOperation({ summary: 'Copy pending reconciliation decisions into the audit log (super_admin only)' })
+    async exportPending(@Param('tenantId') tenantId: string, @Req() request: any) {
+        const pending = await this.outbox.unexportedResolutions(tenantId, 200);
+        for (const resolution of pending) {
+            await this.exportResolution(tenantId, resolution, request?.user?.email ?? null);
+        }
+        const remaining = await this.outbox.unexportedResolutions(tenantId, 200);
+        return { success: true, data: { attempted: pending.length, remaining: remaining.length } };
     }
 
     /**
@@ -136,24 +162,6 @@ export class DispatchRolloutController {
         } catch (error: any) {
             this.logger.error(`[Dispatch] audit copy of resolution ${resolution.id} deferred: ${error?.message}`);
         }
-    }
-
-    /**
-     * Re-run the copies a previous export never completed.
-     *
-     * Nothing is lost while they wait — the decision, its author and its
-     * evidence are in the tenant schema — but an operator asking "who resolved
-     * this" looks in the platform log, so the copies have to be catchable up.
-     */
-    @Post('reconciliation/:tenantId/export')
-    @ApiOperation({ summary: 'Copy pending reconciliation decisions into the audit log (super_admin only)' })
-    async exportPending(@Param('tenantId') tenantId: string, @Req() request: any) {
-        const pending = await this.outbox.unexportedResolutions(tenantId, 200);
-        for (const resolution of pending) {
-            await this.exportResolution(tenantId, resolution, request?.user?.email ?? null);
-        }
-        const remaining = await this.outbox.unexportedResolutions(tenantId, 200);
-        return { success: true, data: { attempted: pending.length, remaining: remaining.length } };
     }
 
     @Post('disable')

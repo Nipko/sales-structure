@@ -109,4 +109,29 @@ describe('resolving an uncertain dispatch effect over HTTP', () => {
         await expect(controller.resolve(tenantId, dispatchId, body, request)).rejects.toThrow();
         expect(prisma.auditLog.create).not.toHaveBeenCalled();
     });
+
+    /**
+     * Nest matches routes in declaration order, so a parameter declared before a
+     * literal segment swallows it. `POST reconciliation/:tenantId/export` sat
+     * after `:dispatchId` and answered `dispatch_invalid_reference` for a path
+     * that never reached it — invisible to a spec that calls the method
+     * directly, which is how it shipped.
+     */
+    it('declares the literal reconciliation routes before the parameterised one', () => {
+        const order = Object.getOwnPropertyNames(DispatchRolloutController.prototype)
+            .filter(name => name !== 'constructor')
+            .map(name => ({
+                name,
+                path: Reflect.getMetadata('path', (DispatchRolloutController.prototype as any)[name]),
+            }))
+            .filter(entry => typeof entry.path === 'string' && entry.path.startsWith('reconciliation/'));
+        const parameterised = order.findIndex(entry => entry.path.includes('/:dispatchId'));
+        const literals = order
+            .map((entry, index) => ({ ...entry, index }))
+            .filter(entry => !entry.path.includes('/:dispatchId') && !entry.path.endsWith('/:tenantId'));
+        expect(literals.length).toBeGreaterThan(0);
+        for (const literal of literals) {
+            expect(literal.index).toBeLessThan(parameterised);
+        }
+    });
 });

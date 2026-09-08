@@ -123,7 +123,7 @@ Síntomas y causa habitual:
 | Síntoma | Causa probable |
 | --- | --- |
 | Filas en `prepared` que no avanzan | La pasada de recuperación no corre (cron `*/2`, `dispatch-recovery.recoverPending`, corre en una sola instancia). |
-| `suppressed` con `transport_not_migrated:<canal>` | El interruptor nombra un canal sin transporte estricto. Quitarlo de `channels`. |
+| `suppressed` con `transport_not_migrated:<canal>` | El interruptor nombra un canal sin transporte estricto. Hoy son WhatsApp, Messenger, Instagram y Telegram los que sí lo tienen; correo no. Quitarlo de `channels`. |
 | `suppressed` con `predecessor_not_delivered` | Es correcto: el caption de una imagen que no llegó. |
 | `reconciliation_required` con `lease_expired_after_admission` | Un worker murió con el permiso en la mano. Reconciliar como arriba. |
 | Muchos `meta_131047` | Fuera de la ventana de 24 h. No es un fallo del despacho. |

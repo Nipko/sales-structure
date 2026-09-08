@@ -90,8 +90,8 @@ La suite completa de la API se ejecutó en un worktree limpio de `7c613864` y so
 ## Límites explícitos
 
 - **Nada cambia en producción.** El interruptor está apagado, apagado para todo canal no listado, y apagado cuando la configuración no se puede leer, así que el productor devuelve falso en todas partes hasta que alguien lo escriba deliberadamente.
-- ~~Solo WhatsApp tiene transporte estricto.~~ **Desactualizado desde `a850726c`**: Messenger también lo implementa. Instagram, Telegram y correo se rechazan explícitamente si alguna vez reciben una fila. Estado vigente por canal en [los bloqueos cerrados](dispatch-blockers-closed.md).
-- ~~Medios, enlaces y Flow como ítems separados no están implementados.~~ **Desactualizado desde `a850726c`**: `buildDispatchItems` ya los separa, con la división de imagen y caption. Lo que sigue abierto es distinto y más acotado: el **productor** de la respuesta normal solo alimenta texto, así que medios, enlaces canónicos y Flow tienen primitiva y transporte pero todavía no productor conectado.
+- ~~Solo WhatsApp tiene transporte estricto.~~ **Desactualizado desde `a850726c`**: Messenger también lo implementa. **Corregido de nuevo en `527cc7b6`**: Instagram y Telegram también lo implementan; sólo correo se rechaza explícitamente. Estado vigente por canal en [los bloqueos cerrados](dispatch-blockers-closed.md).
+- ~~Medios, enlaces y Flow como ítems separados no están implementados.~~ **Desactualizado desde `a850726c`**: `buildDispatchItems` ya los separa, con la división de imagen y caption. Lo que quedaba abierto era el **productor**, y **se cerró en `6ddd1a70`** para medios, captions y enlaces canónicos: entrega el turno entero en un solo lote. Sigue sin productor únicamente el **Flow**.
 - No se prometió exactly-once remoto. Un resultado desconocido exige conciliación y puede dejar un mensaje sin enviar.
 - Las respuestas de proveedor de las pruebas son sintéticas. No hay piloto con Meta ni con ningún otro proveedor.
-- El DDL está en `tenant-schema.sql` y en el bootstrap perezoso; no se aplicó a tenants existentes.
+- ~~El DDL está en `tenant-schema.sql` y en el bootstrap perezoso; no se aplicó a tenants existentes.~~ **Cerrado en `498e7592`**: hay migración aditiva para los tenants existentes y una prueba de paridad entre las tres definiciones. No se aplicó a ninguna base real.

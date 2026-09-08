@@ -43,19 +43,21 @@ La confusión que la directiva señala se evita nombrando cada nivel por separad
 
 | Capacidad | Primitiva | Productor conectado | Transporte | Integración probada | Piloto certificado |
 | --- | --- | --- | --- | --- | --- |
-| Texto (burbujas) | sí | **sí** | WhatsApp, Messenger | BullMQ+Valkey+PostgreSQL reales | **no** |
-| Medios | sí | **no** | WhatsApp, Messenger | sí, por la primitiva y el transporte | no |
-| Caption como efecto propio | sí | **no** | WhatsApp, Messenger | sí | no |
-| Enlace de pago canónico | sí | **no** | WhatsApp, Messenger | sí | no |
-| Flow | sí | **no** | WhatsApp (Messenger lo rechaza) | sí | no |
+| Texto (burbujas) | sí | **sí** | WhatsApp, Messenger, Instagram, Telegram | BullMQ+Valkey+PostgreSQL reales | **no** |
+| Medios | sí | **sí** | WhatsApp, Messenger, Instagram, Telegram | sí | no |
+| Caption como efecto propio | sí | **sí** | WhatsApp, Messenger, Instagram, Telegram | sí | no |
+| Enlace de pago canónico | sí | **sí** | WhatsApp, Messenger, Instagram, Telegram | sí | no |
+| Flow | sí | **no** | WhatsApp (los otros tres lo rechazan) | sí | no |
 | Web Chat (admisión local) | sí | sí | local autenticado | PostgreSQL + Socket.IO | no |
 
-Canales: **WhatsApp** y **Messenger** implementan `StrictDispatchTransport`. **Instagram**, **Telegram** y **correo** no, y se rechazan explícitamente (`transport_not_migrated`) si alguna vez reciben una fila.
+> **Actualizado el 8 de septiembre.** La tabla decía que sólo WhatsApp y Messenger tenían transporte estricto, y que medios, captions y enlaces tenían primitiva pero **ningún productor**. Ambas cosas se cerraron: Instagram y Telegram implementan `StrictDispatchTransport` (`527cc7b6`) y el productor entrega el turno entero —burbujas, enlace, foto y caption— en un solo lote (`6ddd1a70`). Detalle en [la extensión del despacho](dispatch-channels-and-turn.md).
+
+Canales: **WhatsApp**, **Messenger**, **Instagram** y **Telegram** implementan `StrictDispatchTransport`. **Correo** no, y se rechaza explícitamente (`transport_not_migrated`) si alguna vez recibe una fila.
 
 ## Límites explícitos
 
 - **Nada cambia en producción.** El interruptor está apagado y falla cerrado ante cualquier configuración que no pueda cumplirse.
 - **Ningún proveedor real fue llamado.** Todas las respuestas de las pruebas son sintéticas, con forma de las reales y los identificadores reemplazados. Un piloto con credenciales de prueba autorizadas es un gate externo.
-- El productor normal solo alimenta **texto**. Medios, captions, enlaces y Flow tienen primitiva y transporte pero no productor.
+- ~~El productor normal solo alimenta **texto**.~~ **Desactualizado desde `6ddd1a70`**: el productor entrega el turno entero. Lo que sigue sin productor es el **Flow**, que tiene primitiva y transporte de WhatsApp pero ningún camino que lo produzca en la salida normal.
 - La procedencia de aprendizaje sigue sin recogerse en turnos de mensajería: se registra footprint vacío, así que el borrado por release no alcanza esas filas (el borrado por contacto sí).
-- Las tablas nuevas se crean por bootstrap perezoso y están en `tenant-schema.sql`; **la migración para tenants existentes es trabajo aparte**.
+- ~~Las tablas nuevas se crean por bootstrap perezoso y están en `tenant-schema.sql`; la migración para tenants existentes es trabajo aparte.~~ **Cerrado en `498e7592`**: hay migración aditiva para los tenants existentes, con prueba de paridad entre las tres definiciones.

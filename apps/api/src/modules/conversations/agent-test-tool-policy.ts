@@ -75,6 +75,26 @@ export const EVAL_WRITER_SANDBOX_FAMILIES: Readonly<Record<string, EvalWriterSan
         status: 'audited', tools: Object.freeze(['create_appointment']),
         table: 'appointments', contactColumn: 'contact_id',
     }),
+    /**
+     * Las transiciones de una cita, separadas de su creación a propósito.
+     *
+     * Verificar una cancelación o una reprogramación no es comprobar que existe
+     * una fila: es comprobar que una fila concreta CAMBIÓ, así que hereda la
+     * tabla de `appointments` pero no su auditoría. Estas tres ya corren por el
+     * adaptador aislado —`CANONICAL_EVAL_TOOL_FAMILIES` las mapea a
+     * `appointments`, que está en el registro de limpieza—, que es lo que hace
+     * que la membresía esté ganada y no supuesta.
+     *
+     * `canonicalOnly` es deliberado y no una formalidad: son ejecutables sólo
+     * dentro de un namespace arrendado. Nunca contra el schema real de un
+     * tenant, ni siquiera para el contacto sandbox — una cancelación mal
+     * dirigida ahí borraría la cita de un cliente de verdad.
+     */
+    appointment_transitions: Object.freeze({
+        status: 'audited',
+        tools: Object.freeze(['cancel_appointment', 'reschedule_appointment', 'schedule_test_drive']),
+        table: 'appointments', contactColumn: 'contact_id', canonicalOnly: true, verifierAudited: true,
+    }),
     property_bookings: Object.freeze({
         status: 'audited', tools: Object.freeze(['create_property_booking']),
         table: 'property_bookings', contactColumn: 'contact_id',

@@ -42,14 +42,24 @@ describe('la matriz de tareas se calcula, no se transcribe', () => {
     });
 
     it('enumera exactamente qué tareas comprometen algo que la evaluación no puede verificar', () => {
-        // El hueco real, con nombre. Son cuatro tipos de tarea: cancelar una
-        // cita, agendar una prueba de manejo, cotizar una póliza y abrir un
-        // siniestro. Ninguna tiene una familia AUDITADA en el registro de
-        // writers de evaluación, así que el gate no puede comprobar el efecto
-        // que dicen producir.
-        const kinds = [...new Set(summary.withoutVerifier.map(entry => entry.split('/')[2].split(' ')[0]))].sort();
-        expect(kinds).toEqual(['cancel_appointment', 'file_claim', 'quote_policy', 'schedule_test_drive']);
-        expect(summary.withoutVerifier).toHaveLength(51);
+        // El hueco real, con nombre, y ya no es una lista larga: cancelar una
+        // cita, reprogramarla y agendar una prueba de manejo ya corrían por el
+        // adaptador aislado y sólo faltaba que el registro de writers lo dijera.
+        // Queda cotizar una póliza, que escribe `insurance_quotes` — una tabla
+        // que el namespace arrendado todavía no copia ni limpia.
+        const kinds = [...new Set(summary.withoutVerifier.map(entry => entry.split('/')[2]))].sort();
+        expect(kinds).toEqual(['quote_policy']);
+        expect(summary.withoutVerifier).toHaveLength(5);
+    });
+
+    it('separa lo que no tiene verificador de lo que no debe tenerlo', () => {
+        // `file_claim` sólo existe en una evaluación para demostrar que el
+        // step-up de identidad lo rechaza: nunca llega a un writer y nunca manda
+        // un OTP desde una corrida. Pedirle un verificador de efecto sería pedir
+        // que se compruebe algo cuyo contrato es que no se escribe nada.
+        const kinds = [...new Set(summary.deliberatelyUnverifiable.map(entry => entry.split('/')[2]))].sort();
+        expect(kinds).toEqual(['file_claim']);
+        expect(summary.deliberatelyUnverifiable).toHaveLength(5);
     });
 
     it('no hereda un verificador: la familia tiene que nombrar el comando exacto', () => {

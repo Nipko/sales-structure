@@ -117,7 +117,13 @@ export const EVAL_EFFECT_VERIFIERS: Readonly<Record<string, import('./eval-effec
         .map(([name, family]) => [name, Object.freeze({
             table: family.table,
             contactColumn: family.contactColumn!,
-            ...(name === 'appointments' ? { jsonFields: Object.freeze({
+            // Keyed on the TABLE, not the family name: these projections
+            // describe how `appointments` stores vehicle and service terms, so
+            // every family that verifies that table needs them. Keying them on
+            // one family's name left a second family verifying the same table
+            // unable to see the same columns, and an assertion that names no
+            // family resolves by table — it must not matter which one it finds.
+            ...(family.table === 'appointments' ? { jsonFields: Object.freeze({
                 vehicle_id: Object.freeze({ column: 'metadata', path: Object.freeze(['vehicleId']) }),
                 vehicle_terms_id: Object.freeze({ column: 'metadata', path: Object.freeze(['vehicleTerms', 'vehicleId']) }),
                 service_terms_id: Object.freeze({ column: 'metadata', path: Object.freeze(['serviceTerms', 'serviceId']) }),

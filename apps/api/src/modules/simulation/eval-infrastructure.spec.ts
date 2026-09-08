@@ -73,11 +73,23 @@ describe('versioned multilingual eval infrastructure', () => {
 
     it('has one contact-scoped verifier for every mutating sandbox family', () => {
         expect(Object.keys(EVAL_EFFECT_VERIFIERS).sort()).toEqual([
-            'appointments', 'catalog_orders', 'class_bookings', 'enrollments', 'pets',
+            'appointment_transitions', 'appointments', 'catalog_orders', 'class_bookings', 'enrollments', 'pets',
             'photo_sessions', 'property_bookings', 'repair_orders', 'resource_rentals',
             'restaurant_orders', 'service_requests', 'tour_bookings',
         ]);
         expect(EVAL_EFFECT_VERIFIERS.class_bookings.contactColumn).toBe('contact_id');
+    });
+
+    it('gives both families that verify `appointments` the same projections', () => {
+        // Una aserción que no nombra familia se resuelve por tabla, así que cuál
+        // de las dos encuentre no puede cambiar lo que puede comprobar. Las
+        // proyecciones describen cómo `appointments` guarda los términos de
+        // vehículo y servicio: son de la tabla, no de una familia.
+        expect(EVAL_EFFECT_VERIFIERS.appointment_transitions.table).toBe('appointments');
+        expect(EVAL_EFFECT_VERIFIERS.appointment_transitions.jsonFields)
+            .toEqual(EVAL_EFFECT_VERIFIERS.appointments.jsonFields);
+        expect(Object.keys(EVAL_EFFECT_VERIFIERS.appointments.jsonFields!).sort())
+            .toEqual(['service_terms_id', 'vehicle_id', 'vehicle_terms_id']);
     });
 
     it('prepares only an owned namespace and tears it down without deleting any live contact rows', async () => {

@@ -69,6 +69,14 @@ export interface TaskCertificationSummary {
     readonly withoutOwnPositive: readonly string[];
     readonly withoutOwnNegative: readonly string[];
     readonly withoutVerifier: readonly string[];
+    /**
+     * Tasks that will never have an effect verifier, because they are not meant
+     * to reach a domain writer at all: `file_claim` exists in an evaluation only
+     * to prove the identity step-up refuses it, and it never sends an OTP from a
+     * run. Counting those as a gap would ask for a verifier for something whose
+     * whole contract is that nothing gets written.
+     */
+    readonly deliberatelyUnverifiable: readonly string[];
     /** Zero until scenarios are executed per model, language and channel. */
     readonly certifiedProfiles: number;
 }
@@ -158,8 +166,11 @@ export function summariseTaskCertificationMatrix(
         withoutOwnNegative: Object.freeze(rows.filter(row => !row.hasOwnNegative).map(label).sort()),
         // Only a committing task can lack a verifier; a read has nothing to verify.
         withoutVerifier: Object.freeze(rows
-            .filter(row => row.transactional && row.verifier !== 'audited')
-            .map(row => `${label(row)} (${row.verifier})`).sort()),
+            .filter(row => row.transactional && row.verifier === 'none')
+            .map(label).sort()),
+        deliberatelyUnverifiable: Object.freeze(rows
+            .filter(row => row.transactional && row.verifier === 'identity_challenge')
+            .map(label).sort()),
         certifiedProfiles: 0,
     });
 }

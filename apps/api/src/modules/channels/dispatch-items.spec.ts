@@ -42,10 +42,13 @@ describe('building the effects a turn actually means', () => {
     });
 
     it('still sends media and a payment link alongside a Flow', () => {
+        // El enlace va antes que la foto: es lo que el cliente está esperando, y
+        // es el orden en que el productor actual ya los manda, así que encender
+        // el interruptor no reordena la respuesta de nadie.
         expect(kinds({ flow: { flowId: 'f-1', flowToken: 't-1', text: 'Agenda' },
             media: [{ url: 'https://example.test/a.jpg', caption: 'Mira' }],
             paymentLinks: ['https://checkout.test/abc'] }))
-            .toEqual(['flow', 'media', 'text', 'payment_link']);
+            .toEqual(['flow', 'payment_link', 'media', 'text']);
     });
 
     it('refuses to build anything malformed rather than let one effect through', () => {

@@ -254,6 +254,17 @@ const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).to
 /** A persisted row identifier, never a provider message id. */
 const PERSISTED_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
+/**
+ * The non-text effects a turn produced, collected instead of sent.
+ *
+ * Only the canonical ones: a link that came out of a tool receipt and a
+ * picture the model asked for by id. Nothing here is ever text the model wrote.
+ */
+interface TurnEffectSink {
+    readonly paymentLinks: string[];
+    readonly media: { url: string; caption?: string }[];
+}
+
 // Directive templates for an operation the SERVER executed after the customer
 // confirmed. Deterministic layer, so i18n'd here like HANDOFF_MSG. The failure
 // wording is deliberate: the model is told not to claim success, because the
@@ -945,6 +956,10 @@ export class ConversationsService {
         );
         this.logger.log(`[Pipeline] Generating AI response...`);
         const turnScope = servedAgentAuthority(tenantId, schemaName, personaResolution);
+        // Collected here, dispatched below with the bubbles: the link and the
+        // pictures are effects of this same turn and cannot be split across two
+        // delivery paths. A resumed reply produced no new effects.
+        const turnEffects: TurnEffectSink = { paymentLinks: [], media: [] };
         const response = resumedReply
             || await this.generateResponse(
                 tenantId,
@@ -959,6 +974,8 @@ export class ConversationsService {
                 personaResolution.agentId ?? undefined,
                 undefined,personaResolution.version ?? undefined,
                 turnScope,
+                undefined,
+                turnEffects,
             );
 
         // Persist the decision BEFORE any of it goes out, so a crash between the
@@ -1013,6 +1030,7 @@ export class ConversationsService {
                 const durable = await this.dispatchReplyThroughOutbox({
                     tenantId, schemaName, conversation, inboundMsg: normalizedMsg, inboundMessageId,
                     chunks, operationalScope: turnScope, gapMs: CHUNK_GAP_MS,
+                    paymentLinks: turnEffects.paymentLinks, media: turnEffects.media,
                 });
                 if (!durable) {
                     this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
@@ -1022,6 +1040,29 @@ export class ConversationsService {
                         await this.saveAiMessage(
                             tenantId, conversation.id, chunks[i], normalizedMsg.channelType,
                             turnPmid ? `out:${turnPmid}:reply:${i}` : undefined,
+                        );
+                    }
+                    // The old path, with the delays and dedupe identifiers it
+                    // always used. These ran inside `generateResponse` before;
+                    // moving them here is what lets one decision cover the whole
+                    // turn, and the identifiers keep a reprocessed turn from
+                    // delivering any of it twice.
+                    let linkIndex = 0;
+                    for (const url of new Set(turnEffects.paymentLinks)) {
+                        await this.sendPaymentLink(tenantId, normalizedMsg, url);
+                        await this.saveAiMessage(
+                            tenantId, conversation.id, url, normalizedMsg.channelType,
+                            outboundDedupeId(normalizedMsg, 'payment-link-history', linkIndex++),
+                        );
+                    }
+                    for (let i = 0; i < turnEffects.media.length; i++) {
+                        await this.sendMedia(tenantId, normalizedMsg, turnEffects.media[i].url,
+                            turnEffects.media[i].caption, 2000 + i * 1200, i);
+                        await this.saveAiMessage(
+                            tenantId, conversation.id,
+                            `[📷 ${turnEffects.media[i].caption || 'imagen'}]`,
+                            normalizedMsg.channelType,
+                            outboundDedupeId(normalizedMsg, 'media-history', i),
                         );
                     }
                 }
@@ -1943,6 +1984,19 @@ export class ConversationsService {
         resolvedAgentVersion?: number,
         operationalScope?: ServedAgentAuthority,
         replyProvenance?: AgentReplyProvenanceCollector,
+        /**
+         * Where this turn's non-text effects go instead of being sent here.
+         *
+         * A payment link and a picture are effects of the same turn as the
+         * bubbles, but they were dispatched from inside this method while the
+         * bubbles were dispatched by the caller — so a durable batch could only
+         * ever own the words. Handing them up lets one decision cover the whole
+         * turn: all of it in one batch, or all of it through the old path.
+         *
+         * Absent (Web Chat core, Agent Test, evaluation) nothing changes: this
+         * method keeps sending them exactly as before.
+         */
+        effectSink?: TurnEffectSink,
     ): Promise<string> {
         const draftMode = config.behavior?.draftMode === true;
         const executionContext = session?.executionContext || (draftMode ? DRAFT_EXECUTION_CONTEXT : undefined);
@@ -3883,6 +3937,12 @@ export class ConversationsService {
                     if (!finalResponse.includes(url)) finalResponse += `\n${url}`;
                     continue;
                 }
+                // With a sink, these effects belong to the caller's decision:
+                // they have to travel in the SAME durable batch as the bubbles,
+                // or through the old path, but never split between the two.
+                // Sending them here would put a link outside the batch that owns
+                // the answer, where nothing could recover or deduplicate it.
+                if (effectSink) { effectSink.paymentLinks.push(url); continue; }
                 await this.sendPaymentLink(tenantId, msg, url);
                 await this.saveAiMessage(
                     tenantId,
@@ -3898,6 +3958,10 @@ export class ConversationsService {
             for (let i = 0; !session && !draftMode && i < mediaToSend.length; i++) {
                 if (msg.channelType === 'web_widget') {
                     finalResponse += `\n${mediaToSend[i].url}`;
+                    continue;
+                }
+                if (effectSink) {
+                    effectSink.media.push({ url: mediaToSend[i].url, caption: mediaToSend[i].caption });
                     continue;
                 }
                 await this.sendMedia(
@@ -5218,6 +5282,10 @@ export class ConversationsService {
         tenantId: string; schemaName: string; conversation: any; inboundMsg: NormalizedMessage;
         inboundMessageId?: string; chunks: readonly string[];
         operationalScope?: ServedAgentAuthority; gapMs: number;
+        /** Canonical URLs from tool receipts, never a URL the model typed. */
+        paymentLinks?: readonly string[];
+        /** Attachments the model requested by id; each caption is its own item. */
+        media?: readonly { url: string; caption?: string }[];
     }): Promise<boolean> {
         const { tenantId, conversation, inboundMsg } = input;
         const contactId = String(conversation?.contact_id || '');
@@ -5252,7 +5320,15 @@ export class ConversationsService {
 
         let prepared;
         try {
-            const items = buildDispatchItems({ textChunks: [...input.chunks] });
+            // The whole turn, in the order the customer should see it. The link
+            // and the pictures travel in this batch or not at all: leaving them
+            // outside would put an effect of this answer beyond the recovery
+            // and deduplication that the batch is for.
+            const items = buildDispatchItems({
+                textChunks: [...input.chunks],
+                paymentLinks: [...new Set(input.paymentLinks || [])],
+                media: (input.media || []).map(entry => ({ url: entry.url, caption: entry.caption })),
+            });
             prepared = await this.dispatchOutbox.prepare(tenantId, {
                 binding, items,
                 operationalScope: input.operationalScope,

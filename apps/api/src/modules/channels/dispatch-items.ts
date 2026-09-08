@@ -74,6 +74,11 @@ export function buildDispatchItems(output: DispatchTurnOutput): DispatchItem[] {
         for (const chunk of output.textChunks || []) items.push(textItem(chunk, 'text'));
     }
 
+    // The link goes before the pictures because it is what the customer is
+    // waiting for — the same order the current producer sends them in, so
+    // turning the switch on does not reorder anybody's reply.
+    for (const link of output.paymentLinks || []) items.push(textItem(link, 'payment_link'));
+
     for (const attachment of output.media || []) {
         const url = String(attachment?.url ?? '').trim();
         if (!url) throw new DispatchItemError('dispatch_item_empty_media');
@@ -88,8 +93,6 @@ export function buildDispatchItems(output: DispatchTurnOutput): DispatchItem[] {
             items.push(textItem(String(attachment.caption), 'text'));
         }
     }
-
-    for (const link of output.paymentLinks || []) items.push(textItem(link, 'payment_link'));
 
     if (!items.length) throw new DispatchItemError('dispatch_item_nothing_to_send');
     if (items.length > MAX_ITEMS) throw new DispatchItemError('dispatch_item_too_many');

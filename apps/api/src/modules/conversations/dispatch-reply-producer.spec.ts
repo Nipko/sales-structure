@@ -190,4 +190,52 @@ describe('ConversationsService durable reply producer', () => {
         h.dispatchRollout.enabledFor.mockRejectedValue(new Error('settings unavailable'));
         await expect(run(h.service)).resolves.toBe(false);
     });
+
+    /**
+     * El enlace y las fotos son efectos del MISMO turno que las burbujas. Salían
+     * desde dentro de `generateResponse` mientras las burbujas las despachaba el
+     * llamador, así que un lote durable sólo podía adueñarse de las palabras: el
+     * enlace quedaba fuera del lote que es dueño de la respuesta, donde nada
+     * puede recuperarlo ni deduplicarlo. Ahora el turno entero viaja junto.
+     */
+    describe('el turno entero viaja en un solo lote', () => {
+        const media = [{ url: 'https://example.test/a.jpg', caption: 'Mira este' }];
+        const paymentLinks = ['https://checkout.test/abc'];
+
+        it('lleva enlace y medios al mismo lote, con el enlace antes de la foto', async () => {
+            const h = harness({ enabled: true });
+            await expect(run(h.service, { paymentLinks, media })).resolves.toBe(true);
+            const items = h.dispatchOutbox.prepare.mock.calls[0][1].items;
+            expect(items.map((item: any) => item.kind))
+                .toEqual(['text', 'text', 'payment_link', 'media', 'text']);
+            expect(items[2].payload.text).toBe('https://checkout.test/abc');
+            expect(items[3].payload.mediaUrl).toBe('https://example.test/a.jpg');
+            // El caption es su propio efecto: si falla, la foto no se reenvía.
+            expect(items[4].payload.text).toBe('Mira este');
+        });
+
+        it('deduplica el enlace, porque dos herramientas pueden devolver el mismo', async () => {
+            const h = harness({ enabled: true });
+            await run(h.service, { paymentLinks: [...paymentLinks, ...paymentLinks] });
+            const items = h.dispatchOutbox.prepare.mock.calls[0][1].items;
+            expect(items.filter((item: any) => item.kind === 'payment_link')).toHaveLength(1);
+        });
+
+        it('sigue siendo el mismo lote de texto cuando el turno no produjo efectos', async () => {
+            const h = harness({ enabled: true });
+            await expect(run(h.service, { paymentLinks: [], media: [] })).resolves.toBe(true);
+            expect(h.dispatchOutbox.prepare.mock.calls[0][1].items.map((item: any) => item.kind))
+                .toEqual(['text', 'text']);
+        });
+
+        it('no se queda con la respuesta si no puede expresar un efecto', async () => {
+            // Un medio sin URL no es despachable. Rechazar el lote entero deja la
+            // respuesta al camino viejo, que sí puede entregar el texto; aceptar
+            // el resto entregaría una respuesta a la que le falta una parte sin
+            // que nadie se entere.
+            const h = harness({ enabled: true });
+            await expect(run(h.service, { media: [{ url: '   ' }] })).resolves.toBe(false);
+            expect(h.dispatchOutbox.prepare).not.toHaveBeenCalled();
+        });
+    });
 });

@@ -148,6 +148,20 @@ describe('AgentPublicationService', () => {
             expect(h.drafts.assertConfigurationEntitlement).not.toHaveBeenCalled();
         });
 
+        it('rechaza un alcance distinto al de la petición en vez de mezclar identidades', async () => {
+            // El primitivo pasa el mismo tenant que capturó este closure. Mezclar
+            // las dos fuentes leería el plan de un tenant mientras habilita la
+            // configuración de otro el día que dejen de coincidir.
+            const h = harness();
+            await h.service.publish(tenantId, agentId, candidateId, publishBody, admin);
+            const checks = h.store.publish.mock.calls[0][3];
+            for (const scope of [{ tenantId: superId, agentId }, { tenantId, agentId: superId }]) {
+                await expect(checks.assertCurrentPrerequisites(h.query, { ...scope, operational: {}, body: {} }))
+                    .rejects.toMatchObject({ response: { error: 'agent_publication_scope_mismatch' } });
+            }
+            expect(h.drafts.assertConfigurationEntitlement).not.toHaveBeenCalled();
+        });
+
         it('propaga la denegación de capacidad tal cual, sin convertirla en otro error', async () => {
             const blocked: any = new Error('configuration_capability_blocked');
             const h = harness({ entitlementError: blocked });

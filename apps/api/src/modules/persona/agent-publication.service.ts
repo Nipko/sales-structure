@@ -82,13 +82,20 @@ export class AgentPublicationService {
                 await this.revisions.assertCurrent(snapshot.manifest);
             },
             assertCurrentPrerequisites: async (query: RevisionQuery, input) => {
+                // One identity, from one source. The store passes the same
+                // tenant this closure captured, and mixing the two would read
+                // the plan of one tenant while entitling the configuration of
+                // another the day they ever diverge.
+                if (input.tenantId !== tenantId || input.agentId !== agentId) {
+                    throw new ForbiddenException({ error: 'agent_publication_scope_mismatch' });
+                }
                 // Read the tenant on the SAME query: the store already holds it
                 // FOR UPDATE, so this cannot race a plan change committing beside it.
                 const [tenant] = await query<any[]>(
                     `SELECT to_jsonb(t)->>'industry' AS industry, to_jsonb(t)->'settings' AS settings
-                     FROM public.tenants t WHERE t.id=$1::uuid`, [input.tenantId]);
+                     FROM public.tenants t WHERE t.id=$1::uuid`, [tenantId]);
                 if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
-                const access = await resolveTenantSubscriptionAccess(this.prisma, input.tenantId, 'write');
+                const access = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
                 if (!access.allowed) {
                     throw new ForbiddenException({ error: 'agent_publication_subscription_restricted',
                         reason: access.error ?? 'restricted' });

@@ -43,6 +43,15 @@ describe('eval writable tools', () => {
             'create_repair_order',
             'approve_repair',
             'cancel_repair_order',
+            // Transiciones de cita y cotización de póliza. Las tres primeras ya
+            // corrían por el adaptador aislado y sólo faltaba que el registro lo
+            // dijera; la cuarta escribe `insurance_quotes`, que el namespace
+            // arrendado ahora copia. Las cuatro son `canonicalOnly`, y el caso
+            // de abajo comprueba que por eso NO pueden escribir el schema real.
+            'cancel_appointment',
+            'reschedule_appointment',
+            'schedule_test_drive',
+            'calculate_quote',
         ];
         expect([...EVAL_SANDBOX_MUTATING_TOOL_NAMES].sort()).toEqual(reviewedMutations.sort());
         expect([...EVAL_WRITABLE_TOOL_NAMES].sort()).toEqual([
@@ -88,12 +97,31 @@ describe('eval writable tools', () => {
         }
     });
 
-    it('requires namespace admission for canonical pet, catalog and repair commands', () => {
+    it('requires namespace admission for every canonical-only command', () => {
+        // Estar en la lista de writers auditados NO es permiso para escribir el
+        // schema real de un tenant. Estas sólo corren dentro de un namespace
+        // arrendado: una cancelación mal dirigida borraría la cita de un cliente
+        // de verdad, y una cotización quedaría en la bandeja de un asesor como
+        // si alguien la hubiera pedido.
         for (const name of ['register_pet', 'update_pet', 'place_catalog_order', 'cancel_catalog_order',
-            'create_repair_order', 'approve_repair', 'cancel_repair_order']) {
+            'create_repair_order', 'approve_repair', 'cancel_repair_order',
+            'cancel_appointment', 'reschedule_appointment', 'schedule_test_drive', 'calculate_quote']) {
             expect(isEvalWritableToolName(name)).toBe(true);
             expect(canEvalExecuteWriter(name, EVAL_SANDBOX_CONTACT_ID)).toBe(false);
             expect(isAgentTestSafeToolName(name)).toBe(false);
+        }
+    });
+
+    it('cada writer auditado o exige namespace, o está revisado para el schema real', () => {
+        // La regla que mantiene angosta la puerta, escrita como regla y no como
+        // lista: no hay un tercer estado. Un writer nuevo que no sea
+        // `canonicalOnly` tiene que poder ejecutarse contra el contacto sandbox,
+        // y si no puede es que entró sin decidir a cuál de los dos mundos
+        // pertenece.
+        const canonicalOnly = new Set(Object.values(EVAL_WRITER_SANDBOX_FAMILIES)
+            .filter(family => family.canonicalOnly).flatMap(family => [...family.tools]));
+        for (const name of EVAL_SANDBOX_MUTATING_TOOL_NAMES) {
+            expect(canEvalExecuteWriter(name, EVAL_SANDBOX_CONTACT_ID)).toBe(!canonicalOnly.has(name));
         }
     });
 
